@@ -37,6 +37,7 @@ class Profile(SQLModel, table=True):
     location: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    social_links: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     extra_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 

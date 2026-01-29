@@ -1,34 +1,14 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from .constants import ALLOWED_OVERRIDE_KEYS
-from .models import ExperienceVersion, MasterExperience, Profile, ProfileLink, Resume, ResumeExperience
+from .models import ExperienceVersion, MasterExperience, Resume, ResumeExperience
 from .schemas import (
     ExperienceSnapshot,
     ExperienceVersionRead,
     MasterExperienceRead,
-    ProfileLinkPayload,
-    ProfileRead,
     ResumeExperienceRead,
     ResumeRead,
 )
-
-
-def profile_to_read(profile: Profile, links: List[ProfileLink]) -> ProfileRead:
-    return ProfileRead(
-        user_id=profile.user_id,
-        full_name=profile.full_name,
-        title=profile.title,
-        summary=profile.summary,
-        location=profile.location,
-        phone=profile.phone,
-        email=profile.email,
-        extra_json=profile.extra_json or {},
-        links=[
-            ProfileLinkPayload(label=link.label, url=link.url, position=link.position)
-            for link in links
-        ],
-        updated_at=profile.updated_at,
-    )
 
 
 def experience_version_to_read(version: ExperienceVersion) -> ExperienceVersionRead:

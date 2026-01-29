@@ -20,9 +20,13 @@ CREATE TABLE IF NOT EXISTS profiles (
     location TEXT,
     phone TEXT,
     email TEXT,
+    social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
     extra_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE profiles
+    ADD COLUMN IF NOT EXISTS social_links JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS profile_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
