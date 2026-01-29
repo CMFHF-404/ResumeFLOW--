@@ -5,7 +5,7 @@ import {
     Edit3, Eye, EyeOff, GripVertical, CheckCircle2,
     ChevronDown, ChevronUp, ArrowLeft, Database, User, Award
 } from 'lucide-react';
-import { analyzeJobDescription } from '../services/geminiService';
+import { aiService } from '../services/aiService';
 import { Education, Certification } from '../types';
 
 // Mock Data with STAR structure
@@ -131,13 +131,15 @@ const ResumeEditor: React.FC = () => {
 
     const handleAnalyze = async () => {
         setIsAnalyzing(true);
-        const resultStr = await analyzeJobDescription(jdText, JSON.stringify(experienceItems));
         try {
-            const result = JSON.parse(resultStr);
+            const result = await aiService.analyzeJD(
+                jdText,
+                JSON.stringify(experienceItems)
+            );
             setAnalysisResult(result);
             setIsJDCollapsed(true);
-        } catch (e) {
-            console.error("Failed to parse analysis");
+        } catch (error) {
+            console.error("Failed to analyze JD", error);
         } finally {
             setIsAnalyzing(false);
         }

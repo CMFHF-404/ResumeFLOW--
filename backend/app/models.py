@@ -117,4 +117,20 @@ class ResumeSkill(SQLModel, table=True):
     position: int = 0
 
 
+class Certification(SQLModel, table=True):
+    __tablename__ = "certifications"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    name: str
+    issuer: Optional[str] = None
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    credential_id: Optional[str] = None
+    credential_url: Optional[str] = None
+    description: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 from .domain.resume.models import Resume, ResumeExperienceLink

@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException
@@ -91,10 +91,14 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
     return {"content": content}
 
 
-async def analyze_jd(text: str) -> Dict[str, Any]:
+async def analyze_jd(text: str, resume_text: Optional[str] = None) -> Dict[str, Any]:
+    resume_payload = resume_text or "Resume content not provided."
     messages = [
         {"role": "system", "content": JD_ANALYSIS},
-        {"role": "user", "content": text},
+        {
+            "role": "user",
+            "content": f"Job Description:\n{text}\n\nResume Content:\n{resume_payload}",
+        },
     ]
     return await _call_llm(messages, json_mode=True)
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
-import { polishExperience } from '../services/geminiService';
+import { aiService } from '../services/aiService';
 import { Certification } from '../types';
 
 const ExperienceBank: React.FC = () => {
@@ -126,16 +126,23 @@ const ExperienceBank: React.FC = () => {
 
   const handlePolish = async () => {
     setIsPolishing(true);
-    const rawText = `Situation: ${situation}\nTask: ${task}\nAction: ${action}\nResult: ${result}`;
-    const responseStr = await polishExperience(company, role, rawText);
     try {
-      const response = JSON.parse(responseStr);
+      const response = await aiService.polishExperience({
+        content: {
+          company,
+          role,
+          s: situation,
+          t: task,
+          a: action,
+          r: result,
+        },
+      });
       if (response.s) setSituation(response.s);
       if (response.t) setTask(response.t);
       if (response.a) setAction(response.a);
       if (response.r) setResult(response.r);
-    } catch (e) {
-      console.error("Failed to parse AI response", e);
+    } catch (error) {
+      console.error("Failed to polish experience", error);
     } finally {
       setIsPolishing(false);
     }

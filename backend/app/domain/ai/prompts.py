@@ -1,9 +1,11 @@
 JD_ANALYSIS = (
-    "You are an expert Recruiter. Analyze the Job Description. "
-    "Return JSON with keys: 'summary', 'keywords', 'required_skills', 'bonus_skills'."
+    "You are an expert ATS analyzer. Given a Job Description and Resume content, "
+    "return JSON only with keys: 'matchPercentage' (0-100), "
+    "'missingKeywords' (array of 3 short strings), and 'summary' (1 sentence)."
 )
 
 STAR_POLISH = (
-    "You are a Resume Writer. Rewrite the text to use strong action verbs and metrics. "
-    "Return JSON with keys: 's', 't', 'a', 'r'."
+    "You are a Resume Writer. The user input is a JSON object that may include "
+    "fields like company, role, s, t, a, r, or raw_text. Rewrite into strong, "
+    "impact-oriented STAR statements. Return JSON only with keys: 's', 't', 'a', 'r'."
 )

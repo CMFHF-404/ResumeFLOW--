@@ -156,7 +156,22 @@ CREATE TABLE IF NOT EXISTS resume_skills (
     position INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS certifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    issuer TEXT,
+    issue_date DATE,
+    expiry_date DATE,
+    credential_id TEXT,
+    credential_url TEXT,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_master_experiences_user_id ON master_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_experience_versions_master_id ON experience_versions(master_experience_id);
 CREATE INDEX IF NOT EXISTS idx_resume_experiences_resume_id ON resume_experiences(resume_id);
+CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id);
