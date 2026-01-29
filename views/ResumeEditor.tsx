@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { 
-    Moon, Sun, Download, LayoutTemplate, 
+import {
+    Moon, Sun, Download, LayoutTemplate,
     Target, Wand2, RefreshCw,
     Edit3, Eye, EyeOff, GripVertical, CheckCircle2,
     ChevronDown, ChevronUp, ArrowLeft, Database, User
@@ -9,10 +9,10 @@ import { analyzeJobDescription } from '../services/geminiService';
 
 // Mock Data with STAR structure
 const initialExperienceItems = [
-    { 
-        id: 1, 
-        title: "高级产品经理", 
-        company: "腾讯 (Tencent)", 
+    {
+        id: 1,
+        title: "高级产品经理",
+        company: "腾讯 (Tencent)",
         date: "2021.03 - 至今",
         star: {
             s: "负责腾讯云核心PaaS产品的商业化落地，面对竞品激烈的市场环境。",
@@ -21,10 +21,10 @@ const initialExperienceItems = [
             r: "Q3季度实现营收增长210%，KA客户签约率提升45%。"
         }
     },
-    { 
-        id: 2, 
-        title: "产品运营实习生", 
-        company: "字节跳动 (ByteDance)", 
+    {
+        id: 2,
+        title: "产品运营实习生",
+        company: "字节跳动 (ByteDance)",
         date: "2020.06 - 2020.12",
         star: {
             s: "负责抖音千万级用户增长活动策划。",
@@ -33,12 +33,12 @@ const initialExperienceItems = [
             r: "活动期间DAU提升15%，投放ROI提升30%。"
         }
     },
-    { 
-        id: 3, 
-        title: "主席", 
-        company: "校学生会", 
+    {
+        id: 3,
+        title: "主席",
+        company: "校学生会",
         date: "2022 - 2023",
-         star: {
+        star: {
             s: "管理全校最大的学生组织，成员超过200人。",
             t: "组织年度校园文化节，提升学生活跃度。",
             a: "统筹策划15场全校性活动，管理5万美元运营预算，优化供应商合同。",
@@ -49,7 +49,7 @@ const initialExperienceItems = [
 
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
-    
+
     // 1. Profile State
     const [profile, setProfile] = useState({
         name: "陈小象",
@@ -70,11 +70,11 @@ const ResumeEditor: React.FC = () => {
     const [analysisResult, setAnalysisResult] = useState<{ matchPercentage: number; missingKeywords: string[]; summary: string } | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isJDCollapsed, setIsJDCollapsed] = useState(false);
-    
+
     // 4. UI State
-    const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('profile');
+    const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
-    
+
     // Drag & Drop State
     const [draggedItemId, setDraggedItemId] = useState<number | null>(null);
 
@@ -108,7 +108,7 @@ const ResumeEditor: React.FC = () => {
     };
 
     const updateExperienceItem = (id: number, field: 's' | 't' | 'a' | 'r', value: string) => {
-        setExperienceItems(items => items.map(item => 
+        setExperienceItems(items => items.map(item =>
             item.id === id ? { ...item, star: { ...item.star, [field]: value } } : item
         ));
     };
@@ -121,15 +121,15 @@ const ResumeEditor: React.FC = () => {
     const handleDragOver = (e: React.DragEvent, id: number) => {
         e.preventDefault();
         if (draggedItemId === null || draggedItemId === id) return;
-        
+
         // Simple reorder logic
         const draggedIndex = experienceItems.findIndex(i => i.id === draggedItemId);
         const hoverIndex = experienceItems.findIndex(i => i.id === id);
-        
+
         const newItems = [...experienceItems];
         const [draggedItem] = newItems.splice(draggedIndex, 1);
         newItems.splice(hoverIndex, 0, draggedItem);
-        
+
         setExperienceItems(newItems);
     };
 
@@ -146,7 +146,7 @@ const ResumeEditor: React.FC = () => {
         standard: 'mb-6',
         spacious: 'mb-8'
     }[density];
-    
+
     const listSpacingClass = {
         compact: 'space-y-2',
         standard: 'space-y-4',
@@ -164,24 +164,24 @@ const ResumeEditor: React.FC = () => {
                     </div>
                     <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
                     <div className="flex items-center gap-2">
-                         <span className="text-sm font-medium text-gray-500">简历工厂 / Resume Factory</span>
+                        <span className="text-sm font-medium text-gray-500">简历工厂 / Resume Factory</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                        <button 
+                        <button
                             onClick={() => setDensity('compact')}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${density === 'compact' ? 'bg-white dark:bg-gray-600 shadow text-primary dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700'}`}
                         >
                             紧凑
                         </button>
-                        <button 
+                        <button
                             onClick={() => setDensity('standard')}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${density === 'standard' ? 'bg-white dark:bg-gray-600 shadow text-primary dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700'}`}
                         >
                             标准
                         </button>
-                        <button 
+                        <button
                             onClick={() => setDensity('spacious')}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${density === 'spacious' ? 'bg-white dark:bg-gray-600 shadow text-primary dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700'}`}
                         >
@@ -202,7 +202,7 @@ const ResumeEditor: React.FC = () => {
             <div className="flex flex-1 overflow-hidden">
                 {/* Left Sidebar: Analysis & Modules */}
                 <aside className="w-[420px] flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex">
-                    
+
                     {/* Compact JD Panel */}
                     <div className={`border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${isJDCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}>
                         <div className="px-4 flex items-center justify-between mb-2">
@@ -210,8 +210,8 @@ const ResumeEditor: React.FC = () => {
                                 <Target className="w-4 h-4 text-primary" />
                                 职位分析 (JD Analysis)
                             </h3>
-                            <button 
-                                onClick={() => setIsJDCollapsed(!isJDCollapsed)} 
+                            <button
+                                onClick={() => setIsJDCollapsed(!isJDCollapsed)}
                                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                             >
                                 {isJDCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -239,8 +239,8 @@ const ResumeEditor: React.FC = () => {
                                 // Expanded State
                                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
                                     <div className="relative group">
-                                        <textarea 
-                                            className="w-full h-24 p-3 text-xs bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm" 
+                                        <textarea
+                                            className="w-full h-24 p-3 text-xs bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
                                             placeholder="在此粘贴职位要求 (Job Description)..."
                                             value={jdText}
                                             onChange={(e) => setJdText(e.target.value)}
@@ -266,113 +266,113 @@ const ResumeEditor: React.FC = () => {
 
                     {/* Tab Navigation (Swapped order) */}
                     <div className="flex border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
-                        <button 
-                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                            onClick={() => { setSidebarTab('profile'); setEditingExpId(null); }}
-                        >
-                            <User className="w-4 h-4" /> 个人档案
-                        </button>
-                        <button 
+                        <button
                             className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                             onClick={() => setSidebarTab('experience')}
                         >
                             <Database className="w-4 h-4" /> 经历库
                         </button>
+                        <button
+                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                            onClick={() => { setSidebarTab('profile'); setEditingExpId(null); }}
+                        >
+                            <User className="w-4 h-4" /> 个人档案
+                        </button>
                     </div>
 
                     {/* Sidebar Content */}
                     <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50/30 dark:bg-black/20">
-                         {sidebarTab === 'profile' ? (
-                             // 1. Profile FORM Input
-                             <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                                 <div className="space-y-1">
-                                     <label className="text-xs font-semibold text-gray-500 uppercase">姓名</label>
-                                     <input 
+                        {sidebarTab === 'profile' ? (
+                            // 1. Profile FORM Input
+                            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-500 uppercase">姓名</label>
+                                    <input
                                         className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                         value={profile.name}
-                                        onChange={(e) => setProfile({...profile, name: e.target.value})}
-                                     />
-                                 </div>
-                                 <div className="grid grid-cols-2 gap-3">
-                                     <div className="space-y-1">
+                                        onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
                                         <label className="text-xs font-semibold text-gray-500 uppercase">电话</label>
-                                        <input 
+                                        <input
                                             className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                             value={profile.phone}
-                                            onChange={(e) => setProfile({...profile, phone: e.target.value})}
+                                            onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                                         />
-                                     </div>
-                                     <div className="space-y-1">
+                                    </div>
+                                    <div className="space-y-1">
                                         <label className="text-xs font-semibold text-gray-500 uppercase">邮箱</label>
-                                        <input 
+                                        <input
                                             className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                             value={profile.email}
-                                            onChange={(e) => setProfile({...profile, email: e.target.value})}
+                                            onChange={(e) => setProfile({ ...profile, email: e.target.value })}
                                         />
-                                     </div>
-                                 </div>
-                                 <div className="space-y-1">
-                                     <label className="text-xs font-semibold text-gray-500 uppercase">地点</label>
-                                     <input 
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-500 uppercase">地点</label>
+                                    <input
                                         className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                         value={profile.location}
-                                        onChange={(e) => setProfile({...profile, location: e.target.value})}
-                                     />
-                                 </div>
-                                 <div className="space-y-1">
-                                     <label className="text-xs font-semibold text-gray-500 uppercase">链接</label>
-                                     <input 
+                                        onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-500 uppercase">链接</label>
+                                    <input
                                         className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                         value={profile.linkedin}
-                                        onChange={(e) => setProfile({...profile, linkedin: e.target.value})}
-                                     />
-                                 </div>
-                                 <div className="space-y-1">
-                                     <label className="text-xs font-semibold text-gray-500 uppercase">职业总结</label>
-                                     <textarea 
+                                        onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-500 uppercase">职业总结</label>
+                                    <textarea
                                         className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-32 leading-relaxed resize-none"
                                         value={profile.summary}
-                                        onChange={(e) => setProfile({...profile, summary: e.target.value})}
-                                     />
-                                 </div>
-                             </div>
-                         ) : (
-                             // 2. Experience Selection & STAR Editing
-                             editingExpId ? (
-                                 // Editing Mode (STAR Inputs)
-                                 <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-                                     <button 
+                                        onChange={(e) => setProfile({ ...profile, summary: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            // 2. Experience Selection & STAR Editing
+                            editingExpId ? (
+                                // Editing Mode (STAR Inputs)
+                                <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                                    <button
                                         onClick={() => setEditingExpId(null)}
                                         className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white mb-2"
-                                     >
+                                    >
                                         <ArrowLeft className="w-3 h-3" /> 返回列表
-                                     </button>
-                                     <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2">
-                                         <h4 className="font-bold text-gray-900 dark:text-white">{editingItem?.company}</h4>
-                                         <p className="text-xs text-gray-500">{editingItem?.title}</p>
-                                     </div>
-                                     
-                                     {['s', 't', 'a', 'r'].map((key) => {
-                                         const labelMap: any = { s: 'Situation (情境)', t: 'Task (任务)', a: 'Action (行动)', r: 'Result (结果)' };
-                                         const colorMap: any = { s: 'text-blue-600', t: 'text-orange-600', a: 'text-amber-600', r: 'text-emerald-600' };
-                                         return (
-                                             <div key={key} className="space-y-1">
-                                                 <label className={`text-[10px] font-bold uppercase tracking-wider ${colorMap[key]} pl-1`}>
+                                    </button>
+                                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2">
+                                        <h4 className="font-bold text-gray-900 dark:text-white">{editingItem?.company}</h4>
+                                        <p className="text-xs text-gray-500">{editingItem?.title}</p>
+                                    </div>
+
+                                    {['s', 't', 'a', 'r'].map((key) => {
+                                        const labelMap: any = { s: 'Situation (情境)', t: 'Task (任务)', a: 'Action (行动)', r: 'Result (结果)' };
+                                        const colorMap: any = { s: 'text-blue-600', t: 'text-orange-600', a: 'text-amber-600', r: 'text-emerald-600' };
+                                        return (
+                                            <div key={key} className="space-y-1">
+                                                <label className={`text-[10px] font-bold uppercase tracking-wider ${colorMap[key]} pl-1`}>
                                                     {labelMap[key]}
-                                                 </label>
-                                                 <textarea 
+                                                </label>
+                                                <textarea
                                                     className="w-full text-sm p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-24 resize-none leading-relaxed"
-                                                    value={editingItem?.star?.[key as 's'|'t'|'a'|'r']}
+                                                    value={editingItem?.star?.[key as 's' | 't' | 'a' | 'r']}
                                                     onChange={(e) => updateExperienceItem(editingItem!.id, key as any, e.target.value)}
                                                     placeholder={`Enter ${key.toUpperCase()}...`}
-                                                 />
-                                             </div>
-                                         )
-                                     })}
-                                 </div>
-                             ) : (
-                                 // List Mode (Checkboxes)
-                                 <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
+                                                />
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            ) : (
+                                // List Mode (Checkboxes)
+                                <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
                                     <p className="text-xs text-gray-400 px-1 flex items-center gap-2">
                                         <CheckCircle2 className="w-3 h-3" /> 勾选以添加到简历
                                     </p>
@@ -382,8 +382,8 @@ const ResumeEditor: React.FC = () => {
                                             <div key={item.id} className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative ${isSelected ? 'border-primary ring-1 ring-primary/10' : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'}`}>
                                                 <div className="flex items-start gap-3">
                                                     <div className="pt-1">
-                                                        <input 
-                                                            type="checkbox" 
+                                                        <input
+                                                            type="checkbox"
                                                             checked={isSelected}
                                                             onChange={() => toggleExperienceSelection(item.id)}
                                                             className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
@@ -406,15 +406,15 @@ const ResumeEditor: React.FC = () => {
                                         );
                                     })}
                                     {/* Removed the "Import More" card placeholder as per requirement */}
-                                 </div>
-                             )
-                         )}
+                                </div>
+                            )
+                        )}
                     </div>
                 </aside>
 
                 {/* Main Preview Area (Connected to State) */}
                 <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto relative flex justify-center p-8 scroll-smooth">
-                     <div className="a4-preview text-gray-900 p-[20mm] relative">
+                    <div className="a4-preview text-gray-900 p-[20mm] relative">
                         {/* 1. Header (Basic Info) */}
                         <div id="basic-info" className={`border-b-2 border-gray-900 pb-4 ${spacingClass} text-center scroll-mt-8`}>
                             <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">{profile.name}</h1>
@@ -433,19 +433,19 @@ const ResumeEditor: React.FC = () => {
                                 <p className="text-xs leading-relaxed text-gray-800">{profile.summary}</p>
                             </div>
                         )}
-                        
+
                         {/* 3. Experience (Mapped from Selected Items) - Conditional Rendering */}
-                         {selectedExpIds.size > 0 && (
-                             <div id="experience" className={`${spacingClass} scroll-mt-20`}>
+                        {selectedExpIds.size > 0 && (
+                            <div id="experience" className={`${spacingClass} scroll-mt-20`}>
                                 <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">工作/项目经历</h2>
                                 <div className={listSpacingClass}>
                                     {experienceItems
                                         .filter(item => selectedExpIds.has(item.id))
                                         .map(item => (
-                                            <div 
-                                                key={item.id} 
+                                            <div
+                                                key={item.id}
                                                 className="relative group hover:bg-primary/5 -m-2 p-2 rounded transition-colors cursor-move"
-                                                onClick={() => {setSidebarTab('experience'); setEditingExpId(item.id)}}
+                                                onClick={() => { setSidebarTab('experience'); setEditingExpId(item.id) }}
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, item.id)}
                                                 onDragOver={(e) => handleDragOver(e, item.id)}
@@ -456,14 +456,14 @@ const ResumeEditor: React.FC = () => {
                                                     <span className="text-xs font-medium text-gray-600">{item.date}</span>
                                                 </div>
                                                 <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
-                                                
+
                                                 {/* Render STAR content if available */}
                                                 <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
                                                     {item.star?.s && <li><span className="font-semibold text-gray-900">S:</span> {item.star.s}</li>}
                                                     {item.star?.t && <li><span className="font-semibold text-gray-900">T:</span> {item.star.t}</li>}
                                                     {item.star?.a && (
                                                         <li>
-                                                            <span className="font-semibold text-gray-900">A:</span> 
+                                                            <span className="font-semibold text-gray-900">A:</span>
                                                             <span className="whitespace-pre-line block mt-1">{item.star.a}</span>
                                                         </li>
                                                     )}
@@ -471,15 +471,15 @@ const ResumeEditor: React.FC = () => {
                                                 </ul>
 
                                                 <div className="absolute top-2 right-2 hidden group-hover:block text-primary">
-                                                     <Edit3 className="w-4 h-4" />
+                                                    <Edit3 className="w-4 h-4" />
                                                 </div>
                                             </div>
-                                    ))}
+                                        ))}
                                 </div>
                             </div>
                         )}
 
-                         <div id="education" className={`${spacingClass} scroll-mt-20`}>
+                        <div id="education" className={`${spacingClass} scroll-mt-20`}>
                             <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">教育背景</h2>
                             <div className="mb-2">
                                 <div className="flex justify-between items-baseline mb-0.5">
@@ -492,15 +492,15 @@ const ResumeEditor: React.FC = () => {
 
                         {/* Skills Block */}
                         <div id="skills" className={`${spacingClass} scroll-mt-20`}>
-                             <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">专业技能</h2>
-                             <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
+                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">专业技能</h2>
+                            <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
                                 <span className="font-bold text-gray-900">技术栈:</span>
                                 <span>Python, SQL, HTML/CSS, JavaScript, React, Figma, Tableau</span>
                                 <span className="font-bold text-gray-900">产品方法:</span>
                                 <span>敏捷/Scrum, 用户研究, A/B测试, 路线图规划, Jira</span>
-                             </div>
+                            </div>
                         </div>
-                     </div>
+                    </div>
                 </main>
             </div>
         </div>
