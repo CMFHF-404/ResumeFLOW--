@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate } from 'lucide-react';
+import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { polishExperience } from '../services/geminiService';
+import { Certification } from '../types';
 
 const ExperienceBank: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -27,6 +28,18 @@ const ExperienceBank: React.FC = () => {
   // Skills State
   const [skills, setSkills] = useState(["Product Management", "Figma", "SQL", "Python Analysis", "Axure RP", "Jira/Confluence"]);
   const [newSkill, setNewSkill] = useState("");
+
+  // Certifications State
+  const [certifications, setCertifications] = useState<Certification[]>([
+    { id: '1', name: 'PMP 项目管理专业人士', issuer: 'PMI', date: '2023', matchRate: 95 },
+    { id: '2', name: 'Google Analytics 认证', issuer: 'Google', date: '2023', matchRate: 82 }
+  ]);
+  const [expandedCert, setExpandedCert] = useState(false);
+  const [editingCertId, setEditingCertId] = useState<string | null>(null);
+  const [certName, setCertName] = useState("");
+  const [certIssuer, setCertIssuer] = useState("");
+  const [certDate, setCertDate] = useState("");
+  const [certMatchRate, setCertMatchRate] = useState<number>(0);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -87,6 +100,61 @@ const ExperienceBank: React.FC = () => {
 
   const removeSkill = (skillToRemove: string) => {
     setSkills(skills.filter(s => s !== skillToRemove));
+  };
+
+  // 证书管理函数
+  const handleAddCert = () => {
+    setCertName("");
+    setCertIssuer("");
+    setCertDate("");
+    setCertMatchRate(0);
+    setEditingCertId('new');
+    setExpandedCert(true);
+  };
+
+  const handleSaveCert = () => {
+    if (!certName.trim() || !certIssuer.trim()) return;
+
+    if (editingCertId === 'new') {
+      const newCert: Certification = {
+        id: Date.now().toString(),
+        name: certName,
+        issuer: certIssuer,
+        date: certDate,
+        matchRate: certMatchRate
+      };
+      setCertifications([...certifications, newCert]);
+    } else {
+      setCertifications(certifications.map(cert =>
+        cert.id === editingCertId
+          ? { ...cert, name: certName, issuer: certIssuer, date: certDate, matchRate: certMatchRate }
+          : cert
+      ));
+    }
+    setEditingCertId(null);
+    setExpandedCert(false);
+  };
+
+  const handleEditCert = (cert: Certification) => {
+    setCertName(cert.name);
+    setCertIssuer(cert.issuer);
+    setCertDate(cert.date);
+    setCertMatchRate(cert.matchRate || 0);
+    setEditingCertId(cert.id);
+    setExpandedCert(true);
+  };
+
+  const handleDeleteCert = (id: string) => {
+    setCertifications(certifications.filter(cert => cert.id !== id));
+    if (editingCertId === id) {
+      setEditingCertId(null);
+      setExpandedCert(false);
+    }
+  };
+
+  const handleCancelEditCert = () => {
+    setEditingCertId(null);
+    setExpandedCert(false);
   };
 
   return (
@@ -324,6 +392,131 @@ const ExperienceBank: React.FC = () => {
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* Certifications Section */}
+          <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Award className="w-5 h-5 text-amber-500" />
+                证书资质
+                <span className="text-sm font-normal text-gray-400 ml-2">Certifications</span>
+              </h2>
+              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{certifications.length} items</span>
+            </div>
+
+            <button
+              onClick={handleAddCert}
+              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all duration-300"
+            >
+              <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-amber-600 transition-colors">
+                <Plus className="w-5 h-5" />
+              </div>
+              <span className="font-medium">新增证书资质</span>
+            </button>
+
+            {/* Editable/New Cert Card */}
+            {editingCertId && expandedCert && (
+              <div className="bg-white dark:bg-surface-dark rounded-xl border border-amber-500/30 shadow-lg shadow-amber-500/5 overflow-hidden transition-all duration-300 ring-1 ring-amber-500/10">
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">证书名称</label>
+                      <input
+                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300"
+                        placeholder="例如: PMP 项目管理专业人士"
+                        type="text"
+                        value={certName}
+                        onChange={(e) => setCertName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">颁发机构</label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
+                        placeholder="例如: PMI"
+                        type="text"
+                        value={certIssuer}
+                        onChange={(e) => setCertIssuer(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">获得时间</label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
+                        placeholder="YYYY 或 YYYY.MM"
+                        type="text"
+                        value={certDate}
+                        onChange={(e) => setCertDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                        匹配度 (可选) - {certMatchRate}%
+                      </label>
+                      <input
+                        className="w-full"
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={certMatchRate}
+                        onChange={(e) => setCertMatchRate(parseInt(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  <button
+                    onClick={handleSaveCert}
+                    className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    保存证书
+                  </button>
+                  <button
+                    onClick={handleCancelEditCert}
+                    className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Cert List Items */}
+            {certifications.map((cert) => (
+              <div
+                key={cert.id}
+                className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer"
+                onClick={() => handleEditCert(cert)}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-bold text-gray-900 dark:text-white truncate">{cert.name}</h3>
+                      {cert.matchRate !== undefined && cert.matchRate > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                          匹配度 {cert.matchRate}%
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{cert.issuer}</p>
+                  </div>
+                  <div className="text-right shrink-0 flex items-center gap-2">
+                    <span className="block text-sm font-mono text-gray-500">{cert.date}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCert(cert.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </section>
 
           {/* Skills Section */}

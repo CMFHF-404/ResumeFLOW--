@@ -3,9 +3,10 @@ import {
     Moon, Sun, Download, LayoutTemplate,
     Target, Wand2, RefreshCw,
     Edit3, Eye, EyeOff, GripVertical, CheckCircle2,
-    ChevronDown, ChevronUp, ArrowLeft, Database, User
+    ChevronDown, ChevronUp, ArrowLeft, Database, User, Award
 } from 'lucide-react';
 import { analyzeJobDescription } from '../services/geminiService';
+import { Education, Certification } from '../types';
 
 // Mock Data with STAR structure
 const initialExperienceItems = [
@@ -60,6 +61,41 @@ const ResumeEditor: React.FC = () => {
         summary: "以结果为导向的产品经理，拥有学生领导力和社区组织经验。在提高参与度（提升30%）和管理预算（高达5万美元）方面有良好记录。热衷于构建以用户为中心的产品，并利用数据驱动决策。"
     });
 
+    // 教育背景状态
+    const [educations, setEducations] = useState<Education[]>([
+        {
+            id: '1',
+            school: '加利福尼亚大学伯克利分校',
+            major: '计算机科学与技术',
+            degree: '硕士学位',
+            startDate: '2020',
+            endDate: '2024',
+            gpa: '3.8/4.0'
+        }
+    ]);
+
+    // 证书状态
+    const [certifications, setCertifications] = useState<Certification[]>([
+        { id: '1', name: 'PMP 项目管理专业人士', issuer: 'PMI', date: '2023', matchRate: 95 },
+        { id: '2', name: 'Google Analytics 认证', issuer: 'Google', date: '2023', matchRate: 82 }
+    ]);
+
+    // 技能状态 - 按分类组织
+    const [skills, setSkills] = useState({
+        technical: ['Python', 'SQL', 'HTML/CSS', 'JavaScript', 'React', 'Figma', 'Tableau'],
+        product: ['敏捷/Scrum', '用户研究', 'A/B测试', '路线图规划', 'Jira'],
+        languages: ['英语 (母语)', '普通话 (流利)', '粤语 (流利)']
+    });
+
+    // 教育背景/证书/技能选择状态
+    const [selectedEduIds, setSelectedEduIds] = useState<Set<string>>(new Set(['1']));
+    const [selectedCertIds, setSelectedCertIds] = useState<Set<string>>(new Set(['1', '2']));
+    const [selectedSkills, setSelectedSkills] = useState({
+        technical: new Set([0, 1, 2, 3, 4, 5, 6]),
+        product: new Set([0, 1, 2, 3, 4]),
+        languages: new Set([0, 1, 2])
+    });
+
     // 2. Experience State
     const [experienceItems, setExperienceItems] = useState(initialExperienceItems);
     const [selectedExpIds, setSelectedExpIds] = useState<Set<number>>(new Set([1, 2]));
@@ -105,6 +141,25 @@ const ResumeEditor: React.FC = () => {
             newSet.add(id);
         }
         setSelectedExpIds(newSet);
+    };
+
+    // 教育背景/证书/技能选择切换函数
+    const toggleEducationSelection = (id: string) => {
+        const newSet = new Set(selectedEduIds);
+        newSet.has(id) ? newSet.delete(id) : newSet.add(id);
+        setSelectedEduIds(newSet);
+    };
+
+    const toggleCertSelection = (id: string) => {
+        const newSet = new Set(selectedCertIds);
+        newSet.has(id) ? newSet.delete(id) : newSet.add(id);
+        setSelectedCertIds(newSet);
+    };
+
+    const toggleSkillSelection = (category: keyof typeof selectedSkills, index: number) => {
+        const newSet = new Set(selectedSkills[category]);
+        newSet.has(index) ? newSet.delete(index) : newSet.add(index);
+        setSelectedSkills({ ...selectedSkills, [category]: newSet });
     };
 
     const updateExperienceItem = (id: number, field: 's' | 't' | 'a' | 'r', value: string) => {
@@ -281,59 +336,215 @@ const ResumeEditor: React.FC = () => {
                     </div>
 
                     {/* Sidebar Content */}
-                    <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50/30 dark:bg-black/20">
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/30 dark:bg-black/20">
                         {sidebarTab === 'profile' ? (
-                            // 1. Profile FORM Input
-                            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase">姓名</label>
-                                    <input
-                                        className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                        value={profile.name}
-                                        onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase">电话</label>
-                                        <input
-                                            className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                            value={profile.phone}
-                                            onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                                        />
+                            // 个人档案 - 按模块组织
+                            <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
+                                {/* 基本信息模块 */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">基本信息</h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs text-gray-500 dark:text-gray-400">姓名</label>
+                                            <input
+                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                value={profile.name}
+                                                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-xs text-gray-500 dark:text-gray-400">电话</label>
+                                                <input
+                                                    className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                    value={profile.phone}
+                                                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-500 dark:text-gray-400">邮箱</label>
+                                                <input
+                                                    className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                    value={profile.email}
+                                                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 dark:text-gray-400">地点</label>
+                                            <input
+                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                value={profile.location}
+                                                onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 dark:text-gray-400">链接</label>
+                                            <input
+                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                value={profile.linkedin}
+                                                onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase">邮箱</label>
-                                        <input
-                                            className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                            value={profile.email}
-                                            onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                                        />
+                                </div>
+
+                                {/* 教育背景模块 */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">教育背景</h3>
+                                    <div className="space-y-2">
+                                        {educations.map((edu) => {
+                                            const isSelected = selectedEduIds.has(edu.id);
+                                            return (
+                                                <div
+                                                    key={edu.id}
+                                                    className={`p-3 rounded border transition-all ${isSelected
+                                                        ? 'bg-gray-50 dark:bg-gray-900 border-primary ring-1 ring-primary'
+                                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-60'
+                                                        }`}
+                                                >
+                                                    <div className="flex gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => toggleEducationSelection(edu.id)}
+                                                            className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer shrink-0"
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between items-start mb-1">
+                                                                <h4 className="text-sm font-bold text-gray-900 dark:text-white">{edu.school}</h4>
+                                                                <span className="text-xs text-gray-500 ml-2 shrink-0">{edu.startDate} - {edu.endDate}</span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-600 dark:text-gray-400">{edu.major}</p>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-500">{edu.degree}</p>
+                                                            {edu.gpa && <p className="text-xs text-gray-500 mt-1">GPA: {edu.gpa}</p>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase">地点</label>
-                                    <input
-                                        className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                        value={profile.location}
-                                        onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase">链接</label>
-                                    <input
-                                        className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                        value={profile.linkedin}
-                                        onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase">职业总结</label>
+
+                                {/* 职业总结模块 */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">职业总结</h3>
                                     <textarea
-                                        className="w-full text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-32 leading-relaxed resize-none"
+                                        className="w-full text-sm p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary h-28 leading-relaxed resize-none"
                                         value={profile.summary}
                                         onChange={(e) => setProfile({ ...profile, summary: e.target.value })}
+                                        placeholder="用 2-4 句话概括你的优势、方向与量化成果"
                                     />
+                                </div>
+
+                                {/* 证书资质模块 */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">证书资质</h3>
+                                    <div className="space-y-2">
+                                        {certifications.map((cert) => {
+                                            const isSelected = selectedCertIds.has(cert.id);
+                                            return (
+                                                <div
+                                                    key={cert.id}
+                                                    className={`p-3 rounded border transition-all ${isSelected
+                                                        ? 'bg-gray-50 dark:bg-gray-900 border-primary ring-1 ring-primary'
+                                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-60'
+                                                        }`}
+                                                >
+                                                    <div className="flex gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => toggleCertSelection(cert.id)}
+                                                            className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer shrink-0"
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between items-start mb-1">
+                                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                    <Award className="w-3 h-3 text-amber-500 shrink-0" />
+                                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{cert.name}</h4>
+                                                                </div>
+                                                                {cert.matchRate !== undefined && cert.matchRate > 0 && (
+                                                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ml-2 shrink-0">
+                                                                        {cert.matchRate}%
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-xs text-gray-600 dark:text-gray-400">{cert.issuer}</p>
+                                                            <p className="text-xs text-gray-500">{cert.date}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* 专业技能模块 */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">专业技能</h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs text-gray-600 dark:text-gray-400 font-semibold block mb-1.5">技术栈</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {skills.technical.map((skill, idx) => {
+                                                    const isSelected = selectedSkills.technical.has(idx);
+                                                    return (
+                                                        <span
+                                                            key={idx}
+                                                            onClick={() => toggleSkillSelection('technical', idx)}
+                                                            className={`px-2 py-1 text-xs rounded-full cursor-pointer transition-all ${isSelected
+                                                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-1 ring-blue-500'
+                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-50'
+                                                                }`}
+                                                        >
+                                                            {skill}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-600 dark:text-gray-400 font-semibold block mb-1.5">产品方法</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {skills.product.map((skill, idx) => {
+                                                    const isSelected = selectedSkills.product.has(idx);
+                                                    return (
+                                                        <span
+                                                            key={idx}
+                                                            onClick={() => toggleSkillSelection('product', idx)}
+                                                            className={`px-2 py-1 text-xs rounded-full cursor-pointer transition-all ${isSelected
+                                                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-1 ring-purple-500'
+                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-50'
+                                                                }`}
+                                                        >
+                                                            {skill}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-600 dark:text-gray-400 font-semibold block mb-1.5">语言</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {skills.languages.map((skill, idx) => {
+                                                    const isSelected = selectedSkills.languages.has(idx);
+                                                    return (
+                                                        <span
+                                                            key={idx}
+                                                            onClick={() => toggleSkillSelection('languages', idx)}
+                                                            className={`px-2 py-1 text-xs rounded-full cursor-pointer transition-all ${isSelected
+                                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-500'
+                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-50'
+                                                                }`}
+                                                        >
+                                                            {skill}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         ) : (
@@ -479,25 +690,81 @@ const ResumeEditor: React.FC = () => {
                             </div>
                         )}
 
-                        <div id="education" className={`${spacingClass} scroll-mt-20`}>
-                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">教育背景</h2>
-                            <div className="mb-2">
-                                <div className="flex justify-between items-baseline mb-0.5">
-                                    <h3 className="text-sm font-bold text-gray-900">浙江大学</h3>
-                                    <span className="text-xs font-medium text-gray-600">杭州, 中国 | 2021</span>
+                        {/* 4. Education - From State (Filtered) */}
+                        {selectedEduIds.size > 0 && (
+                            <div id="education" className={`${spacingClass} scroll-mt-20`}>
+                                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">教育背景</h2>
+                                <div className={listSpacingClass}>
+                                    {educations
+                                        .filter(edu => selectedEduIds.has(edu.id))
+                                        .map((edu) => (
+                                            <div key={edu.id} className="mb-2">
+                                                <div className="flex justify-between items-baseline mb-0.5">
+                                                    <h3 className="text-sm font-bold text-gray-900">{edu.school}</h3>
+                                                    <span className="text-xs font-medium text-gray-600">{edu.startDate} - {edu.endDate}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-800">{edu.major}, {edu.degree}</p>
+                                                {edu.gpa && <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>}
+                                            </div>
+                                        ))}
                                 </div>
-                                <p className="text-xs text-gray-800">计算机科学与技术，学士学位</p>
                             </div>
-                        </div>
+                        )}
 
-                        {/* Skills Block */}
+                        {/* 5. Certifications - From State (Filtered) */}
+                        {selectedCertIds.size > 0 && (
+                            <div id="certifications" className={`${spacingClass} scroll-mt-20`}>
+                                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">证书资质</h2>
+                                <div className="space-y-1.5">
+                                    {certifications
+                                        .filter(cert => selectedCertIds.has(cert.id))
+                                        .map((cert) => (
+                                            <div key={cert.id} className="flex justify-between items-baseline">
+                                                <div>
+                                                    <span className="text-xs font-bold text-gray-900">{cert.name}</span>
+                                                    <span className="text-xs text-gray-600 ml-2">({cert.issuer})</span>
+                                                </div>
+                                                <span className="text-xs text-gray-600">{cert.date}</span>
+                                            </div>
+                                        ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 6. Skills - From State */}
                         <div id="skills" className={`${spacingClass} scroll-mt-20`}>
                             <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">专业技能</h2>
                             <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
-                                <span className="font-bold text-gray-900">技术栈:</span>
-                                <span>Python, SQL, HTML/CSS, JavaScript, React, Figma, Tableau</span>
-                                <span className="font-bold text-gray-900">产品方法:</span>
-                                <span>敏捷/Scrum, 用户研究, A/B测试, 路线图规划, Jira</span>
+                                {selectedSkills.technical.size > 0 && (
+                                    <>
+                                        <span className="font-bold text-gray-900">技术栈:</span>
+                                        <span>
+                                            {skills.technical
+                                                .filter((_, idx) => selectedSkills.technical.has(idx))
+                                                .join(', ')}
+                                        </span>
+                                    </>
+                                )}
+                                {selectedSkills.product.size > 0 && (
+                                    <>
+                                        <span className="font-bold text-gray-900">产品方法:</span>
+                                        <span>
+                                            {skills.product
+                                                .filter((_, idx) => selectedSkills.product.has(idx))
+                                                .join(', ')}
+                                        </span>
+                                    </>
+                                )}
+                                {selectedSkills.languages.size > 0 && (
+                                    <>
+                                        <span className="font-bold text-gray-900">语言:</span>
+                                        <span>
+                                            {skills.languages
+                                                .filter((_, idx) => selectedSkills.languages.has(idx))
+                                                .join(', ')}
+                                        </span>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
