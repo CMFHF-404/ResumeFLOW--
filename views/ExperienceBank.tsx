@@ -325,101 +325,123 @@ const ExperienceBank: React.FC = () => {
 
             {/* Editable Card */}
             <div className="bg-white dark:bg-surface-dark rounded-xl border border-primary/30 shadow-lg shadow-primary/5 overflow-hidden transition-all duration-300 ring-1 ring-primary/10">
-              <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
-                <div className="flex flex-col lg:flex-row gap-6 mb-4">
-                  <div className="flex-1">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">公司名称</label>
-                    <input
-                      className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
-                      placeholder="输入公司名称"
-                      type="text"
-                      value={company}
-                      onChange={(e) => setCompany(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">担任职位</label>
-                    <input
-                      className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
-                      placeholder="输入职位名称"
-                      type="text"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                    />
-                  </div>
-                  <div className="w-full lg:w-auto shrink-0">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                        placeholder="YYYY.MM"
-                        type="text"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                      />
-                      <span className="text-gray-400">-</span>
-                      <input
-                        className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                        placeholder="至今"
-                        type="text"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                      />
+              {!expandedWork ? (
+                // 折叠态：显示为精简卡片
+                <div
+                  className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  onClick={() => setExpandedWork(true)}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{company}</h3>
+                        <span className="text-gray-300 dark:text-gray-600">|</span>
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">{role}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {situation ? situation.substring(0, 60) + '...' : '点击展开编辑工作经历...'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="block text-sm font-mono text-gray-500 mb-2">{startDate} - {endDate}</span>
+                      <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-primary transition-colors ml-auto" />
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {expandedWork && (
-                <div className="p-6 pt-4 space-y-4 relative animate-in fade-in slide-in-from-top-4 duration-300">
-                  {/* STAR Sections - Strict Plain Textareas */}
-                  {[
-                    { id: 's', label: 'S - 情境 (Situation)', val: situation, set: setSituation, color: 'blue', icon: 'Target', ph: 'Describe the context...' },
-                    { id: 't', label: 'T - 任务 (Task)', val: task, set: setTask, color: 'orange', icon: 'Flag', ph: 'What were your goals?' },
-                    { id: 'a', label: 'A - 行动 (Action)', val: action, set: setAction, color: 'amber', icon: 'Zap', ph: 'What specifically did you do?' },
-                    { id: 'r', label: 'R - 结果 (Result)', val: result, set: setResult, color: 'emerald', icon: 'Trophy', ph: 'Quantifiable outcomes...' },
-                  ].map((item, idx) => (
-                    <div key={item.id} className="flex gap-4 relative group">
-                      {idx !== 3 && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
-                      <div className={`shrink-0 w-10 h-10 rounded-full bg-${item.color}-50 dark:bg-${item.color}-900/20 text-${item.color}-600 dark:text-${item.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}>
-                        {item.id.toUpperCase()}
-                      </div>
-                      <div className="flex-1 pt-1 pb-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-bold text-${item.color}-600 dark:text-${item.color}-400 uppercase tracking-widest`}>{item.label}</span>
-                        </div>
-                        <textarea
-                          className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
-                          rows={item.id === 'a' ? 4 : 2}
-                          value={item.val}
-                          placeholder={item.ph}
-                          onChange={(e) => item.set(e.target.value)}
+              ) : (
+                // 展开态：显示编辑表单
+                <>
+                  <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
+                    <div className="flex flex-col lg:flex-row gap-6 mb-4">
+                      <div className="flex-1">
+                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">公司名称</label>
+                        <input
+                          className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
+                          placeholder="输入公司名称"
+                          type="text"
+                          value={company}
+                          onChange={(e) => setCompany(e.target.value)}
                         />
                       </div>
+                      <div className="flex-1">
+                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">担任职位</label>
+                        <input
+                          className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
+                          placeholder="输入职位名称"
+                          type="text"
+                          value={role}
+                          onChange={(e) => setRole(e.target.value)}
+                        />
+                      </div>
+                      <div className="w-full lg:w-auto shrink-0">
+                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                            placeholder="YYYY.MM"
+                            type="text"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                          />
+                          <span className="text-gray-400">-</span>
+                          <input
+                            className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                            placeholder="至今"
+                            type="text"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
 
-              <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                <button
-                  onClick={handlePolish}
-                  disabled={isPolishing}
-                  className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {isPolishing ? 'AI 润色中...' : 'AI 润色'}
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
-                    title="删除"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="p-6 pt-4 space-y-4 relative animate-in fade-in slide-in-from-top-4 duration-300">
+                    {/* STAR Sections - Strict Plain Textareas */}
+                    {[
+                      { id: 's', label: 'S - 情境 (Situation)', val: situation, set: setSituation, color: 'blue', icon: 'Target', ph: 'Describe the context...' },
+                      { id: 't', label: 'T - 任务 (Task)', val: task, set: setTask, color: 'orange', icon: 'Flag', ph: 'What were your goals?' },
+                      { id: 'a', label: 'A - 行动 (Action)', val: action, set: setAction, color: 'amber', icon: 'Zap', ph: 'What specifically did you do?' },
+                      { id: 'r', label: 'R - 结果 (Result)', val: result, set: setResult, color: 'emerald', icon: 'Trophy', ph: 'Quantifiable outcomes...' },
+                    ].map((item, idx) => (
+                      <div key={item.id} className="flex gap-4 relative group">
+                        {idx !== 3 && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
+                        <div className={`shrink-0 w-10 h-10 rounded-full bg-${item.color}-50 dark:bg-${item.color}-900/20 text-${item.color}-600 dark:text-${item.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}>
+                          {item.id.toUpperCase()}
+                        </div>
+                        <div className="flex-1 pt-1 pb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`text-xs font-bold text-${item.color}-600 dark:text-${item.color}-400 uppercase tracking-widest`}>{item.label}</span>
+                          </div>
+                          <textarea
+                            className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
+                            rows={item.id === 'a' ? 4 : 2}
+                            value={item.val}
+                            placeholder={item.ph}
+                            onChange={(e) => item.set(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
-                  {expandedWork ? (
-                    <>
+                  <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                    <button
+                      onClick={handlePolish}
+                      disabled={isPolishing}
+                      className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      {isPolishing ? 'AI 润色中...' : 'AI 润色'}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
                       <button
                         onClick={() => {
                           setExpandedWork(false);
@@ -436,18 +458,10 @@ const ExperienceBank: React.FC = () => {
                         保存
                         <ChevronUp className="w-4 h-4" />
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => setExpandedWork(true)}
-                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      展开
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Read-only List Items */}
