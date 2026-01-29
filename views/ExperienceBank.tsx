@@ -29,6 +29,84 @@ const ExperienceBank: React.FC = () => {
   const [skills, setSkills] = useState(["Product Management", "Figma", "SQL", "Python Analysis", "Axure RP", "Jira/Confluence"]);
   const [newSkill, setNewSkill] = useState("");
 
+  // Education State
+  const [educations, setEducations] = useState([
+    { id: '1', school: '浙江大学', major: '计算机科学与技术', degree: '本科', startDate: '2017.09', endDate: '2021.06', gpa: '3.8/4.0', courses: '数据结构、操作系统、计算机网络...' }
+  ]);
+  const [expandedEdu, setExpandedEdu] = useState(false);
+  const [editingEduId, setEditingEduId] = useState<string | null>(null);
+  const [eduSchool, setEduSchool] = useState("");
+  const [eduMajor, setEduMajor] = useState("");
+  const [eduDegree, setEduDegree] = useState("");
+  const [eduStartDate, setEduStartDate] = useState("");
+  const [eduEndDate, setEduEndDate] = useState("");
+  const [eduGpa, setEduGpa] = useState("");
+  const [eduCourses, setEduCourses] = useState("");
+
+  // Education Handlers
+  const handleAddEdu = () => {
+    setEduSchool("");
+    setEduMajor("");
+    setEduDegree("");
+    setEduStartDate("");
+    setEduEndDate("");
+    setEduGpa("");
+    setEduCourses("");
+    setEditingEduId('new');
+    setExpandedEdu(true);
+  };
+
+  const handleSaveEdu = () => {
+    if (!eduSchool.trim() || !eduMajor.trim()) return;
+
+    if (editingEduId === 'new') {
+      const newEdu = {
+        id: Date.now().toString(),
+        school: eduSchool,
+        major: eduMajor,
+        degree: eduDegree,
+        startDate: eduStartDate,
+        endDate: eduEndDate,
+        gpa: eduGpa,
+        courses: eduCourses
+      };
+      setEducations([...educations, newEdu]);
+    } else {
+      setEducations(educations.map(edu =>
+        edu.id === editingEduId
+          ? { ...edu, school: eduSchool, major: eduMajor, degree: eduDegree, startDate: eduStartDate, endDate: eduEndDate, gpa: eduGpa, courses: eduCourses }
+          : edu
+      ));
+    }
+    setEditingEduId(null);
+    setExpandedEdu(false);
+  };
+
+  const handleEditEdu = (edu: any) => {
+    setEduSchool(edu.school);
+    setEduMajor(edu.major);
+    setEduDegree(edu.degree);
+    setEduStartDate(edu.startDate);
+    setEduEndDate(edu.endDate);
+    setEduGpa(edu.gpa || "");
+    setEduCourses(edu.courses || "");
+    setEditingEduId(edu.id);
+    setExpandedEdu(true);
+  };
+
+  const handleDeleteEdu = (id: string) => {
+    setEducations(educations.filter(edu => edu.id !== id));
+    if (editingEduId === id) {
+      setEditingEduId(null);
+      setExpandedEdu(false);
+    }
+  };
+
+  const handleCancelEditEdu = () => {
+    setEditingEduId(null);
+    setExpandedEdu(false);
+  };
+
   // Certifications State
   const [certifications, setCertifications] = useState<Certification[]>([
     { id: '1', name: 'PMP 项目管理专业人士', issuer: 'PMI', date: '2023', matchRate: 95 },
@@ -327,19 +405,47 @@ const ExperienceBank: React.FC = () => {
                 <button
                   onClick={handlePolish}
                   disabled={isPolishing}
-                  className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                 >
                   <Sparkles className="w-4 h-4" />
                   {isPolishing ? 'AI 润色中...' : 'AI 润色'}
                 </button>
-                <div className="flex items-center gap-4">
-                  <button className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <button
+                    className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+                    title="删除"
+                  >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setExpandedWork(!expandedWork)} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                    {expandedWork ? '收起' : '展开'}
-                    {expandedWork ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
+
+                  {expandedWork ? (
+                    <>
+                      <button
+                        onClick={() => {
+                          setExpandedWork(false);
+                          // 这里应该添加重置逻辑，目前先简单收起
+                        }}
+                        className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => setExpandedWork(false)}
+                        className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark px-6 py-2 rounded-lg transition-colors shadow-sm shadow-primary/20"
+                      >
+                        保存
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setExpandedWork(true)}
+                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      展开
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -375,23 +481,145 @@ const ExperienceBank: React.FC = () => {
                 教育经历
                 <span className="text-sm font-normal text-gray-400 ml-2">Education</span>
               </h2>
+              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{educations.length} items</span>
             </div>
-            <div className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer opacity-80 hover:opacity-100">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-bold text-gray-900 dark:text-white truncate">浙江大学</h3>
-                    <span className="text-gray-300 dark:text-gray-600">|</span>
-                    <span className="text-gray-700 dark:text-gray-300 font-medium">计算机科学与技术</span>
+
+            <button
+              onClick={handleAddEdu}
+              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-purple-600 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-all duration-300"
+            >
+              <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-purple-600 transition-colors">
+                <Plus className="w-5 h-5" />
+              </div>
+              <span className="font-medium">新增教育经历</span>
+            </button>
+
+            {/* Editable/New Edu Card */}
+            {editingEduId && expandedEdu && (
+              <div className="bg-white dark:bg-surface-dark rounded-xl border border-purple-500/30 shadow-lg shadow-purple-500/5 overflow-hidden transition-all duration-300 ring-1 ring-purple-500/10 relative animate-in fade-in slide-in-from-top-4">
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学校名称</label>
+                      <input
+                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                        placeholder="输入学校名称"
+                        value={eduSchool}
+                        onChange={(e) => setEduSchool(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业</label>
+                      <input
+                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                        placeholder="输入专业"
+                        value={eduMajor}
+                        onChange={(e) => setEduMajor(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位</label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                        placeholder="本科/硕士/博士"
+                        value={eduDegree}
+                        onChange={(e) => setEduDegree(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                          placeholder="Start"
+                          value={eduStartDate}
+                          onChange={(e) => setEduStartDate(e.target.value)}
+                        />
+                        <span className="text-gray-400">-</span>
+                        <input
+                          className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                          placeholder="End"
+                          value={eduEndDate}
+                          onChange={(e) => setEduEndDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA (可选)</label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                        placeholder="例如: 3.8/4.0"
+                        value={eduGpa}
+                        onChange={(e) => setEduGpa(e.target.value)}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">主修课程 (可选)</label>
+                      <textarea
+                        className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
+                        rows={2}
+                        placeholder="列出关键相关课程..."
+                        value={eduCourses}
+                        onChange={(e) => setEduCourses(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">主修课程：数据结构、操作系统、计算机网络... GPA: 3.8/4.0</p>
                 </div>
-                <div className="text-right shrink-0">
-                  <span className="block text-sm font-mono text-gray-500 mb-2">2017.09 - 2021.06</span>
-                  <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors ml-auto" />
+
+                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  <button
+                    className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                    onClick={() => editingEduId !== 'new' && handleDeleteEdu(editingEduId!)}
+                    title="删除"
+                    disabled={editingEduId === 'new'}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancelEditEdu}
+                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSaveEdu}
+                      className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20"
+                    >
+                      保存
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Edu List Items */}
+            {educations.map((edu) => (
+              <div
+                key={edu.id}
+                className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer"
+                onClick={() => handleEditEdu(edu)}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-bold text-gray-900 dark:text-white truncate">{edu.school}</h3>
+                      <span className="text-gray-300 dark:text-gray-600">|</span>
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">{edu.major}</span>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                      {edu.degree} {edu.gpa ? `• GPA: ${edu.gpa}` : ''} {edu.courses ? `• ${edu.courses}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="block text-sm font-mono text-gray-500 mb-2">{edu.startDate} - {edu.endDate}</span>
+                    <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors ml-auto" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </section>
 
           {/* Certifications Section */}
@@ -468,17 +696,29 @@ const ExperienceBank: React.FC = () => {
 
                 <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   <button
-                    onClick={handleSaveCert}
-                    className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg transition-colors"
+                    className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                    onClick={() => editingCertId !== 'new' && handleDeleteCert(editingCertId!)}
+                    title="删除"
+                    disabled={editingCertId === 'new'}
                   >
-                    保存证书
+                    <Trash2 className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={handleCancelEditCert}
-                    className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    取消
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancelEditCert}
+                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSaveCert}
+                      className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-amber-500/20"
+                    >
+                      保存
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
