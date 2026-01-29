@@ -41,11 +41,13 @@ CREATE TABLE IF NOT EXISTS resumes (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     target_role TEXT,
-    template_id TEXT,
-    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE resumes
+    ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS master_experiences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,11 +93,42 @@ CREATE TABLE IF NOT EXISTS resume_experiences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     resume_id UUID NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
     experience_version_id UUID NOT NULL REFERENCES experience_versions(id) ON DELETE RESTRICT,
-    section TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
+    display_order INTEGER NOT NULL DEFAULT 0,
     overrides_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'resume_experiences'
+          AND column_name = 'position'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'resume_experiences'
+          AND column_name = 'display_order'
+    ) THEN
+        ALTER TABLE resume_experiences RENAME COLUMN position TO display_order;
+    END IF;
+END $$;
+
+ALTER TABLE resume_experiences
+    ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'resume_experiences'
+          AND column_name = 'section'
+    ) THEN
+        ALTER TABLE resume_experiences DROP COLUMN section;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS skills (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -32,5 +32,5 @@ class ProfileUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     social_links: Optional[Dict[str, Any]] = None
-    links: Optional[List[ProfileLinkPayload]] = None
     extra_json: Optional[Dict[str, Any]] = None
+    links: Optional[List[ProfileLinkPayload]] = None

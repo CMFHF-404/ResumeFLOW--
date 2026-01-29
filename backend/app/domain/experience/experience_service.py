@@ -4,7 +4,8 @@ from sqlalchemy import desc, or_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ...models import ExperienceCategory, ExperienceVersion, MasterExperience, utc_now
+from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
+from ...utils.time_utils import utc_now
 from .schemas import ExperienceCreate, ExperienceUpdate, ExperienceVersionPayload
 
 

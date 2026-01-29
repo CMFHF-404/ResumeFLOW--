@@ -5,7 +5,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ...models import Profile, ProfileLink, User, utc_now
+from ...models import Profile, ProfileLink, User
+from ...utils.time_utils import utc_now
 from .schemas import ProfileLinkPayload, ProfileUpdate
 
 

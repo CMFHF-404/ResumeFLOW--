@@ -1,12 +1,12 @@
 from typing import Any, Dict
 
 from .constants import ALLOWED_OVERRIDE_KEYS
-from .models import ExperienceVersion, MasterExperience, Resume, ResumeExperience
+from .models import ExperienceVersion, MasterExperience, Resume, ResumeExperienceLink
 from .schemas import (
-    ExperienceSnapshot,
     ExperienceVersionRead,
     MasterExperienceRead,
-    ResumeExperienceRead,
+    ResumeExperienceItem,
+    ResumeExperienceMerged,
     ResumeRead,
 )
 
@@ -46,30 +46,29 @@ def resume_to_read(resume: Resume) -> ResumeRead:
         user_id=str(resume.user_id),
         title=resume.title,
         target_role=resume.target_role,
-        template_id=resume.template_id,
-        is_archived=resume.is_archived,
+        config=resume.config or {},
         created_at=resume.created_at,
         updated_at=resume.updated_at,
     )
 
 
 def resume_experience_to_read(
-    resume_experience: ResumeExperience, version: ExperienceVersion
-) -> ResumeExperienceRead:
+    resume_experience: ResumeExperienceLink, version: ExperienceVersion
+) -> ResumeExperienceItem:
     overrides = _filter_overrides(resume_experience.overrides_json or {})
     snapshot = _apply_overrides(_snapshot_from_version(version), overrides)
-    return ResumeExperienceRead(
+    return ResumeExperienceItem(
         id=str(resume_experience.id),
         resume_id=str(resume_experience.resume_id),
-        section=resume_experience.section,
-        position=resume_experience.position,
+        experience_version_id=str(resume_experience.experience_version_id),
+        display_order=resume_experience.display_order,
         overrides_json=resume_experience.overrides_json or {},
         experience=snapshot,
     )
 
 
-def _snapshot_from_version(version: ExperienceVersion) -> ExperienceSnapshot:
-    return ExperienceSnapshot(
+def _snapshot_from_version(version: ExperienceVersion) -> ResumeExperienceMerged:
+    return ResumeExperienceMerged(
         id=str(version.id),
         master_experience_id=str(version.master_experience_id),
         version=version.version,
@@ -86,15 +85,15 @@ def _snapshot_from_version(version: ExperienceVersion) -> ExperienceSnapshot:
 
 
 def _apply_overrides(
-    snapshot: ExperienceSnapshot, overrides: Dict[str, Any]
-) -> ExperienceSnapshot:
+    snapshot: ResumeExperienceMerged, overrides: Dict[str, Any]
+) -> ResumeExperienceMerged:
     if not overrides:
         return snapshot
     data = snapshot.model_dump()
     for key, value in overrides.items():
         if key in data:
             data[key] = value
-    return ExperienceSnapshot(**data)
+    return ResumeExperienceMerged(**data)
 
 
 def _filter_overrides(overrides: Dict[str, Any]) -> Dict[str, Any]:

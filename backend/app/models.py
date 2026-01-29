@@ -9,9 +9,7 @@ from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlmodel import Field, SQLModel
 
-
-def utc_now() -> datetime:
-    return datetime.utcnow()
+from .utils.time_utils import utc_now
 
 
 class ExperienceCategory(str, Enum):
@@ -52,19 +50,6 @@ class ProfileLink(SQLModel, table=True):
     position: int = 0
 
 
-class Resume(SQLModel, table=True):
-    __tablename__ = "resumes"
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_id: str = Field(foreign_key="users.id", index=True)
-    title: str
-    target_role: Optional[str] = None
-    template_id: Optional[str] = None
-    is_archived: bool = False
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
-
-
 class MasterExperience(SQLModel, table=True):
     __tablename__ = "master_experiences"
 
@@ -94,18 +79,6 @@ class ExperienceVersion(SQLModel, table=True):
     summary: Optional[str] = None
     highlights: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(Text)))
     star: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-
-
-class ResumeExperience(SQLModel, table=True):
-    __tablename__ = "resume_experiences"
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    resume_id: uuid.UUID = Field(foreign_key="resumes.id", index=True)
-    experience_version_id: uuid.UUID = Field(foreign_key="experience_versions.id", index=True)
-    section: str
-    position: int = 0
-    overrides_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
@@ -142,3 +115,6 @@ class ResumeSkill(SQLModel, table=True):
     resume_id: uuid.UUID = Field(foreign_key="resumes.id", index=True)
     skill_name_snapshot: str
     position: int = 0
+
+
+from .domain.resume.models import Resume, ResumeExperienceLink
