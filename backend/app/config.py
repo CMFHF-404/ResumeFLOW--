@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 import os
+from pathlib import Path
 from typing import Optional
+
+from dotenv import load_dotenv
 
 DEFAULT_JWKS_PATH = "/oidc/jwks"
 ENV_DATABASE_URL = "DATABASE_URL"
@@ -8,6 +11,7 @@ ENV_LOGTO_ISSUER = "LOGTO_ISSUER"
 ENV_LOGTO_AUDIENCE = "LOGTO_AUDIENCE"
 ENV_LOGTO_JWKS_TTL = "LOGTO_JWKS_TTL_SECONDS"
 DEFAULT_JWKS_TTL_SECONDS = 3600
+ENV_FILE_NAME = ".env"
 
 
 def _require_env(name: str) -> str:
@@ -19,6 +23,11 @@ def _require_env(name: str) -> str:
 
 def _normalize_issuer(issuer: str) -> str:
     return issuer.rstrip("/")
+
+
+def _load_env() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ENV_FILE_NAME
+    load_dotenv(env_path)
 
 
 @dataclass(frozen=True)
@@ -38,6 +47,7 @@ def load_settings() -> Settings:
     if _settings is not None:
         return _settings
 
+    _load_env()
     database_url = _require_env(ENV_DATABASE_URL)
     logto_issuer = _normalize_issuer(_require_env(ENV_LOGTO_ISSUER))
     logto_audience = _require_env(ENV_LOGTO_AUDIENCE)
