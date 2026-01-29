@@ -10,7 +10,12 @@ ENV_DATABASE_URL = "DATABASE_URL"
 ENV_LOGTO_ISSUER = "LOGTO_ISSUER"
 ENV_LOGTO_AUDIENCE = "LOGTO_AUDIENCE"
 ENV_LOGTO_JWKS_TTL = "LOGTO_JWKS_TTL_SECONDS"
+ENV_AI_API_KEY = "AI_API_KEY"
+ENV_AI_BASE_URL = "AI_BASE_URL"
+ENV_AI_MODEL = "AI_MODEL"
 DEFAULT_JWKS_TTL_SECONDS = 3600
+DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
+DEFAULT_AI_MODEL = "gemini-3-flash"
 ENV_FILE_NAME = ".env"
 
 
@@ -37,6 +42,9 @@ class Settings:
     logto_audience: str
     jwks_url: str
     jwks_ttl_seconds: int
+    ai_api_key: Optional[str]
+    ai_base_url: str
+    ai_model: str
 
 
 _settings: Optional[Settings] = None
@@ -53,6 +61,9 @@ def load_settings() -> Settings:
     logto_audience = _require_env(ENV_LOGTO_AUDIENCE)
     jwks_url = f"{logto_issuer}{DEFAULT_JWKS_PATH}"
     jwks_ttl_seconds = int(os.getenv(ENV_LOGTO_JWKS_TTL, DEFAULT_JWKS_TTL_SECONDS))
+    ai_api_key = os.getenv(ENV_AI_API_KEY)
+    ai_base_url = os.getenv(ENV_AI_BASE_URL, DEFAULT_AI_BASE_URL)
+    ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
 
     _settings = Settings(
         database_url=database_url,
@@ -60,5 +71,8 @@ def load_settings() -> Settings:
         logto_audience=logto_audience,
         jwks_url=jwks_url,
         jwks_ttl_seconds=jwks_ttl_seconds,
+        ai_api_key=ai_api_key,
+        ai_base_url=ai_base_url,
+        ai_model=ai_model,
     )
     return _settings

@@ -114,6 +114,16 @@ const ResumeEditor: React.FC = () => {
     // Drag & Drop State
     const [draggedItemId, setDraggedItemId] = useState<number | null>(null);
 
+    // Section Order State (for draggable resume sections)
+    const [sectionOrder, setSectionOrder] = useState<string[]>([
+        'summary',
+        'experience',
+        'education',
+        'certifications',
+        'skills'
+    ]);
+    const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+
     const toggleTheme = () => {
         setIsDarkMode(!isDarkMode);
         document.documentElement.classList.toggle('dark');
@@ -188,9 +198,38 @@ const ResumeEditor: React.FC = () => {
         setExperienceItems(newItems);
     };
 
+    const clearDragState = () => {
+        setDraggedItemId(null);
+        setDraggedSectionId(null);
+    };
+
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
-        setDraggedItemId(null);
+        clearDragState();
+    };
+
+    // Section drag handlers
+    const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
+        setDraggedSectionId(sectionId);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleSectionDragOver = (e: React.DragEvent, sectionId: string) => {
+        e.preventDefault();
+        if (!draggedSectionId || draggedSectionId === sectionId) return;
+
+        const draggedIndex = sectionOrder.indexOf(draggedSectionId);
+        const hoverIndex = sectionOrder.indexOf(sectionId);
+
+        const newOrder = [...sectionOrder];
+        const [removed] = newOrder.splice(draggedIndex, 1);
+        newOrder.splice(hoverIndex, 0, removed);
+
+        setSectionOrder(newOrder);
+    };
+
+    const handleSectionDrop = () => {
+        clearDragState();
     };
 
     const editingItem = experienceItems.find(i => i.id === editingExpId);
@@ -637,136 +676,247 @@ const ResumeEditor: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* 2. Summary - Conditional Rendering */}
-                        {profile.summary && (
-                            <div id="summary" className={`${spacingClass} relative group hover:bg-primary/5 -m-2 p-2 rounded transition-colors`}>
-                                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">职业总结</h2>
-                                <p className="text-xs leading-relaxed text-gray-800">{profile.summary}</p>
-                            </div>
-                        )}
+                        {/* Dynamically render sections based on sectionOrder */}
+                        {sectionOrder.map((sectionId) => {
+                            // Summary Section
+                            if (sectionId === 'summary' && profile.summary) {
+                                return (
+                                    <div
+                                        key="summary"
+                                        id="summary"
+                                        className={`${spacingClass} relative group cursor-move`}
+                                        draggable
+                                        onDragStart={(e) => handleSectionDragStart(e, 'summary')}
+                                        onDragOver={(e) => handleSectionDragOver(e, 'summary')}
+                                        onDrop={handleSectionDrop}
+                                    >
+                                        {/* Left corner icons */}
+                                        <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                            <Edit3
+                                                className="w-4 h-4 text-primary cursor-pointer"
+                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('profile'); }}
+                                            />
+                                        </div>
+                                        <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">职业总结</h2>
+                                            <p className="text-xs leading-relaxed text-gray-800">{profile.summary}</p>
+                                        </div>
+                                    </div>
+                                );
+                            }
 
-                        {/* 3. Experience (Mapped from Selected Items) - Conditional Rendering */}
-                        {selectedExpIds.size > 0 && (
-                            <div id="experience" className={`${spacingClass} scroll-mt-20`}>
-                                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">工作/项目经历</h2>
-                                <div className={listSpacingClass}>
-                                    {experienceItems
-                                        .filter(item => selectedExpIds.has(item.id))
-                                        .map(item => (
-                                            <div
-                                                key={item.id}
-                                                className="relative group hover:bg-primary/5 -m-2 p-2 rounded transition-colors cursor-move"
-                                                onClick={() => { setSidebarTab('experience'); setEditingExpId(item.id) }}
-                                                draggable
-                                                onDragStart={(e) => handleDragStart(e, item.id)}
-                                                onDragOver={(e) => handleDragOver(e, item.id)}
-                                                onDrop={handleDrop}
-                                            >
-                                                <div className="flex justify-between items-baseline mb-1">
-                                                    <h3 className="text-sm font-bold text-gray-900">{item.company}</h3>
-                                                    <span className="text-xs font-medium text-gray-600">{item.date}</span>
-                                                </div>
-                                                <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
+                            // Experience Section
+                            if (sectionId === 'experience' && selectedExpIds.size > 0) {
+                                return (
+                                    <div
+                                        key="experience"
+                                        id="experience"
+                                        className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                        draggable
+                                        onDragStart={(e) => handleSectionDragStart(e, 'experience')}
+                                        onDragOver={(e) => handleSectionDragOver(e, 'experience')}
+                                        onDrop={handleSectionDrop}
+                                    >
+                                        {/* Section-level left corner icon */}
+                                        <div className="absolute -left-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        </div>
 
-                                                {/* Render STAR content if available */}
-                                                <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
-                                                    {item.star?.s && <li><span className="font-semibold text-gray-900">S:</span> {item.star.s}</li>}
-                                                    {item.star?.t && <li><span className="font-semibold text-gray-900">T:</span> {item.star.t}</li>}
-                                                    {item.star?.a && (
-                                                        <li>
-                                                            <span className="font-semibold text-gray-900">A:</span>
-                                                            <span className="whitespace-pre-line block mt-1">{item.star.a}</span>
-                                                        </li>
-                                                    )}
-                                                    {item.star?.r && <li><span className="font-semibold text-gray-900">R:</span> {item.star.r}</li>}
-                                                </ul>
+                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">工作/项目经历</h2>
+                                        <div className={listSpacingClass}>
+                                            {experienceItems
+                                                .filter(item => selectedExpIds.has(item.id))
+                                                .map(item => (
+                                                    <div
+                                                        key={item.id}
+                                                        className="relative group/item cursor-move"
+                                                        draggable
+                                                        onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, item.id); }}
+                                                        onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, item.id); }}
+                                                        onDrop={(e) => { e.stopPropagation(); handleDrop(e); }}
+                                                    >
+                                                        {/* Item-level left corner icons */}
+                                                        <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                            <Edit3
+                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('experience'); setEditingExpId(item.id); }}
+                                                            />
+                                                        </div>
 
-                                                <div className="absolute top-2 right-2 hidden group-hover:block text-primary">
-                                                    <Edit3 className="w-4 h-4" />
-                                                </div>
+                                                        <div className="group-hover/item:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                                            <div className="flex justify-between items-baseline mb-1">
+                                                                <h3 className="text-sm font-bold text-gray-900">{item.company}</h3>
+                                                                <span className="text-xs font-medium text-gray-600">{item.date}</span>
+                                                            </div>
+                                                            <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
+
+                                                            {/* Render STAR content if available */}
+                                                            <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
+                                                                {item.star?.s && <li><span className="font-semibold text-gray-900">S:</span> {item.star.s}</li>}
+                                                                {item.star?.t && <li><span className="font-semibold text-gray-900">T:</span> {item.star.t}</li>}
+                                                                {item.star?.a && (
+                                                                    <li>
+                                                                        <span className="font-semibold text-gray-900">A:</span>
+                                                                        <span className="whitespace-pre-line block mt-1">{item.star.a}</span>
+                                                                    </li>
+                                                                )}
+                                                                {item.star?.r && <li><span className="font-semibold text-gray-900">R:</span> {item.star.r}</li>}
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // Education Section
+                            if (sectionId === 'education' && selectedEduIds.size > 0) {
+                                return (
+                                    <div
+                                        key="education"
+                                        id="education"
+                                        className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                        draggable
+                                        onDragStart={(e) => handleSectionDragStart(e, 'education')}
+                                        onDragOver={(e) => handleSectionDragOver(e, 'education')}
+                                        onDrop={handleSectionDrop}
+                                    >
+                                        {/* Left corner icons */}
+                                        <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                            <Edit3
+                                                className="w-4 h-4 text-primary cursor-pointer"
+                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('profile'); }}
+                                            />
+                                        </div>
+
+                                        <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">教育背景</h2>
+                                            <div className={listSpacingClass}>
+                                                {educations
+                                                    .filter(edu => selectedEduIds.has(edu.id))
+                                                    .map((edu) => (
+                                                        <div key={edu.id} className="mb-2">
+                                                            <div className="flex justify-between items-baseline mb-0.5">
+                                                                <h3 className="text-sm font-bold text-gray-900">{edu.school}</h3>
+                                                                <span className="text-xs font-medium text-gray-600">{edu.startDate} - {edu.endDate}</span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-800">{edu.major}, {edu.degree}</p>
+                                                            {edu.gpa && <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>}
+                                                        </div>
+                                                    ))}
                                             </div>
-                                        ))}
-                                </div>
-                            </div>
-                        )}
+                                        </div>
+                                    </div>
+                                );
+                            }
 
-                        {/* 4. Education - From State (Filtered) */}
-                        {selectedEduIds.size > 0 && (
-                            <div id="education" className={`${spacingClass} scroll-mt-20`}>
-                                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">教育背景</h2>
-                                <div className={listSpacingClass}>
-                                    {educations
-                                        .filter(edu => selectedEduIds.has(edu.id))
-                                        .map((edu) => (
-                                            <div key={edu.id} className="mb-2">
-                                                <div className="flex justify-between items-baseline mb-0.5">
-                                                    <h3 className="text-sm font-bold text-gray-900">{edu.school}</h3>
-                                                    <span className="text-xs font-medium text-gray-600">{edu.startDate} - {edu.endDate}</span>
-                                                </div>
-                                                <p className="text-xs text-gray-800">{edu.major}, {edu.degree}</p>
-                                                {edu.gpa && <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>}
+                            // Certifications Section
+                            if (sectionId === 'certifications' && selectedCertIds.size > 0) {
+                                return (
+                                    <div
+                                        key="certifications"
+                                        id="certifications"
+                                        className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                        draggable
+                                        onDragStart={(e) => handleSectionDragStart(e, 'certifications')}
+                                        onDragOver={(e) => handleSectionDragOver(e, 'certifications')}
+                                        onDrop={handleSectionDrop}
+                                    >
+                                        {/* Left corner icons */}
+                                        <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                            <Edit3
+                                                className="w-4 h-4 text-primary cursor-pointer"
+                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('profile'); }}
+                                            />
+                                        </div>
+
+                                        <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">证书资质</h2>
+                                            <div className="space-y-1.5">
+                                                {certifications
+                                                    .filter(cert => selectedCertIds.has(cert.id))
+                                                    .map((cert) => (
+                                                        <div key={cert.id} className="flex justify-between items-baseline">
+                                                            <div>
+                                                                <span className="text-xs font-bold text-gray-900">{cert.name}</span>
+                                                                <span className="text-xs text-gray-600 ml-2">({cert.issuer})</span>
+                                                            </div>
+                                                            <span className="text-xs text-gray-600">{cert.date}</span>
+                                                        </div>
+                                                    ))}
                                             </div>
-                                        ))}
-                                </div>
-                            </div>
-                        )}
+                                        </div>
+                                    </div>
+                                );
+                            }
 
-                        {/* 5. Certifications - From State (Filtered) */}
-                        {selectedCertIds.size > 0 && (
-                            <div id="certifications" className={`${spacingClass} scroll-mt-20`}>
-                                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">证书资质</h2>
-                                <div className="space-y-1.5">
-                                    {certifications
-                                        .filter(cert => selectedCertIds.has(cert.id))
-                                        .map((cert) => (
-                                            <div key={cert.id} className="flex justify-between items-baseline">
-                                                <div>
-                                                    <span className="text-xs font-bold text-gray-900">{cert.name}</span>
-                                                    <span className="text-xs text-gray-600 ml-2">({cert.issuer})</span>
-                                                </div>
-                                                <span className="text-xs text-gray-600">{cert.date}</span>
+                            // Skills Section
+                            if (sectionId === 'skills') {
+                                return (
+                                    <div
+                                        key="skills"
+                                        id="skills"
+                                        className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                        draggable
+                                        onDragStart={(e) => handleSectionDragStart(e, 'skills')}
+                                        onDragOver={(e) => handleSectionDragOver(e, 'skills')}
+                                        onDrop={handleSectionDrop}
+                                    >
+                                        {/* Left corner icons */}
+                                        <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                            <Edit3
+                                                className="w-4 h-4 text-primary cursor-pointer"
+                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('profile'); }}
+                                            />
+                                        </div>
+
+                                        <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">专业技能</h2>
+                                            <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
+                                                {selectedSkills.technical.size > 0 && (
+                                                    <>
+                                                        <span className="font-bold text-gray-900">技术栈:</span>
+                                                        <span>
+                                                            {skills.technical
+                                                                .filter((_, idx) => selectedSkills.technical.has(idx))
+                                                                .join(', ')}
+                                                        </span>
+                                                    </>
+                                                )}
+                                                {selectedSkills.product.size > 0 && (
+                                                    <>
+                                                        <span className="font-bold text-gray-900">产品方法:</span>
+                                                        <span>
+                                                            {skills.product
+                                                                .filter((_, idx) => selectedSkills.product.has(idx))
+                                                                .join(', ')}
+                                                        </span>
+                                                    </>
+                                                )}
+                                                {selectedSkills.languages.size > 0 && (
+                                                    <>
+                                                        <span className="font-bold text-gray-900">语言:</span>
+                                                        <span>
+                                                            {skills.languages
+                                                                .filter((_, idx) => selectedSkills.languages.has(idx))
+                                                                .join(', ')}
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
-                                        ))}
-                                </div>
-                            </div>
-                        )}
+                                        </div>
+                                    </div>
+                                );
+                            }
 
-                        {/* 6. Skills - From State */}
-                        <div id="skills" className={`${spacingClass} scroll-mt-20`}>
-                            <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">专业技能</h2>
-                            <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
-                                {selectedSkills.technical.size > 0 && (
-                                    <>
-                                        <span className="font-bold text-gray-900">技术栈:</span>
-                                        <span>
-                                            {skills.technical
-                                                .filter((_, idx) => selectedSkills.technical.has(idx))
-                                                .join(', ')}
-                                        </span>
-                                    </>
-                                )}
-                                {selectedSkills.product.size > 0 && (
-                                    <>
-                                        <span className="font-bold text-gray-900">产品方法:</span>
-                                        <span>
-                                            {skills.product
-                                                .filter((_, idx) => selectedSkills.product.has(idx))
-                                                .join(', ')}
-                                        </span>
-                                    </>
-                                )}
-                                {selectedSkills.languages.size > 0 && (
-                                    <>
-                                        <span className="font-bold text-gray-900">语言:</span>
-                                        <span>
-                                            {skills.languages
-                                                .filter((_, idx) => selectedSkills.languages.has(idx))
-                                                .join(', ')}
-                                        </span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
+                            return null;
+                        })}
                     </div>
                 </main>
             </div>

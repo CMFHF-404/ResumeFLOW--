@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from .auth_middleware import LogtoAuthMiddleware
+from .domain.ai import ai_router
 from .domain.experience import experience_router
 from .domain.profile import profile_router
 from .domain.resume import resume_router
@@ -12,6 +13,7 @@ app.include_router(profile_router.router)
 app.include_router(experience_router.router)
 app.include_router(experience_versions.router)
 app.include_router(resume_router.router)
+app.include_router(ai_router.router)
 
 
 @app.get("/health")
