@@ -22,7 +22,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex w-full h-full">
+    <div className="flex w-full h-screen">
       <GlobalSidebar currentView={currentView} setView={setCurrentView} />
       {renderView()}
     </div>
