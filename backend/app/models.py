@@ -70,7 +70,9 @@ class MasterExperience(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
     category: ExperienceCategory
-    latest_version_id: Optional[uuid.UUID] = Field(default=None, index=True)
+    latest_version_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="experience_versions.id", index=True
+    )
     is_archived: bool = False
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
