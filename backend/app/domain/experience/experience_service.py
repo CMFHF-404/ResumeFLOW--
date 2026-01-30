@@ -29,7 +29,7 @@ async def list_experiences(
             isouter=True,
         )
         .where(MasterExperience.user_id == user_id)
-        .order_by(MasterExperience.updated_at.desc())
+        .order_by(desc(MasterExperience.updated_at))  # 修复：使用desc()函数而非.desc()方法
         .limit(limit)
         .offset(offset)
     )
@@ -73,7 +73,7 @@ async def get_experience_detail(
     result = await session.execute(
         select(ExperienceVersion)
         .where(ExperienceVersion.master_experience_id == master.id)
-        .order_by(ExperienceVersion.version.desc())
+        .order_by(desc(ExperienceVersion.version))  # 修复：使用desc()函数而非.desc()方法
     )
     versions = list(result.scalars().all())
     latest_version = next(

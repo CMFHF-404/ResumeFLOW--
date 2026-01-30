@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth_middleware import LogtoAuthMiddleware
+from .config import load_settings
 from .domain.ai.ai_router import router as ai_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
@@ -28,9 +29,10 @@ async def lifespan(app: FastAPI):
     # 关闭时：清理工作（如果有）
 
 app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
+settings = load_settings()
 
-app.add_middleware(LogtoAuthMiddleware)
-# CORS配置 - 允许前端开发服务器的跨域请求
+# CORS配置 - 必须在认证中间件之前，确保所有响应都有CORS头
+# FastAPI中间件采用洋葱模型，先注册的后执行响应处理
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -38,6 +40,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# 认证中间件放在CORS之后，这样即使认证失败，响应也会包含CORS头
+if not settings.enable_dev_auth_bypass:
+    app.add_middleware(LogtoAuthMiddleware)
 app.include_router(profile_router.router)
 app.include_router(experience_router.router)
 app.include_router(experience_versions.router)

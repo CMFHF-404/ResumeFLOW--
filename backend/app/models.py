@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from sqlalchemy import Column, Text
+from sqlalchemy import Column, Text, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlmodel import Field, SQLModel
 
@@ -55,7 +55,17 @@ class MasterExperience(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
-    category: ExperienceCategory
+    category: ExperienceCategory = Field(
+        sa_column=Column(
+            SAEnum(
+                ExperienceCategory,
+                name="experience_category",
+                create_type=False,
+                values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            ),
+            nullable=False,
+        )
+    )
     latest_version_id: Optional[uuid.UUID] = Field(
         default=None, foreign_key="experience_versions.id", index=True
     )

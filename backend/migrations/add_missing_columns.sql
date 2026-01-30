@@ -85,6 +85,29 @@ CREATE TABLE IF NOT EXISTS master_experiences (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 添加可能缺失的列（兼容旧表结构）
+ALTER TABLE master_experiences
+    ADD COLUMN IF NOT EXISTS latest_version_id UUID,
+    ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- 纠正 category 列类型（兼容旧版使用 TEXT/VARCHAR 的情况）
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'master_experiences'
+          AND column_name = 'category'
+          AND data_type IN ('character varying', 'text')
+    ) THEN
+        ALTER TABLE master_experiences
+            ALTER COLUMN category TYPE experience_category
+            USING category::experience_category;
+    END IF;
+END $$;
+
 -- ============================================================
 -- 7. 确保 experience_versions 表结构
 -- ============================================================
@@ -103,6 +126,37 @@ CREATE TABLE IF NOT EXISTS experience_versions (
     star JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- 添加可能缺失的列（兼容旧表结构）
+ALTER TABLE experience_versions
+    ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS org TEXT,
+    ADD COLUMN IF NOT EXISTS location TEXT,
+    ADD COLUMN IF NOT EXISTS start_date DATE,
+    ADD COLUMN IF NOT EXISTS end_date DATE,
+    ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS summary TEXT,
+    ADD COLUMN IF NOT EXISTS highlights TEXT[] NOT NULL DEFAULT '{}'::text[],
+    ADD COLUMN IF NOT EXISTS star JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- 兼容旧列名 version_number -> version
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'experience_versions'
+          AND column_name = 'version_number'
+    ) THEN
+        UPDATE experience_versions
+        SET version = COALESCE(version_number, version);
+
+        ALTER TABLE experience_versions
+            DROP COLUMN version_number;
+    END IF;
+END $$;
 
 -- 添加外键约束（幂等）
 DO $$

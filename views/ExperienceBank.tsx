@@ -2,11 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
+import { experienceService, ExperienceListItem } from '../services/experienceService';
 import { Certification } from '../types';
 
 const LINKEDIN_LABEL = "linkedin";
 
 type SocialLinkValue = string | { url?: string; position?: number } | null | undefined;
+
+const buildWorkCardData = (item: ExperienceListItem) => ({
+  org: item.latest_version?.org || "",
+  title: item.latest_version?.title || "",
+  start_date: item.latest_version?.start_date || "",
+  end_date: item.latest_version?.end_date || "",
+  star: item.latest_version?.star || { s: "", t: "", a: "", r: "" }
+});
+
+const cloneWorkCardData = (data: any) => JSON.parse(JSON.stringify(data));
 
 const extractSocialLinkUrl = (value: SocialLinkValue): string => {
   if (!value) {
@@ -145,6 +156,24 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     loadProfile();
   }, []); // ✅ 空依赖数组，只在挂载时执行一次
 
+  // 加载工作经历列表
+  useEffect(() => {
+    const loadWorkExperiences = async () => {
+      try {
+        setIsLoadingWork(true);
+        console.log('[ExperienceBank] 开始加载工作经历...');
+        const data = await experienceService.list('work');
+        setWorkExperiences(data);
+        console.log(`[ExperienceBank] 加载成功，共 ${data.length} 条工作经历`);
+      } catch (error) {
+        console.error('Failed to load work experiences:', error);
+      } finally {
+        setIsLoadingWork(false);
+      }
+    };
+    loadWorkExperiences();
+  }, []);
+
   // 开始编辑
   const handleEditProfile = () => {
     if (isLoadingProfile) {
@@ -196,15 +225,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
 
   // Work Experience State
-  const [expandedWork, setExpandedWork] = useState(true);
-  const [company, setCompany] = useState("腾讯 (Tencent)");
-  const [role, setRole] = useState("高级产品经理");
-  const [startDate, setStartDate] = useState("2021.03");
-  const [endDate, setEndDate] = useState("至今");
-  const [situation, setSituation] = useState("负责腾讯云核心PaaS产品的商业化落地，面对竞品激烈的市场环境，需在Q3季度完成200%的增长目标。");
-  const [task, setTask] = useState("重构产品定价体系，并主导针对KA客户的定制化解决方案，提升大客户转化率。");
-  const [action, setAction] = useState("1. 深入调研50+家头部客户，建立多维度定价模型；\n2. 协调产研团队优化部署流程，将交付周期从2周缩短至3天；\n3. 搭建自动化营销漏斗，实现线索分级管理。");
-  const [result, setResult] = useState("Q3季度实现营收增长210%，KA客户签约率提升45%，成功打造3个行业标杆案例。");
+  const [workExperiences, setWorkExperiences] = useState<ExperienceListItem[]>([]);
+  const [isLoadingWork, setIsLoadingWork] = useState(true);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [modifiedCards, setModifiedCards] = useState<Set<string>>(new Set());
+  const [cardData, setCardData] = useState<Map<string, any>>(new Map());
+  const [originalCardData, setOriginalCardData] = useState<Map<string, any>>(new Map());
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
 
   // Skills State
@@ -306,57 +333,190 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     document.documentElement.classList.toggle('dark');
   };
 
-  const handlePolish = async () => {
+  // ============= 新的工作经历卡片管理 Handlers =============
+  // 切换卡片展开/折叠状态
+  const toggleCard = (cardId: string) => {
+    const newExpanded = new Set(expandedCards);
+    if (newExpanded.has(cardId)) {
+      newExpanded.delete(cardId);
+    } else {
+      newExpanded.add(cardId);
+      // 展开时初始化卡片数据
+      const item = workExperiences.find(e => e.master.id === cardId);
+      if (item && !cardData.has(cardId)) {
+        const initialData = buildWorkCardData(item);
+        setCardData(new Map(cardData).set(cardId, initialData));
+        setOriginalCardData(new Map(originalCardData).set(cardId, cloneWorkCardData(initialData)));
+      }
+    }
+    setExpandedCards(newExpanded);
+  };
+
+  // 更新卡片字段值
+  const updateCardField = (cardId: string, field: string, value: any) => {
+    const newData = new Map(cardData);
+    const current = newData.get(cardId) || {};
+
+    if (field.startsWith('star.')) {
+      const starField = field.split('.')[1];
+      current.star = { ...(current.star || {}), [starField]: value };
+    } else {
+      current[field] = value;
+    }
+
+    newData.set(cardId, current);
+    setCardData(newData);
+
+    // 检测是否修改
+    const original = originalCardData.get(cardId);
+    const isModified = original && JSON.stringify(current) !== JSON.stringify(original);
+    const newModified = new Set(modifiedCards);
+    if (isModified) {
+      newModified.add(cardId);
+    } else {
+      newModified.delete(cardId);
+    }
+    setModifiedCards(newModified);
+  };
+
+  // 保存卡片
+  const handleSaveCard = async (cardId: string) => {
+    try {
+      const data = cardData.get(cardId);
+      if (!data) return;
+
+      await experienceService.update(cardId, { version: data });
+
+      // 更新成功后刷新列表
+      const updated = await experienceService.list('work', { force: true });
+      setWorkExperiences(updated);
+
+      // 更新原始数据
+      setOriginalCardData(new Map(originalCardData).set(cardId, cloneWorkCardData(data)));
+
+      // 清除修改标记
+      const newModified = new Set(modifiedCards);
+      newModified.delete(cardId);
+      setModifiedCards(newModified);
+
+      console.log('[ExperienceBank] 工作经历保存成功');
+    } catch (error) {
+      console.error('Failed to save work experience:', error);
+      // TODO: 显示错误提示
+    }
+  };
+
+  // 取消修改
+  const handleCancelCard = (cardId: string) => {
+    const original = originalCardData.get(cardId);
+    if (original) {
+      setCardData(new Map(cardData).set(cardId, cloneWorkCardData(original)));
+    }
+    const newModified = new Set(modifiedCards);
+    newModified.delete(cardId);
+    setModifiedCards(newModified);
+  };
+
+  // 删除卡片
+  const handleDeleteCard = async (cardId: string) => {
+    try {
+      await experienceService.delete(cardId);
+
+      // 刷新列表
+      const updated = await experienceService.list('work', { force: true });
+      setWorkExperiences(updated);
+
+      // 清理状态
+      const newExpanded = new Set(expandedCards);
+      newExpanded.delete(cardId);
+      setExpandedCards(newExpanded);
+
+      const newData = new Map(cardData);
+      newData.delete(cardId);
+      setCardData(newData);
+
+      const newOriginal = new Map(originalCardData);
+      newOriginal.delete(cardId);
+      setOriginalCardData(newOriginal);
+
+      setDeletingCardId(null);
+      console.log('[ExperienceBank] 工作经历删除成功');
+    } catch (error) {
+      console.error('Failed to delete work experience:', error);
+      // TODO: 显示错误提示
+    }
+  };
+
+  // 新增工作经历
+  const handleAddNewWork = async () => {
+    try {
+      const newWork = await experienceService.create({
+        category: 'work',
+        version: {
+          title: "新职位",
+          org: "新公司",
+          start_date: new Date().toISOString().split('T')[0],
+          star: { s: "", t: "", a: "", r: "" }
+        }
+      });
+
+      const initialData = buildWorkCardData(newWork);
+      setCardData((prev) => new Map(prev).set(newWork.master.id, initialData));
+      setOriginalCardData((prev) => new Map(prev).set(newWork.master.id, cloneWorkCardData(initialData)));
+      setExpandedCards((prev) => {
+        const next = new Set(prev);
+        next.add(newWork.master.id);
+        return next;
+      });
+      setModifiedCards((prev) => {
+        const next = new Set(prev);
+        next.delete(newWork.master.id);
+        return next;
+      });
+
+      // 刷新列表
+      const updated = await experienceService.list('work', { force: true });
+      setWorkExperiences(updated);
+    } catch (error) {
+      console.error('Failed to create work experience:', error);
+      // TODO: 显示错误提示
+    }
+  };
+
+  // AI润色卡片
+  const handlePolishCard = async (cardId: string) => {
+    const data = cardData.get(cardId);
+    if (!data) return;
+
     setIsPolishing(true);
     try {
       const response = await aiService.polishExperience({
         content: {
-          company,
-          role,
-          s: situation,
-          t: task,
-          a: action,
-          r: result,
+          company: data.org || "",
+          role: data.title || "",
+          s: data.star?.s || "",
+          t: data.star?.t || "",
+          a: data.star?.a || "",
+          r: data.star?.r || "",
         },
       });
-      if (response.s) setSituation(response.s);
-      if (response.t) setTask(response.t);
-      if (response.a) setAction(response.a);
-      if (response.r) setResult(response.r);
+
+      // 更新卡片数据
+      const newStar = { ...data.star };
+      if (response.s) newStar.s = response.s;
+      if (response.t) newStar.t = response.t;
+      if (response.a) newStar.a = response.a;
+      if (response.r) newStar.r = response.r;
+
+      updateCardField(cardId, 'star', newStar);
     } catch (error) {
       console.error("Failed to polish experience", error);
     } finally {
       setIsPolishing(false);
     }
   };
+  // ============= 新的工作经历卡片管理 Handlers 结束 =============
 
-  const handleAddNew = () => {
-    setCompany("");
-    setRole("");
-    setStartDate("");
-    setEndDate("");
-    setSituation("");
-    setTask("");
-    setAction("");
-    setResult("");
-    setExpandedWork(true);
-  };
-
-  const handleLoadItem = (title: string, pos: string, start: string, end: string) => {
-    setCompany(title);
-    setRole(pos);
-    setStartDate(start);
-    setEndDate(end);
-    setExpandedWork(true);
-
-    // Reset STAR to dummy text if loading new item to simulate data fetch
-    if (title !== "腾讯 (Tencent)") {
-      setSituation("负责...");
-      setTask("任务...");
-      setAction("行动...");
-      setResult("结果...");
-    }
-  };
 
   const addSkill = () => {
     if (newSkill.trim() && !skills.includes(newSkill.trim())) {
@@ -545,6 +705,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </div>
           </section>
 
+          {/* ============= 新的工作经历UI(多卡片) ============= */}
           {/* Work Experience Section */}
           <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
@@ -553,11 +714,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 工作经历
                 <span className="text-sm font-normal text-gray-400 ml-2">Work Experience</span>
               </h2>
-              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">3 items</span>
+              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                {isLoadingWork ? 'Loading...' : `${workExperiences.length} items`}
+              </span>
             </div>
 
             <button
-              onClick={handleAddNew}
+              onClick={handleAddNewWork}
               className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all duration-300"
             >
               <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-primary transition-colors">
@@ -566,169 +729,201 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
               <span className="font-medium">新增工作经历</span>
             </button>
 
-            {/* Editable Card */}
-            <div className="bg-white dark:bg-surface-dark rounded-xl border border-primary/30 shadow-lg shadow-primary/5 overflow-hidden transition-all duration-300 ring-1 ring-primary/10">
-              {!expandedWork ? (
-                // 折叠态：显示为精简卡片
-                <div
-                  className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  onClick={() => setExpandedWork(true)}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{company}</h3>
-                        <span className="text-gray-300 dark:text-gray-600">|</span>
-                        <span className="text-gray-700 dark:text-gray-300 font-medium">{role}</span>
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {situation ? situation.substring(0, 60) + '...' : '点击展开编辑工作经历...'}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="block text-sm font-mono text-gray-500 mb-2">{startDate} - {endDate}</span>
-                      <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-primary transition-colors ml-auto" />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // 展开态：显示编辑表单
-                <>
-                  <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
-                    <div className="flex flex-col lg:flex-row gap-6 mb-4">
-                      <div className="flex-1">
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">公司名称</label>
-                        <input
-                          className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
-                          placeholder="输入公司名称"
-                          type="text"
-                          value={company}
-                          onChange={(e) => setCompany(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">担任职位</label>
-                        <input
-                          className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
-                          placeholder="输入职位名称"
-                          type="text"
-                          value={role}
-                          onChange={(e) => setRole(e.target.value)}
-                        />
-                      </div>
-                      <div className="w-full lg:w-auto shrink-0">
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                            placeholder="YYYY.MM"
-                            type="text"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                          />
-                          <span className="text-gray-400">-</span>
-                          <input
-                            className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                            placeholder="至今"
-                            type="text"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+            {/* 工作经历卡片列表 */}
+            {workExperiences.map((item) => {
+              const cardId = item.master.id;
+    const isExpanded = expandedCards.has(cardId);
+    const isModified = modifiedCards.has(cardId);
+    const data = cardData.get(cardId) || buildWorkCardData(item);
 
-                  <div className="p-6 pt-4 space-y-4 relative animate-in fade-in slide-in-from-top-4 duration-300">
-                    {/* STAR Sections - Strict Plain Textareas */}
-                    {[
-                      { id: 's', label: 'S - 情境 (Situation)', val: situation, set: setSituation, color: 'blue', icon: 'Target', ph: 'Describe the context...' },
-                      { id: 't', label: 'T - 任务 (Task)', val: task, set: setTask, color: 'orange', icon: 'Flag', ph: 'What were your goals?' },
-                      { id: 'a', label: 'A - 行动 (Action)', val: action, set: setAction, color: 'amber', icon: 'Zap', ph: 'What specifically did you do?' },
-                      { id: 'r', label: 'R - 结果 (Result)', val: result, set: setResult, color: 'emerald', icon: 'Trophy', ph: 'Quantifiable outcomes...' },
-                    ].map((item, idx) => (
-                      <div key={item.id} className="flex gap-4 relative group">
-                        {idx !== 3 && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
-                        <div className={`shrink-0 w-10 h-10 rounded-full bg-${item.color}-50 dark:bg-${item.color}-900/20 text-${item.color}-600 dark:text-${item.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}>
-                          {item.id.toUpperCase()}
-                        </div>
-                        <div className="flex-1 pt-1 pb-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`text-xs font-bold text-${item.color}-600 dark:text-${item.color}-400 uppercase tracking-widest`}>{item.label}</span>
+              return (
+                <div key={cardId} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+                  {!isExpanded ? (
+                    // 折叠态
+                    <div className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" onClick={() => toggleCard(cardId)}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1">
+                            <h3 className="font-bold text-gray-900 dark:text-white truncate">{data.org}</h3>
+                            <span className="text-gray-300 dark:text-gray-600">|</span>
+                            <span className="text-gray-700 dark:text-gray-300 font-medium">{data.title}</span>
                           </div>
-                          <textarea
-                            className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
-                            rows={item.id === 'a' ? 4 : 2}
-                            value={item.val}
-                            placeholder={item.ph}
-                            onChange={(e) => item.set(e.target.value)}
-                          />
+                          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                            {data.star?.s ? data.star.s.substring(0, 60) + '...' : '点击展开编辑工作经历...'}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 flex items-center gap-2">
+                          <span className="block text-sm font-mono text-gray-500">{data.start_date} - {data.end_date || '至今'}</span>
+                          {/* 删除按钮 - 折叠态可见 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingCardId(cardId);
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                            title="删除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <ChevronDown className="w-5 h-5 text-gray-400" />
                         </div>
                       </div>
-                    ))}
-                  </div>
-
-                  <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                    <button
-                      onClick={handlePolish}
-                      disabled={isPolishing}
-                      className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      {isPolishing ? 'AI 润色中...' : 'AI 润色'}
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
-                        title="删除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setExpandedWork(false);
-                          // 这里应该添加重置逻辑，目前先简单收起
-                        }}
-                        className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                      >
-                        取消
-                      </button>
-                      <button
-                        onClick={() => setExpandedWork(false)}
-                        className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark px-6 py-2 rounded-lg transition-colors shadow-sm shadow-primary/20"
-                      >
-                        保存
-                        <ChevronUp className="w-4 h-4" />
-                      </button>
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
+                  ) : (
+                    // 展开态
+                    <>
+                      <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
+                        <div className="flex flex-col lg:flex-row gap-6 mb-4">
+                          <div className="flex-1">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">公司名称</label>
+                            <input
+                              className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
+                              placeholder="输入公司名称"
+                              type="text"
+                              value={data.org}
+                              onChange={(e) => updateCardField(cardId, 'org', e.target.value)}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">担任职位</label>
+                            <input
+                              className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
+                              placeholder="输入职位名称"
+                              type="text"
+                              value={data.title}
+                              onChange={(e) => updateCardField(cardId, 'title', e.target.value)}
+                            />
+                          </div>
+                          <div className="w-full lg:w-auto shrink-0">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                                placeholder="YYYY.MM"
+                                type="text"
+                                value={data.start_date}
+                                onChange={(e) => updateCardField(cardId, 'start_date', e.target.value)}
+                              />
+                              <span className="text-gray-400">-</span>
+                              <input
+                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                                placeholder="至今"
+                                type="text"
+                                value={data.end_date}
+                                onChange={(e) => updateCardField(cardId, 'end_date', e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
-            {/* Read-only List Items */}
-            <div
-              className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-primary/50 transition-all duration-200 cursor-pointer"
-              onClick={() => handleLoadItem("字节跳动 (ByteDance)", "产品运营实习生", "2020.06", "2020.12")}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-bold text-gray-900 dark:text-white truncate">字节跳动 (ByteDance)</h3>
-                    <span className="text-gray-300 dark:text-gray-600">|</span>
-                    <span className="text-gray-700 dark:text-gray-300 font-medium">产品运营实习生</span>
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">负责抖音千万级用户增长活动策划，通过数据分析优化投放策略，ROI提升...</p>
+                      <div className="p-6 pt-4 space-y-4">
+                        {/* STAR Sections */}
+                        {[
+                          { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...' },
+                          { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?' },
+                          { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?' },
+                          { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...' },
+                        ].map((section, idx) => (
+                          <div key={section.id} className="flex gap-4 relative group">
+                            {idx !== 3 && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
+                            <div className={`shrink-0 w-10 h-10 rounded-full bg-${section.color}-50 dark:bg-${section.color}-900/20 text-${section.color}-600 dark:text-${section.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}>
+                              {section.id.toUpperCase()}
+                            </div>
+                            <div className="flex-1 pt-1 pb-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}>{section.label}</span>
+                              </div>
+                              <textarea
+                                className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
+                                rows={section.id === 'a' ? 4 : 2}
+                                value={data.star?.[section.id] || ""}
+                                placeholder={section.ph}
+                                onChange={(e) => updateCardField(cardId, `star.${section.id}`, e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                        <button
+                          onClick={() => handlePolishCard(cardId)}
+                          disabled={isPolishing}
+                          className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          {isPolishing ? 'AI 润色中...' : 'AI 润色'}
+                        </button>
+                        <div className="flex items-center gap-2">
+                          {/* 删除按钮 - 展开态可见 */}
+                          <button
+                            onClick={() => setDeletingCardId(cardId)}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+                            title="删除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+
+                          {isModified ? (
+                            <>
+                              <button
+                                onClick={() => handleCancelCard(cardId)}
+                                className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => handleSaveCard(cardId)}
+                                className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark px-6 py-2 rounded-lg transition-colors shadow-sm shadow-primary/20"
+                              >
+                                保存
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => toggleCard(cardId)}
+                              className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              折叠
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="text-right shrink-0">
-                  <span className="block text-sm font-mono text-gray-500 mb-2">2020.06 - 2020.12</span>
-                  <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-primary transition-colors ml-auto" />
+              );
+            })}
+
+            {/* 删除确认对话框 */}
+            {deletingCardId && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">确认删除</h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    确定要删除这条工作经历吗？此操作无法撤销。
+                  </p>
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => setDeletingCardId(null)}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCard(deletingCardId)}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-
+            )}
           </section>
+          {/* ============= 新的工作经历UI(多卡片) 结束 ============= */}
 
           {/* Education Section */}
           <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
