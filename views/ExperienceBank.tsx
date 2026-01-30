@@ -1,17 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { aiService } from '../services/aiService';
+import { profileService } from '../services/profileService';
 import { Certification } from '../types';
 
 const ExperienceBank: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Personal Info State
-  const [name, setName] = useState("陈小象");
-  const [email, setEmail] = useState("alex.chen@example.com");
-  const [phone, setPhone] = useState("(555) 123-4567");
-  const [location, setLocation] = useState("上海, 中国");
-  const [link, setLink] = useState("linkedin.com/in/alexchen");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [location, setLocation] = useState("");
+  const [link, setLink] = useState("");
+
+  // 加载个人资料
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        setIsLoadingProfile(true);
+        const profile = await profileService.getProfile();
+        setName(profile.full_name || "");
+        setEmail(profile.email || "");
+        setPhone(profile.phone || "");
+        setLocation(profile.location || "");
+        // 从social_links中提取LinkedIn链接
+        setLink(profile.social_links?.linkedin || "");
+      } catch (error) {
+        console.error('Failed to load profile:', error);
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+    loadProfile();
+  }, []);
+
+  // 保存个人资料
+  const handleSaveProfile = async () => {
+    try {
+      setIsSavingProfile(true);
+      await profileService.updateProfile({
+        full_name: name,
+        email,
+        phone,
+        location,
+        social_links: link ? { linkedin: link } : {},
+      });
+      // TODO: 显示成功提示
+    } catch (error) {
+      console.error('Failed to save profile:', error);
+      // TODO: 显示错误提示
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   // Work Experience State
   const [expandedWork, setExpandedWork] = useState(true);

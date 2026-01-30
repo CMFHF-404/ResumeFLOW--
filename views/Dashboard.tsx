@@ -1,23 +1,67 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate } from 'lucide-react';
 import { Resume, ViewState } from '../types';
+import { resumeService } from '../services/resumeService';
 
 interface DashboardProps {
   setView: (view: ViewState) => void;
 }
 
-const mockResumesInitial: Resume[] = [
-  { id: '1', name: '产品经理 - 腾讯', targetRole: '产品实习生', matchRate: 85, lastModified: '2小时前', status: 'final', type: 'internship' },
-  { id: '2', name: '产品运营 - 字节跳动', targetRole: '暑期实习生', matchRate: 92, lastModified: '3天前', status: 'final', type: 'internship' },
-  { id: '3', name: '未命名简历 - 2025', targetRole: '通用模版', matchRate: 0, lastModified: '1周前', status: 'draft', type: 'general' },
-];
+// 格式化时间为相对时间
+const formatRelativeTime = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 60) return `${diffMins}分钟前`;
+  if (diffHours < 24) return `${diffHours}小时前`;
+  if (diffDays < 7) return `${diffDays}天前`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}周前`;
+  return `${Math.floor(diffDays / 30)}个月前`;
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [resumes, setResumes] = useState<Resume[]>(mockResumesInitial);
+  const [resumes, setResumes] = useState<Resume[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number, left: number } | null>(null);
+
+  // 从后端加载简历列表
+  useEffect(() => {
+    const loadResumes = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await resumeService.list();
+
+        // 将后端数据转换为前端Resume格式
+        const mappedResumes: Resume[] = data.map(r => ({
+          id: r.id,
+          name: r.title,
+          targetRole: r.target_role || '通用',
+          matchRate: 0, // 匹配度功能待实现
+          lastModified: formatRelativeTime(r.updated_at),
+          status: 'draft', // 默认为草稿状态
+          type: 'general', // 默认为通用类型
+        }));
+
+        setResumes(mappedResumes);
+      } catch (err) {
+        console.error('Failed to load resumes:', err);
+        setError('加载简历列表失败,请稍后重试');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadResumes();
+  }, []);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
