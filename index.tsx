@@ -15,10 +15,15 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
+// 在开发环境禁用严格模式，避免双重挂载导致重复请求
+// 生产环境保留严格模式以检测潜在问题
+const app = (
+  <LogtoProvider config={config}>
+    <App />
+  </LogtoProvider>
+);
+
 root.render(
-  <React.StrictMode>
-    <LogtoProvider config={config}>
-      <App />
-    </LogtoProvider>
-  </React.StrictMode>
+  import.meta.env.PROD ? <React.StrictMode>{app}</React.StrictMode> : app
 );

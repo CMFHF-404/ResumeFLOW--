@@ -5,6 +5,8 @@ import { resumeService } from '../services/resumeService';
 
 interface DashboardProps {
   setView: (view: ViewState) => void;
+  cachedResumes?: Resume[]; // 从 App 传入的缓存数据
+  onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
 }
 
 // 格式化时间为相对时间
@@ -23,14 +25,22 @@ const formatRelativeTime = (dateStr: string): string => {
   return `${Math.floor(diffDays / 30)}个月前`;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
+const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onResumesUpdate }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [resumes, setResumes] = useState<Resume[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [resumes, setResumes] = useState<Resume[]>(cachedResumes);
+  const [isLoading, setIsLoading] = useState(cachedResumes.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number, left: number } | null>(null);
+
+  // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
+  const onResumesUpdateRef = useRef(onResumesUpdate);
+
+  // 同步最新的回调函数到 ref
+  useEffect(() => {
+    onResumesUpdateRef.current = onResumesUpdate;
+  }, [onResumesUpdate]);
 
   // 从后端加载简历列表
   useEffect(() => {
@@ -38,6 +48,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
       try {
         setIsLoading(true);
         setError(null);
+        console.log('[Dashboard] 开始加载简历列表...');
         const data = await resumeService.list();
 
         // 将后端数据转换为前端Resume格式
@@ -51,7 +62,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
           type: 'general', // 默认为通用类型
         }));
 
+        console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
         setResumes(mappedResumes);
+
+        // 使用 ref 调用回调，更新全局缓存
+        if (onResumesUpdateRef.current) {
+          onResumesUpdateRef.current(mappedResumes);
+        }
       } catch (err) {
         console.error('Failed to load resumes:', err);
         setError('加载简历列表失败,请稍后重试');
@@ -60,8 +77,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
       }
     };
 
-    loadResumes();
-  }, []);
+    // 只在组件挂载时执行一次，如果有缓存数据则直接使用
+    if (resumes.length === 0) {
+      loadResumes();
+    } else {
+      console.log('[Dashboard] 已有数据，跳过加载');
+    }
+  }, []); // ✅ 空依赖数组，只在挂载时执行一次
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);

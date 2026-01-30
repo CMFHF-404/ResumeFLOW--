@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
@@ -54,7 +54,12 @@ const mergeLinkedInLink = (
   return nextLinks;
 };
 
-const ExperienceBank: React.FC = () => {
+interface ExperienceBankProps {
+  cachedProfile?: any;
+  onProfileUpdate?: (data: any) => void;
+}
+
+const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfileUpdate }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -76,12 +81,34 @@ const ExperienceBank: React.FC = () => {
   const [link, setLink] = useState("");
   const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
 
+  // 请求防抖：使用 ref 追踪请求状态
+  const isLoadingProfileRef = useRef(false);
+
+  // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
+  const onProfileUpdateRef = useRef(onProfileUpdate);
+
+  // 同步最新的回调函数到 ref
+  useEffect(() => {
+    onProfileUpdateRef.current = onProfileUpdate;
+  }, [onProfileUpdate]);
+
   // 加载个人资料
   useEffect(() => {
     const loadProfile = async () => {
+      // 防抖：如果已有请求正在进行，直接返回
+      if (isLoadingProfileRef.current) {
+        console.log('[ExperienceBank] 请求防抖：跳过重复请求');
+        return;
+      }
+
       try {
+        isLoadingProfileRef.current = true;
         setIsLoadingProfile(true);
+        console.log('[ExperienceBank] 开始加载个人资料...');
+
+        // profileService 已有内置缓存机制，会自动处理缓存
         const profile = await profileService.getProfile();
+
         setName(profile.full_name || "");
         setEmail(profile.email || "");
         setPhone(profile.phone || "");
@@ -97,14 +124,26 @@ const ExperienceBank: React.FC = () => {
           location: profile.location || "",
           link: loadedLink
         });
+
+        console.log('[ExperienceBank] 加载成功');
+
+        // 使用 ref 调用回调，更新 App 级缓存
+        if (onProfileUpdateRef.current) {
+          onProfileUpdateRef.current(profile);
+        }
       } catch (error) {
         console.error('Failed to load profile:', error);
       } finally {
         setIsLoadingProfile(false);
+        // 延迟重置请求状态
+        setTimeout(() => {
+          isLoadingProfileRef.current = false;
+        }, 300);
       }
     };
+
     loadProfile();
-  }, []);
+  }, []); // ✅ 空依赖数组，只在挂载时执行一次
 
   // 开始编辑
   const handleEditProfile = () => {
