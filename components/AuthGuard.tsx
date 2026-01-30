@@ -1,12 +1,15 @@
 import { useLogto } from '@logto/react';
-import { useEffect, ReactNode } from 'react';
+import { useEffect, ReactNode, useMemo, useState } from 'react';
+import { clearAccessTokenProvider, setAccessTokenProvider } from '../services/authTokenProvider';
 
 interface AuthGuardProps {
     children: ReactNode;
 }
 
 export default function AuthGuard({ children }: AuthGuardProps) {
-    const { isAuthenticated, isLoading, signIn } = useLogto();
+    const { isAuthenticated, isLoading, signIn, getAccessToken } = useLogto();
+    const [isTokenReady, setIsTokenReady] = useState(false);
+    const logtoResource = useMemo(() => import.meta.env.VITE_LOGTO_RESOURCE, []);
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
@@ -16,7 +19,37 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         }
     }, [isAuthenticated, isLoading, signIn]);
 
-    if (isLoading) {
+    useEffect(() => {
+        if (!isAuthenticated || !getAccessToken) {
+            clearAccessTokenProvider();
+            setIsTokenReady(false);
+            return;
+        }
+
+        setAccessTokenProvider(async (resource?: string) => {
+            try {
+                const token = await getAccessToken(resource);
+                return token ?? null;
+            } catch (error) {
+                console.warn('[AuthGuard] Failed to get access token', error);
+                return null;
+            }
+        });
+        setIsTokenReady(true);
+
+        if (logtoResource) {
+            getAccessToken(logtoResource).catch((error) => {
+                console.warn('[AuthGuard] Token warmup failed', error);
+            });
+        }
+
+        return () => {
+            clearAccessTokenProvider();
+            setIsTokenReady(false);
+        };
+    }, [getAccessToken, isAuthenticated, logtoResource]);
+
+    if (isLoading || (isAuthenticated && !isTokenReady)) {
         return (
             <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
                 <div className="text-center">

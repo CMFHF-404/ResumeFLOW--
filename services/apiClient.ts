@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { requestAccessToken } from './authTokenProvider';
 
 const LOGTO_STORAGE_PREFIX = 'logto';
 const LOGTO_ACCESS_TOKEN_ITEM = 'accessToken';
@@ -12,6 +13,10 @@ type LogtoAccessTokenEntry = {
 
 const buildLogtoAccessTokenKey = (appId: string) => {
     return `${LOGTO_STORAGE_PREFIX}:${appId}:${LOGTO_ACCESS_TOKEN_ITEM}`;
+};
+
+const getLogtoResource = (): string | undefined => {
+    return import.meta.env.VITE_LOGTO_RESOURCE;
 };
 
 const parseLogtoAccessTokenMap = (raw: string): Record<string, LogtoAccessTokenEntry> | null => {
@@ -59,13 +64,16 @@ const pickLogtoAccessToken = (
         if (match) {
             return match[1].token ?? null;
         }
+        // 如果指定了资源但没找到对应的Token,不要降级使用其他Token,因为Audience不匹配会导致401
+        console.warn(`[pickLogtoAccessToken] No token found for resource: ${resource}`);
+        return null;
     }
 
     const fallback = usableEntries.find(([, entry]) => typeof entry?.token === 'string');
     return fallback ? fallback[1].token ?? null : null;
 };
 
-const getLogtoAccessToken = (): string | null => {
+const getLogtoAccessToken = (resource?: string): string | null => {
     const appId = import.meta.env.VITE_LOGTO_APP_ID;
     if (!appId) {
         return null;
@@ -82,7 +90,15 @@ const getLogtoAccessToken = (): string | null => {
         return null;
     }
 
-    return pickLogtoAccessToken(tokenMap, import.meta.env.VITE_LOGTO_RESOURCE);
+    return pickLogtoAccessToken(tokenMap, resource);
+};
+
+const resolveAccessToken = async (resource?: string): Promise<string | null> => {
+    const providerToken = await requestAccessToken(resource);
+    if (providerToken) {
+        return providerToken;
+    }
+    return getLogtoAccessToken(resource);
 };
 
 const apiClient = axios.create({
@@ -95,7 +111,10 @@ const apiClient = axios.create({
 // 请求拦截器:自动添加JWT Token
 apiClient.interceptors.request.use(
     async (config) => {
-        const token = getLogtoAccessToken();
+        const resource = getLogtoResource();
+        const token = await resolveAccessToken(resource);
+        console.log(`[API Client] Resource: ${resource}, Token found: ${!!token}`);
+
         if (token) {
             // 使用 Axios headers API 设置 Authorization header
             config.headers.set('Authorization', `Bearer ${token}`);

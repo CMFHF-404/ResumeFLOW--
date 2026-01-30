@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import httpx
 from jose import JWTError, jwt
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -18,7 +19,7 @@ from .models import User
 
 AUTH_HEADER = "Authorization"
 BEARER_PREFIX = "Bearer "
-ALLOWED_ALGORITHMS = {"RS256"}
+ALLOWED_ALGORITHMS = {"RS256", "ES384"}
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 

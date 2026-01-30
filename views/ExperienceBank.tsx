@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { aiService } from '../services/aiService';
 import { profileService } from '../services/profileService';
@@ -9,7 +9,16 @@ const ExperienceBank: React.FC = () => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+
   // Personal Info State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [originalProfile, setOriginalProfile] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    location: "",
+    link: ""
+  });
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -27,7 +36,15 @@ const ExperienceBank: React.FC = () => {
         setPhone(profile.phone || "");
         setLocation(profile.location || "");
         // 从social_links中提取LinkedIn链接
-        setLink(profile.social_links?.linkedin || "");
+        const loadedLink = profile.social_links?.linkedin || "";
+        setLink(loadedLink);
+        setOriginalProfile({
+          name: profile.full_name || "",
+          email: profile.email || "",
+          phone: profile.phone || "",
+          location: profile.location || "",
+          link: loadedLink
+        });
       } catch (error) {
         console.error('Failed to load profile:', error);
       } finally {
@@ -36,6 +53,31 @@ const ExperienceBank: React.FC = () => {
     };
     loadProfile();
   }, []);
+
+  // 开始编辑
+  const handleEditProfile = () => {
+    if (isLoadingProfile) {
+      return;
+    }
+    setOriginalProfile({
+      name,
+      email,
+      phone,
+      location,
+      link
+    });
+    setIsEditingProfile(true);
+  };
+
+  // 取消编辑 - 恢复原始数据
+  const handleCancelProfile = () => {
+    setName(originalProfile.name);
+    setEmail(originalProfile.email);
+    setPhone(originalProfile.phone);
+    setLocation(originalProfile.location);
+    setLink(originalProfile.link);
+    setIsEditingProfile(false);
+  };
 
   // 保存个人资料
   const handleSaveProfile = async () => {
@@ -48,6 +90,7 @@ const ExperienceBank: React.FC = () => {
         location,
         social_links: link ? { linkedin: link } : {},
       });
+      setIsEditingProfile(false);
       // TODO: 显示成功提示
     } catch (error) {
       console.error('Failed to save profile:', error);
@@ -56,6 +99,8 @@ const ExperienceBank: React.FC = () => {
       setIsSavingProfile(false);
     }
   };
+
+
 
   // Work Experience State
   const [expandedWork, setExpandedWork] = useState(true);
@@ -326,28 +371,82 @@ const ExperienceBank: React.FC = () => {
                 个人信息
                 <span className="text-sm font-normal text-gray-400 ml-2">Personal Info</span>
               </h2>
+              <div>
+                {!isEditingProfile ? (
+                  <button
+                    onClick={handleEditProfile}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
+                    disabled={isLoadingProfile}
+                  >
+                    <Wrench className="w-4 h-4" />
+                    编辑
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancelProfile}
+                      className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800 rounded-lg transition-colors"
+                      disabled={isSavingProfile}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSaveProfile}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                      disabled={isSavingProfile}
+                    >
+                      {isSavingProfile ? '保存中...' : '保存'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> 姓名</label>
-                  <input className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full" value={name} onChange={(e) => setName(e.target.value)} />
+                  <input
+                    className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={!isEditingProfile || isLoadingProfile}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Mail className="w-3 h-3" /> 邮箱</label>
-                  <input className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <input
+                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={!isEditingProfile || isLoadingProfile}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Phone className="w-3 h-3" /> 电话</label>
-                  <input className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  <input
+                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    disabled={!isEditingProfile || isLoadingProfile}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><MapPin className="w-3 h-3" /> 地点</label>
-                  <input className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full" value={location} onChange={(e) => setLocation(e.target.value)} />
+                  <input
+                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    disabled={!isEditingProfile || isLoadingProfile}
+                  />
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><LinkIcon className="w-3 h-3" /> 链接 (LinkedIn/Portfolio)</label>
-                  <input className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full" value={link} onChange={(e) => setLink(e.target.value)} />
+                  <input
+                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                    value={link}
+                    onChange={(e) => setLink(e.target.value)}
+                    disabled={!isEditingProfile || isLoadingProfile}
+                  />
                 </div>
               </div>
             </div>

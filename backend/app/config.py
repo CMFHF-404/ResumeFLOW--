@@ -5,7 +5,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-DEFAULT_JWKS_PATH = "/oidc/jwks"
+DEFAULT_JWKS_PATH = "/jwks"
 ENV_DATABASE_URL = "DATABASE_URL"
 ENV_LOGTO_ISSUER = "LOGTO_ISSUER"
 ENV_LOGTO_AUDIENCE = "LOGTO_AUDIENCE"

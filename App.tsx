@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AuthGuard from './components/AuthGuard';
 import GlobalSidebar from './components/GlobalSidebar';
+import ViewErrorBoundary from './components/ViewErrorBoundary';
 import Dashboard from './views/Dashboard';
 import ExperienceBank from './views/ExperienceBank';
 import ResumeEditor from './views/ResumeEditor';
@@ -23,6 +24,10 @@ const App: React.FC = () => {
     return <Callback />;
   }
 
+  const handleResetView = useCallback(() => {
+    setCurrentView(ViewState.DASHBOARD);
+  }, []);
+
   const renderView = () => {
     switch (currentView) {
       case ViewState.DASHBOARD:
@@ -40,7 +45,9 @@ const App: React.FC = () => {
     <AuthGuard>
       <div className="flex w-full h-screen">
         <GlobalSidebar currentView={currentView} setView={setCurrentView} />
-        {renderView()}
+        <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
+          {renderView()}
+        </ViewErrorBoundary>
       </div>
     </AuthGuard>
   );

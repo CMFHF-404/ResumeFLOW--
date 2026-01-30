@@ -20,8 +20,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
   };
 
   const handleSignOut = async () => {
-    // 使用无参数的signOut,避免post_logout_redirect_uri未注册的错误
-    await signOut();
+    // 注销并跳转回首页(登录页)
+    // 注意: 需要在 Logto 控制台将 http://localhost:5173 添加到 "Post Sign-out Redirect URI"
+    await signOut(window.location.origin);
   };
 
   return (
