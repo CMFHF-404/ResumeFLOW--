@@ -45,14 +45,14 @@ async def list_experiences(
             )
         )
 
-    result = await session.exec(statement)
+    result = await session.execute(statement)
     return list(result.all())
 
 
 async def get_version_for_user(
     session: AsyncSession, user_id: str, version_id: str
 ) -> ExperienceVersion:
-    result = await session.exec(
+    result = await session.execute(
         select(ExperienceVersion)
         .join(MasterExperience)
         .where(
@@ -60,7 +60,7 @@ async def get_version_for_user(
             MasterExperience.user_id == user_id,
         )
     )
-    version = result.first()
+    version = result.scalars().first()
     if not version:
         raise NotFoundError("Experience version not found")
     return version
@@ -70,12 +70,12 @@ async def get_experience_detail(
     session: AsyncSession, user_id: str, master_id: str
 ) -> Tuple[MasterExperience, Optional[ExperienceVersion], List[ExperienceVersion]]:
     master = await _get_master(session, user_id, master_id)
-    result = await session.exec(
+    result = await session.execute(
         select(ExperienceVersion)
         .where(ExperienceVersion.master_experience_id == master.id)
         .order_by(ExperienceVersion.version.desc())
     )
-    versions = list(result.all())
+    versions = list(result.scalars().all())
     latest_version = next(
         (version for version in versions if version.id == master.latest_version_id),
         None,
@@ -86,18 +86,18 @@ async def get_experience_detail(
 async def create_experience(
     session: AsyncSession, user_id: str, payload: ExperienceCreate
 ) -> Tuple[MasterExperience, ExperienceVersion]:
-    async with session.begin():
-        master = MasterExperience(user_id=user_id, category=payload.category)
-        session.add(master)
-        await session.flush()
+    master = MasterExperience(user_id=user_id, category=payload.category)
+    session.add(master)
+    await session.flush()
 
-        version = _build_version(master.id, 1, payload.version)
-        session.add(version)
-        await session.flush()
+    version = _build_version(master.id, 1, payload.version)
+    session.add(version)
+    await session.flush()
 
-        master.latest_version_id = version.id
-        master.updated_at = utc_now()
-        session.add(master)
+    master.latest_version_id = version.id
+    master.updated_at = utc_now()
+    session.add(master)
+    await session.commit()
 
     await session.refresh(master)
     await session.refresh(version)
@@ -108,25 +108,25 @@ async def update_experience(
     session: AsyncSession, user_id: str, master_id: str, payload: ExperienceUpdate
 ) -> Tuple[MasterExperience, Optional[ExperienceVersion]]:
     version: Optional[ExperienceVersion] = None
-    async with session.begin():
-        master = await _get_master(session, user_id, master_id)
-        is_master_updated = False
-        if payload.category is not None:
-            master.category = payload.category
-            is_master_updated = True
-        if payload.is_archived is not None:
-            master.is_archived = payload.is_archived
-            is_master_updated = True
-        if payload.version is not None:
-            next_version = await _next_version_number(session, master.id)
-            version = _build_version(master.id, next_version, payload.version)
-            session.add(version)
-            await session.flush()
-            master.latest_version_id = version.id
-            is_master_updated = True
-        if is_master_updated:
-            master.updated_at = utc_now()
-            session.add(master)
+    master = await _get_master(session, user_id, master_id)
+    is_master_updated = False
+    if payload.category is not None:
+        master.category = payload.category
+        is_master_updated = True
+    if payload.is_archived is not None:
+        master.is_archived = payload.is_archived
+        is_master_updated = True
+    if payload.version is not None:
+        next_version = await _next_version_number(session, master.id)
+        version = _build_version(master.id, next_version, payload.version)
+        session.add(version)
+        await session.flush()
+        master.latest_version_id = version.id
+        is_master_updated = True
+    if is_master_updated:
+        master.updated_at = utc_now()
+        session.add(master)
+    await session.commit()
 
     await session.refresh(master)
     if version:
@@ -149,26 +149,26 @@ async def archive_experience(
 async def _get_master(
     session: AsyncSession, user_id: str, master_id: str
 ) -> MasterExperience:
-    result = await session.exec(
+    result = await session.execute(
         select(MasterExperience).where(
             MasterExperience.id == master_id,
             MasterExperience.user_id == user_id,
         )
     )
-    master = result.first()
+    master = result.scalars().first()
     if not master:
         raise NotFoundError("Master experience not found")
     return master
 
 
 async def _next_version_number(session: AsyncSession, master_id: str) -> int:
-    result = await session.exec(
+    result = await session.execute(
         select(ExperienceVersion.version)
         .where(ExperienceVersion.master_experience_id == master_id)
         .order_by(desc(ExperienceVersion.version))
         .limit(1)
     )
-    current = result.first()
+    current = result.scalars().first()
     return (current or 0) + 1
 
 

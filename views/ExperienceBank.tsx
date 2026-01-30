@@ -1,8 +1,58 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { aiService } from '../services/aiService';
-import { profileService } from '../services/profileService';
+import { Profile, profileService } from '../services/profileService';
 import { Certification } from '../types';
+
+const LINKEDIN_LABEL = "linkedin";
+
+type SocialLinkValue = string | { url?: string; position?: number } | null | undefined;
+
+const extractSocialLinkUrl = (value: SocialLinkValue): string => {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object" && typeof value.url === "string") {
+    return value.url;
+  }
+  return "";
+};
+
+const resolveLinkedInLink = (profile: Profile): string => {
+  const fromSocialLinks = extractSocialLinkUrl(profile.social_links?.[LINKEDIN_LABEL]);
+  if (fromSocialLinks) {
+    return fromSocialLinks;
+  }
+  const matched = (profile.links || []).find((item) => item.label === LINKEDIN_LABEL);
+  return matched?.url || "";
+};
+
+const mergeLinkedInLink = (
+  socialLinks: Record<string, any> | undefined,
+  link: string
+): Record<string, any> => {
+  const nextLinks = { ...(socialLinks || {}) };
+  const trimmedLink = link.trim();
+  if (!trimmedLink) {
+    delete nextLinks[LINKEDIN_LABEL];
+    return nextLinks;
+  }
+  const existing = nextLinks[LINKEDIN_LABEL] as SocialLinkValue;
+  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+    const position = typeof existing.position === "number" ? existing.position : 0;
+    nextLinks[LINKEDIN_LABEL] = {
+      ...existing,
+      url: trimmedLink,
+      position,
+    };
+    return nextLinks;
+  }
+  nextLinks[LINKEDIN_LABEL] = trimmedLink;
+  return nextLinks;
+};
 
 const ExperienceBank: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -24,6 +74,7 @@ const ExperienceBank: React.FC = () => {
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [link, setLink] = useState("");
+  const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
 
   // 加载个人资料
   useEffect(() => {
@@ -36,8 +87,9 @@ const ExperienceBank: React.FC = () => {
         setPhone(profile.phone || "");
         setLocation(profile.location || "");
         // 从social_links中提取LinkedIn链接
-        const loadedLink = profile.social_links?.linkedin || "";
+        const loadedLink = resolveLinkedInLink(profile);
         setLink(loadedLink);
+        setProfileSocialLinks({ ...(profile.social_links || {}) });
         setOriginalProfile({
           name: profile.full_name || "",
           email: profile.email || "",
@@ -83,13 +135,15 @@ const ExperienceBank: React.FC = () => {
   const handleSaveProfile = async () => {
     try {
       setIsSavingProfile(true);
+      const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, link);
       await profileService.updateProfile({
         full_name: name,
         email,
         phone,
         location,
-        social_links: link ? { linkedin: link } : {},
+        social_links: nextSocialLinks,
       });
+      setProfileSocialLinks(nextSocialLinks);
       setIsEditingProfile(false);
       // TODO: 显示成功提示
     } catch (error) {

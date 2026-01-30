@@ -19,7 +19,7 @@ async def list_user_skills(session: AsyncSession, user_id: str) -> List[tuple]:
         .join(Skill, UserSkill.skill_id == Skill.id)
         .where(UserSkill.user_id == user_id)
     )
-    result = await session.exec(query)
+    result = await session.execute(query)
     return list(result.all())
 
 
@@ -30,8 +30,8 @@ async def _get_or_create_skill(
     query = select(Skill).where(Skill.name == name)
     if category is not None:
         query = query.where(Skill.category == category)
-    result = await session.exec(query)
-    skill = result.one_or_none()
+    result = await session.execute(query)
+    skill = result.scalars().one_or_none()
     if not skill:
         skill = Skill(name=name, category=category)
         session.add(skill)
@@ -63,7 +63,7 @@ async def get_user_skill(
         .join(Skill, UserSkill.skill_id == Skill.id)
         .where(UserSkill.id == user_skill_id, UserSkill.user_id == user_id)
     )
-    result = await session.exec(query)
+    result = await session.execute(query)
     row = result.one_or_none()
     if not row:
         raise NotFoundError(f"UserSkill {user_skill_id} not found")

@@ -9,8 +9,15 @@ export interface Profile {
     phone?: string;
     email?: string;
     social_links?: Record<string, any>;
+    links?: ProfileLink[];
     extra_json?: Record<string, any>;
     updated_at: string;
+}
+
+export interface ProfileLink {
+    label: string;
+    url: string;
+    position?: number;
 }
 
 export interface ProfileUpdate {
@@ -22,16 +29,58 @@ export interface ProfileUpdate {
     email?: string;
     social_links?: Record<string, any>;
     extra_json?: Record<string, any>;
+    links?: ProfileLink[];
 }
 
+// 缓存 + in-flight 去重，避免视图频繁挂载导致 /profile 请求风暴
+let cachedProfile: Profile | null = null;
+let inFlightProfileRequest: Promise<Profile> | null = null;
+let cacheRevision = 0;
+
+const requestProfile = async (): Promise<Profile> => {
+    const response = await apiClient.get<Profile>('/profile');
+    return response.data;
+};
+
 export const profileService = {
-    async getProfile() {
-        const response = await apiClient.get<Profile>('/profile');
-        return response.data;
+    async getProfile(options?: { force?: boolean }) {
+        const shouldUseCache = !options?.force;
+        if (shouldUseCache && cachedProfile) {
+            return cachedProfile;
+        }
+        if (inFlightProfileRequest) {
+            return inFlightProfileRequest;
+        }
+        const requestRevision = cacheRevision;
+        const requestPromise = requestProfile();
+        const guardedPromise = (async () => {
+            const data = await requestPromise;
+            if (cacheRevision === requestRevision) {
+                cachedProfile = data;
+                return data;
+            }
+            return cachedProfile ?? data;
+        })();
+        inFlightProfileRequest = guardedPromise;
+        try {
+            return await guardedPromise;
+        } finally {
+            if (inFlightProfileRequest === guardedPromise) {
+                inFlightProfileRequest = null;
+            }
+        }
     },
 
     async updateProfile(data: ProfileUpdate) {
         const response = await apiClient.patch<Profile>('/profile', data);
+        cacheRevision += 1;
+        cachedProfile = response.data;
         return response.data;
+    },
+
+    clearProfileCache() {
+        cacheRevision += 1;
+        cachedProfile = null;
+        inFlightProfileRequest = null;
     },
 };

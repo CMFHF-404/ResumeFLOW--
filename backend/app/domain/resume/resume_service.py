@@ -32,14 +32,14 @@ OP_REQUIREMENTS = {
 async def list_resumes(
     session: AsyncSession, user_id: str, limit: int, offset: int
 ) -> List[Resume]:
-    result = await session.exec(
+    result = await session.execute(
         select(Resume)
         .where(Resume.user_id == user_id)
         .order_by(desc(Resume.updated_at))
         .limit(limit)
         .offset(offset)
     )
-    return list(result.all())
+    return list(result.scalars().all())
 
 
 async def create_resume(
@@ -81,12 +81,12 @@ async def update_assembly(
         "override": _handle_override,
     }
 
-    async with session.begin():
-        for op in ops:
-            handler = handlers[op["op"]]
-            await handler(session, user_id, resume, op)
-        resume.updated_at = utc_now()
-        session.add(resume)
+    for op in ops:
+        handler = handlers[op["op"]]
+        await handler(session, user_id, resume, op)
+    resume.updated_at = utc_now()
+    session.add(resume)
+    await session.commit()
 
     await session.refresh(resume)
     return resume
@@ -95,7 +95,7 @@ async def update_assembly(
 async def _list_resume_experiences(
     session: AsyncSession, resume_id: str
 ) -> List[Tuple[ResumeExperienceLink, ExperienceVersion]]:
-    result = await session.exec(
+    result = await session.execute(
         select(ResumeExperienceLink, ExperienceVersion)
         .join(
             ExperienceVersion,
@@ -166,10 +166,10 @@ def _validate_ops(operations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 async def _get_resume(
     session: AsyncSession, user_id: str, resume_id: str
 ) -> Resume:
-    result = await session.exec(
+    result = await session.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
     )
-    resume = result.first()
+    resume = result.scalars().first()
     if not resume:
         raise NotFoundError("Resume not found")
     return resume
@@ -178,26 +178,26 @@ async def _get_resume(
 async def _get_link(
     session: AsyncSession, resume_id: str, link_id: str
 ) -> ResumeExperienceLink:
-    result = await session.exec(
+    result = await session.execute(
         select(ResumeExperienceLink).where(
             ResumeExperienceLink.id == link_id,
             ResumeExperienceLink.resume_id == resume_id,
         )
     )
-    link = result.first()
+    link = result.scalars().first()
     if not link:
         raise NotFoundError("Resume experience not found")
     return link
 
 
 async def _next_display_order(session: AsyncSession, resume_id: str) -> int:
-    result = await session.exec(
+    result = await session.execute(
         select(ResumeExperienceLink.display_order)
         .where(ResumeExperienceLink.resume_id == resume_id)
         .order_by(desc(ResumeExperienceLink.display_order))
         .limit(1)
     )
-    current = result.first()
+    current = result.scalars().first()
     return (current if current is not None else -1) + 1
 
 

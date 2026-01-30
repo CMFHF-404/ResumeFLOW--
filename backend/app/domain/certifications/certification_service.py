@@ -17,12 +17,12 @@ async def list_certifications(
     session: AsyncSession, user_id: str
 ) -> List[Certification]:
     """获取用户的证书列表"""
-    result = await session.exec(
+    result = await session.execute(
         select(Certification)
         .where(Certification.user_id == user_id)
         .order_by(Certification.issue_date.desc())
     )
-    return list(result.all())
+    return list(result.scalars().all())
 
 
 async def create_certification(
@@ -40,12 +40,12 @@ async def get_certification(
     session: AsyncSession, user_id: str, cert_id: UUID
 ) -> Certification:
     """获取单个证书详情"""
-    result = await session.exec(
+    result = await session.execute(
         select(Certification).where(
             Certification.id == cert_id, Certification.user_id == user_id
         )
     )
-    cert = result.one_or_none()
+    cert = result.scalars().one_or_none()
     if not cert:
         raise NotFoundError(f"Certification {cert_id} not found")
     return cert

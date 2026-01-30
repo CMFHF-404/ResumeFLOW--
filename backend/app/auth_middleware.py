@@ -115,7 +115,7 @@ async def _ensure_user_exists(user_id: str) -> None:
         stmt = pg_insert(User).values(id=user_id).on_conflict_do_nothing(
             index_elements=[User.id]
         )
-        await session.exec(stmt)
+        await session.execute(stmt)
         await session.commit()
 
 

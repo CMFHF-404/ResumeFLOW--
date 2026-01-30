@@ -50,23 +50,23 @@ async def update_profile(
 
 
 async def _fetch_profile(session: AsyncSession, user_id: str) -> Optional[Profile]:
-    result = await session.exec(select(Profile).where(Profile.user_id == user_id))
-    return result.first()
+    result = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    return result.scalars().first()
 
 
 async def _fetch_profile_links(
     session: AsyncSession, user_id: str
 ) -> List[ProfileLink]:
-    result = await session.exec(
+    result = await session.execute(
         select(ProfileLink)
         .where(ProfileLink.user_id == user_id)
         .order_by(ProfileLink.position)
     )
-    return list(result.all())
+    return list(result.scalars().all())
 
 
 async def _clear_profile_links(session: AsyncSession, user_id: str) -> None:
-    await session.exec(delete(ProfileLink).where(ProfileLink.user_id == user_id))
+    await session.execute(delete(ProfileLink).where(ProfileLink.user_id == user_id))
 
 
 def _build_social_links(links: List[ProfileLink]) -> Dict[str, Any]:
@@ -107,10 +107,10 @@ async def _hydrate_social_links(session: AsyncSession, profile: Profile) -> Prof
 
 async def _create_profile(session: AsyncSession, user_id: str) -> Profile:
     try:
-        async with session.begin():
-            await _ensure_user(session, user_id)
-            profile = Profile(user_id=user_id)
-            session.add(profile)
+        await _ensure_user(session, user_id)
+        profile = Profile(user_id=user_id)
+        session.add(profile)
+        await session.commit()
     except IntegrityError:
         await session.rollback()
         profile = await _fetch_profile(session, user_id)
@@ -123,7 +123,7 @@ async def _create_profile(session: AsyncSession, user_id: str) -> Profile:
 
 
 async def _ensure_user(session: AsyncSession, user_id: str) -> None:
-    result = await session.exec(select(User).where(User.id == user_id))
-    if result.first():
+    result = await session.execute(select(User).where(User.id == user_id))
+    if result.scalars().first():
         return
     session.add(User(id=user_id))
