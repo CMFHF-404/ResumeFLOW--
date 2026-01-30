@@ -19,8 +19,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
     return `${baseClass} text-slate-400 hover:text-white hover:bg-slate-800`;
   };
 
-  const handleSignOut = () => {
-    signOut(window.location.origin);
+  const handleSignOut = async () => {
+    // 使用无参数的signOut,避免post_logout_redirect_uri未注册的错误
+    await signOut();
   };
 
   return (

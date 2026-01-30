@@ -97,8 +97,8 @@ apiClient.interceptors.request.use(
     async (config) => {
         const token = getLogtoAccessToken();
         if (token) {
-            config.headers = config.headers ?? {};
-            config.headers.Authorization = `Bearer ${token}`;
+            // 使用 Axios headers API 设置 Authorization header
+            config.headers.set('Authorization', `Bearer ${token}`);
         }
 
         return config;
