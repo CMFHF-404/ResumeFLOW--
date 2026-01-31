@@ -8,6 +8,16 @@ import ResumeEditor from './views/ResumeEditor';
 import Callback from './views/Callback';
 import { ViewState, Resume } from './types';
 
+const VIEW_STORAGE_KEY = 'resumeFlow.currentView';
+
+const resolveStoredView = (value: string | null): ViewState | null => {
+  if (!value) {
+    return null;
+  }
+  const validViews = new Set(Object.values(ViewState));
+  return validViews.has(value as ViewState) ? (value as ViewState) : null;
+};
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
 
@@ -17,11 +27,11 @@ const App: React.FC = () => {
   // 经历库数据缓存，存储个人资料、工作经历、教育背景等
   const [profileCache, setProfileCache] = useState<any>(null);
 
-  // 检测是否是callback路由
+  // 恢复上次停留的视图
   useEffect(() => {
-    if (window.location.pathname === '/callback') {
-      // callback页面不需要渲染主应用
-      return;
+    const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
+    if (storedView) {
+      setCurrentView(storedView);
     }
   }, []);
 
@@ -30,8 +40,14 @@ const App: React.FC = () => {
     return <Callback />;
   }
 
+  const handleSetView = useCallback((view: ViewState) => {
+    setCurrentView(view);
+    localStorage.setItem(VIEW_STORAGE_KEY, view);
+  }, []);
+
   const handleResetView = useCallback(() => {
     setCurrentView(ViewState.DASHBOARD);
+    localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
 
   // 处理简历数据更新的回调
@@ -49,20 +65,20 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case ViewState.DASHBOARD:
-        return <Dashboard setView={setCurrentView} cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
+        return <Dashboard setView={handleSetView} cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
       case ViewState.EXPERIENCE_BANK:
         return <ExperienceBank cachedProfile={profileCache} onProfileUpdate={handleProfileUpdate} />;
       case ViewState.EDITOR:
         return <ResumeEditor />;
       default:
-        return <Dashboard setView={setCurrentView} cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
+        return <Dashboard setView={handleSetView} cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
     }
   };
 
   return (
     <AuthGuard>
       <div className="flex w-full h-screen">
-        <GlobalSidebar currentView={currentView} setView={setCurrentView} />
+        <GlobalSidebar currentView={currentView} setView={handleSetView} />
         <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
           {renderView()}
         </ViewErrorBoundary>

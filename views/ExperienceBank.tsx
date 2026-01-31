@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
 import { experienceService, ExperienceListItem } from '../services/experienceService';
+import { ToastContainer, useToast } from '../components/Toast';
 import { Certification } from '../types';
 
 const LINKEDIN_LABEL = "linkedin";
+const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 
 type SocialLinkValue = string | { url?: string; position?: number } | null | undefined;
 
@@ -18,6 +20,40 @@ const buildWorkCardData = (item: ExperienceListItem) => ({
 });
 
 const cloneWorkCardData = (data: any) => JSON.parse(JSON.stringify(data));
+
+/**
+ * 将日期字符串从前端格式（YYYY.MM 或 YYYY-MM）转换为后端期望的 ISO 日期格式（YYYY-MM-DD）
+ * @param dateStr 日期字符串，例如 "2017.09" 或 "2017-09"
+ * @returns ISO 格式的日期字符串，例如 "2017-09-01"，如果为空则返回 undefined
+ */
+const convertDateToISO = (dateStr: string | undefined): string | undefined => {
+  if (!dateStr || !dateStr.trim()) {
+    return undefined;
+  }
+
+  const trimmed = dateStr.trim();
+
+  // 如果已经是 YYYY-MM-DD 格式，直接返回
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // 将 YYYY.MM 或 YYYY-MM 格式转换为 YYYY-MM-DD
+  const parts = trimmed.split(/[.\-]/);
+  if (parts.length >= 2) {
+    const year = parts[0].padStart(4, '0');
+    const month = parts[1].padStart(2, '0');
+    // 默认使用每月的第一天
+    return `${year}-${month}-01`;
+  }
+
+  // 如果只有年份
+  if (parts.length === 1 && parts[0].length === 4) {
+    return `${parts[0]}-01-01`;
+  }
+
+  return undefined;
+};
 
 const extractSocialLinkUrl = (value: SocialLinkValue): string => {
   if (!value) {
@@ -94,14 +130,41 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
   // 请求防抖：使用 ref 追踪请求状态
   const isLoadingProfileRef = useRef(false);
+  const hasHydratedProfileRef = useRef(false);
 
   // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
   const onProfileUpdateRef = useRef(onProfileUpdate);
+
+  const applyProfileSnapshot = useCallback((profile: Profile) => {
+    const resolvedLink = resolveLinkedInLink(profile);
+    setName(profile.full_name || "");
+    setEmail(profile.email || "");
+    setPhone(profile.phone || "");
+    setLocation(profile.location || "");
+    setLink(resolvedLink);
+    setProfileSocialLinks({ ...(profile.social_links || {}) });
+    setOriginalProfile({
+      name: profile.full_name || "",
+      email: profile.email || "",
+      phone: profile.phone || "",
+      location: profile.location || "",
+      link: resolvedLink,
+    });
+  }, []);
 
   // 同步最新的回调函数到 ref
   useEffect(() => {
     onProfileUpdateRef.current = onProfileUpdate;
   }, [onProfileUpdate]);
+
+  useEffect(() => {
+    if (!cachedProfile) {
+      return;
+    }
+    applyProfileSnapshot(cachedProfile);
+    hasHydratedProfileRef.current = true;
+    setIsLoadingProfile(false);
+  }, [cachedProfile, applyProfileSnapshot]);
 
   // 加载个人资料
   useEffect(() => {
@@ -114,27 +177,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
       try {
         isLoadingProfileRef.current = true;
-        setIsLoadingProfile(true);
+        if (!hasHydratedProfileRef.current) {
+          setIsLoadingProfile(true);
+        }
         console.log('[ExperienceBank] 开始加载个人资料...');
 
         // profileService 已有内置缓存机制，会自动处理缓存
         const profile = await profileService.getProfile();
 
-        setName(profile.full_name || "");
-        setEmail(profile.email || "");
-        setPhone(profile.phone || "");
-        setLocation(profile.location || "");
-        // 从social_links中提取LinkedIn链接
-        const loadedLink = resolveLinkedInLink(profile);
-        setLink(loadedLink);
-        setProfileSocialLinks({ ...(profile.social_links || {}) });
-        setOriginalProfile({
-          name: profile.full_name || "",
-          email: profile.email || "",
-          phone: profile.phone || "",
-          location: profile.location || "",
-          link: loadedLink
-        });
+        applyProfileSnapshot(profile);
+        hasHydratedProfileRef.current = true;
 
         console.log('[ExperienceBank] 加载成功');
 
@@ -149,7 +201,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         // 延迟重置请求状态
         setTimeout(() => {
           isLoadingProfileRef.current = false;
-        }, 300);
+        }, PROFILE_REQUEST_RESET_DELAY_MS);
       }
     };
 
@@ -160,7 +212,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   useEffect(() => {
     const loadWorkExperiences = async () => {
       try {
-        setIsLoadingWork(true);
+        if (!initialWorkExperiencesRef.current?.length) {
+          setIsLoadingWork(true);
+        }
         console.log('[ExperienceBank] 开始加载工作经历...');
         const data = await experienceService.list('work');
         setWorkExperiences(data);
@@ -224,15 +278,26 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
 
 
+  // Toast 状态管理
+  const { toasts, success, error, loading, updateToast, closeToast } = useToast();
+
   // Work Experience State
-  const [workExperiences, setWorkExperiences] = useState<ExperienceListItem[]>([]);
-  const [isLoadingWork, setIsLoadingWork] = useState(true);
+  const initialWorkExperiencesRef = useRef<ExperienceListItem[] | null>(
+    experienceService.peekList('work')
+  );
+  const [workExperiences, setWorkExperiences] = useState<ExperienceListItem[]>(
+    () => initialWorkExperiencesRef.current ?? []
+  );
+  const [isLoadingWork, setIsLoadingWork] = useState(
+    () => !initialWorkExperiencesRef.current
+  );
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [modifiedCards, setModifiedCards] = useState<Set<string>>(new Set());
   const [cardData, setCardData] = useState<Map<string, any>>(new Map());
   const [originalCardData, setOriginalCardData] = useState<Map<string, any>>(new Map());
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
+  const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
   // Skills State
   const [skills, setSkills] = useState(["Product Management", "Figma", "SQL", "Python Analysis", "Axure RP", "Jira/Confluence"]);
@@ -355,7 +420,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // 更新卡片字段值
   const updateCardField = (cardId: string, field: string, value: any) => {
     const newData = new Map(cardData);
-    const current = newData.get(cardId) || {};
+    const current: any = newData.get(cardId) || {};
 
     if (field.startsWith('star.')) {
       const starField = field.split('.')[1];
@@ -381,28 +446,82 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
   // 保存卡片
   const handleSaveCard = async (cardId: string) => {
+    let toastId: string | null = null;
     try {
       const data = cardData.get(cardId);
       if (!data) return;
 
-      await experienceService.update(cardId, { version: data });
+      // 验证必填字段
+      if (!data.title || !data.title.trim()) {
+        error('职位名称不能为空');
+        return;
+      }
 
-      // 更新成功后刷新列表
-      const updated = await experienceService.list('work', { force: true });
-      setWorkExperiences(updated);
+      // 设置保存中状态，防止重复点击
+      setSavingCardId(cardId);
 
-      // 更新原始数据
+      // 显示加载 Toast
+      toastId = loading('正在保存工作经历...');
+
+      // 转换数据格式以符合后端验证要求
+      const versionPayload = {
+        title: data.title,
+        org: data.org || undefined,
+        start_date: convertDateToISO(data.start_date),
+        end_date: convertDateToISO(data.end_date),
+        star: data.star || {},
+      };
+
+      // 发送保存请求
+      await experienceService.update(cardId, { version: versionPayload });
+
+      // 更新原始数据，清除修改标记
       setOriginalCardData(new Map(originalCardData).set(cardId, cloneWorkCardData(data)));
-
-      // 清除修改标记
       const newModified = new Set(modifiedCards);
       newModified.delete(cardId);
       setModifiedCards(newModified);
 
+      // 手动更新列表视图（乐观更新），确保不刷新的情况下看到变化
+      setWorkExperiences((prev) => prev.map((item) => {
+        if (item.master.id === cardId) {
+          return {
+            ...item,
+            latest_version: {
+              ...(item.latest_version || {}),
+              title: versionPayload.title,
+              org: versionPayload.org,
+              start_date: versionPayload.start_date,
+              end_date: versionPayload.end_date,
+              star: versionPayload.star
+            } as any
+          };
+        }
+        return item;
+      }));
+
+      // 后台静默刷新列表
+      experienceService.list('work', { force: true }).then((updated) => {
+        setWorkExperiences(updated);
+      }).catch((err) => {
+        console.error('[ExperienceBank] 刷新列表失败:', err);
+      });
+
+      // 更新 Toast 为成功状态
+      if (toastId) {
+        updateToast(toastId, { message: '工作经历保存成功', type: 'success', duration: 3000 });
+      }
       console.log('[ExperienceBank] 工作经历保存成功');
-    } catch (error) {
-      console.error('Failed to save work experience:', error);
-      // TODO: 显示错误提示
+    } catch (err) {
+      console.error('Failed to save work experience:', err);
+      // 更新 Toast 为失败状态
+      if (toastId) {
+        updateToast(toastId, { message: '保存失败，请重试', type: 'error', duration: 3000 });
+      } else {
+        error('保存失败，请重试');
+      }
+    } finally {
+      // 清除保存中状态
+      setSavingCardId(null);
     }
   };
 
@@ -419,12 +538,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
   // 删除卡片
   const handleDeleteCard = async (cardId: string) => {
+    let toastId: string | null = null;
     try {
-      await experienceService.delete(cardId);
+      // 先关闭确认对话框
+      setDeletingCardId(null);
+      toastId = loading('正在删除工作经历...');
 
-      // 刷新列表
-      const updated = await experienceService.list('work', { force: true });
-      setWorkExperiences(updated);
+      // 立即从 UI 中移除（乐观更新）
+      setWorkExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
 
       // 清理状态
       const newExpanded = new Set(expandedCards);
@@ -439,17 +560,43 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       newOriginal.delete(cardId);
       setOriginalCardData(newOriginal);
 
-      setDeletingCardId(null);
+      const newModified = new Set(modifiedCards);
+      newModified.delete(cardId);
+      setModifiedCards(newModified);
+
+      // 发送删除请求
+      await experienceService.delete(cardId);
+
+      // 后台静默刷新列表以确保数据一致
+      experienceService.list('work', { force: true }).then((updated) => {
+        setWorkExperiences(updated);
+      }).catch((err) => {
+        console.error('[ExperienceBank] 刷新列表失败:', err);
+      });
+
+      // 显示成功提示
+      if (toastId) updateToast(toastId, { message: '工作经历删除成功', type: 'success', duration: 3000 });
+      else success('工作经历删除成功');
       console.log('[ExperienceBank] 工作经历删除成功');
-    } catch (error) {
-      console.error('Failed to delete work experience:', error);
-      // TODO: 显示错误提示
+    } catch (err) {
+      console.error('Failed to delete work experience:', err);
+      if (toastId) updateToast(toastId, { message: '删除失败，请重试', type: 'error', duration: 3000 });
+      else error('删除失败，请重试');
+
+      // 删除失败时，重新加载列表恢复数据
+      experienceService.list('work', { force: true }).then((updated) => {
+        setWorkExperiences(updated);
+      }).catch((err2) => {
+        console.error('[ExperienceBank] 恢复列表失败:', err2);
+      });
     }
   };
 
   // 新增工作经历
   const handleAddNewWork = async () => {
+    let toastId: string | null = null;
     try {
+      toastId = loading('正在创建工作经历...');
       const newWork = await experienceService.create({
         category: 'work',
         version: {
@@ -460,7 +607,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         }
       });
 
+      // 构建新卡片数据
       const initialData = buildWorkCardData(newWork);
+
+      // 乐观更新：立即将新卡片添加到列表（不等待刷新）
+      setWorkExperiences((prev) => [newWork, ...prev]);
+
+      // 更新卡片状态
       setCardData((prev) => new Map(prev).set(newWork.master.id, initialData));
       setOriginalCardData((prev) => new Map(prev).set(newWork.master.id, cloneWorkCardData(initialData)));
       setExpandedCards((prev) => {
@@ -474,12 +627,21 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         return next;
       });
 
-      // 刷新列表
-      const updated = await experienceService.list('work', { force: true });
-      setWorkExperiences(updated);
-    } catch (error) {
-      console.error('Failed to create work experience:', error);
-      // TODO: 显示错误提示
+      // 显示成功提示
+      if (toastId) updateToast(toastId, { message: '工作经历创建成功', type: 'success', duration: 3000 });
+      else success('工作经历创建成功');
+
+      // 后台静默刷新列表以确保数据一致（不阻塞UI）
+      experienceService.list('work', { force: true }).then((updated) => {
+        setWorkExperiences(updated);
+      }).catch((err) => {
+        console.error('[ExperienceBank] 刷新列表失败:', err);
+      });
+
+    } catch (err) {
+      console.error('Failed to create work experience:', err);
+      if (toastId) updateToast(toastId, { message: '创建失败，请重试', type: 'error', duration: 3000 });
+      else error('创建工作经历失败，请重试');
     }
   };
 
@@ -732,9 +894,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             {/* 工作经历卡片列表 */}
             {workExperiences.map((item) => {
               const cardId = item.master.id;
-    const isExpanded = expandedCards.has(cardId);
-    const isModified = modifiedCards.has(cardId);
-    const data = cardData.get(cardId) || buildWorkCardData(item);
+              const isExpanded = expandedCards.has(cardId);
+              const isModified = modifiedCards.has(cardId);
+              const data = cardData.get(cardId) || buildWorkCardData(item);
 
               return (
                 <div key={cardId} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
@@ -870,14 +1032,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                               <button
                                 onClick={() => handleCancelCard(cardId)}
                                 className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                disabled={savingCardId === cardId}
                               >
                                 取消
                               </button>
                               <button
                                 onClick={() => handleSaveCard(cardId)}
-                                className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark px-6 py-2 rounded-lg transition-colors shadow-sm shadow-primary/20"
+                                className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark px-6 py-2 rounded-lg transition-colors shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={savingCardId === cardId}
                               >
-                                保存
+                                {savingCardId === cardId ? '保存中...' : '保存'}
                               </button>
                             </>
                           ) : (
@@ -1255,6 +1419,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
         </div>
       </main>
+
+      {/* Toast 提示容器 */}
+      <ToastContainer toasts={toasts} onClose={closeToast} />
     </div>
   );
 };

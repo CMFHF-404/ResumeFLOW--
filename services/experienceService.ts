@@ -97,7 +97,27 @@ const clearExperienceListCache = () => {
     experienceListInFlight.clear();
 };
 
+const filterArchivedExperiences = (items: ExperienceListItem[]): ExperienceListItem[] => {
+    return items.filter((item) => !item.master.is_archived);
+};
+
+const getCachedExperienceList = (category?: ExperienceCategory): ExperienceListItem[] | null => {
+    const cacheKey = buildExperienceListCacheKey(category);
+    const cached = experienceListCache.get(cacheKey);
+    if (!cached) {
+        return null;
+    }
+    if (!isExperienceListCacheFresh(cached, Date.now())) {
+        return null;
+    }
+    return filterArchivedExperiences(cached.data);
+};
+
 export const experienceService = {
+    peekList(category?: ExperienceCategory) {
+        return getCachedExperienceList(category);
+    },
+
     async list(category?: ExperienceCategory, options?: ExperienceListOptions) {
         const cacheKey = buildExperienceListCacheKey(category);
         const now = Date.now();
@@ -107,7 +127,7 @@ export const experienceService = {
         if (shouldUseCache) {
             const cached = experienceListCache.get(cacheKey);
             if (cached && isExperienceListCacheFresh(cached, now)) {
-                return cached.data;
+                return filterArchivedExperiences(cached.data);
             }
             const inFlight = experienceListInFlight.get(cacheKey);
             if (inFlight) {
@@ -119,7 +139,7 @@ export const experienceService = {
             .get<ExperienceListItem[]>('/experiences', {
                 params: category ? { category } : {},
             })
-            .then((response) => response.data);
+            .then((response) => filterArchivedExperiences(response.data));
 
         experienceListInFlight.set(cacheKey, requestPromise);
 

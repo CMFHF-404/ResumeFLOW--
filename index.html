@@ -102,6 +102,21 @@
             border-style: solid;
             border-color: transparent #111827 transparent transparent;
         }
+        
+        /* Toast 动画 */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-slideIn {
+            animation: slideIn 0.3s ease-out;
+        }
     </style>
     <script>
         tailwind.config = {
