@@ -3,13 +3,70 @@ import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, 
 import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
 import { experienceService, ExperienceListItem } from '../services/experienceService';
+import { skillsService, UserSkill } from '../services/skillsService';
+import { certificationsService, Certification as CertificationRecord, CertificationUpdatePayload } from '../services/certificationsService';
 import { ToastContainer, useToast } from '../components/Toast';
-import { Certification } from '../types';
 
 const LINKEDIN_LABEL = "linkedin";
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
+const EDUCATION_DEFAULT_ORG = "新学校";
+const EDUCATION_DEFAULT_TITLE = "新专业";
+const CERT_DEFAULT_NAME = "新证书";
+const CERT_DEFAULT_ISSUER = "颁发机构";
+// 用于在 description 中保存匹配度，避免破坏后端结构
+const CERT_META_PREFIX = "__rf_cert_meta__:";
+
+const EDU_TOAST_MESSAGES = {
+  createLoading: "正在创建教育经历...",
+  createSuccess: "教育经历创建成功",
+  createError: "创建教育经历失败，请重试",
+  saveLoading: "正在保存教育经历...",
+  saveSuccess: "教育经历保存成功",
+  saveError: "保存失败，请重试",
+  deleteLoading: "正在删除教育经历...",
+  deleteSuccess: "教育经历删除成功",
+  deleteError: "删除失败，请重试",
+};
+
+const SKILL_TOAST_MESSAGES = {
+  createLoading: "正在添加技能...",
+  createSuccess: "技能添加成功",
+  createError: "添加技能失败，请重试",
+  deleteLoading: "正在删除技能...",
+  deleteSuccess: "技能删除成功",
+  deleteError: "删除失败，请重试",
+};
+
+const CERT_TOAST_MESSAGES = {
+  createLoading: "正在创建证书...",
+  createSuccess: "证书创建成功",
+  createError: "创建证书失败，请重试",
+  saveLoading: "正在保存证书...",
+  saveSuccess: "证书保存成功",
+  saveError: "保存失败，请重试",
+  deleteLoading: "正在删除证书...",
+  deleteSuccess: "证书删除成功",
+  deleteError: "删除失败，请重试",
+};
 
 type SocialLinkValue = string | { url?: string; position?: number } | null | undefined;
+
+type EduCardData = {
+  school: string;
+  major: string;
+  degree: string;
+  startDate: string;
+  endDate: string;
+  gpa: string;
+  courses: string;
+};
+
+type CertificationCardData = {
+  name: string;
+  issuer: string;
+  date: string;
+  matchRate: number;
+};
 
 const buildWorkCardData = (item: ExperienceListItem) => ({
   org: item.latest_version?.org || "",
@@ -20,6 +77,123 @@ const buildWorkCardData = (item: ExperienceListItem) => ({
 });
 
 const cloneWorkCardData = (data: any) => JSON.parse(JSON.stringify(data));
+
+const createEmptyEduCardData = (): EduCardData => ({
+  school: "",
+  major: "",
+  degree: "",
+  startDate: "",
+  endDate: "",
+  gpa: "",
+  courses: "",
+});
+
+const resolveStarText = (star: Record<string, any> | undefined, key: string): string => {
+  if (!star) {
+    return "";
+  }
+  const value = star[key];
+  if (Array.isArray(value)) {
+    return value.join("、");
+  }
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value);
+};
+
+const buildEduCardData = (item: ExperienceListItem): EduCardData => {
+  const latest = item.latest_version;
+  const star = latest?.star || {};
+  return {
+    school: latest?.org || "",
+    major: latest?.title || "",
+    degree: resolveStarText(star, "degree"),
+    startDate: latest?.start_date || "",
+    endDate: latest?.end_date || "",
+    gpa: resolveStarText(star, "gpa"),
+    courses: resolveStarText(star, "courses"),
+  };
+};
+
+const cloneEduCardData = (data: EduCardData) => JSON.parse(JSON.stringify(data));
+
+const buildEduStarPayload = (data: EduCardData): Record<string, any> => {
+  const star: Record<string, any> = {};
+  const degree = data.degree.trim();
+  const gpa = data.gpa.trim();
+  const courses = data.courses.trim();
+  if (degree) {
+    star.degree = degree;
+  }
+  if (gpa) {
+    star.gpa = gpa;
+  }
+  if (courses) {
+    star.courses = courses;
+  }
+  return star;
+};
+
+const parseCertificationMatchRate = (description?: string): number => {
+  if (!description || !description.startsWith(CERT_META_PREFIX)) {
+    return 0;
+  }
+  try {
+    const raw = description.slice(CERT_META_PREFIX.length);
+    const parsed = JSON.parse(raw);
+    const value = Number(parsed?.matchRate);
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, Math.round(value)));
+  } catch {
+    return 0;
+  }
+};
+
+const buildCertificationMetaDescription = (matchRate: number) => {
+  return `${CERT_META_PREFIX}${JSON.stringify({ matchRate })}`;
+};
+
+const canPersistCertificationMeta = (description?: string) => {
+  return !description || description.startsWith(CERT_META_PREFIX);
+};
+
+const buildCertificationCardData = (cert: CertificationRecord): CertificationCardData => ({
+  name: cert.name || "",
+  issuer: cert.issuer || "",
+  date: cert.issue_date || "",
+  matchRate: parseCertificationMatchRate(cert.description),
+});
+
+const cloneCertificationCardData = (data: CertificationCardData) => JSON.parse(JSON.stringify(data));
+
+const normalizeCertificationData = (data: CertificationCardData): CertificationCardData => ({
+  name: data.name.trim(),
+  issuer: data.issuer.trim(),
+  date: data.date.trim(),
+  matchRate: Math.min(100, Math.max(0, Math.round(data.matchRate || 0))),
+});
+
+const buildCertificationPayload = (
+  data: CertificationCardData,
+  description?: string
+): CertificationUpdatePayload => ({
+  name: data.name,
+  issuer: data.issuer || undefined,
+  issue_date: convertDateToISO(data.date),
+  description,
+});
+
+const normalizeSkillName = (name: string) => name.trim().toLowerCase();
+
+const createEmptyCertificationCardData = (): CertificationCardData => ({
+  name: "",
+  issuer: "",
+  date: "",
+  matchRate: 0,
+});
 
 /**
  * 将日期字符串从前端格式（YYYY.MM 或 YYYY-MM）转换为后端期望的 ISO 日期格式（YYYY-MM-DD）
@@ -53,6 +227,31 @@ const convertDateToISO = (dateStr: string | undefined): string | undefined => {
   }
 
   return undefined;
+};
+
+const getTodayLocalISODate = (): string => {
+  const now = new Date();
+  const year = String(now.getFullYear());
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const runDedupedRefresh = async <T,>(
+  inFlightRef: React.MutableRefObject<Promise<T> | null>,
+  task: () => Promise<T>
+): Promise<T> => {
+  if (inFlightRef.current) {
+    return inFlightRef.current;
+  }
+  let request: Promise<T>;
+  request = task().finally(() => {
+    if (inFlightRef.current === request) {
+      inFlightRef.current = null;
+    }
+  });
+  inFlightRef.current = request;
+  return request;
 };
 
 const extractSocialLinkUrl = (value: SocialLinkValue): string => {
@@ -131,6 +330,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // 请求防抖：使用 ref 追踪请求状态
   const isLoadingProfileRef = useRef(false);
   const hasHydratedProfileRef = useRef(false);
+  // 防止重复加载的Refs
+  const hasLoadedWorkRef = useRef(false);
+  const hasLoadedEduRef = useRef(false);
+  const hasLoadedSkillsRef = useRef(false);
+  const hasLoadedCertsRef = useRef(false);
 
   // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
   const onProfileUpdateRef = useRef(onProfileUpdate);
@@ -211,21 +415,89 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // 加载工作经历列表
   useEffect(() => {
     const loadWorkExperiences = async () => {
+      if (hasLoadedWorkRef.current) return;
       try {
         if (!initialWorkExperiencesRef.current?.length) {
           setIsLoadingWork(true);
         }
         console.log('[ExperienceBank] 开始加载工作经历...');
+        hasLoadedWorkRef.current = true;
         const data = await experienceService.list('work');
         setWorkExperiences(data);
         console.log(`[ExperienceBank] 加载成功，共 ${data.length} 条工作经历`);
       } catch (error) {
         console.error('Failed to load work experiences:', error);
+        hasLoadedWorkRef.current = false; // 失败允许重试
       } finally {
         setIsLoadingWork(false);
       }
     };
     loadWorkExperiences();
+  }, []);
+
+  // 加载教育经历列表
+  useEffect(() => {
+    const loadEducationExperiences = async () => {
+      if (hasLoadedEduRef.current) return;
+      try {
+        if (!initialEducationRef.current?.length) {
+          setIsLoadingEdu(true);
+        }
+        console.log('[ExperienceBank] 开始加载教育经历...');
+        hasLoadedEduRef.current = true;
+        const data = await experienceService.list('education');
+        setEducations(data);
+        console.log(`[ExperienceBank] 教育经历加载成功，共 ${data.length} 条`);
+      } catch (error) {
+        console.error('Failed to load education experiences:', error);
+        hasLoadedEduRef.current = false;
+      } finally {
+        setIsLoadingEdu(false);
+      }
+    };
+    loadEducationExperiences();
+  }, []);
+
+  // 加载技能列表
+  useEffect(() => {
+    const loadSkills = async () => {
+      if (hasLoadedSkillsRef.current) return;
+      try {
+        setIsLoadingSkills(true);
+        console.log('[ExperienceBank] 开始加载技能列表...');
+        hasLoadedSkillsRef.current = true;
+        const data = await skillsService.list();
+        setSkills(data);
+        console.log(`[ExperienceBank] 技能加载成功，共 ${data.length} 条`);
+      } catch (error) {
+        console.error('Failed to load skills:', error);
+        hasLoadedSkillsRef.current = false;
+      } finally {
+        setIsLoadingSkills(false);
+      }
+    };
+    loadSkills();
+  }, []);
+
+  // 加载证书列表
+  useEffect(() => {
+    const loadCertifications = async () => {
+      if (hasLoadedCertsRef.current) return;
+      try {
+        setIsLoadingCertifications(true);
+        console.log('[ExperienceBank] 开始加载证书列表...');
+        hasLoadedCertsRef.current = true;
+        const data = await certificationsService.list();
+        setCertifications(data);
+        console.log(`[ExperienceBank] 证书加载成功，共 ${data.length} 条`);
+      } catch (error) {
+        console.error('Failed to load certifications:', error);
+        hasLoadedCertsRef.current = false;
+      } finally {
+        setIsLoadingCertifications(false);
+      }
+    };
+    loadCertifications();
   }, []);
 
   // 开始编辑
@@ -300,103 +572,295 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
   // Skills State
-  const [skills, setSkills] = useState(["Product Management", "Figma", "SQL", "Python Analysis", "Axure RP", "Jira/Confluence"]);
+  const [skills, setSkills] = useState<UserSkill[]>([]);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(true);
+  const [isCreatingSkill, setIsCreatingSkill] = useState(false);
   const [newSkill, setNewSkill] = useState("");
+  const workRefreshInFlightRef = useRef<Promise<ExperienceListItem[]> | null>(null);
+  const eduRefreshInFlightRef = useRef<Promise<ExperienceListItem[]> | null>(null);
+  const skillsRefreshInFlightRef = useRef<Promise<UserSkill[]> | null>(null);
+  const certsRefreshInFlightRef = useRef<Promise<CertificationRecord[]> | null>(null);
 
   // Education State
-  const [educations, setEducations] = useState([
-    { id: '1', school: '浙江大学', major: '计算机科学与技术', degree: '本科', startDate: '2017.09', endDate: '2021.06', gpa: '3.8/4.0', courses: '数据结构、操作系统、计算机网络...' }
-  ]);
-  const [expandedEdu, setExpandedEdu] = useState(false);
+  const initialEducationRef = useRef<ExperienceListItem[] | null>(
+    experienceService.peekList('education')
+  );
+  const [educations, setEducations] = useState<ExperienceListItem[]>(
+    () => initialEducationRef.current ?? []
+  );
+  const [isLoadingEdu, setIsLoadingEdu] = useState(
+    () => !initialEducationRef.current
+  );
   const [editingEduId, setEditingEduId] = useState<string | null>(null);
-  const [eduSchool, setEduSchool] = useState("");
-  const [eduMajor, setEduMajor] = useState("");
-  const [eduDegree, setEduDegree] = useState("");
-  const [eduStartDate, setEduStartDate] = useState("");
-  const [eduEndDate, setEduEndDate] = useState("");
-  const [eduGpa, setEduGpa] = useState("");
-  const [eduCourses, setEduCourses] = useState("");
+  const [eduData, setEduData] = useState<Map<string, EduCardData>>(new Map());
+  const [originalEduData, setOriginalEduData] = useState<Map<string, EduCardData>>(new Map());
+  const [modifiedEduCards, setModifiedEduCards] = useState<Set<string>>(new Set());
+  const [savingEduId, setSavingEduId] = useState<string | null>(null);
+  const [isCreatingEdu, setIsCreatingEdu] = useState(false);
 
   // Education Handlers
-  const handleAddEdu = () => {
-    setEduSchool("");
-    setEduMajor("");
-    setEduDegree("");
-    setEduStartDate("");
-    setEduEndDate("");
-    setEduGpa("");
-    setEduCourses("");
-    setEditingEduId('new');
-    setExpandedEdu(true);
-  };
+  const normalizeEduData = (data: EduCardData): EduCardData => ({
+    school: data.school.trim(),
+    major: data.major.trim(),
+    degree: data.degree.trim(),
+    startDate: data.startDate.trim(),
+    endDate: data.endDate.trim(),
+    gpa: data.gpa.trim(),
+    courses: data.courses.trim(),
+  });
 
-  const handleSaveEdu = () => {
-    if (!eduSchool.trim() || !eduMajor.trim()) return;
+  const buildEduVersionPayload = (data: EduCardData) => ({
+    title: data.major,
+    org: data.school || undefined,
+    start_date: convertDateToISO(data.startDate),
+    end_date: convertDateToISO(data.endDate),
+    star: buildEduStarPayload(data),
+  });
 
-    if (editingEduId === 'new') {
-      const newEdu = {
-        id: Date.now().toString(),
-        school: eduSchool,
-        major: eduMajor,
-        degree: eduDegree,
-        startDate: eduStartDate,
-        endDate: eduEndDate,
-        gpa: eduGpa,
-        courses: eduCourses
-      };
-      setEducations([...educations, newEdu]);
-    } else {
-      setEducations(educations.map(edu =>
-        edu.id === editingEduId
-          ? { ...edu, school: eduSchool, major: eduMajor, degree: eduDegree, startDate: eduStartDate, endDate: eduEndDate, gpa: eduGpa, courses: eduCourses }
-          : edu
-      ));
+  const refreshEducationExperiences = useCallback(async () => {
+    return runDedupedRefresh(eduRefreshInFlightRef, async () => {
+      const data = await experienceService.list('education', { force: true });
+      setEducations(data);
+      return data;
+    });
+  }, []);
+
+  const ensureEduCardState = (eduId: string, seedData?: EduCardData) => {
+    if (eduData.has(eduId)) {
+      return;
     }
-    setEditingEduId(null);
-    setExpandedEdu(false);
+    const item = seedData ? null : educations.find((edu) => edu.master.id === eduId);
+    const data = seedData || (item ? buildEduCardData(item) : createEmptyEduCardData());
+    setEduData((prev) => new Map(prev).set(eduId, data));
+    setOriginalEduData((prev) => new Map(prev).set(eduId, cloneEduCardData(data)));
   };
 
-  const handleEditEdu = (edu: any) => {
-    setEduSchool(edu.school);
-    setEduMajor(edu.major);
-    setEduDegree(edu.degree);
-    setEduStartDate(edu.startDate);
-    setEduEndDate(edu.endDate);
-    setEduGpa(edu.gpa || "");
-    setEduCourses(edu.courses || "");
-    setEditingEduId(edu.id);
-    setExpandedEdu(true);
+  const updateEduField = (eduId: string, field: keyof EduCardData, value: string) => {
+    const current = eduData.get(eduId) || createEmptyEduCardData();
+    const nextData = { ...current, [field]: value };
+    setEduData((prev) => new Map(prev).set(eduId, nextData));
+    const original = originalEduData.get(eduId);
+    const isModified = original ? JSON.stringify(nextData) !== JSON.stringify(original) : true;
+    setModifiedEduCards((prev) => {
+      const next = new Set(prev);
+      if (isModified) {
+        next.add(eduId);
+      } else {
+        next.delete(eduId);
+      }
+      return next;
+    });
   };
 
-  const handleDeleteEdu = (id: string) => {
-    setEducations(educations.filter(edu => edu.id !== id));
-    if (editingEduId === id) {
+  const handleAddEdu = async () => {
+    if (isCreatingEdu) {
+      return;
+    }
+    let toastId: string | null = null;
+    try {
+      setIsCreatingEdu(true);
+      toastId = loading(EDU_TOAST_MESSAGES.createLoading);
+      const newEducation = await experienceService.create({
+        category: 'education',
+        version: {
+          title: EDUCATION_DEFAULT_TITLE,
+          org: EDUCATION_DEFAULT_ORG,
+          start_date: getTodayLocalISODate(),
+          star: {},
+        },
+      });
+
+      const initialData = buildEduCardData(newEducation);
+      setEducations((prev) => [newEducation, ...prev]);
+      setEduData((prev) => new Map(prev).set(newEducation.master.id, initialData));
+      setOriginalEduData((prev) => new Map(prev).set(newEducation.master.id, cloneEduCardData(initialData)));
+      setModifiedEduCards((prev) => {
+        const next = new Set(prev);
+        next.delete(newEducation.master.id);
+        return next;
+      });
+      setEditingEduId(newEducation.master.id);
+
+      if (toastId) {
+        updateToast(toastId, { message: EDU_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(EDU_TOAST_MESSAGES.createSuccess);
+      }
+
+      refreshEducationExperiences().catch((err) => {
+        console.error('[ExperienceBank] 刷新教育经历失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to create education experience:', err);
+      if (toastId) {
+        updateToast(toastId, { message: EDU_TOAST_MESSAGES.createError, type: 'error', duration: 3000 });
+      } else {
+        error(EDU_TOAST_MESSAGES.createError);
+      }
+    } finally {
+      setIsCreatingEdu(false);
+    }
+  };
+
+  const handleSaveEdu = async () => {
+    if (!editingEduId) {
+      return;
+    }
+    const data = eduData.get(editingEduId);
+    if (!data) {
+      return;
+    }
+    const normalized = normalizeEduData(data);
+    if (!normalized.school || !normalized.major) {
+      error('学校和专业不能为空');
+      return;
+    }
+
+    let toastId: string | null = null;
+    try {
+      setSavingEduId(editingEduId);
+      toastId = loading(EDU_TOAST_MESSAGES.saveLoading);
+      const versionPayload = buildEduVersionPayload(normalized);
+      await experienceService.update(editingEduId, { version: versionPayload });
+
+      setEduData((prev) => new Map(prev).set(editingEduId, normalized));
+      setOriginalEduData((prev) => new Map(prev).set(editingEduId, cloneEduCardData(normalized)));
+      setModifiedEduCards((prev) => {
+        const next = new Set(prev);
+        next.delete(editingEduId);
+        return next;
+      });
+
+      setEducations((prev) => prev.map((item) => {
+        if (item.master.id !== editingEduId) {
+          return item;
+        }
+        return {
+          ...item,
+          latest_version: {
+            ...(item.latest_version || {}),
+            title: versionPayload.title,
+            org: versionPayload.org,
+            start_date: versionPayload.start_date,
+            end_date: versionPayload.end_date,
+            star: versionPayload.star,
+          } as any,
+        };
+      }));
+
+      if (toastId) {
+        updateToast(toastId, { message: EDU_TOAST_MESSAGES.saveSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(EDU_TOAST_MESSAGES.saveSuccess);
+      }
+
+      refreshEducationExperiences().catch((err) => {
+        console.error('[ExperienceBank] 刷新教育经历失败:', err);
+      });
+
       setEditingEduId(null);
-      setExpandedEdu(false);
+    } catch (err) {
+      console.error('Failed to save education experience:', err);
+      if (toastId) {
+        updateToast(toastId, { message: EDU_TOAST_MESSAGES.saveError, type: 'error', duration: 3000 });
+      } else {
+        error(EDU_TOAST_MESSAGES.saveError);
+      }
+    } finally {
+      setSavingEduId(null);
+    }
+  };
+
+  const handleEditEdu = (edu: ExperienceListItem) => {
+    const eduId = edu.master.id;
+    ensureEduCardState(eduId, buildEduCardData(edu));
+    setEditingEduId(eduId);
+  };
+
+  const handleDeleteEdu = async (eduId: string) => {
+    let toastId: string | null = null;
+    try {
+      setEditingEduId(null);
+      toastId = loading(EDU_TOAST_MESSAGES.deleteLoading);
+
+      setEducations((prev) => prev.filter((edu) => edu.master.id !== eduId));
+      setEduData((prev) => {
+        const next = new Map(prev);
+        next.delete(eduId);
+        return next;
+      });
+      setOriginalEduData((prev) => {
+        const next = new Map(prev);
+        next.delete(eduId);
+        return next;
+      });
+      setModifiedEduCards((prev) => {
+        const next = new Set(prev);
+        next.delete(eduId);
+        return next;
+      });
+
+      await experienceService.delete(eduId);
+
+      if (toastId) {
+        updateToast(toastId, { message: EDU_TOAST_MESSAGES.deleteSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(EDU_TOAST_MESSAGES.deleteSuccess);
+      }
+
+      refreshEducationExperiences().catch((err) => {
+        console.error('[ExperienceBank] 刷新教育经历失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to delete education experience:', err);
+      if (toastId) {
+        updateToast(toastId, { message: EDU_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
+      } else {
+        error(EDU_TOAST_MESSAGES.deleteError);
+      }
+      refreshEducationExperiences().catch((err2) => {
+        console.error('[ExperienceBank] 恢复教育经历失败:', err2);
+      });
     }
   };
 
   const handleCancelEditEdu = () => {
+    if (editingEduId) {
+      const original = originalEduData.get(editingEduId);
+      if (original) {
+        setEduData((prev) => new Map(prev).set(editingEduId, cloneEduCardData(original)));
+      }
+      setModifiedEduCards((prev) => {
+        const next = new Set(prev);
+        next.delete(editingEduId);
+        return next;
+      });
+    }
     setEditingEduId(null);
-    setExpandedEdu(false);
   };
 
   // Certifications State
-  const [certifications, setCertifications] = useState<Certification[]>([
-    { id: '1', name: 'PMP 项目管理专业人士', issuer: 'PMI', date: '2023', matchRate: 95 },
-    { id: '2', name: 'Google Analytics 认证', issuer: 'Google', date: '2023', matchRate: 82 }
-  ]);
-  const [expandedCert, setExpandedCert] = useState(false);
+  const [certifications, setCertifications] = useState<CertificationRecord[]>([]);
+  const [isLoadingCertifications, setIsLoadingCertifications] = useState(true);
   const [editingCertId, setEditingCertId] = useState<string | null>(null);
-  const [certName, setCertName] = useState("");
-  const [certIssuer, setCertIssuer] = useState("");
-  const [certDate, setCertDate] = useState("");
-  const [certMatchRate, setCertMatchRate] = useState<number>(0);
+  const [certData, setCertData] = useState<Map<string, CertificationCardData>>(new Map());
+  const [originalCertData, setOriginalCertData] = useState<Map<string, CertificationCardData>>(new Map());
+  const [modifiedCertCards, setModifiedCertCards] = useState<Set<string>>(new Set());
+  const [savingCertId, setSavingCertId] = useState<string | null>(null);
+  const [isCreatingCert, setIsCreatingCert] = useState(false);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
     document.documentElement.classList.toggle('dark');
   };
+
+  const refreshWorkExperiences = useCallback(async () => {
+    return runDedupedRefresh(workRefreshInFlightRef, async () => {
+      const data = await experienceService.list('work', { force: true });
+      setWorkExperiences(data);
+      return data;
+    });
+  }, []);
 
   // ============= 新的工作经历卡片管理 Handlers =============
   // 切换卡片展开/折叠状态
@@ -457,13 +921,41 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         return;
       }
 
-      // 设置保存中状态，防止重复点击
+      // 设置保存中状态
       setSavingCardId(cardId);
 
-      // 显示加载 Toast
-      toastId = loading('正在保存工作经历...');
+      // 1. 立即乐观更新本地状态 (UI Instant Update)
+      // 更新原始基准数据
+      setOriginalCardData(prev => new Map(prev).set(cardId, cloneWorkCardData(data)));
 
-      // 转换数据格式以符合后端验证要求
+      // 清除修改标记
+      const newModified = new Set(modifiedCards);
+      newModified.delete(cardId);
+      setModifiedCards(newModified);
+
+      // 立即更新列表视图 (Optimistic Update)
+      setWorkExperiences((prev) => prev.map((item) => {
+        if (item.master.id === cardId) {
+          return {
+            ...item,
+            latest_version: {
+              ...(item.latest_version || {}),
+              title: data.title,
+              org: data.org,
+              start_date: convertDateToISO(data.start_date),
+              end_date: convertDateToISO(data.end_date),
+              star: data.star
+            } as any
+          };
+        }
+        return item;
+      }));
+
+      // 显示成功消息 (Optimistic Success)
+      console.log('[ExperienceBank] 乐观更新UI完成');
+      toastId = loading('正在同步...'); // 这里给一个轻微的反馈，或者直接success
+
+      // 2. 转换数据格式
       const versionPayload = {
         title: data.title,
         org: data.org || undefined,
@@ -472,55 +964,40 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         star: data.star || {},
       };
 
-      // 发送保存请求
+      // 3. 后台发送保存请求 (Background Sync)
+      // 注意：这里仍然 await update 以确保数据持久化成功，但UI已经更新了
       await experienceService.update(cardId, { version: versionPayload });
 
-      // 更新原始数据，清除修改标记
-      setOriginalCardData(new Map(originalCardData).set(cardId, cloneWorkCardData(data)));
-      const newModified = new Set(modifiedCards);
-      newModified.delete(cardId);
-      setModifiedCards(newModified);
+      if (toastId) updateToast(toastId, { message: '已保存', type: 'success', duration: 2000 });
+      else success('已保存');
 
-      // 手动更新列表视图（乐观更新），确保不刷新的情况下看到变化
-      setWorkExperiences((prev) => prev.map((item) => {
-        if (item.master.id === cardId) {
-          return {
-            ...item,
-            latest_version: {
-              ...(item.latest_version || {}),
-              title: versionPayload.title,
-              org: versionPayload.org,
-              start_date: versionPayload.start_date,
-              end_date: versionPayload.end_date,
-              star: versionPayload.star
-            } as any
-          };
+      // 4. 后台静默刷新列表 (Eventual Consistency)
+      // 不阻塞用户操作，静默同步最新状态（如服务端生成的字段）
+      refreshWorkExperiences().then((updatedList) => {
+        // 同步更新 cardData (防止服务端有数据处理)
+        const updatedItem = updatedList.find(item => item.master.id === cardId);
+        if (updatedItem) {
+          const freshData = buildWorkCardData(updatedItem);
+          // 注意：如果用户在保存后又立即编辑了，这里不能盲目覆盖，需要判断
+          // 简单起见，如果当前没有处于被修改状态，则同步
+          setModifiedCards(currentModified => {
+            if (!currentModified.has(cardId)) {
+              setCardData(prev => new Map(prev).set(cardId, freshData));
+              setOriginalCardData(prev => new Map(prev).set(cardId, cloneWorkCardData(freshData)));
+            }
+            return currentModified;
+          });
         }
-        return item;
-      }));
-
-      // 后台静默刷新列表
-      experienceService.list('work', { force: true }).then((updated) => {
-        setWorkExperiences(updated);
       }).catch((err) => {
-        console.error('[ExperienceBank] 刷新列表失败:', err);
+        console.error('[ExperienceBank] 刷新工作经历失败:', err);
       });
 
-      // 更新 Toast 为成功状态
-      if (toastId) {
-        updateToast(toastId, { message: '工作经历保存成功', type: 'success', duration: 3000 });
-      }
-      console.log('[ExperienceBank] 工作经历保存成功');
     } catch (err) {
       console.error('Failed to save work experience:', err);
-      // 更新 Toast 为失败状态
-      if (toastId) {
-        updateToast(toastId, { message: '保存失败，请重试', type: 'error', duration: 3000 });
-      } else {
-        error('保存失败，请重试');
-      }
+      // 回滚状态（如果需要复杂回滚，这里暂时简单提示错误，实际场景可能需要恢复 originalCardData）
+      if (toastId) updateToast(toastId, { message: '保存同步失败，请重试', type: 'error', duration: 3000 });
+      else error('保存同步失败，请重试');
     } finally {
-      // 清除保存中状态
       setSavingCardId(null);
     }
   };
@@ -540,55 +1017,47 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const handleDeleteCard = async (cardId: string) => {
     let toastId: string | null = null;
     try {
-      // 先关闭确认对话框
       setDeletingCardId(null);
-      toastId = loading('正在删除工作经历...');
 
-      // 立即从 UI 中移除（乐观更新）
-      setWorkExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
+      // 1. 立即乐观更新 (UI Instant Removal)
+      setWorkExperiences(prev => prev.filter(item => item.master.id !== cardId));
 
-      // 清理状态
-      const newExpanded = new Set(expandedCards);
-      newExpanded.delete(cardId);
-      setExpandedCards(newExpanded);
+      // 清理相关状态
+      setExpandedCards(prev => {
+        const next = new Set(prev);
+        next.delete(cardId);
+        return next;
+      });
+      setCardData(prev => {
+        const next = new Map(prev);
+        next.delete(cardId);
+        return next;
+      });
+      setModifiedCards(prev => {
+        const next = new Set(prev);
+        next.delete(cardId);
+        return next;
+      });
 
-      const newData = new Map(cardData);
-      newData.delete(cardId);
-      setCardData(newData);
+      console.log('[ExperienceBank] 乐观删除完成');
 
-      const newOriginal = new Map(originalCardData);
-      newOriginal.delete(cardId);
-      setOriginalCardData(newOriginal);
-
-      const newModified = new Set(modifiedCards);
-      newModified.delete(cardId);
-      setModifiedCards(newModified);
-
-      // 发送删除请求
+      // 2. 后台发送删除请求
       await experienceService.delete(cardId);
 
-      // 后台静默刷新列表以确保数据一致
-      experienceService.list('work', { force: true }).then((updated) => {
-        setWorkExperiences(updated);
-      }).catch((err) => {
-        console.error('[ExperienceBank] 刷新列表失败:', err);
-      });
+      success('已删除');
 
-      // 显示成功提示
-      if (toastId) updateToast(toastId, { message: '工作经历删除成功', type: 'success', duration: 3000 });
-      else success('工作经历删除成功');
-      console.log('[ExperienceBank] 工作经历删除成功');
+      // 3. 后台静默刷新 (已移除，防止死锁)
+      // experienceService.list('work', { force: true }).catch(console.error);
+
     } catch (err) {
       console.error('Failed to delete work experience:', err);
-      if (toastId) updateToast(toastId, { message: '删除失败，请重试', type: 'error', duration: 3000 });
-      else error('删除失败，请重试');
-
-      // 删除失败时，重新加载列表恢复数据
-      experienceService.list('work', { force: true }).then((updated) => {
-        setWorkExperiences(updated);
-      }).catch((err2) => {
-        console.error('[ExperienceBank] 恢复列表失败:', err2);
-      });
+      error('删除同步失败，正在恢复列表...');
+      // 失败回滚：重新拉取列表
+      try {
+        await refreshWorkExperiences();
+      } catch (refreshError) {
+        console.error('[ExperienceBank] 恢复工作经历失败:', refreshError);
+      }
     }
   };
 
@@ -596,52 +1065,43 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const handleAddNewWork = async () => {
     let toastId: string | null = null;
     try {
-      toastId = loading('正在创建工作经历...');
+      toastId = loading('正在创建...');
+
+      // 1. 发送创建请求 (Wait for ID, but skip list refresh)
       const newWork = await experienceService.create({
         category: 'work',
         version: {
           title: "新职位",
           org: "新公司",
-          start_date: new Date().toISOString().split('T')[0],
+          start_date: getTodayLocalISODate(),
           star: { s: "", t: "", a: "", r: "" }
         }
       });
 
-      // 构建新卡片数据
+      // 2. 立即使用返回的新项更新列表 (Semi-Optimistic)
+      // 不等待 experienceService.list()，直接利用 newWork
+      setWorkExperiences(prev => [newWork, ...prev]);
+
+      // 3. 初始化卡片状态并展开
       const initialData = buildWorkCardData(newWork);
-
-      // 乐观更新：立即将新卡片添加到列表（不等待刷新）
-      setWorkExperiences((prev) => [newWork, ...prev]);
-
-      // 更新卡片状态
-      setCardData((prev) => new Map(prev).set(newWork.master.id, initialData));
-      setOriginalCardData((prev) => new Map(prev).set(newWork.master.id, cloneWorkCardData(initialData)));
-      setExpandedCards((prev) => {
+      setCardData(prev => new Map(prev).set(newWork.master.id, initialData));
+      setOriginalCardData(prev => new Map(prev).set(newWork.master.id, cloneWorkCardData(initialData)));
+      setExpandedCards(prev => {
         const next = new Set(prev);
         next.add(newWork.master.id);
         return next;
       });
-      setModifiedCards((prev) => {
-        const next = new Set(prev);
-        next.delete(newWork.master.id);
-        return next;
-      });
 
-      // 显示成功提示
-      if (toastId) updateToast(toastId, { message: '工作经历创建成功', type: 'success', duration: 3000 });
-      else success('工作经历创建成功');
+      if (toastId) updateToast(toastId, { message: '已创建', type: 'success', duration: 2000 });
+      else success('已创建');
 
-      // 后台静默刷新列表以确保数据一致（不阻塞UI）
-      experienceService.list('work', { force: true }).then((updated) => {
-        setWorkExperiences(updated);
-      }).catch((err) => {
-        console.error('[ExperienceBank] 刷新列表失败:', err);
-      });
+      // 4. 后台静默刷新确保一致性 (已移除，防止死锁)
+      // experienceService.list('work', { force: true }).then(...).catch(console.error);
 
     } catch (err) {
       console.error('Failed to create work experience:', err);
-      if (toastId) updateToast(toastId, { message: '创建失败，请重试', type: 'error', duration: 3000 });
-      else error('创建工作经历失败，请重试');
+      if (toastId) updateToast(toastId, { message: '创建失败', type: 'error', duration: 3000 });
+      else error('创建失败');
     }
   };
 
@@ -680,71 +1140,321 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // ============= 新的工作经历卡片管理 Handlers 结束 =============
 
 
-  const addSkill = () => {
-    if (newSkill.trim() && !skills.includes(newSkill.trim())) {
-      setSkills([...skills, newSkill.trim()]);
+  const refreshSkills = async () => {
+    return runDedupedRefresh(skillsRefreshInFlightRef, async () => {
+      const data = await skillsService.list({ force: true });
+      setSkills(data);
+      return data;
+    });
+  };
+
+  const refreshCertifications = async () => {
+    return runDedupedRefresh(certsRefreshInFlightRef, async () => {
+      const data = await certificationsService.list({ force: true });
+      setCertifications(data);
+      return data;
+    });
+  };
+
+  const resolveCertificationDescription = (certId: string, matchRate: number) => {
+    const existing = certifications.find((cert) => cert.id === certId)?.description;
+    if (!canPersistCertificationMeta(existing)) {
+      return undefined;
+    }
+    return buildCertificationMetaDescription(matchRate);
+  };
+
+  const handleAddSkill = async () => {
+    if (isCreatingSkill || isLoadingSkills) {
+      return;
+    }
+    const trimmed = newSkill.trim();
+    if (!trimmed) {
+      return;
+    }
+    const exists = skills.some(
+      (skill) => normalizeSkillName(skill.name) === normalizeSkillName(trimmed)
+    );
+    if (exists) {
+      error('该技能已存在');
+      return;
+    }
+
+    let toastId: string | null = null;
+    try {
+      setIsCreatingSkill(true);
+      toastId = loading(SKILL_TOAST_MESSAGES.createLoading);
+      const created = await skillsService.create({ name: trimmed });
+      setSkills((prev) => [created, ...prev]);
       setNewSkill("");
+      if (toastId) {
+        updateToast(toastId, { message: SKILL_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(SKILL_TOAST_MESSAGES.createSuccess);
+      }
+      refreshSkills().catch((err) => {
+        console.error('[ExperienceBank] 刷新技能失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to create skill:', err);
+      if (toastId) {
+        updateToast(toastId, { message: SKILL_TOAST_MESSAGES.createError, type: 'error', duration: 3000 });
+      } else {
+        error(SKILL_TOAST_MESSAGES.createError);
+      }
+    } finally {
+      setIsCreatingSkill(false);
     }
   };
 
-  const removeSkill = (skillToRemove: string) => {
-    setSkills(skills.filter(s => s !== skillToRemove));
-  };
-
-  // 证书管理函数
-  const handleAddCert = () => {
-    setCertName("");
-    setCertIssuer("");
-    setCertDate("");
-    setCertMatchRate(0);
-    setEditingCertId('new');
-    setExpandedCert(true);
-  };
-
-  const handleSaveCert = () => {
-    if (!certName.trim() || !certIssuer.trim()) return;
-
-    if (editingCertId === 'new') {
-      const newCert: Certification = {
-        id: Date.now().toString(),
-        name: certName,
-        issuer: certIssuer,
-        date: certDate,
-        matchRate: certMatchRate
-      };
-      setCertifications([...certifications, newCert]);
-    } else {
-      setCertifications(certifications.map(cert =>
-        cert.id === editingCertId
-          ? { ...cert, name: certName, issuer: certIssuer, date: certDate, matchRate: certMatchRate }
-          : cert
-      ));
+  const handleDeleteSkill = async (skillId: string) => {
+    let toastId: string | null = null;
+    try {
+      toastId = loading(SKILL_TOAST_MESSAGES.deleteLoading);
+      setSkills((prev) => prev.filter((skill) => skill.id !== skillId));
+      await skillsService.delete(skillId);
+      if (toastId) {
+        updateToast(toastId, { message: SKILL_TOAST_MESSAGES.deleteSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(SKILL_TOAST_MESSAGES.deleteSuccess);
+      }
+      refreshSkills().catch((err) => {
+        console.error('[ExperienceBank] 刷新技能失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to delete skill:', err);
+      if (toastId) {
+        updateToast(toastId, { message: SKILL_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
+      } else {
+        error(SKILL_TOAST_MESSAGES.deleteError);
+      }
+      refreshSkills().catch((err2) => {
+        console.error('[ExperienceBank] 恢复技能失败:', err2);
+      });
     }
-    setEditingCertId(null);
-    setExpandedCert(false);
   };
 
-  const handleEditCert = (cert: Certification) => {
-    setCertName(cert.name);
-    setCertIssuer(cert.issuer);
-    setCertDate(cert.date);
-    setCertMatchRate(cert.matchRate || 0);
-    setEditingCertId(cert.id);
-    setExpandedCert(true);
+  const ensureCertCardState = (certId: string, seedData?: CertificationCardData) => {
+    if (certData.has(certId)) {
+      return;
+    }
+    const item = seedData ? null : certifications.find((cert) => cert.id === certId);
+    const data = seedData || (item ? buildCertificationCardData(item) : createEmptyCertificationCardData());
+    setCertData((prev) => new Map(prev).set(certId, data));
+    setOriginalCertData((prev) => new Map(prev).set(certId, cloneCertificationCardData(data)));
   };
 
-  const handleDeleteCert = (id: string) => {
-    setCertifications(certifications.filter(cert => cert.id !== id));
-    if (editingCertId === id) {
+  const updateCertField = (certId: string, field: keyof CertificationCardData, value: string | number) => {
+    const current = certData.get(certId) || createEmptyCertificationCardData();
+    const nextData = { ...current, [field]: value };
+    setCertData((prev) => new Map(prev).set(certId, nextData));
+    const original = originalCertData.get(certId);
+    const isModified = original ? JSON.stringify(nextData) !== JSON.stringify(original) : true;
+    setModifiedCertCards((prev) => {
+      const next = new Set(prev);
+      if (isModified) {
+        next.add(certId);
+      } else {
+        next.delete(certId);
+      }
+      return next;
+    });
+  };
+
+  const handleAddCert = async () => {
+    if (isCreatingCert) {
+      return;
+    }
+    let toastId: string | null = null;
+    try {
+      setIsCreatingCert(true);
+      toastId = loading(CERT_TOAST_MESSAGES.createLoading);
+      const newCert = await certificationsService.create({
+        name: CERT_DEFAULT_NAME,
+        issuer: CERT_DEFAULT_ISSUER,
+        issue_date: getTodayLocalISODate(),
+        description: buildCertificationMetaDescription(0),
+      });
+
+      const initialData = buildCertificationCardData(newCert);
+      setCertifications((prev) => [newCert, ...prev]);
+      setCertData((prev) => new Map(prev).set(newCert.id, initialData));
+      setOriginalCertData((prev) => new Map(prev).set(newCert.id, cloneCertificationCardData(initialData)));
+      setModifiedCertCards((prev) => {
+        const next = new Set(prev);
+        next.delete(newCert.id);
+        return next;
+      });
+      setEditingCertId(newCert.id);
+
+      if (toastId) {
+        updateToast(toastId, { message: CERT_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(CERT_TOAST_MESSAGES.createSuccess);
+      }
+
+      refreshCertifications().catch((err) => {
+        console.error('[ExperienceBank] 刷新证书失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to create certification:', err);
+      if (toastId) {
+        updateToast(toastId, { message: CERT_TOAST_MESSAGES.createError, type: 'error', duration: 3000 });
+      } else {
+        error(CERT_TOAST_MESSAGES.createError);
+      }
+    } finally {
+      setIsCreatingCert(false);
+    }
+  };
+
+  const handleSaveCert = async () => {
+    if (!editingCertId) {
+      return;
+    }
+    const data = certData.get(editingCertId);
+    if (!data) {
+      return;
+    }
+    const normalized = normalizeCertificationData(data);
+    if (!normalized.name || !normalized.issuer) {
+      error('证书名称和颁发机构不能为空');
+      return;
+    }
+
+    let toastId: string | null = null;
+    try {
+      setSavingCertId(editingCertId);
+      toastId = loading(CERT_TOAST_MESSAGES.saveLoading);
+      const description = resolveCertificationDescription(editingCertId, normalized.matchRate);
+      const payload = buildCertificationPayload(normalized, description);
+      await certificationsService.update(editingCertId, payload);
+
+      setCertData((prev) => new Map(prev).set(editingCertId, normalized));
+      setOriginalCertData((prev) => new Map(prev).set(editingCertId, cloneCertificationCardData(normalized)));
+      setModifiedCertCards((prev) => {
+        const next = new Set(prev);
+        next.delete(editingCertId);
+        return next;
+      });
+
+      setCertifications((prev) => prev.map((item) => {
+        if (item.id !== editingCertId) {
+          return item;
+        }
+        return {
+          ...item,
+          name: payload.name,
+          issuer: payload.issuer,
+          issue_date: payload.issue_date ?? item.issue_date,
+          description: payload.description ?? item.description,
+        };
+      }));
+
+      if (toastId) {
+        updateToast(toastId, { message: CERT_TOAST_MESSAGES.saveSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(CERT_TOAST_MESSAGES.saveSuccess);
+      }
+
+      refreshCertifications().catch((err) => {
+        console.error('[ExperienceBank] 刷新证书失败:', err);
+      });
+
       setEditingCertId(null);
-      setExpandedCert(false);
+    } catch (err) {
+      console.error('Failed to save certification:', err);
+      if (toastId) {
+        updateToast(toastId, { message: CERT_TOAST_MESSAGES.saveError, type: 'error', duration: 3000 });
+      } else {
+        error(CERT_TOAST_MESSAGES.saveError);
+      }
+    } finally {
+      setSavingCertId(null);
+    }
+  };
+
+  const handleEditCert = (cert: CertificationRecord) => {
+    ensureCertCardState(cert.id, buildCertificationCardData(cert));
+    setEditingCertId(cert.id);
+  };
+
+  const handleDeleteCert = async (id: string) => {
+    let toastId: string | null = null;
+    try {
+      setEditingCertId(null);
+      toastId = loading(CERT_TOAST_MESSAGES.deleteLoading);
+
+      setCertifications((prev) => prev.filter((cert) => cert.id !== id));
+      setCertData((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      setOriginalCertData((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      setModifiedCertCards((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+
+      await certificationsService.delete(id);
+
+      if (toastId) {
+        updateToast(toastId, { message: CERT_TOAST_MESSAGES.deleteSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(CERT_TOAST_MESSAGES.deleteSuccess);
+      }
+
+      refreshCertifications().catch((err) => {
+        console.error('[ExperienceBank] 刷新证书失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to delete certification:', err);
+      if (toastId) {
+        updateToast(toastId, { message: CERT_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
+      } else {
+        error(CERT_TOAST_MESSAGES.deleteError);
+      }
+      refreshCertifications().catch((err2) => {
+        console.error('[ExperienceBank] 恢复证书失败:', err2);
+      });
     }
   };
 
   const handleCancelEditCert = () => {
+    if (editingCertId) {
+      const original = originalCertData.get(editingCertId);
+      if (original) {
+        setCertData((prev) => new Map(prev).set(editingCertId, cloneCertificationCardData(original)));
+      }
+      setModifiedCertCards((prev) => {
+        const next = new Set(prev);
+        next.delete(editingCertId);
+        return next;
+      });
+    }
     setEditingCertId(null);
-    setExpandedCert(false);
   };
+
+  const editingEduData = editingEduId
+    ? (eduData.get(editingEduId) || createEmptyEduCardData())
+    : null;
+  const isEduModified = editingEduId ? modifiedEduCards.has(editingEduId) : false;
+  const editingCertData = editingCertId
+    ? (certData.get(editingCertId) || createEmptyCertificationCardData())
+    : null;
+  const editingCertRecord = editingCertId
+    ? certifications.find((cert) => cert.id === editingCertId)
+    : null;
+  const isCertMatchRateEditable = editingCertId
+    ? canPersistCertificationMeta(editingCertRecord?.description)
+    : false;
+  const isCertModified = editingCertId ? modifiedCertCards.has(editingCertId) : false;
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -1097,12 +1807,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 教育经历
                 <span className="text-sm font-normal text-gray-400 ml-2">Education</span>
               </h2>
-              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{educations.length} items</span>
+              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                {isLoadingEdu ? '加载中...' : `${educations.length} items`}
+              </span>
             </div>
 
             <button
               onClick={handleAddEdu}
-              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-purple-600 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-all duration-300"
+              disabled={isLoadingEdu || isCreatingEdu}
+              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-purple-600 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-purple-600 transition-colors">
                 <Plus className="w-5 h-5" />
@@ -1111,7 +1824,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </button>
 
             {/* Editable/New Edu Card */}
-            {editingEduId && expandedEdu && (
+            {editingEduId && (
               <div className="bg-white dark:bg-surface-dark rounded-xl border border-purple-500/30 shadow-lg shadow-purple-500/5 overflow-hidden transition-all duration-300 ring-1 ring-purple-500/10 relative animate-in fade-in slide-in-from-top-4">
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1120,8 +1833,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <input
                         className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
                         placeholder="输入学校名称"
-                        value={eduSchool}
-                        onChange={(e) => setEduSchool(e.target.value)}
+                        value={editingEduData?.school || ""}
+                        onChange={(e) => editingEduId && updateEduField(editingEduId, "school", e.target.value)}
                       />
                     </div>
                     <div className="flex-1">
@@ -1129,8 +1842,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <input
                         className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
                         placeholder="输入专业"
-                        value={eduMajor}
-                        onChange={(e) => setEduMajor(e.target.value)}
+                        value={editingEduData?.major || ""}
+                        onChange={(e) => editingEduId && updateEduField(editingEduId, "major", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1138,8 +1851,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <input
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
                         placeholder="本科/硕士/博士"
-                        value={eduDegree}
-                        onChange={(e) => setEduDegree(e.target.value)}
+                        value={editingEduData?.degree || ""}
+                        onChange={(e) => editingEduId && updateEduField(editingEduId, "degree", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1148,15 +1861,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         <input
                           className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
                           placeholder="Start"
-                          value={eduStartDate}
-                          onChange={(e) => setEduStartDate(e.target.value)}
+                          value={editingEduData?.startDate || ""}
+                          onChange={(e) => editingEduId && updateEduField(editingEduId, "startDate", e.target.value)}
                         />
                         <span className="text-gray-400">-</span>
                         <input
                           className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
                           placeholder="End"
-                          value={eduEndDate}
-                          onChange={(e) => setEduEndDate(e.target.value)}
+                          value={editingEduData?.endDate || ""}
+                          onChange={(e) => editingEduId && updateEduField(editingEduId, "endDate", e.target.value)}
                         />
                       </div>
                     </div>
@@ -1165,8 +1878,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <input
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
                         placeholder="例如: 3.8/4.0"
-                        value={eduGpa}
-                        onChange={(e) => setEduGpa(e.target.value)}
+                        value={editingEduData?.gpa || ""}
+                        onChange={(e) => editingEduId && updateEduField(editingEduId, "gpa", e.target.value)}
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -1175,8 +1888,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
                         rows={2}
                         placeholder="列出关键相关课程..."
-                        value={eduCourses}
-                        onChange={(e) => setEduCourses(e.target.value)}
+                        value={editingEduData?.courses || ""}
+                        onChange={(e) => editingEduId && updateEduField(editingEduId, "courses", e.target.value)}
                       />
                     </div>
                   </div>
@@ -1185,9 +1898,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   <button
                     className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                    onClick={() => editingEduId !== 'new' && handleDeleteEdu(editingEduId!)}
+                    onClick={() => editingEduId && handleDeleteEdu(editingEduId)}
                     title="删除"
-                    disabled={editingEduId === 'new'}
+                    disabled={savingEduId === editingEduId}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -1196,12 +1909,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     <button
                       onClick={handleCancelEditEdu}
                       className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      disabled={savingEduId === editingEduId}
                     >
                       取消
                     </button>
                     <button
                       onClick={handleSaveEdu}
                       className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20"
+                      disabled={savingEduId === editingEduId || !isEduModified}
                     >
                       保存
                       <ChevronUp className="w-4 h-4" />
@@ -1212,30 +1927,33 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             )}
 
             {/* Edu List Items */}
-            {educations.map((edu) => (
-              <div
-                key={edu.id}
-                className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer"
-                onClick={() => handleEditEdu(edu)}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-bold text-gray-900 dark:text-white truncate">{edu.school}</h3>
-                      <span className="text-gray-300 dark:text-gray-600">|</span>
-                      <span className="text-gray-700 dark:text-gray-300 font-medium">{edu.major}</span>
+            {educations.map((edu) => {
+              const viewData = buildEduCardData(edu);
+              return (
+                <div
+                  key={edu.master.id}
+                  className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer"
+                  onClick={() => handleEditEdu(edu)}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{viewData.school}</h3>
+                        <span className="text-gray-300 dark:text-gray-600">|</span>
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">{viewData.major}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {viewData.degree} {viewData.gpa ? `• GPA: ${viewData.gpa}` : ''} {viewData.courses ? `• ${viewData.courses}` : ''}
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                      {edu.degree} {edu.gpa ? `• GPA: ${edu.gpa}` : ''} {edu.courses ? `• ${edu.courses}` : ''}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="block text-sm font-mono text-gray-500 mb-2">{edu.startDate} - {edu.endDate}</span>
-                    <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors ml-auto" />
+                    <div className="text-right shrink-0">
+                      <span className="block text-sm font-mono text-gray-500 mb-2">{viewData.startDate} - {viewData.endDate}</span>
+                      <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors ml-auto" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </section>
 
           {/* Certifications Section */}
@@ -1246,12 +1964,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 证书资质
                 <span className="text-sm font-normal text-gray-400 ml-2">Certifications</span>
               </h2>
-              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{certifications.length} items</span>
+              <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                {isLoadingCertifications ? '加载中...' : `${certifications.length} items`}
+              </span>
             </div>
 
             <button
               onClick={handleAddCert}
-              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all duration-300"
+              disabled={isLoadingCertifications || isCreatingCert}
+              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-amber-600 transition-colors">
                 <Plus className="w-5 h-5" />
@@ -1260,7 +1981,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </button>
 
             {/* Editable/New Cert Card */}
-            {editingCertId && expandedCert && (
+            {editingCertId && (
               <div className="bg-white dark:bg-surface-dark rounded-xl border border-amber-500/30 shadow-lg shadow-amber-500/5 overflow-hidden transition-all duration-300 ring-1 ring-amber-500/10">
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1270,8 +1991,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300"
                         placeholder="例如: PMP 项目管理专业人士"
                         type="text"
-                        value={certName}
-                        onChange={(e) => setCertName(e.target.value)}
+                        value={editingCertData?.name || ""}
+                        onChange={(e) => editingCertId && updateCertField(editingCertId, "name", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1280,8 +2001,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
                         placeholder="例如: PMI"
                         type="text"
-                        value={certIssuer}
-                        onChange={(e) => setCertIssuer(e.target.value)}
+                        value={editingCertData?.issuer || ""}
+                        onChange={(e) => editingCertId && updateCertField(editingCertId, "issuer", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1290,21 +2011,31 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
                         placeholder="YYYY 或 YYYY.MM"
                         type="text"
-                        value={certDate}
-                        onChange={(e) => setCertDate(e.target.value)}
+                        value={editingCertData?.date || ""}
+                        onChange={(e) => editingCertId && updateCertField(editingCertId, "date", e.target.value)}
                       />
                     </div>
                     <div className="md:col-span-2">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
-                        匹配度 (可选) - {certMatchRate}%
+                        匹配度 (可选) - {editingCertData?.matchRate ?? 0}%
+                        {!isCertMatchRateEditable && (
+                          <span className="ml-2 text-[11px] font-normal text-amber-500 normal-case">
+                            已有描述，匹配度不可编辑
+                          </span>
+                        )}
                       </label>
                       <input
-                        className="w-full"
+                        className="w-full disabled:cursor-not-allowed"
                         type="range"
                         min="0"
                         max="100"
-                        value={certMatchRate}
-                        onChange={(e) => setCertMatchRate(parseInt(e.target.value))}
+                        value={editingCertData?.matchRate ?? 0}
+                        onChange={(e) =>
+                          editingCertId &&
+                          isCertMatchRateEditable &&
+                          updateCertField(editingCertId, "matchRate", parseInt(e.target.value))
+                        }
+                        disabled={!isCertMatchRateEditable || savingCertId === editingCertId}
                       />
                     </div>
                   </div>
@@ -1313,9 +2044,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   <button
                     className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                    onClick={() => editingCertId !== 'new' && handleDeleteCert(editingCertId!)}
+                    onClick={() => editingCertId && handleDeleteCert(editingCertId)}
                     title="删除"
-                    disabled={editingCertId === 'new'}
+                    disabled={savingCertId === editingCertId}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -1324,12 +2055,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     <button
                       onClick={handleCancelEditCert}
                       className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      disabled={savingCertId === editingCertId}
                     >
                       取消
                     </button>
                     <button
                       onClick={handleSaveCert}
                       className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-amber-500/20"
+                      disabled={savingCertId === editingCertId || !isCertModified}
                     >
                       保存
                       <ChevronUp className="w-4 h-4" />
@@ -1340,39 +2073,42 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             )}
 
             {/* Cert List Items */}
-            {certifications.map((cert) => (
-              <div
-                key={cert.id}
-                className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer"
-                onClick={() => handleEditCert(cert)}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-bold text-gray-900 dark:text-white truncate">{cert.name}</h3>
-                      {cert.matchRate !== undefined && cert.matchRate > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                          匹配度 {cert.matchRate}%
-                        </span>
-                      )}
+            {certifications.map((cert) => {
+              const viewData = buildCertificationCardData(cert);
+              return (
+                <div
+                  key={cert.id}
+                  className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer"
+                  onClick={() => handleEditCert(cert)}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{viewData.name}</h3>
+                        {viewData.matchRate > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                            匹配度 {viewData.matchRate}%
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{viewData.issuer}</p>
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{cert.issuer}</p>
-                  </div>
-                  <div className="text-right shrink-0 flex items-center gap-2">
-                    <span className="block text-sm font-mono text-gray-500">{cert.date}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteCert(cert.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="text-right shrink-0 flex items-center gap-2">
+                      <span className="block text-sm font-mono text-gray-500">{viewData.date}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCert(cert.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </section>
 
           {/* Skills Section */}
@@ -1392,10 +2128,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   </div>
 
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {skills.map(skill => (
-                      <span key={skill} className="group px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-default flex items-center gap-1">
-                        {skill}
-                        <button onClick={() => removeSkill(skill)} className="hidden group-hover:block hover:text-red-500 transition-colors"><X className="w-3 h-3" /></button>
+                    {skills.map((skill) => (
+                      <span key={skill.id} className="group px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-default flex items-center gap-1">
+                        {skill.name}
+                        <button
+                          onClick={() => handleDeleteSkill(skill.id)}
+                          className="hidden group-hover:block hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
                       </span>
                     ))}
                   </div>
@@ -1406,9 +2147,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       placeholder="添加新技能 (Add Skill)"
                       value={newSkill}
                       onChange={(e) => setNewSkill(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addSkill()}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddSkill()}
+                      disabled={isLoadingSkills || isCreatingSkill}
                     />
-                    <button onClick={addSkill} className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                    <button
+                      onClick={handleAddSkill}
+                      className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      disabled={isLoadingSkills || isCreatingSkill}
+                    >
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>

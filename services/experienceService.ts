@@ -129,10 +129,11 @@ export const experienceService = {
             if (cached && isExperienceListCacheFresh(cached, now)) {
                 return filterArchivedExperiences(cached.data);
             }
-            const inFlight = experienceListInFlight.get(cacheKey);
-            if (inFlight) {
-                return inFlight;
-            }
+        }
+
+        const inFlight = experienceListInFlight.get(cacheKey);
+        if (inFlight) {
+            return inFlight;
         }
 
         const requestPromise = apiClient

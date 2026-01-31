@@ -108,6 +108,12 @@ const apiClient = axios.create({
     },
 });
 
+export const getAuthCacheKey = async (): Promise<string> => {
+    const resource = getLogtoResource();
+    const token = await resolveAccessToken(resource);
+    return token ?? 'anonymous';
+};
+
 // 请求拦截器:自动添加JWT Token
 apiClient.interceptors.request.use(
     async (config) => {
