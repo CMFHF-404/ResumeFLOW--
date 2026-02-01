@@ -1,5 +1,5 @@
 import { useLogto } from '@logto/react';
-import { useEffect, ReactNode, useMemo, useState } from 'react';
+import { useEffect, ReactNode, useMemo, useRef, useState } from 'react';
 import { clearAccessTokenProvider, setAccessTokenProvider } from '../services/authTokenProvider';
 
 interface AuthGuardProps {
@@ -9,7 +9,20 @@ interface AuthGuardProps {
 export default function AuthGuard({ children }: AuthGuardProps) {
     const { isAuthenticated, isLoading, signIn, getAccessToken } = useLogto();
     const [isTokenReady, setIsTokenReady] = useState(false);
+    const [hasAuthenticatedOnce, setHasAuthenticatedOnce] = useState(false);
     const logtoResource = useMemo(() => import.meta.env.VITE_LOGTO_RESOURCE, []);
+    const getAccessTokenRef = useRef(getAccessToken ?? null);
+    const hasTokenGetter = !!getAccessToken;
+
+    useEffect(() => {
+        getAccessTokenRef.current = getAccessToken ?? null;
+    }, [getAccessToken]);
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            setHasAuthenticatedOnce(true);
+        }
+    }, [isAuthenticated]);
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
@@ -20,15 +33,20 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     }, [isAuthenticated, isLoading, signIn]);
 
     useEffect(() => {
-        if (!isAuthenticated || !getAccessToken) {
+        if (!isAuthenticated || !hasTokenGetter) {
             clearAccessTokenProvider();
             setIsTokenReady(false);
             return;
         }
 
+        // 通过 ref 读取最新的 getAccessToken，避免函数引用变化导致反复卸载子树
         setAccessTokenProvider(async (resource?: string) => {
+            const tokenGetter = getAccessTokenRef.current;
+            if (!tokenGetter) {
+                return null;
+            }
             try {
-                const token = await getAccessToken(resource);
+                const token = await tokenGetter(resource);
                 return token ?? null;
             } catch (error) {
                 console.warn('[AuthGuard] Failed to get access token', error);
@@ -38,18 +56,24 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         setIsTokenReady(true);
 
         if (logtoResource) {
-            getAccessToken(logtoResource).catch((error) => {
-                console.warn('[AuthGuard] Token warmup failed', error);
-            });
+            const tokenGetter = getAccessTokenRef.current;
+            if (tokenGetter) {
+                tokenGetter(logtoResource).catch((error) => {
+                    console.warn('[AuthGuard] Token warmup failed', error);
+                });
+            }
         }
 
         return () => {
             clearAccessTokenProvider();
             setIsTokenReady(false);
         };
-    }, [getAccessToken, isAuthenticated, logtoResource]);
+    }, [hasTokenGetter, isAuthenticated, logtoResource]);
 
-    if (isLoading || (isAuthenticated && !isTokenReady)) {
+    const shouldShowLoading =
+        (isLoading && !hasAuthenticatedOnce) || (isAuthenticated && !isTokenReady);
+
+    if (shouldShowLoading) {
         return (
             <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
                 <div className="text-center">
