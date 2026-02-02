@@ -2376,32 +2376,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                               />
                             </div>
                           </div>
-                          <div className="md:col-span-2">
-                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
-                              匹配度 (%)
-                              <span className="ml-2 text-xs font-normal text-gray-400 normal-case">仅用于简历匹配分析</span>
-                              {!isMatchRateEditable && (
-                                <span className="ml-2 text-[11px] font-normal text-amber-500 normal-case">
-                                  已有描述，匹配度不可编辑
-                                </span>
-                              )}
-                            </label>
-                            <input
-                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                              placeholder="0-100"
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={data.matchRate || 0}
-                              onChange={(e) => {
-                                if (!isMatchRateEditable) {
-                                  return;
-                                }
-                                updateCertField(certId, "matchRate", parseInt(e.target.value) || 0);
-                              }}
-                              disabled={!isMatchRateEditable || savingCertIds.has(certId)}
-                            />
-                          </div>
+
                         </div>
                       </div>
 
