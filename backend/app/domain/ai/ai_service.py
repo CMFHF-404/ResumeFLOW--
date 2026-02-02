@@ -81,7 +81,7 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
         "temperature": 0.3,
     }
     url = f"{settings.ai_base_url}/chat/completions"
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(url, headers=_build_headers(), json=payload)
         response.raise_for_status()
         data = response.json()
@@ -89,6 +89,10 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
     if json_mode:
         return _parse_json_content(content)
     return {"content": content}
+
+
+async def call_llm_json(messages: List[Dict[str, str]]) -> Dict[str, Any]:
+    return await _call_llm(messages, json_mode=True)
 
 
 async def analyze_jd(text: str, resume_text: Optional[str] = None) -> Dict[str, Any]:

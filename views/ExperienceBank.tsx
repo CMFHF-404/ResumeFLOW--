@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
 import MonthPicker from '../components/MonthPicker';
+import ResumeUploadModal from '../components/ResumeUploadModal';
 import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
 import { experienceService, ExperienceListItem } from '../services/experienceService';
@@ -577,6 +578,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
 
 
   // Personal Info State
@@ -1155,6 +1157,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       return data;
     });
   }, []);
+
+  const handleResumeImported = useCallback(async () => {
+    await Promise.all([refreshWorkExperiences(), refreshEducationExperiences()]);
+  }, [refreshEducationExperiences, refreshWorkExperiences]);
 
   // ============= 新的工作经历卡片管理 Handlers =============
   // 切换卡片展开/折叠状态
@@ -1983,7 +1989,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+          <button
+            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
+            onClick={() => setIsResumeModalOpen(true)}
+            type="button"
+          >
             <UploadCloud className="w-4 h-4" />
             导入简历
           </button>
@@ -2107,6 +2117,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             <button
               onClick={handleAddNewWork}
               className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all duration-300"
+              type="button"
             >
               <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-primary transition-colors">
                 <Plus className="w-5 h-5" />
@@ -2778,6 +2789,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
         </div>
       </main>
+
+      <ResumeUploadModal
+        isOpen={isResumeModalOpen}
+        onClose={() => setIsResumeModalOpen(false)}
+        onImported={handleResumeImported}
+        toast={{ success, error, loading, updateToast }}
+      />
 
       {/* Toast 提示容器 */}
       <ToastContainer toasts={toasts} onClose={closeToast} />

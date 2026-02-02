@@ -1,0 +1,18 @@
+RESUME_PARSING_PROMPT = (
+    "You are a resume parser. Return JSON only (no markdown). "
+    "Extract work experience and education into the schema below. "
+    "Keep the original language of the resume. If a field is missing, use an empty string or empty array. "
+    "Do not rewrite or summarize. Preserve the original wording as much as possible, "
+    "especially for STAR fields. For star.a, keep full action bullet text and keep line breaks. "
+    "Dates should be in YYYY-MM or YYYY-MM-DD, and use is_current to indicate present roles. "
+    "Schema: {"
+    "\"work_experiences\": ["
+    "{\"title\": \"\", \"org\": \"\", \"location\": \"\", "
+    "\"start_date\": \"\", \"end_date\": \"\", \"is_current\": false, "
+    "\"summary\": \"\", \"highlights\": [], \"tags\": [], "
+    "\"star\": {\"s\": \"\", \"t\": \"\", \"a\": \"\", \"r\": \"\"}}, ...], "
+    "\"education\": ["
+    "{\"school\": \"\", \"major\": \"\", \"degree\": \"\", "
+    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...]"
+    "}"
+)
