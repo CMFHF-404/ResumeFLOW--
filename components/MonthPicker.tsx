@@ -98,7 +98,7 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
 
           <div className="flex items-center gap-1 shrink-0">
             {/* "Present" Button for End Date */}
-            {allowPresent && !isPresentValue && !disabled && (
+            {allowPresent && !showValue && !disabled && (
               <button
                 type="button"
                 onClick={handlePresentClick}

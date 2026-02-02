@@ -650,6 +650,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     star: buildEduStarPayload(data),
   });
 
+
+
   const refreshEducationExperiences = useCallback(async () => {
     return runDedupedRefresh(eduRefreshInFlightRef, async () => {
       const data = await experienceService.list('education', { force: true });
@@ -1650,6 +1652,37 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const isCertMatchRateEditable = false; // Deprecated or needs refactor
   const isCertModified = false; // Deprecated
 
+  // Sort lists by date descending
+  const sortedWorkExperiences = React.useMemo(() => {
+    return [...workExperiences].sort((a, b) => {
+      const dateA = a.latest_version?.start_date;
+      const dateB = b.latest_version?.start_date;
+      const valA = parseYearMonthValue(dateA) ?? -1;
+      const valB = parseYearMonthValue(dateB) ?? -1;
+      return valB - valA;
+    });
+  }, [workExperiences]);
+
+  const sortedEducations = React.useMemo(() => {
+    return [...educations].sort((a, b) => {
+      const dateA = a.latest_version?.start_date;
+      const dateB = b.latest_version?.start_date;
+      const valA = parseYearMonthValue(dateA) ?? -1;
+      const valB = parseYearMonthValue(dateB) ?? -1;
+      return valB - valA;
+    });
+  }, [educations]);
+
+  const sortedCertifications = React.useMemo(() => {
+    return [...certifications].sort((a, b) => {
+      const dateA = a.issue_date;
+      const dateB = b.issue_date;
+      const valA = parseYearMonthValue(dateA) ?? -1;
+      const valB = parseYearMonthValue(dateB) ?? -1;
+      return valB - valA;
+    });
+  }, [certifications]);
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
       <header className="h-16 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark flex items-center justify-between px-8 shrink-0 z-20">
@@ -1796,7 +1829,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </button>
 
             {/* 工作经历卡片列表 */}
-            {workExperiences.map((item) => {
+            {sortedWorkExperiences.map((item) => {
               const cardId = item.master.id;
               const isExpanded = expandedCards.has(cardId);
               const isCollapsing = collapsingCards.has(cardId);
@@ -2045,7 +2078,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </button>
 
             {/* Edu List Items */}
-            {educations.map((edu) => {
+            {sortedEducations.map((edu) => {
               const cardId = edu.master.id;
               const isExpanded = expandedEduCards.has(cardId);
               const isCollapsing = collapsingEduCards.has(cardId);
@@ -2158,7 +2191,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                                   value={data.endDate}
                                   onChange={(val) => updateEduField(cardId, "endDate", val)}
                                   placeholder="结束时间"
-                                  allowPresent
                                   className="h-full"
                                   minDate={data.startDate}
                                 />
@@ -2258,7 +2290,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </button>
 
             {/* Cert List Items */}
-            {certifications.map((cert) => {
+            {sortedCertifications.map((cert) => {
               const certId = cert.id;
               const isExpanded = expandedCertCards.has(certId);
               const isCollapsing = collapsingCertCards.has(certId);
