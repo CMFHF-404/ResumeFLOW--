@@ -339,6 +339,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
   const onProfileUpdateRef = useRef(onProfileUpdate);
 
+  // 用于滚动定位的 Refs
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const eduCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const certCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
   const applyProfileSnapshot = useCallback((profile: Profile) => {
     const resolvedLink = resolveLinkedInLink(profile);
     setName(profile.full_name || "");
@@ -564,6 +569,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     () => !initialWorkExperiencesRef.current
   );
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [collapsingCards, setCollapsingCards] = useState<Set<string>>(new Set());
   const [modifiedCards, setModifiedCards] = useState<Set<string>>(new Set());
   const [cardData, setCardData] = useState<Map<string, any>>(new Map());
   const [originalCardData, setOriginalCardData] = useState<Map<string, any>>(new Map());
@@ -591,11 +597,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [isLoadingEdu, setIsLoadingEdu] = useState(
     () => !initialEducationRef.current
   );
-  const [editingEduId, setEditingEduId] = useState<string | null>(null);
+  // Unifying state: Multi-card expansion
+  const [expandedEduCards, setExpandedEduCards] = useState<Set<string>>(new Set());
+  const [collapsingEduCards, setCollapsingEduCards] = useState<Set<string>>(new Set());
+
+  // const [editingEduId, setEditingEduId] = useState<string | null>(null); // Deprecated in favor of expandedEduCards
   const [eduData, setEduData] = useState<Map<string, EduCardData>>(new Map());
   const [originalEduData, setOriginalEduData] = useState<Map<string, EduCardData>>(new Map());
   const [modifiedEduCards, setModifiedEduCards] = useState<Set<string>>(new Set());
-  const [savingEduId, setSavingEduId] = useState<string | null>(null);
+  const [savingEduIds, setSavingEduIds] = useState<Set<string>>(new Set());
   const [isCreatingEdu, setIsCreatingEdu] = useState(false);
 
   // Education Handlers
@@ -679,7 +689,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         next.delete(newEducation.master.id);
         return next;
       });
-      setEditingEduId(newEducation.master.id);
+      // Actually we should toggle it expanded
+      toggleEduCard(newEducation.master.id, initialData);
 
       if (toastId) {
         updateToast(toastId, { message: EDU_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
@@ -702,11 +713,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   };
 
-  const handleSaveEdu = async () => {
-    if (!editingEduId) {
-      return;
-    }
-    const data = eduData.get(editingEduId);
+  const handleSaveEdu = async (eduId: string) => {
+    const data = eduData.get(eduId);
     if (!data) {
       return;
     }
@@ -718,21 +726,25 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
     let toastId: string | null = null;
     try {
-      setSavingEduId(editingEduId);
+      setSavingEduIds((prev) => {
+        const next = new Set(prev);
+        next.add(eduId);
+        return next;
+      });
       toastId = loading(EDU_TOAST_MESSAGES.saveLoading);
       const versionPayload = buildEduVersionPayload(normalized);
-      await experienceService.update(editingEduId, { version: versionPayload });
+      await experienceService.update(eduId, { version: versionPayload });
 
-      setEduData((prev) => new Map(prev).set(editingEduId, normalized));
-      setOriginalEduData((prev) => new Map(prev).set(editingEduId, cloneEduCardData(normalized)));
+      setEduData((prev) => new Map(prev).set(eduId, normalized));
+      setOriginalEduData((prev) => new Map(prev).set(eduId, cloneEduCardData(normalized)));
       setModifiedEduCards((prev) => {
         const next = new Set(prev);
-        next.delete(editingEduId);
+        next.delete(eduId);
         return next;
       });
 
       setEducations((prev) => prev.map((item) => {
-        if (item.master.id !== editingEduId) {
+        if (item.master.id !== eduId) {
           return item;
         }
         return {
@@ -758,7 +770,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         console.error('[ExperienceBank] 刷新教育经历失败:', err);
       });
 
-      setEditingEduId(null);
+      // Auto-collapse after save if needed, or keep expanded. Work Experience keeps expanded.
+      // We assume user wants to stay there.
     } catch (err) {
       console.error('Failed to save education experience:', err);
       if (toastId) {
@@ -767,20 +780,27 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         error(EDU_TOAST_MESSAGES.saveError);
       }
     } finally {
-      setSavingEduId(null);
+      setSavingEduIds((prev) => {
+        const next = new Set(prev);
+        next.delete(eduId);
+        return next;
+      });
     }
   };
 
+  // Replaced by toggleEduCard, but kept for compatibility if passed as prop (though not used)
+  // Or simply delete if unused. It was used in the old list item onClick.
+  // We will now use toggleEduCard directly in the render loop.
   const handleEditEdu = (edu: ExperienceListItem) => {
-    const eduId = edu.master.id;
-    ensureEduCardState(eduId, buildEduCardData(edu));
-    setEditingEduId(eduId);
+    toggleEduCard(edu.master.id);
   };
 
   const handleDeleteEdu = async (eduId: string) => {
     let toastId: string | null = null;
     try {
-      setEditingEduId(null);
+      if (savingEduIds.has(eduId)) {
+        return;
+      }
       toastId = loading(EDU_TOAST_MESSAGES.deleteLoading);
 
       setEducations((prev) => prev.filter((edu) => edu.master.id !== eduId));
@@ -824,29 +844,31 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   };
 
-  const handleCancelEditEdu = () => {
-    if (editingEduId) {
-      const original = originalEduData.get(editingEduId);
-      if (original) {
-        setEduData((prev) => new Map(prev).set(editingEduId, cloneEduCardData(original)));
-      }
-      setModifiedEduCards((prev) => {
-        const next = new Set(prev);
-        next.delete(editingEduId);
-        return next;
-      });
+  const handleCancelEditEdu = (eduId: string) => {
+    const original = originalEduData.get(eduId);
+    if (original) {
+      setEduData((prev) => new Map(prev).set(eduId, cloneEduCardData(original)));
     }
-    setEditingEduId(null);
+    setModifiedEduCards((prev) => {
+      const next = new Set(prev);
+      next.delete(eduId);
+      return next;
+    });
   };
 
   // Certifications State
   const [certifications, setCertifications] = useState<CertificationRecord[]>([]);
   const [isLoadingCertifications, setIsLoadingCertifications] = useState(true);
-  const [editingCertId, setEditingCertId] = useState<string | null>(null);
+
+  // Unifying state
+  const [expandedCertCards, setExpandedCertCards] = useState<Set<string>>(new Set());
+  const [collapsingCertCards, setCollapsingCertCards] = useState<Set<string>>(new Set());
+
+  // const [editingCertId, setEditingCertId] = useState<string | null>(null); // Deprecated
   const [certData, setCertData] = useState<Map<string, CertificationCardData>>(new Map());
   const [originalCertData, setOriginalCertData] = useState<Map<string, CertificationCardData>>(new Map());
   const [modifiedCertCards, setModifiedCertCards] = useState<Set<string>>(new Set());
-  const [savingCertId, setSavingCertId] = useState<string | null>(null);
+  const [savingCertIds, setSavingCertIds] = useState<Set<string>>(new Set());
   const [isCreatingCert, setIsCreatingCert] = useState(false);
 
   const toggleTheme = () => {
@@ -867,7 +889,32 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const toggleCard = (cardId: string) => {
     const newExpanded = new Set(expandedCards);
     if (newExpanded.has(cardId)) {
+      // 收起动画处理
+      const newCollapsing = new Set(collapsingCards);
+      newCollapsing.add(cardId);
+      setCollapsingCards(newCollapsing);
+
+      // 这里的 state update 需要拆分，先维持 expanded 用于渲染，但标记 collapsing
+      // 实际上我们要延迟移除 expanded，或者在渲染时同时检查 expanded 和 collapsing
+      // 方案：立即移除 expanded，但只要 collapsing 存在，就渲染"展开态"并带上 exit 动画
+      // 这样逻辑更清晰：expanded=false & collapsing=true => 正在收起
       newExpanded.delete(cardId);
+
+      setTimeout(() => {
+        setCollapsingCards(prev => {
+          const next = new Set(prev);
+          next.delete(cardId);
+          return next;
+        });
+
+        // 等待 React 渲染收起后的状态（变回摘要行），然后居中
+        setTimeout(() => {
+          const element = cardRefs.current.get(cardId);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
+      }, 300); // 300ms 对应 duration-300
     } else {
       newExpanded.add(cardId);
       // 展开时初始化卡片数据
@@ -877,6 +924,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         setCardData(new Map(cardData).set(cardId, initialData));
         setOriginalCardData(new Map(originalCardData).set(cardId, cloneWorkCardData(initialData)));
       }
+
+      // 延迟滚动，等待 DOM 渲染完成
+      setTimeout(() => {
+        const element = cardRefs.current.get(cardId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     }
     setExpandedCards(newExpanded);
   };
@@ -1137,6 +1192,85 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       setIsPolishing(false);
     }
   };
+
+  // 切换教育卡片展开/折叠
+  const toggleEduCard = (cardId: string, seedData?: EduCardData) => {
+    const newExpanded = new Set(expandedEduCards);
+    if (newExpanded.has(cardId)) {
+      // Collapse
+      const newCollapsing = new Set(collapsingEduCards);
+      newCollapsing.add(cardId);
+      setCollapsingEduCards(newCollapsing);
+      newExpanded.delete(cardId);
+
+      setTimeout(() => {
+        setCollapsingEduCards(prev => {
+          const next = new Set(prev);
+          next.delete(cardId);
+          return next;
+        });
+        // Center after collapse
+        setTimeout(() => {
+          const element = eduCardRefs.current.get(cardId);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
+      }, 300);
+    } else {
+      // Expand
+      newExpanded.add(cardId);
+      ensureEduCardState(cardId, seedData); // Ensure data is initialized
+
+      // Center after expand
+      setTimeout(() => {
+        const element = eduCardRefs.current.get(cardId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+    setExpandedEduCards(newExpanded);
+  };
+
+  // 切换证书卡片展开/折叠
+  const toggleCertCard = (cardId: string, seedData?: CertificationCardData) => {
+    const newExpanded = new Set(expandedCertCards);
+    if (newExpanded.has(cardId)) {
+      // Collapse
+      const newCollapsing = new Set(collapsingCertCards);
+      newCollapsing.add(cardId);
+      setCollapsingCertCards(newCollapsing);
+      newExpanded.delete(cardId);
+
+      setTimeout(() => {
+        setCollapsingCertCards(prev => {
+          const next = new Set(prev);
+          next.delete(cardId);
+          return next;
+        });
+        // Center after collapse
+        setTimeout(() => {
+          const element = certCardRefs.current.get(cardId);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
+      }, 300);
+    } else {
+      newExpanded.add(cardId);
+      ensureCertCardState(cardId, seedData);
+
+      setTimeout(() => {
+        const element = certCardRefs.current.get(cardId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+    setExpandedCertCards(newExpanded);
+  };
+
   // ============= 新的工作经历卡片管理 Handlers 结束 =============
 
 
@@ -1285,7 +1419,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         next.delete(newCert.id);
         return next;
       });
-      setEditingCertId(newCert.id);
+      toggleCertCard(newCert.id, initialData);
 
       if (toastId) {
         updateToast(toastId, { message: CERT_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
@@ -1308,11 +1442,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   };
 
-  const handleSaveCert = async () => {
-    if (!editingCertId) {
-      return;
-    }
-    const data = certData.get(editingCertId);
+  const handleSaveCert = async (certId: string) => {
+    const data = certData.get(certId);
     if (!data) {
       return;
     }
@@ -1324,22 +1455,26 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
     let toastId: string | null = null;
     try {
-      setSavingCertId(editingCertId);
+      setSavingCertIds((prev) => {
+        const next = new Set(prev);
+        next.add(certId);
+        return next;
+      });
       toastId = loading(CERT_TOAST_MESSAGES.saveLoading);
-      const description = resolveCertificationDescription(editingCertId, normalized.matchRate);
+      const description = resolveCertificationDescription(certId, normalized.matchRate);
       const payload = buildCertificationPayload(normalized, description);
-      await certificationsService.update(editingCertId, payload);
+      await certificationsService.update(certId, payload);
 
-      setCertData((prev) => new Map(prev).set(editingCertId, normalized));
-      setOriginalCertData((prev) => new Map(prev).set(editingCertId, cloneCertificationCardData(normalized)));
+      setCertData((prev) => new Map(prev).set(certId, normalized));
+      setOriginalCertData((prev) => new Map(prev).set(certId, cloneCertificationCardData(normalized)));
       setModifiedCertCards((prev) => {
         const next = new Set(prev);
-        next.delete(editingCertId);
+        next.delete(certId);
         return next;
       });
 
       setCertifications((prev) => prev.map((item) => {
-        if (item.id !== editingCertId) {
+        if (item.id !== certId) {
           return item;
         }
         return {
@@ -1361,7 +1496,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         console.error('[ExperienceBank] 刷新证书失败:', err);
       });
 
-      setEditingCertId(null);
+      // Auto-collapse after save if needed
     } catch (err) {
       console.error('Failed to save certification:', err);
       if (toastId) {
@@ -1370,19 +1505,24 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         error(CERT_TOAST_MESSAGES.saveError);
       }
     } finally {
-      setSavingCertId(null);
+      setSavingCertIds((prev) => {
+        const next = new Set(prev);
+        next.delete(certId);
+        return next;
+      });
     }
   };
 
   const handleEditCert = (cert: CertificationRecord) => {
-    ensureCertCardState(cert.id, buildCertificationCardData(cert));
-    setEditingCertId(cert.id);
+    toggleCertCard(cert.id);
   };
 
   const handleDeleteCert = async (id: string) => {
     let toastId: string | null = null;
     try {
-      setEditingCertId(null);
+      if (savingCertIds.has(id)) {
+        return;
+      }
       toastId = loading(CERT_TOAST_MESSAGES.deleteLoading);
 
       setCertifications((prev) => prev.filter((cert) => cert.id !== id));
@@ -1426,35 +1566,22 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   };
 
-  const handleCancelEditCert = () => {
-    if (editingCertId) {
-      const original = originalCertData.get(editingCertId);
-      if (original) {
-        setCertData((prev) => new Map(prev).set(editingCertId, cloneCertificationCardData(original)));
-      }
-      setModifiedCertCards((prev) => {
-        const next = new Set(prev);
-        next.delete(editingCertId);
-        return next;
-      });
+  const handleCancelEditCert = (certId: string) => {
+    const original = originalCertData.get(certId);
+    if (original) {
+      setCertData((prev) => new Map(prev).set(certId, cloneCertificationCardData(original)));
     }
-    setEditingCertId(null);
+    setModifiedCertCards((prev) => {
+      const next = new Set(prev);
+      next.delete(certId);
+      return next;
+    });
   };
 
-  const editingEduData = editingEduId
-    ? (eduData.get(editingEduId) || createEmptyEduCardData())
-    : null;
-  const isEduModified = editingEduId ? modifiedEduCards.has(editingEduId) : false;
-  const editingCertData = editingCertId
-    ? (certData.get(editingCertId) || createEmptyCertificationCardData())
-    : null;
-  const editingCertRecord = editingCertId
-    ? certifications.find((cert) => cert.id === editingCertId)
-    : null;
-  const isCertMatchRateEditable = editingCertId
-    ? canPersistCertificationMeta(editingCertRecord?.description)
-    : false;
-  const isCertModified = editingCertId ? modifiedCertCards.has(editingCertId) : false;
+  const editingCertData = null; // Deprecated
+  const editingCertRecord = null; // Deprecated
+  const isCertMatchRateEditable = false; // Deprecated or needs refactor
+  const isCertModified = false; // Deprecated
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -1605,12 +1732,21 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             {workExperiences.map((item) => {
               const cardId = item.master.id;
               const isExpanded = expandedCards.has(cardId);
+              const isCollapsing = collapsingCards.has(cardId);
+              const showExpanded = isExpanded || isCollapsing;
               const isModified = modifiedCards.has(cardId);
               const data = cardData.get(cardId) || buildWorkCardData(item);
 
               return (
-                <div key={cardId} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
-                  {!isExpanded ? (
+                <div
+                  key={cardId}
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(cardId, el);
+                    else cardRefs.current.delete(cardId);
+                  }}
+                  className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
+                >
+                  {!showExpanded ? (
                     // 折叠态
                     <div className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" onClick={() => toggleCard(cardId)}>
                       <div className="flex items-start justify-between gap-4">
@@ -1643,7 +1779,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     </div>
                   ) : (
                     // 展开态
-                    <>
+                    <div className={
+                      isCollapsing
+                        ? "animate-out fade-out slide-out-to-top-8 duration-300 origin-top"
+                        : "animate-in fade-in slide-in-from-top-8 duration-300 origin-top"
+                    }>
                       <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
                         <div className="flex flex-col lg:flex-row gap-6 mb-4">
                           <div className="flex-1">
@@ -1765,7 +1905,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           )}
                         </div>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               );
@@ -1825,140 +1965,177 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
             {/* Edu List Items */}
             {educations.map((edu) => {
-              const eduId = edu.master.id;
-              const isEditing = editingEduId === eduId;
-              const viewData = buildEduCardData(edu);
-              const formData = isEditing ? (editingEduData || createEmptyEduCardData()) : null;
-
-              if (isEditing) {
-                return (
-                  <div
-                    key={eduId}
-                    className="bg-white dark:bg-surface-dark rounded-xl border border-purple-500/30 shadow-lg shadow-purple-500/5 overflow-hidden transition-all duration-300 ring-1 ring-purple-500/10 relative animate-in fade-in slide-in-from-top-4"
-                  >
-                    <div className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="flex-1">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学校名称</label>
-                          <input
-                            className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
-                            placeholder="输入学校名称"
-                            value={formData?.school || ""}
-                            onChange={(e) => updateEduField(eduId, "school", e.target.value)}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业</label>
-                          <input
-                            className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
-                            placeholder="输入专业"
-                            value={formData?.major || ""}
-                            onChange={(e) => updateEduField(eduId, "major", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位</label>
-                          <input
-                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                            placeholder="本科/硕士/博士"
-                            value={formData?.degree || ""}
-                            onChange={(e) => updateEduField(eduId, "degree", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                              placeholder="Start"
-                              value={formData?.startDate || ""}
-                              onChange={(e) => updateEduField(eduId, "startDate", e.target.value)}
-                            />
-                            <span className="text-gray-400">-</span>
-                            <input
-                              className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                              placeholder="End"
-                              value={formData?.endDate || ""}
-                              onChange={(e) => updateEduField(eduId, "endDate", e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA (可选)</label>
-                          <input
-                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                            placeholder="例如: 3.8/4.0"
-                            value={formData?.gpa || ""}
-                            onChange={(e) => updateEduField(eduId, "gpa", e.target.value)}
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">主修课程 (可选)</label>
-                          <textarea
-                            className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
-                            rows={2}
-                            placeholder="列出关键相关课程..."
-                            value={formData?.courses || ""}
-                            onChange={(e) => updateEduField(eduId, "courses", e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                      <button
-                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                        onClick={() => handleDeleteEdu(eduId)}
-                        title="删除"
-                        disabled={savingEduId === eduId}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleCancelEditEdu}
-                          className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                          disabled={savingEduId === eduId}
-                        >
-                          取消
-                        </button>
-                        <button
-                          onClick={handleSaveEdu}
-                          className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20"
-                          disabled={savingEduId === eduId}
-                        >
-                          保存
-                          <ChevronUp className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
+              const cardId = edu.master.id;
+              const isExpanded = expandedEduCards.has(cardId);
+              const isCollapsing = collapsingEduCards.has(cardId);
+              const showExpanded = isExpanded || isCollapsing;
+              const isModified = modifiedEduCards.has(cardId);
+              const data = eduData.get(cardId) || buildEduCardData(edu);
 
               return (
                 <div
-                  key={eduId}
-                  className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer"
-                  onClick={() => handleEditEdu(edu)}
+                  key={cardId}
+                  ref={(el) => {
+                    if (el) eduCardRefs.current.set(cardId, el);
+                    else eduCardRefs.current.delete(cardId);
+                  }}
+                  className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{viewData.school}</h3>
-                        <span className="text-gray-300 dark:text-gray-600">|</span>
-                        <span className="text-gray-700 dark:text-gray-300 font-medium">{viewData.major}</span>
+                  {!showExpanded ? (
+                    // Collapsed State
+                    <div className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" onClick={() => toggleEduCard(cardId)}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1">
+                            <h3 className="font-bold text-gray-900 dark:text-white truncate">{data.school}</h3>
+                            <span className="text-gray-300 dark:text-gray-600">|</span>
+                            <span className="text-gray-700 dark:text-gray-300 font-medium">{data.major}</span>
+                          </div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                            {data.degree} {data.gpa ? `• GPA: ${data.gpa}` : ''} {data.courses ? `• ${data.courses}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 flex items-center gap-2">
+                          <span className="block text-sm font-mono text-gray-500">{data.startDate} - {data.endDate}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteEdu(cardId);
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                            title="删除"
+                            disabled={savingEduIds.has(cardId)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <ChevronDown className="w-5 h-5 text-gray-400" />
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {viewData.degree} {viewData.gpa ? `• GPA: ${viewData.gpa}` : ''} {viewData.courses ? `• ${viewData.courses}` : ''}
-                      </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="block text-sm font-mono text-gray-500 mb-2">{viewData.startDate} - {viewData.endDate}</span>
-                      <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors ml-auto" />
+                  ) : (
+                    // Expanded State
+                    <div className={
+                      isCollapsing
+                        ? "animate-out fade-out slide-out-to-top-8 duration-300 origin-top"
+                        : "animate-in fade-in slide-in-from-top-8 duration-300 origin-top"
+                    }>
+                      <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
+                        <div className="flex flex-col lg:flex-row gap-6 mb-4">
+                          <div className="flex-1">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学校名称</label>
+                            <input
+                              className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                              placeholder="输入学校名称"
+                              value={data.school}
+                              onChange={(e) => updateEduField(cardId, "school", e.target.value)}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业</label>
+                            <input
+                              className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                              placeholder="输入专业"
+                              value={data.major}
+                              onChange={(e) => updateEduField(cardId, "major", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-6 pt-4 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位</label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="本科/硕士/博士"
+                              value={data.degree}
+                              onChange={(e) => updateEduField(cardId, "degree", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                                placeholder="Start"
+                                value={data.startDate}
+                                onChange={(e) => updateEduField(cardId, "startDate", e.target.value)}
+                              />
+                              <span className="text-gray-400">-</span>
+                              <input
+                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                                placeholder="End"
+                                value={data.endDate}
+                                onChange={(e) => updateEduField(cardId, "endDate", e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA (可选)</label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="例如: 3.8/4.0"
+                              value={data.gpa}
+                              onChange={(e) => updateEduField(cardId, "gpa", e.target.value)}
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">主修课程 (可选)</label>
+                            <textarea
+                              className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
+                              rows={2}
+                              placeholder="列出关键相关课程..."
+                              value={data.courses}
+                              onChange={(e) => updateEduField(cardId, "courses", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleDeleteEdu(cardId)}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+                            title="删除"
+                            disabled={savingEduIds.has(cardId)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+
+                          {isModified ? (
+                            <>
+                              <button
+                                onClick={() => handleCancelEditEdu(cardId)}
+                                className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                disabled={savingEduIds.has(cardId)}
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => handleSaveEdu(cardId)}
+                                className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20 disabled:opacity-50"
+                                disabled={savingEduIds.has(cardId)}
+                              >
+                                {savingEduIds.has(cardId) ? '保存中...' : '保存'}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => toggleEduCard(cardId)}
+                              className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              折叠
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -1991,136 +2168,159 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             {/* Cert List Items */}
             {certifications.map((cert) => {
               const certId = cert.id;
-              const isEditing = editingCertId === certId;
-              const viewData = buildCertificationCardData(cert);
-              const formData = isEditing ? (editingCertData || createEmptyCertificationCardData()) : null;
-
-              if (isEditing) {
-                return (
-                  <div
-                    key={certId}
-                    className="bg-white dark:bg-surface-dark rounded-xl border border-amber-500/30 shadow-lg shadow-amber-500/5 overflow-hidden transition-all duration-300 ring-1 ring-amber-500/10"
-                  >
-                    <div className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">证书名称</label>
-                          <input
-                            className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300"
-                            placeholder="例如: PMP 项目管理专业人士"
-                            type="text"
-                            value={formData?.name || ""}
-                            onChange={(e) => updateCertField(certId, "name", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">颁发机构</label>
-                          <input
-                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
-                            placeholder="例如: PMI"
-                            type="text"
-                            value={formData?.issuer || ""}
-                            onChange={(e) => updateCertField(certId, "issuer", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">获得时间</label>
-                          <input
-                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
-                            placeholder="YYYY 或 YYYY.MM"
-                            type="text"
-                            value={formData?.date || ""}
-                            onChange={(e) => updateCertField(certId, "date", e.target.value)}
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
-                            匹配度 (可选) - {formData?.matchRate ?? 0}%
-                            {!isCertMatchRateEditable && (
-                              <span className="ml-2 text-[11px] font-normal text-amber-500 normal-case">
-                                已有描述，匹配度不可编辑
-                              </span>
-                            )}
-                          </label>
-                          <input
-                            className="w-full disabled:cursor-not-allowed"
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={formData?.matchRate ?? 0}
-                            onChange={(e) =>
-                              isCertMatchRateEditable &&
-                              updateCertField(certId, "matchRate", parseInt(e.target.value))
-                            }
-                            disabled={!isCertMatchRateEditable || savingCertId === certId}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                      <button
-                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                        onClick={() => handleDeleteCert(certId)}
-                        title="删除"
-                        disabled={savingCertId === certId}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleCancelEditCert}
-                          className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                          disabled={savingCertId === certId}
-                        >
-                          取消
-                        </button>
-                        <button
-                          onClick={handleSaveCert}
-                          className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-amber-500/20"
-                          disabled={savingCertId === certId}
-                        >
-                          保存
-                          <ChevronUp className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
+              const isExpanded = expandedCertCards.has(certId);
+              const isCollapsing = collapsingCertCards.has(certId);
+              const showExpanded = isExpanded || isCollapsing;
+              const isModified = modifiedCertCards.has(certId);
+              const isMatchRateEditable = canPersistCertificationMeta(cert.description);
+              const data = certData.get(certId) || buildCertificationCardData(cert);
 
               return (
                 <div
                   key={certId}
-                  className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer"
-                  onClick={() => handleEditCert(cert)}
+                  ref={(el) => {
+                    if (el) certCardRefs.current.set(certId, el);
+                    else certCardRefs.current.delete(certId);
+                  }}
+                  className="bg-white dark:bg-surface-dark rounded-xl border border-amber-500/30 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{viewData.name}</h3>
-                        {viewData.matchRate > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                            匹配度 {viewData.matchRate}%
-                          </span>
-                        )}
+                  {!showExpanded ? (
+                    // Collapsed State
+                    <div className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" onClick={() => toggleCertCard(certId)}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1">
+                            <h3 className="font-bold text-gray-900 dark:text-white truncate">{data.name}</h3>
+                            <span className="text-gray-300 dark:text-gray-600">|</span>
+                            <span className="text-gray-700 dark:text-gray-300 font-medium">{data.issuer}</span>
+                          </div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                            {data.date}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCert(certId);
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                            title="删除"
+                            disabled={savingCertIds.has(certId)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <ChevronDown className="w-5 h-5 text-gray-400" />
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{viewData.issuer}</p>
                     </div>
-                    <div className="text-right shrink-0 flex items-center gap-2">
-                      <span className="block text-sm font-mono text-gray-500">{viewData.date}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCert(certId);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  ) : (
+                    // Expanded State
+                    <div className={
+                      isCollapsing
+                        ? "animate-out fade-out slide-out-to-top-8 duration-300 origin-top"
+                        : "animate-in fade-in slide-in-from-top-8 duration-300 origin-top"
+                    }>
+                      <div className="p-6 border-b border-gray-50 dark:border-gray-800/50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">证书名称</label>
+                            <input
+                              className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                              placeholder="例如: PMP 项目管理专业人士"
+                              value={data.name}
+                              onChange={(e) => updateCertField(certId, "name", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">颁发机构</label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="例如: PMI"
+                              value={data.issuer}
+                              onChange={(e) => updateCertField(certId, "issuer", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">获得时间</label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="YYYY 或 YYYY.MM"
+                              value={data.date}
+                              onChange={(e) => updateCertField(certId, "date", e.target.value)}
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                              匹配度 (%)
+                              <span className="ml-2 text-xs font-normal text-gray-400 normal-case">仅用于简历匹配分析</span>
+                              {!isMatchRateEditable && (
+                                <span className="ml-2 text-[11px] font-normal text-amber-500 normal-case">
+                                  已有描述，匹配度不可编辑
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="0-100"
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={data.matchRate || 0}
+                              onChange={(e) => {
+                                if (!isMatchRateEditable) {
+                                  return;
+                                }
+                                updateCertField(certId, "matchRate", parseInt(e.target.value) || 0);
+                              }}
+                              disabled={!isMatchRateEditable || savingCertIds.has(certId)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleDeleteCert(certId)}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+                            title="删除"
+                            disabled={savingCertIds.has(certId)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isModified ? (
+                            <>
+                              <button
+                                onClick={() => handleCancelEditCert(certId)}
+                                className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                disabled={savingCertIds.has(certId)}
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => handleSaveCert(certId)}
+                                className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-amber-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-amber-500/20 disabled:opacity-50"
+                                disabled={savingCertIds.has(certId)}
+                              >
+                                {savingCertIds.has(certId) ? '保存中...' : '保存'}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => toggleCertCard(certId)}
+                              className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              折叠
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
