@@ -1,5 +1,7 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Database, UploadCloud, Download, Moon, Sun, Briefcase, Plus, Sparkles, ChevronUp, ChevronDown, Trash2, GraduationCap, FolderKanban, Wrench, User, Mail, Phone, MapPin, Link as LinkIcon, X, LayoutTemplate, Award } from 'lucide-react';
+import MonthPicker from '../components/MonthPicker';
 import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
 import { experienceService, ExperienceListItem } from '../services/experienceService';
@@ -43,7 +45,7 @@ const CERT_TOAST_MESSAGES = {
   createError: "创建证书失败，请重试",
   saveLoading: "正在保存证书...",
   saveSuccess: "证书保存成功",
-  saveError: "保存失败，请重试",
+  saveError: "保存失败，请重重试",
   deleteLoading: "正在删除证书...",
   deleteSuccess: "证书删除成功",
   deleteError: "删除失败，请重试",
@@ -227,6 +229,27 @@ const convertDateToISO = (dateStr: string | undefined): string | undefined => {
   }
 
   return undefined;
+};
+
+const parseYearMonthValue = (dateStr?: string): number | null => {
+  if (!dateStr) return null;
+  const trimmed = dateStr.trim();
+  if (!trimmed || trimmed === '至今' || trimmed === 'Present') return null;
+
+  if (/^\d{4}$/.test(trimmed)) {
+    return Number(trimmed) * 12 + 1;
+  }
+
+  const normalized = trimmed.replace('.', '-');
+  const parts = normalized.split('-');
+  if (parts.length < 2) return null;
+
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  if (month < 1 || month > 12) return null;
+
+  return year * 12 + month;
 };
 
 const getTodayLocalISODate = (): string => {
@@ -1852,22 +1875,33 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           </div>
                           <div className="w-full lg:w-auto shrink-0">
                             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                                placeholder="YYYY.MM"
-                                type="text"
-                                value={data.start_date}
-                                onChange={(e) => updateCardField(cardId, 'start_date', e.target.value)}
-                              />
+                            <div className="flex items-center gap-2 h-[42px] lg:h-auto self-end">
+                              <div className="w-32 h-full">
+                                <MonthPicker
+                                  value={data.start_date}
+                                  onChange={(val) => {
+                                    updateCardField(cardId, 'start_date', val);
+                                    const startValue = parseYearMonthValue(val);
+                                    const endValue = parseYearMonthValue(data.end_date);
+                                    if (startValue !== null && endValue !== null && startValue > endValue) {
+                                      updateCardField(cardId, 'end_date', '');
+                                    }
+                                  }}
+                                  placeholder="开始时间"
+                                  className="h-full"
+                                />
+                              </div>
                               <span className="text-gray-400">-</span>
-                              <input
-                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                                placeholder="至今"
-                                type="text"
-                                value={data.end_date}
-                                onChange={(e) => updateCardField(cardId, 'end_date', e.target.value)}
-                              />
+                              <div className="w-32 h-full">
+                                <MonthPicker
+                                  value={data.end_date}
+                                  onChange={(val) => updateCardField(cardId, 'end_date', val)}
+                                  placeholder="结束时间"
+                                  allowPresent
+                                  className="h-full"
+                                  minDate={data.start_date}
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2039,7 +2073,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                             <span className="text-gray-700 dark:text-gray-300 font-medium">{data.major}</span>
                           </div>
                           <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                            {data.degree} {data.gpa ? `• GPA: ${data.gpa}` : ''} {data.courses ? `• ${data.courses}` : ''}
+                            {data.degree} {data.gpa ? `• GPA: ${data.gpa} ` : ''} {data.courses ? `• ${data.courses} ` : ''}
                           </p>
                         </div>
                         <div className="text-right shrink-0 flex items-center gap-2">
@@ -2102,20 +2136,33 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           </div>
                           <div>
                             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                                placeholder="Start"
-                                value={data.startDate}
-                                onChange={(e) => updateEduField(cardId, "startDate", e.target.value)}
-                              />
+                            <div className="flex items-center gap-2 h-[42px] lg:h-auto items-end">
+                              <div className="w-32 h-full">
+                                <MonthPicker
+                                  value={data.startDate}
+                                  onChange={(val) => {
+                                    updateEduField(cardId, "startDate", val);
+                                    const startValue = parseYearMonthValue(val);
+                                    const endValue = parseYearMonthValue(data.endDate);
+                                    if (startValue !== null && endValue !== null && startValue > endValue) {
+                                      updateEduField(cardId, "endDate", "");
+                                    }
+                                  }}
+                                  placeholder="开始时间"
+                                  className="h-full"
+                                />
+                              </div>
                               <span className="text-gray-400">-</span>
-                              <input
-                                className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                                placeholder="End"
-                                value={data.endDate}
-                                onChange={(e) => updateEduField(cardId, "endDate", e.target.value)}
-                              />
+                              <div className="w-32 h-full">
+                                <MonthPicker
+                                  value={data.endDate}
+                                  onChange={(val) => updateEduField(cardId, "endDate", val)}
+                                  placeholder="结束时间"
+                                  allowPresent
+                                  className="h-full"
+                                  minDate={data.startDate}
+                                />
+                              </div>
                             </div>
                           </div>
                           <div className="md:col-span-2">
@@ -2288,12 +2335,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           </div>
                           <div>
                             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">获得时间</label>
-                            <input
-                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                              placeholder="YYYY 或 YYYY.MM"
-                              value={data.date}
-                              onChange={(e) => updateCertField(certId, "date", e.target.value)}
-                            />
+                            <div className="h-[46px]">
+                              <MonthPicker
+                                value={data.date}
+                                onChange={(val) => updateCertField(certId, "date", val)}
+                                placeholder="获得时间"
+                                className="w-full h-full"
+                              />
+                            </div>
                           </div>
                           <div className="md:col-span-2">
                             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
