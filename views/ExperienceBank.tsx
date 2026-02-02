@@ -1823,115 +1823,123 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
               <span className="font-medium">新增教育经历</span>
             </button>
 
-            {/* Editable/New Edu Card */}
-            {editingEduId && (
-              <div className="bg-white dark:bg-surface-dark rounded-xl border border-purple-500/30 shadow-lg shadow-purple-500/5 overflow-hidden transition-all duration-300 ring-1 ring-purple-500/10 relative animate-in fade-in slide-in-from-top-4">
-                <div className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学校名称</label>
-                      <input
-                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
-                        placeholder="输入学校名称"
-                        value={editingEduData?.school || ""}
-                        onChange={(e) => editingEduId && updateEduField(editingEduId, "school", e.target.value)}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业</label>
-                      <input
-                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
-                        placeholder="输入专业"
-                        value={editingEduData?.major || ""}
-                        onChange={(e) => editingEduId && updateEduField(editingEduId, "major", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位</label>
-                      <input
-                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                        placeholder="本科/硕士/博士"
-                        value={editingEduData?.degree || ""}
-                        onChange={(e) => editingEduId && updateEduField(editingEduId, "degree", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                          placeholder="Start"
-                          value={editingEduData?.startDate || ""}
-                          onChange={(e) => editingEduId && updateEduField(editingEduId, "startDate", e.target.value)}
-                        />
-                        <span className="text-gray-400">-</span>
-                        <input
-                          className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
-                          placeholder="End"
-                          value={editingEduData?.endDate || ""}
-                          onChange={(e) => editingEduId && updateEduField(editingEduId, "endDate", e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA (可选)</label>
-                      <input
-                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                        placeholder="例如: 3.8/4.0"
-                        value={editingEduData?.gpa || ""}
-                        onChange={(e) => editingEduId && updateEduField(editingEduId, "gpa", e.target.value)}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">主修课程 (可选)</label>
-                      <textarea
-                        className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
-                        rows={2}
-                        placeholder="列出关键相关课程..."
-                        value={editingEduData?.courses || ""}
-                        onChange={(e) => editingEduId && updateEduField(editingEduId, "courses", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                  <button
-                    className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                    onClick={() => editingEduId && handleDeleteEdu(editingEduId)}
-                    title="删除"
-                    disabled={savingEduId === editingEduId}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleCancelEditEdu}
-                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                      disabled={savingEduId === editingEduId}
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleSaveEdu}
-                      className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20"
-                      disabled={savingEduId === editingEduId || !isEduModified}
-                    >
-                      保存
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Edu List Items */}
             {educations.map((edu) => {
+              const eduId = edu.master.id;
+              const isEditing = editingEduId === eduId;
               const viewData = buildEduCardData(edu);
+              const formData = isEditing ? (editingEduData || createEmptyEduCardData()) : null;
+
+              if (isEditing) {
+                return (
+                  <div
+                    key={eduId}
+                    className="bg-white dark:bg-surface-dark rounded-xl border border-purple-500/30 shadow-lg shadow-purple-500/5 overflow-hidden transition-all duration-300 ring-1 ring-purple-500/10 relative animate-in fade-in slide-in-from-top-4"
+                  >
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex-1">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学校名称</label>
+                          <input
+                            className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                            placeholder="输入学校名称"
+                            value={formData?.school || ""}
+                            onChange={(e) => updateEduField(eduId, "school", e.target.value)}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业</label>
+                          <input
+                            className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
+                            placeholder="输入专业"
+                            value={formData?.major || ""}
+                            onChange={(e) => updateEduField(eduId, "major", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位</label>
+                          <input
+                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                            placeholder="本科/硕士/博士"
+                            value={formData?.degree || ""}
+                            onChange={(e) => updateEduField(eduId, "degree", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                              placeholder="Start"
+                              value={formData?.startDate || ""}
+                              onChange={(e) => updateEduField(eduId, "startDate", e.target.value)}
+                            />
+                            <span className="text-gray-400">-</span>
+                            <input
+                              className="fluid-input w-24 text-center text-base text-gray-600 dark:text-gray-300"
+                              placeholder="End"
+                              value={formData?.endDate || ""}
+                              onChange={(e) => updateEduField(eduId, "endDate", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA (可选)</label>
+                          <input
+                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                            placeholder="例如: 3.8/4.0"
+                            value={formData?.gpa || ""}
+                            onChange={(e) => updateEduField(eduId, "gpa", e.target.value)}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">主修课程 (可选)</label>
+                          <textarea
+                            className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
+                            rows={2}
+                            placeholder="列出关键相关课程..."
+                            value={formData?.courses || ""}
+                            onChange={(e) => updateEduField(eduId, "courses", e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                      <button
+                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        onClick={() => handleDeleteEdu(eduId)}
+                        title="删除"
+                        disabled={savingEduId === eduId}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleCancelEditEdu}
+                          className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                          disabled={savingEduId === eduId}
+                        >
+                          取消
+                        </button>
+                        <button
+                          onClick={handleSaveEdu}
+                          className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20"
+                          disabled={savingEduId === eduId}
+                        >
+                          保存
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
-                  key={edu.master.id}
+                  key={eduId}
                   className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-400 transition-all duration-200 cursor-pointer"
                   onClick={() => handleEditEdu(edu)}
                 >
@@ -1980,104 +1988,111 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
               <span className="font-medium">新增证书资质</span>
             </button>
 
-            {/* Editable/New Cert Card */}
-            {editingCertId && (
-              <div className="bg-white dark:bg-surface-dark rounded-xl border border-amber-500/30 shadow-lg shadow-amber-500/5 overflow-hidden transition-all duration-300 ring-1 ring-amber-500/10">
-                <div className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">证书名称</label>
-                      <input
-                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300"
-                        placeholder="例如: PMP 项目管理专业人士"
-                        type="text"
-                        value={editingCertData?.name || ""}
-                        onChange={(e) => editingCertId && updateCertField(editingCertId, "name", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">颁发机构</label>
-                      <input
-                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
-                        placeholder="例如: PMI"
-                        type="text"
-                        value={editingCertData?.issuer || ""}
-                        onChange={(e) => editingCertId && updateCertField(editingCertId, "issuer", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">获得时间</label>
-                      <input
-                        className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
-                        placeholder="YYYY 或 YYYY.MM"
-                        type="text"
-                        value={editingCertData?.date || ""}
-                        onChange={(e) => editingCertId && updateCertField(editingCertId, "date", e.target.value)}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
-                        匹配度 (可选) - {editingCertData?.matchRate ?? 0}%
-                        {!isCertMatchRateEditable && (
-                          <span className="ml-2 text-[11px] font-normal text-amber-500 normal-case">
-                            已有描述，匹配度不可编辑
-                          </span>
-                        )}
-                      </label>
-                      <input
-                        className="w-full disabled:cursor-not-allowed"
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={editingCertData?.matchRate ?? 0}
-                        onChange={(e) =>
-                          editingCertId &&
-                          isCertMatchRateEditable &&
-                          updateCertField(editingCertId, "matchRate", parseInt(e.target.value))
-                        }
-                        disabled={!isCertMatchRateEditable || savingCertId === editingCertId}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                  <button
-                    className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                    onClick={() => editingCertId && handleDeleteCert(editingCertId)}
-                    title="删除"
-                    disabled={savingCertId === editingCertId}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleCancelEditCert}
-                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                      disabled={savingCertId === editingCertId}
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleSaveCert}
-                      className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-amber-500/20"
-                      disabled={savingCertId === editingCertId || !isCertModified}
-                    >
-                      保存
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Cert List Items */}
             {certifications.map((cert) => {
+              const certId = cert.id;
+              const isEditing = editingCertId === certId;
               const viewData = buildCertificationCardData(cert);
+              const formData = isEditing ? (editingCertData || createEmptyCertificationCardData()) : null;
+
+              if (isEditing) {
+                return (
+                  <div
+                    key={certId}
+                    className="bg-white dark:bg-surface-dark rounded-xl border border-amber-500/30 shadow-lg shadow-amber-500/5 overflow-hidden transition-all duration-300 ring-1 ring-amber-500/10"
+                  >
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">证书名称</label>
+                          <input
+                            className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300"
+                            placeholder="例如: PMP 项目管理专业人士"
+                            type="text"
+                            value={formData?.name || ""}
+                            onChange={(e) => updateCertField(certId, "name", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">颁发机构</label>
+                          <input
+                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
+                            placeholder="例如: PMI"
+                            type="text"
+                            value={formData?.issuer || ""}
+                            onChange={(e) => updateCertField(certId, "issuer", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">获得时间</label>
+                          <input
+                            className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300"
+                            placeholder="YYYY 或 YYYY.MM"
+                            type="text"
+                            value={formData?.date || ""}
+                            onChange={(e) => updateCertField(certId, "date", e.target.value)}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                            匹配度 (可选) - {formData?.matchRate ?? 0}%
+                            {!isCertMatchRateEditable && (
+                              <span className="ml-2 text-[11px] font-normal text-amber-500 normal-case">
+                                已有描述，匹配度不可编辑
+                              </span>
+                            )}
+                          </label>
+                          <input
+                            className="w-full disabled:cursor-not-allowed"
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={formData?.matchRate ?? 0}
+                            onChange={(e) =>
+                              isCertMatchRateEditable &&
+                              updateCertField(certId, "matchRate", parseInt(e.target.value))
+                            }
+                            disabled={!isCertMatchRateEditable || savingCertId === certId}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                      <button
+                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        onClick={() => handleDeleteCert(certId)}
+                        title="删除"
+                        disabled={savingCertId === certId}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleCancelEditCert}
+                          className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                          disabled={savingCertId === certId}
+                        >
+                          取消
+                        </button>
+                        <button
+                          onClick={handleSaveCert}
+                          className="flex items-center gap-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-amber-500/20"
+                          disabled={savingCertId === certId}
+                        >
+                          保存
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
-                  key={cert.id}
+                  key={certId}
                   className="group bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md hover:border-amber-400 transition-all duration-200 cursor-pointer"
                   onClick={() => handleEditCert(cert)}
                 >
@@ -2098,7 +2113,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDeleteCert(cert.id);
+                          handleDeleteCert(certId);
                         }}
                         className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                       >
