@@ -9,3 +9,9 @@ STAR_POLISH = (
     "fields like company, role, s, t, a, r, or raw_text. Rewrite into strong, "
     "impact-oriented STAR statements. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
+
+TAG_GENERATION = (
+    "You are a resume coach. Given work experience text, return JSON only with key "
+    "'tags' as an array of 3-8 short skill tags. Avoid duplicates. Use the same "
+    "language as the input text and keep each tag concise (2-6 words)."
+)

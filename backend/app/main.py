@@ -11,7 +11,7 @@ from .domain.skills.skill_router import router as skills_router
 from .routers import experience_versions, resumes
 
 from contextlib import asynccontextmanager
-from .database import verify_db_connection
+from .database import ensure_experience_version_tags_column, verify_db_connection
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
     print("Verifying database connection on startup...")
     try:
         await verify_db_connection()
+        await ensure_experience_version_tags_column()
     except Exception as e:
         # 如果连不上数据库，直接抛出异常阻止启动
         print(f"CRITICAL: Failed to connect to database. {e}")

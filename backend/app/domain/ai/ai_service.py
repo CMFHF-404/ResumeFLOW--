@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 
 from ...config import load_settings
-from .prompts import JD_ANALYSIS, STAR_POLISH
+from .prompts import JD_ANALYSIS, STAR_POLISH, TAG_GENERATION
 
 settings = load_settings()
 
@@ -81,7 +81,7 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
         "temperature": 0.3,
     }
     url = f"{settings.ai_base_url}/chat/completions"
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(url, headers=_build_headers(), json=payload)
         response.raise_for_status()
         data = response.json()
@@ -107,5 +107,13 @@ async def polish_experience(content: Dict[str, Any]) -> Dict[str, Any]:
     messages = [
         {"role": "system", "content": STAR_POLISH},
         {"role": "user", "content": json.dumps(content, ensure_ascii=False)},
+    ]
+    return await _call_llm(messages, json_mode=True)
+
+
+async def generate_tags(text: str) -> Dict[str, Any]:
+    messages = [
+        {"role": "system", "content": TAG_GENERATION},
+        {"role": "user", "content": text},
     ]
     return await _call_llm(messages, json_mode=True)

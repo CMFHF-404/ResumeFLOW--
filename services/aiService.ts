@@ -25,6 +25,10 @@ export interface JDAnalysisResult {
     summary: string;
 }
 
+export interface GenerateTagsResponse {
+    tags: string[];
+}
+
 export const aiService = {
     async polishExperience(data: PolishExperiencePayload) {
         const { rawText, ...rest } = data.content;
@@ -45,6 +49,13 @@ export const aiService = {
         const response = await apiClient.post<JDAnalysisResult>('/api/analyze-jd', {
             text,
             resume_text: resumeText,
+        });
+        return response.data;
+    },
+
+    async generateTags(text: string) {
+        const response = await apiClient.post<GenerateTagsResponse>('/api/generate-tags', {
+            text,
         });
         return response.data;
     },

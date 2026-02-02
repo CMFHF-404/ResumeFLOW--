@@ -88,6 +88,7 @@ class ExperienceVersion(SQLModel, table=True):
     is_current: bool = False
     summary: Optional[str] = None
     highlights: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(Text)))
+    tags: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(Text)))
     star: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 

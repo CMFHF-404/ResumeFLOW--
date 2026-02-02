@@ -186,5 +186,6 @@ def _build_version(
         is_current=payload.is_current,
         summary=payload.summary,
         highlights=payload.highlights,
+        tags=payload.tags,
         star=payload.star,
     )

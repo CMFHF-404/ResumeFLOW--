@@ -17,6 +17,7 @@ class ExperienceVersionPayload(BaseModel):
     is_current: bool = False
     summary: Optional[str] = None
     highlights: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
     star: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -43,6 +44,7 @@ class ExperienceVersionRead(BaseModel):
     is_current: bool
     summary: Optional[str] = None
     highlights: List[str]
+    tags: List[str]
     star: Dict[str, Any]
     created_at: datetime
 

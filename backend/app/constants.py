@@ -10,5 +10,6 @@ ALLOWED_OVERRIDE_KEYS = {
     "is_current",
     "summary",
     "highlights",
+    "tags",
     "star",
 }

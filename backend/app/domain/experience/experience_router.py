@@ -52,6 +52,7 @@ def _version_to_read(version: ExperienceVersion) -> ExperienceVersionRead:
         is_current=version.is_current,
         summary=version.summary,
         highlights=version.highlights,
+        tags=version.tags,
         star=version.star,
         created_at=version.created_at,
     )

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ...dependencies import get_current_user
-from .ai_service import analyze_jd, polish_experience
+from .ai_service import analyze_jd, generate_tags, polish_experience
 
 router = APIRouter(prefix="/api", tags=["ai"])
 
@@ -16,6 +16,10 @@ class AnalyzeJDRequest(BaseModel):
 
 class PolishTextRequest(BaseModel):
     content: Dict[str, Any]
+
+
+class GenerateTagsRequest(BaseModel):
+    text: str
 
 
 @router.post("/analyze-jd", response_model=Dict[str, Any])
@@ -32,3 +36,11 @@ async def polish_text_endpoint(
     current_user=Depends(get_current_user),
 ):
     return await polish_experience(payload.content)
+
+
+@router.post("/generate-tags", response_model=Dict[str, Any])
+async def generate_tags_endpoint(
+    payload: GenerateTagsRequest,
+    current_user=Depends(get_current_user),
+):
+    return await generate_tags(payload.text)

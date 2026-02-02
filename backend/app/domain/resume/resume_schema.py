@@ -34,6 +34,7 @@ class ResumeExperienceMerged(BaseModel):
     is_current: bool
     summary: Optional[str] = None
     highlights: List[str]
+    tags: List[str]
     star: Dict[str, Any]
 
 
