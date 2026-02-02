@@ -573,7 +573,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [modifiedCards, setModifiedCards] = useState<Set<string>>(new Set());
   const [cardData, setCardData] = useState<Map<string, any>>(new Map());
   const [originalCardData, setOriginalCardData] = useState<Map<string, any>>(new Map());
-  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ id: string; type: 'work' | 'edu' | 'cert' } | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
@@ -765,6 +765,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       } else {
         success(EDU_TOAST_MESSAGES.saveSuccess);
       }
+      toggleEduCard(eduId);
 
       refreshEducationExperiences().catch((err) => {
         console.error('[ExperienceBank] 刷新教育经历失败:', err);
@@ -1025,6 +1026,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
       if (toastId) updateToast(toastId, { message: '已保存', type: 'success', duration: 2000 });
       else success('已保存');
+      toggleCard(cardId);
 
       // 4. 后台静默刷新列表 (Eventual Consistency)
       // 不阻塞用户操作，静默同步最新状态（如服务端生成的字段）
@@ -1068,11 +1070,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     setModifiedCards(newModified);
   };
 
-  // 删除卡片
-  const handleDeleteCard = async (cardId: string) => {
+  // 删除卡片 (实际执行删除)
+  const executeDeleteWork = async (cardId: string) => {
     let toastId: string | null = null;
     try {
-      setDeletingCardId(null);
+      setDeletingItem(null);
 
       // 1. 立即乐观更新 (UI Instant Removal)
       setWorkExperiences(prev => prev.filter(item => item.master.id !== cardId));
@@ -1146,6 +1148,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         next.add(newWork.master.id);
         return next;
       });
+
+      // 延迟滚动，等待 DOM 渲染完成
+      setTimeout(() => {
+        const element = cardRefs.current.get(newWork.master.id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
 
       if (toastId) updateToast(toastId, { message: '已创建', type: 'success', duration: 2000 });
       else success('已创建');
@@ -1368,6 +1378,39 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   };
 
+  // 统一删除确认处理
+  const handleConfirmDelete = async () => {
+    if (!deletingItem) return;
+
+    const { id, type } = deletingItem;
+    if (type === 'work') {
+      await executeDeleteWork(id);
+    } else if (type === 'edu') {
+      await handleDeleteEdu(id);
+      setDeletingItem(null);
+    } else if (type === 'cert') {
+      await handleDeleteCert(id);
+      setDeletingItem(null);
+    }
+  };
+
+  const requestDelete = (id: string, type: 'work' | 'edu' | 'cert') => {
+    setDeletingItem({ id, type });
+    // Auto-center the card being deleted to ensure context
+    // Determine which ref map to use
+    let refMap;
+    if (type === 'work') refMap = cardRefs;
+    else if (type === 'edu') refMap = eduCardRefs;
+    else if (type === 'cert') refMap = certCardRefs;
+
+    if (refMap?.current) {
+      const element = refMap.current.get(id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  };
+
   const ensureCertCardState = (certId: string, seedData?: CertificationCardData) => {
     if (certData.has(certId)) {
       return;
@@ -1491,6 +1534,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       } else {
         success(CERT_TOAST_MESSAGES.saveSuccess);
       }
+      toggleCertCard(certId);
 
       refreshCertifications().catch((err) => {
         console.error('[ExperienceBank] 刷新证书失败:', err);
@@ -1766,7 +1810,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDeletingCardId(cardId);
+                              requestDelete(cardId, 'work');
                             }}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                             title="删除"
@@ -1870,7 +1914,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         <div className="flex items-center gap-2">
                           {/* 删除按钮 - 展开态可见 */}
                           <button
-                            onClick={() => setDeletingCardId(cardId)}
+                            onClick={() => requestDelete(cardId, 'work')}
                             className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                             title="删除"
                           >
@@ -1912,23 +1956,26 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             })}
 
             {/* 删除确认对话框 */}
-            {deletingCardId && (
+            {deletingItem && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+                <div className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">确认删除</h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-6">
-                    确定要删除这条工作经历吗？此操作无法撤销。
+                    {deletingItem.type === 'work' && "确定要删除这条工作经历吗？"}
+                    {deletingItem.type === 'edu' && "确定要删除这条教育经历吗？"}
+                    {deletingItem.type === 'cert' && "确定要删除这条证书资质吗？"}
+                    <br />此操作无法撤销。
                   </p>
                   <div className="flex items-center justify-end gap-3">
                     <button
-                      onClick={() => setDeletingCardId(null)}
+                      onClick={() => setDeletingItem(null)}
                       className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
                       取消
                     </button>
                     <button
-                      onClick={() => handleDeleteCard(deletingCardId)}
-                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                      onClick={handleConfirmDelete}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-lg shadow-red-500/30"
                     >
                       删除
                     </button>
@@ -2000,7 +2047,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteEdu(cardId);
+                              requestDelete(cardId, 'edu');
                             }}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                             title="删除"
@@ -2093,18 +2140,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         </div>
                       </div>
 
-                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleDeleteEdu(cardId)}
+                            onClick={() => requestDelete(cardId, 'edu')}
                             className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                             title="删除"
                             disabled={savingEduIds.has(cardId)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
-                        <div className="flex items-center gap-2">
 
                           {isModified ? (
                             <>
@@ -2202,7 +2247,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteCert(certId);
+                              requestDelete(certId, 'cert');
                             }}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                             title="删除"
@@ -2279,18 +2324,17 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                         </div>
                       </div>
 
-                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleDeleteCert(certId)}
+                            onClick={() => requestDelete(certId, 'cert')}
                             className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                             title="删除"
                             disabled={savingCertIds.has(certId)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
-                        <div className="flex items-center gap-2">
+
                           {isModified ? (
                             <>
                               <button
@@ -2350,7 +2394,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           onClick={() => handleDeleteSkill(skill.id)}
                           className="hidden group-hover:block hover:text-red-500 transition-colors"
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-3 h-4" />
                         </button>
                       </span>
                     ))}
