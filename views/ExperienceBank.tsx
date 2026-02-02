@@ -19,7 +19,7 @@ const CERT_DEFAULT_ISSUER = "颁发机构";
 // 用于在 description 中保存匹配度，避免破坏后端结构
 const CERT_META_PREFIX = "__rf_cert_meta__:";
 const TAG_INPUT_PLACEHOLDER = "输入技能标签，回车添加";
-const TAG_AI_BUTTON_LABEL = "AI 自动填充";
+const TAG_AI_BUTTON_LABEL = "智能填充";
 const TAG_SUGGESTION_LIMIT = 8;
 const TAG_SPLIT_PATTERN = /[,，\n]/;
 
@@ -254,7 +254,7 @@ const buildTagSuggestions = (
         return false;
       }
       if (!keyword) {
-        return true;
+        return false;
       }
       return key.includes(keyword);
     })
@@ -2227,16 +2227,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       </div>
 
                       <div className="p-6 pt-4 space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
-                          <TagInput
-                            value={data.tags || []}
-                            suggestions={SKILL_TAGS}
-                            onChange={(next) => updateCardField(cardId, 'tags', next)}
-                            onAiFill={() => handleGenerateTags(cardId, data)}
-                            isAiLoading={generatingTagIds.has(cardId)}
-                          />
-                        </div>
 
                         {/* STAR Sections */}
                         {[
@@ -2264,6 +2254,17 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                             </div>
                           </div>
                         ))}
+
+                        <div className="space-y-2 pt-2">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
+                          <TagInput
+                            value={data.tags || []}
+                            suggestions={SKILL_TAGS}
+                            onChange={(next) => updateCardField(cardId, 'tags', next)}
+                            onAiFill={() => handleGenerateTags(cardId, data)}
+                            isAiLoading={generatingTagIds.has(cardId)}
+                          />
+                        </div>
                       </div>
 
                       <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
