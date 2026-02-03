@@ -23,6 +23,9 @@ const TAG_INPUT_PLACEHOLDER = "输入技能标签，回车添加";
 const TAG_AI_BUTTON_LABEL = "智能填充";
 const TAG_SUGGESTION_LIMIT = 8;
 const TAG_SPLIT_PATTERN = /[,，\n]/;
+const CARD_EDGE_BASE_CLASS = "card-edge-motion";
+const CARD_EDGE_EXPAND_CLASS = "card-edge-expand";
+const CARD_EDGE_COLLAPSE_CLASS = "card-edge-collapse";
 
 const EDU_TOAST_MESSAGES = {
   createLoading: "正在创建教育经历...",
@@ -194,6 +197,12 @@ const buildCertificationPayload = (
   issue_date: convertDateToISO(data.date),
   description,
 });
+
+const resolveCardMotionClass = (isCollapsing: boolean) => {
+  return isCollapsing
+    ? `${CARD_EDGE_BASE_CLASS} ${CARD_EDGE_COLLAPSE_CLASS}`
+    : `${CARD_EDGE_BASE_CLASS} ${CARD_EDGE_EXPAND_CLASS}`;
+};
 
 const normalizeSkillName = (name: string) => name.trim().toLowerCase();
 
@@ -2176,11 +2185,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     </div>
                   ) : (
                     // 展开态
-                    <div className={
-                      isCollapsing
-                        ? "animate-out fade-out slide-out-to-top-8 duration-300 origin-top"
-                        : "animate-in fade-in slide-in-from-top-8 duration-300 origin-top"
-                    }>
+                    <div className={resolveCardMotionClass(isCollapsing)}>
                       <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
                         <div className="flex flex-col lg:flex-row gap-6 mb-4">
                           <div className="flex-1">
@@ -2437,11 +2442,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     </div>
                   ) : (
                     // Expanded State
-                    <div className={
-                      isCollapsing
-                        ? "animate-out fade-out slide-out-to-top-8 duration-300 origin-top"
-                        : "animate-in fade-in slide-in-from-top-8 duration-300 origin-top"
-                    }>
+                    <div className={resolveCardMotionClass(isCollapsing)}>
                       <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
                         <div className="flex flex-col lg:flex-row gap-6 mb-4">
                           <div className="flex-1">
@@ -2649,11 +2650,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     </div>
                   ) : (
                     // Expanded State
-                    <div className={
-                      isCollapsing
-                        ? "animate-out fade-out slide-out-to-top-8 duration-300 origin-top"
-                        : "animate-in fade-in slide-in-from-top-8 duration-300 origin-top"
-                    }>
+                    <div className={resolveCardMotionClass(isCollapsing)}>
                       <div className="p-6 border-b border-gray-50 dark:border-gray-800/50">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="md:col-span-2">

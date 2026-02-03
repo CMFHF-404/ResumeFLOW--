@@ -13,12 +13,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from docx import Document
 from fastapi import UploadFile
 from pypdf import PdfReader
+from sqlalchemy import desc
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...constants import MAX_LIMIT
-from ...models import ExperienceCategory
+from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ..ai.ai_service import call_llm_json
-from ..experience.experience_service import list_experiences
 from .prompts import RESUME_PARSING_PROMPT
 from .schemas import DuplicateMatch, ParsedExperienceItem, ParsedExperienceVersion
 
@@ -344,7 +345,7 @@ async def fetch_existing_experiences(
     results: List[ExistingExperience] = []
     offset = 0
     while True:
-        batch = await list_experiences(session, user_id, None, None, MAX_LIMIT, offset)
+        batch = await _list_active_experiences(session, user_id, MAX_LIMIT, offset)
         if not batch:
             break
         for master, version in batch:
@@ -361,6 +362,28 @@ async def fetch_existing_experiences(
             break
         offset += MAX_LIMIT
     return results
+
+
+async def _list_active_experiences(
+    session: AsyncSession, user_id: str, limit: int, offset: int
+) -> List[Tuple[MasterExperience, Optional[ExperienceVersion]]]:
+    statement = (
+        select(MasterExperience, ExperienceVersion)
+        .join(
+            ExperienceVersion,
+            ExperienceVersion.id == MasterExperience.latest_version_id,
+            isouter=True,
+        )
+        .where(
+            MasterExperience.user_id == user_id,
+            MasterExperience.is_archived.is_(False),
+        )
+        .order_by(desc(MasterExperience.updated_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    result = await session.execute(statement)
+    return list(result.all())
 
 
 def _build_duplicate_index(

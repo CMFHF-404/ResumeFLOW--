@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -241,10 +241,11 @@ const ModalHeader: React.FC<{ onClose: () => void }> = ({ onClose }) => (
 
 const UploadDropzone: React.FC<{
   isDragging: boolean;
+  inputRef: React.RefObject<HTMLInputElement>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragState: (next: boolean) => void;
-}> = ({ isDragging, onFileChange, onDrop, onDragState }) => (
+}> = ({ isDragging, inputRef, onFileChange, onDrop, onDragState }) => (
   <div
     className={`relative rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-all ${
       isDragging
@@ -268,6 +269,7 @@ const UploadDropzone: React.FC<{
       accept=".pdf,.docx"
       className="absolute inset-0 opacity-0 cursor-pointer"
       onChange={onFileChange}
+      ref={inputRef}
     />
   </div>
 );
@@ -310,24 +312,27 @@ const UploadPanel: React.FC<{
   progress: number;
   errorMessage: string | null;
   isDragging: boolean;
+  inputRef: React.RefObject<HTMLInputElement>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragState: (next: boolean) => void;
-  onReset: () => void;
+  onReupload: () => void;
 }> = ({
   file,
   stage,
   progress,
   errorMessage,
   isDragging,
+  inputRef,
   onFileChange,
   onDrop,
   onDragState,
-  onReset,
+  onReupload,
 }) => (
   <div className="space-y-4">
     <UploadDropzone
       isDragging={isDragging}
+      inputRef={inputRef}
       onFileChange={onFileChange}
       onDrop={onDrop}
       onDragState={onDragState}
@@ -335,7 +340,7 @@ const UploadPanel: React.FC<{
     <FileStatusCard file={file} stage={stage} progress={progress} errorMessage={errorMessage} />
     <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
       <span>默认已勾选非重复条目</span>
-      <button type="button" onClick={onReset} className="hover:text-emerald-600 transition">
+      <button type="button" onClick={onReupload} className="hover:text-emerald-600 transition">
         重新上传
       </button>
     </div>
@@ -599,15 +604,7 @@ const useResumeImport = (
 };
 
 const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, onImported, toast }) => {
-  const {
-    items,
-    selectedIds,
-    selectedItems,
-    applyParsedItems,
-    resetSelection,
-    toggleSelection,
-    toggleSelectAll,
-  } = useResumeItems();
+  const { items, selectedIds, selectedItems, applyParsedItems, resetSelection, toggleSelection, toggleSelectAll } = useResumeItems();
   const {
     file,
     stage,
@@ -618,17 +615,40 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, 
     handleDrop,
     resetParsing,
   } = useResumeParsing(applyParsedItems, toast);
-  const { isImporting, handleImport } = useResumeImport(
-    selectedItems,
-    toast,
-    onImported,
-    onClose
-  );
+  const { isImporting, handleImport } = useResumeImport(selectedItems, toast, onImported, onClose);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const progress = STAGE_PROGRESS[stage];
   const resetAll = useCallback(() => {
     resetParsing();
     resetSelection();
   }, [resetParsing, resetSelection]);
+  const handleReupload = useCallback(() => {
+    resetAll();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  }, [resetAll]);
+  const handleFileChangeWithReset = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const nextFile = event.target.files?.[0];
+      if (nextFile) {
+        resetAll();
+      }
+      handleFileChange(event);
+    },
+    [handleFileChange, resetAll]
+  );
+  const handleDropWithReset = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      const nextFile = event.dataTransfer.files?.[0];
+      if (nextFile) {
+        resetAll();
+      }
+      handleDrop(event);
+    },
+    [handleDrop, resetAll]
+  );
   useEffect(() => {
     if (!isOpen) {
       resetAll();
@@ -651,10 +671,11 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, 
               progress={progress}
               errorMessage={errorMessage}
               isDragging={isDragging}
-              onFileChange={handleFileChange}
-              onDrop={handleDrop}
+              inputRef={fileInputRef}
+              onFileChange={handleFileChangeWithReset}
+              onDrop={handleDropWithReset}
               onDragState={setIsDragging}
-              onReset={resetAll}
+              onReupload={handleReupload}
             />
             <PreviewPanel
               items={items}
