@@ -10,6 +10,7 @@ export interface PolishExperiencePayload {
         a?: string;  // Action
         r?: string;  // Result
     };
+    targetField?: 's' | 't' | 'a' | 'r';
 }
 
 export interface PolishExperienceResponse {
@@ -37,6 +38,7 @@ export const aiService = {
                 ...rest,
                 ...(rawText ? { raw_text: rawText } : {}),
             },
+            ...(data.targetField ? { target_field: data.targetField } : {}),
         };
         const response = await apiClient.post<PolishExperienceResponse>(
             '/api/polish-text',

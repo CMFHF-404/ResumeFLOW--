@@ -16,6 +16,7 @@ class AnalyzeJDRequest(BaseModel):
 
 class PolishTextRequest(BaseModel):
     content: Dict[str, Any]
+    target_field: Optional[str] = None
 
 
 class GenerateTagsRequest(BaseModel):
@@ -35,7 +36,7 @@ async def polish_text_endpoint(
     payload: PolishTextRequest,
     current_user=Depends(get_current_user),
 ):
-    return await polish_experience(payload.content)
+    return await polish_experience(payload.content, payload.target_field)
 
 
 @router.post("/generate-tags", response_model=Dict[str, Any])

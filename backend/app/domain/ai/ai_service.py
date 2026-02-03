@@ -6,9 +6,24 @@ from fastapi import HTTPException
 from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 
 from ...config import load_settings
-from .prompts import JD_ANALYSIS, STAR_POLISH, TAG_GENERATION
+from .prompts import (
+    JD_ANALYSIS,
+    STAR_POLISH,
+    STAR_POLISH_A,
+    STAR_POLISH_R,
+    STAR_POLISH_S,
+    STAR_POLISH_T,
+    TAG_GENERATION,
+)
 
 settings = load_settings()
+
+STAR_FIELD_PROMPTS = {
+    "s": STAR_POLISH_S,
+    "t": STAR_POLISH_T,
+    "a": STAR_POLISH_A,
+    "r": STAR_POLISH_R,
+}
 
 
 def _strip_json_wrappers(text: str) -> str:
@@ -107,9 +122,20 @@ async def analyze_jd(text: str, resume_text: Optional[str] = None) -> Dict[str, 
     return await _call_llm(messages, json_mode=True)
 
 
-async def polish_experience(content: Dict[str, Any]) -> Dict[str, Any]:
+def _resolve_star_prompt(target_field: Optional[str]) -> str:
+    if not target_field:
+        return STAR_POLISH
+    key = target_field.strip().lower()
+    return STAR_FIELD_PROMPTS.get(key, STAR_POLISH)
+
+
+async def polish_experience(
+    content: Dict[str, Any],
+    target_field: Optional[str] = None,
+) -> Dict[str, Any]:
+    prompt = _resolve_star_prompt(target_field)
     messages = [
-        {"role": "system", "content": STAR_POLISH},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": json.dumps(content, ensure_ascii=False)},
     ]
     return await _call_llm(messages, json_mode=True)

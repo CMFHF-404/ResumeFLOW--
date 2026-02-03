@@ -26,6 +26,7 @@ const TAG_SPLIT_PATTERN = /[,，\n]/;
 const CARD_EDGE_BASE_CLASS = "card-edge-motion";
 const CARD_EDGE_EXPAND_CLASS = "card-edge-expand";
 const CARD_EDGE_COLLAPSE_CLASS = "card-edge-collapse";
+const SHOW_WORK_TAGS = false;
 
 const EDU_TOAST_MESSAGES = {
   createLoading: "正在创建教育经历...",
@@ -78,6 +79,8 @@ type CertificationCardData = {
   date: string;
   matchRate: number;
 };
+
+type StarFieldKey = 's' | 't' | 'a' | 'r';
 
 const buildWorkCardData = (item: ExperienceListItem) => ({
   org: item.latest_version?.org || "",
@@ -281,6 +284,52 @@ const buildTagGenerationText = (data: any): string => {
     data?.star?.r ? `R: ${data.star.r}` : "",
   ];
   return parts.filter(Boolean).join("\n");
+};
+
+const STAR_SECTIONS: Array<{
+  id: StarFieldKey;
+  label: string;
+  color: string;
+  ph: string;
+  polishLabel: string;
+}> = [
+  { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...', polishLabel: '情境' },
+  { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?', polishLabel: '任务' },
+  { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?', polishLabel: '行动' },
+  { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...', polishLabel: '结果' },
+];
+
+const STAR_FIELD_LABELS: Record<StarFieldKey, string> = {
+  s: "情境",
+  t: "任务",
+  a: "行动",
+  r: "结果",
+};
+
+const getStarFieldValue = (data: any, field: StarFieldKey): string => {
+  const value = data?.star?.[field];
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value);
+};
+
+const buildStarPolishPayload = (data: any, field: StarFieldKey, fieldValue?: string) => {
+  const starPayload: Record<StarFieldKey, string> = {
+    s: getStarFieldValue(data, 's'),
+    t: getStarFieldValue(data, 't'),
+    a: getStarFieldValue(data, 'a'),
+    r: getStarFieldValue(data, 'r'),
+  };
+  starPayload[field] = fieldValue ?? starPayload[field];
+  return {
+    content: {
+      company: data?.org || "",
+      role: data?.title || "",
+      ...starPayload,
+    },
+    targetField: field,
+  };
 };
 
 type TagInputProps = {
@@ -883,7 +932,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [cardData, setCardData] = useState<Map<string, any>>(new Map());
   const [originalCardData, setOriginalCardData] = useState<Map<string, any>>(new Map());
   const [deletingItem, setDeletingItem] = useState<{ id: string; type: 'work' | 'edu' | 'cert' } | null>(null);
-  const [isPolishing, setIsPolishing] = useState(false);
+  const [polishingTargets, setPolishingTargets] = useState<Set<string>>(new Set());
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [generatingTagIds, setGeneratingTagIds] = useState<Set<string>>(new Set());
 
@@ -1489,36 +1538,53 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   };
 
-  // AI润色卡片
-  const handlePolishCard = async (cardId: string) => {
+  const buildPolishKey = (cardId: string, field: StarFieldKey) => `${cardId}:${field}`;
+
+  const isFieldPolishing = (cardId: string, field: StarFieldKey) => {
+    return polishingTargets.has(buildPolishKey(cardId, field));
+  };
+
+  const updatePolishingTarget = (cardId: string, field: StarFieldKey, polishing: boolean) => {
+    setPolishingTargets((prev) => {
+      const next = new Set(prev);
+      const key = buildPolishKey(cardId, field);
+      if (polishing) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  };
+
+  const handlePolishField = async (cardId: string, field: StarFieldKey) => {
     const data = cardData.get(cardId);
-    if (!data) return;
+    if (!data) {
+      return;
+    }
 
-    setIsPolishing(true);
+    const currentValue = getStarFieldValue(data, field).trim();
+    if (!currentValue) {
+      error(`请先填写${STAR_FIELD_LABELS[field]}内容再润色`);
+      return;
+    }
+
+    updatePolishingTarget(cardId, field, true);
     try {
-      const response = await aiService.polishExperience({
-        content: {
-          company: data.org || "",
-          role: data.title || "",
-          s: data.star?.s || "",
-          t: data.star?.t || "",
-          a: data.star?.a || "",
-          r: data.star?.r || "",
-        },
-      });
-
-      // 更新卡片数据
-      const newStar = { ...data.star };
-      if (response.s) newStar.s = response.s;
-      if (response.t) newStar.t = response.t;
-      if (response.a) newStar.a = response.a;
-      if (response.r) newStar.r = response.r;
-
-      updateCardField(cardId, 'star', newStar);
-    } catch (error) {
-      console.error("Failed to polish experience", error);
+      const response = await aiService.polishExperience(
+        buildStarPolishPayload(data, field, currentValue)
+      );
+      const polished = response?.[field];
+      if (typeof polished === 'string' && polished.trim()) {
+        updateCardField(cardId, `star.${field}`, polished.trim());
+      } else {
+        error('未获取到有效润色结果，请稍后重试');
+      }
+    } catch (err) {
+      console.error("Failed to polish experience", err);
+      error('AI 润色失败，请稍后重试');
     } finally {
-      setIsPolishing(false);
+      updatePolishingTarget(cardId, field, false);
     }
   };
 
@@ -2275,53 +2341,56 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <div className="p-6 pt-4 space-y-4">
 
                         {/* STAR Sections */}
-                        {[
-                          { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...' },
-                          { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?' },
-                          { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?' },
-                          { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...' },
-                        ].map((section, idx) => (
-                          <div key={section.id} className="flex gap-4 relative group">
-                            {idx !== 3 && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
-                            <div className={`shrink-0 w-10 h-10 rounded-full bg-${section.color}-50 dark:bg-${section.color}-900/20 text-${section.color}-600 dark:text-${section.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}>
-                              {section.id.toUpperCase()}
-                            </div>
-                            <div className="flex-1 pt-1 pb-4">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}>{section.label}</span>
+                        {STAR_SECTIONS.map((section, idx) => {
+                          const isPolishing = isFieldPolishing(cardId, section.id);
+                          const polishTitle = isPolishing ? 'AI 润色中...' : `AI 润色${section.polishLabel}`;
+                          return (
+                            <div key={section.id} className="flex gap-4 relative group">
+                              {idx !== 3 && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
+                              <div className={`shrink-0 w-10 h-10 rounded-full bg-${section.color}-50 dark:bg-${section.color}-900/20 text-${section.color}-600 dark:text-${section.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}>
+                                {section.id.toUpperCase()}
                               </div>
-                              <textarea
-                                className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
-                                rows={section.id === 'a' ? 6 : 1}
-                                value={data.star?.[section.id] || ""}
-                                placeholder={section.ph}
-                                onChange={(e) => updateCardField(cardId, `star.${section.id}`, e.target.value)}
-                              />
+                              <div className="flex-1 pt-1 pb-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}>{section.label}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePolishField(cardId, section.id)}
+                                    disabled={isPolishing}
+                                    title={polishTitle}
+                                    aria-label={polishTitle}
+                                    className="inline-flex items-center justify-center p-1 text-amber-500 hover:text-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <Sparkles className={`w-4 h-4 ${isPolishing ? 'animate-pulse' : ''}`} />
+                                  </button>
+                                </div>
+                                <textarea
+                                  className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
+                                  rows={section.id === 'a' ? 6 : 1}
+                                  value={data.star?.[section.id] || ""}
+                                  placeholder={section.ph}
+                                  onChange={(e) => updateCardField(cardId, `star.${section.id}`, e.target.value)}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
 
-                        <div className="space-y-2 pt-2">
-                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
-                          <TagInput
-                            value={data.tags || []}
-                            suggestions={SKILL_TAGS}
-                            onChange={(next) => updateCardField(cardId, 'tags', next)}
-                            onAiFill={() => handleGenerateTags(cardId, data)}
-                            isAiLoading={generatingTagIds.has(cardId)}
-                          />
-                        </div>
+                        {SHOW_WORK_TAGS && (
+                          <div className="space-y-2 pt-2">
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
+                            <TagInput
+                              value={data.tags || []}
+                              suggestions={SKILL_TAGS}
+                              onChange={(next) => updateCardField(cardId, 'tags', next)}
+                              onAiFill={() => handleGenerateTags(cardId, data)}
+                              isAiLoading={generatingTagIds.has(cardId)}
+                            />
+                          </div>
+                        )}
                       </div>
 
-                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                        <button
-                          onClick={() => handlePolishCard(cardId)}
-                          disabled={isPolishing}
-                          className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                          {isPolishing ? 'AI 润色中...' : 'AI 润色'}
-                        </button>
+                      <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         <div className="flex items-center gap-2">
                           {/* 删除按钮 - 展开态可见 */}
                           <button
