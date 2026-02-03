@@ -20,7 +20,7 @@ const CERT_DEFAULT_ISSUER = "颁发机构";
 // 用于在 description 中保存匹配度，避免破坏后端结构
 const CERT_META_PREFIX = "__rf_cert_meta__:";
 const TAG_INPUT_PLACEHOLDER = "输入技能标签，回车添加";
-const TAG_AI_BUTTON_LABEL = "智能填充";
+const TAG_AI_BUTTON_LABEL = "填充";
 const TAG_SUGGESTION_LIMIT = 8;
 const TAG_SPLIT_PATTERN = /[,，\n]/;
 const CARD_EDGE_BASE_CLASS = "card-edge-motion";
@@ -431,15 +431,45 @@ const TagInput: React.FC<TagInputProps> = ({
   );
 
   return (
-    <div className="space-y-3">
-      <TagChipList tags={value} onRemove={handleRemove} emptyLabel="暂无标签" />
-      <TagInputControls
-        draft={draft}
-        onDraftChange={setDraft}
-        onKeyDown={handleKeyDown}
-        onAiFill={onAiFill}
-        isAiLoading={isAiLoading}
-      />
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-colors bg-gray-50/50 dark:bg-gray-800/20">
+        {value.map((tag) => (
+          <span
+            key={tag}
+            className="group inline-flex items-center gap-1 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 shadow-sm"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => handleRemove(tag)}
+              className="hidden group-hover:inline-flex text-gray-400 hover:text-red-500 transition-colors ml-0.5"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+
+        <input
+          className="flex-1 min-w-[120px] bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 border-none focus:ring-0 focus:outline-none py-1 px-1"
+          placeholder={value.length > 0 ? "" : TAG_INPUT_PLACEHOLDER}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+
+        {onAiFill && (
+          <button
+            type="button"
+            onClick={onAiFill}
+            disabled={isAiLoading}
+            className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 dark:text-amber-400 dark:bg-amber-900/20 dark:hover:bg-amber-900/30 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ml-auto"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {isAiLoading ? "..." : TAG_AI_BUTTON_LABEL}
+          </button>
+        )}
+      </div>
+
       <TagSuggestionList suggestions={suggestionList} onSelect={handleSuggestionClick} />
     </div>
   );
@@ -2262,7 +2292,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                               </div>
                               <textarea
                                 className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
-                                rows={section.id === 'a' ? 4 : 2}
+                                rows={section.id === 'a' ? 6 : 1}
                                 value={data.star?.[section.id] || ""}
                                 placeholder={section.ph}
                                 onChange={(e) => updateCardField(cardId, `star.${section.id}`, e.target.value)}
