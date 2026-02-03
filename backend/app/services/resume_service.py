@@ -3,6 +3,7 @@ from ..domain.resume.resume_service import (
     create_resume,
     get_resume_detail,
     list_resumes,
+    update_resume,
     update_assembly,
 )
 
@@ -11,5 +12,6 @@ __all__ = [
     "create_resume",
     "get_resume_detail",
     "list_resumes",
+    "update_resume",
     "update_assembly",
 ]

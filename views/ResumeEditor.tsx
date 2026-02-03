@@ -1,109 +1,435 @@
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Moon, Sun, Download, LayoutTemplate,
     Target, Wand2, RefreshCw,
     Edit3, Eye, EyeOff, GripVertical, CheckCircle2,
-    ChevronDown, ChevronUp, ArrowLeft, Database, User, Award
+    ChevronDown, ChevronUp, ArrowLeft, Database, User, Award, Wrench
 } from 'lucide-react';
-import { aiService } from '../services/aiService';
-import { Education, Certification } from '../types';
+import { aiService, JDAnalysisResult } from '../services/aiService';
+import { experienceService, ExperienceDetail, ExperienceListItem } from '../services/experienceService';
+import { profileService, Profile } from '../services/profileService';
+import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
+import { resumeService, Resume, ResumeDetail, ResumeExperienceItem } from '../services/resumeService';
+import { skillsService, UserSkill } from '../services/skillsService';
+import { useDebounce } from '../components/hooks/useDebounce';
+import { parseYearMonthValue } from './experienceUtils';
+import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 
-// Mock Data with STAR structure
-const initialExperienceItems = [
-    {
-        id: 1,
-        title: "高级产品经理",
-        company: "腾讯 (Tencent)",
-        date: "2021.03 - 至今",
-        star: {
-            s: "负责腾讯云核心PaaS产品的商业化落地，面对竞品激烈的市场环境。",
-            t: "需在Q3季度完成200%的增长目标，并提升KA客户续费率。",
-            a: "1. 深入调研50+家头部客户，建立多维度定价模型；\n2. 协调产研团队优化部署流程，将交付周期从2周缩短至3天。",
-            r: "Q3季度实现营收增长210%，KA客户签约率提升45%。"
-        }
-    },
-    {
-        id: 2,
-        title: "产品运营实习生",
-        company: "字节跳动 (ByteDance)",
-        date: "2020.06 - 2020.12",
-        star: {
-            s: "负责抖音千万级用户增长活动策划。",
-            t: "提升新用户留存率，优化投放ROI。",
-            a: "策划'春节红包'活动，通过数据分析优化投放策略，设计A/B测试方案。",
-            r: "活动期间DAU提升15%，投放ROI提升30%。"
-        }
-    },
-    {
-        id: 3,
-        title: "主席",
-        company: "校学生会",
-        date: "2022 - 2023",
-        star: {
-            s: "管理全校最大的学生组织，成员超过200人。",
-            t: "组织年度校园文化节，提升学生活跃度。",
-            a: "统筹策划15场全校性活动，管理5万美元运营预算，优化供应商合同。",
-            r: "年度学生活跃度同比增长30%，活动成本降低15%。"
-        }
+const DEFAULT_RESUME_TITLE = '未命名简历';
+const AUTO_SAVE_DELAY_MS = 800;
+const STAR_FIELDS = ['s', 't', 'a', 'r'] as const;
+const CERT_META_PREFIX = "__rf_cert_meta__:";
+const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView['category']> = ['work', 'project'];
+const DEFAULT_SECTION_ORDER = ['summary', 'work', 'project', 'education', 'certifications', 'skills'] as const;
+const RESUME_SECTION_IDS = new Set<string>(DEFAULT_SECTION_ORDER);
+
+type StarFieldKey = typeof STAR_FIELDS[number];
+
+type StarFields = {
+    s: string;
+    t: string;
+    a: string;
+    r: string;
+};
+
+type ResumeExperienceView = {
+    id: string;
+    title: string;
+    company: string;
+    date: string;
+    startDate?: string;
+    endDate?: string;
+    isCurrent?: boolean;
+    star: StarFields;
+    matchScore?: number;
+    resumeLinkId?: string;
+    experienceVersionId?: string;
+    category: 'work' | 'project';
+};
+
+type ResumeEditorProfile = {
+    name: string;
+    email: string;
+    phone: string;
+    location: string;
+    linkedin: string;
+    summary: string;
+};
+
+type ResumeEditorConfig = {
+    profile?: ResumeEditorProfile;
+    selection?: {
+        experienceIds?: string[];
+        educationIds?: string[];
+        certificationIds?: string[];
+        skillIds?: string[];
+    };
+    layout?: {
+        sectionOrder?: string[];
+        density?: 'compact' | 'standard' | 'spacious';
+    };
+};
+
+type ActiveResumeContext = {
+    id: string;
+    detail: ResumeDetail | null;
+};
+
+type CachedResumeResolveResult =
+    | { status: 'ok'; detail: ResumeDetail }
+    | { status: 'missing' }
+    | { status: 'error' };
+
+type ExperienceEditDraft = {
+    masterId: string;
+    star: StarFields;
+};
+
+type EducationView = {
+    id: string;
+    school: string;
+    major: string;
+    degree: string;
+    startDate: string;
+    endDate: string;
+    gpa?: string;
+    courses?: string;
+};
+
+type CertificationView = {
+    id: string;
+    name: string;
+    issuer?: string;
+    date: string;
+    matchRate?: number;
+};
+
+type SkillItemView = {
+    id: string;
+    name: string;
+};
+
+type SkillGroupView = {
+    name: string;
+    skills: SkillItemView[];
+};
+
+const DEFAULT_PROFILE: ResumeEditorProfile = {
+    name: '',
+    email: '',
+    phone: '',
+    location: '',
+    linkedin: '',
+    summary: '',
+};
+
+const normalizeStarValue = (value: unknown): string => {
+    if (value === null || value === undefined) {
+        return '';
     }
-];
+    if (Array.isArray(value)) {
+        return value.join('、');
+    }
+    return String(value);
+};
+
+const buildStarFields = (star?: Record<string, any>): StarFields => ({
+    s: normalizeStarValue(star?.s),
+    t: normalizeStarValue(star?.t),
+    a: normalizeStarValue(star?.a),
+    r: normalizeStarValue(star?.r),
+});
+
+const normalizeEducationStar = (star?: Record<string, any>) => ({
+    degree: normalizeStarValue(star?.degree),
+    gpa: normalizeStarValue(star?.gpa),
+    courses: normalizeStarValue(star?.courses),
+});
+
+const formatYearMonth = (value?: string): string => {
+    if (!value) {
+        return '';
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return '';
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return trimmed.slice(0, 7).replace('-', '.');
+    }
+    if (/^\d{4}-\d{2}$/.test(trimmed)) {
+        return trimmed.replace('-', '.');
+    }
+    return trimmed.replace('-', '.');
+};
+
+const buildExperienceDate = (start?: string, end?: string, isCurrent?: boolean) => {
+    const startText = formatYearMonth(start);
+    const endText = isCurrent ? '至今' : formatYearMonth(end);
+    if (startText && endText) {
+        return `${startText} - ${endText}`;
+    }
+    return startText || endText || '';
+};
+
+const buildEducationView = (item: ExperienceListItem): EducationView => {
+    const latest = item.latest_version;
+    const star = normalizeEducationStar(latest?.star);
+    return {
+        id: item.master.id,
+        school: latest?.org || '',
+        major: latest?.title || '',
+        degree: star.degree || '',
+        startDate: formatYearMonth(latest?.start_date),
+        endDate: formatYearMonth(latest?.end_date),
+        gpa: star.gpa || undefined,
+        courses: star.courses || undefined,
+    };
+};
+
+const parseCertificationMatchRate = (description?: string): number => {
+    if (!description || !description.startsWith(CERT_META_PREFIX)) {
+        return 0;
+    }
+    try {
+        const raw = description.slice(CERT_META_PREFIX.length);
+        const parsed = JSON.parse(raw);
+        const value = Number(parsed?.matchRate);
+        if (!Number.isFinite(value)) {
+            return 0;
+        }
+        return Math.min(100, Math.max(0, Math.round(value)));
+    } catch {
+        return 0;
+    }
+};
+
+const buildCertificationView = (cert: CertificationRecord): CertificationView => ({
+    id: cert.id,
+    name: cert.name || '',
+    issuer: cert.issuer || '',
+    date: formatYearMonth(cert.issue_date),
+    matchRate: parseCertificationMatchRate(cert.description),
+});
+
+const resolveSkillCategoryName = (category?: string) => {
+    const trimmed = (category || '').trim();
+    return trimmed || '未分类';
+};
+
+const buildSkillGroups = (skills: UserSkill[]): SkillGroupView[] => {
+    const groups: SkillGroupView[] = [];
+    const index = new Map<string, SkillGroupView>();
+    skills.forEach((skill) => {
+        const name = resolveSkillCategoryName(skill.category);
+        let group = index.get(name);
+        if (!group) {
+            group = { name, skills: [] };
+            index.set(name, group);
+            groups.push(group);
+        }
+        group.skills.push({ id: skill.id, name: skill.name });
+    });
+    return groups;
+};
+
+const buildResumeExperienceMap = (detail: ResumeDetail | null) => {
+    const map = new Map<string, ResumeExperienceItem>();
+    if (!detail?.experiences) {
+        return map;
+    }
+    detail.experiences.forEach((item) => {
+        map.set(item.experience.master_experience_id, item);
+    });
+    return map;
+};
+
+const buildSourceMap = (items: ExperienceListItem[]) => {
+    return new Map(items.map((item) => [item.master.id, item]));
+};
+
+const buildResumeExperienceView = (
+    item: ExperienceListItem,
+    resumeItem?: ResumeExperienceItem
+): ResumeExperienceView => {
+    const latest = item.latest_version;
+    const snapshot = resumeItem?.experience;
+    const title = snapshot?.title ?? latest?.title ?? '';
+    const company = snapshot?.org ?? latest?.org ?? '';
+    const startDate = snapshot?.start_date ?? latest?.start_date;
+    const endDate = snapshot?.end_date ?? latest?.end_date;
+    const isCurrent = snapshot?.is_current ?? latest?.is_current ?? false;
+    const star = buildStarFields(snapshot?.star ?? latest?.star);
+    return {
+        id: item.master.id,
+        title,
+        company,
+        date: buildExperienceDate(startDate, endDate, isCurrent),
+        startDate,
+        endDate,
+        isCurrent,
+        star,
+        resumeLinkId: resumeItem?.id,
+        experienceVersionId: resumeItem?.experience_version_id ?? latest?.id,
+        category: item.master.category as 'work' | 'project',
+    };
+};
+
+const sortByDateDesc = (items: ResumeExperienceView[]) => {
+    return [...items].sort((a, b) => {
+        const valA = parseYearMonthValue(a.startDate) ?? -1;
+        const valB = parseYearMonthValue(b.startDate) ?? -1;
+        return valB - valA;
+    });
+};
+
+const sortByCategory = (
+    items: ResumeExperienceView[],
+    compare: (a: ResumeExperienceView, b: ResumeExperienceView) => number
+) => {
+    return EXPERIENCE_CATEGORY_ORDER.flatMap((category) =>
+        [...items].filter((item) => item.category === category).sort(compare)
+    );
+};
+
+const compareByDateDesc = (a: ResumeExperienceView, b: ResumeExperienceView) => {
+    const valA = parseYearMonthValue(a.startDate) ?? -1;
+    const valB = parseYearMonthValue(b.startDate) ?? -1;
+    return valB - valA;
+};
+
+const compareByScoreThenDate = (a: ResumeExperienceView, b: ResumeExperienceView) => {
+    const scoreA = a.matchScore ?? -1;
+    const scoreB = b.matchScore ?? -1;
+    if (scoreA !== scoreB) {
+        return scoreB - scoreA;
+    }
+    return compareByDateDesc(a, b);
+};
+
+const resolveProfileSnapshot = (config?: ResumeEditorConfig, profile?: Profile) => {
+    const configProfile = config?.profile;
+    if (configProfile) {
+        return {
+            ...DEFAULT_PROFILE,
+            ...configProfile,
+        };
+    }
+    if (!profile) {
+        return DEFAULT_PROFILE;
+    }
+    const linkedInValue = profile.social_links?.linkedin;
+    const linkedInUrl =
+        typeof linkedInValue === 'string'
+            ? linkedInValue
+            : typeof linkedInValue === 'object' && linkedInValue
+                ? String(linkedInValue.url || '')
+                : '';
+    return {
+        name: profile.full_name || '',
+        email: profile.email || '',
+        phone: profile.phone || '',
+        location: profile.location || '',
+        linkedin: linkedInUrl,
+        summary: profile.summary || '',
+    };
+};
+
+const resolveSelectionSet = (ids?: Array<string | number>) => {
+    return new Set((ids || []).map((value) => String(value)).filter(Boolean));
+};
+
+const buildResumeConfigSnapshot = (
+    profile: ResumeEditorProfile,
+    selectedExpIds: Set<string>,
+    selectedEduIds: Set<string>,
+    selectedCertIds: Set<string>,
+    selectedSkillIds: Set<string>,
+    sectionOrder: string[],
+    density: 'compact' | 'standard' | 'spacious'
+): ResumeEditorConfig => ({
+    profile: { ...profile },
+    selection: {
+        experienceIds: Array.from(selectedExpIds),
+        educationIds: Array.from(selectedEduIds),
+        certificationIds: Array.from(selectedCertIds),
+        skillIds: Array.from(selectedSkillIds),
+    },
+    layout: {
+        sectionOrder: [...sectionOrder],
+        density,
+    },
+});
+
+const normalizeSectionOrder = (order?: string[]) => {
+    const filtered = (order || []).filter((sectionId) => RESUME_SECTION_IDS.has(sectionId));
+    const unique: string[] = [];
+    filtered.forEach((sectionId) => {
+        if (!unique.includes(sectionId)) {
+            unique.push(sectionId);
+        }
+    });
+    DEFAULT_SECTION_ORDER.forEach((sectionId) => {
+        if (!unique.includes(sectionId)) {
+            unique.push(sectionId);
+        }
+    });
+    return unique.length ? unique : [...DEFAULT_SECTION_ORDER];
+};
+
+const getA4PixelHeight = () => {
+    const probe = document.createElement('div');
+    probe.style.height = '297mm';
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    document.body.appendChild(probe);
+    const height = probe.getBoundingClientRect().height;
+    document.body.removeChild(probe);
+    return height;
+};
 
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const [resumeId, setResumeId] = useState<string | null>(null);
+    const [resumeDetail, setResumeDetail] = useState<ResumeDetail | null>(null);
+    const [resumeExperienceMap, setResumeExperienceMap] = useState<Map<string, ResumeExperienceItem>>(
+        new Map()
+    );
+    const [experienceSourceMap, setExperienceSourceMap] = useState<Map<string, ExperienceListItem>>(
+        new Map()
+    );
+    const [isLoadingExperiences, setIsLoadingExperiences] = useState(true);
+    const [isLoadingResume, setIsLoadingResume] = useState(true);
+    const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+    const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+    const [resumeScale, setResumeScale] = useState(1);
 
     // 1. Profile State
-    const [profile, setProfile] = useState({
-        name: "陈小象",
-        email: "alex.chen@example.com",
-        phone: "(555) 123-4567",
-        location: "上海, 中国",
-        linkedin: "linkedin.com/in/alexchen",
-        summary: "以结果为导向的产品经理，拥有学生领导力和社区组织经验。在提高参与度（提升30%）和管理预算（高达5万美元）方面有良好记录。热衷于构建以用户为中心的产品，并利用数据驱动决策。"
-    });
+    const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
 
     // 教育背景状态
-    const [educations, setEducations] = useState<Education[]>([
-        {
-            id: '1',
-            school: '加利福尼亚大学伯克利分校',
-            major: '计算机科学与技术',
-            degree: '硕士学位',
-            startDate: '2020',
-            endDate: '2024',
-            gpa: '3.8/4.0'
-        }
-    ]);
+    const [educations, setEducations] = useState<EducationView[]>([]);
 
-    // 证书状态
-    const [certifications, setCertifications] = useState<Certification[]>([
-        { id: '1', name: 'PMP 项目管理专业人士', issuer: 'PMI', date: '2023', matchRate: 95 },
-        { id: '2', name: 'Google Analytics 认证', issuer: 'Google', date: '2023', matchRate: 82 }
-    ]);
-
-    // 技能状态 - 按分类组织
-    const [skills, setSkills] = useState({
-        technical: ['Python', 'SQL', 'HTML/CSS', 'JavaScript', 'React', 'Figma', 'Tableau'],
-        product: ['敏捷/Scrum', '用户研究', 'A/B测试', '路线图规划', 'Jira'],
-        languages: ['英语 (母语)', '普通话 (流利)', '粤语 (流利)']
-    });
+    // 证书与技能状态
+    const [certifications, setCertifications] = useState<CertificationView[]>([]);
+    const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([]);
 
     // 教育背景/证书/技能选择状态
-    const [selectedEduIds, setSelectedEduIds] = useState<Set<string>>(new Set(['1']));
-    const [selectedCertIds, setSelectedCertIds] = useState<Set<string>>(new Set(['1', '2']));
-    const [selectedSkills, setSelectedSkills] = useState({
-        technical: new Set([0, 1, 2, 3, 4, 5, 6]),
-        product: new Set([0, 1, 2, 3, 4]),
-        languages: new Set([0, 1, 2])
-    });
+    const [selectedEduIds, setSelectedEduIds] = useState<Set<string>>(new Set());
+    const [selectedCertIds, setSelectedCertIds] = useState<Set<string>>(new Set());
+    const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
 
     // 2. Experience State
-    const [experienceItems, setExperienceItems] = useState(initialExperienceItems);
-    const [selectedExpIds, setSelectedExpIds] = useState<Set<number>>(new Set([1, 2]));
-    const [editingExpId, setEditingExpId] = useState<number | null>(null);
+    const [experienceItems, setExperienceItems] = useState<ResumeExperienceView[]>([]);
+    const [selectedExpIds, setSelectedExpIds] = useState<Set<string>>(new Set());
+    const [editingExpId, setEditingExpId] = useState<string | null>(null);
+    const [editingDraft, setEditingDraft] = useState<ExperienceEditDraft | null>(null);
+    const [syncToMaster, setSyncToMaster] = useState(true);
+    const [isSavingExperience, setIsSavingExperience] = useState(false);
 
     // 3. JD Analysis State
     const [jdText, setJdText] = useState("JD 要求：3年以上产品经验，精通 Python 数据分析，熟练使用 SQL，有 PMP 证书优先...");
-    const [analysisResult, setAnalysisResult] = useState<{ matchPercentage: number; missingKeywords: string[]; summary: string } | null>(null);
+    const [analysisResult, setAnalysisResult] = useState<JDAnalysisResult | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isJDCollapsed, setIsJDCollapsed] = useState(false);
 
@@ -112,17 +438,309 @@ const ResumeEditor: React.FC = () => {
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
 
     // Drag & Drop State
-    const [draggedItemId, setDraggedItemId] = useState<number | null>(null);
+    const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
 
     // Section Order State (for draggable resume sections)
-    const [sectionOrder, setSectionOrder] = useState<string[]>([
-        'summary',
-        'experience',
-        'education',
-        'certifications',
-        'skills'
-    ]);
+    const [sectionOrder, setSectionOrder] = useState<string[]>(
+        () => [...DEFAULT_SECTION_ORDER]
+    );
     const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+
+    const previewRef = useRef<HTMLDivElement | null>(null);
+    const a4HeightRef = useRef<number | null>(null);
+    const lastSavedConfigRef = useRef<string | null>(null);
+    const hasHydratedConfigRef = useRef(false);
+
+    const ensureActiveResumeId = useCallback(async (resumes: Resume[]) => {
+        if (resumes.length > 0) {
+            setActiveResumeId(resumes[0].id);
+            return resumes[0].id;
+        }
+        const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
+        setActiveResumeId(created.id);
+        return created.id;
+    }, []);
+
+    const resolveCachedResume = useCallback(
+        async (cachedId: string): Promise<CachedResumeResolveResult> => {
+            try {
+                const detail = await resumeService.get(cachedId);
+                return { status: 'ok', detail };
+            } catch (error) {
+                const status =
+                    typeof error === 'object' && error
+                        ? (error as { response?: { status?: number } }).response?.status
+                        : undefined;
+                if (status === 404) {
+                    return { status: 'missing' };
+                }
+                return { status: 'error' };
+            }
+        },
+        []
+    );
+
+    const resolveActiveResumeContext = useCallback(async (): Promise<ActiveResumeContext> => {
+        const cachedId = getActiveResumeId();
+        if (cachedId) {
+            const cached = await resolveCachedResume(cachedId);
+            if (cached.status === 'ok') {
+                return { id: cachedId, detail: cached.detail };
+            }
+            if (cached.status === 'missing') {
+                clearActiveResumeId();
+                const resumes = await resumeService.list({ force: true });
+                const id = await ensureActiveResumeId(resumes);
+                return { id, detail: null };
+            }
+            return { id: cachedId, detail: null };
+        }
+        const resumes = await resumeService.list();
+        const id = await ensureActiveResumeId(resumes);
+        return { id, detail: null };
+    }, [ensureActiveResumeId, resolveCachedResume]);
+
+    const fetchExperiences = useCallback(async () => {
+        const [workItems, projectItems] = await Promise.all([
+            experienceService.list('work'),
+            experienceService.list('project'),
+        ]);
+        return [...workItems, ...projectItems];
+    }, []);
+
+    const fetchEducationExperiences = useCallback(async () => {
+        return experienceService.list('education');
+    }, []);
+
+    const fetchCertifications = useCallback(async () => {
+        return certificationsService.list();
+    }, []);
+
+    const fetchSkills = useCallback(async () => {
+        return skillsService.list();
+    }, []);
+
+    const applyResumeDetail = useCallback((detail: ResumeDetail | null) => {
+        setResumeDetail(detail);
+        setResumeExperienceMap(buildResumeExperienceMap(detail));
+    }, []);
+
+    const resolveA4Height = useCallback(() => {
+        if (!a4HeightRef.current) {
+            a4HeightRef.current = getA4PixelHeight();
+        }
+        return a4HeightRef.current;
+    }, []);
+
+    const applySmartScale = useCallback(() => {
+        const preview = previewRef.current;
+        if (!preview) {
+            return;
+        }
+        const contentHeight = preview.getBoundingClientRect().height;
+        const a4Height = resolveA4Height();
+        if (!a4Height || !contentHeight) {
+            return;
+        }
+        const currentScale = resumeScale || 1;
+        const unscaledHeight = currentScale !== 1 ? contentHeight / currentScale : contentHeight;
+        const nextScale =
+            unscaledHeight > a4Height ? Math.max(0.86, a4Height / unscaledHeight) : 1;
+        setResumeScale(Number(nextScale.toFixed(3)));
+    }, [resolveA4Height, resumeScale]);
+
+    const adjustToSinglePage = useCallback(() => {
+        setDensity('compact');
+        requestAnimationFrame(() => {
+            applySmartScale();
+        });
+    }, [applySmartScale]);
+
+    const resumeConfigSnapshot = useMemo(
+        () =>
+            buildResumeConfigSnapshot(
+                profile,
+                selectedExpIds,
+                selectedEduIds,
+                selectedCertIds,
+                selectedSkillIds,
+                sectionOrder,
+                density
+            ),
+        [density, profile, sectionOrder, selectedCertIds, selectedEduIds, selectedExpIds, selectedSkillIds]
+    );
+
+    const debouncedConfig = useDebounce(resumeConfigSnapshot, AUTO_SAVE_DELAY_MS);
+    const debouncedConfigSignature = useMemo(
+        () => JSON.stringify(debouncedConfig),
+        [debouncedConfig]
+    );
+    const configSignature = useMemo(
+        () => JSON.stringify(resumeConfigSnapshot),
+        [resumeConfigSnapshot]
+    );
+
+    const applyResumeConfig = useCallback(
+        (config: ResumeEditorConfig, profileData?: Profile | null) => {
+            setProfile(resolveProfileSnapshot(config, profileData || undefined));
+            setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
+            if (config.layout?.density) {
+                setDensity(config.layout.density);
+            }
+        },
+        []
+    );
+
+    const applyExperienceState = useCallback(
+        (detail: ResumeDetail | null, experiences: ExperienceListItem[], config: ResumeEditorConfig) => {
+            applyResumeDetail(detail);
+            setExperienceSourceMap(buildSourceMap(experiences));
+            const resumeMap = buildResumeExperienceMap(detail);
+            const views = sortByCategory(
+                experiences.map((item) =>
+                    buildResumeExperienceView(item, resumeMap.get(item.master.id))
+                ),
+                compareByDateDesc
+            );
+            setExperienceItems(views);
+            const configSelection = resolveSelectionSet(config.selection?.experienceIds);
+            if (configSelection.size > 0) {
+                setSelectedExpIds(configSelection);
+            } else if (resumeMap.size > 0) {
+                setSelectedExpIds(new Set(resumeMap.keys()));
+            } else {
+                setSelectedExpIds(new Set(views.map((item) => item.id)));
+            }
+        },
+        [applyResumeDetail]
+    );
+
+    const applyEducationState = useCallback((items: ExperienceListItem[], config: ResumeEditorConfig) => {
+        const views = items.map(buildEducationView);
+        setEducations(views);
+        const selection = resolveSelectionSet(config.selection?.educationIds);
+        const validIds = new Set(views.map((item) => item.id));
+        const normalized = new Set([...selection].filter((id) => validIds.has(id)));
+        setSelectedEduIds(normalized.size ? normalized : new Set(validIds));
+    }, []);
+
+    const applyCertificationState = useCallback(
+        (items: CertificationRecord[], config: ResumeEditorConfig) => {
+            const views = items.map(buildCertificationView);
+            setCertifications(views);
+            const selection = resolveSelectionSet(config.selection?.certificationIds);
+            const validIds = new Set(views.map((item) => item.id));
+            const normalized = new Set([...selection].filter((id) => validIds.has(id)));
+            setSelectedCertIds(normalized.size ? normalized : new Set(validIds));
+        },
+        []
+    );
+
+    const applySkillState = useCallback((items: UserSkill[], config: ResumeEditorConfig) => {
+        const groups = buildSkillGroups(items);
+        setSkillGroups(groups);
+        const selection = resolveSelectionSet(config.selection?.skillIds);
+        const validIds = new Set(items.map((skill) => skill.id));
+        const normalized = new Set([...selection].filter((id) => validIds.has(id)));
+        setSelectedSkillIds(normalized.size ? normalized : new Set(validIds));
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadResumeContext = async () => {
+            setIsLoadingResume(true);
+            setIsLoadingExperiences(true);
+            try {
+                const { id: activeId, detail: cachedDetail } = await resolveActiveResumeContext();
+                if (!activeId || cancelled) {
+                    return;
+                }
+                setResumeId(activeId);
+                const [
+                    detail,
+                    profileData,
+                    experiences,
+                    educationExperiences,
+                    certifications,
+                    skills,
+                ] = await Promise.all([
+                    cachedDetail ?? resumeService.get(activeId).catch(() => null),
+                    profileService.getProfile().catch(() => null),
+                    fetchExperiences(),
+                    fetchEducationExperiences(),
+                    fetchCertifications(),
+                    fetchSkills(),
+                ]);
+                if (cancelled) {
+                    return;
+                }
+                const config = (detail?.resume?.config || {}) as ResumeEditorConfig;
+                applyResumeConfig(config, profileData);
+                applyExperienceState(detail, experiences, config);
+                applyEducationState(educationExperiences, config);
+                applyCertificationState(certifications, config);
+                applySkillState(skills, config);
+                hasHydratedConfigRef.current = true;
+            } catch (error) {
+                console.error('[ResumeEditor] 加载简历上下文失败:', error);
+            } finally {
+                if (!cancelled) {
+                    setIsLoadingResume(false);
+                    setIsLoadingExperiences(false);
+                }
+            }
+        };
+        loadResumeContext();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        applyCertificationState,
+        applyEducationState,
+        applyExperienceState,
+        applyResumeConfig,
+        applySkillState,
+        fetchCertifications,
+        fetchEducationExperiences,
+        fetchExperiences,
+        fetchSkills,
+        resolveActiveResumeContext,
+    ]);
+
+    useEffect(() => {
+        if (!hasHydratedConfigRef.current) {
+            return;
+        }
+        if (lastSavedConfigRef.current === null) {
+            lastSavedConfigRef.current = configSignature;
+            setSaveState('saved');
+        } else if (configSignature !== lastSavedConfigRef.current && saveState !== 'saving') {
+            setSaveState('dirty');
+        } else if (configSignature === lastSavedConfigRef.current && saveState !== 'saving') {
+            setSaveState('saved');
+        }
+    }, [configSignature, saveState]);
+
+    useEffect(() => {
+        if (!resumeId || !hasHydratedConfigRef.current) {
+            return;
+        }
+        if (debouncedConfigSignature === lastSavedConfigRef.current) {
+            return;
+        }
+        setSaveState('saving');
+        resumeService
+            .update(resumeId, { config: debouncedConfig })
+            .then(() => {
+                lastSavedConfigRef.current = debouncedConfigSignature;
+                setSaveState('saved');
+                setLastSavedAt(new Date().toLocaleTimeString());
+            })
+            .catch((error) => {
+                console.error('[ResumeEditor] 自动保存失败:', error);
+                setSaveState('error');
+            });
+    }, [debouncedConfig, debouncedConfigSignature, resumeId]);
 
     const toggleTheme = () => {
         setIsDarkMode(!isDarkMode);
@@ -132,10 +750,28 @@ const ResumeEditor: React.FC = () => {
     const handleAnalyze = async () => {
         setIsAnalyzing(true);
         try {
+            const payload = experienceItems.map((item) => ({
+                id: item.id,
+                title: item.title,
+                org: item.company,
+                start_date: item.startDate,
+                end_date: item.endDate,
+                star: item.star,
+            }));
             const result = await aiService.analyzeJD(
                 jdText,
-                JSON.stringify(experienceItems)
+                JSON.stringify(payload)
             );
+            const matchScores = new Map(
+                (result.experienceMatches || []).map((match) => [match.id, match.score])
+            );
+            setExperienceItems((prev) => {
+                const next = prev.map((item) => ({
+                    ...item,
+                    matchScore: matchScores.get(item.id),
+                }));
+                return sortByCategory(next, compareByScoreThenDate);
+            });
             setAnalysisResult(result);
             setIsJDCollapsed(true);
         } catch (error) {
@@ -145,7 +781,7 @@ const ResumeEditor: React.FC = () => {
         }
     };
 
-    const toggleExperienceSelection = (id: number) => {
+    const toggleExperienceSelection = (id: string) => {
         const newSet = new Set(selectedExpIds);
         if (newSet.has(id)) {
             newSet.delete(id);
@@ -162,30 +798,177 @@ const ResumeEditor: React.FC = () => {
         setSelectedEduIds(newSet);
     };
 
-    const toggleCertSelection = (id: string) => {
+    const toggleCertificationSelection = (id: string) => {
         const newSet = new Set(selectedCertIds);
         newSet.has(id) ? newSet.delete(id) : newSet.add(id);
         setSelectedCertIds(newSet);
     };
 
-    const toggleSkillSelection = (category: keyof typeof selectedSkills, index: number) => {
-        const newSet = new Set(selectedSkills[category]);
-        newSet.has(index) ? newSet.delete(index) : newSet.add(index);
-        setSelectedSkills({ ...selectedSkills, [category]: newSet });
+    const toggleSkillSelection = (id: string) => {
+        const newSet = new Set(selectedSkillIds);
+        newSet.has(id) ? newSet.delete(id) : newSet.add(id);
+        setSelectedSkillIds(newSet);
     };
 
-    const updateExperienceItem = (id: number, field: 's' | 't' | 'a' | 'r', value: string) => {
-        setExperienceItems(items => items.map(item =>
-            item.id === id ? { ...item, star: { ...item.star, [field]: value } } : item
-        ));
+    const updateEditingStar = (field: StarFieldKey, value: string) => {
+        setEditingDraft((prev) => {
+            if (!prev) {
+                return prev;
+            }
+            return {
+                ...prev,
+                star: {
+                    ...prev.star,
+                    [field]: value,
+                },
+            };
+        });
     };
 
-    const handleDragStart = (e: React.DragEvent, id: number) => {
+    const hasLocalStarOverride = useCallback(
+        (masterId: string) => {
+            const resumeItem = resumeExperienceMap.get(masterId);
+            return Boolean(resumeItem?.overrides_json?.star);
+        },
+        [resumeExperienceMap]
+    );
+
+    const startEditingExperience = (id: string) => {
+        const item = experienceItems.find((entry) => entry.id === id);
+        if (!item) {
+            return;
+        }
+        setEditingExpId(id);
+        setEditingDraft({
+            masterId: id,
+            star: { ...item.star },
+        });
+        setSyncToMaster(!hasLocalStarOverride(id));
+    };
+
+    const cancelEditingExperience = () => {
+        setEditingExpId(null);
+        setEditingDraft(null);
+    };
+
+    const applyStarUpdate = (masterId: string, star: StarFields) => {
+        setExperienceItems((prev) =>
+            prev.map((item) =>
+                item.id === masterId
+                    ? {
+                        ...item,
+                        star,
+                    }
+                    : item
+            )
+        );
+    };
+
+    const buildMasterUpdatePayload = (source: ExperienceListItem, star: StarFields) => {
+        const latest = source.latest_version;
+        return {
+            title: latest?.title || '',
+            org: latest?.org,
+            location: latest?.location,
+            start_date: latest?.start_date,
+            end_date: latest?.end_date,
+            is_current: latest?.is_current ?? false,
+            summary: latest?.summary,
+            highlights: latest?.highlights || [],
+            tags: latest?.tags || [],
+            star,
+        };
+    };
+
+    const syncExperienceToMaster = async (masterId: string, star: StarFields) => {
+        const source = experienceSourceMap.get(masterId);
+        if (!source?.latest_version?.title) {
+            throw new Error('缺少经历标题，无法同步到经历库');
+        }
+        const payload = buildMasterUpdatePayload(source, star);
+        const detail: ExperienceDetail = await experienceService.update(masterId, { version: payload });
+        const updatedVersion = detail.latest_version || source.latest_version;
+        setExperienceSourceMap((prev) => {
+            const next = new Map(prev);
+            next.set(masterId, {
+                ...source,
+                latest_version: updatedVersion,
+            });
+            return next;
+        });
+        applyStarUpdate(masterId, buildStarFields(updatedVersion?.star || star));
+    };
+
+    const ensureResumeLink = async (masterId: string, versionId?: string) => {
+        if (!resumeId) {
+            return null;
+        }
+        const existing = resumeExperienceMap.get(masterId);
+        if (existing?.id) {
+            return existing.id;
+        }
+        if (!versionId) {
+            return null;
+        }
+        const detail = await resumeService.updateAssembly(resumeId, {
+            operations: [
+                {
+                    op: 'add',
+                    experience_version_id: versionId,
+                },
+            ],
+        });
+        applyResumeDetail(detail);
+        const nextMap = buildResumeExperienceMap(detail);
+        return nextMap.get(masterId)?.id ?? null;
+    };
+
+    const saveExperienceOverride = async (masterId: string, star: StarFields) => {
+        const targetItem = experienceItems.find((item) => item.id === masterId);
+        const linkId = await ensureResumeLink(masterId, targetItem?.experienceVersionId);
+        if (!linkId || !resumeId) {
+            throw new Error('无法创建简历经历关联');
+        }
+        const detail = await resumeService.updateAssembly(resumeId, {
+            operations: [
+                {
+                    op: 'override',
+                    resume_experience_id: linkId,
+                    overrides_json: { star },
+                },
+            ],
+        });
+        applyResumeDetail(detail);
+        applyStarUpdate(masterId, star);
+        setSelectedExpIds((prev) => new Set(prev).add(masterId));
+    };
+
+    const handleSaveExperience = async () => {
+        if (!editingDraft) {
+            return;
+        }
+        setIsSavingExperience(true);
+        try {
+            if (syncToMaster) {
+                await syncExperienceToMaster(editingDraft.masterId, editingDraft.star);
+            } else {
+                await saveExperienceOverride(editingDraft.masterId, editingDraft.star);
+            }
+            setEditingExpId(null);
+            setEditingDraft(null);
+        } catch (error) {
+            console.error('[ResumeEditor] 保存经历失败:', error);
+        } finally {
+            setIsSavingExperience(false);
+        }
+    };
+
+    const handleDragStart = (e: React.DragEvent, id: string) => {
         setDraggedItemId(id);
         e.dataTransfer.effectAllowed = 'move';
     };
 
-    const handleDragOver = (e: React.DragEvent, id: number) => {
+    const handleDragOver = (e: React.DragEvent, id: string) => {
         e.preventDefault();
         if (draggedItemId === null || draggedItemId === id) return;
 
@@ -249,6 +1032,274 @@ const ResumeEditor: React.FC = () => {
         spacious: 'space-y-6'
     }[density];
 
+    const workItems = useMemo(
+        () => experienceItems.filter((item) => item.category === 'work'),
+        [experienceItems]
+    );
+    const projectItems = useMemo(
+        () => experienceItems.filter((item) => item.category === 'project'),
+        [experienceItems]
+    );
+    const selectedWorkItems = useMemo(
+        () => workItems.filter((item) => selectedExpIds.has(item.id)),
+        [selectedExpIds, workItems]
+    );
+    const selectedProjectItems = useMemo(
+        () => projectItems.filter((item) => selectedExpIds.has(item.id)),
+        [projectItems, selectedExpIds]
+    );
+    const sortedCertifications = useMemo(() => {
+        return [...certifications].sort((a, b) => {
+            const valA = parseYearMonthValue(a.date) ?? -1;
+            const valB = parseYearMonthValue(b.date) ?? -1;
+            return valB - valA;
+        });
+    }, [certifications]);
+
+    const selectedSkillGroups = useMemo(() => {
+        return skillGroups
+            .map((group) => ({
+                name: group.name,
+                skills: group.skills
+                    .filter((skill) => selectedSkillIds.has(skill.id))
+                    .map((skill) => skill.name),
+            }))
+            .filter((group) => group.skills.length > 0);
+    }, [skillGroups, selectedSkillIds]);
+
+    const renderExperienceSection = (
+        sectionId: 'work' | 'project',
+        title: string,
+        items: ResumeExperienceView[]
+    ) => {
+        if (!items.length) {
+            return null;
+        }
+        return (
+            <div
+                key={sectionId}
+                id={sectionId}
+                className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                draggable
+                onDragStart={(e) => handleSectionDragStart(e, sectionId)}
+                onDragOver={(e) => handleSectionDragOver(e, sectionId)}
+                onDrop={handleSectionDrop}
+            >
+                <div className="absolute -left-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                </div>
+
+                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">{title}</h2>
+                <div className={listSpacingClass}>
+                    {items.map(item => (
+                        <div
+                            key={item.id}
+                            className="relative group/item cursor-move"
+                            draggable
+                            onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, item.id); }}
+                            onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, item.id); }}
+                            onDrop={(e) => { e.stopPropagation(); handleDrop(e); }}
+                        >
+                            <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                <Edit3
+                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                    onClick={(e) => { e.stopPropagation(); setSidebarTab('experience'); startEditingExperience(item.id); }}
+                                />
+                            </div>
+
+                            <div className="group-hover/item:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                <div className="flex justify-between items-baseline mb-1">
+                                    <h3 className="text-sm font-bold text-gray-900">{item.company}</h3>
+                                    <span className="text-xs font-medium text-gray-600">{item.date}</span>
+                                </div>
+                                <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
+
+                                <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
+                                    {item.star?.s && <li><span className="font-semibold text-gray-900">S:</span> {item.star.s}</li>}
+                                    {item.star?.t && <li><span className="font-semibold text-gray-900">T:</span> {item.star.t}</li>}
+                                    {item.star?.a && (
+                                        <li>
+                                            <span className="font-semibold text-gray-900">A:</span>
+                                            <span className="whitespace-pre-line block mt-1">{item.star.a}</span>
+                                        </li>
+                                    )}
+                                    {item.star?.r && <li><span className="font-semibold text-gray-900">R:</span> {item.star.r}</li>}
+                                </ul>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    const renderExperienceListSection = (title: string, items: ResumeExperienceView[]) => {
+        if (!items.length) {
+            return null;
+        }
+        return (
+            <div className="space-y-3">
+                <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</h4>
+                {items.map((item) => {
+                    const isSelected = selectedExpIds.has(item.id);
+                    return (
+                        <div key={item.id} className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative ${isSelected ? 'border-primary ring-1 ring-primary/10' : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'}`}>
+                            <div className="flex items-start gap-3">
+                                <div className="pt-1">
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleExperienceSelection(item.id)}
+                                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                                    />
+                                </div>
+                                <div className="flex-1 cursor-pointer" onClick={() => startEditingExperience(item.id)}>
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h4 className={`font-bold text-sm ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>{item.company}</h4>
+                                            <p className="text-xs text-gray-500">{item.title}</p>
+                                        </div>
+                                        <button
+                                            className="p-1.5 text-gray-300 hover:text-primary hover:bg-primary/5 rounded transition-colors"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                startEditingExperience(item.id);
+                                            }}
+                                        >
+                                            <Edit3 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-2">
+                                        <p className="text-[10px] text-gray-400 font-mono">{item.date}</p>
+                                        {typeof item.matchScore === 'number' && (
+                                            <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">
+                                                匹配度 {item.matchScore}%
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    const renderCertificationListSection = (title: string, items: CertificationView[]) => {
+        return (
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-2 mb-3">
+                    <Award className="w-3.5 h-3.5 text-amber-500" />
+                    <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</h4>
+                </div>
+                {items.length === 0 ? (
+                    <p className="text-xs text-gray-400">暂无证书</p>
+                ) : (
+                    <div className="space-y-2">
+                        {items.map((cert) => {
+                            const isSelected = selectedCertIds.has(cert.id);
+                            return (
+                                <label
+                                    key={cert.id}
+                                    className={`flex items-start gap-2 rounded border px-3 py-2 transition-all cursor-pointer ${isSelected
+                                        ? 'border-primary bg-primary/5'
+                                        : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'
+                                        }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleCertificationSelection(cert.id)}
+                                        className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start gap-2">
+                                            <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{cert.name}</span>
+                                            <span className="text-xs text-gray-500 shrink-0">{cert.date}</span>
+                                        </div>
+                                        {cert.issuer ? (
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">{cert.issuer}</span>
+                                        ) : null}
+                                    </div>
+                                </label>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderSkillListSection = (title: string, groups: SkillGroupView[]) => {
+        return (
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-2 mb-3">
+                    <Wrench className="w-3.5 h-3.5 text-rose-500" />
+                    <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</h4>
+                </div>
+                {groups.length === 0 ? (
+                    <p className="text-xs text-gray-400">暂无技能</p>
+                ) : (
+                    <div className="space-y-3">
+                        {groups.map((group) => (
+                            <div key={group.name}>
+                                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                    {group.name}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {group.skills.map((skill) => {
+                                        const isSelected = selectedSkillIds.has(skill.id);
+                                        return (
+                                            <label
+                                                key={skill.id}
+                                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs cursor-pointer transition-all ${isSelected
+                                                    ? 'border-primary bg-primary/5 text-gray-900 dark:text-white'
+                                                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 opacity-70 hover:opacity-100'
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleSkillSelection(skill.id)}
+                                                    className="w-3.5 h-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                <span>{skill.name}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const saveStatusText = useMemo(() => {
+        const labels = {
+            idle: '未保存',
+            dirty: '待保存',
+            saving: '保存中...',
+            saved: lastSavedAt ? `已保存 ${lastSavedAt}` : '已保存',
+            error: '保存失败',
+        };
+        return labels[saveState];
+    }, [lastSavedAt, saveState]);
+
+    const saveStatusClass = useMemo(() => {
+        const colors = {
+            idle: 'text-gray-400',
+            dirty: 'text-gray-500',
+            saving: 'text-amber-600',
+            saved: 'text-emerald-600',
+            error: 'text-red-600',
+        };
+        return colors[saveState];
+    }, [saveState]);
+
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark">
             {/* Top Header */}
@@ -266,23 +1317,34 @@ const ResumeEditor: React.FC = () => {
                 <div className="flex items-center gap-4">
                     <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                         <button
-                            onClick={() => setDensity('compact')}
+                            onClick={() => { setDensity('compact'); setResumeScale(1); }}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${density === 'compact' ? 'bg-white dark:bg-gray-600 shadow text-primary dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700'}`}
                         >
                             紧凑
                         </button>
                         <button
-                            onClick={() => setDensity('standard')}
+                            onClick={() => { setDensity('standard'); setResumeScale(1); }}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${density === 'standard' ? 'bg-white dark:bg-gray-600 shadow text-primary dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700'}`}
                         >
                             标准
                         </button>
                         <button
-                            onClick={() => setDensity('spacious')}
+                            onClick={() => { setDensity('spacious'); setResumeScale(1); }}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${density === 'spacious' ? 'bg-white dark:bg-gray-600 shadow text-primary dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700'}`}
                         >
                             宽敞
                         </button>
+                    </div>
+                    <button
+                        onClick={adjustToSinglePage}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                        <LayoutTemplate className="w-4 h-4" />
+                        智能一页
+                    </button>
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="text-gray-400">自动保存</span>
+                        <span className={`font-semibold ${saveStatusClass}`}>{saveStatusText}</span>
                     </div>
                     <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
                     <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400" onClick={toggleTheme}>
@@ -341,7 +1403,11 @@ const ResumeEditor: React.FC = () => {
                                             value={jdText}
                                             onChange={(e) => setJdText(e.target.value)}
                                         />
-                                        <button onClick={handleAnalyze} className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[10px] font-bold px-2">
+                                        <button
+                                            onClick={handleAnalyze}
+                                            disabled={isAnalyzing}
+                                            className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[10px] font-bold px-2 disabled:opacity-60"
+                                        >
                                             <Wand2 className="w-3 h-3" />
                                             {isAnalyzing ? '分析中...' : '开始分析'}
                                         </button>
@@ -350,7 +1416,9 @@ const ResumeEditor: React.FC = () => {
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-lg p-3">
                                             <div className="flex justify-between items-center mb-2">
                                                 <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">匹配度: {analysisResult.matchPercentage}%</span>
-                                                <span className="text-[10px] text-emerald-600/80">Missing: {analysisResult.missingKeywords.join(', ')}</span>
+                                                <span className="text-[10px] text-emerald-600/80">
+                                                    Missing: {(analysisResult.missingKeywords || []).join(', ')}
+                                                </span>
                                             </div>
                                             <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">{analysisResult.summary}</p>
                                         </div>
@@ -370,7 +1438,7 @@ const ResumeEditor: React.FC = () => {
                         </button>
                         <button
                             className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                            onClick={() => { setSidebarTab('profile'); setEditingExpId(null); }}
+                            onClick={() => { setSidebarTab('profile'); cancelEditingExperience(); }}
                         >
                             <User className="w-4 h-4" /> 个人档案
                         </button>
@@ -434,36 +1502,40 @@ const ResumeEditor: React.FC = () => {
                                 <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                                     <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">教育背景</h3>
                                     <div className="space-y-2">
-                                        {educations.map((edu) => {
-                                            const isSelected = selectedEduIds.has(edu.id);
-                                            return (
-                                                <div
-                                                    key={edu.id}
-                                                    className={`p-3 rounded border transition-all ${isSelected
-                                                        ? 'bg-gray-50 dark:bg-gray-900 border-primary ring-1 ring-primary'
-                                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-60'
-                                                        }`}
-                                                >
-                                                    <div className="flex gap-3">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => toggleEducationSelection(edu.id)}
-                                                            className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer shrink-0"
-                                                        />
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex justify-between items-start mb-1">
-                                                                <h4 className="text-sm font-bold text-gray-900 dark:text-white">{edu.school}</h4>
-                                                                <span className="text-xs text-gray-500 ml-2 shrink-0">{edu.startDate} - {edu.endDate}</span>
+                                        {educations.length === 0 ? (
+                                            <p className="text-xs text-gray-400">暂无教育经历</p>
+                                        ) : (
+                                            educations.map((edu) => {
+                                                const isSelected = selectedEduIds.has(edu.id);
+                                                return (
+                                                    <div
+                                                        key={edu.id}
+                                                        className={`p-3 rounded border transition-all ${isSelected
+                                                            ? 'bg-gray-50 dark:bg-gray-900 border-primary ring-1 ring-primary'
+                                                            : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-60'
+                                                            }`}
+                                                    >
+                                                        <div className="flex gap-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={() => toggleEducationSelection(edu.id)}
+                                                                className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer shrink-0"
+                                                            />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex justify-between items-start mb-1">
+                                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">{edu.school}</h4>
+                                                                    <span className="text-xs text-gray-500 ml-2 shrink-0">{edu.startDate} - {edu.endDate}</span>
+                                                                </div>
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400">{edu.major}</p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-500">{edu.degree}</p>
+                                                                {edu.gpa && <p className="text-xs text-gray-500 mt-1">GPA: {edu.gpa}</p>}
                                                             </div>
-                                                            <p className="text-xs text-gray-600 dark:text-gray-400">{edu.major}</p>
-                                                            <p className="text-xs text-gray-500 dark:text-gray-500">{edu.degree}</p>
-                                                            {edu.gpa && <p className="text-xs text-gray-500 mt-1">GPA: {edu.gpa}</p>}
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
 
@@ -478,115 +1550,6 @@ const ResumeEditor: React.FC = () => {
                                     />
                                 </div>
 
-                                {/* 证书资质模块 */}
-                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">证书资质</h3>
-                                    <div className="space-y-2">
-                                        {certifications.map((cert) => {
-                                            const isSelected = selectedCertIds.has(cert.id);
-                                            return (
-                                                <div
-                                                    key={cert.id}
-                                                    className={`p-3 rounded border transition-all ${isSelected
-                                                        ? 'bg-gray-50 dark:bg-gray-900 border-primary ring-1 ring-primary'
-                                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-60'
-                                                        }`}
-                                                >
-                                                    <div className="flex gap-3">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => toggleCertSelection(cert.id)}
-                                                            className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer shrink-0"
-                                                        />
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex justify-between items-start mb-1">
-                                                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                                    <Award className="w-3 h-3 text-amber-500 shrink-0" />
-                                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{cert.name}</h4>
-                                                                </div>
-                                                                {cert.matchRate !== undefined && cert.matchRate > 0 && (
-                                                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ml-2 shrink-0">
-                                                                        {cert.matchRate}%
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs text-gray-600 dark:text-gray-400">{cert.issuer}</p>
-                                                            <p className="text-xs text-gray-500">{cert.date}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* 专业技能模块 */}
-                                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">专业技能</h3>
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="text-xs text-gray-600 dark:text-gray-400 font-semibold block mb-1.5">技术栈</label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {skills.technical.map((skill, idx) => {
-                                                    const isSelected = selectedSkills.technical.has(idx);
-                                                    return (
-                                                        <span
-                                                            key={idx}
-                                                            onClick={() => toggleSkillSelection('technical', idx)}
-                                                            className={`px-2 py-1 text-xs rounded-full cursor-pointer transition-all ${isSelected
-                                                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-1 ring-blue-500'
-                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-50'
-                                                                }`}
-                                                        >
-                                                            {skill}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-600 dark:text-gray-400 font-semibold block mb-1.5">产品方法</label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {skills.product.map((skill, idx) => {
-                                                    const isSelected = selectedSkills.product.has(idx);
-                                                    return (
-                                                        <span
-                                                            key={idx}
-                                                            onClick={() => toggleSkillSelection('product', idx)}
-                                                            className={`px-2 py-1 text-xs rounded-full cursor-pointer transition-all ${isSelected
-                                                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-1 ring-purple-500'
-                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-50'
-                                                                }`}
-                                                        >
-                                                            {skill}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-600 dark:text-gray-400 font-semibold block mb-1.5">语言</label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {skills.languages.map((skill, idx) => {
-                                                    const isSelected = selectedSkills.languages.has(idx);
-                                                    return (
-                                                        <span
-                                                            key={idx}
-                                                            onClick={() => toggleSkillSelection('languages', idx)}
-                                                            className={`px-2 py-1 text-xs rounded-full cursor-pointer transition-all ${isSelected
-                                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-500'
-                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-50'
-                                                                }`}
-                                                        >
-                                                            {skill}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         ) : (
                             // 2. Experience Selection & STAR Editing
@@ -594,7 +1557,7 @@ const ResumeEditor: React.FC = () => {
                                 // Editing Mode (STAR Inputs)
                                 <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                                     <button
-                                        onClick={() => setEditingExpId(null)}
+                                        onClick={cancelEditingExperience}
                                         className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white mb-2"
                                     >
                                         <ArrowLeft className="w-3 h-3" /> 返回列表
@@ -614,13 +1577,40 @@ const ResumeEditor: React.FC = () => {
                                                 </label>
                                                 <textarea
                                                     className="w-full text-sm p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-24 resize-none leading-relaxed"
-                                                    value={editingItem?.star?.[key as 's' | 't' | 'a' | 'r']}
-                                                    onChange={(e) => updateExperienceItem(editingItem!.id, key as any, e.target.value)}
+                                                    value={editingDraft?.star?.[key as StarFieldKey] || ''}
+                                                    onChange={(e) => updateEditingStar(key as StarFieldKey, e.target.value)}
                                                     placeholder={`Enter ${key.toUpperCase()}...`}
                                                 />
                                             </div>
                                         )
                                     })}
+                                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                        <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={syncToMaster}
+                                                onChange={(e) => setSyncToMaster(e.target.checked)}
+                                                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                            />
+                                            同步修改全部简历
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={cancelEditingExperience}
+                                                className="text-xs font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white px-3 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                disabled={isSavingExperience}
+                                            >
+                                                取消
+                                            </button>
+                                            <button
+                                                onClick={handleSaveExperience}
+                                                className="text-xs font-semibold text-white bg-primary hover:bg-primary-dark px-4 py-1.5 rounded-md transition-colors disabled:opacity-60"
+                                                disabled={isSavingExperience}
+                                            >
+                                                {isSavingExperience ? '保存中...' : '保存'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             ) : (
                                 // List Mode (Checkboxes)
@@ -628,35 +1618,10 @@ const ResumeEditor: React.FC = () => {
                                     <p className="text-xs text-gray-400 px-1 flex items-center gap-2">
                                         <CheckCircle2 className="w-3 h-3" /> 勾选以添加到简历
                                     </p>
-                                    {experienceItems.map((item) => {
-                                        const isSelected = selectedExpIds.has(item.id);
-                                        return (
-                                            <div key={item.id} className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative ${isSelected ? 'border-primary ring-1 ring-primary/10' : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'}`}>
-                                                <div className="flex items-start gap-3">
-                                                    <div className="pt-1">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => toggleExperienceSelection(item.id)}
-                                                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                                                        />
-                                                    </div>
-                                                    <div className="flex-1 cursor-pointer" onClick={() => setEditingExpId(item.id)}>
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <h4 className={`font-bold text-sm ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>{item.company}</h4>
-                                                                <p className="text-xs text-gray-500">{item.title}</p>
-                                                            </div>
-                                                            <button className="p-1.5 text-gray-300 hover:text-primary hover:bg-primary/5 rounded transition-colors">
-                                                                <Edit3 className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                        <p className="text-[10px] text-gray-400 mt-2 font-mono">{item.date}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                    {renderExperienceListSection('工作经历', workItems)}
+                                    {renderExperienceListSection('项目经历', projectItems)}
+                                    {renderCertificationListSection('证书资质', sortedCertifications)}
+                                    {renderSkillListSection('专业技能', skillGroups)}
                                     {/* Removed the "Import More" card placeholder as per requirement */}
                                 </div>
                             )
@@ -666,7 +1631,14 @@ const ResumeEditor: React.FC = () => {
 
                 {/* Main Preview Area (Connected to State) */}
                 <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto relative flex justify-center p-8 scroll-smooth">
-                    <div className="a4-preview text-gray-900 p-[20mm] relative">
+                    <div
+                        ref={previewRef}
+                        className="a4-preview text-gray-900 p-[20mm] relative"
+                        style={{
+                            transform: resumeScale === 1 ? undefined : `scale(${resumeScale})`,
+                            transformOrigin: 'top center',
+                        }}
+                    >
                         {/* 1. Header (Basic Info) */}
                         <div id="basic-info" className={`border-b-2 border-gray-900 pb-4 ${spacingClass} text-center scroll-mt-8`}>
                             <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">{profile.name}</h1>
@@ -708,70 +1680,12 @@ const ResumeEditor: React.FC = () => {
                                 );
                             }
 
-                            // Experience Section
-                            if (sectionId === 'experience' && selectedExpIds.size > 0) {
-                                return (
-                                    <div
-                                        key="experience"
-                                        id="experience"
-                                        className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                                        draggable
-                                        onDragStart={(e) => handleSectionDragStart(e, 'experience')}
-                                        onDragOver={(e) => handleSectionDragOver(e, 'experience')}
-                                        onDrop={handleSectionDrop}
-                                    >
-                                        {/* Section-level left corner icon */}
-                                        <div className="absolute -left-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                        </div>
+                            if (sectionId === 'work') {
+                                return renderExperienceSection('work', '工作经历', selectedWorkItems);
+                            }
 
-                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">工作/项目经历</h2>
-                                        <div className={listSpacingClass}>
-                                            {experienceItems
-                                                .filter(item => selectedExpIds.has(item.id))
-                                                .map(item => (
-                                                    <div
-                                                        key={item.id}
-                                                        className="relative group/item cursor-move"
-                                                        draggable
-                                                        onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, item.id); }}
-                                                        onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, item.id); }}
-                                                        onDrop={(e) => { e.stopPropagation(); handleDrop(e); }}
-                                                    >
-                                                        {/* Item-level left corner icons */}
-                                                        <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                            <Edit3
-                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('experience'); setEditingExpId(item.id); }}
-                                                            />
-                                                        </div>
-
-                                                        <div className="group-hover/item:bg-primary/5 -m-2 p-2 rounded transition-colors">
-                                                            <div className="flex justify-between items-baseline mb-1">
-                                                                <h3 className="text-sm font-bold text-gray-900">{item.company}</h3>
-                                                                <span className="text-xs font-medium text-gray-600">{item.date}</span>
-                                                            </div>
-                                                            <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
-
-                                                            {/* Render STAR content if available */}
-                                                            <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
-                                                                {item.star?.s && <li><span className="font-semibold text-gray-900">S:</span> {item.star.s}</li>}
-                                                                {item.star?.t && <li><span className="font-semibold text-gray-900">T:</span> {item.star.t}</li>}
-                                                                {item.star?.a && (
-                                                                    <li>
-                                                                        <span className="font-semibold text-gray-900">A:</span>
-                                                                        <span className="whitespace-pre-line block mt-1">{item.star.a}</span>
-                                                                    </li>
-                                                                )}
-                                                                {item.star?.r && <li><span className="font-semibold text-gray-900">R:</span> {item.star.r}</li>}
-                                                            </ul>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                        </div>
-                                    </div>
-                                );
+                            if (sectionId === 'project') {
+                                return renderExperienceSection('project', '项目经历', selectedProjectItems);
                             }
 
                             // Education Section
@@ -833,20 +1747,22 @@ const ResumeEditor: React.FC = () => {
                                             <GripVertical className="w-4 h-4 text-primary cursor-move" />
                                             <Edit3
                                                 className="w-4 h-4 text-primary cursor-pointer"
-                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('profile'); }}
+                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('experience'); }}
                                             />
                                         </div>
 
                                         <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
                                             <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">证书资质</h2>
                                             <div className="space-y-1.5">
-                                                {certifications
+                                                {sortedCertifications
                                                     .filter(cert => selectedCertIds.has(cert.id))
                                                     .map((cert) => (
                                                         <div key={cert.id} className="flex justify-between items-baseline">
                                                             <div>
                                                                 <span className="text-xs font-bold text-gray-900">{cert.name}</span>
-                                                                <span className="text-xs text-gray-600 ml-2">({cert.issuer})</span>
+                                                                {cert.issuer ? (
+                                                                    <span className="text-xs text-gray-600 ml-2">({cert.issuer})</span>
+                                                                ) : null}
                                                             </div>
                                                             <span className="text-xs text-gray-600">{cert.date}</span>
                                                         </div>
@@ -858,7 +1774,7 @@ const ResumeEditor: React.FC = () => {
                             }
 
                             // Skills Section
-                            if (sectionId === 'skills') {
+                            if (sectionId === 'skills' && selectedSkillGroups.length > 0) {
                                 return (
                                     <div
                                         key="skills"
@@ -874,43 +1790,19 @@ const ResumeEditor: React.FC = () => {
                                             <GripVertical className="w-4 h-4 text-primary cursor-move" />
                                             <Edit3
                                                 className="w-4 h-4 text-primary cursor-pointer"
-                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('profile'); }}
+                                                onClick={(e) => { e.stopPropagation(); setSidebarTab('experience'); }}
                                             />
                                         </div>
 
                                         <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
                                             <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">专业技能</h2>
                                             <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
-                                                {selectedSkills.technical.size > 0 && (
-                                                    <>
-                                                        <span className="font-bold text-gray-900">技术栈:</span>
-                                                        <span>
-                                                            {skills.technical
-                                                                .filter((_, idx) => selectedSkills.technical.has(idx))
-                                                                .join(', ')}
-                                                        </span>
-                                                    </>
-                                                )}
-                                                {selectedSkills.product.size > 0 && (
-                                                    <>
-                                                        <span className="font-bold text-gray-900">产品方法:</span>
-                                                        <span>
-                                                            {skills.product
-                                                                .filter((_, idx) => selectedSkills.product.has(idx))
-                                                                .join(', ')}
-                                                        </span>
-                                                    </>
-                                                )}
-                                                {selectedSkills.languages.size > 0 && (
-                                                    <>
-                                                        <span className="font-bold text-gray-900">语言:</span>
-                                                        <span>
-                                                            {skills.languages
-                                                                .filter((_, idx) => selectedSkills.languages.has(idx))
-                                                                .join(', ')}
-                                                        </span>
-                                                    </>
-                                                )}
+                                                {selectedSkillGroups.map((group) => (
+                                                    <React.Fragment key={group.name}>
+                                                        <span className="font-bold text-gray-900">{group.name}:</span>
+                                                        <span>{group.skills.join(', ')}</span>
+                                                    </React.Fragment>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>

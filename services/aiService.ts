@@ -24,6 +24,11 @@ export interface JDAnalysisResult {
     matchPercentage: number;
     missingKeywords: string[];
     summary: string;
+    experienceMatches?: Array<{
+        id: string;
+        score: number;
+        reason?: string;
+    }>;
 }
 
 export interface GenerateTagsResponse {

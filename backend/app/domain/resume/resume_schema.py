@@ -22,6 +22,12 @@ class ResumeRead(BaseModel):
     updated_at: datetime
 
 
+class ResumeUpdate(BaseModel):
+    title: Optional[str] = None
+    target_role: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+
+
 class ResumeExperienceMerged(BaseModel):
     id: str
     master_experience_id: str

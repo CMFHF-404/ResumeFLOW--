@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate } from 'lucide-react';
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
+import { setActiveResumeId } from './resumeStorage';
 
 interface DashboardProps {
   setView: (view: ViewState) => void;
@@ -33,6 +34,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
   const [error, setError] = useState<string | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number, left: number } | null>(null);
+  const [isCreatingResume, setIsCreatingResume] = useState(false);
 
   // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
   const onResumesUpdateRef = useRef(onResumesUpdate);
@@ -88,6 +90,43 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
     document.documentElement.classList.toggle('dark');
+  };
+
+  const openResume = (id: string) => {
+    setActiveResumeId(id);
+    setView(ViewState.EDITOR);
+  };
+
+  const handleCreateResume = async () => {
+    if (isCreatingResume) {
+      return;
+    }
+    try {
+      setIsCreatingResume(true);
+      const created = await resumeService.create({ title: '未命名简历' });
+      const newResume: Resume = {
+        id: created.id,
+        name: created.title,
+        targetRole: created.target_role || '通用',
+        matchRate: 0,
+        lastModified: formatRelativeTime(created.updated_at),
+        status: 'draft',
+        type: 'general',
+      };
+      setResumes((prev) => {
+        const next = [newResume, ...prev];
+        if (onResumesUpdateRef.current) {
+          onResumesUpdateRef.current(next);
+        }
+        return next;
+      });
+      setActiveResumeId(created.id);
+      setView(ViewState.EDITOR);
+    } catch (error) {
+      console.error('[Dashboard] 创建简历失败:', error);
+    } finally {
+      setIsCreatingResume(false);
+    }
   };
 
   const handleDropdownClick = (e: React.MouseEvent, id: string) => {
@@ -193,11 +232,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                 </button>
               </div>
               <button
-                onClick={() => setView(ViewState.EDITOR)}
-                className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5"
+                onClick={handleCreateResume}
+                disabled={isCreatingResume}
+                className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:shadow-primary/20 disabled:transform-none"
               >
                 <Plus className="w-5 h-5" />
-                创建新简历
+                {isCreatingResume ? '创建中...' : '创建新简历'}
               </button>
             </div>
           </div>
@@ -205,7 +245,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {resumes.map(resume => (
-                <div key={resume.id} onClick={() => setView(ViewState.EDITOR)} className="group bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col relative cursor-pointer">
+                <div key={resume.id} onClick={() => openResume(resume.id)} className="group bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col relative cursor-pointer">
                   <div className="aspect-[210/297] bg-gray-100 dark:bg-gray-900 relative p-6 overflow-hidden border-b border-gray-100 dark:border-gray-800">
                     <div className="w-full h-full bg-white dark:bg-gray-800 shadow-sm p-3 md:p-4 transform group-hover:scale-[1.02] transition-transform duration-500 origin-top opacity-90 flex flex-col gap-2">
                       {/* Mini Resume Visuals */}
@@ -248,8 +288,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                 </div>
               ))}
               <button
-                onClick={() => setView(ViewState.EDITOR)}
-                className="group flex flex-col items-center justify-center h-full min-h-[400px] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300"
+                onClick={handleCreateResume}
+                disabled={isCreatingResume}
+                className="group flex flex-col items-center justify-center h-full min-h-[400px] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:border-gray-200"
               >
                 <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 group-hover:text-primary group-hover:bg-white dark:group-hover:bg-gray-700 shadow-sm transition-colors mb-4">
                   <Plus className="w-8 h-8" />
@@ -273,7 +314,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {resumes.map(resume => (
-                      <tr key={resume.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setView(ViewState.EDITOR)}>
+                    <tr key={resume.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => openResume(resume.id)}>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
                             <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
@@ -302,7 +343,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-3">
-                            <button className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-md transition-colors border border-transparent hover:border-primary/20 whitespace-nowrap">
+                            <button
+                              className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-md transition-colors border border-transparent hover:border-primary/20 whitespace-nowrap"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openResume(resume.id);
+                              }}
+                            >
                               编辑
                             </button>
                             <button
@@ -329,7 +376,14 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
           className="dropdown-menu fixed w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 z-[9999]"
           style={{ top: dropdownPos.top, left: dropdownPos.left }}
         >
-          <button onClick={() => setView(ViewState.EDITOR)} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (openDropdownId) {
+                openResume(openDropdownId);
+              }
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+          >
             <Edit2 className="w-4 h-4" /> 编辑
           </button>
           <button onClick={(e) => handleCopy(openDropdownId, e)} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2">

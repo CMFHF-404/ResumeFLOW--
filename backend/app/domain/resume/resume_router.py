@@ -7,12 +7,19 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
 from ...constants import DEFAULT_LIMIT, MAX_LIMIT
 from ...database import get_session
 from ...dependencies import get_current_user
-from .resume_schema import ResumeAssemblyPatch, ResumeCreate, ResumeDetail, ResumeRead
+from .resume_schema import (
+    ResumeAssemblyPatch,
+    ResumeCreate,
+    ResumeDetail,
+    ResumeRead,
+    ResumeUpdate,
+)
 from .resume_service import (
     NotFoundError,
     create_resume,
     get_resume_detail,
     list_resumes,
+    update_resume,
     update_assembly,
 )
 
@@ -49,6 +56,20 @@ async def create_resume_item(
     current_user=Depends(get_current_user),
 ):
     resume = await create_resume(session, current_user.id, payload)
+    return _resume_to_read(resume)
+
+
+@router.patch("/{resume_id}", response_model=ResumeRead)
+async def patch_resume_item(
+    resume_id: str,
+    payload: ResumeUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    try:
+        resume = await update_resume(session, current_user.id, resume_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _resume_to_read(resume)
 
 

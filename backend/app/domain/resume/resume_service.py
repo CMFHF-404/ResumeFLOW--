@@ -14,6 +14,7 @@ from .resume_schema import (
     ResumeCreate,
     ResumeExperienceItem,
     ResumeExperienceMerged,
+    ResumeUpdate,
 )
 
 
@@ -51,6 +52,23 @@ async def create_resume(
         target_role=payload.target_role,
         config=payload.config or {},
     )
+    session.add(resume)
+    await session.commit()
+    await session.refresh(resume)
+    return resume
+
+
+async def update_resume(
+    session: AsyncSession, user_id: str, resume_id: str, payload: ResumeUpdate
+) -> Resume:
+    resume = await _get_resume(session, user_id, resume_id)
+    if payload.title is not None:
+        resume.title = payload.title
+    if payload.target_role is not None:
+        resume.target_role = payload.target_role
+    if payload.config is not None:
+        resume.config = payload.config
+    resume.updated_at = utc_now()
     session.add(resume)
     await session.commit()
     await session.refresh(resume)

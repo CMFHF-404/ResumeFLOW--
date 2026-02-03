@@ -15,6 +15,7 @@ from .domain.resume.resume_schema import (
     ResumeExperienceItem,
     ResumeExperienceMerged,
     ResumeRead,
+    ResumeUpdate,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "ResumeExperienceItem",
     "ResumeExperienceMerged",
     "ResumeRead",
+    "ResumeUpdate",
 ]

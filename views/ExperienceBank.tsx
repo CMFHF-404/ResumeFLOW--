@@ -1631,7 +1631,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <GraduationCap className="w-5 h-5 text-purple-600" />
+                <GraduationCap className="w-5 h-5 text-sky-500" />
                 教育经历
                 <span className="text-sm font-normal text-gray-400 ml-2">Education</span>
               </h2>
@@ -1643,56 +1643,70 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             <button
               onClick={handleAddEdu}
               disabled={isLoadingEdu || isCreatingEdu}
-              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-purple-600 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-sky-600 hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-purple-600 transition-colors">
+              <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-sky-600 transition-colors">
                 <Plus className="w-5 h-5" />
               </div>
               <span className="font-medium">新增教育经历</span>
             </button>
 
-            {/* Edu List Items */}
+            {/* Education List Items */}
             {sortedEducations.map((edu) => {
-              const cardId = edu.master.id;
-              const isExpanded = expandedEduCards.has(cardId);
-              const isCollapsing = collapsingEduCards.has(cardId);
+              const eduId = edu.master.id;
+              const isExpanded = expandedEduCards.has(eduId);
+              const isCollapsing = collapsingEduCards.has(eduId);
               const showExpanded = isExpanded || isCollapsing;
-              const isModified = modifiedEduCards.has(cardId);
-              const data = eduData.get(cardId) || buildEduCardData(edu);
+              const isModified = modifiedEduCards.has(eduId);
+              const data = eduData.get(eduId) || buildEduCardData(edu);
+              const dateLabel = [data.startDate, data.endDate].filter(Boolean).join(' - ');
 
               return (
                 <div
-                  key={cardId}
+                  key={eduId}
                   ref={(el) => {
-                    if (el) eduCardRefs.current.set(cardId, el);
-                    else eduCardRefs.current.delete(cardId);
+                    if (el) eduCardRefs.current.set(eduId, el);
+                    else eduCardRefs.current.delete(eduId);
                   }}
-                  className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
+                  className="bg-white dark:bg-surface-dark rounded-xl border border-sky-500/30 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
                 >
                   {!showExpanded ? (
                     // Collapsed State
-                    <div className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" onClick={() => toggleEduCard(cardId)}>
+                    <div
+                      className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                      onClick={() => toggleEduCard(eduId)}
+                    >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-1">
-                            <h3 className="font-bold text-gray-900 dark:text-white truncate">{data.school}</h3>
+                            <h3 className="font-bold text-gray-900 dark:text-white truncate">
+                              {data.school || '未填写学校'}
+                            </h3>
                             <span className="text-gray-300 dark:text-gray-600">|</span>
-                            <span className="text-gray-700 dark:text-gray-300 font-medium">{data.major}</span>
+                            <span className="text-gray-700 dark:text-gray-300 font-medium truncate">
+                              {data.major || '未填写专业'}
+                            </span>
                           </div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                            {data.degree} {data.gpa ? `• GPA: ${data.gpa} ` : ''} {data.courses ? `• ${data.courses} ` : ''}
-                          </p>
+                          {data.degree ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                              {data.degree}
+                            </p>
+                          ) : null}
+                          {dateLabel ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                              {dateLabel}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="text-right shrink-0 flex items-center gap-2">
-                          <span className="block text-sm font-mono text-gray-500">{data.startDate} - {data.endDate}</span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              requestDelete(cardId, 'edu');
+                              requestDelete(eduId, 'edu');
                             }}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                             title="删除"
-                            disabled={savingEduIds.has(cardId)}
+                            disabled={savingEduIds.has(eduId)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1703,87 +1717,73 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   ) : (
                     // Expanded State
                     <div className={resolveCardMotionClass(isCollapsing)}>
-                      <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
-                        <div className="flex flex-col lg:flex-row gap-6 mb-4">
-                          <div className="flex-1">
+                      <div className="p-6 border-b border-gray-50 dark:border-gray-800/50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
                             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学校名称</label>
                             <input
                               className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
-                              placeholder="输入学校名称"
+                              placeholder="例如: 清华大学"
                               value={data.school}
-                              onChange={(e) => updateEduField(cardId, "school", e.target.value)}
+                              onChange={(e) => updateEduField(eduId, "school", e.target.value)}
                             />
                           </div>
-                          <div className="flex-1">
-                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业</label>
-                            <input
-                              className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
-                              placeholder="输入专业"
-                              value={data.major}
-                              onChange={(e) => updateEduField(cardId, "major", e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-6 pt-4 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位</label>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">专业名称</label>
                             <input
                               className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
-                              placeholder="本科/硕士/博士"
-                              value={data.degree}
-                              onChange={(e) => updateEduField(cardId, "degree", e.target.value)}
+                              placeholder="例如: 计算机科学与技术"
+                              value={data.major}
+                              onChange={(e) => updateEduField(eduId, "major", e.target.value)}
                             />
                           </div>
                           <div>
-                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">时间段</label>
-                            <div className="flex items-center gap-2 h-[42px] lg:h-auto items-end">
-                              <div className="w-32 h-full">
-                                <MonthPicker
-                                  value={data.startDate}
-                                  onChange={(val) => {
-                                    updateEduField(cardId, "startDate", val);
-                                    const startValue = parseYearMonthValue(val);
-                                    const endValue = parseYearMonthValue(data.endDate);
-                                    if (startValue !== null && endValue !== null && startValue > endValue) {
-                                      updateEduField(cardId, "endDate", "");
-                                    }
-                                  }}
-                                  placeholder="开始时间"
-                                  className="h-full"
-                                />
-                              </div>
-                              <span className="text-gray-400">-</span>
-                              <div className="w-32 h-full">
-                                <MonthPicker
-                                  value={data.endDate}
-                                  onChange={(val) => updateEduField(cardId, "endDate", val)}
-                                  placeholder="结束时间"
-                                  className="h-full"
-                                  minDate={data.startDate}
-                                />
-                              </div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">学位/学历</label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="例如: 本科 / 硕士"
+                              value={data.degree}
+                              onChange={(e) => updateEduField(eduId, "degree", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">开始时间</label>
+                            <div className="h-[46px]">
+                              <MonthPicker
+                                value={data.startDate}
+                                onChange={(val) => updateEduField(eduId, "startDate", val)}
+                                placeholder="开始时间"
+                                className="w-full h-full"
+                              />
                             </div>
                           </div>
-                          <div className="md:col-span-2">
-                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA (可选)</label>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">结束时间</label>
+                            <div className="h-[46px]">
+                              <MonthPicker
+                                value={data.endDate}
+                                onChange={(val) => updateEduField(eduId, "endDate", val)}
+                                placeholder="结束时间"
+                                className="w-full h-full"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">GPA</label>
                             <input
                               className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
                               placeholder="例如: 3.8/4.0"
                               value={data.gpa}
-                              onChange={(e) => updateEduField(cardId, "gpa", e.target.value)}
+                              onChange={(e) => updateEduField(eduId, "gpa", e.target.value)}
                             />
                           </div>
-                          <div className="md:col-span-2">
-                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">主修课程 (可选)</label>
-                            <textarea
-                              className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 resize-none"
-                              rows={2}
-                              placeholder="列出关键相关课程..."
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">核心课程</label>
+                            <input
+                              className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
+                              placeholder="例如: 数据结构、操作系统"
                               value={data.courses}
-                              onChange={(e) => updateEduField(cardId, "courses", e.target.value)}
+                              onChange={(e) => updateEduField(eduId, "courses", e.target.value)}
                             />
                           </div>
                         </div>
@@ -1792,10 +1792,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                       <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => requestDelete(cardId, 'edu')}
+                            onClick={() => requestDelete(eduId, 'edu')}
                             className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                             title="删除"
-                            disabled={savingEduIds.has(cardId)}
+                            disabled={savingEduIds.has(eduId)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1803,23 +1803,23 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                           {isModified ? (
                             <>
                               <button
-                                onClick={() => handleCancelEditEdu(cardId)}
+                                onClick={() => handleCancelEditEdu(eduId)}
                                 className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                                disabled={savingEduIds.has(cardId)}
+                                disabled={savingEduIds.has(eduId)}
                               >
                                 取消
                               </button>
                               <button
-                                onClick={() => handleSaveEdu(cardId)}
-                                className="flex items-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-purple-500/20 disabled:opacity-50"
-                                disabled={savingEduIds.has(cardId)}
+                                onClick={() => handleSaveEdu(eduId)}
+                                className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-sky-700 px-6 py-2 rounded-lg transition-colors shadow-sm shadow-sky-500/20 disabled:opacity-50"
+                                disabled={savingEduIds.has(eduId)}
                               >
-                                {savingEduIds.has(cardId) ? '保存中...' : '保存'}
+                                {savingEduIds.has(eduId) ? '保存中...' : '保存'}
                               </button>
                             </>
                           ) : (
                             <button
-                              onClick={() => toggleEduCard(cardId)}
+                              onClick={() => toggleEduCard(eduId)}
                               className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
                               折叠
