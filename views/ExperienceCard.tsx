@@ -5,6 +5,21 @@ import { SKILL_TAGS } from '../data/skillTags';
 import { parseYearMonthValue, resolveCardMotionClass } from './experienceUtils';
 import { buildTagSuggestions, buildTagsFromInput, mergeTags, normalizeTagKey } from './tagUtils';
 
+const getThemeClasses = (color: string = 'primary') => {
+  if (color === 'primary') {
+    return {
+      button: 'bg-primary hover:bg-primary-dark text-white shadow-primary/20',
+      tag: 'hover:text-primary hover:border-primary hover:bg-primary/5',
+      focus: 'focus:ring-primary/20 focus:border-primary',
+    };
+  }
+  return {
+    button: `bg-${color}-600 hover:bg-${color}-700 text-white shadow-${color}-500/20`,
+    tag: `hover:text-${color}-600 hover:border-${color}-600 hover:bg-${color}-50`,
+    focus: `focus:ring-${color}-500/20 focus:border-${color}-500`,
+  };
+};
+
 export type StarFieldKey = 's' | 't' | 'a' | 'r';
 
 export type ExperienceCardData = {
@@ -41,11 +56,11 @@ const STAR_SECTIONS: Array<{
   ph: string;
   polishLabel: string;
 }> = [
-  { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...', polishLabel: '情境' },
-  { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?', polishLabel: '任务' },
-  { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?', polishLabel: '行动' },
-  { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...', polishLabel: '结果' },
-];
+    { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...', polishLabel: '情境' },
+    { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?', polishLabel: '任务' },
+    { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?', polishLabel: '行动' },
+    { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...', polishLabel: '结果' },
+  ];
 
 type ExperienceCardProps = {
   data: ExperienceCardData;
@@ -64,6 +79,7 @@ type ExperienceCardProps = {
   onFieldChange: (field: string, value: string | string[]) => void;
   onPolish: (field: StarFieldKey) => void;
   onGenerateTags?: () => void;
+  themeColor?: string;
 };
 
 type TagInputProps = {
@@ -72,12 +88,14 @@ type TagInputProps = {
   onChange: (next: string[]) => void;
   onAiFill?: () => void;
   isAiLoading?: boolean;
+  themeColor?: string;
 };
 
 const TagSuggestionList: React.FC<{
   suggestions: string[];
   onSelect: (tag: string) => void;
-}> = ({ suggestions, onSelect }) => {
+  themeColor?: string;
+}> = ({ suggestions, onSelect, themeColor }) => {
   if (!suggestions.length) {
     return null;
   }
@@ -88,7 +106,7 @@ const TagSuggestionList: React.FC<{
           key={tag}
           type="button"
           onClick={() => onSelect(tag)}
-          className="text-xs px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
+          className={`text-xs px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300 transition-colors ${getThemeClasses(themeColor).tag}`}
         >
           + {tag}
         </button>
@@ -158,12 +176,14 @@ const TagInput: React.FC<TagInputProps> = ({
   onChange,
   onAiFill,
   isAiLoading,
+  themeColor,
 }) => {
   const [draft, setDraft] = useState('');
   const suggestionList = useMemo(
     () => buildTagSuggestions(value, suggestions, draft),
     [value, suggestions, draft]
   );
+
 
   const handleAddFromInput = useCallback(() => {
     const next = buildTagsFromInput(draft);
@@ -211,7 +231,7 @@ const TagInput: React.FC<TagInputProps> = ({
         isAiLoading={isAiLoading}
       />
 
-      <TagSuggestionList suggestions={suggestionList} onSelect={handleSuggestionClick} />
+      <TagSuggestionList suggestions={suggestionList} onSelect={handleSuggestionClick} themeColor={themeColor} />
     </div>
   );
 };
@@ -272,7 +292,8 @@ const ExperienceCardHeader: React.FC<{
   data: ExperienceCardData;
   labels: ExperienceCardLabels;
   onFieldChange: (field: string, value: string | string[]) => void;
-}> = ({ data, labels, onFieldChange }) => (
+  themeColor?: string;
+}> = ({ data, labels, onFieldChange, themeColor }) => (
   <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
     <div className="flex flex-col lg:flex-row gap-6 mb-4">
       <div className="flex-1">
@@ -341,7 +362,8 @@ const StarSectionItem: React.FC<{
   onChange: (value: string) => void;
   onPolish: () => void;
   isPolishing: boolean;
-}> = ({ section, isLast, value, onChange, onPolish, isPolishing }) => {
+  themeColor?: string;
+}> = ({ section, isLast, value, onChange, onPolish, isPolishing, themeColor }) => {
   const polishTitle = isPolishing ? 'AI 润色中...' : `AI 润色${section.polishLabel}`;
   return (
     <div className="flex gap-4 relative group">
@@ -370,7 +392,8 @@ const StarSectionItem: React.FC<{
           </button>
         </div>
         <textarea
-          className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm"
+          className={`w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm focus:ring-2 ${isPolishing ? 'focus:ring-amber-500/20 focus:border-amber-500' : getThemeClasses(themeColor).focus
+            }`}
           rows={section.id === 'a' ? 6 : 1}
           value={value}
           placeholder={section.ph}
@@ -386,7 +409,8 @@ const StarSectionList: React.FC<{
   onFieldChange: (field: string, value: string | string[]) => void;
   onPolish: (field: StarFieldKey) => void;
   isFieldPolishing: (field: StarFieldKey) => boolean;
-}> = ({ data, onFieldChange, onPolish, isFieldPolishing }) => (
+  themeColor?: string;
+}> = ({ data, onFieldChange, onPolish, isFieldPolishing, themeColor }) => (
   <div className="space-y-4">
     {STAR_SECTIONS.map((section, idx) => (
       <StarSectionItem
@@ -397,6 +421,7 @@ const StarSectionList: React.FC<{
         onChange={(value) => onFieldChange(`star.${section.id}`, value)}
         onPolish={() => onPolish(section.id)}
         isPolishing={isFieldPolishing(section.id)}
+        themeColor={themeColor}
       />
     ))}
   </div>
@@ -409,7 +434,8 @@ const ExperienceCardFooter: React.FC<{
   onCancel: () => void;
   onSave: () => void;
   onToggle: () => void;
-}> = ({ isModified, isSaving, onDelete, onCancel, onSave, onToggle }) => (
+  themeColor?: string;
+}> = ({ isModified, isSaving, onDelete, onCancel, onSave, onToggle, themeColor }) => (
   <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
     <div className="flex items-center gap-2">
       <button
@@ -433,7 +459,7 @@ const ExperienceCardFooter: React.FC<{
           </button>
           <button
             onClick={onSave}
-            className="flex items-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark px-6 py-2 rounded-lg transition-colors shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`flex items-center gap-2 text-sm font-medium px-6 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${getThemeClasses(themeColor).button}`}
             disabled={isSaving}
             type="button"
           >
@@ -470,6 +496,7 @@ const ExpandedExperienceCard: React.FC<{
   onFieldChange: (field: string, value: string | string[]) => void;
   onPolish: (field: StarFieldKey) => void;
   onGenerateTags?: () => void;
+  themeColor?: string;
 }> = ({
   data,
   labels,
@@ -486,40 +513,44 @@ const ExpandedExperienceCard: React.FC<{
   onFieldChange,
   onPolish,
   onGenerateTags,
+  themeColor,
 }) => (
-  <div className={resolveCardMotionClass(isCollapsing)}>
-    <ExperienceCardHeader data={data} labels={labels} onFieldChange={onFieldChange} />
-    <div className="p-6 pt-4 space-y-4">
-      <StarSectionList
-        data={data}
-        onFieldChange={onFieldChange}
-        onPolish={onPolish}
-        isFieldPolishing={isFieldPolishing}
-      />
+    <div className={resolveCardMotionClass(isCollapsing)}>
+      <ExperienceCardHeader data={data} labels={labels} onFieldChange={onFieldChange} themeColor={themeColor} />
+      <div className="p-6 pt-4 space-y-4">
+        <StarSectionList
+          data={data}
+          onFieldChange={onFieldChange}
+          onPolish={onPolish}
+          isFieldPolishing={isFieldPolishing}
+          themeColor={themeColor}
+        />
 
-      {showTags && (
-        <div className="space-y-2 pt-2">
-          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
-          <TagInput
-            value={data.tags || []}
-            suggestions={SKILL_TAGS}
-            onChange={(next) => onFieldChange('tags', next)}
-            onAiFill={onGenerateTags}
-            isAiLoading={isGeneratingTags}
-          />
-        </div>
-      )}
+        {showTags && (
+          <div className="space-y-2 pt-2">
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
+            <TagInput
+              value={data.tags || []}
+              suggestions={SKILL_TAGS}
+              onChange={(next) => onFieldChange('tags', next)}
+              onAiFill={onGenerateTags}
+              isAiLoading={isGeneratingTags}
+              themeColor={themeColor}
+            />
+          </div>
+        )}
+      </div>
+      <ExperienceCardFooter
+        isModified={isModified}
+        isSaving={isSaving}
+        onDelete={onDelete}
+        onCancel={onCancel}
+        onSave={onSave}
+        onToggle={onToggle}
+        themeColor={themeColor}
+      />
     </div>
-    <ExperienceCardFooter
-      isModified={isModified}
-      isSaving={isSaving}
-      onDelete={onDelete}
-      onCancel={onCancel}
-      onSave={onSave}
-      onToggle={onToggle}
-    />
-  </div>
-);
+  );
 
 const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
   (
@@ -540,6 +571,7 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
       onFieldChange,
       onPolish,
       onGenerateTags,
+      themeColor,
     },
     ref
   ) => {
@@ -569,6 +601,7 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             onFieldChange={onFieldChange}
             onPolish={onPolish}
             onGenerateTags={onGenerateTags}
+            themeColor={themeColor}
           />
         )}
       </div>

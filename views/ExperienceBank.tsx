@@ -42,6 +42,19 @@ const SKILL_TOAST_MESSAGES = {
   deleteError: "删除失败，请重试",
 };
 
+const DEFAULT_SKILL_CATEGORY = "未分类";
+
+const SKILL_CATEGORY_TOAST_MESSAGES = {
+  renameLoading: "正在更新技能分类...",
+  renameSuccess: "分类更新成功",
+  renameError: "分类更新失败，请重试",
+};
+
+const SKILL_CATEGORY_VALIDATION_MESSAGES = {
+  emptyName: "分类名称不能为空",
+  nameExists: "该分类已存在",
+};
+
 const CERT_TOAST_MESSAGES = {
   createLoading: "正在创建证书...",
   createSuccess: "证书创建成功",
@@ -182,6 +195,66 @@ const buildCertificationPayload = (
 });
 
 const normalizeSkillName = (name: string) => name.trim().toLowerCase();
+
+const normalizeCategoryName = (name: string) => name.trim();
+
+const normalizeCategoryKey = (name: string) => normalizeCategoryName(name);
+
+const resolveSkillCategoryName = (category?: string) => {
+  const trimmed = (category || "").trim();
+  return trimmed || DEFAULT_SKILL_CATEGORY;
+};
+
+const buildGroupedSkills = (items: UserSkill[]) => {
+  return items.reduce((acc, skill) => {
+    const category = resolveSkillCategoryName(skill.category);
+    if (!acc[category]) {
+      acc[category] = [];
+    }
+    acc[category].push(skill);
+    return acc;
+  }, {} as Record<string, UserSkill[]>);
+};
+
+// 保持技能分类的展示顺序：按技能首次出现顺序，其次是手动添加的空分类
+const buildSkillCategoryOrder = (items: UserSkill[], extraCategories: string[]) => {
+  const order: string[] = [];
+  const seen = new Set<string>();
+  const append = (name: string) => {
+    const key = normalizeCategoryKey(name);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    order.push(name);
+  };
+  items.forEach((skill) => append(resolveSkillCategoryName(skill.category)));
+  extraCategories.forEach((name) => append(normalizeCategoryName(name)));
+  return order;
+};
+
+const resolveSkillCategoryPayload = (categoryName: string) => {
+  const key = normalizeCategoryKey(categoryName);
+  if (key === normalizeCategoryKey(DEFAULT_SKILL_CATEGORY)) {
+    return undefined;
+  }
+  return categoryName;
+};
+
+const renameCategoryList = (categories: string[], oldKey: string, nextName: string) => {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  categories.forEach((name) => {
+    const next = normalizeCategoryKey(name) === oldKey ? nextName : name;
+    const nextKey = normalizeCategoryKey(next);
+    if (seen.has(nextKey)) {
+      return;
+    }
+    seen.add(nextKey);
+    result.push(next);
+  });
+  return result;
+};
 
 const createEmptyCertificationCardData = (): CertificationCardData => ({
   name: "",
@@ -478,7 +551,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [skills, setSkills] = useState<UserSkill[]>([]);
   const [isLoadingSkills, setIsLoadingSkills] = useState(true);
   const [isCreatingSkill, setIsCreatingSkill] = useState(false);
-  const [newSkill, setNewSkill] = useState("");
+  const [pendingCategoryName, setPendingCategoryName] = useState("");
+  const [customSkillCategories, setCustomSkillCategories] = useState<string[]>([]);
+  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
+  const [skillDrafts, setSkillDrafts] = useState<Record<string, string>>({});
   const eduRefreshInFlightRef = useRef<Promise<ExperienceListItem[]> | null>(null);
   const skillsRefreshInFlightRef = useRef<Promise<UserSkill[]> | null>(null);
   const certsRefreshInFlightRef = useRef<Promise<CertificationRecord[]> | null>(null);
@@ -875,6 +951,77 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     });
   };
 
+  const groupedSkills = useMemo(() => buildGroupedSkills(skills), [skills]);
+  const skillCategoryOrder = useMemo(
+    () => buildSkillCategoryOrder(skills, customSkillCategories),
+    [skills, customSkillCategories]
+  );
+  const groupedCategoryKeys = useMemo(
+    () => new Set(Object.keys(groupedSkills).map(normalizeCategoryKey)),
+    [groupedSkills]
+  );
+
+  useEffect(() => {
+    setCustomSkillCategories((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+      const next = prev.filter((category) => !groupedCategoryKeys.has(normalizeCategoryKey(category)));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [groupedCategoryKeys]);
+
+  const getCategoryDraftValue = (category: string) => {
+    const key = normalizeCategoryKey(category);
+    return categoryDrafts[key] ?? category;
+  };
+
+  const updateCategoryDraftValue = (category: string, value: string) => {
+    const key = normalizeCategoryKey(category);
+    setCategoryDrafts((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearCategoryDraftValue = (categoryKey: string) => {
+    setCategoryDrafts((prev) => {
+      if (!(categoryKey in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[categoryKey];
+      return next;
+    });
+  };
+
+  const getSkillDraftValue = (category: string) => {
+    const key = normalizeCategoryKey(category);
+    return skillDrafts[key] ?? "";
+  };
+
+  const updateSkillDraftValue = (category: string, value: string) => {
+    const key = normalizeCategoryKey(category);
+    setSkillDrafts((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearSkillDraftValue = (category: string) => {
+    const key = normalizeCategoryKey(category);
+    setSkillDrafts((prev) => {
+      if (!(key in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const isCategoryNameTaken = (name: string, excludeKey?: string) => {
+    const key = normalizeCategoryKey(name);
+    if (excludeKey && key === excludeKey) {
+      return false;
+    }
+    return skillCategoryOrder.some((category) => normalizeCategoryKey(category) === key);
+  };
+
   const resolveCertificationDescription = (certId: string, matchRate: number) => {
     const existing = certifications.find((cert) => cert.id === certId)?.description;
     if (!canPersistCertificationMeta(existing)) {
@@ -883,11 +1030,26 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     return buildCertificationMetaDescription(matchRate);
   };
 
-  const handleAddSkill = async () => {
+  const handleAddCategory = () => {
+    const trimmed = normalizeCategoryName(pendingCategoryName);
+    if (!trimmed) {
+      error(SKILL_CATEGORY_VALIDATION_MESSAGES.emptyName);
+      return;
+    }
+    if (isCategoryNameTaken(trimmed)) {
+      error(SKILL_CATEGORY_VALIDATION_MESSAGES.nameExists);
+      return;
+    }
+    setCustomSkillCategories((prev) => [...prev, trimmed]);
+    setPendingCategoryName("");
+  };
+
+  const handleAddSkillToCategory = async (category: string) => {
     if (isCreatingSkill || isLoadingSkills) {
       return;
     }
-    const trimmed = newSkill.trim();
+    const draftValue = getSkillDraftValue(category);
+    const trimmed = draftValue.trim();
     if (!trimmed) {
       return;
     }
@@ -903,9 +1065,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     try {
       setIsCreatingSkill(true);
       toastId = loading(SKILL_TOAST_MESSAGES.createLoading);
-      const created = await skillsService.create({ name: trimmed });
+      const payloadCategory = resolveSkillCategoryPayload(category);
+      const created = await skillsService.create({
+        name: trimmed,
+        ...(payloadCategory ? { category: payloadCategory } : {}),
+      });
       setSkills((prev) => [created, ...prev]);
-      setNewSkill("");
+      clearSkillDraftValue(category);
       if (toastId) {
         updateToast(toastId, { message: SKILL_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
       } else {
@@ -923,6 +1089,70 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       }
     } finally {
       setIsCreatingSkill(false);
+    }
+  };
+
+  const handleRenameCategory = async (category: string, draftValue: string) => {
+    const categoryKey = normalizeCategoryKey(category);
+    const nextName = normalizeCategoryName(draftValue);
+    if (!nextName) {
+      error(SKILL_CATEGORY_VALIDATION_MESSAGES.emptyName);
+      clearCategoryDraftValue(categoryKey);
+      return;
+    }
+    if (normalizeCategoryKey(nextName) === categoryKey) {
+      clearCategoryDraftValue(categoryKey);
+      return;
+    }
+    if (isCategoryNameTaken(nextName, categoryKey)) {
+      error(SKILL_CATEGORY_VALIDATION_MESSAGES.nameExists);
+      clearCategoryDraftValue(categoryKey);
+      return;
+    }
+
+    const skillsInCategory = groupedSkills[category] ?? [];
+    if (!skillsInCategory.length) {
+      setCustomSkillCategories((prev) => renameCategoryList(prev, categoryKey, nextName));
+      clearCategoryDraftValue(categoryKey);
+      return;
+    }
+
+    let toastId: string | null = null;
+    try {
+      toastId = loading(SKILL_CATEGORY_TOAST_MESSAGES.renameLoading);
+      await Promise.all(
+        skillsInCategory.map((skill) => skillsService.update(skill.id, { category: nextName }))
+      );
+      setSkills((prev) =>
+        prev.map((skill) => {
+          const currentCategory = resolveSkillCategoryName(skill.category);
+          if (normalizeCategoryKey(currentCategory) !== categoryKey) {
+            return skill;
+          }
+          return { ...skill, category: nextName };
+        })
+      );
+      setCustomSkillCategories((prev) => renameCategoryList(prev, categoryKey, nextName));
+      clearCategoryDraftValue(categoryKey);
+      if (toastId) {
+        updateToast(toastId, { message: SKILL_CATEGORY_TOAST_MESSAGES.renameSuccess, type: 'success', duration: 3000 });
+      } else {
+        success(SKILL_CATEGORY_TOAST_MESSAGES.renameSuccess);
+      }
+      refreshSkills().catch((err) => {
+        console.error('[ExperienceBank] 刷新技能失败:', err);
+      });
+    } catch (err) {
+      console.error('Failed to rename skill category:', err);
+      if (toastId) {
+        updateToast(toastId, { message: SKILL_CATEGORY_TOAST_MESSAGES.renameError, type: 'error', duration: 3000 });
+      } else {
+        error(SKILL_CATEGORY_TOAST_MESSAGES.renameError);
+      }
+      clearCategoryDraftValue(categoryKey);
+      refreshSkills().catch((err2) => {
+        console.error('[ExperienceBank] 恢复技能分类失败:', err2);
+      });
     }
   };
 
@@ -1394,6 +1624,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             defaultTitle="新角色"
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
+            themeColor="indigo"
           />
 
           {/* Education Section */}
@@ -1772,43 +2003,101 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             </div>
             <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
               <div className="space-y-6">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">技术栈 / Tech Stack</h4>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {skills.map((skill) => (
-                      <span key={skill.id} className="group px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-default flex items-center gap-1">
-                        {skill.name}
-                        <button
-                          onClick={() => handleDeleteSkill(skill.id)}
-                          className="hidden group-hover:block hover:text-red-500 transition-colors"
-                        >
-                          <X className="w-3 h-4" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">技能分类 / Skill Type</h4>
                   <div className="flex gap-2 max-w-sm">
                     <input
                       className="fluid-input text-sm"
-                      placeholder="添加新技能 (Add Skill)"
-                      value={newSkill}
-                      onChange={(e) => setNewSkill(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddSkill()}
-                      disabled={isLoadingSkills || isCreatingSkill}
+                      placeholder="新增分类 (Add Category)"
+                      value={pendingCategoryName}
+                      onChange={(e) => setPendingCategoryName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                      disabled={isLoadingSkills}
                     />
                     <button
-                      onClick={handleAddSkill}
+                      onClick={handleAddCategory}
                       className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                      disabled={isLoadingSkills || isCreatingSkill}
+                      disabled={isLoadingSkills}
+                      title="添加分类"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
+
+                {skillCategoryOrder.length === 0 ? (
+                  <div className="text-sm text-gray-400">暂无技能分类，请先添加。</div>
+                ) : (
+                  <div className="space-y-4">
+                    {skillCategoryOrder.map((category) => {
+                      const categorySkills = groupedSkills[category] ?? [];
+                      const skillDraft = getSkillDraftValue(category);
+                      const categoryDraft = getCategoryDraftValue(category);
+                      return (
+                        <div
+                          key={category}
+                          className="rounded-lg border border-gray-100 dark:border-gray-700/60 p-4 bg-gray-50/40 dark:bg-gray-800/30"
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <input
+                              className="text-sm font-semibold text-gray-600 dark:text-gray-200 uppercase tracking-wider bg-transparent border-b border-transparent focus:border-gray-300 dark:focus:border-gray-600 outline-none"
+                              value={categoryDraft}
+                              onChange={(e) => updateCategoryDraftValue(category, e.target.value)}
+                              onBlur={(e) => handleRenameCategory(category, e.currentTarget.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              disabled={isLoadingSkills}
+                            />
+                            <span className="text-xs text-gray-400">{categorySkills.length} 个技能</span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            {categorySkills.length ? (
+                              categorySkills.map((skill) => (
+                                <span
+                                  key={skill.id}
+                                  className="group px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-default flex items-center gap-1"
+                                >
+                                  {skill.name}
+                                  <button
+                                    onClick={() => handleDeleteSkill(skill.id)}
+                                    className="hidden group-hover:block hover:text-red-500 transition-colors"
+                                  >
+                                    <X className="w-3 h-4" />
+                                  </button>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-gray-400">暂无技能</span>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2 max-w-sm">
+                            <input
+                              className="fluid-input text-sm"
+                              placeholder="添加技能 (Add Skill)"
+                              value={skillDraft}
+                              onChange={(e) => updateSkillDraftValue(category, e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleAddSkillToCategory(category)}
+                              disabled={isLoadingSkills || isCreatingSkill}
+                            />
+                            <button
+                              onClick={() => handleAddSkillToCategory(category)}
+                              className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                              disabled={isLoadingSkills || isCreatingSkill}
+                              title="添加技能"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </section>

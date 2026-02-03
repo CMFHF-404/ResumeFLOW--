@@ -28,6 +28,7 @@ type ExperienceSectionProps = {
   refreshSignal?: number;
   showTags?: boolean;
   toast: ToastApi;
+  themeColor?: string;
 };
 
 type ExperienceSectionModel = {
@@ -354,7 +355,8 @@ const useCardEditors = (
         const current = { ...(next.get(cardId) || createEmptyCardData()) };
         if (field.startsWith('star.')) {
           const starField = field.split('.')[1] as StarFieldKey;
-          current.star = { ...(current.star || {}), [starField]: value as string };
+          const prevStar = current.star || { s: '', t: '', a: '', r: '' };
+          current.star = { ...prevStar, [starField]: value as string };
         } else if (field === 'tags') {
           current.tags = value as string[];
         } else {
@@ -946,26 +948,38 @@ const AddExperienceButton: React.FC<{
   onClick: () => void;
   label: string;
   disabled: boolean;
-}> = ({ onClick, label, disabled }) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
-    type="button"
-  >
-    <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-primary transition-colors">
-      <Plus className="w-5 h-5" />
-    </div>
-    <span className="font-medium">{label}</span>
-  </button>
-);
+  themeColor?: string;
+}> = ({ onClick, label, disabled, themeColor }) => {
+  const isPrimary = !themeColor || themeColor === 'primary';
+  const containerClass = isPrimary
+    ? 'hover:text-primary hover:border-primary hover:bg-primary/5'
+    : `hover:text-${themeColor}-600 hover:border-${themeColor}-600 hover:bg-${themeColor}-50`;
+  const iconClass = isPrimary
+    ? 'group-hover:text-primary'
+    : `group-hover:text-${themeColor}-600`;
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed ${containerClass}`}
+      type="button"
+    >
+      <div className={`p-1 rounded-full bg-gray-200 dark:bg-gray-800 transition-colors group-hover:bg-white ${iconClass}`}>
+        <Plus className="w-5 h-5" />
+      </div>
+      <span className="font-medium">{label}</span>
+    </button>
+  );
+};
 
 const ExperienceCardList: React.FC<{
   items: ExperienceListItem[];
   labels: ExperienceCardLabels;
   showTags: boolean;
   model: ExperienceSectionModel;
-}> = ({ items, labels, showTags, model }) => (
+  themeColor?: string;
+}> = ({ items, labels, showTags, model, themeColor }) => (
   <>
     {items.map((item) => {
       const cardId = item.master.id;
@@ -990,6 +1004,7 @@ const ExperienceCardList: React.FC<{
           onFieldChange={(field, value) => model.onFieldChange(cardId, field, value)}
           onPolish={(field) => model.onPolish(cardId, field)}
           onGenerateTags={() => model.onGenerateTags(cardId)}
+          themeColor={themeColor}
         />
       );
     })}
@@ -1026,7 +1041,8 @@ const ExperienceSectionView: React.FC<{
   deleteConfirmText: string;
   showTags: boolean;
   model: ExperienceSectionModel;
-}> = ({ title, subtitle, icon, labels, addButtonLabel, deleteConfirmText, showTags, model }) => (
+  themeColor?: string;
+}> = ({ title, subtitle, icon, labels, addButtonLabel, deleteConfirmText, showTags, model, themeColor }) => (
   <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
     <SectionHeader
       icon={icon}
@@ -1039,8 +1055,9 @@ const ExperienceSectionView: React.FC<{
       onClick={model.onAdd}
       label={addButtonLabel}
       disabled={model.isCreating}
+      themeColor={themeColor}
     />
-    <ExperienceCardList items={model.sortedExperiences} labels={labels} showTags={showTags} model={model} />
+    <ExperienceCardList items={model.sortedExperiences} labels={labels} showTags={showTags} model={model} themeColor={themeColor} />
     <DeleteDialog
       isOpen={Boolean(model.deletingCardId)}
       description={deleteConfirmText}
@@ -1062,6 +1079,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
       deleteConfirmText={props.deleteConfirmText}
       showTags={props.showTags ?? false}
       model={model}
+      themeColor={props.themeColor}
     />
   );
 };
