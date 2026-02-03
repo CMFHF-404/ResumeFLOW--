@@ -40,6 +40,100 @@ DEFAULT_EDU_ORG = "未命名学校"
 PRESENT_MARKERS = {"present", "current", "now", "至今", "目前"}
 COURSE_SPLIT_PATTERN = re.compile(r"[,，;；/\n]")
 WHITESPACE_PATTERN = re.compile(r"\s+")
+PROJECT_KEYWORDS = {
+    "project",
+    "projects",
+    "side project",
+    "personal project",
+    "open source",
+    "opensource",
+    "github",
+    "开源",
+    "项目",
+    "课程设计",
+    "课程项目",
+    "毕业设计",
+    "竞赛",
+    "比赛",
+    "作品",
+}
+WORK_KEYWORDS = {
+    "intern",
+    "internship",
+    "full-time",
+    "part-time",
+    "employment",
+    "company",
+    "client",
+    "客户",
+    "公司",
+    "集团",
+    "部门",
+    "岗位",
+    "实习",
+    "任职",
+}
+WORK_ORG_HINTS = {
+    "有限公司",
+    "股份有限公司",
+    "有限责任公司",
+    "公司",
+    "集团",
+    "inc",
+    "ltd",
+    "llc",
+    "corp",
+}
+PROJECT_TITLE_HINTS = {"项目", "project"}
+PROJECT_NAME_HINTS = {
+    "system",
+    "platform",
+    "project",
+    "app",
+    "website",
+    "web",
+    "service",
+    "tool",
+    "dashboard",
+    "系统",
+    "平台",
+    "项目",
+    "应用",
+    "网站",
+    "小程序",
+    "服务",
+    "工具",
+    "后台",
+    "管理后台",
+    "商城",
+    "门户",
+    "客户端",
+    "gis",
+    "webgis",
+}
+PROJECT_ROLE_HINTS = {
+    "owner",
+    "lead",
+    "leader",
+    "pm",
+    "project manager",
+    "tech lead",
+    "engineer",
+    "developer",
+    "maintainer",
+    "contributor",
+    "负责人",
+    "项目经理",
+    "组长",
+    "组员",
+    "成员",
+    "主导",
+    "牵头",
+    "独立开发",
+    "核心开发",
+    "开发",
+}
+PROJECT_MIN_SCORE = 1
 LOG_WARN_THRESHOLDS_MS = {
     "read_file": 3_000,
     "parse_pdf": 8_000,
@@ -120,6 +214,37 @@ def _normalize_text_list(value: Any) -> List[str]:
     ]
 
 
+def _join_text_parts(parts: Iterable[str]) -> str:
+    return " ".join([part for part in parts if part]).strip()
+
+
+def _contains_any(text: str, keywords: Iterable[str]) -> bool:
+    if not text:
+        return False
+    return any(keyword in text for keyword in keywords)
+
+
+def _count_keyword_hits(text: str, keywords: Iterable[str]) -> int:
+    if not text:
+        return 0
+    return sum(1 for keyword in keywords if keyword in text)
+
+
+def _collect_entry_text(entry: Dict[str, Any]) -> str:
+    star_source = entry.get("star") if isinstance(entry.get("star"), dict) else {}
+    parts = [
+        _ensure_str(entry.get("title")),
+        _ensure_str(entry.get("org")),
+        _ensure_str(entry.get("summary")),
+        " ".join(_normalize_text_list(entry.get("highlights"))),
+        _ensure_str(star_source.get("s")),
+        _ensure_str(star_source.get("t")),
+        _ensure_str(star_source.get("a")),
+        _ensure_str(star_source.get("r")),
+    ]
+    return _join_text_parts(parts)
+
+
 def _normalize_courses(value: Any) -> Any:
     if isinstance(value, list):
         return _normalize_text_list(value)
@@ -177,6 +302,33 @@ def _build_work_version(entry: Dict[str, Any]) -> ParsedExperienceVersion:
     )
 
 
+def _should_swap_project_fields(title: str, org: str) -> bool:
+    title_text = _normalize_text(title)
+    org_text = _normalize_text(org)
+    if not title_text or not org_text:
+        return False
+    title_project = _count_keyword_hits(title_text, PROJECT_NAME_HINTS)
+    org_project = _count_keyword_hits(org_text, PROJECT_NAME_HINTS)
+    title_role = _count_keyword_hits(title_text, PROJECT_ROLE_HINTS)
+    org_role = _count_keyword_hits(org_text, PROJECT_ROLE_HINTS)
+    swap_score = title_project + org_role
+    keep_score = org_project + title_role
+    return swap_score > keep_score and swap_score >= PROJECT_MIN_SCORE
+
+
+def _normalize_project_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    title = _ensure_str(entry.get("title"))
+    org = _ensure_str(entry.get("org"))
+    if _should_swap_project_fields(title, org):
+        return {**entry, "title": org, "org": title}
+    return entry
+
+
+def _build_project_version(entry: Dict[str, Any]) -> ParsedExperienceVersion:
+    normalized = _normalize_project_entry(entry)
+    return _build_work_version(normalized)
+
+
 def _build_education_version(entry: Dict[str, Any]) -> ParsedExperienceVersion:
     school = _ensure_str(entry.get("school"))
     major = _ensure_str(entry.get("major"))
@@ -211,11 +363,54 @@ def _build_item(category: ExperienceCategory, version: ParsedExperienceVersion) 
     )
 
 
+def _infer_experience_category(entry: Dict[str, Any]) -> ExperienceCategory:
+    text = _normalize_text(_collect_entry_text(entry))
+    title = _normalize_text(_ensure_str(entry.get("title")))
+    org = _normalize_text(_ensure_str(entry.get("org")))
+    project_score = _count_keyword_hits(text, PROJECT_KEYWORDS)
+    work_score = _count_keyword_hits(text, WORK_KEYWORDS)
+
+    if _contains_any(org, WORK_ORG_HINTS):
+        work_score += 1
+    if _contains_any(title, PROJECT_TITLE_HINTS):
+        project_score += 1
+
+    if project_score >= PROJECT_MIN_SCORE and project_score > work_score:
+        return ExperienceCategory.PROJECT
+    return ExperienceCategory.WORK
+
+
+def _split_work_and_project_entries(
+    entries: Iterable[Any],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    work_entries: List[Dict[str, Any]] = []
+    project_entries: List[Dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        category = _infer_experience_category(entry)
+        if category == ExperienceCategory.PROJECT:
+            project_entries.append(entry)
+        else:
+            work_entries.append(entry)
+    return work_entries, project_entries
+
+
 def build_resume_items(payload: Dict[str, Any]) -> List[ParsedExperienceItem]:
     items: List[ParsedExperienceItem] = []
-    for entry in _ensure_list(payload.get("work_experiences")):
-        if isinstance(entry, dict):
-            items.append(_build_item(ExperienceCategory.WORK, _build_work_version(entry)))
+    raw_work_entries = _ensure_list(payload.get("work_experiences"))
+    project_payload = payload.get("project_experiences") if "project_experiences" in payload else None
+    raw_project_entries = _ensure_list(project_payload)
+    if "project_experiences" in payload:
+        work_entries = [entry for entry in raw_work_entries if isinstance(entry, dict)]
+        project_entries = [entry for entry in raw_project_entries if isinstance(entry, dict)]
+    else:
+        work_entries, project_entries = _split_work_and_project_entries(raw_work_entries)
+
+    for entry in work_entries:
+        items.append(_build_item(ExperienceCategory.WORK, _build_work_version(entry)))
+    for entry in project_entries:
+        items.append(_build_item(ExperienceCategory.PROJECT, _build_project_version(entry)))
     for entry in _ensure_list(payload.get("education")):
         if isinstance(entry, dict):
             items.append(
