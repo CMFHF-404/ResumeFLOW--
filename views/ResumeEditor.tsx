@@ -15,12 +15,43 @@ import { useDebounce } from '../components/hooks/useDebounce';
 import ConfirmDialog from '../components/ConfirmDialog';
 import MonthPicker from '../components/MonthPicker';
 import { ToastContainer, useToast } from '../components/Toast';
-import { convertDateToISO, parseYearMonthValue } from './experienceUtils';
+import { DEFAULT_RESUME_TITLE, MATCH_BADGE_STYLES } from '../constants/resumeConstants';
+import { buildExperienceDate, formatYearMonth, normalizeDateInput } from '../utils/dateUtils';
+import {
+    buildJDTextSignature,
+    buildStarFields,
+    clampMatchScore,
+    diffJDItemSignatures,
+    normalizeStarValue,
+    sortExperienceItemsForMatch
+} from '../utils/resumeHelpers';
+import type {
+    ActiveResumeContext,
+    CachedResumeResolveResult,
+    CertificationEditDraft,
+    CertificationView,
+    ConfirmDialogState,
+    DatePayloadFallback,
+    EducationEditDraft,
+    EducationView,
+    ExperienceEditDraft,
+    ProfileSyncMode,
+    ResumeEditorConfig,
+    ResumeEditorProfile,
+    ResumeExperienceView,
+    SkillDraftContext,
+    SkillEditDraft,
+    SkillGroupView,
+    SkillItemView,
+    StarFieldKey,
+    StarFields
+} from '../types/resume';
+import type { JDAnalysisContext, JDAnalysisItemSignatures, MatchScoreEntry } from '../types/analysis';
+import { parseYearMonthValue } from './experienceUtils';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import { clearJDAnalysisCache, loadJDAnalysisCache, saveJDAnalysisCache } from './jdAnalysisStorage';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 
-const DEFAULT_RESUME_TITLE = '未命名简历';
 const DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY = {
     work: '新建工作经历',
     project: '新建项目经历',
@@ -52,7 +83,6 @@ const CONFIRM_DELETE_CERTIFICATION_TITLE = '删除证书';
 const CONFIRM_DELETE_SKILL_TITLE = '删除技能';
 const CONFIRM_DELETE_SKILL_CATEGORY_TITLE = '删除技能分类';
 const AUTO_SAVE_DELAY_MS = 800;
-const STAR_FIELDS = ['s', 't', 'a', 'r'] as const;
 const CERT_META_PREFIX = "__rf_cert_meta__:";
 const EXPERIENCE_DRAFT_PREFIX = 'draft-exp';
 const EDUCATION_DRAFT_PREFIX = 'draft-edu';
@@ -63,7 +93,6 @@ const RESUME_SECTION_IDS = new Set<string>(DEFAULT_SECTION_ORDER);
 const SIDEBAR_WIDTH_CLASS = 'w-[600px]';
 const JD_PANEL_BOTTOM_SPACING_CLASS = 'mb-3';
 const DEFAULT_JD_TEXT = '';
-const EMPTY_TEXT_SIGNATURE = '';
 const SMART_PAGE_MIN_SCALE = 0.86;
 const SMART_PAGE_HEIGHT_TOLERANCE = 12;
 const SMART_PAGE_TOAST_MESSAGES = {
@@ -78,180 +107,6 @@ const PROFILE_SYNC_MODES = {
     global: 'global',
     local: 'local',
 } as const;
-const MATCH_BADGE_STYLES = {
-    emerald: {
-        soft: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400',
-        solid: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-200',
-    },
-    amber: {
-        soft: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400',
-        solid: 'bg-amber-500/20 text-amber-700 dark:text-amber-200',
-    },
-    rose: {
-        soft: 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400',
-        solid: 'bg-rose-500/20 text-rose-700 dark:text-rose-200',
-    },
-} as const;
-
-type StarFieldKey = typeof STAR_FIELDS[number];
-
-type StarFields = {
-    s: string;
-    t: string;
-    a: string;
-    r: string;
-};
-
-type ResumeExperienceView = {
-    id: string;
-    title: string;
-    company: string;
-    date: string;
-    startDate?: string;
-    endDate?: string;
-    isCurrent?: boolean;
-    star: StarFields;
-    matchScore?: number;
-    matchReason?: string;
-    resumeLinkId?: string;
-    experienceVersionId?: string;
-    category: 'work' | 'project';
-    isDraft?: boolean;
-};
-
-type ResumeEditorProfile = {
-    name: string;
-    email: string;
-    phone: string;
-    location: string;
-    linkedin: string;
-    summary: string;
-};
-
-type ProfileSyncMode = typeof PROFILE_SYNC_MODES[keyof typeof PROFILE_SYNC_MODES];
-
-type ResumeEditorConfig = {
-    profile?: ResumeEditorProfile;
-    profileSyncMode?: ProfileSyncMode;
-    selection?: {
-        experienceIds?: string[];
-        educationIds?: string[];
-        certificationIds?: string[];
-        skillIds?: string[];
-    };
-    layout?: {
-        sectionOrder?: string[];
-        density?: 'compact' | 'standard' | 'spacious';
-    };
-};
-
-type JDAnalysisContext = {
-    jdTextSignature: string;
-    experienceSignature: string;
-    itemSignatures: JDAnalysisItemSignatures;
-};
-
-type JDAnalysisItemSignatures = {
-    experiences: Record<string, string>;
-    certifications: Record<string, string>;
-    skills: Record<string, string>;
-};
-
-type ActiveResumeContext = {
-    id: string;
-    detail: ResumeDetail | null;
-};
-
-type CachedResumeResolveResult =
-    | { status: 'ok'; detail: ResumeDetail }
-    | { status: 'missing' }
-    | { status: 'error' };
-
-type MatchScoreEntry = {
-    id: string;
-    score: number;
-    reason?: string;
-};
-
-type ExperienceEditDraft = {
-    masterId: string;
-    title: string;
-    company: string;
-    startDate: string;
-    endDate: string;
-    isCurrent?: boolean;
-    star: StarFields;
-    category: ResumeExperienceView['category'];
-    isDraft?: boolean;
-};
-
-type EducationView = {
-    id: string;
-    school: string;
-    major: string;
-    degree: string;
-    startDate: string;
-    endDate: string;
-    isCurrent?: boolean;
-    gpa?: string;
-    courses?: string;
-    isDraft?: boolean;
-};
-
-type CertificationView = {
-    id: string;
-    name: string;
-    issuer?: string;
-    date: string;
-    matchRate?: number;
-    isDraft?: boolean;
-};
-
-type EducationEditDraft = {
-    id?: string;
-    school: string;
-    major: string;
-    degree: string;
-    startDate: string;
-    endDate: string;
-    gpa: string;
-    courses: string;
-};
-
-type CertificationEditDraft = {
-    id?: string;
-    name: string;
-    issuer: string;
-    issueDate: string;
-};
-
-type SkillEditDraft = {
-    id?: string;
-    name: string;
-    category: string;
-};
-
-type SkillDraftContext = {
-    mode: 'type' | 'group' | 'edit';
-    groupName?: string;
-};
-
-type ConfirmDialogState = {
-    id: string;
-    type: 'experience' | 'education' | 'certification' | 'skill' | 'skillCategory';
-    title: string;
-    description: string;
-};
-
-type SkillItemView = {
-    id: string;
-    name: string;
-};
-
-type SkillGroupView = {
-    name: string;
-    skills: SkillItemView[];
-};
 
 const DEFAULT_PROFILE: ResumeEditorProfile = {
     name: '',
@@ -262,33 +117,11 @@ const DEFAULT_PROFILE: ResumeEditorProfile = {
     summary: '',
 };
 
-const normalizeStarValue = (value: unknown): string => {
-    if (value === null || value === undefined) {
-        return '';
-    }
-    if (Array.isArray(value)) {
-        return value.join('、');
-    }
-    return String(value);
-};
-
 const normalizeJobKeywords = (keywords?: string[]): string[] => {
     return (keywords || [])
         .map((keyword) => keyword.trim())
         .filter(Boolean);
 };
-
-const buildJDTextSignature = (value: string) => {
-    const trimmed = value.trim();
-    return trimmed || EMPTY_TEXT_SIGNATURE;
-};
-
-const buildStarFields = (star?: Record<string, any>): StarFields => ({
-    s: normalizeStarValue(star?.s),
-    t: normalizeStarValue(star?.t),
-    a: normalizeStarValue(star?.a),
-    r: normalizeStarValue(star?.r),
-});
 
 const mergeStarFields = (base: StarFields, updates: Partial<StarFields>) => ({
     s: typeof updates.s === 'string' ? updates.s : base.s,
@@ -303,40 +136,6 @@ const normalizeEducationStar = (star?: Record<string, any>) => ({
     courses: normalizeStarValue(star?.courses),
 });
 
-const formatYearMonth = (value?: string): string => {
-    if (!value) {
-        return '';
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return '';
-    }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        return trimmed.slice(0, 7).replace('-', '.');
-    }
-    if (/^\d{4}-\d{2}$/.test(trimmed)) {
-        return trimmed.replace('-', '.');
-    }
-    return trimmed.replace('-', '.');
-};
-
-const normalizeDateInput = (value: string): string | undefined => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return undefined;
-    }
-    return convertDateToISO(trimmed);
-};
-
-const buildExperienceDate = (start?: string, end?: string, isCurrent?: boolean) => {
-    const startText = formatYearMonth(start);
-    const endText = isCurrent ? '至今' : formatYearMonth(end);
-    if (startText && endText) {
-        return `${startText} - ${endText}`;
-    }
-    return startText || endText || '';
-};
-
 const isPresentLabel = (value?: string) => value === '至今' || value === 'Present';
 
 const resolveSafeDateRange = (start: string, end: string) => {
@@ -348,11 +147,6 @@ const resolveSafeDateRange = (start: string, end: string) => {
     return { start, end };
 };
 
-type DatePayloadFallback = {
-    start_date?: string;
-    end_date?: string;
-    is_current?: boolean;
-};
 
 const resolveDatePayload = (
     startDate: string,
@@ -475,14 +269,6 @@ const parseCertificationMatchRate = (description?: string): number => {
     } catch {
         return 0;
     }
-};
-
-const clampMatchScore = (value: unknown): number | undefined => {
-    const numeric = typeof value === 'number' ? value : Number(value);
-    if (!Number.isFinite(numeric)) {
-        return undefined;
-    }
-    return Math.min(100, Math.max(0, Math.round(numeric)));
 };
 
 const buildMatchScoreMap = (matches?: MatchScoreEntry[]) => {
@@ -650,29 +436,6 @@ const buildJDItemSignatures = (
     };
 };
 
-const diffSignatureMap = (
-    prev: Record<string, string>,
-    next: Record<string, string>
-) => {
-    const changed = new Set<string>();
-    const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
-    keys.forEach((key) => {
-        if (prev[key] !== next[key]) {
-            changed.add(key);
-        }
-    });
-    return changed;
-};
-
-const diffJDItemSignatures = (
-    prev: JDAnalysisItemSignatures,
-    next: JDAnalysisItemSignatures
-) => ({
-    experiences: diffSignatureMap(prev.experiences, next.experiences),
-    certifications: diffSignatureMap(prev.certifications, next.certifications),
-    skills: diffSignatureMap(prev.skills, next.skills),
-});
-
 const buildResumeExperienceMap = (detail: ResumeDetail | null) => {
     const map = new Map<string, ResumeExperienceItem>();
     if (!detail?.experiences) {
@@ -743,14 +506,6 @@ const buildExperienceEditDraft = (item: ResumeExperienceView): ExperienceEditDra
     isDraft: item.isDraft,
 });
 
-const sortByDateDesc = (items: ResumeExperienceView[]) => {
-    return [...items].sort((a, b) => {
-        const valA = parseYearMonthValue(a.startDate) ?? -1;
-        const valB = parseYearMonthValue(b.startDate) ?? -1;
-        return valB - valA;
-    });
-};
-
 const sortByCategory = (
     items: ResumeExperienceView[],
     compare: (a: ResumeExperienceView, b: ResumeExperienceView) => number
@@ -764,21 +519,6 @@ const compareByDateDesc = (a: ResumeExperienceView, b: ResumeExperienceView) => 
     const valA = parseYearMonthValue(a.startDate) ?? -1;
     const valB = parseYearMonthValue(b.startDate) ?? -1;
     return valB - valA;
-};
-
-const compareByScoreThenDate = (a: ResumeExperienceView, b: ResumeExperienceView) => {
-    const scoreA = a.matchScore ?? -1;
-    const scoreB = b.matchScore ?? -1;
-    if (scoreA !== scoreB) {
-        return scoreB - scoreA;
-    }
-    return compareByDateDesc(a, b);
-};
-
-const sortExperienceItemsForMatch = (items: ResumeExperienceView[]) => {
-    const hasScore = items.some((item) => typeof item.matchScore === 'number');
-    const comparator = hasScore ? compareByScoreThenDate : compareByDateDesc;
-    return sortByCategory(items, comparator);
 };
 
 const buildProfileFromService = (profile?: Profile | null): ResumeEditorProfile | null => {
