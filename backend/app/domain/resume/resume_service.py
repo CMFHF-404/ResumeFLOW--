@@ -162,7 +162,8 @@ async def _handle_override(
 ) -> None:
     link = await _get_link(session, resume.id, op["resume_experience_id"])
     overrides = _filter_overrides(op.get("overrides_json") or {})
-    merged = {**(link.overrides_json or {}), **overrides}
+    existing = _normalize_overrides(link.overrides_json)
+    merged = {**existing, **overrides}
     link.overrides_json = merged
     session.add(link)
 
@@ -220,7 +221,14 @@ async def _next_display_order(session: AsyncSession, resume_id: str) -> int:
 
 
 def _filter_overrides(overrides: Dict[str, Any]) -> Dict[str, Any]:
-    return {key: value for key, value in overrides.items() if key in ALLOWED_OVERRIDE_KEYS}
+    safe_overrides = _normalize_overrides(overrides)
+    return {key: value for key, value in safe_overrides.items() if key in ALLOWED_OVERRIDE_KEYS}
+
+
+def _normalize_overrides(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def _build_resume_experience(

@@ -10,8 +10,7 @@ import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, resolveCardMotionClass, runDedupedRefresh } from './experienceUtils';
-
-const LINKEDIN_LABEL = "linkedin";
+import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const EDUCATION_DEFAULT_ORG = "新学校";
 const EDUCATION_DEFAULT_TITLE = "新专业";
@@ -96,53 +95,6 @@ const buildEduCardData = (item: ExperienceListItem): EduCardData => {
   };
 };
 
-type SocialLinkValue = string | { url: string; position?: number };
-
-const extractSocialLinkUrl = (value: SocialLinkValue): string => {
-  if (!value) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "object" && typeof value.url === "string") {
-    return value.url;
-  }
-  return "";
-};
-
-const resolveLinkedInLink = (profile: Profile): string => {
-  const fromSocialLinks = extractSocialLinkUrl(profile.social_links?.[LINKEDIN_LABEL]);
-  if (fromSocialLinks) {
-    return fromSocialLinks;
-  }
-  const matched = (profile.links || []).find((item) => item.label === LINKEDIN_LABEL);
-  return matched?.url || "";
-};
-
-const mergeLinkedInLink = (
-  socialLinks: Record<string, any> | undefined,
-  link: string
-): Record<string, any> => {
-  const nextLinks = { ...(socialLinks || {}) };
-  const trimmedLink = link.trim();
-  if (!trimmedLink) {
-    delete nextLinks[LINKEDIN_LABEL];
-    return nextLinks;
-  }
-  const existing = nextLinks[LINKEDIN_LABEL] as SocialLinkValue;
-  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
-    const position = typeof existing.position === "number" ? existing.position : 0;
-    nextLinks[LINKEDIN_LABEL] = {
-      ...existing,
-      url: trimmedLink,
-      position,
-    };
-    return nextLinks;
-  }
-  nextLinks[LINKEDIN_LABEL] = trimmedLink;
-  return nextLinks;
-};
 
 interface ExperienceBankProps {
   cachedProfile?: any;
@@ -337,15 +289,18 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     try {
       setIsSavingProfile(true);
       const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, link);
-      await profileService.updateProfile({
+      const updated = await profileService.updateProfile({
         full_name: name,
         email,
         phone,
         location,
         social_links: nextSocialLinks,
       });
-      setProfileSocialLinks(nextSocialLinks);
+      applyProfileSnapshot(updated);
       setIsEditingProfile(false);
+      if (onProfileUpdateRef.current) {
+        onProfileUpdateRef.current(updated);
+      }
       // TODO: 显示成功提示
     } catch (error) {
       console.error('Failed to save profile:', error);

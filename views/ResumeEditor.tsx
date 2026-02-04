@@ -14,6 +14,8 @@ import { skillsService, UserSkill } from '../services/skillsService';
 import { useDebounce } from '../components/hooks/useDebounce';
 import { parseYearMonthValue } from './experienceUtils';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
+import { clearJDAnalysisCache, loadJDAnalysisCache, saveJDAnalysisCache } from './jdAnalysisStorage';
+import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 
 const DEFAULT_RESUME_TITLE = '未命名简历';
 const AUTO_SAVE_DELAY_MS = 800;
@@ -22,6 +24,14 @@ const CERT_META_PREFIX = "__rf_cert_meta__:";
 const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView['category']> = ['work', 'project'];
 const DEFAULT_SECTION_ORDER = ['summary', 'work', 'project', 'education', 'certifications', 'skills'] as const;
 const RESUME_SECTION_IDS = new Set<string>(DEFAULT_SECTION_ORDER);
+const SIDEBAR_WIDTH_CLASS = 'w-[600px]';
+const JD_PANEL_BOTTOM_SPACING_CLASS = 'mb-3';
+const DEFAULT_JD_TEXT = '';
+const EMPTY_TEXT_SIGNATURE = '';
+const PROFILE_SYNC_MODES = {
+    global: 'global',
+    local: 'local',
+} as const;
 
 type StarFieldKey = typeof STAR_FIELDS[number];
 
@@ -56,8 +66,11 @@ type ResumeEditorProfile = {
     summary: string;
 };
 
+type ProfileSyncMode = typeof PROFILE_SYNC_MODES[keyof typeof PROFILE_SYNC_MODES];
+
 type ResumeEditorConfig = {
     profile?: ResumeEditorProfile;
+    profileSyncMode?: ProfileSyncMode;
     selection?: {
         experienceIds?: string[];
         educationIds?: string[];
@@ -68,6 +81,11 @@ type ResumeEditorConfig = {
         sectionOrder?: string[];
         density?: 'compact' | 'standard' | 'spacious';
     };
+};
+
+type JDAnalysisContext = {
+    jdTextSignature: string;
+    experienceSignature: string;
 };
 
 type ActiveResumeContext = {
@@ -131,6 +149,32 @@ const normalizeStarValue = (value: unknown): string => {
         return value.join('、');
     }
     return String(value);
+};
+
+const normalizeJobKeywords = (keywords?: string[]): string[] => {
+    return (keywords || [])
+        .map((keyword) => keyword.trim())
+        .filter(Boolean);
+};
+
+const buildJDTextSignature = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed || EMPTY_TEXT_SIGNATURE;
+};
+
+const buildExperienceSignature = (items: ResumeExperienceView[]) => {
+    const normalized = items.map((item) => ({
+        id: item.id,
+        versionId: item.experienceVersionId || '',
+        title: item.title,
+        company: item.company,
+        startDate: item.startDate || '',
+        endDate: item.endDate || '',
+        isCurrent: Boolean(item.isCurrent),
+        star: item.star,
+    }));
+    normalized.sort((a, b) => a.id.localeCompare(b.id));
+    return JSON.stringify(normalized);
 };
 
 const buildStarFields = (star?: Record<string, any>): StarFields => ({
@@ -307,32 +351,76 @@ const compareByScoreThenDate = (a: ResumeExperienceView, b: ResumeExperienceView
     return compareByDateDesc(a, b);
 };
 
-const resolveProfileSnapshot = (config?: ResumeEditorConfig, profile?: Profile) => {
+const buildProfileFromService = (profile?: Profile | null): ResumeEditorProfile | null => {
+    if (!profile) {
+        return null;
+    }
+    return {
+        name: profile.full_name || '',
+        email: profile.email || '',
+        phone: profile.phone || '',
+        location: profile.location || '',
+        linkedin: resolveLinkedInLink(profile),
+        summary: profile.summary || '',
+    };
+};
+
+const isSameProfileSnapshot = (
+    base?: ResumeEditorProfile | null,
+    other?: ResumeEditorProfile | null
+) => {
+    if (!base || !other) {
+        return false;
+    }
+    return base.name === other.name
+        && base.email === other.email
+        && base.phone === other.phone
+        && base.location === other.location
+        && base.linkedin === other.linkedin
+        && base.summary === other.summary;
+};
+
+const resolveProfileSyncMode = (
+    config?: ResumeEditorConfig,
+    profile?: Profile | null
+): ProfileSyncMode => {
+    const mode = config?.profileSyncMode;
+    if (mode === PROFILE_SYNC_MODES.global || mode === PROFILE_SYNC_MODES.local) {
+        return mode;
+    }
+    if (!config?.profile) {
+        return PROFILE_SYNC_MODES.global;
+    }
+    const serviceProfile = buildProfileFromService(profile);
+    if (serviceProfile && isSameProfileSnapshot(config.profile, serviceProfile)) {
+        return PROFILE_SYNC_MODES.global;
+    }
+    return PROFILE_SYNC_MODES.local;
+};
+
+const resolveProfileSnapshot = (config?: ResumeEditorConfig, profile?: Profile | null) => {
+    const syncMode = resolveProfileSyncMode(config, profile);
     const configProfile = config?.profile;
+    const serviceProfile = buildProfileFromService(profile);
+    if (syncMode === PROFILE_SYNC_MODES.local) {
+        if (configProfile) {
+            return {
+                ...DEFAULT_PROFILE,
+                ...configProfile,
+            };
+        }
+        return serviceProfile ?? DEFAULT_PROFILE;
+    }
+    if (serviceProfile) {
+        return serviceProfile;
+    }
     if (configProfile) {
         return {
             ...DEFAULT_PROFILE,
             ...configProfile,
         };
     }
-    if (!profile) {
-        return DEFAULT_PROFILE;
-    }
-    const linkedInValue = profile.social_links?.linkedin;
-    const linkedInUrl =
-        typeof linkedInValue === 'string'
-            ? linkedInValue
-            : typeof linkedInValue === 'object' && linkedInValue
-                ? String(linkedInValue.url || '')
-                : '';
-    return {
-        name: profile.full_name || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        location: profile.location || '',
-        linkedin: linkedInUrl,
-        summary: profile.summary || '',
-    };
+    return DEFAULT_PROFILE;
 };
 
 const resolveSelectionSet = (ids?: Array<string | number>) => {
@@ -341,6 +429,7 @@ const resolveSelectionSet = (ids?: Array<string | number>) => {
 
 const buildResumeConfigSnapshot = (
     profile: ResumeEditorProfile,
+    profileSyncMode: ProfileSyncMode,
     selectedExpIds: Set<string>,
     selectedEduIds: Set<string>,
     selectedCertIds: Set<string>,
@@ -348,7 +437,8 @@ const buildResumeConfigSnapshot = (
     sectionOrder: string[],
     density: 'compact' | 'standard' | 'spacious'
 ): ResumeEditorConfig => ({
-    profile: { ...profile },
+    profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
+    profileSyncMode,
     selection: {
         experienceIds: Array.from(selectedExpIds),
         educationIds: Array.from(selectedEduIds),
@@ -406,6 +496,14 @@ const ResumeEditor: React.FC = () => {
 
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
+    const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
+    const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const [originalProfile, setOriginalProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
+    const [originalProfileSyncMode, setOriginalProfileSyncMode] = useState<ProfileSyncMode>(
+        PROFILE_SYNC_MODES.global
+    );
 
     // 教育背景状态
     const [educations, setEducations] = useState<EducationView[]>([]);
@@ -428,10 +526,11 @@ const ResumeEditor: React.FC = () => {
     const [isSavingExperience, setIsSavingExperience] = useState(false);
 
     // 3. JD Analysis State
-    const [jdText, setJdText] = useState("JD 要求：3年以上产品经验，精通 Python 数据分析，熟练使用 SQL，有 PMP 证书优先...");
+    const [jdText, setJdText] = useState(DEFAULT_JD_TEXT);
     const [analysisResult, setAnalysisResult] = useState<JDAnalysisResult | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isJDCollapsed, setIsJDCollapsed] = useState(false);
+    const [analysisContext, setAnalysisContext] = useState<JDAnalysisContext | null>(null);
 
     // 4. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
@@ -445,11 +544,105 @@ const ResumeEditor: React.FC = () => {
         () => [...DEFAULT_SECTION_ORDER]
     );
     const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
-
     const previewRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
     const lastSavedConfigRef = useRef<string | null>(null);
     const hasHydratedConfigRef = useRef(false);
+    const hasLoadedJdCacheRef = useRef(false);
+    const experienceSignature = useMemo(
+        () => buildExperienceSignature(experienceItems),
+        [experienceItems]
+    );
+    const jdTextSignature = useMemo(
+        () => buildJDTextSignature(jdText),
+        [jdText]
+    );
+    const jobKeywords = useMemo(
+        () => normalizeJobKeywords(analysisResult?.jobKeywords),
+        [analysisResult]
+    );
+    const isProfileReadOnly = !isEditingProfile || isSavingProfile;
+    const applyExperienceMatchScores = useCallback(
+        (matches?: Array<{ id: string; score: number }>) => {
+            const matchScores = new Map(
+                (matches || []).map((match) => [match.id, match.score])
+            );
+            setExperienceItems((prev) => {
+                const next = prev.map((item) => ({
+                    ...item,
+                    matchScore: matchScores.has(item.id)
+                        ? matchScores.get(item.id)
+                        : undefined,
+                }));
+                const comparator = matchScores.size > 0
+                    ? compareByScoreThenDate
+                    : compareByDateDesc;
+                return sortByCategory(next, comparator);
+            });
+        },
+        []
+    );
+    const resetJDAnalysisState = useCallback(
+        (options?: { resetJdText?: boolean; clearCache?: boolean }) => {
+            setAnalysisResult(null);
+            setAnalysisContext(null);
+            setIsJDCollapsed(false);
+            applyExperienceMatchScores();
+            if (options?.resetJdText) {
+                setJdText(DEFAULT_JD_TEXT);
+            }
+            if (options?.clearCache && resumeId) {
+                clearJDAnalysisCache(resumeId);
+            }
+        },
+        [applyExperienceMatchScores, resumeId]
+    );
+
+    useEffect(() => {
+        if (!resumeId) {
+            return;
+        }
+        hasLoadedJdCacheRef.current = false;
+        resetJDAnalysisState({ resetJdText: true, clearCache: false });
+    }, [resetJDAnalysisState, resumeId]);
+
+    useEffect(() => {
+        if (!resumeId || isLoadingExperiences || hasLoadedJdCacheRef.current) {
+            return;
+        }
+        const cached = loadJDAnalysisCache(resumeId);
+        if (cached && cached.experienceSignature === experienceSignature) {
+            setJdText(cached.jdText);
+            setAnalysisResult(cached.result);
+            setAnalysisContext({
+                jdTextSignature: buildJDTextSignature(cached.jdText),
+                experienceSignature: cached.experienceSignature,
+            });
+            applyExperienceMatchScores(cached.result.experienceMatches);
+            setIsJDCollapsed(true);
+        } else if (cached) {
+            clearJDAnalysisCache(resumeId);
+        }
+        hasLoadedJdCacheRef.current = true;
+    }, [applyExperienceMatchScores, experienceSignature, isLoadingExperiences, resumeId]);
+
+    useEffect(() => {
+        if (!analysisContext || !resumeId) {
+            return;
+        }
+        if (analysisContext.experienceSignature !== experienceSignature) {
+            resetJDAnalysisState({ clearCache: true });
+        }
+    }, [analysisContext, experienceSignature, resetJDAnalysisState]);
+
+    useEffect(() => {
+        if (!analysisContext || !resumeId) {
+            return;
+        }
+        if (analysisContext.jdTextSignature !== jdTextSignature) {
+            resetJDAnalysisState({ clearCache: true });
+        }
+    }, [analysisContext, jdTextSignature, resetJDAnalysisState]);
 
     const ensureActiveResumeId = useCallback(async (resumes: Resume[]) => {
         if (resumes.length > 0) {
@@ -560,6 +753,7 @@ const ResumeEditor: React.FC = () => {
         () =>
             buildResumeConfigSnapshot(
                 profile,
+                profileSyncMode,
                 selectedExpIds,
                 selectedEduIds,
                 selectedCertIds,
@@ -567,7 +761,7 @@ const ResumeEditor: React.FC = () => {
                 sectionOrder,
                 density
             ),
-        [density, profile, sectionOrder, selectedCertIds, selectedEduIds, selectedExpIds, selectedSkillIds]
+        [density, profile, profileSyncMode, sectionOrder, selectedCertIds, selectedEduIds, selectedExpIds, selectedSkillIds]
     );
 
     const debouncedConfig = useDebounce(resumeConfigSnapshot, AUTO_SAVE_DELAY_MS);
@@ -582,6 +776,11 @@ const ResumeEditor: React.FC = () => {
 
     const applyResumeConfig = useCallback(
         (config: ResumeEditorConfig, profileData?: Profile | null) => {
+            const syncMode = resolveProfileSyncMode(config, profileData || undefined);
+            setProfileSyncMode(syncMode);
+            if (profileData) {
+                setProfileSocialLinks({ ...(profileData.social_links || {}) });
+            }
             setProfile(resolveProfileSnapshot(config, profileData || undefined));
             setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
             if (config.layout?.density) {
@@ -747,6 +946,52 @@ const ResumeEditor: React.FC = () => {
         document.documentElement.classList.toggle('dark');
     };
 
+    const beginProfileEdit = () => {
+        setOriginalProfile({ ...profile });
+        setOriginalProfileSyncMode(profileSyncMode);
+        setIsEditingProfile(true);
+    };
+
+    const cancelProfileEdit = () => {
+        setProfile({ ...originalProfile });
+        setProfileSyncMode(originalProfileSyncMode);
+        setIsEditingProfile(false);
+    };
+
+    const handleSaveProfile = async () => {
+        if (isSavingProfile) {
+            return;
+        }
+        setIsSavingProfile(true);
+        try {
+            let nextProfile = { ...profile };
+            if (profileSyncMode === PROFILE_SYNC_MODES.global) {
+                const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, profile.linkedin);
+                const updated = await profileService.updateProfile({
+                    full_name: profile.name,
+                    email: profile.email,
+                    phone: profile.phone,
+                    location: profile.location,
+                    summary: profile.summary,
+                    social_links: nextSocialLinks,
+                });
+                setProfileSocialLinks({ ...(updated.social_links || nextSocialLinks) });
+                const updatedSnapshot = buildProfileFromService(updated);
+                if (updatedSnapshot) {
+                    nextProfile = updatedSnapshot;
+                    setProfile(updatedSnapshot);
+                }
+            }
+            setOriginalProfile({ ...nextProfile });
+            setOriginalProfileSyncMode(profileSyncMode);
+            setIsEditingProfile(false);
+        } catch (error) {
+            console.error('[ResumeEditor] 保存个人信息失败:', error);
+        } finally {
+            setIsSavingProfile(false);
+        }
+    };
+
     const handleAnalyze = async () => {
         setIsAnalyzing(true);
         try {
@@ -762,17 +1007,19 @@ const ResumeEditor: React.FC = () => {
                 jdText,
                 JSON.stringify(payload)
             );
-            const matchScores = new Map(
-                (result.experienceMatches || []).map((match) => [match.id, match.score])
-            );
-            setExperienceItems((prev) => {
-                const next = prev.map((item) => ({
-                    ...item,
-                    matchScore: matchScores.get(item.id),
-                }));
-                return sortByCategory(next, compareByScoreThenDate);
-            });
+            applyExperienceMatchScores(result.experienceMatches);
             setAnalysisResult(result);
+            setAnalysisContext({
+                jdTextSignature,
+                experienceSignature,
+            });
+            if (resumeId) {
+                saveJDAnalysisCache(resumeId, {
+                    jdText,
+                    experienceSignature,
+                    result,
+                });
+            }
             setIsJDCollapsed(true);
         } catch (error) {
             console.error("Failed to analyze JD", error);
@@ -1406,10 +1653,10 @@ const ResumeEditor: React.FC = () => {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Left Sidebar: Analysis & Modules */}
-                <aside className="w-[420px] flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex">
+                <aside className={`${SIDEBAR_WIDTH_CLASS} flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex`}>
 
                     {/* Compact JD Panel */}
-                    <div className={`border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${isJDCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}>
+                    <div className={`border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${JD_PANEL_BOTTOM_SPACING_CLASS} ${isJDCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}>
                         <div className="px-4 flex items-center justify-between mb-2">
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 <Target className="w-4 h-4 text-primary" />
@@ -1426,19 +1673,38 @@ const ResumeEditor: React.FC = () => {
                         <div className="px-4">
                             {isJDCollapsed ? (
                                 // Collapsed State
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-1.5 bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800/50 rounded-full pl-3 pr-2 py-1 shadow-sm">
-                                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                            匹配度: {analysisResult?.matchPercentage || 0}%
-                                        </span>
-                                        <button onClick={handleAnalyze} disabled={isAnalyzing} className="p-1 text-gray-400 hover:text-emerald-600">
-                                            <RefreshCw className={`w-3 h-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                        </button>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1.5 bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800/50 rounded-full pl-3 pr-2 py-1 shadow-sm">
+                                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                匹配度: {analysisResult?.matchPercentage || 0}%
+                                            </span>
+                                            <button onClick={handleAnalyze} disabled={isAnalyzing} className="p-1 text-gray-400 hover:text-emerald-600">
+                                                <RefreshCw className={`w-3 h-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1 overflow-hidden">
+                                            {jobKeywords.length > 0 ? (
+                                                jobKeywords.map((keyword) => (
+                                                    <span
+                                                        key={keyword}
+                                                        className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
+                                                    >
+                                                        {keyword}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">
+                                                    暂无关键词
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex gap-1 overflow-hidden">
-                                        <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded">Python</span>
-                                        <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded">Product</span>
-                                    </div>
+                                    {analysisResult?.summary ? (
+                                        <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                                            {analysisResult.summary}
+                                        </p>
+                                    ) : null}
                                 </div>
                             ) : (
                                 // Expanded State
@@ -1498,48 +1764,101 @@ const ResumeEditor: React.FC = () => {
                             <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
                                 {/* 基本信息模块 */}
                                 <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                                    <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">基本信息</h3>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">基本信息</h3>
+                                        {!isEditingProfile ? (
+                                            <button
+                                                onClick={beginProfileEdit}
+                                                className="flex items-center gap-2 text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-md hover:bg-primary/20 transition-colors"
+                                                disabled={isSavingProfile}
+                                            >
+                                                <Wrench className="w-3 h-3" />
+                                                编辑
+                                            </button>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={cancelProfileEdit}
+                                                    className="text-xs font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white px-3 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                    disabled={isSavingProfile}
+                                                >
+                                                    取消
+                                                </button>
+                                                <button
+                                                    onClick={handleSaveProfile}
+                                                    className="text-xs font-semibold text-white bg-primary hover:bg-primary-dark px-4 py-1.5 rounded-md transition-colors disabled:opacity-60"
+                                                    disabled={isSavingProfile}
+                                                >
+                                                    {isSavingProfile ? '保存中...' : '保存'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {isEditingProfile ? (
+                                        <div className="flex items-center justify-between text-[10px] text-gray-400 mb-3">
+                                            <label className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={profileSyncMode === PROFILE_SYNC_MODES.global}
+                                                    onChange={(event) =>
+                                                        setProfileSyncMode(
+                                                            event.target.checked
+                                                                ? PROFILE_SYNC_MODES.global
+                                                                : PROFILE_SYNC_MODES.local
+                                                        )}
+                                                    className="w-3 h-3 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                同步修改全部简历
+                                            </label>
+                                            <span>关闭后仅对当前简历生效</span>
+                                        </div>
+                                    ) : null}
                                     <div className="space-y-3">
                                         <div>
                                             <label className="text-xs text-gray-500 dark:text-gray-400">姓名</label>
                                             <input
-                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                                                 value={profile.name}
                                                 onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                                                disabled={isProfileReadOnly}
                                             />
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label className="text-xs text-gray-500 dark:text-gray-400">电话</label>
                                                 <input
-                                                    className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                    className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                                                     value={profile.phone}
                                                     onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                                                    disabled={isProfileReadOnly}
                                                 />
                                             </div>
                                             <div>
                                                 <label className="text-xs text-gray-500 dark:text-gray-400">邮箱</label>
                                                 <input
-                                                    className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                    className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                                                     value={profile.email}
                                                     onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                                                    disabled={isProfileReadOnly}
                                                 />
                                             </div>
                                         </div>
                                         <div>
                                             <label className="text-xs text-gray-500 dark:text-gray-400">地点</label>
                                             <input
-                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                                                 value={profile.location}
                                                 onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+                                                disabled={isProfileReadOnly}
                                             />
                                         </div>
                                         <div>
                                             <label className="text-xs text-gray-500 dark:text-gray-400">链接</label>
                                             <input
-                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                                                 value={profile.linkedin}
                                                 onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
+                                                disabled={isProfileReadOnly}
                                             />
                                         </div>
                                     </div>
@@ -1590,10 +1909,11 @@ const ResumeEditor: React.FC = () => {
                                 <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                                     <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">职业总结</h3>
                                     <textarea
-                                        className="w-full text-sm p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary h-28 leading-relaxed resize-none"
+                                        className="w-full text-sm p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary h-28 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                                         value={profile.summary}
                                         onChange={(e) => setProfile({ ...profile, summary: e.target.value })}
                                         placeholder="用 2-4 句话概括你的优势、方向与量化成果"
+                                        disabled={isProfileReadOnly}
                                     />
                                 </div>
 

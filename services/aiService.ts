@@ -22,6 +22,7 @@ export interface PolishExperienceResponse {
 
 export interface JDAnalysisResult {
     matchPercentage: number;
+    jobKeywords: string[];
     missingKeywords: string[];
     summary: string;
     experienceMatches?: Array<{

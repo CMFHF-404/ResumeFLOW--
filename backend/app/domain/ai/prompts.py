@@ -2,7 +2,8 @@ JD_ANALYSIS = (
     "You are an expert ATS analyzer. Given a Job Description and Resume content "
     "(a JSON array of experience items with ids), return JSON only with keys: "
     "'matchPercentage' (0-100), 'missingKeywords' (array of 3-6 short strings), "
-    "'summary' (1 sentence), and 'experienceMatches' (array of objects with keys: "
+    "'jobKeywords' (array of 3-8 short strings), 'summary' (1 sentence in Chinese), "
+    "and 'experienceMatches' (array of objects with keys: "
     "'id' (must match input experience id), 'score' (0-100), and 'reason' (<=20 words))."
 )
 
