@@ -5,8 +5,8 @@ export interface Certification {
     user_id: string;
     name: string;
     issuer?: string;
-    issue_date?: string;
-    expiry_date?: string;
+    issue_date?: string | null;
+    expiry_date?: string | null;
     credential_id?: string;
     credential_url?: string;
     description?: string;
@@ -17,8 +17,8 @@ export interface Certification {
 export interface CertificationCreatePayload {
     name: string;
     issuer?: string;
-    issue_date?: string;
-    expiry_date?: string;
+    issue_date?: string | null;
+    expiry_date?: string | null;
     credential_id?: string;
     credential_url?: string;
     description?: string;
@@ -27,8 +27,8 @@ export interface CertificationCreatePayload {
 export interface CertificationUpdatePayload {
     name?: string;
     issuer?: string;
-    issue_date?: string;
-    expiry_date?: string;
+    issue_date?: string | null;
+    expiry_date?: string | null;
     credential_id?: string;
     credential_url?: string;
     description?: string;
