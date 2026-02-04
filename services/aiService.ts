@@ -11,6 +11,7 @@ export interface PolishExperiencePayload {
         r?: string;  // Result
     };
     targetField?: 's' | 't' | 'a' | 'r';
+    jdText?: string;
 }
 
 export interface PolishExperienceResponse {
@@ -30,6 +31,16 @@ export interface JDAnalysisResult {
         score: number;
         reason?: string;
     }>;
+    certificationMatches?: Array<{
+        id: string;
+        score: number;
+        reason?: string;
+    }>;
+    skillMatches?: Array<{
+        id: string;
+        score: number;
+        reason?: string;
+    }>;
 }
 
 export interface GenerateTagsResponse {
@@ -45,6 +56,7 @@ export const aiService = {
                 ...(rawText ? { raw_text: rawText } : {}),
             },
             ...(data.targetField ? { target_field: data.targetField } : {}),
+            ...(data.jdText ? { jd_text: data.jdText } : {}),
         };
         const response = await apiClient.post<PolishExperienceResponse>(
             '/api/polish-text',

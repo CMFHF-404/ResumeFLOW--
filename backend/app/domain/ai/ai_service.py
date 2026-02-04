@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -17,6 +18,9 @@ from .prompts import (
 )
 
 settings = load_settings()
+logger = logging.getLogger(__name__)
+
+MAX_ERROR_BODY_LOG_LENGTH = 2000
 
 STAR_FIELD_PROMPTS = {
     "s": STAR_POLISH_S,
@@ -88,6 +92,25 @@ def _build_headers() -> Dict[str, str]:
         "Content-Type": "application/json",
     }
 
+def _safe_response_text(response: httpx.Response) -> str:
+    try:
+        text = response.text
+    except Exception:
+        return "<failed to read response text>"
+    trimmed = text.strip()
+    if len(trimmed) > MAX_ERROR_BODY_LOG_LENGTH:
+        return f"{trimmed[:MAX_ERROR_BODY_LOG_LENGTH]}...<truncated>"
+    return trimmed
+
+
+def _log_http_error(response: httpx.Response) -> None:
+    logger.error(
+        "AI request failed: status=%s url=%s body=%s",
+        response.status_code,
+        str(response.request.url) if response.request else "<unknown>",
+        _safe_response_text(response),
+    )
+
 
 async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> Dict[str, Any]:
     payload = {
@@ -98,7 +121,11 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
     url = f"{settings.ai_base_url}/chat/completions"
     async with httpx.AsyncClient(timeout=90) as client:
         response = await client.post(url, headers=_build_headers(), json=payload)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            _log_http_error(response)
+            raise
         data = response.json()
     content = _extract_content(data)
     if json_mode:
@@ -132,11 +159,15 @@ def _resolve_star_prompt(target_field: Optional[str]) -> str:
 async def polish_experience(
     content: Dict[str, Any],
     target_field: Optional[str] = None,
+    jd_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     prompt = _resolve_star_prompt(target_field)
+    content_payload = {**content}
+    if jd_text:
+        content_payload["jd_text"] = jd_text
     messages = [
         {"role": "system", "content": prompt},
-        {"role": "user", "content": json.dumps(content, ensure_ascii=False)},
+        {"role": "user", "content": json.dumps(content_payload, ensure_ascii=False)},
     ]
     return await _call_llm(messages, json_mode=True)
 

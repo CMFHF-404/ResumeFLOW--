@@ -57,6 +57,8 @@ type ExperienceSectionModel = {
   onDeleteCancel: () => void;
 };
 
+const isTempId = (id: string) => id.startsWith('temp_');
+
 const buildExperienceCardData = (item: ExperienceListItem): ExperienceCardData => {
   const star = item.latest_version?.star || {};
   return {
@@ -497,46 +499,41 @@ const useExperienceCreate = ({
     if (isCreating) {
       return;
     }
-    let toastId: string | null = null;
     try {
       setIsCreating(true);
-      toastId = toast.loading('正在创建...');
-      const newExperience = await experienceService.create({
-        category,
-        version: {
+
+      const tempId = `temp_${Date.now()}`;
+      const newExperience: ExperienceListItem = {
+        master: {
+          id: tempId,
+          category,
+          is_archived: false,
+        },
+        latest_version: {
+          id: tempId,
           title: defaultTitle,
           org: defaultOrg,
           start_date: getTodayLocalISODate(),
           tags: [],
           star: { s: '', t: '', a: '', r: '' },
         },
-      });
+      };
 
       setExperiences((prev) => [newExperience, ...prev]);
 
       const initialData = buildExperienceCardData(newExperience);
-      setCardData((prev) => new Map(prev).set(newExperience.master.id, initialData));
-      setOriginalCardData((prev) => new Map(prev).set(newExperience.master.id, cloneExperienceCardData(initialData)));
-      setModifiedCards((prev) => {
-        const next = new Set(prev);
-        next.delete(newExperience.master.id);
-        return next;
-      });
-      setExpandedCards((prev) => new Set(prev).add(newExperience.master.id));
-      scrollToCard(newExperience.master.id, 100);
+      setCardData((prev) => new Map(prev).set(tempId, initialData));
+      setOriginalCardData((prev) => new Map(prev).set(tempId, cloneExperienceCardData(initialData)));
 
-      if (toastId) {
-        toast.updateToast(toastId, { message: '已创建', type: 'success', duration: 2000 });
-      } else {
-        toast.success('已创建', 2000);
-      }
+      // Mark as modified so the Save button is enabled immediately
+      setModifiedCards((prev) => new Set(prev).add(tempId));
+
+      setExpandedCards((prev) => new Set(prev).add(tempId));
+      scrollToCard(tempId, 100);
+
     } catch (error) {
-      console.error(`[ExperienceSection] 创建${category}经历失败:`, error);
-      if (toastId) {
-        toast.updateToast(toastId, { message: '创建失败', type: 'error', duration: 3000 });
-      } else {
-        toast.error('创建失败', 3000);
-      }
+      console.error(`[ExperienceSection] 创建${category}草稿失败:`, error);
+      toast.error('创建失败', 2000);
     } finally {
       setIsCreating(false);
     }
@@ -586,32 +583,85 @@ const useExperienceSave = ({
         }
 
         setSavingCardId(cardId);
-        applyOptimisticSave(cardId, data, setOriginalCardData, setModifiedCards, setExperiences);
 
-        toastId = toast.loading('正在同步...');
-        await experienceService.update(cardId, { version: buildVersionPayload(data) });
-
-        if (toastId) {
-          toast.updateToast(toastId, { message: '已保存', type: 'success', duration: 2000 });
-        } else {
-          toast.success('已保存', 2000);
-        }
-
-        toggleCard(cardId);
-
-        refreshExperiences()
-          .then((updatedList) => {
-            syncCardFromRefresh(cardId, updatedList, setModifiedCards, setCardData, setOriginalCardData);
-          })
-          .catch((error) => {
-            console.error(`[ExperienceSection] 刷新${category}经历失败:`, error);
+        if (isTempId(cardId)) {
+          // Handle Creation
+          toastId = toast.loading('正在创建...');
+          const createdExperience = await experienceService.create({
+            category,
+            version: buildVersionPayload(data),
           });
+
+          const realId = createdExperience.master.id;
+
+          // Update List: Replace temp with real
+          setExperiences((prev) => prev.map((item) => item.master.id === cardId ? createdExperience : item));
+
+          // Update Card Data: Move from temp key to real key
+          const newData = buildExperienceCardData(createdExperience);
+          setCardData((prev) => {
+            const next = new Map(prev);
+            next.delete(cardId);
+            next.set(realId, newData);
+            return next;
+          });
+          setOriginalCardData((prev) => {
+            const next = new Map(prev);
+            next.delete(cardId);
+            next.set(realId, cloneExperienceCardData(newData));
+            return next;
+          });
+          setModifiedCards((prev) => {
+            const next = new Set(prev);
+            next.delete(cardId);
+            next.delete(realId);
+            return next;
+          });
+
+          // Close the card (standard behavior is toggle)
+          // If we call toggleCard(cardId), it will try to collapse 'temp_...' which is fine if it's in expanded set.
+          // But since we are changing IDs, we should probably manually fix the expansion state if we want smooth animation.
+          // However, simply removing from expanded set is enough.
+          // We will let toggleCard handle the UI cleanup for the temp ID.
+          toggleCard(cardId);
+
+          if (toastId) {
+            toast.updateToast(toastId, { message: '已创建', type: 'success', duration: 2000 });
+          } else {
+            toast.success('已创建', 2000);
+          }
+
+          // We don't strictly need to refresh full list since we just got the fresh item, 
+          // but keeping it for consistency with other parts of the app is okay.
+        } else {
+          // Handle Update
+          applyOptimisticSave(cardId, data, setOriginalCardData, setModifiedCards, setExperiences);
+
+          toastId = toast.loading('正在同步...');
+          await experienceService.update(cardId, { version: buildVersionPayload(data) });
+
+          if (toastId) {
+            toast.updateToast(toastId, { message: '已保存', type: 'success', duration: 2000 });
+          } else {
+            toast.success('已保存', 2000);
+          }
+
+          toggleCard(cardId);
+
+          refreshExperiences()
+            .then((updatedList) => {
+              syncCardFromRefresh(cardId, updatedList, setModifiedCards, setCardData, setOriginalCardData);
+            })
+            .catch((error) => {
+              console.error(`[ExperienceSection] 刷新${category}经历失败:`, error);
+            });
+        }
       } catch (error) {
         console.error(`[ExperienceSection] 保存${category}经历失败:`, error);
         if (toastId) {
-          toast.updateToast(toastId, { message: '保存同步失败，请重试', type: 'error', duration: 3000 });
+          toast.updateToast(toastId, { message: '保存失败，请重试', type: 'error', duration: 3000 });
         } else {
-          toast.error('保存同步失败，请重试', 3000);
+          toast.error('保存失败，请重试', 3000);
         }
       } finally {
         setSavingCardId(null);
@@ -663,6 +713,11 @@ const useExperienceDelete = ({
       setExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
       removeCardExpansion(cardId);
       removeCardState(cardId);
+
+      if (isTempId(cardId)) {
+        toast.success('已删除', 2000);
+        return;
+      }
 
       toastId = toast.loading('正在删除...');
       await experienceService.delete(cardId);
@@ -898,6 +953,30 @@ const useExperienceSectionModel = ({
 
   const sortedExperiences = useSortedExperiences(experiences);
 
+  const handleCancel = useCallback((cardId: string) => {
+    if (isTempId(cardId)) {
+      setExperiences(prev => prev.filter(item => item.master.id !== cardId));
+      store.setCardData(prev => {
+        const next = new Map(prev);
+        next.delete(cardId);
+        return next;
+      });
+      store.setOriginalCardData(prev => {
+        const next = new Map(prev);
+        next.delete(cardId);
+        return next;
+      });
+      store.setModifiedCards(prev => {
+        const next = new Set(prev);
+        next.delete(cardId);
+        return next;
+      });
+      expansion.removeCardExpansion(cardId);
+    } else {
+      resetCard(cardId);
+    }
+  }, [resetCard, expansion, setExperiences, store]);
+
   return buildSectionModel({
     experiences,
     sortedExperiences,
@@ -916,7 +995,7 @@ const useExperienceSectionModel = ({
     onToggle: expansion.toggleCard,
     onDeleteRequest: deleteActions.requestDelete,
     onSave: handleSaveCard,
-    onCancel: resetCard,
+    onCancel: handleCancel,
     onFieldChange: updateCardField,
     onPolish: polishActions.handlePolishField,
     onGenerateTags: tagActions.handleGenerateTags,
