@@ -13,6 +13,8 @@ import { resumeService, Resume, ResumeDetail, ResumeExperienceItem } from '../se
 import { skillsService, UserSkill } from '../services/skillsService';
 import { useDebounce } from '../components/hooks/useDebounce';
 import ConfirmDialog from '../components/ConfirmDialog';
+import MonthPicker from '../components/MonthPicker';
+import { ToastContainer, useToast } from '../components/Toast';
 import { convertDateToISO, parseYearMonthValue } from './experienceUtils';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import { clearJDAnalysisCache, loadJDAnalysisCache, saveJDAnalysisCache } from './jdAnalysisStorage';
@@ -31,6 +33,8 @@ const ADD_WORK_EXPERIENCE_LABEL = '添加工作经历';
 const ADD_PROJECT_EXPERIENCE_LABEL = '添加项目经历';
 const ADD_EDUCATION_LABEL = '添加教育经历';
 const ADD_CERTIFICATION_LABEL = '添加证书';
+const ADD_SKILL_TYPE_LABEL = '添加技能类型';
+const ADD_SKILL_TAG_LABEL = '添加技能标签';
 const DEFAULT_EDUCATION_SCHOOL = '未命名学校';
 const DEFAULT_EDUCATION_MAJOR = '未命名专业';
 const DEFAULT_CERTIFICATION_NAME = '未命名证书';
@@ -49,6 +53,7 @@ const STAR_FIELDS = ['s', 't', 'a', 'r'] as const;
 const CERT_META_PREFIX = "__rf_cert_meta__:";
 const EXPERIENCE_DRAFT_PREFIX = 'draft-exp';
 const EDUCATION_DRAFT_PREFIX = 'draft-edu';
+const CERTIFICATION_DRAFT_PREFIX = 'draft-cert';
 const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView['category']> = ['work', 'project'];
 const DEFAULT_SECTION_ORDER = ['summary', 'work', 'project', 'education', 'certifications', 'skills'] as const;
 const RESUME_SECTION_IDS = new Set<string>(DEFAULT_SECTION_ORDER);
@@ -56,6 +61,16 @@ const SIDEBAR_WIDTH_CLASS = 'w-[600px]';
 const JD_PANEL_BOTTOM_SPACING_CLASS = 'mb-3';
 const DEFAULT_JD_TEXT = '';
 const EMPTY_TEXT_SIGNATURE = '';
+const SMART_PAGE_MIN_SCALE = 0.86;
+const SMART_PAGE_HEIGHT_TOLERANCE = 12;
+const SMART_PAGE_TOAST_MESSAGES = {
+    success: '已自动调整为一页',
+    overflow: '内容过多，无法压缩到一页',
+} as const;
+const DEFAULT_MATCH_BADGE_TONE: keyof typeof MATCH_BADGE_STYLES = 'emerald';
+const JD_PANEL_STICKY_CLASS = 'sticky top-0 z-20';
+const EDITING_SUGGESTION_NAV_CLASS = 'border-t border-border-light dark:border-border-dark bg-white dark:bg-surface-dark px-4 py-2';
+const STALE_EXPERIENCE_TIP = '该经历已更新，建议重新分析';
 const PROFILE_SYNC_MODES = {
     global: 'global',
     local: 'local',
@@ -130,6 +145,13 @@ type ResumeEditorConfig = {
 type JDAnalysisContext = {
     jdTextSignature: string;
     experienceSignature: string;
+    itemSignatures: JDAnalysisItemSignatures;
+};
+
+type JDAnalysisItemSignatures = {
+    experiences: Record<string, string>;
+    certifications: Record<string, string>;
+    skills: Record<string, string>;
 };
 
 type ActiveResumeContext = {
@@ -152,6 +174,9 @@ type ExperienceEditDraft = {
     masterId: string;
     title: string;
     company: string;
+    startDate: string;
+    endDate: string;
+    isCurrent?: boolean;
     star: StarFields;
     category: ResumeExperienceView['category'];
     isDraft?: boolean;
@@ -164,6 +189,7 @@ type EducationView = {
     degree: string;
     startDate: string;
     endDate: string;
+    isCurrent?: boolean;
     gpa?: string;
     courses?: string;
     isDraft?: boolean;
@@ -175,6 +201,7 @@ type CertificationView = {
     issuer?: string;
     date: string;
     matchRate?: number;
+    isDraft?: boolean;
 };
 
 type EducationEditDraft = {
@@ -199,6 +226,11 @@ type SkillEditDraft = {
     id?: string;
     name: string;
     category: string;
+};
+
+type SkillDraftContext = {
+    mode: 'type' | 'group' | 'edit';
+    groupName?: string;
 };
 
 type ConfirmDialogState = {
@@ -302,9 +334,59 @@ const buildExperienceDate = (start?: string, end?: string, isCurrent?: boolean) 
     return startText || endText || '';
 };
 
+const isPresentLabel = (value?: string) => value === '至今' || value === 'Present';
+
+const resolveSafeDateRange = (start: string, end: string) => {
+    const startValue = parseYearMonthValue(start);
+    const endValue = parseYearMonthValue(end);
+    if (startValue !== null && endValue !== null && startValue > endValue) {
+        return { start, end: '' };
+    }
+    return { start, end };
+};
+
+type DatePayloadFallback = {
+    start_date?: string;
+    end_date?: string;
+    is_current?: boolean;
+};
+
+const resolveDatePayload = (
+    startDate: string,
+    endDate: string,
+    baseIsCurrent: boolean,
+    fallback?: DatePayloadFallback
+) => {
+    const normalizedStart = normalizeDateInput(startDate);
+    const normalizedEnd = normalizeDateInput(endDate);
+    const resolvedIsCurrent = isPresentLabel(endDate) || (baseIsCurrent && !normalizedEnd);
+    return {
+        startDate: normalizedStart ?? fallback?.start_date,
+        endDate: resolvedIsCurrent ? undefined : normalizedEnd ?? fallback?.end_date,
+        isCurrent: resolvedIsCurrent,
+    };
+};
+
+const resolveExperienceDatePayload = (
+    draft: ExperienceEditDraft,
+    fallback?: DatePayloadFallback
+) => {
+    const baseIsCurrent = draft.isCurrent ?? fallback?.is_current ?? false;
+    return resolveDatePayload(draft.startDate, draft.endDate, baseIsCurrent, fallback);
+};
+
+const resolveEducationDatePayload = (
+    draft: EducationEditDraft,
+    fallback?: DatePayloadFallback
+) => {
+    const baseIsCurrent = fallback?.is_current ?? false;
+    return resolveDatePayload(draft.startDate, draft.endDate, baseIsCurrent, fallback);
+};
+
 const buildEducationView = (item: ExperienceListItem): EducationView => {
     const latest = item.latest_version;
     const star = normalizeEducationStar(latest?.star);
+    const isCurrent = latest?.is_current ?? false;
     return {
         id: item.master.id,
         school: latest?.org || '',
@@ -312,6 +394,7 @@ const buildEducationView = (item: ExperienceListItem): EducationView => {
         degree: star.degree || '',
         startDate: formatYearMonth(latest?.start_date),
         endDate: formatYearMonth(latest?.end_date),
+        isCurrent,
         gpa: star.gpa || undefined,
         courses: star.courses || undefined,
     };
@@ -331,6 +414,7 @@ const buildDraftEducationView = (draftId: string, draft: EducationEditDraft): Ed
     degree: draft.degree,
     startDate: draft.startDate,
     endDate: draft.endDate,
+    isCurrent: isPresentLabel(draft.endDate),
     gpa: draft.gpa || undefined,
     courses: draft.courses || undefined,
     isDraft: true,
@@ -342,13 +426,14 @@ const buildEducationDraft = (
 ): EducationEditDraft => {
     const latest = source?.latest_version;
     const star = normalizeEducationStar(latest?.star);
+    const endDate = latest?.is_current ? '至今' : (latest?.end_date || '');
     return {
         id: draftId ?? source?.master.id,
         school: latest?.org || DEFAULT_EDUCATION_SCHOOL,
         major: latest?.title || DEFAULT_EDUCATION_MAJOR,
         degree: star.degree || '',
         startDate: latest?.start_date || '',
-        endDate: latest?.end_date || '',
+        endDate,
         gpa: star.gpa || '',
         courses: star.courses || '',
     };
@@ -359,6 +444,17 @@ const buildCertificationDraft = (source?: CertificationRecord): CertificationEdi
     name: source?.name || DEFAULT_CERTIFICATION_NAME,
     issuer: source?.issuer || '',
     issueDate: source?.issue_date || '',
+});
+
+const buildDraftCertificationView = (
+    draftId: string,
+    draft: CertificationEditDraft
+): CertificationView => ({
+    id: draftId,
+    name: draft.name,
+    issuer: draft.issuer,
+    date: formatYearMonth(draft.issueDate),
+    isDraft: true,
 });
 
 const parseCertificationMatchRate = (description?: string): number => {
@@ -420,15 +516,14 @@ const buildEducationVersionPayload = (
     draft: EducationEditDraft
 ) => {
     const latest = source?.latest_version;
-    const startDate = normalizeDateInput(draft.startDate);
-    const endDate = normalizeDateInput(draft.endDate);
+    const dates = resolveEducationDatePayload(draft, latest);
     return {
         title: draft.major.trim() || DEFAULT_EDUCATION_MAJOR,
         org: draft.school.trim() || DEFAULT_EDUCATION_SCHOOL,
         location: latest?.location,
-        start_date: startDate ?? latest?.start_date,
-        end_date: endDate ?? latest?.end_date,
-        is_current: latest?.is_current ?? false,
+        start_date: dates.startDate,
+        end_date: dates.endDate,
+        is_current: dates.isCurrent,
         summary: latest?.summary,
         highlights: latest?.highlights || [],
         tags: latest?.tags || [],
@@ -468,13 +563,31 @@ const buildSkillGroups = (skills: UserSkill[]): SkillGroupView[] => {
     return groups;
 };
 
+const buildExperienceAnalyzeEntry = (item: ResumeExperienceView) => ({
+    id: item.id,
+    title: item.title,
+    org: item.company,
+    start_date: item.startDate,
+    end_date: item.endDate,
+    star: item.star,
+});
+
+const buildCertificationAnalyzeEntry = (cert: CertificationView) => ({
+    id: cert.id,
+    name: cert.name,
+    issuer: cert.issuer,
+    issue_date: cert.date,
+});
+
+const buildSkillAnalyzeEntry = (group: SkillGroupView, skill: SkillItemView) => ({
+    id: skill.id,
+    name: skill.name,
+    category: group.name,
+});
+
 const buildSkillAnalyzePayload = (groups: SkillGroupView[]) => {
     return groups.flatMap((group) =>
-        group.skills.map((skill) => ({
-            id: skill.id,
-            name: skill.name,
-            category: group.name,
-        }))
+        group.skills.map((skill) => buildSkillAnalyzeEntry(group, skill))
     );
 };
 
@@ -483,20 +596,8 @@ const buildAnalyzePayload = (
     certifications: CertificationView[],
     skillGroups: SkillGroupView[]
 ) => ({
-    experiences: experiences.map((item) => ({
-        id: item.id,
-        title: item.title,
-        org: item.company,
-        start_date: item.startDate,
-        end_date: item.endDate,
-        star: item.star,
-    })),
-    certifications: certifications.map((cert) => ({
-        id: cert.id,
-        name: cert.name,
-        issuer: cert.issuer,
-        issue_date: cert.date,
-    })),
+    experiences: experiences.map(buildExperienceAnalyzeEntry),
+    certifications: certifications.map(buildCertificationAnalyzeEntry),
     skills: buildSkillAnalyzePayload(skillGroups),
 });
 
@@ -516,6 +617,58 @@ const buildAnalyzeSignature = (
         skills: sortById(payload.skills),
     });
 };
+
+const buildSignatureMap = <T extends { id: string }>(items: T[]) => {
+    const map: Record<string, string> = {};
+    items.forEach((item) => {
+        map[item.id] = JSON.stringify(item);
+    });
+    return map;
+};
+
+const buildEmptyJDItemSignatures = (): JDAnalysisItemSignatures => ({
+    experiences: {},
+    certifications: {},
+    skills: {},
+});
+
+const buildJDItemSignatures = (
+    experiences: ResumeExperienceView[],
+    certifications: CertificationView[],
+    skillGroups: SkillGroupView[]
+): JDAnalysisItemSignatures => {
+    const experienceEntries = experiences.map(buildExperienceAnalyzeEntry);
+    const certificationEntries = certifications.map(buildCertificationAnalyzeEntry);
+    const skillEntries = buildSkillAnalyzePayload(skillGroups);
+    return {
+        experiences: buildSignatureMap(experienceEntries),
+        certifications: buildSignatureMap(certificationEntries),
+        skills: buildSignatureMap(skillEntries),
+    };
+};
+
+const diffSignatureMap = (
+    prev: Record<string, string>,
+    next: Record<string, string>
+) => {
+    const changed = new Set<string>();
+    const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+    keys.forEach((key) => {
+        if (prev[key] !== next[key]) {
+            changed.add(key);
+        }
+    });
+    return changed;
+};
+
+const diffJDItemSignatures = (
+    prev: JDAnalysisItemSignatures,
+    next: JDAnalysisItemSignatures
+) => ({
+    experiences: diffSignatureMap(prev.experiences, next.experiences),
+    certifications: diffSignatureMap(prev.certifications, next.certifications),
+    skills: diffSignatureMap(prev.skills, next.skills),
+});
 
 const buildResumeExperienceMap = (detail: ResumeDetail | null) => {
     const map = new Map<string, ResumeExperienceItem>();
@@ -579,6 +732,9 @@ const buildExperienceEditDraft = (item: ResumeExperienceView): ExperienceEditDra
     masterId: item.id,
     title: item.title,
     company: item.company,
+    startDate: item.startDate ?? '',
+    endDate: item.isCurrent ? '至今' : item.endDate ?? '',
+    isCurrent: item.isCurrent,
     star: { ...item.star },
     category: item.category,
     isDraft: item.isDraft,
@@ -614,6 +770,12 @@ const compareByScoreThenDate = (a: ResumeExperienceView, b: ResumeExperienceView
         return scoreB - scoreA;
     }
     return compareByDateDesc(a, b);
+};
+
+const sortExperienceItemsForMatch = (items: ResumeExperienceView[]) => {
+    const hasScore = items.some((item) => typeof item.matchScore === 'number');
+    const comparator = hasScore ? compareByScoreThenDate : compareByDateDesc;
+    return sortByCategory(items, comparator);
 };
 
 const buildProfileFromService = (profile?: Profile | null): ResumeEditorProfile | null => {
@@ -743,6 +905,13 @@ const getA4PixelHeight = () => {
     return height;
 };
 
+const resolveScaleForHeight = (contentHeight: number, a4Height: number) => {
+    if (contentHeight <= a4Height) {
+        return 1;
+    }
+    return Math.max(SMART_PAGE_MIN_SCALE, a4Height / contentHeight);
+};
+
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [resumeId, setResumeId] = useState<string | null>(null);
@@ -784,6 +953,7 @@ const ResumeEditor: React.FC = () => {
     const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([]);
     const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
     const [skillDraft, setSkillDraft] = useState<SkillEditDraft | null>(null);
+    const [skillDraftContext, setSkillDraftContext] = useState<SkillDraftContext | null>(null);
     const [isSavingSkill, setIsSavingSkill] = useState(false);
     const [deletingSkillIds, setDeletingSkillIds] = useState<Set<string>>(new Set());
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
@@ -824,6 +994,7 @@ const ResumeEditor: React.FC = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isJDCollapsed, setIsJDCollapsed] = useState(false);
     const [analysisContext, setAnalysisContext] = useState<JDAnalysisContext | null>(null);
+    const [staleExperienceIds, setStaleExperienceIds] = useState<Set<string>>(new Set());
     const [certificationMatchScores, setCertificationMatchScores] = useState<Map<string, number>>(
         new Map()
     );
@@ -834,6 +1005,7 @@ const ResumeEditor: React.FC = () => {
     // 4. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
+    const { toasts, success: showToastSuccess, error: showToastError, closeToast } = useToast();
 
     // Drag & Drop State
     const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -882,10 +1054,7 @@ const ResumeEditor: React.FC = () => {
                         : undefined,
                     matchReason: matchReasons.get(item.id),
                 }));
-                const comparator = matchScores.size > 0
-                    ? compareByScoreThenDate
-                    : compareByDateDesc;
-                return sortByCategory(next, comparator);
+                return sortExperienceItemsForMatch(next);
             });
         },
         []
@@ -896,11 +1065,43 @@ const ResumeEditor: React.FC = () => {
     const applySkillMatchScores = useCallback((matches?: MatchScoreEntry[]) => {
         setSkillMatchScores(buildMatchScoreMap(matches));
     }, []);
+    const markStaleMatches = useCallback((diff: ReturnType<typeof diffJDItemSignatures>) => {
+        if (diff.experiences.size > 0) {
+            setExperienceItems((prev) => {
+                const next = prev.map((item) =>
+                    diff.experiences.has(item.id)
+                        ? { ...item, matchScore: undefined, matchReason: undefined }
+                        : item
+                );
+                return sortExperienceItemsForMatch(next);
+            });
+            setStaleExperienceIds((prev) => {
+                const next = new Set(prev);
+                diff.experiences.forEach((id) => next.add(id));
+                return next;
+            });
+        }
+        if (diff.certifications.size > 0) {
+            setCertificationMatchScores((prev) => {
+                const next = new Map(prev);
+                diff.certifications.forEach((id) => next.delete(id));
+                return next;
+            });
+        }
+        if (diff.skills.size > 0) {
+            setSkillMatchScores((prev) => {
+                const next = new Map(prev);
+                diff.skills.forEach((id) => next.delete(id));
+                return next;
+            });
+        }
+    }, []);
     const resetJDAnalysisState = useCallback(
         (options?: { resetJdText?: boolean; clearCache?: boolean }) => {
             setAnalysisResult(null);
             setAnalysisContext(null);
             setIsJDCollapsed(false);
+            setStaleExperienceIds(new Set());
             applyExperienceMatchScores();
             applyCertificationMatchScores();
             applySkillMatchScores();
@@ -927,38 +1128,69 @@ const ResumeEditor: React.FC = () => {
             return;
         }
         const cached = loadJDAnalysisCache(resumeId);
-        if (cached && cached.experienceSignature === experienceSignature) {
+        if (cached) {
+            const cachedSignatures = cached.itemSignatures
+                ?? buildEmptyJDItemSignatures();
             setJdText(cached.jdText);
             setAnalysisResult(cached.result);
             setAnalysisContext({
                 jdTextSignature: buildJDTextSignature(cached.jdText),
                 experienceSignature: cached.experienceSignature,
+                itemSignatures: cachedSignatures,
             });
             applyExperienceMatchScores(cached.result.experienceMatches);
             applyCertificationMatchScores(cached.result.certificationMatches);
             applySkillMatchScores(cached.result.skillMatches);
             setIsJDCollapsed(true);
-        } else if (cached) {
-            clearJDAnalysisCache(resumeId);
+            setStaleExperienceIds(new Set());
         }
         hasLoadedJdCacheRef.current = true;
     }, [
         applyCertificationMatchScores,
         applyExperienceMatchScores,
         applySkillMatchScores,
+        certifications,
+        experienceItems,
         experienceSignature,
         isLoadingExperiences,
         resumeId,
+        skillGroups,
     ]);
 
     useEffect(() => {
         if (!analysisContext || !resumeId) {
             return;
         }
-        if (analysisContext.experienceSignature !== experienceSignature) {
-            resetJDAnalysisState({ clearCache: true });
+        if (analysisContext.experienceSignature === experienceSignature) {
+            return;
         }
-    }, [analysisContext, experienceSignature, resetJDAnalysisState]);
+        const nextSignatures = buildJDItemSignatures(experienceItems, certifications, skillGroups);
+        const diff = diffJDItemSignatures(analysisContext.itemSignatures, nextSignatures);
+        if (
+            diff.experiences.size > 0
+            || diff.certifications.size > 0
+            || diff.skills.size > 0
+        ) {
+            markStaleMatches(diff);
+        }
+        setAnalysisContext((prev) =>
+            prev
+                ? {
+                    ...prev,
+                    experienceSignature,
+                    itemSignatures: nextSignatures,
+                }
+                : prev
+        );
+    }, [
+        analysisContext,
+        certifications,
+        experienceItems,
+        experienceSignature,
+        markStaleMatches,
+        resumeId,
+        skillGroups,
+    ]);
 
     useEffect(() => {
         if (!analysisContext || !resumeId) {
@@ -1050,32 +1282,44 @@ const ResumeEditor: React.FC = () => {
         return a4HeightRef.current;
     }, []);
 
-    const applySmartScale = useCallback(() => {
+    const measurePreviewHeight = useCallback(() => {
         const preview = previewRef.current;
         if (!preview) {
-            return;
+            return null;
         }
-        const contentHeight = preview.getBoundingClientRect().height;
-        const a4Height = resolveA4Height();
-        if (!a4Height || !contentHeight) {
-            return;
-        }
-        const currentScale = resumeScale || 1;
-        const unscaledHeight = currentScale !== 1 ? contentHeight / currentScale : contentHeight;
-        const nextScale =
-            unscaledHeight > a4Height ? Math.max(0.86, a4Height / unscaledHeight) : 1;
-        setResumeScale(Number(nextScale.toFixed(3)));
-    }, [resolveA4Height, resumeScale]);
+        return preview.scrollHeight;
+    }, []);
 
     const adjustToSinglePage = useCallback(() => {
-        setDensity('compact');
+        const a4Height = resolveA4Height();
+        const currentHeight = measurePreviewHeight();
+        if (!a4Height || !currentHeight) {
+            return;
+        }
+        const delta = currentHeight - a4Height;
+        if (delta > SMART_PAGE_HEIGHT_TOLERANCE) {
+            setDensity('compact');
+        } else if (delta < -SMART_PAGE_HEIGHT_TOLERANCE) {
+            setDensity('spacious');
+        }
         setResumeScale(1);
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                applySmartScale();
+                const nextHeight = measurePreviewHeight();
+                if (!nextHeight) {
+                    return;
+                }
+                const nextScale = resolveScaleForHeight(nextHeight, a4Height);
+                setResumeScale(Number(nextScale.toFixed(3)));
+                const finalHeight = nextHeight * nextScale;
+                if (finalHeight > a4Height + SMART_PAGE_HEIGHT_TOLERANCE) {
+                    showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
+                } else {
+                    showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                }
             });
         });
-    }, [applySmartScale]);
+    }, [measurePreviewHeight, resolveA4Height, showToastError, showToastSuccess]);
 
     const resumeConfigSnapshot = useMemo(
         () =>
@@ -1331,6 +1575,11 @@ const ResumeEditor: React.FC = () => {
                 skillGroups
             );
             const result = await aiService.analyzeJD(jdText, JSON.stringify(payload));
+            const itemSignatures = buildJDItemSignatures(
+                experienceItems,
+                certifications,
+                skillGroups
+            );
             applyExperienceMatchScores(result.experienceMatches);
             applyCertificationMatchScores(result.certificationMatches);
             applySkillMatchScores(result.skillMatches);
@@ -1338,14 +1587,17 @@ const ResumeEditor: React.FC = () => {
             setAnalysisContext({
                 jdTextSignature,
                 experienceSignature,
+                itemSignatures,
             });
             if (resumeId) {
                 saveJDAnalysisCache(resumeId, {
                     jdText,
                     experienceSignature,
                     result,
+                    itemSignatures,
                 });
             }
+            setStaleExperienceIds(new Set());
             setIsJDCollapsed(true);
         } catch (error) {
             console.error("Failed to analyze JD", error);
@@ -1662,11 +1914,11 @@ const ResumeEditor: React.FC = () => {
         return null;
     };
 
-    const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string }): SkillEditDraft => ({
-        id: meta?.id,
-        name: meta?.name || DEFAULT_SKILL_NAME,
-        category: meta?.category || DEFAULT_SKILL_CATEGORY,
-    });
+const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string }): SkillEditDraft => ({
+    id: meta?.id,
+    name: meta?.name ?? DEFAULT_SKILL_NAME,
+    category: meta?.category ?? DEFAULT_SKILL_CATEGORY,
+});
 
     const refreshSkillState = async (options?: { selectId?: string }) => {
         const items = await skillsService.list({ force: true });
@@ -1690,9 +1942,16 @@ const ResumeEditor: React.FC = () => {
         });
     };
 
-    const beginCreateSkill = () => {
+    const beginCreateSkillType = () => {
         setEditingSkillId(null);
-        setSkillDraft(buildSkillDraft());
+        setSkillDraft(buildSkillDraft({ name: '', category: '' }));
+        setSkillDraftContext({ mode: 'type' });
+    };
+
+    const beginCreateSkillInGroup = (groupName: string) => {
+        setEditingSkillId(null);
+        setSkillDraft(buildSkillDraft({ name: '', category: groupName }));
+        setSkillDraftContext({ mode: 'group', groupName });
     };
 
     const beginEditSkill = (id: string) => {
@@ -1702,11 +1961,13 @@ const ResumeEditor: React.FC = () => {
         }
         setEditingSkillId(id);
         setSkillDraft(buildSkillDraft(meta));
+        setSkillDraftContext({ mode: 'edit', groupName: meta.category });
     };
 
     const cancelSkillEdit = () => {
         setEditingSkillId(null);
         setSkillDraft(null);
+        setSkillDraftContext(null);
     };
 
     const updateSkillDraft = (field: keyof SkillEditDraft, value: string) => {
@@ -1771,6 +2032,7 @@ const ResumeEditor: React.FC = () => {
     };
 
     const isEducationDraftId = (id: string) => isDraftId(id, EDUCATION_DRAFT_PREFIX);
+    const isCertificationDraftId = (id: string) => isDraftId(id, CERTIFICATION_DRAFT_PREFIX);
 
     const beginCreateEducation = () => {
         const draftId = createDraftId(EDUCATION_DRAFT_PREFIX);
@@ -1811,6 +2073,24 @@ const ResumeEditor: React.FC = () => {
             return {
                 ...prev,
                 [field]: value,
+            };
+        });
+    };
+
+    const updateEducationDate = (field: 'startDate' | 'endDate', value: string) => {
+        setEducationDraft((prev) => {
+            if (!prev) {
+                return prev;
+            }
+            const next = {
+                ...prev,
+                [field]: value,
+            };
+            const safeRange = resolveSafeDateRange(next.startDate, next.endDate);
+            return {
+                ...next,
+                startDate: safeRange.start,
+                endDate: safeRange.end,
             };
         });
     };
@@ -1888,8 +2168,11 @@ const ResumeEditor: React.FC = () => {
     };
 
     const beginCreateCertification = () => {
-        setEditingCertificationId(null);
-        setCertificationDraft(buildCertificationDraft());
+        const draftId = createDraftId(CERTIFICATION_DRAFT_PREFIX);
+        const draft = buildCertificationDraft();
+        setEditingCertificationId(draftId);
+        setCertificationDraft(draft);
+        setCertifications((prev) => [buildDraftCertificationView(draftId, draft), ...prev]);
     };
 
     const beginEditCertification = (id: string) => {
@@ -1897,11 +2180,17 @@ const ResumeEditor: React.FC = () => {
         if (!source) {
             return;
         }
+        if (editingCertificationId && isCertificationDraftId(editingCertificationId)) {
+            cancelCertificationEdit();
+        }
         setEditingCertificationId(id);
         setCertificationDraft(buildCertificationDraft(source));
     };
 
     const cancelCertificationEdit = () => {
+        if (editingCertificationId && isCertificationDraftId(editingCertificationId)) {
+            setCertifications((prev) => prev.filter((item) => item.id !== editingCertificationId));
+        }
         setEditingCertificationId(null);
         setCertificationDraft(null);
     };
@@ -1918,7 +2207,11 @@ const ResumeEditor: React.FC = () => {
         });
     };
 
-    const applyCertificationUpdate = (record: CertificationRecord, select: boolean) => {
+    const applyCertificationUpdate = (
+        record: CertificationRecord,
+        options?: { select?: boolean; replacedId?: string }
+    ) => {
+        const shouldSelect = options?.select ?? false;
         setCertificationSourceMap((prev) => {
             const next = new Map(prev);
             next.set(record.id, record);
@@ -1927,6 +2220,13 @@ const ResumeEditor: React.FC = () => {
         const view = buildCertificationView(record);
         setCertifications((prev) => {
             const next = [...prev];
+            const replacedIndex = options?.replacedId
+                ? next.findIndex((entry) => entry.id === options.replacedId)
+                : -1;
+            if (replacedIndex >= 0) {
+                next[replacedIndex] = view;
+                return next;
+            }
             const index = next.findIndex((entry) => entry.id === record.id);
             if (index >= 0) {
                 next[index] = view;
@@ -1935,7 +2235,7 @@ const ResumeEditor: React.FC = () => {
             next.push(view);
             return next;
         });
-        if (select) {
+        if (shouldSelect) {
             setSelectedCertIds((prev) => new Set(prev).add(record.id));
         }
     };
@@ -1947,12 +2247,18 @@ const ResumeEditor: React.FC = () => {
         setIsSavingCertification(true);
         try {
             const payload = buildCertificationPayload(certificationDraft);
-            if (editingCertificationId) {
+            const isDraft = editingCertificationId
+                ? isCertificationDraftId(editingCertificationId)
+                : true;
+            if (editingCertificationId && !isDraft) {
                 const record = await certificationsService.update(editingCertificationId, payload);
-                applyCertificationUpdate(record, false);
+                applyCertificationUpdate(record, { select: false });
             } else {
                 const record = await certificationsService.create(payload);
-                applyCertificationUpdate(record, true);
+                applyCertificationUpdate(record, {
+                    select: true,
+                    replacedId: isDraft ? editingCertificationId ?? undefined : undefined,
+                });
             }
             cancelCertificationEdit();
         } catch (error) {
@@ -1985,6 +2291,30 @@ const ResumeEditor: React.FC = () => {
             return {
                 ...prev,
                 [field]: value,
+            };
+        });
+    };
+
+    const updateEditingDate = (field: 'startDate' | 'endDate', value: string) => {
+        setEditingDraft((prev) => {
+            if (!prev) {
+                return prev;
+            }
+            if (field === 'endDate') {
+                const nextRange = resolveSafeDateRange(prev.startDate, value);
+                const resolvedEnd = isPresentLabel(value) ? value : nextRange.end;
+                return {
+                    ...prev,
+                    endDate: resolvedEnd,
+                    isCurrent: isPresentLabel(resolvedEnd),
+                };
+            }
+            const nextRange = resolveSafeDateRange(value, prev.endDate);
+            return {
+                ...prev,
+                startDate: nextRange.start,
+                endDate: nextRange.end,
+                isCurrent: nextRange.end ? prev.isCurrent : false,
             };
         });
     };
@@ -2086,13 +2416,14 @@ const ResumeEditor: React.FC = () => {
         const latest = source.latest_version;
         const title = draft.title.trim() || latest?.title || '';
         const org = draft.company.trim() || latest?.org;
+        const dates = resolveExperienceDatePayload(draft, latest);
         return {
             title,
             org,
             location: latest?.location,
-            start_date: latest?.start_date,
-            end_date: latest?.end_date,
-            is_current: latest?.is_current ?? false,
+            start_date: dates.startDate,
+            end_date: dates.endDate,
+            is_current: dates.isCurrent,
             summary: latest?.summary,
             highlights: latest?.highlights || [],
             tags: latest?.tags || [],
@@ -2153,7 +2484,23 @@ const ResumeEditor: React.FC = () => {
     ) => {
         const title = draft.title.trim();
         const org = draft.company.trim();
-        const overrides: Record<string, any> = { star: draft.star };
+        const dates = resolveExperienceDatePayload(draft, fallback
+            ? {
+                start_date: fallback.startDate,
+                end_date: fallback.endDate,
+                is_current: fallback.isCurrent,
+            }
+            : undefined);
+        const overrides: Record<string, any> = {
+            star: draft.star,
+            is_current: dates.isCurrent,
+        };
+        if (dates.startDate) {
+            overrides.start_date = dates.startDate;
+        }
+        if (dates.endDate) {
+            overrides.end_date = dates.endDate;
+        }
         if (title) {
             overrides.title = title;
         }
@@ -2184,10 +2531,21 @@ const ResumeEditor: React.FC = () => {
             ],
         });
         applyResumeDetail(detail);
+        const dates = resolveExperienceDatePayload(draft, targetItem
+            ? {
+                start_date: targetItem.startDate,
+                end_date: targetItem.endDate,
+                is_current: targetItem.isCurrent,
+            }
+            : undefined);
         applyExperienceUpdate(masterId, {
             title: resolvedTitle,
             company: resolvedOrg,
             star: draft.star,
+            startDate: dates.startDate,
+            endDate: dates.endDate,
+            isCurrent: dates.isCurrent,
+            date: buildExperienceDate(dates.startDate, dates.endDate, dates.isCurrent),
         });
         setSelectedExpIds((prev) => new Set(prev).add(masterId));
     };
@@ -2199,6 +2557,7 @@ const ResumeEditor: React.FC = () => {
         setIsSavingExperience(true);
         try {
             if (editingDraft.isDraft) {
+                const dates = resolveExperienceDatePayload(editingDraft);
                 const payload = {
                     category: editingDraft.category,
                     version: {
@@ -2206,6 +2565,9 @@ const ResumeEditor: React.FC = () => {
                             || DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY[editingDraft.category],
                         org: editingDraft.company.trim()
                             || DEFAULT_EXPERIENCE_COMPANY_BY_CATEGORY[editingDraft.category],
+                        start_date: dates.startDate,
+                        end_date: dates.endDate,
+                        is_current: dates.isCurrent,
                         star: editingDraft.star,
                     },
                 };
@@ -2486,11 +2848,11 @@ const ResumeEditor: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between mt-2">
                             <p className="text-[10px] text-gray-400 font-mono">{item.date}</p>
-                            {typeof item.matchScore === 'number' && (
-                                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">
-                                    匹配度 {item.matchScore}%
-                                </span>
-                            )}
+                            {typeof item.matchScore === 'number'
+                                ? renderMatchBadge(item.matchScore, DEFAULT_MATCH_BADGE_TONE)
+                                : staleExperienceIds.has(item.id)
+                                    ? renderStaleBadge()
+                                    : null}
                         </div>
                     </div>
                 </div>
@@ -2556,22 +2918,28 @@ const ResumeEditor: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[10px] text-gray-400">开始时间 (YYYY-MM)</label>
-                        <input
-                            className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
-                            value={educationDraft.startDate}
-                            onChange={(e) => updateEducationDraft('startDate', e.target.value)}
-                            placeholder="2022-09"
-                        />
+                        <label className="text-[10px] text-gray-400">开始时间</label>
+                        <div className="h-9 mt-0.5">
+                            <MonthPicker
+                                value={educationDraft.startDate}
+                                onChange={(val) => updateEducationDate('startDate', val)}
+                                placeholder="开始时间"
+                                className="h-full"
+                            />
+                        </div>
                     </div>
                     <div>
-                        <label className="text-[10px] text-gray-400">结束时间 (YYYY-MM)</label>
-                        <input
-                            className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
-                            value={educationDraft.endDate}
-                            onChange={(e) => updateEducationDraft('endDate', e.target.value)}
-                            placeholder="2026-06"
-                        />
+                        <label className="text-[10px] text-gray-400">结束时间</label>
+                        <div className="h-9 mt-0.5">
+                            <MonthPicker
+                                value={educationDraft.endDate}
+                                onChange={(val) => updateEducationDate('endDate', val)}
+                                placeholder="结束时间"
+                                className="h-full"
+                                allowPresent
+                                minDate={educationDraft.startDate}
+                            />
+                        </div>
                     </div>
                 </div>
                 <div>
@@ -2589,6 +2957,7 @@ const ResumeEditor: React.FC = () => {
     const renderEducationCard = (edu: EducationView) => {
         const isSelected = selectedEduIds.has(edu.id);
         const isEditing = editingEducationId === edu.id && !!educationDraft;
+        const dateText = buildExperienceDate(edu.startDate, edu.endDate, edu.isCurrent);
         if (isEditing) {
             return (
                 <div
@@ -2637,7 +3006,6 @@ const ResumeEditor: React.FC = () => {
                         <div className="flex justify-between items-start mb-1">
                             <h4 className="text-sm font-bold text-gray-900 dark:text-white">{edu.school}</h4>
                             <div className="flex items-center gap-1 shrink-0 ml-2">
-                                <span className="text-xs text-gray-500">{edu.startDate} - {edu.endDate}</span>
                                 <button
                                     className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
                                     onClick={(event) => {
@@ -2666,6 +3034,9 @@ const ResumeEditor: React.FC = () => {
                         <p className="text-xs text-gray-600 dark:text-gray-400">{edu.major}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-500">{edu.degree}</p>
                         {edu.gpa && <p className="text-xs text-gray-500 mt-1">GPA: {edu.gpa}</p>}
+                        <div className="flex items-center justify-between mt-2">
+                            <p className="text-[10px] text-gray-400 font-mono">{dateText}</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2717,7 +3088,7 @@ const ResumeEditor: React.FC = () => {
 
     const renderMatchBadge = (
         score: number,
-        tone: keyof typeof MATCH_BADGE_STYLES,
+        tone: keyof typeof MATCH_BADGE_STYLES = DEFAULT_MATCH_BADGE_TONE,
         variant: 'soft' | 'solid' = 'soft'
     ) => (
         <span
@@ -2727,7 +3098,16 @@ const ResumeEditor: React.FC = () => {
         </span>
     );
 
+    const renderStaleBadge = () => (
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+            待更新
+        </span>
+    );
+
     const resolveExperienceSuggestion = (item?: ResumeExperienceView) => {
+        if (item && staleExperienceIds.has(item.id)) {
+            return STALE_EXPERIENCE_TIP;
+        }
         if (item?.matchReason) {
             return item.matchReason;
         }
@@ -2759,12 +3139,12 @@ const ResumeEditor: React.FC = () => {
         </div>
     );
 
-    const renderCertificationEditor = () => {
+    const renderCertificationForm = () => {
         if (!certificationDraft) {
             return null;
         }
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-amber-200/60 dark:border-amber-800/40 p-3 space-y-2">
+            <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                     <div>
                         <label className="text-[10px] text-gray-400">证书名称</label>
@@ -2792,22 +3172,6 @@ const ResumeEditor: React.FC = () => {
                         placeholder="2026-07"
                     />
                 </div>
-                <div className="flex items-center justify-end gap-2">
-                    <button
-                        onClick={cancelCertificationEdit}
-                        className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded"
-                        disabled={isSavingCertification}
-                    >
-                        取消
-                    </button>
-                    <button
-                        onClick={handleSaveCertification}
-                        className="text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded disabled:opacity-60"
-                        disabled={isSavingCertification}
-                    >
-                        {isSavingCertification ? '保存中...' : '保存'}
-                    </button>
-                </div>
             </div>
         );
     };
@@ -2817,7 +3181,6 @@ const ResumeEditor: React.FC = () => {
             return (
                 <div className="space-y-3">
                     {renderCertificationHeader(title)}
-                    {renderCertificationEditor()}
                     <p className="text-xs text-gray-400">暂无证书</p>
                 </div>
             );
@@ -2826,10 +3189,36 @@ const ResumeEditor: React.FC = () => {
         return (
             <div className="space-y-3">
                 {renderCertificationHeader(title)}
-                {renderCertificationEditor()}
                 {items.map((cert) => {
                     const isSelected = selectedCertIds.has(cert.id);
                     const matchRate = resolveCertificationMatchRate(cert);
+                    const isEditing = editingCertificationId === cert.id && !!certificationDraft;
+                    if (isEditing) {
+                        return (
+                            <div
+                                key={cert.id}
+                                className="bg-white dark:bg-gray-800 rounded-lg border border-amber-200/60 dark:border-amber-800/40 p-3 space-y-2"
+                            >
+                                {renderCertificationForm()}
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        onClick={cancelCertificationEdit}
+                                        className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded"
+                                        disabled={isSavingCertification}
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={handleSaveCertification}
+                                        className="text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded disabled:opacity-60"
+                                        disabled={isSavingCertification}
+                                    >
+                                        {isSavingCertification ? '保存中...' : '保存'}
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    }
                     return (
                         <div
                             key={cert.id}
@@ -2855,10 +3244,6 @@ const ResumeEditor: React.FC = () => {
                                             {cert.name}
                                         </h4>
                                         <div className="flex items-center gap-1 shrink-0 ml-2">
-                                            <span className="text-xs text-gray-400 font-mono">{cert.date}</span>
-                                            {typeof matchRate === 'number' && matchRate > 0
-                                                ? renderMatchBadge(matchRate, 'amber')
-                                                : null}
                                             <button
                                                 className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
                                                 onClick={(event) => {
@@ -2887,6 +3272,12 @@ const ResumeEditor: React.FC = () => {
                                     {cert.issuer && (
                                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{cert.issuer}</p>
                                     )}
+                                    <div className="flex items-center justify-between mt-2">
+                                        <p className="text-[10px] text-gray-400 font-mono">{cert.date}</p>
+                                        {typeof matchRate === 'number' && matchRate > 0
+                                            ? renderMatchBadge(matchRate, DEFAULT_MATCH_BADGE_TONE)
+                                            : null}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2903,9 +3294,9 @@ const ResumeEditor: React.FC = () => {
                 <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</h4>
             </div>
             <button
-                onClick={beginCreateSkill}
-                title="添加技能"
-                aria-label="添加技能"
+                onClick={beginCreateSkillType}
+                title={ADD_SKILL_TYPE_LABEL}
+                aria-label={ADD_SKILL_TYPE_LABEL}
                 className="flex items-center justify-center text-gray-500 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50"
             >
                 <Plus className="w-3.5 h-3.5" />
@@ -2913,13 +3304,18 @@ const ResumeEditor: React.FC = () => {
         </div>
     );
 
-    const renderSkillEditor = () => {
+    const renderSkillEditor = (options?: {
+        hideCategory?: boolean;
+        lockCategory?: boolean;
+        className?: string;
+    }) => {
         if (!skillDraft) {
             return null;
         }
+        const { hideCategory = false, lockCategory = false, className = '' } = options ?? {};
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-rose-200/60 dark:border-rose-800/40 p-3 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+            <div className={`bg-white dark:bg-gray-800 rounded-lg border border-rose-200/60 dark:border-rose-800/40 p-3 space-y-2 ${className}`}>
+                <div className={`grid ${hideCategory ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
                     <div>
                         <label className="text-[10px] text-gray-400">技能名称</label>
                         <input
@@ -2928,14 +3324,17 @@ const ResumeEditor: React.FC = () => {
                             onChange={(e) => updateSkillDraft('name', e.target.value)}
                         />
                     </div>
-                    <div>
-                        <label className="text-[10px] text-gray-400">技能分类</label>
-                        <input
-                            className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-rose-400 focus:border-rose-400"
-                            value={skillDraft.category}
-                            onChange={(e) => updateSkillDraft('category', e.target.value)}
-                        />
-                    </div>
+                    {!hideCategory && (
+                        <div>
+                            <label className="text-[10px] text-gray-400">技能分类</label>
+                            <input
+                                className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-rose-400 focus:border-rose-400 disabled:bg-gray-100 dark:disabled:bg-gray-900/40"
+                                value={skillDraft.category}
+                                onChange={(e) => updateSkillDraft('category', e.target.value)}
+                                disabled={lockCategory}
+                            />
+                        </div>
+                    )}
                 </div>
                 <div className="flex items-center justify-end gap-2">
                     <button
@@ -2957,83 +3356,258 @@ const ResumeEditor: React.FC = () => {
         );
     };
 
+    const renderSkillTag = (skill: SkillItemView) => {
+        const isSelected = selectedSkillIds.has(skill.id);
+        const matchScore = skillMatchScores.get(skill.id);
+        return (
+            <label
+                key={skill.id}
+                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
+                    ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
+                    }`}
+            >
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleSkillSelection(skill.id)}
+                    className="hidden"
+                />
+                {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
+                <span>{skill.name}</span>
+                {typeof matchScore === 'number' && matchScore > 0
+                    ? renderMatchBadge(matchScore, DEFAULT_MATCH_BADGE_TONE)
+                    : null}
+                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        type="button"
+                        className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            requestDeleteSkill(skill.id);
+                        }}
+                        disabled={deletingSkillIds.has(skill.id)}
+                        title="删除技能"
+                        aria-label="删除技能"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                    <button
+                        type="button"
+                        className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            beginEditSkill(skill.id);
+                        }}
+                        title="编辑技能"
+                        aria-label="编辑技能"
+                    >
+                        <Edit3 className="w-3 h-3" />
+                    </button>
+                </span>
+            </label>
+        );
+    };
+
+    const renderSkillGroupCard = (
+        group: SkillGroupView,
+        options: { showEditor: boolean; hideCategory: boolean; lockCategory: boolean }
+    ) => (
+        <div
+            key={group.name}
+            className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden"
+        >
+            <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30 flex items-center justify-between">
+                <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{group.name}</h5>
+                <button
+                    type="button"
+                    onClick={() => beginCreateSkillInGroup(group.name)}
+                    title={ADD_SKILL_TAG_LABEL}
+                    aria-label={ADD_SKILL_TAG_LABEL}
+                    className="flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700 bg-white/80 hover:bg-white px-2 py-1 rounded-md border border-rose-100"
+                >
+                    <Plus className="w-3 h-3" />
+                    {ADD_SKILL_TAG_LABEL}
+                </button>
+            </div>
+            <div className="p-3 bg-white dark:bg-gray-800/50">
+                {options.showEditor
+                    ? (
+                        <div className="mb-2">
+                            {renderSkillEditor({
+                                hideCategory: options.hideCategory,
+                                lockCategory: options.lockCategory,
+                                className: 'border-rose-200/50 bg-rose-50/40 dark:bg-rose-900/10',
+                            })}
+                        </div>
+                    )
+                    : null}
+                <div className="flex flex-wrap gap-2">
+                    {group.skills.map((skill) => renderSkillTag(skill))}
+                </div>
+            </div>
+        </div>
+    );
+
     const renderSkillListSection = (title: string, groups: SkillGroupView[]) => {
+        const draftGroupName = (() => {
+            if (!skillDraft || !skillDraftContext) {
+                return null;
+            }
+            if (skillDraftContext.mode === 'type') {
+                return null;
+            }
+            if (skillDraftContext.mode === 'group') {
+                return skillDraftContext.groupName ?? null;
+            }
+            return resolveSkillCategoryName(skillDraft.category);
+        })();
+        const hasDraftGroup = draftGroupName
+            ? groups.some((group) => group.name === draftGroupName)
+            : false;
+        const shouldShowTypeEditor = !!skillDraft
+            && (skillDraftContext?.mode === 'type' || (draftGroupName && !hasDraftGroup));
         return (
             <div className="space-y-4">
                 {renderSkillHeader(title)}
-                {renderSkillEditor()}
+                {shouldShowTypeEditor
+                    ? renderSkillEditor({ className: 'bg-rose-50/40 dark:bg-rose-900/10' })
+                    : null}
                 {groups.length === 0 ? (
-                    <p className="text-xs text-gray-400">暂无技能</p>
+                    shouldShowTypeEditor ? null : <p className="text-xs text-gray-400">暂无技能</p>
                 ) : (
-                    groups.map((group) => (
-                        <div
-                            key={group.name}
-                            className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden"
-                        >
-                            <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30">
-                                <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{group.name}</h5>
-                            </div>
-                            <div className="p-3 bg-white dark:bg-gray-800/50">
-                                <div className="flex flex-wrap gap-2">
-                                    {group.skills.map((skill) => {
-                                        const isSelected = selectedSkillIds.has(skill.id);
-                                        const matchScore = skillMatchScores.get(skill.id);
-                                        return (
-                                            <label
-                                                key={skill.id}
-                                                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
-                                                    ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
-                                                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => toggleSkillSelection(skill.id)}
-                                                    className="hidden"
-                                                />
-                                                {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
-                                                <span>{skill.name}</span>
-                                                {typeof matchScore === 'number' && matchScore > 0
-                                                    ? renderMatchBadge(matchScore, 'rose')
-                                                    : null}
-                                                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        type="button"
-                                                        className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
-                                                        onClick={(event) => {
-                                                            event.preventDefault();
-                                                            event.stopPropagation();
-                                                            requestDeleteSkill(skill.id);
-                                                        }}
-                                                        disabled={deletingSkillIds.has(skill.id)}
-                                                        title="删除技能"
-                                                        aria-label="删除技能"
-                                                    >
-                                                        <Trash2 className="w-3 h-3" />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
-                                                        onClick={(event) => {
-                                                            event.preventDefault();
-                                                            event.stopPropagation();
-                                                            beginEditSkill(skill.id);
-                                                        }}
-                                                        title="编辑技能"
-                                                        aria-label="编辑技能"
-                                                    >
-                                                        <Edit3 className="w-3 h-3" />
-                                                    </button>
-                                                </span>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    ))
+                    groups.map((group) =>
+                        renderSkillGroupCard(group, {
+                            showEditor: draftGroupName === group.name,
+                            hideCategory: skillDraftContext?.mode === 'group',
+                            lockCategory: skillDraftContext?.mode === 'group',
+                        })
+                    )
                 )}
+            </div>
+        );
+    };
+
+    const renderJDCollapsed = () => (
+        <div className="space-y-2">
+            <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                    {renderMatchBadge(analysisResult?.matchPercentage ?? 0, DEFAULT_MATCH_BADGE_TONE)}
+                    <button onClick={handleAnalyze} disabled={isAnalyzing} className="p-1 text-gray-400 hover:text-emerald-600">
+                        <RefreshCw className={`w-3 h-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
+                <div className="flex flex-wrap gap-1 overflow-hidden">
+                    {jobKeywords.length > 0 ? (
+                        jobKeywords.map((keyword) => (
+                            <span
+                                key={keyword}
+                                className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
+                            >
+                                {keyword}
+                            </span>
+                        ))
+                    ) : (
+                        <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">
+                            暂无关键词
+                        </span>
+                    )}
+                </div>
+            </div>
+            {analysisResult?.summary ? (
+                <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                    {analysisResult.summary}
+                </p>
+            ) : null}
+        </div>
+    );
+
+    const renderJDExpanded = () => (
+        <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="relative group">
+                <textarea
+                    className="w-full h-24 p-3 text-xs bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
+                    placeholder="在此粘贴职位要求 (Job Description)..."
+                    value={jdText}
+                    onChange={(e) => setJdText(e.target.value)}
+                />
+                <button
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing}
+                    className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[10px] font-bold px-2 disabled:opacity-60"
+                >
+                    <Wand2 className="w-3 h-3" />
+                    {isAnalyzing ? '分析中...' : '开始分析'}
+                </button>
+            </div>
+            {analysisResult && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                        {renderMatchBadge(analysisResult.matchPercentage ?? 0, DEFAULT_MATCH_BADGE_TONE)}
+                        <span className="text-[10px] text-emerald-600/80">
+                            Missing: {(analysisResult.missingKeywords || []).join(', ')}
+                        </span>
+                    </div>
+                    <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">{analysisResult.summary}</p>
+                </div>
+            )}
+        </div>
+    );
+
+    const renderJDPanel = () => (
+        <div
+            className={`${JD_PANEL_STICKY_CLASS} border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${JD_PANEL_BOTTOM_SPACING_CLASS} ${isJDCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}
+        >
+            <div className="px-4 flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" />
+                    职位分析 (JD Analysis)
+                </h3>
+                <button
+                    onClick={() => setIsJDCollapsed(!isJDCollapsed)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                    {isJDCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                </button>
+            </div>
+            <div className="px-4">
+                {isJDCollapsed ? renderJDCollapsed() : renderJDExpanded()}
+            </div>
+        </div>
+    );
+
+    const renderEditingSuggestionNav = () => {
+        if (!editingItem) {
+            return null;
+        }
+        return (
+            <div className={EDITING_SUGGESTION_NAV_CLASS}>
+                <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                    <div className="shrink-0">
+                        {typeof editingItem.matchScore === 'number'
+                            ? renderMatchBadge(editingItem.matchScore, DEFAULT_MATCH_BADGE_TONE, 'solid')
+                            : staleExperienceIds.has(editingItem.id)
+                                ? renderStaleBadge()
+                                : (
+                                    <span className="text-[10px] text-gray-400">
+                                        匹配度 --
+                                    </span>
+                                )}
+                    </div>
+                    <div className="flex-1 text-[10px] text-gray-500 leading-relaxed">
+                        {resolveExperienceSuggestion(editingItem)}
+                    </div>
+                    <button
+                        onClick={handlePolishWithJD}
+                        disabled={isPolishing || !jdText.trim()}
+                        className="shrink-0 flex items-center justify-center gap-1.5 text-[10px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-60"
+                    >
+                        <Wand2 className="w-3.5 h-3.5" />
+                        {isPolishing ? '润色中...' : '基于 JD 润色'}
+                    </button>
+                </div>
             </div>
         );
     };
@@ -3100,107 +3674,24 @@ const ResumeEditor: React.FC = () => {
             <div className="flex flex-1 overflow-hidden">
                 {/* Left Sidebar: Analysis & Modules */}
                 <aside className={`${SIDEBAR_WIDTH_CLASS} flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex`}>
-
-                    {/* Compact JD Panel */}
-                    <div className={`border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${JD_PANEL_BOTTOM_SPACING_CLASS} ${isJDCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}>
-                        <div className="px-4 flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                <Target className="w-4 h-4 text-primary" />
-                                职位分析 (JD Analysis)
-                            </h3>
+                    {renderJDPanel()}
+                    {/* Tab Navigation (Swapped order) */}
+                    <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
+                        <div className="flex">
                             <button
-                                onClick={() => setIsJDCollapsed(!isJDCollapsed)}
-                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                                onClick={() => setSidebarTab('experience')}
                             >
-                                {isJDCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                                <Database className="w-4 h-4" /> 经历库
+                            </button>
+                            <button
+                                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                                onClick={() => { setSidebarTab('profile'); cancelEditingExperience(); }}
+                            >
+                                <User className="w-4 h-4" /> 个人档案
                             </button>
                         </div>
-
-                        <div className="px-4">
-                            {isJDCollapsed ? (
-                                // Collapsed State
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-1.5 bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800/50 rounded-full pl-3 pr-2 py-1 shadow-sm">
-                                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                                匹配度: {analysisResult?.matchPercentage || 0}%
-                                            </span>
-                                            <button onClick={handleAnalyze} disabled={isAnalyzing} className="p-1 text-gray-400 hover:text-emerald-600">
-                                                <RefreshCw className={`w-3 h-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                            </button>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1 overflow-hidden">
-                                            {jobKeywords.length > 0 ? (
-                                                jobKeywords.map((keyword) => (
-                                                    <span
-                                                        key={keyword}
-                                                        className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
-                                                    >
-                                                        {keyword}
-                                                    </span>
-                                                ))
-                                            ) : (
-                                                <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">
-                                                    暂无关键词
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {analysisResult?.summary ? (
-                                        <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
-                                            {analysisResult.summary}
-                                        </p>
-                                    ) : null}
-                                </div>
-                            ) : (
-                                // Expanded State
-                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                                    <div className="relative group">
-                                        <textarea
-                                            className="w-full h-24 p-3 text-xs bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
-                                            placeholder="在此粘贴职位要求 (Job Description)..."
-                                            value={jdText}
-                                            onChange={(e) => setJdText(e.target.value)}
-                                        />
-                                        <button
-                                            onClick={handleAnalyze}
-                                            disabled={isAnalyzing}
-                                            className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[10px] font-bold px-2 disabled:opacity-60"
-                                        >
-                                            <Wand2 className="w-3 h-3" />
-                                            {isAnalyzing ? '分析中...' : '开始分析'}
-                                        </button>
-                                    </div>
-                                    {analysisResult && (
-                                        <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-lg p-3">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">匹配度: {analysisResult.matchPercentage}%</span>
-                                                <span className="text-[10px] text-emerald-600/80">
-                                                    Missing: {(analysisResult.missingKeywords || []).join(', ')}
-                                                </span>
-                                            </div>
-                                            <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">{analysisResult.summary}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Tab Navigation (Swapped order) */}
-                    <div className="flex border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
-                        <button
-                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                            onClick={() => setSidebarTab('experience')}
-                        >
-                            <Database className="w-4 h-4" /> 经历库
-                        </button>
-                        <button
-                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                            onClick={() => { setSidebarTab('profile'); cancelEditingExperience(); }}
-                        >
-                            <User className="w-4 h-4" /> 个人档案
-                        </button>
+                        {renderEditingSuggestionNav()}
                     </div>
 
                     {/* Sidebar Content */}
@@ -3346,44 +3837,39 @@ const ResumeEditor: React.FC = () => {
                                     >
                                         <ArrowLeft className="w-3 h-3" /> 返回列表
                                     </button>
-                                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2 space-y-2">
-                                        <div className="flex items-center justify-between gap-2">
+                                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2">
+                                        <div className="grid grid-cols-2 gap-2">
                                             <input
-                                                className="flex-1 text-sm font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                className="text-sm font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:ring-1 focus:ring-primary focus:border-primary"
                                                 value={editingDraft?.company || ''}
                                                 onChange={(e) => updateEditingMeta('company', e.target.value)}
                                                 placeholder="公司 / 项目名称"
                                             />
+                                            <div className="h-9">
+                                                <MonthPicker
+                                                    value={editingDraft?.startDate || ''}
+                                                    onChange={(val) => updateEditingDate('startDate', val)}
+                                                    placeholder="开始时间"
+                                                    className="h-full"
+                                                />
+                                            </div>
+                                            <input
+                                                className="text-xs text-gray-500 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:ring-1 focus:ring-primary focus:border-primary"
+                                                value={editingDraft?.title || ''}
+                                                onChange={(e) => updateEditingMeta('title', e.target.value)}
+                                                placeholder="职位 / 角色"
+                                            />
+                                            <div className="h-9">
+                                                <MonthPicker
+                                                    value={editingDraft?.endDate || ''}
+                                                    onChange={(val) => updateEditingDate('endDate', val)}
+                                                    placeholder="结束时间"
+                                                    allowPresent
+                                                    className="h-full"
+                                                    minDate={editingDraft?.startDate || ''}
+                                                />
+                                            </div>
                                         </div>
-                                        <input
-                                            className="w-full text-xs text-gray-500 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:ring-1 focus:ring-primary focus:border-primary"
-                                            value={editingDraft?.title || ''}
-                                            onChange={(e) => updateEditingMeta('title', e.target.value)}
-                                            placeholder="职位 / 角色"
-                                        />
-                                    </div>
-
-                                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3">
-                                        <div className="shrink-0">
-                                            {typeof editingItem?.matchScore === 'number'
-                                                ? renderMatchBadge(editingItem.matchScore, 'emerald', 'solid')
-                                                : (
-                                                    <span className="text-[10px] text-gray-400">
-                                                        匹配度 --
-                                                    </span>
-                                                )}
-                                        </div>
-                                        <div className="flex-1 text-[10px] text-gray-500 leading-relaxed">
-                                            {resolveExperienceSuggestion(editingItem)}
-                                        </div>
-                                        <button
-                                            onClick={handlePolishWithJD}
-                                            disabled={isPolishing || !jdText.trim()}
-                                            className="shrink-0 flex items-center justify-center gap-1.5 text-[10px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-60"
-                                        >
-                                            <Wand2 className="w-3.5 h-3.5" />
-                                            {isPolishing ? '润色中...' : '基于 JD 润色'}
-                                        </button>
                                     </div>
 
                                     {['s', 't', 'a', 'r'].map((key) => {
@@ -3570,16 +4056,23 @@ const ResumeEditor: React.FC = () => {
                                             <div className={listSpacingClass}>
                                                 {educations
                                                     .filter(edu => selectedEduIds.has(edu.id))
-                                                    .map((edu) => (
-                                                        <div key={edu.id} className="mb-2">
-                                                            <div className="flex justify-between items-baseline mb-0.5">
-                                                                <h3 className="text-sm font-bold text-gray-900">{edu.school}</h3>
-                                                                <span className="text-xs font-medium text-gray-600">{edu.startDate} - {edu.endDate}</span>
+                                                    .map((edu) => {
+                                                        const dateText = buildExperienceDate(
+                                                            edu.startDate,
+                                                            edu.endDate,
+                                                            edu.isCurrent
+                                                        );
+                                                        return (
+                                                            <div key={edu.id} className="mb-2">
+                                                                <div className="flex justify-between items-baseline mb-0.5">
+                                                                    <h3 className="text-sm font-bold text-gray-900">{edu.school}</h3>
+                                                                    <span className="text-xs font-medium text-gray-600">{dateText}</span>
+                                                                </div>
+                                                                <p className="text-xs text-gray-800">{edu.major}, {edu.degree}</p>
+                                                                {edu.gpa && <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>}
                                                             </div>
-                                                            <p className="text-xs text-gray-800">{edu.major}, {edu.degree}</p>
-                                                            {edu.gpa && <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>}
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                             </div>
                                         </div>
                                     </div>
@@ -3670,6 +4163,7 @@ const ResumeEditor: React.FC = () => {
                     </div>
                 </main>
             </div>
+            <ToastContainer toasts={toasts} onClose={closeToast} />
             <ConfirmDialog
                 isOpen={!!confirmDialog}
                 title={confirmDialog?.title || ''}

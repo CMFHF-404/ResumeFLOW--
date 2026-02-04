@@ -2,13 +2,37 @@ import type { JDAnalysisResult } from '../services/aiService';
 
 const JD_ANALYSIS_CACHE_PREFIX = 'resumeFlow.jdAnalysisCache';
 
+export type JDAnalysisItemSignatures = {
+    experiences: Record<string, string>;
+    certifications: Record<string, string>;
+    skills: Record<string, string>;
+};
+
 export type JDAnalysisCachePayload = {
     jdText: string;
     experienceSignature: string;
     result: JDAnalysisResult;
+    itemSignatures?: JDAnalysisItemSignatures;
 };
 
 const buildCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
+
+const isStringRecord = (value: unknown): value is Record<string, string> => {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    return Object.values(value as Record<string, unknown>).every((entry) => typeof entry === 'string');
+};
+
+const isJDAnalysisItemSignatures = (value: unknown): value is JDAnalysisItemSignatures => {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+    const record = value as JDAnalysisItemSignatures;
+    return isStringRecord(record.experiences)
+        && isStringRecord(record.certifications)
+        && isStringRecord(record.skills);
+};
 
 const isJDAnalysisCachePayload = (value: unknown): value is JDAnalysisCachePayload => {
     if (!value || typeof value !== 'object') {
@@ -17,7 +41,8 @@ const isJDAnalysisCachePayload = (value: unknown): value is JDAnalysisCachePaylo
     const record = value as JDAnalysisCachePayload;
     return typeof record.jdText === 'string'
         && typeof record.experienceSignature === 'string'
-        && Boolean(record.result);
+        && Boolean(record.result)
+        && (!record.itemSignatures || isJDAnalysisItemSignatures(record.itemSignatures));
 };
 
 export const loadJDAnalysisCache = (resumeId: string): JDAnalysisCachePayload | null => {
