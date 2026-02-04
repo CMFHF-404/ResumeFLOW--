@@ -1,37 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elephant Resume</title>
+    <title>ResumeFLOW</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', 'Noto Sans SC', sans-serif;
         }
+
         /* Custom scrollbar for webkit */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
         }
+
         ::-webkit-scrollbar-track {
             background: transparent;
         }
+
         ::-webkit-scrollbar-thumb {
             background: #D1D5DB;
             border-radius: 4px;
         }
+
         ::-webkit-scrollbar-thumb:hover {
             background: #9CA3AF;
         }
+
         .dark ::-webkit-scrollbar-thumb {
             background: #4B5563;
         }
+
         .dark ::-webkit-scrollbar-thumb:hover {
             background: #6B7280;
         }
-        
+
         .a4-preview {
             width: 210mm;
             min-height: 297mm;
@@ -40,7 +50,7 @@
             margin: 0 auto;
             position: relative;
         }
-        
+
         @media (max-width: 850px) {
             .a4-preview {
                 width: 100%;
@@ -57,14 +67,17 @@
             outline: none;
             transition: all 0.2s;
         }
+
         .fluid-input:focus {
             border-bottom-color: #0F766E;
             box-shadow: none;
         }
+
         .dark .fluid-input {
             border-bottom-color: #374151;
             color: #F3F4F6;
         }
+
         .dark .fluid-input:focus {
             border-bottom-color: #2DD4BF;
         }
@@ -87,10 +100,12 @@
             z-index: 50;
             pointer-events: none;
         }
+
         .group:hover .nav-tooltip {
             opacity: 1;
             visibility: visible;
         }
+
         .nav-tooltip::before {
             content: '';
             position: absolute;
@@ -102,18 +117,20 @@
             border-style: solid;
             border-color: transparent #111827 transparent transparent;
         }
-        
+
         /* Toast 动画 */
         @keyframes slideIn {
             from {
                 transform: translateX(100%);
                 opacity: 0;
             }
+
             to {
                 transform: translateX(0);
                 opacity: 1;
             }
         }
+
         .animate-slideIn {
             animation: slideIn 0.3s ease-out;
         }
@@ -124,37 +141,45 @@
             will-change: clip-path, transform, opacity;
             backface-visibility: hidden;
         }
+
         @keyframes cardEdgeExpand {
             from {
                 clip-path: inset(14% 0 14% 0);
                 transform: translateY(8px);
                 opacity: 0.65;
             }
+
             to {
                 clip-path: inset(0 0 0 0);
                 transform: translateY(0);
                 opacity: 1;
             }
         }
+
         @keyframes cardEdgeCollapse {
             from {
                 clip-path: inset(0 0 0 0);
                 transform: translateY(0);
                 opacity: 1;
             }
+
             to {
                 clip-path: inset(14% 0 14% 0);
                 transform: translateY(-8px);
                 opacity: 0.3;
             }
         }
+
         .card-edge-expand {
             animation: cardEdgeExpand 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
         }
+
         .card-edge-collapse {
             animation: cardEdgeCollapse 300ms cubic-bezier(0.55, 0.06, 0.68, 0.19);
         }
+
         @media (prefers-reduced-motion: reduce) {
+
             .card-edge-expand,
             .card-edge-collapse {
                 animation: none;
@@ -184,7 +209,7 @@
             },
         };
     </script>
-<script type="importmap">
+    <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
@@ -195,10 +220,12 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+    <link rel="stylesheet" href="/index.css">
 </head>
+
 <body class="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 h-screen">
     <div id="root"></div>
-<script type="module" src="/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>

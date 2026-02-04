@@ -1,33 +1,30 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
     Moon, Sun, Download, LayoutTemplate,
     Target, Wand2, RefreshCw,
     Edit3, Eye, EyeOff, GripVertical, CheckCircle2,
     ChevronDown, ChevronUp, ArrowLeft, Database, User, Award, Wrench, Briefcase, FolderKanban, Plus, Trash2
 } from 'lucide-react';
-import { aiService } from '../services/aiService';
-import { experienceService, ExperienceDetail, ExperienceListItem, ExperienceVersion } from '../services/experienceService';
+import { type ExperienceListItem } from '../services/experienceService';
 import { profileService, Profile } from '../services/profileService';
-import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
-import { resumeService, Resume, ResumeDetail, ResumeExperienceItem } from '../services/resumeService';
-import { skillsService, UserSkill } from '../services/skillsService';
-import { useDebounce } from '../components/hooks/useDebounce';
+import { type Certification as CertificationRecord } from '../services/certificationsService';
+import { type ResumeDetail, type ResumeExperienceItem } from '../services/resumeService';
+import { type UserSkill } from '../services/skillsService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import MonthPicker from '../components/MonthPicker';
 import { ToastContainer, useToast } from '../components/Toast';
+import { useExperienceActions } from '../hooks/useExperienceActions';
 import { useJDAnalysis } from '../hooks/useJDAnalysis';
-import { DEFAULT_RESUME_TITLE, MATCH_BADGE_STYLES } from '../constants/resumeConstants';
+import { useResumeData } from '../hooks/useResumeData';
+import { MATCH_BADGE_STYLES } from '../constants/resumeConstants';
 import { buildExperienceDate, formatYearMonth, normalizeDateInput } from '../utils/dateUtils';
 import {
     buildStarFields,
     normalizeStarValue
 } from '../utils/resumeHelpers';
 import type {
-    ActiveResumeContext,
-    CachedResumeResolveResult,
     CertificationEditDraft,
     CertificationView,
-    ConfirmDialogState,
     DatePayloadFallback,
     EducationEditDraft,
     EducationView,
@@ -36,15 +33,12 @@ import type {
     ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeExperienceView,
-    SkillDraftContext,
-    SkillEditDraft,
     SkillGroupView,
     SkillItemView,
     StarFieldKey,
     StarFields
 } from '../types/resume';
 import { parseYearMonthValue } from './experienceUtils';
-import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 
 const DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY = {
@@ -190,13 +184,6 @@ const buildEducationView = (item: ExperienceListItem): EducationView => {
         courses: star.courses || undefined,
     };
 };
-
-const createDraftId = (prefix: string) => {
-    const random = Math.random().toString(16).slice(2, 6);
-    return `${prefix}-${Date.now()}-${random}`;
-};
-
-const isDraftId = (id: string, prefix: string) => id.startsWith(prefix);
 
 const buildDraftEducationView = (draftId: string, draft: EducationEditDraft): EducationView => ({
     id: draftId,
@@ -546,18 +533,6 @@ const resolveScaleForHeight = (contentHeight: number, a4Height: number) => {
 
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
-    const [resumeId, setResumeId] = useState<string | null>(null);
-    const [resumeDetail, setResumeDetail] = useState<ResumeDetail | null>(null);
-    const [resumeExperienceMap, setResumeExperienceMap] = useState<Map<string, ResumeExperienceItem>>(
-        new Map()
-    );
-    const [experienceSourceMap, setExperienceSourceMap] = useState<Map<string, ExperienceListItem>>(
-        new Map()
-    );
-    const [isLoadingExperiences, setIsLoadingExperiences] = useState(true);
-    const [isLoadingResume, setIsLoadingResume] = useState(true);
-    const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
-    const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
     const [resumeScale, setResumeScale] = useState(1);
 
     // 1. Profile State
@@ -583,13 +558,6 @@ const ResumeEditor: React.FC = () => {
         new Map()
     );
     const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([]);
-    const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
-    const [skillDraft, setSkillDraft] = useState<SkillEditDraft | null>(null);
-    const [skillDraftContext, setSkillDraftContext] = useState<SkillDraftContext | null>(null);
-    const [isSavingSkill, setIsSavingSkill] = useState(false);
-    const [deletingSkillIds, setDeletingSkillIds] = useState<Set<string>>(new Set());
-    const [deletingSkillCategories, setDeletingSkillCategories] = useState<Set<string>>(new Set());
-    const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
 
     // 教育背景/证书/技能选择状态
     const [selectedEduIds, setSelectedEduIds] = useState<Set<string>>(new Set());
@@ -599,29 +567,76 @@ const ResumeEditor: React.FC = () => {
     // 2. Experience State
     const [experienceItems, setExperienceItems] = useState<ResumeExperienceView[]>([]);
     const [selectedExpIds, setSelectedExpIds] = useState<Set<string>>(new Set());
-    const [editingExpId, setEditingExpId] = useState<string | null>(null);
-    const [editingDraft, setEditingDraft] = useState<ExperienceEditDraft | null>(null);
-    const [syncToMaster, setSyncToMaster] = useState(true);
-    const [isSavingExperience, setIsSavingExperience] = useState(false);
-    const [isAddingExperience, setIsAddingExperience] = useState(false);
-    const [deletingExperienceIds, setDeletingExperienceIds] = useState<Set<string>>(
-        new Set()
-    );
-    const [isPolishing, setIsPolishing] = useState(false);
-    const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
-    const [educationDraft, setEducationDraft] = useState<EducationEditDraft | null>(null);
-    const [isSavingEducation, setIsSavingEducation] = useState(false);
-    const [deletingEducationIds, setDeletingEducationIds] = useState<Set<string>>(
-        new Set()
-    );
-    const [editingCertificationId, setEditingCertificationId] = useState<string | null>(null);
-    const [certificationDraft, setCertificationDraft] = useState<CertificationEditDraft | null>(null);
-    const [isSavingCertification, setIsSavingCertification] = useState(false);
-    const [deletingCertificationIds, setDeletingCertificationIds] = useState<Set<string>>(
-        new Set()
-    );
+    // 3. UI State
+    const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
+    const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
+    const { toasts, success: showToastSuccess, error: showToastError, closeToast } = useToast();
 
-    // 3. JD Analysis State
+    // Drag & Drop State
+    const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+
+    // Section Order State (for draggable resume sections)
+    const [sectionOrder, setSectionOrder] = useState<string[]>(
+        () => [...DEFAULT_SECTION_ORDER]
+    );
+    const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+    const previewRef = useRef<HTMLDivElement | null>(null);
+    const a4HeightRef = useRef<number | null>(null);
+    const resumeConfigSnapshot = useMemo(
+        () =>
+            buildResumeConfigSnapshot(
+                profile,
+                profileSyncMode,
+                selectedExpIds,
+                selectedEduIds,
+                selectedCertIds,
+                selectedSkillIds,
+                sectionOrder,
+                density
+            ),
+        [density, profile, profileSyncMode, sectionOrder, selectedCertIds, selectedEduIds, selectedExpIds, selectedSkillIds]
+    );
+    const {
+        resumeId,
+        resumeExperienceMap,
+        experienceSourceMap,
+        setResumeExperienceMap,
+        setExperienceSourceMap,
+        isLoadingExperiences,
+        saveState,
+        lastSavedAt,
+        applyResumeDetail,
+    } = useResumeData({
+        configSnapshot: resumeConfigSnapshot,
+        autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
+        setProfile,
+        setProfileSyncMode,
+        setProfileSocialLinks,
+        setSectionOrder,
+        setDensity,
+        setExperienceItems,
+        setSelectedExpIds,
+        setEducations,
+        setEducationSourceMap,
+        setSelectedEduIds,
+        setCertifications,
+        setCertificationSourceMap,
+        setSelectedCertIds,
+        setSkillGroups,
+        setSelectedSkillIds,
+        buildResumeExperienceMap,
+        buildSourceMap,
+        buildResumeExperienceView,
+        buildEducationView,
+        buildCertificationView,
+        buildSkillGroups,
+        resolveSelectionSet,
+        normalizeSectionOrder,
+        resolveProfileSyncMode,
+        resolveProfileSnapshot,
+        sortByCategory,
+        compareByDateDesc,
+    });
     const {
         jdText,
         setJdText,
@@ -643,343 +658,184 @@ const ResumeEditor: React.FC = () => {
         skillGroups,
         isLoadingExperiences,
     });
-
-    // 4. UI State
-    const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
-    const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
-    const { toasts, success: showToastSuccess, error: showToastError, closeToast } = useToast();
-
-    // Drag & Drop State
-    const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-
-    // Section Order State (for draggable resume sections)
-    const [sectionOrder, setSectionOrder] = useState<string[]>(
-        () => [...DEFAULT_SECTION_ORDER]
-    );
-    const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
-    const previewRef = useRef<HTMLDivElement | null>(null);
-    const a4HeightRef = useRef<number | null>(null);
-    const lastSavedConfigRef = useRef<string | null>(null);
-    const hasHydratedConfigRef = useRef(false);
+    const {
+        confirmDialog,
+        handleConfirmDelete,
+        handleCancelDelete,
+        experience: {
+            editingExpId,
+            editingDraft,
+            syncToMaster,
+            setSyncToMaster,
+            isSavingExperience,
+            isAddingExperience,
+            isPolishing,
+            deletingExperienceIds,
+            handleAddExperience,
+            startEditingExperience,
+            cancelEditingExperience,
+            updateEditingStar,
+            updateEditingMeta,
+            updateEditingDate,
+            handleSaveExperience,
+            handlePolishWithJD,
+            requestDeleteExperience,
+        },
+        education: {
+            editingEducationId,
+            educationDraft,
+            isSavingEducation,
+            deletingEducationIds,
+            beginCreateEducation,
+            beginEditEducation,
+            cancelEducationEdit,
+            updateEducationDraft,
+            updateEducationDate,
+            handleSaveEducation,
+            requestDeleteEducation,
+        },
+        certification: {
+            editingCertificationId,
+            certificationDraft,
+            isSavingCertification,
+            deletingCertificationIds,
+            beginCreateCertification,
+            beginEditCertification,
+            cancelCertificationEdit,
+            updateCertificationDraft,
+            handleSaveCertification,
+            requestDeleteCertification,
+        },
+        skill: {
+            editingSkillId,
+            skillDraft,
+            skillDraftContext,
+            isSavingSkill,
+            deletingSkillIds,
+            deletingSkillCategories,
+            renamingCategoryTarget,
+            renamingCategoryDraft,
+            setRenamingCategoryTarget,
+            setRenamingCategoryDraft,
+            beginCreateSkillType,
+            beginCreateSkillInGroup,
+            beginEditSkill,
+            cancelSkillEdit,
+            updateSkillDraft,
+            handleSaveSkill,
+            handleRenameCategory,
+            requestDeleteSkill,
+            requestDeleteSkillCategory,
+        },
+        selection: {
+            toggleExperienceSelection,
+            toggleEducationSelection,
+            toggleCertificationSelection,
+            toggleSkillSelection,
+        },
+    } = useExperienceActions({
+        resumeId,
+        jdText,
+        applyResumeDetail,
+        experience: {
+            items: experienceItems,
+            setItems: setExperienceItems,
+            selectedIds: selectedExpIds,
+            setSelectedIds: setSelectedExpIds,
+            resumeMap: resumeExperienceMap,
+            setResumeMap: setResumeExperienceMap,
+            sourceMap: experienceSourceMap,
+            setSourceMap: setExperienceSourceMap,
+        },
+        education: {
+            items: educations,
+            setItems: setEducations,
+            selectedIds: selectedEduIds,
+            setSelectedIds: setSelectedEduIds,
+            sourceMap: educationSourceMap,
+            setSourceMap: setEducationSourceMap,
+        },
+        certification: {
+            items: certifications,
+            setItems: setCertifications,
+            selectedIds: selectedCertIds,
+            setSelectedIds: setSelectedCertIds,
+            sourceMap: certificationSourceMap,
+            setSourceMap: setCertificationSourceMap,
+        },
+        skill: {
+            groups: skillGroups,
+            setGroups: setSkillGroups,
+            selectedIds: selectedSkillIds,
+            setSelectedIds: setSelectedSkillIds,
+        },
+        jdMatch: {
+            setCertificationMatchScores,
+            setSkillMatchScores,
+        },
+        helpers: {
+            buildResumeExperienceView,
+            buildDraftExperienceView,
+            buildExperienceEditDraft,
+            buildResumeExperienceMap,
+            buildExperienceDate,
+            buildStarFields,
+            mergeStarFields,
+            resolveExperienceDatePayload,
+            resolveEducationDatePayload,
+            resolveSafeDateRange,
+            isPresentLabel,
+            sortByCategory,
+            compareByDateDesc,
+            buildEducationDraft,
+            buildDraftEducationView,
+            buildEducationView,
+            buildEducationVersionPayload,
+            buildCertificationDraft,
+            buildDraftCertificationView,
+            buildCertificationView,
+            buildCertificationPayload,
+            buildSkillGroups,
+        },
+        defaults: {
+            experienceTitleByCategory: DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY,
+            experienceCompanyByCategory: DEFAULT_EXPERIENCE_COMPANY_BY_CATEGORY,
+            skillName: DEFAULT_SKILL_NAME,
+            skillCategory: DEFAULT_SKILL_CATEGORY,
+        },
+        confirmCopy: {
+            experience: {
+                title: CONFIRM_DELETE_EXPERIENCE_TITLE,
+                description: CONFIRM_DELETE_EXPERIENCE_TEXT,
+            },
+            education: {
+                title: CONFIRM_DELETE_EDUCATION_TITLE,
+                description: CONFIRM_DELETE_EDUCATION_TEXT,
+            },
+            certification: {
+                title: CONFIRM_DELETE_CERTIFICATION_TITLE,
+                description: CONFIRM_DELETE_CERTIFICATION_TEXT,
+            },
+            skill: {
+                title: CONFIRM_DELETE_SKILL_TITLE,
+                description: CONFIRM_DELETE_SKILL_TEXT,
+            },
+            skillCategory: {
+                title: CONFIRM_DELETE_SKILL_CATEGORY_TITLE,
+                description: CONFIRM_DELETE_SKILL_CATEGORY_TEXT,
+            },
+        },
+        draftPrefixes: {
+            experience: EXPERIENCE_DRAFT_PREFIX,
+            education: EDUCATION_DRAFT_PREFIX,
+            certification: CERTIFICATION_DRAFT_PREFIX,
+        },
+    });
     const jobKeywords = useMemo(
         () => normalizeJobKeywords(analysisResult?.jobKeywords),
         [analysisResult]
     );
     const isProfileReadOnly = !isEditingProfile || isSavingProfile;
-    const ensureActiveResumeId = useCallback(async (resumes: Resume[]) => {
-        if (resumes.length > 0) {
-            setActiveResumeId(resumes[0].id);
-            return resumes[0].id;
-        }
-        const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
-        setActiveResumeId(created.id);
-        return created.id;
-    }, []);
-
-    const resolveCachedResume = useCallback(
-        async (cachedId: string): Promise<CachedResumeResolveResult> => {
-            try {
-                const detail = await resumeService.get(cachedId);
-                return { status: 'ok', detail };
-            } catch (error) {
-                const status =
-                    typeof error === 'object' && error
-                        ? (error as { response?: { status?: number } }).response?.status
-                        : undefined;
-                if (status === 404) {
-                    return { status: 'missing' };
-                }
-                return { status: 'error' };
-            }
-        },
-        []
-    );
-
-    const resolveActiveResumeContext = useCallback(async (): Promise<ActiveResumeContext> => {
-        const cachedId = getActiveResumeId();
-        if (cachedId) {
-            const cached = await resolveCachedResume(cachedId);
-            if (cached.status === 'ok') {
-                return { id: cachedId, detail: cached.detail };
-            }
-            if (cached.status === 'missing') {
-                clearActiveResumeId();
-                const resumes = await resumeService.list({ force: true });
-                const id = await ensureActiveResumeId(resumes);
-                return { id, detail: null };
-            }
-            return { id: cachedId, detail: null };
-        }
-        const resumes = await resumeService.list();
-        const id = await ensureActiveResumeId(resumes);
-        return { id, detail: null };
-    }, [ensureActiveResumeId, resolveCachedResume]);
-
-    const fetchExperiences = useCallback(async () => {
-        const [workItems, projectItems] = await Promise.all([
-            experienceService.list('work'),
-            experienceService.list('project'),
-        ]);
-        return [...workItems, ...projectItems];
-    }, []);
-
-    const fetchEducationExperiences = useCallback(async () => {
-        return experienceService.list('education');
-    }, []);
-
-    const fetchCertifications = useCallback(async () => {
-        return certificationsService.list();
-    }, []);
-
-    const fetchSkills = useCallback(async () => {
-        return skillsService.list();
-    }, []);
-
-    const applyResumeDetail = useCallback((detail: ResumeDetail | null) => {
-        setResumeDetail(detail);
-        setResumeExperienceMap(buildResumeExperienceMap(detail));
-    }, []);
-
-    const resolveA4Height = useCallback(() => {
-        if (!a4HeightRef.current) {
-            a4HeightRef.current = getA4PixelHeight();
-        }
-        return a4HeightRef.current;
-    }, []);
-
-    const measurePreviewHeight = useCallback(() => {
-        const preview = previewRef.current;
-        if (!preview) {
-            return null;
-        }
-        return preview.scrollHeight;
-    }, []);
-
-    const adjustToSinglePage = useCallback(() => {
-        const a4Height = resolveA4Height();
-        const currentHeight = measurePreviewHeight();
-        if (!a4Height || !currentHeight) {
-            return;
-        }
-        const delta = currentHeight - a4Height;
-        if (delta > SMART_PAGE_HEIGHT_TOLERANCE) {
-            setDensity('compact');
-        } else if (delta < -SMART_PAGE_HEIGHT_TOLERANCE) {
-            setDensity('spacious');
-        }
-        setResumeScale(1);
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const nextHeight = measurePreviewHeight();
-                if (!nextHeight) {
-                    return;
-                }
-                const nextScale = resolveScaleForHeight(nextHeight, a4Height);
-                setResumeScale(Number(nextScale.toFixed(3)));
-                const finalHeight = nextHeight * nextScale;
-                if (finalHeight > a4Height + SMART_PAGE_HEIGHT_TOLERANCE) {
-                    showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
-                } else {
-                    showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
-                }
-            });
-        });
-    }, [measurePreviewHeight, resolveA4Height, showToastError, showToastSuccess]);
-
-    const resumeConfigSnapshot = useMemo(
-        () =>
-            buildResumeConfigSnapshot(
-                profile,
-                profileSyncMode,
-                selectedExpIds,
-                selectedEduIds,
-                selectedCertIds,
-                selectedSkillIds,
-                sectionOrder,
-                density
-            ),
-        [density, profile, profileSyncMode, sectionOrder, selectedCertIds, selectedEduIds, selectedExpIds, selectedSkillIds]
-    );
-
-    const debouncedConfig = useDebounce(resumeConfigSnapshot, AUTO_SAVE_DELAY_MS);
-    const debouncedConfigSignature = useMemo(
-        () => JSON.stringify(debouncedConfig),
-        [debouncedConfig]
-    );
-    const configSignature = useMemo(
-        () => JSON.stringify(resumeConfigSnapshot),
-        [resumeConfigSnapshot]
-    );
-
-    const applyResumeConfig = useCallback(
-        (config: ResumeEditorConfig, profileData?: Profile | null) => {
-            const syncMode = resolveProfileSyncMode(config, profileData || undefined);
-            setProfileSyncMode(syncMode);
-            if (profileData) {
-                setProfileSocialLinks({ ...(profileData.social_links || {}) });
-            }
-            setProfile(resolveProfileSnapshot(config, profileData || undefined));
-            setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
-            if (config.layout?.density) {
-                setDensity(config.layout.density);
-            }
-        },
-        []
-    );
-
-    const applyExperienceState = useCallback(
-        (detail: ResumeDetail | null, experiences: ExperienceListItem[], config: ResumeEditorConfig) => {
-            applyResumeDetail(detail);
-            setExperienceSourceMap(buildSourceMap(experiences));
-            const resumeMap = buildResumeExperienceMap(detail);
-            const views = sortByCategory(
-                experiences.map((item) =>
-                    buildResumeExperienceView(item, resumeMap.get(item.master.id))
-                ),
-                compareByDateDesc
-            );
-            setExperienceItems(views);
-            const configSelection = resolveSelectionSet(config.selection?.experienceIds);
-            if (configSelection.size > 0) {
-                setSelectedExpIds(configSelection);
-            } else if (resumeMap.size > 0) {
-                setSelectedExpIds(new Set(resumeMap.keys()));
-            } else {
-                setSelectedExpIds(new Set(views.map((item) => item.id)));
-            }
-        },
-        [applyResumeDetail]
-    );
-
-    const applyEducationState = useCallback((items: ExperienceListItem[], config: ResumeEditorConfig) => {
-        const views = items.map(buildEducationView);
-        setEducations(views);
-        setEducationSourceMap(buildSourceMap(items));
-        const selection = resolveSelectionSet(config.selection?.educationIds);
-        const validIds = new Set(views.map((item) => item.id));
-        const normalized = new Set([...selection].filter((id) => validIds.has(id)));
-        setSelectedEduIds(normalized.size ? normalized : new Set(validIds));
-    }, []);
-
-    const applyCertificationState = useCallback(
-        (items: CertificationRecord[], config: ResumeEditorConfig) => {
-            const views = items.map(buildCertificationView);
-            setCertifications(views);
-            setCertificationSourceMap(new Map(items.map((item) => [item.id, item])));
-            const selection = resolveSelectionSet(config.selection?.certificationIds);
-            const validIds = new Set(views.map((item) => item.id));
-            const normalized = new Set([...selection].filter((id) => validIds.has(id)));
-            setSelectedCertIds(normalized.size ? normalized : new Set(validIds));
-        },
-        []
-    );
-
-    const applySkillState = useCallback((items: UserSkill[], config: ResumeEditorConfig) => {
-        const groups = buildSkillGroups(items);
-        setSkillGroups(groups);
-        const selection = resolveSelectionSet(config.selection?.skillIds);
-        const validIds = new Set(items.map((skill) => skill.id));
-        const normalized = new Set([...selection].filter((id) => validIds.has(id)));
-        setSelectedSkillIds(normalized.size ? normalized : new Set(validIds));
-    }, []);
-
-    useEffect(() => {
-        let cancelled = false;
-        const loadResumeContext = async () => {
-            setIsLoadingResume(true);
-            setIsLoadingExperiences(true);
-            try {
-                const { id: activeId, detail: cachedDetail } = await resolveActiveResumeContext();
-                if (!activeId || cancelled) {
-                    return;
-                }
-                setResumeId(activeId);
-                const [
-                    detail,
-                    profileData,
-                    experiences,
-                    educationExperiences,
-                    certifications,
-                    skills,
-                ] = await Promise.all([
-                    cachedDetail ?? resumeService.get(activeId).catch(() => null),
-                    profileService.getProfile().catch(() => null),
-                    fetchExperiences(),
-                    fetchEducationExperiences(),
-                    fetchCertifications(),
-                    fetchSkills(),
-                ]);
-                if (cancelled) {
-                    return;
-                }
-                const config = (detail?.resume?.config || {}) as ResumeEditorConfig;
-                applyResumeConfig(config, profileData);
-                applyExperienceState(detail, experiences, config);
-                applyEducationState(educationExperiences, config);
-                applyCertificationState(certifications, config);
-                applySkillState(skills, config);
-                hasHydratedConfigRef.current = true;
-            } catch (error) {
-                console.error('[ResumeEditor] 加载简历上下文失败:', error);
-            } finally {
-                if (!cancelled) {
-                    setIsLoadingResume(false);
-                    setIsLoadingExperiences(false);
-                }
-            }
-        };
-        loadResumeContext();
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        applyCertificationState,
-        applyEducationState,
-        applyExperienceState,
-        applyResumeConfig,
-        applySkillState,
-        fetchCertifications,
-        fetchEducationExperiences,
-        fetchExperiences,
-        fetchSkills,
-        resolveActiveResumeContext,
-    ]);
-
-    useEffect(() => {
-        if (!hasHydratedConfigRef.current) {
-            return;
-        }
-        if (lastSavedConfigRef.current === null) {
-            lastSavedConfigRef.current = configSignature;
-            setSaveState('saved');
-        } else if (configSignature !== lastSavedConfigRef.current && saveState !== 'saving') {
-            setSaveState('dirty');
-        } else if (configSignature === lastSavedConfigRef.current && saveState !== 'saving') {
-            setSaveState('saved');
-        }
-    }, [configSignature, saveState]);
-
-    useEffect(() => {
-        if (!resumeId || !hasHydratedConfigRef.current) {
-            return;
-        }
-        if (debouncedConfigSignature === lastSavedConfigRef.current) {
-            return;
-        }
-        setSaveState('saving');
-        resumeService
-            .update(resumeId, { config: debouncedConfig })
-            .then(() => {
-                lastSavedConfigRef.current = debouncedConfigSignature;
-                setSaveState('saved');
-                setLastSavedAt(new Date().toLocaleTimeString());
-            })
-            .catch((error) => {
-                console.error('[ResumeEditor] 自动保存失败:', error);
-                setSaveState('error');
-            });
-    }, [debouncedConfig, debouncedConfigSignature, resumeId]);
-
     const toggleTheme = () => {
         setIsDarkMode(!isDarkMode);
         document.documentElement.classList.toggle('dark');
@@ -1031,1072 +887,37 @@ const ResumeEditor: React.FC = () => {
         }
     };
 
-    const isExperienceDraftId = (id: string) => isDraftId(id, EXPERIENCE_DRAFT_PREFIX);
-
-    const addDraftExperience = (category: ResumeExperienceView['category']) => {
-        const draftId = createDraftId(EXPERIENCE_DRAFT_PREFIX);
-        const draftView = buildDraftExperienceView(category, draftId);
-        setExperienceItems((prev) =>
-            sortByCategory([...prev, draftView], compareByDateDesc)
-        );
-        setSelectedExpIds((prev) => new Set(prev).add(draftId));
-        setEditingExpId(draftId);
-        setEditingDraft(buildExperienceEditDraft(draftView));
-        setSyncToMaster(true);
-    };
-
-    const removeDraftExperience = (draftId: string) => {
-        setExperienceItems((prev) => prev.filter((item) => item.id !== draftId));
-        setSelectedExpIds((prev) => {
-            const next = new Set(prev);
-            next.delete(draftId);
-            return next;
-        });
-    };
-
-    const replaceDraftExperience = (draftId: string, detail: ExperienceDetail) => {
-        const newItem: ExperienceListItem = {
-            master: detail.master,
-            latest_version: detail.latest_version,
-        };
-        setExperienceSourceMap((prev) => {
-            const next = new Map(prev);
-            next.set(detail.master.id, newItem);
-            return next;
-        });
-        const nextView = buildResumeExperienceView(
-            newItem,
-            resumeExperienceMap.get(detail.master.id)
-        );
-        setExperienceItems((prev) => {
-            const next = prev.filter((item) => item.id !== draftId);
-            return sortByCategory([...next, nextView], compareByDateDesc);
-        });
-        setSelectedExpIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(draftId)) {
-                next.delete(draftId);
-            }
-            next.add(detail.master.id);
-            return next;
-        });
-    };
-
-    const handleAddExperience = async (category: ResumeExperienceView['category']) => {
-        if (isAddingExperience) {
-            return;
-        }
-        setIsAddingExperience(true);
-        try {
-            addDraftExperience(category);
-        } finally {
-            setIsAddingExperience(false);
-        }
-    };
-
-    const openDeleteConfirm = (payload: ConfirmDialogState) => {
-        setConfirmDialog(payload);
-    };
-
-    const requestDeleteExperience = (id: string) => {
-        if (deletingExperienceIds.has(id)) {
-            return;
-        }
-        openDeleteConfirm({
-            id,
-            type: 'experience',
-            title: CONFIRM_DELETE_EXPERIENCE_TITLE,
-            description: CONFIRM_DELETE_EXPERIENCE_TEXT,
-        });
-    };
-
-    const requestDeleteEducation = (id: string) => {
-        if (deletingEducationIds.has(id)) {
-            return;
-        }
-        openDeleteConfirm({
-            id,
-            type: 'education',
-            title: CONFIRM_DELETE_EDUCATION_TITLE,
-            description: CONFIRM_DELETE_EDUCATION_TEXT,
-        });
-    };
-
-    const requestDeleteCertification = (id: string) => {
-        if (deletingCertificationIds.has(id)) {
-            return;
-        }
-        openDeleteConfirm({
-            id,
-            type: 'certification',
-            title: CONFIRM_DELETE_CERTIFICATION_TITLE,
-            description: CONFIRM_DELETE_CERTIFICATION_TEXT,
-        });
-    };
-
-    const requestDeleteSkill = (id: string) => {
-        if (deletingSkillIds.has(id)) {
-            return;
-        }
-        openDeleteConfirm({
-            id,
-            type: 'skill',
-            title: CONFIRM_DELETE_SKILL_TITLE,
-            description: CONFIRM_DELETE_SKILL_TEXT,
-        });
-    };
-
-    const requestDeleteSkillCategory = (categoryName: string) => {
-        if (deletingSkillCategories.has(categoryName)) {
-            return;
-        }
-        openDeleteConfirm({
-            id: categoryName,
-            type: 'skillCategory',
-            title: CONFIRM_DELETE_SKILL_CATEGORY_TITLE,
-            description: CONFIRM_DELETE_SKILL_CATEGORY_TEXT,
-        });
-    };
-
-    const performDeleteExperience = async (id: string) => {
-        if (deletingExperienceIds.has(id)) {
-            return;
-        }
-        if (isExperienceDraftId(id)) {
-            removeDraftExperience(id);
-            if (editingExpId === id) {
-                setEditingExpId(null);
-                setEditingDraft(null);
-            }
-            return;
-        }
-        setDeletingExperienceIds((prev) => new Set(prev).add(id));
-        try {
-            await experienceService.delete(id);
-            setExperienceItems((prev) => prev.filter((item) => item.id !== id));
-            setExperienceSourceMap((prev) => {
-                const next = new Map(prev);
-                next.delete(id);
-                return next;
-            });
-            setResumeExperienceMap((prev) => {
-                const next = new Map(prev);
-                next.delete(id);
-                return next;
-            });
-            setSelectedExpIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-            if (editingExpId === id) {
-                cancelEditingExperience();
-            }
-        } catch (error) {
-            console.error('[ResumeEditor] 删除经历失败:', error);
-        } finally {
-            setDeletingExperienceIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-        }
-    };
-
-    const performDeleteEducation = async (id: string) => {
-        if (deletingEducationIds.has(id)) {
-            return;
-        }
-        if (isEducationDraftId(id)) {
-            setEducations((prev) => prev.filter((item) => item.id !== id));
-            setSelectedEduIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-            if (editingEducationId === id) {
-                setEditingEducationId(null);
-                setEducationDraft(null);
-            }
-            return;
-        }
-        setDeletingEducationIds((prev) => new Set(prev).add(id));
-        try {
-            await experienceService.delete(id);
-            setEducations((prev) => prev.filter((item) => item.id !== id));
-            setEducationSourceMap((prev) => {
-                const next = new Map(prev);
-                next.delete(id);
-                return next;
-            });
-            setSelectedEduIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-            if (editingEducationId === id) {
-                cancelEducationEdit();
-            }
-        } catch (error) {
-            console.error('[ResumeEditor] 删除教育经历失败:', error);
-        } finally {
-            setDeletingEducationIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-        }
-    };
-
-    const performDeleteCertification = async (id: string) => {
-        if (deletingCertificationIds.has(id)) {
-            return;
-        }
-        setDeletingCertificationIds((prev) => new Set(prev).add(id));
-        try {
-            await certificationsService.delete(id);
-            setCertifications((prev) => prev.filter((item) => item.id !== id));
-            setCertificationSourceMap((prev) => {
-                const next = new Map(prev);
-                next.delete(id);
-                return next;
-            });
-            setSelectedCertIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-            setCertificationMatchScores((prev) => {
-                const next = new Map(prev);
-                next.delete(id);
-                return next;
-            });
-            if (editingCertificationId === id) {
-                cancelCertificationEdit();
-            }
-        } catch (error) {
-            console.error('[ResumeEditor] 删除证书失败:', error);
-        } finally {
-            setDeletingCertificationIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-        }
-    };
-
-    const handleConfirmDelete = () => {
-        if (!confirmDialog) {
-            return;
-        }
-        const { id, type } = confirmDialog;
-        setConfirmDialog(null);
-        if (type === 'experience') {
-            void performDeleteExperience(id);
-            return;
-        }
-        if (type === 'education') {
-            void performDeleteEducation(id);
-            return;
-        }
-        if (type === 'certification') {
-            void performDeleteCertification(id);
-            return;
-        }
-        if (type === 'skill') {
-            void performDeleteSkill(id);
-            return;
-        }
-        if (type === 'skillCategory') {
-            void performDeleteSkillCategory(id);
-        }
-    };
-
-    const toggleExperienceSelection = (id: string) => {
-        const newSet = new Set(selectedExpIds);
-        if (newSet.has(id)) {
-            newSet.delete(id);
-        } else {
-            newSet.add(id);
-        }
-        setSelectedExpIds(newSet);
-    };
-
-    // 教育背景/证书/技能选择切换函数
-    const toggleEducationSelection = (id: string) => {
-        const newSet = new Set(selectedEduIds);
-        newSet.has(id) ? newSet.delete(id) : newSet.add(id);
-        setSelectedEduIds(newSet);
-    };
-
-    const toggleCertificationSelection = (id: string) => {
-        const newSet = new Set(selectedCertIds);
-        newSet.has(id) ? newSet.delete(id) : newSet.add(id);
-        setSelectedCertIds(newSet);
-    };
-
-    const toggleSkillSelection = (id: string) => {
-        const newSet = new Set(selectedSkillIds);
-        newSet.has(id) ? newSet.delete(id) : newSet.add(id);
-        setSelectedSkillIds(newSet);
-    };
-
-    const findSkillMeta = (id: string) => {
-        for (const group of skillGroups) {
-            const skill = group.skills.find((item) => item.id === id);
-            if (skill) {
-                return {
-                    id: skill.id,
-                    name: skill.name,
-                    category: group.name,
-                };
-            }
-        }
-        return null;
-    };
-
-    const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string }): SkillEditDraft => ({
-        id: meta?.id,
-        name: meta?.name ?? DEFAULT_SKILL_NAME,
-        category: meta?.category ?? DEFAULT_SKILL_CATEGORY,
-    });
-
-    const getSkillGroupByName = (groupName: string) => (
-        skillGroups.find((group) => group.name === groupName) || null
-    );
-
-    const getSkillIdsByCategory = (groupName: string) => {
-        const group = getSkillGroupByName(groupName);
-        return group ? group.skills.map((skill) => skill.id) : [];
-    };
-
-    const refreshSkillState = async (options?: { selectId?: string }) => {
-        const items = await skillsService.list({ force: true });
-        setSkillGroups(buildSkillGroups(items));
-        const validIds = new Set(items.map((skill) => skill.id));
-        setSelectedSkillIds((prev) => {
-            const next = new Set([...prev].filter((id) => validIds.has(id)));
-            if (options?.selectId) {
-                next.add(options.selectId);
-            }
-            return next;
-        });
-        setSkillMatchScores((prev) => {
-            const next = new Map(prev);
-            for (const key of next.keys()) {
-                if (!validIds.has(key)) {
-                    next.delete(key);
-                }
-            }
-            return next;
-        });
-    };
-
-    const beginCreateSkillType = () => {
-        setEditingSkillId(null);
-        setSkillDraft(buildSkillDraft({ name: '', category: '' }));
-        setSkillDraftContext({ mode: 'type' });
-    };
-
-    const beginCreateSkillInGroup = (groupName: string) => {
-        setEditingSkillId(null);
-        setSkillDraft(buildSkillDraft({ name: '', category: groupName }));
-        setSkillDraftContext({ mode: 'group', groupName });
-    };
-
-    const beginEditSkill = (id: string) => {
-        const meta = findSkillMeta(id);
-        if (!meta) {
-            return;
-        }
-        setEditingSkillId(id);
-        setSkillDraft(buildSkillDraft(meta));
-        setSkillDraftContext({ mode: 'edit', groupName: meta.category });
-    };
-
-    const cancelSkillEdit = () => {
-        setEditingSkillId(null);
-        setSkillDraft(null);
-        setSkillDraftContext(null);
-    };
-
-    const updateSkillDraft = (field: keyof SkillEditDraft, value: string) => {
-        setSkillDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return {
-                ...prev,
-                [field]: value,
-            };
-        });
-    };
-
-    const buildSkillPayload = (draft: SkillEditDraft) => ({
-        name: draft.name.trim() || DEFAULT_SKILL_NAME,
-        category: draft.category.trim() || DEFAULT_SKILL_CATEGORY,
-    });
-
-    const handleSaveSkill = async () => {
-        if (!skillDraft || isSavingSkill) {
-            return;
-        }
-        setIsSavingSkill(true);
-        try {
-            const payload = buildSkillPayload(skillDraft);
-            if (editingSkillId) {
-                await skillsService.update(editingSkillId, payload);
-                await refreshSkillState();
-            } else {
-                const record = await skillsService.create(payload);
-                await refreshSkillState({ selectId: record.id });
-            }
-            cancelSkillEdit();
-        } catch (error) {
-            console.error('[ResumeEditor] 保存技能失败:', error);
-        } finally {
-            setIsSavingSkill(false);
-        }
-    };
-
-    const [renamingCategoryTarget, setRenamingCategoryTarget] = useState<string | null>(null);
-    const [renamingCategoryDraft, setRenamingCategoryDraft] = useState('');
-
     const resetRenamingCategory = () => {
         setRenamingCategoryTarget(null);
         setRenamingCategoryDraft('');
     };
 
-    const handleRenameCategory = async (oldName: string, newName: string) => {
-        const trimmedNewName = newName.trim();
-        if (!trimmedNewName || trimmedNewName === oldName) {
-            resetRenamingCategory();
+    const adjustToSinglePage = () => {
+        const preview = previewRef.current;
+        if (!preview) {
             return;
         }
-
-        try {
-            const skillsInGroup = skillGroups.find(g => g.name === oldName)?.skills || [];
-            await Promise.all(
-                skillsInGroup.map(skill =>
-                    skillsService.update(skill.id, { category: trimmedNewName })
-                )
-            );
-            await refreshSkillState();
-        } catch (error) {
-            console.error('[ResumeEditor] 重命名分类失败:', error);
-        } finally {
-            resetRenamingCategory();
+        if (!a4HeightRef.current) {
+            a4HeightRef.current = getA4PixelHeight();
         }
-    };
-
-    const performDeleteSkillCategory = async (categoryName: string) => {
-        if (deletingSkillCategories.has(categoryName)) {
+        const a4Height = a4HeightRef.current;
+        if (!a4Height) {
             return;
         }
-        const skillIds = getSkillIdsByCategory(categoryName);
-        if (skillIds.length === 0) {
+        const contentHeight = preview.scrollHeight;
+        if (contentHeight <= a4Height + SMART_PAGE_HEIGHT_TOLERANCE) {
+            setResumeScale(1);
+            showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
             return;
         }
-        setDeletingSkillCategories((prev) => new Set(prev).add(categoryName));
-        try {
-            if (renamingCategoryTarget === categoryName) {
-                resetRenamingCategory();
-            }
-            if (editingSkillId && skillIds.includes(editingSkillId)) {
-                cancelSkillEdit();
-            }
-            if (skillDraftContext?.groupName === categoryName) {
-                cancelSkillEdit();
-            }
-            await Promise.all(skillIds.map((id) => skillsService.delete(id)));
-            await refreshSkillState();
-        } catch (error) {
-            console.error('[ResumeEditor] 删除技能分类失败:', error);
-        } finally {
-            setDeletingSkillCategories((prev) => {
-                const next = new Set(prev);
-                next.delete(categoryName);
-                return next;
-            });
-        }
-    };
-
-    const performDeleteSkill = async (id: string) => {
-        if (deletingSkillIds.has(id)) {
+        const requiredScale = a4Height / contentHeight;
+        if (requiredScale < SMART_PAGE_MIN_SCALE) {
+            setResumeScale(SMART_PAGE_MIN_SCALE);
+            showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
             return;
         }
-        setDeletingSkillIds((prev) => new Set(prev).add(id));
-        try {
-            await skillsService.delete(id);
-            await refreshSkillState();
-            if (editingSkillId === id) {
-                cancelSkillEdit();
-            }
-        } catch (error) {
-            console.error('[ResumeEditor] 删除技能失败:', error);
-        } finally {
-            setDeletingSkillIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-        }
-    };
-
-    const isEducationDraftId = (id: string) => isDraftId(id, EDUCATION_DRAFT_PREFIX);
-    const isCertificationDraftId = (id: string) => isDraftId(id, CERTIFICATION_DRAFT_PREFIX);
-
-    const beginCreateEducation = () => {
-        const draftId = createDraftId(EDUCATION_DRAFT_PREFIX);
-        const draft = buildEducationDraft(undefined, draftId);
-        setEditingEducationId(draftId);
-        setEducationDraft(draft);
-        setEducations((prev) => [buildDraftEducationView(draftId, draft), ...prev]);
-        setSelectedEduIds((prev) => new Set(prev).add(draftId));
-    };
-
-    const beginEditEducation = (id: string) => {
-        const source = educationSourceMap.get(id);
-        if (!source) {
-            return;
-        }
-        setEditingEducationId(id);
-        setEducationDraft(buildEducationDraft(source));
-    };
-
-    const cancelEducationEdit = () => {
-        if (editingEducationId && isEducationDraftId(editingEducationId)) {
-            setEducations((prev) => prev.filter((item) => item.id !== editingEducationId));
-            setSelectedEduIds((prev) => {
-                const next = new Set(prev);
-                next.delete(editingEducationId);
-                return next;
-            });
-        }
-        setEditingEducationId(null);
-        setEducationDraft(null);
-    };
-
-    const updateEducationDraft = (field: keyof EducationEditDraft, value: string) => {
-        setEducationDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return {
-                ...prev,
-                [field]: value,
-            };
-        });
-    };
-
-    const updateEducationDate = (field: 'startDate' | 'endDate', value: string) => {
-        setEducationDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            const next = {
-                ...prev,
-                [field]: value,
-            };
-            const safeRange = resolveSafeDateRange(next.startDate, next.endDate);
-            return {
-                ...next,
-                startDate: safeRange.start,
-                endDate: safeRange.end,
-            };
-        });
-    };
-
-    const applyEducationDetail = (
-        detail: ExperienceDetail,
-        options: { select: boolean; replacedId?: string }
-    ) => {
-        const item: ExperienceListItem = {
-            master: detail.master,
-            latest_version: detail.latest_version,
-        };
-        setEducationSourceMap((prev) => {
-            const next = new Map(prev);
-            next.set(detail.master.id, item);
-            return next;
-        });
-        const view = buildEducationView(item);
-        setEducations((prev) => {
-            const next = prev.filter((entry) => entry.id !== options.replacedId);
-            const index = next.findIndex((entry) => entry.id === detail.master.id);
-            if (index >= 0) {
-                next[index] = view;
-                return next;
-            }
-            next.push(view);
-            return next;
-        });
-        if (options.select) {
-            setSelectedEduIds((prev) => new Set(prev).add(detail.master.id));
-        }
-        if (options.replacedId) {
-            setSelectedEduIds((prev) => {
-                const next = new Set(prev);
-                next.delete(options.replacedId as string);
-                return next;
-            });
-        }
-    };
-
-    const handleSaveEducation = async () => {
-        if (!educationDraft || isSavingEducation) {
-            return;
-        }
-        setIsSavingEducation(true);
-        try {
-            if (editingEducationId && !isEducationDraftId(editingEducationId)) {
-                const source = educationSourceMap.get(editingEducationId);
-                if (!source) {
-                    throw new Error('缺少教育经历源数据');
-                }
-                const payload = buildEducationVersionPayload(source, educationDraft);
-                const detail = await experienceService.update(editingEducationId, { version: payload });
-                applyEducationDetail(detail, { select: false });
-            } else {
-                const payload = buildEducationVersionPayload(null, educationDraft);
-                const detail = await experienceService.create({
-                    category: 'education',
-                    version: payload,
-                });
-                const shouldSelect = editingEducationId
-                    ? selectedEduIds.has(editingEducationId)
-                    : true;
-                applyEducationDetail(detail, {
-                    select: shouldSelect,
-                    replacedId: editingEducationId ?? undefined,
-                });
-            }
-            cancelEducationEdit();
-        } catch (error) {
-            console.error('[ResumeEditor] 保存教育经历失败:', error);
-        } finally {
-            setIsSavingEducation(false);
-        }
-    };
-
-    const beginCreateCertification = () => {
-        const draftId = createDraftId(CERTIFICATION_DRAFT_PREFIX);
-        const draft = buildCertificationDraft();
-        setEditingCertificationId(draftId);
-        setCertificationDraft(draft);
-        setCertifications((prev) => [buildDraftCertificationView(draftId, draft), ...prev]);
-    };
-
-    const beginEditCertification = (id: string) => {
-        const source = certificationSourceMap.get(id);
-        if (!source) {
-            return;
-        }
-        if (editingCertificationId && isCertificationDraftId(editingCertificationId)) {
-            cancelCertificationEdit();
-        }
-        setEditingCertificationId(id);
-        setCertificationDraft(buildCertificationDraft(source));
-    };
-
-    const cancelCertificationEdit = () => {
-        if (editingCertificationId && isCertificationDraftId(editingCertificationId)) {
-            setCertifications((prev) => prev.filter((item) => item.id !== editingCertificationId));
-        }
-        setEditingCertificationId(null);
-        setCertificationDraft(null);
-    };
-
-    const updateCertificationDraft = (field: keyof CertificationEditDraft, value: string) => {
-        setCertificationDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return {
-                ...prev,
-                [field]: value,
-            };
-        });
-    };
-
-    const applyCertificationUpdate = (
-        record: CertificationRecord,
-        options?: { select?: boolean; replacedId?: string }
-    ) => {
-        const shouldSelect = options?.select ?? false;
-        setCertificationSourceMap((prev) => {
-            const next = new Map(prev);
-            next.set(record.id, record);
-            return next;
-        });
-        const view = buildCertificationView(record);
-        setCertifications((prev) => {
-            const next = [...prev];
-            const replacedIndex = options?.replacedId
-                ? next.findIndex((entry) => entry.id === options.replacedId)
-                : -1;
-            if (replacedIndex >= 0) {
-                next[replacedIndex] = view;
-                return next;
-            }
-            const index = next.findIndex((entry) => entry.id === record.id);
-            if (index >= 0) {
-                next[index] = view;
-                return next;
-            }
-            next.push(view);
-            return next;
-        });
-        if (shouldSelect) {
-            setSelectedCertIds((prev) => new Set(prev).add(record.id));
-        }
-    };
-
-    const handleSaveCertification = async () => {
-        if (!certificationDraft || isSavingCertification) {
-            return;
-        }
-        setIsSavingCertification(true);
-        try {
-            const payload = buildCertificationPayload(certificationDraft);
-            const isDraft = editingCertificationId
-                ? isCertificationDraftId(editingCertificationId)
-                : true;
-            if (editingCertificationId && !isDraft) {
-                const record = await certificationsService.update(editingCertificationId, payload);
-                applyCertificationUpdate(record, { select: false });
-            } else {
-                const record = await certificationsService.create(payload);
-                applyCertificationUpdate(record, {
-                    select: true,
-                    replacedId: isDraft ? editingCertificationId ?? undefined : undefined,
-                });
-            }
-            cancelCertificationEdit();
-        } catch (error) {
-            console.error('[ResumeEditor] 保存证书失败:', error);
-        } finally {
-            setIsSavingCertification(false);
-        }
-    };
-
-    const updateEditingStar = (field: StarFieldKey, value: string) => {
-        setEditingDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return {
-                ...prev,
-                star: {
-                    ...prev.star,
-                    [field]: value,
-                },
-            };
-        });
-    };
-
-    const updateEditingMeta = (field: 'company' | 'title', value: string) => {
-        setEditingDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return {
-                ...prev,
-                [field]: value,
-            };
-        });
-    };
-
-    const updateEditingDate = (field: 'startDate' | 'endDate', value: string) => {
-        setEditingDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            if (field === 'endDate') {
-                const nextRange = resolveSafeDateRange(prev.startDate, value);
-                const resolvedEnd = isPresentLabel(value) ? value : nextRange.end;
-                return {
-                    ...prev,
-                    endDate: resolvedEnd,
-                    isCurrent: isPresentLabel(resolvedEnd),
-                };
-            }
-            const nextRange = resolveSafeDateRange(value, prev.endDate);
-            return {
-                ...prev,
-                startDate: nextRange.start,
-                endDate: nextRange.end,
-                isCurrent: nextRange.end ? prev.isCurrent : false,
-            };
-        });
-    };
-
-    const handlePolishWithJD = async () => {
-        if (!editingDraft || isPolishing) {
-            return;
-        }
-        const trimmedJD = jdText.trim();
-        if (!trimmedJD) {
-            return;
-        }
-        setIsPolishing(true);
-        try {
-            const result = await aiService.polishExperience({
-                content: {
-                    company: editingDraft.company,
-                    role: editingDraft.title,
-                    s: editingDraft.star.s,
-                    t: editingDraft.star.t,
-                    a: editingDraft.star.a,
-                    r: editingDraft.star.r,
-                },
-                jdText: trimmedJD,
-            });
-            setEditingDraft((prev) => {
-                if (!prev) {
-                    return prev;
-                }
-                return {
-                    ...prev,
-                    star: mergeStarFields(prev.star, result),
-                };
-            });
-        } catch (error) {
-            console.error('[ResumeEditor] 基于JD润色失败:', error);
-        } finally {
-            setIsPolishing(false);
-        }
-    };
-
-    const startEditingExperience = (id: string) => {
-        const item = experienceItems.find((entry) => entry.id === id);
-        if (!item) {
-            return;
-        }
-        setEditingExpId(id);
-        setEditingDraft(buildExperienceEditDraft(item));
-        setSyncToMaster(true);
-    };
-
-    const cancelEditingExperience = () => {
-        if (editingDraft?.isDraft) {
-            removeDraftExperience(editingDraft.masterId);
-        }
-        setEditingExpId(null);
-        setEditingDraft(null);
-    };
-
-    const applyExperienceUpdate = (
-        masterId: string,
-        update: Partial<ResumeExperienceView>
-    ) => {
-        setExperienceItems((prev) =>
-            prev.map((item) =>
-                item.id === masterId
-                    ? { ...item, ...update }
-                    : item
-            )
-        );
-    };
-
-    const applyStarUpdate = (masterId: string, star: StarFields) => {
-        applyExperienceUpdate(masterId, { star });
-    };
-
-    const applyExperienceVersionUpdate = (
-        masterId: string,
-        version?: ExperienceVersion,
-        fallbackStar?: StarFields
-    ) => {
-        if (!version) {
-            return;
-        }
-        const star = buildStarFields(version.star ?? fallbackStar);
-        applyExperienceUpdate(masterId, {
-            title: version.title ?? '',
-            company: version.org ?? '',
-            startDate: version.start_date,
-            endDate: version.end_date,
-            isCurrent: version.is_current,
-            date: buildExperienceDate(version.start_date, version.end_date, version.is_current),
-            star,
-            experienceVersionId: version.id,
-        });
-    };
-
-    const buildMasterUpdatePayload = (source: ExperienceListItem, draft: ExperienceEditDraft) => {
-        const latest = source.latest_version;
-        const title = draft.title.trim() || latest?.title || '';
-        const org = draft.company.trim() || latest?.org;
-        const dates = resolveExperienceDatePayload(draft, latest);
-        return {
-            title,
-            org,
-            location: latest?.location,
-            start_date: dates.startDate,
-            end_date: dates.endDate,
-            is_current: dates.isCurrent,
-            summary: latest?.summary,
-            highlights: latest?.highlights || [],
-            tags: latest?.tags || [],
-            star: draft.star,
-        };
-    };
-
-    const syncExperienceToMaster = async (masterId: string, draft: ExperienceEditDraft) => {
-        const source = experienceSourceMap.get(masterId);
-        if (!source) {
-            throw new Error('缺少经历源数据，无法同步到经历库');
-        }
-        const resolvedTitle = draft.title.trim() || source.latest_version?.title || '';
-        if (!resolvedTitle) {
-            throw new Error('缺少经历标题，无法同步到经历库');
-        }
-        const payload = buildMasterUpdatePayload(source, draft);
-        const detail: ExperienceDetail = await experienceService.update(masterId, { version: payload });
-        const updatedVersion = detail.latest_version || source.latest_version;
-        setExperienceSourceMap((prev) => {
-            const next = new Map(prev);
-            next.set(masterId, {
-                ...source,
-                latest_version: updatedVersion,
-            });
-            return next;
-        });
-        applyExperienceVersionUpdate(masterId, updatedVersion, draft.star);
-    };
-
-    const ensureResumeLink = async (masterId: string, versionId?: string) => {
-        if (!resumeId) {
-            return null;
-        }
-        const existing = resumeExperienceMap.get(masterId);
-        if (existing?.id) {
-            return existing.id;
-        }
-        if (!versionId) {
-            return null;
-        }
-        const detail = await resumeService.updateAssembly(resumeId, {
-            operations: [
-                {
-                    op: 'add',
-                    experience_version_id: versionId,
-                },
-            ],
-        });
-        applyResumeDetail(detail);
-        const nextMap = buildResumeExperienceMap(detail);
-        return nextMap.get(masterId)?.id ?? null;
-    };
-
-    const buildExperienceOverridePayload = (
-        draft: ExperienceEditDraft,
-        fallback?: ResumeExperienceView
-    ) => {
-        const title = draft.title.trim();
-        const org = draft.company.trim();
-        const dates = resolveExperienceDatePayload(draft, fallback
-            ? {
-                start_date: fallback.startDate,
-                end_date: fallback.endDate,
-                is_current: fallback.isCurrent,
-            }
-            : undefined);
-        const overrides: Record<string, any> = {
-            star: draft.star,
-            is_current: dates.isCurrent,
-        };
-        if (dates.startDate) {
-            overrides.start_date = dates.startDate;
-        }
-        if (dates.endDate) {
-            overrides.end_date = dates.endDate;
-        }
-        if (title) {
-            overrides.title = title;
-        }
-        if (org) {
-            overrides.org = org;
-        }
-        return {
-            overrides,
-            resolvedTitle: title || fallback?.title || '',
-            resolvedOrg: org || fallback?.company || '',
-        };
-    };
-
-    const saveExperienceOverride = async (masterId: string, draft: ExperienceEditDraft) => {
-        const targetItem = experienceItems.find((item) => item.id === masterId);
-        const linkId = await ensureResumeLink(masterId, targetItem?.experienceVersionId);
-        if (!linkId || !resumeId) {
-            throw new Error('无法创建简历经历关联');
-        }
-        const { overrides, resolvedTitle, resolvedOrg } = buildExperienceOverridePayload(draft, targetItem);
-        const detail = await resumeService.updateAssembly(resumeId, {
-            operations: [
-                {
-                    op: 'override',
-                    resume_experience_id: linkId,
-                    overrides_json: overrides,
-                },
-            ],
-        });
-        applyResumeDetail(detail);
-        const dates = resolveExperienceDatePayload(draft, targetItem
-            ? {
-                start_date: targetItem.startDate,
-                end_date: targetItem.endDate,
-                is_current: targetItem.isCurrent,
-            }
-            : undefined);
-        applyExperienceUpdate(masterId, {
-            title: resolvedTitle,
-            company: resolvedOrg,
-            star: draft.star,
-            startDate: dates.startDate,
-            endDate: dates.endDate,
-            isCurrent: dates.isCurrent,
-            date: buildExperienceDate(dates.startDate, dates.endDate, dates.isCurrent),
-        });
-        setSelectedExpIds((prev) => new Set(prev).add(masterId));
-    };
-
-    const handleSaveExperience = async () => {
-        if (!editingDraft) {
-            return;
-        }
-        setIsSavingExperience(true);
-        try {
-            if (editingDraft.isDraft) {
-                const dates = resolveExperienceDatePayload(editingDraft);
-                const payload = {
-                    category: editingDraft.category,
-                    version: {
-                        title: editingDraft.title.trim()
-                            || DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY[editingDraft.category],
-                        org: editingDraft.company.trim()
-                            || DEFAULT_EXPERIENCE_COMPANY_BY_CATEGORY[editingDraft.category],
-                        start_date: dates.startDate,
-                        end_date: dates.endDate,
-                        is_current: dates.isCurrent,
-                        star: editingDraft.star,
-                    },
-                };
-                const detail = await experienceService.create(payload);
-                replaceDraftExperience(editingDraft.masterId, detail);
-            } else if (syncToMaster) {
-                await syncExperienceToMaster(editingDraft.masterId, editingDraft);
-            } else {
-                await saveExperienceOverride(editingDraft.masterId, editingDraft);
-            }
-            setEditingExpId(null);
-            setEditingDraft(null);
-        } catch (error) {
-            console.error('[ResumeEditor] 保存经历失败:', error);
-        } finally {
-            setIsSavingExperience(false);
-        }
+        setResumeScale(requiredScale);
+        showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
     };
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -3785,7 +2606,7 @@ const ResumeEditor: React.FC = () => {
                 title={confirmDialog?.title || ''}
                 description={confirmDialog?.description || ''}
                 onConfirm={handleConfirmDelete}
-                onCancel={() => setConfirmDialog(null)}
+                onCancel={handleCancelDelete}
             />
         </div>
     );
