@@ -35,6 +35,7 @@ const ADD_EDUCATION_LABEL = '添加教育经历';
 const ADD_CERTIFICATION_LABEL = '添加证书';
 const ADD_SKILL_TYPE_LABEL = '添加技能类型';
 const ADD_SKILL_TAG_LABEL = '添加技能标签';
+const DELETE_SKILL_CATEGORY_LABEL = '删除技能分类';
 const DEFAULT_EDUCATION_SCHOOL = '未命名学校';
 const DEFAULT_EDUCATION_MAJOR = '未命名专业';
 const DEFAULT_CERTIFICATION_NAME = '未命名证书';
@@ -44,10 +45,12 @@ const CONFIRM_DELETE_EXPERIENCE_TEXT = '确定删除该经历吗？删除后将�
 const CONFIRM_DELETE_EDUCATION_TEXT = '确定删除该教育经历吗？删除后将无法恢复。';
 const CONFIRM_DELETE_CERTIFICATION_TEXT = '确定删除该证书吗？删除后将无法恢复。';
 const CONFIRM_DELETE_SKILL_TEXT = '确定删除该技能吗？删除后将无法恢复。';
+const CONFIRM_DELETE_SKILL_CATEGORY_TEXT = '确定删除该技能分类及其全部技能吗？删除后将无法恢复。';
 const CONFIRM_DELETE_EXPERIENCE_TITLE = '删除经历';
 const CONFIRM_DELETE_EDUCATION_TITLE = '删除教育经历';
 const CONFIRM_DELETE_CERTIFICATION_TITLE = '删除证书';
 const CONFIRM_DELETE_SKILL_TITLE = '删除技能';
+const CONFIRM_DELETE_SKILL_CATEGORY_TITLE = '删除技能分类';
 const AUTO_SAVE_DELAY_MS = 800;
 const STAR_FIELDS = ['s', 't', 'a', 'r'] as const;
 const CERT_META_PREFIX = "__rf_cert_meta__:";
@@ -235,7 +238,7 @@ type SkillDraftContext = {
 
 type ConfirmDialogState = {
     id: string;
-    type: 'experience' | 'education' | 'certification' | 'skill';
+    type: 'experience' | 'education' | 'certification' | 'skill' | 'skillCategory';
     title: string;
     description: string;
 };
@@ -956,6 +959,7 @@ const ResumeEditor: React.FC = () => {
     const [skillDraftContext, setSkillDraftContext] = useState<SkillDraftContext | null>(null);
     const [isSavingSkill, setIsSavingSkill] = useState(false);
     const [deletingSkillIds, setDeletingSkillIds] = useState<Set<string>>(new Set());
+    const [deletingSkillCategories, setDeletingSkillCategories] = useState<Set<string>>(new Set());
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
 
     // 教育背景/证书/技能选择状态
@@ -1721,6 +1725,18 @@ const ResumeEditor: React.FC = () => {
         });
     };
 
+    const requestDeleteSkillCategory = (categoryName: string) => {
+        if (deletingSkillCategories.has(categoryName)) {
+            return;
+        }
+        openDeleteConfirm({
+            id: categoryName,
+            type: 'skillCategory',
+            title: CONFIRM_DELETE_SKILL_CATEGORY_TITLE,
+            description: CONFIRM_DELETE_SKILL_CATEGORY_TEXT,
+        });
+    };
+
     const performDeleteExperience = async (id: string) => {
         if (deletingExperienceIds.has(id)) {
             return;
@@ -1868,6 +1884,10 @@ const ResumeEditor: React.FC = () => {
         }
         if (type === 'skill') {
             void performDeleteSkill(id);
+            return;
+        }
+        if (type === 'skillCategory') {
+            void performDeleteSkillCategory(id);
         }
     };
 
@@ -1914,11 +1934,20 @@ const ResumeEditor: React.FC = () => {
         return null;
     };
 
-const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string }): SkillEditDraft => ({
-    id: meta?.id,
-    name: meta?.name ?? DEFAULT_SKILL_NAME,
-    category: meta?.category ?? DEFAULT_SKILL_CATEGORY,
-});
+    const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string }): SkillEditDraft => ({
+        id: meta?.id,
+        name: meta?.name ?? DEFAULT_SKILL_NAME,
+        category: meta?.category ?? DEFAULT_SKILL_CATEGORY,
+    });
+
+    const getSkillGroupByName = (groupName: string) => (
+        skillGroups.find((group) => group.name === groupName) || null
+    );
+
+    const getSkillIdsByCategory = (groupName: string) => {
+        const group = getSkillGroupByName(groupName);
+        return group ? group.skills.map((skill) => skill.id) : [];
+    };
 
     const refreshSkillState = async (options?: { selectId?: string }) => {
         const items = await skillsService.list({ force: true });
@@ -2006,6 +2035,68 @@ const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string 
             console.error('[ResumeEditor] 保存技能失败:', error);
         } finally {
             setIsSavingSkill(false);
+        }
+    };
+
+    const [renamingCategoryTarget, setRenamingCategoryTarget] = useState<string | null>(null);
+    const [renamingCategoryDraft, setRenamingCategoryDraft] = useState('');
+
+    const resetRenamingCategory = () => {
+        setRenamingCategoryTarget(null);
+        setRenamingCategoryDraft('');
+    };
+
+    const handleRenameCategory = async (oldName: string, newName: string) => {
+        const trimmedNewName = newName.trim();
+        if (!trimmedNewName || trimmedNewName === oldName) {
+            resetRenamingCategory();
+            return;
+        }
+
+        try {
+            const skillsInGroup = skillGroups.find(g => g.name === oldName)?.skills || [];
+            await Promise.all(
+                skillsInGroup.map(skill =>
+                    skillsService.update(skill.id, { category: trimmedNewName })
+                )
+            );
+            await refreshSkillState();
+        } catch (error) {
+            console.error('[ResumeEditor] 重命名分类失败:', error);
+        } finally {
+            resetRenamingCategory();
+        }
+    };
+
+    const performDeleteSkillCategory = async (categoryName: string) => {
+        if (deletingSkillCategories.has(categoryName)) {
+            return;
+        }
+        const skillIds = getSkillIdsByCategory(categoryName);
+        if (skillIds.length === 0) {
+            return;
+        }
+        setDeletingSkillCategories((prev) => new Set(prev).add(categoryName));
+        try {
+            if (renamingCategoryTarget === categoryName) {
+                resetRenamingCategory();
+            }
+            if (editingSkillId && skillIds.includes(editingSkillId)) {
+                cancelSkillEdit();
+            }
+            if (skillDraftContext?.groupName === categoryName) {
+                cancelSkillEdit();
+            }
+            await Promise.all(skillIds.map((id) => skillsService.delete(id)));
+            await refreshSkillState();
+        } catch (error) {
+            console.error('[ResumeEditor] 删除技能分类失败:', error);
+        } finally {
+            setDeletingSkillCategories((prev) => {
+                const next = new Set(prev);
+                next.delete(categoryName);
+                return next;
+            });
         }
     };
 
@@ -3362,7 +3453,7 @@ const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string 
         return (
             <label
                 key={skill.id}
-                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
+                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected || editingSkillId === skill.id
                     ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
                     }`}
@@ -3374,7 +3465,7 @@ const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string 
                     className="hidden"
                 />
                 {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
-                <span>{skill.name}</span>
+                <span>{editingSkillId === skill.id ? (skillDraft?.name || skill.name) : skill.name}</span>
                 {typeof matchScore === 'number' && matchScore > 0
                     ? renderMatchBadge(matchScore, DEFAULT_MATCH_BADGE_TONE)
                     : null}
@@ -3420,25 +3511,63 @@ const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string 
             className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden"
         >
             <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30 flex items-center justify-between">
-                <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{group.name}</h5>
-                <button
-                    type="button"
-                    onClick={() => beginCreateSkillInGroup(group.name)}
-                    title={ADD_SKILL_TAG_LABEL}
-                    aria-label={ADD_SKILL_TAG_LABEL}
-                    className="flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700 bg-white/80 hover:bg-white px-2 py-1 rounded-md border border-rose-100"
-                >
-                    <Plus className="w-3 h-3" />
-                    {ADD_SKILL_TAG_LABEL}
-                </button>
+                {renamingCategoryTarget === group.name ? (
+                    <input
+                        autoFocus
+                        className="text-xs font-bold text-rose-700 dark:text-rose-400 bg-transparent border-b border-rose-300 outline-none w-32"
+                        value={renamingCategoryDraft}
+                        onChange={(e) => setRenamingCategoryDraft(e.target.value)}
+                        onBlur={() => handleRenameCategory(group.name, renamingCategoryDraft)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handleRenameCategory(group.name, renamingCategoryDraft);
+                            } else if (e.key === 'Escape') {
+                                resetRenamingCategory();
+                            }
+                        }}
+                    />
+                ) : (
+                    <div className="flex items-center gap-2 group/title">
+                        <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{group.name}</h5>
+                        <button
+                            onClick={() => {
+                                setRenamingCategoryTarget(group.name);
+                                setRenamingCategoryDraft(group.name);
+                            }}
+                            className="opacity-0 group-hover/title:opacity-100 p-0.5 text-rose-300 hover:text-rose-500 transition-all"
+                        >
+                            <Edit3 className="w-3 h-3" />
+                        </button>
+                    </div>
+                )}
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={() => requestDeleteSkillCategory(group.name)}
+                        title={DELETE_SKILL_CATEGORY_LABEL}
+                        aria-label={DELETE_SKILL_CATEGORY_LABEL}
+                        className="p-0.5 text-rose-300 hover:text-red-500 transition-all rounded hover:bg-red-50"
+                        disabled={deletingSkillCategories.has(group.name)}
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => beginCreateSkillInGroup(group.name)}
+                        title={ADD_SKILL_TAG_LABEL}
+                        aria-label={ADD_SKILL_TAG_LABEL}
+                        className="hidden"
+                    >
+                        <Plus className="w-3 h-3" />
+                        {ADD_SKILL_TAG_LABEL}
+                    </button>
+                </div>
             </div>
             <div className="p-3 bg-white dark:bg-gray-800/50">
-                {options.showEditor
+                {options.showEditor && skillDraftContext?.mode === 'edit'
                     ? (
                         <div className="mb-2">
                             {renderSkillEditor({
-                                hideCategory: options.hideCategory,
-                                lockCategory: options.lockCategory,
                                 className: 'border-rose-200/50 bg-rose-50/40 dark:bg-rose-900/10',
                             })}
                         </div>
@@ -3446,6 +3575,32 @@ const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string 
                     : null}
                 <div className="flex flex-wrap gap-2">
                     {group.skills.map((skill) => renderSkillTag(skill))}
+                    {skillDraftContext?.mode === 'group' && skillDraftContext?.groupName === group.name ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
+                            <input
+                                autoFocus
+                                className="bg-transparent border-none text-xs text-white p-0 m-0 w-20 outline-none focus:ring-0 placeholder-rose-200"
+                                placeholder="输入技能..."
+                                value={skillDraft?.name || ''}
+                                onChange={(e) => updateSkillDraft('name', e.target.value)}
+                                onBlur={handleSaveSkill}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleSaveSkill();
+                                    } else if (e.key === 'Escape') {
+                                        cancelSkillEdit();
+                                    }
+                                }}
+                            />
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => beginCreateSkillInGroup(group.name)}
+                            className="flex items-center justify-center p-1.5 rounded-lg border border-dashed border-gray-300 hover:border-rose-400 text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -3472,9 +3627,49 @@ const buildSkillDraft = (meta?: { id?: string; name?: string; category?: string 
         return (
             <div className="space-y-4">
                 {renderSkillHeader(title)}
-                {shouldShowTypeEditor
-                    ? renderSkillEditor({ className: 'bg-rose-50/40 dark:bg-rose-900/10' })
-                    : null}
+                {shouldShowTypeEditor ? (
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2">
+                        <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30">
+                            <input
+                                autoFocus
+                                className="text-xs font-bold text-rose-700 dark:text-rose-400 bg-transparent border-none outline-none w-full placeholder-rose-300"
+                                placeholder="输入新分类名称..."
+                                value={skillDraft?.category || ''}
+                                onChange={(e) => updateSkillDraft('category', e.target.value)}
+                            />
+                        </div>
+                        <div className="p-3 bg-white dark:bg-gray-800/50">
+                            <div className="flex flex-wrap gap-2">
+                                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
+                                    <input
+                                        className="bg-transparent border-none text-xs text-white p-0 m-0 w-24 outline-none focus:ring-0 placeholder-rose-200"
+                                        placeholder="输入第一项技能..."
+                                        value={skillDraft?.name || ''}
+                                        onChange={(e) => updateSkillDraft('name', e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleSaveSkill();
+                                            if (e.key === 'Escape') cancelSkillEdit();
+                                        }}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 ml-auto">
+                                    <button
+                                        onClick={cancelSkillEdit}
+                                        className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={handleSaveSkill}
+                                        className="text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1 bg-rose-50 rounded"
+                                    >
+                                        确认创建
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
                 {groups.length === 0 ? (
                     shouldShowTypeEditor ? null : <p className="text-xs text-gray-400">暂无技能</p>
                 ) : (
