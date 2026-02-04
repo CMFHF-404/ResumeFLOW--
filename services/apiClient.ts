@@ -101,8 +101,16 @@ const resolveAccessToken = async (resource?: string): Promise<string | null> => 
     return getLogtoAccessToken(resource);
 };
 
+const resolveApiBaseUrl = (): string => {
+    const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
+    if (import.meta.env.DEV) {
+        return '/api';
+    }
+    return envBaseUrl || '';
+};
+
 const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL,
+    baseURL: resolveApiBaseUrl(),
     headers: {
         'Content-Type': 'application/json',
     },

@@ -54,7 +54,10 @@ async def get_version_for_user(
 ) -> ExperienceVersion:
     result = await session.execute(
         select(ExperienceVersion)
-        .join(MasterExperience)
+        .join(
+            MasterExperience,
+            MasterExperience.id == ExperienceVersion.master_experience_id,
+        )
         .where(
             ExperienceVersion.id == version_id,
             MasterExperience.user_id == user_id,
