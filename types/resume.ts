@@ -42,6 +42,7 @@ export type ExperienceSectionHeaderProps = {
   onAddItem: () => void;
   actionLabel: string;
   isAdding: boolean;
+  onResetSort?: () => void;
 };
 
 export type ExperienceListSectionProps = {
@@ -58,6 +59,7 @@ export type ExperienceListSectionProps = {
   deletingIds: Set<string>;
   staleExperienceIds: Set<string>;
   isAdding: boolean;
+  onResetSort?: () => void;
 };
 
 export type ExperienceCardProps = {
@@ -262,6 +264,8 @@ export type ExperienceTabProps = {
   selectedSkillIds: Set<string>;
   skillMatchScores: Map<string, number>;
   onResetRenamingCategory: () => void;
+  onResetWorkSort?: () => void;
+  onResetProjectSort?: () => void;
 };
 
 export type DatePayloadFallback = {

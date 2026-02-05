@@ -42,6 +42,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     deletingIds,
     staleExperienceIds,
     isAdding,
+    onResetSort,
 }) => {
     const themeStyles = EXPERIENCE_THEME_STYLES[theme];
 
@@ -54,6 +55,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     onAddItem={onAddItem}
                     actionLabel={actionLabel}
                     isAdding={isAdding}
+                    onResetSort={onResetSort}
                 />
                 <p className="text-xs text-gray-400">暂无{title}</p>
             </div>
@@ -68,6 +70,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                 onAddItem={onAddItem}
                 actionLabel={actionLabel}
                 isAdding={isAdding}
+                onResetSort={onResetSort}
             />
             {items.map((item) => (
                 <ExperienceCard

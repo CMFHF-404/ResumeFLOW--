@@ -416,7 +416,7 @@ export const useJDAnalysis = ({
             matchReason: hasScore ? matchReasons.get(item.id) : undefined,
           };
         });
-        return sortExperienceItemsForMatch(next);
+        return next;
       });
     },
     [setExperienceItems]
@@ -445,7 +445,7 @@ export const useJDAnalysis = ({
               ? { ...item, matchScore: undefined, matchReason: undefined }
               : item
           );
-          return sortExperienceItemsForMatch(next);
+          return next;
         });
         setStaleExperienceIds((prev) => {
           const next = options?.replaceStale ? new Set<string>() : new Set(prev);

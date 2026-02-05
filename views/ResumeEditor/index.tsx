@@ -511,6 +511,36 @@ const ResumeEditor: React.FC = () => {
         e.preventDefault();
         clearDragState();
     };
+
+    const resetExperienceSortForCategory = (
+        items: ResumeExperienceView[],
+        category: 'work' | 'project'
+    ) => {
+        const indices: number[] = [];
+        const categoryItems: ResumeExperienceView[] = [];
+
+        items.forEach((item, index) => {
+            if (item.category !== category) return;
+            indices.push(index);
+            categoryItems.push(item);
+        });
+
+        if (categoryItems.length <= 1) {
+            return items;
+        }
+
+        const sortedCategoryItems = [...categoryItems].sort(compareByDateDesc);
+        const nextItems = [...items];
+        indices.forEach((index, sortedIndex) => {
+            nextItems[index] = sortedCategoryItems[sortedIndex];
+        });
+        return nextItems;
+    };
+
+    // 重置排序函数：将指定类别的经历恢复为时间倒序
+    const handleResetSort = (category: 'work' | 'project') => {
+        setExperienceItems((prev) => resetExperienceSortForCategory(prev, category));
+    };
     // Section drag handlers
     const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
         setDraggedSectionId(sectionId);
@@ -654,6 +684,8 @@ const ResumeEditor: React.FC = () => {
                         selectedSkillIds,
                         skillMatchScores,
                         onResetRenamingCategory: resetRenamingCategory,
+                        onResetWorkSort: () => handleResetSort('work'),
+                        onResetProjectSort: () => handleResetSort('project'),
                     }}
                     editingSuggestion={{
                         editingItem,

@@ -24,6 +24,8 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     selectedSkillIds,
     skillMatchScores,
     onResetRenamingCategory,
+    onResetWorkSort,
+    onResetProjectSort,
 }) => {
     if (experience.editingExpId) {
         return (
@@ -58,6 +60,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 deletingIds={experience.deletingExperienceIds}
                 staleExperienceIds={staleExperienceIds}
                 isAdding={experience.isAddingExperience}
+                onResetSort={onResetWorkSort}
             />
             <ExperienceListSection
                 title="项目经历"
@@ -73,6 +76,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 deletingIds={experience.deletingExperienceIds}
                 staleExperienceIds={staleExperienceIds}
                 isAdding={experience.isAddingExperience}
+                onResetSort={onResetProjectSort}
             />
             <CertificationListSection
                 title="证书资质"
