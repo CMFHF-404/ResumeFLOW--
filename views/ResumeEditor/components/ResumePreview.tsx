@@ -12,11 +12,85 @@ import { parseRichTextList, sanitizeRichTextHtml, splitRichTextLines } from '../
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
+type DropPosition = 'before' | 'after';
+type DragHoverHandler = (targetId: string, position: DropPosition) => void;
+type DragDropHandler = (event: React.DragEvent) => void;
+
+type DragTarget = { id: string; position: DropPosition };
 
 const STAR_CONTEXT_SEPARATOR = ' ';
 const normalizeStarText = (value?: string) => value?.trim() ?? '';
 const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
+const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
+const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
+
+const resolveClosestDragElement = (
+    target: EventTarget | null,
+    container: HTMLElement,
+    dataAttr: string
+) => {
+    // event.target 可能是 SVGElement/path 或 Text 节点；这里统一转换成 Element 再做 closest 命中。
+    const resolvedTarget =
+        target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    if (!resolvedTarget) {
+        return null;
+    }
+
+    const closest = resolvedTarget.closest(`[${dataAttr}]`);
+    if (!(closest instanceof HTMLElement)) {
+        return null;
+    }
+    return container.contains(closest) ? closest : null;
+};
+
+const resolveNearestDragCandidate = (
+    candidates: Array<{ el: HTMLElement; id: string }>,
+    clientY: number
+) => {
+    let best = candidates[0];
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const candidate of candidates) {
+        const rect = candidate.el.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        const distance = Math.abs(clientY - midpoint);
+        if (distance < bestDistance) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+
+    return best;
+};
+
+const resolveDragTarget = (
+    container: HTMLElement,
+    clientY: number,
+    dataAttr: string,
+    excludedId: string | null,
+    eventTarget: EventTarget | null
+): DragTarget | null => {
+    const elements = Array.from(container.querySelectorAll<HTMLElement>(`[${dataAttr}]`));
+    const candidates = elements
+        .map((el) => ({ el, id: el.getAttribute(dataAttr) }))
+        .filter((item): item is { el: HTMLElement; id: string } => !!item.id && item.id !== excludedId);
+
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    const hoveredEl = resolveClosestDragElement(eventTarget, container, dataAttr);
+    const hoveredId = hoveredEl?.getAttribute(dataAttr) ?? null;
+    const picked =
+        hoveredEl && hoveredId && hoveredId !== excludedId
+            ? { el: hoveredEl, id: hoveredId }
+            : resolveNearestDragCandidate(candidates, clientY);
+
+    const rect = picked.el.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+    return { id: picked.id, position: clientY < midpoint ? 'before' : 'after' };
+};
 
 const buildContextText = (star?: StarFields) => {
     const parts = [normalizeStarText(star?.s), normalizeStarText(star?.t)].filter(Boolean);
@@ -56,9 +130,8 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
                 React.createElement(
                     actionList.listType === 'ordered' ? 'ol' : 'ul',
                     {
-                        className: `${
-                            actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'
-                        } list-outside ml-4 text-xs text-gray-700 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS}`,
+                        className: `${actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'
+                            } list-outside ml-4 text-xs text-gray-700 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS}`,
                     },
                     actionList.lines.map((line, index) => (
                         <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
@@ -93,12 +166,16 @@ export type ResumePreviewProps = {
     sortedCertifications: CertificationView[];
     selectedCertIds: Set<string>;
     selectedSkillGroups: Array<{ name: string; skills: string[] }>;
+    isDragging: boolean;
+    draggedItemId: string | null;
+    draggedSectionId: string | null;
     onSectionDragStart: SectionDragHandler;
-    onSectionDragOver: SectionDragHandler;
-    onSectionDrop: () => void;
+    onSectionDragHover: DragHoverHandler;
+    onSectionDrop: DragDropHandler;
     onItemDragStart: ItemDragHandler;
-    onItemDragOver: ItemDragHandler;
-    onItemDrop: (event: React.DragEvent) => void;
+    onItemDragHover: DragHoverHandler;
+    onItemDrop: DragDropHandler;
+    onDragEnd: () => void;
     onNavigateTab: (tab: 'profile' | 'experience') => void;
     onEditExperience: (id: string) => void;
 };
@@ -121,15 +198,31 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     sortedCertifications,
     selectedCertIds,
     selectedSkillGroups,
+    isDragging,
+    draggedItemId,
+    draggedSectionId,
     onSectionDragStart,
-    onSectionDragOver,
+    onSectionDragHover,
     onSectionDrop,
     onItemDragStart,
-    onItemDragOver,
+    onItemDragHover,
     onItemDrop,
+    onDragEnd,
     onNavigateTab,
     onEditExperience,
 }) => {
+    // 拖拽时浏览器可能“冻结”hover 状态（尤其是起始元素），导致 hover 高光在拖动过程中残留。
+    // 因此拖拽期间禁用所有 hover 视觉反馈，只保留拖拽交互本身（实时重排）。
+    const sectionControlBaseClass = 'absolute -left-6 top-0 flex flex-col gap-1';
+    const sectionControlClass = isDragging
+        ? `${sectionControlBaseClass} opacity-0`
+        : `${sectionControlBaseClass} opacity-0 group-hover:opacity-100 transition-opacity`;
+    const itemControlClass = isDragging
+        ? 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0'
+        : 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity';
+    const itemHoverBgClass = isDragging ? '' : 'group-hover/item:bg-primary/5';
+    const sectionHoverBgClass = isDragging ? '' : 'group-hover:bg-primary/5';
+
     const renderExperienceSection = (
         sectionId: 'work' | 'project',
         title: string,
@@ -138,64 +231,103 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         if (!items.length) {
             return null;
         }
+
         return (
             <div
                 key={sectionId}
                 id={sectionId}
+                data-rf-section-id={sectionId}
                 className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
                 draggable
                 onDragStart={(event) => onSectionDragStart(event, sectionId)}
-                onDragOver={(event) => onSectionDragOver(event, sectionId)}
-                onDrop={onSectionDrop}
+                onDrop={(event) => {
+                    event.stopPropagation();
+                    onSectionDrop(event);
+                }}
+                onDragEnd={(event) => {
+                    event.stopPropagation();
+                    onDragEnd();
+                }}
             >
-                <div className="absolute -left-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className={sectionControlClass}>
                     <GripVertical className="w-4 h-4 text-primary cursor-move" />
                 </div>
 
                 <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
                     {title}
                 </h2>
-                <div className={listSpacingClass}>
-                    {items.map((item) => (
-                        <div
-                            key={item.id}
-                            className="relative group/item cursor-move"
-                            draggable
-                            onDragStart={(event) => {
-                                event.stopPropagation();
-                                onItemDragStart(event, item.id);
-                            }}
-                            onDragOver={(event) => {
-                                event.stopPropagation();
-                                onItemDragOver(event, item.id);
-                            }}
-                            onDrop={(event) => {
-                                event.stopPropagation();
-                                onItemDrop(event);
-                            }}
-                        >
-                            <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                <Edit3
-                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        onEditExperience(item.id);
-                                    }}
-                                />
-                            </div>
-
-                            <div className="group-hover/item:bg-primary/5 -m-2 p-2 rounded transition-colors">
-                                <div className="flex justify-between items-baseline mb-1">
-                                    <h3 className="text-sm font-bold text-gray-900">{item.company}</h3>
-                                    <span className="text-xs font-medium text-gray-600">{item.date}</span>
+                <div
+                    className={listSpacingClass}
+                    onDragOver={(event) => {
+                        if (!draggedItemId || draggedSectionId) {
+                            return;
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const container = event.currentTarget as HTMLElement;
+                        const target = resolveDragTarget(
+                            container,
+                            event.clientY,
+                            DATA_ITEM_ID_ATTR,
+                            draggedItemId,
+                            event.target
+                        );
+                        if (!target) {
+                            return;
+                        }
+                        onItemDragHover(target.id, target.position);
+                    }}
+                    onDrop={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onItemDrop(event);
+                    }}
+                >
+                    {items.map((item) => {
+                        return (
+                            <div
+                                key={item.id}
+                                data-rf-item-id={item.id}
+                                className="relative group/item cursor-move"
+                                draggable
+                                onDragStart={(event) => {
+                                    event.stopPropagation();
+                                    onItemDragStart(event, item.id);
+                                }}
+                                onDragEnd={(event) => {
+                                    event.stopPropagation();
+                                    onDragEnd();
+                                }}
+                            >
+                                <div className={itemControlClass}>
+                                    <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                    <Edit3
+                                        className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onEditExperience(item.id);
+                                        }}
+                                    />
                                 </div>
-                                <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
 
-                                {renderStarBlocks(item.star, item.id)}
+                                <div className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}>
+                                    <div className="flex justify-between items-baseline mb-1">
+                                        <h3 className="text-sm font-bold text-gray-900">
+                                            {item.company}
+                                        </h3>
+                                        <span className="text-xs font-medium text-gray-600">
+                                            {item.date}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs font-semibold text-gray-800 mb-1.5">
+                                        {item.title}
+                                    </p>
+
+                                    {renderStarBlocks(item.star, item.id)}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -216,6 +348,28 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             >
                 <div
                     ref={previewContentRef}
+                    onDragOver={(event) => {
+                        if (!draggedSectionId || draggedItemId) {
+                            return;
+                        }
+                        event.preventDefault();
+                        const container = event.currentTarget as HTMLElement;
+                        const target = resolveDragTarget(
+                            container,
+                            event.clientY,
+                            DATA_SECTION_ID_ATTR,
+                            draggedSectionId,
+                            event.target
+                        );
+                        if (!target) {
+                            return;
+                        }
+                        onSectionDragHover(target.id, target.position);
+                    }}
+                    onDrop={(event) => {
+                        event.preventDefault();
+                        onSectionDrop(event);
+                    }}
                 >
                     <div
                         id="basic-info"
@@ -238,13 +392,20 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 <div
                                     key="summary"
                                     id="summary"
+                                    data-rf-section-id="summary"
                                     className={`${spacingClass} relative group cursor-move`}
                                     draggable
                                     onDragStart={(event) => onSectionDragStart(event, 'summary')}
-                                    onDragOver={(event) => onSectionDragOver(event, 'summary')}
-                                    onDrop={onSectionDrop}
+                                    onDrop={(event) => {
+                                        event.stopPropagation();
+                                        onSectionDrop(event);
+                                    }}
+                                    onDragEnd={(event) => {
+                                        event.stopPropagation();
+                                        onDragEnd();
+                                    }}
                                 >
-                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
                                         <Edit3
                                             className="w-4 h-4 text-primary cursor-pointer"
@@ -254,7 +415,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             }}
                                         />
                                     </div>
-                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
                                             职业总结
                                         </h2>
@@ -279,13 +440,20 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 <div
                                     key="education"
                                     id="education"
+                                    data-rf-section-id="education"
                                     className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
                                     draggable
                                     onDragStart={(event) => onSectionDragStart(event, 'education')}
-                                    onDragOver={(event) => onSectionDragOver(event, 'education')}
-                                    onDrop={onSectionDrop}
+                                    onDrop={(event) => {
+                                        event.stopPropagation();
+                                        onSectionDrop(event);
+                                    }}
+                                    onDragEnd={(event) => {
+                                        event.stopPropagation();
+                                        onDragEnd();
+                                    }}
                                 >
-                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
                                         <Edit3
                                             className="w-4 h-4 text-primary cursor-pointer"
@@ -296,7 +464,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         />
                                     </div>
 
-                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
                                             教育背景
                                         </h2>
@@ -340,12 +508,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="certifications"
                                     id="certifications"
                                     className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                    data-rf-section-id="certifications"
                                     draggable
                                     onDragStart={(event) => onSectionDragStart(event, 'certifications')}
-                                    onDragOver={(event) => onSectionDragOver(event, 'certifications')}
-                                    onDrop={onSectionDrop}
+                                    onDrop={(event) => {
+                                        event.stopPropagation();
+                                        onSectionDrop(event);
+                                    }}
+                                    onDragEnd={(event) => {
+                                        event.stopPropagation();
+                                        onDragEnd();
+                                    }}
                                 >
-                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
                                         <Edit3
                                             className="w-4 h-4 text-primary cursor-pointer"
@@ -356,7 +531,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         />
                                     </div>
 
-                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
                                             证书资质
                                         </h2>
@@ -389,13 +564,20 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 <div
                                     key="skills"
                                     id="skills"
+                                    data-rf-section-id="skills"
                                     className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
                                     draggable
                                     onDragStart={(event) => onSectionDragStart(event, 'skills')}
-                                    onDragOver={(event) => onSectionDragOver(event, 'skills')}
-                                    onDrop={onSectionDrop}
+                                    onDrop={(event) => {
+                                        event.stopPropagation();
+                                        onSectionDrop(event);
+                                    }}
+                                    onDragEnd={(event) => {
+                                        event.stopPropagation();
+                                        onDragEnd();
+                                    }}
                                 >
-                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
                                         <Edit3
                                             className="w-4 h-4 text-primary cursor-pointer"
@@ -406,7 +588,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         />
                                     </div>
 
-                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
                                             专业技能
                                         </h2>

@@ -136,9 +136,43 @@ const resolveMeasuredContentHeight = (container: HTMLElement) => {
     return Math.max(baseHeight, rectHeight);
 };
 
+type DropPosition = 'before' | 'after';
+
+const resolveInsertIndex = (
+    draggedIndex: number,
+    targetIndex: number,
+    position: DropPosition
+) => {
+    const targetIndexAfterRemoval = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    return position === 'after' ? targetIndexAfterRemoval + 1 : targetIndexAfterRemoval;
+};
+
+const moveItemWithDropPosition = <T,>(
+    items: T[],
+    draggedIndex: number,
+    targetIndex: number,
+    position: DropPosition
+) => {
+    if (draggedIndex === targetIndex) {
+        return items;
+    }
+
+    const insertIndex = resolveInsertIndex(draggedIndex, targetIndex, position);
+    if (insertIndex === draggedIndex) {
+        return items;
+    }
+
+    const nextItems = [...items];
+    const [dragged] = nextItems.splice(draggedIndex, 1);
+
+    nextItems.splice(insertIndex, 0, dragged);
+    return nextItems;
+};
+
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
+    const [isDragging, setIsDragging] = useState(false);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
@@ -184,6 +218,8 @@ const ResumeEditor: React.FC = () => {
         () => [...DEFAULT_SECTION_ORDER]
     );
     const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+    const lastItemHoverKeyRef = useRef<string | null>(null);
+    const lastSectionHoverKeyRef = useRef<string | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
@@ -489,25 +525,42 @@ const ResumeEditor: React.FC = () => {
         void handleAdjustToSinglePage();
     };
     const handleDragStart = (e: React.DragEvent, id: string) => {
+        lastItemHoverKeyRef.current = null;
+        lastSectionHoverKeyRef.current = null;
+        setDraggedSectionId(null);
         setDraggedItemId(id);
+        setIsDragging(true);
         e.dataTransfer.effectAllowed = 'move';
-    };
-    const handleDragOver = (e: React.DragEvent, id: string) => {
-        e.preventDefault();
-        if (draggedItemId === null || draggedItemId === id) return;
-        // Simple reorder logic
-        const draggedIndex = experienceItems.findIndex(i => i.id === draggedItemId);
-        const hoverIndex = experienceItems.findIndex(i => i.id === id);
-        const newItems = [...experienceItems];
-        const [draggedItem] = newItems.splice(draggedIndex, 1);
-        newItems.splice(hoverIndex, 0, draggedItem);
-        setExperienceItems(newItems);
     };
     const clearDragState = () => {
         setDraggedItemId(null);
         setDraggedSectionId(null);
+        setIsDragging(false);
+        lastItemHoverKeyRef.current = null;
+        lastSectionHoverKeyRef.current = null;
     };
-    const handleDrop = (e: React.DragEvent) => {
+
+    const handleItemDragHover = (targetItemId: string, position: DropPosition) => {
+        if (!draggedItemId || draggedItemId === targetItemId) {
+            return;
+        }
+
+        const hoverKey = `${targetItemId}:${position}`;
+        if (lastItemHoverKeyRef.current === hoverKey) {
+            return;
+        }
+        lastItemHoverKeyRef.current = hoverKey;
+        setExperienceItems((prev) => {
+            const draggedIndex = prev.findIndex((item) => item.id === draggedItemId);
+            const targetIndex = prev.findIndex((item) => item.id === targetItemId);
+            if (draggedIndex < 0 || targetIndex < 0) {
+                return prev;
+            }
+            return moveItemWithDropPosition(prev, draggedIndex, targetIndex, position);
+        });
+    };
+
+    const handleItemDrop = (e: React.DragEvent) => {
         e.preventDefault();
         clearDragState();
     };
@@ -543,20 +596,36 @@ const ResumeEditor: React.FC = () => {
     };
     // Section drag handlers
     const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
+        lastItemHoverKeyRef.current = null;
+        lastSectionHoverKeyRef.current = null;
+        setDraggedItemId(null);
         setDraggedSectionId(sectionId);
+        setIsDragging(true);
         e.dataTransfer.effectAllowed = 'move';
     };
-    const handleSectionDragOver = (e: React.DragEvent, sectionId: string) => {
-        e.preventDefault();
-        if (!draggedSectionId || draggedSectionId === sectionId) return;
-        const draggedIndex = sectionOrder.indexOf(draggedSectionId);
-        const hoverIndex = sectionOrder.indexOf(sectionId);
-        const newOrder = [...sectionOrder];
-        const [removed] = newOrder.splice(draggedIndex, 1);
-        newOrder.splice(hoverIndex, 0, removed);
-        setSectionOrder(newOrder);
+
+    const handleSectionDragHover = (targetSectionId: string, position: DropPosition) => {
+        if (!draggedSectionId || draggedSectionId === targetSectionId) {
+            return;
+        }
+
+        const hoverKey = `${targetSectionId}:${position}`;
+        if (lastSectionHoverKeyRef.current === hoverKey) {
+            return;
+        }
+        lastSectionHoverKeyRef.current = hoverKey;
+        setSectionOrder((prev) => {
+            const draggedIndex = prev.indexOf(draggedSectionId);
+            const targetIndex = prev.indexOf(targetSectionId);
+            if (draggedIndex < 0 || targetIndex < 0) {
+                return prev;
+            }
+            return moveItemWithDropPosition(prev, draggedIndex, targetIndex, position);
+        });
     };
-    const handleSectionDrop = () => {
+
+    const handleSectionDrop = (e: React.DragEvent) => {
+        e.preventDefault();
         clearDragState();
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
@@ -714,12 +783,16 @@ const ResumeEditor: React.FC = () => {
                     sortedCertifications={sortedCertifications}
                     selectedCertIds={selectedCertIds}
                     selectedSkillGroups={selectedSkillGroups}
+                    isDragging={isDragging}
+                    draggedItemId={draggedItemId}
+                    draggedSectionId={draggedSectionId}
                     onSectionDragStart={handleSectionDragStart}
-                    onSectionDragOver={handleSectionDragOver}
+                    onSectionDragHover={handleSectionDragHover}
                     onSectionDrop={handleSectionDrop}
                     onItemDragStart={handleDragStart}
-                    onItemDragOver={handleDragOver}
-                    onItemDrop={handleDrop}
+                    onItemDragHover={handleItemDragHover}
+                    onItemDrop={handleItemDrop}
+                    onDragEnd={clearDragState}
                     onNavigateTab={setSidebarTab}
                     onEditExperience={handleEditExperience}
                 />
