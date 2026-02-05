@@ -1,0 +1,123 @@
+import React, { useMemo } from 'react';
+import { ChevronDown, ChevronUp, RefreshCw, Target, Wand2 } from 'lucide-react';
+import type { JDAnalysisResult } from '../../../services/aiService';
+import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
+import { normalizeJobKeywords } from '../helpers';
+import { MatchBadge } from './Badges';
+
+type JDAnalysisPanelProps = {
+    jdText: string;
+    analysisResult: JDAnalysisResult | null;
+    isAnalyzing: boolean;
+    isCollapsed: boolean;
+    onAnalyze: () => void;
+    onToggleCollapse: () => void;
+    onJdTextChange: (value: string) => void;
+};
+
+const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
+    jdText,
+    analysisResult,
+    isAnalyzing,
+    isCollapsed,
+    onAnalyze,
+    onToggleCollapse,
+    onJdTextChange,
+}) => {
+    const jobKeywords = useMemo(
+        () => normalizeJobKeywords(analysisResult?.jobKeywords),
+        [analysisResult?.jobKeywords]
+    );
+
+    return (
+        <div
+            className={`${JD_PANEL_STICKY_CLASS} border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${JD_PANEL_BOTTOM_SPACING_CLASS} ${isCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}
+        >
+            <div className="px-4 flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" />
+                    职位分析 (JD Analysis)
+                </h3>
+                <button
+                    onClick={onToggleCollapse}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                    {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                </button>
+            </div>
+            <div className="px-4">
+                {isCollapsed ? (
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                                <MatchBadge score={analysisResult?.matchPercentage ?? 0} />
+                                <button
+                                    onClick={onAnalyze}
+                                    disabled={isAnalyzing}
+                                    className="p-1 text-gray-400 hover:text-emerald-600"
+                                >
+                                    <RefreshCw className={`w-3 h-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1 overflow-hidden">
+                                {jobKeywords.length > 0 ? (
+                                    jobKeywords.map((keyword) => (
+                                        <span
+                                            key={keyword}
+                                            className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
+                                        >
+                                            {keyword}
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">
+                                        暂无关键词
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        {analysisResult?.summary ? (
+                            <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                                {analysisResult.summary}
+                            </p>
+                        ) : null}
+                    </div>
+                ) : (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="relative group">
+                            <textarea
+                                className="w-full h-24 p-3 text-xs bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
+                                placeholder="在此粘贴职位要求 (Job Description)..."
+                                value={jdText}
+                                onChange={(e) => onJdTextChange(e.target.value)}
+                            />
+                            <button
+                                onClick={onAnalyze}
+                                disabled={isAnalyzing}
+                                className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[10px] font-bold px-2 disabled:opacity-60"
+                            >
+                                <Wand2 className="w-3 h-3" />
+                                {isAnalyzing ? '分析中...' : '开始分析'}
+                            </button>
+                        </div>
+                        {analysisResult ? (
+                            <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-lg p-3">
+                                <div className="flex justify-between items-center mb-2">
+                                    <MatchBadge score={analysisResult.matchPercentage ?? 0} />
+                                    <span className="text-[10px] text-emerald-600/80">
+                                        Missing: {(analysisResult.missingKeywords || []).join(', ')}
+                                    </span>
+                                </div>
+                                <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                                    {analysisResult.summary}
+                                </p>
+                            </div>
+                        ) : null}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default JDAnalysisPanel;
