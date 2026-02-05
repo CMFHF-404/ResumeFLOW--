@@ -221,15 +221,20 @@ const useRichTextHandlers = ({
     hideToolbar: () => void;
     setIsFocused: (state: boolean) => void;
 }) => {
-    const handleInput = useCallback(() => {
+    // 抽取保存内容逻辑，避免在blur时触发selection更新
+    const saveContent = useCallback(() => {
         const editor = editorRef.current;
         if (!editor) {
             return;
         }
         const sanitized = sanitizeRichTextHtml(editor.innerHTML);
         onChange(sanitized);
+    }, [editorRef, onChange]);
+
+    const handleInput = useCallback(() => {
+        saveContent();
         updateSelectionState();
-    }, [editorRef, onChange, updateSelectionState]);
+    }, [saveContent, updateSelectionState]);
 
     const handlePaste = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
         event.preventDefault();
@@ -250,8 +255,9 @@ const useRichTextHandlers = ({
     const handleBlur = useCallback(() => {
         setIsFocused(false);
         hideToolbar();
-        handleInput();
-    }, [handleInput, hideToolbar, setIsFocused]);
+        // 只保存内容，不触发selection更新，避免浮窗重新出现
+        saveContent();
+    }, [saveContent, hideToolbar, setIsFocused]);
 
     return { handleInput, handlePaste, handleKeyDown, handleFocus, handleBlur };
 };
@@ -265,7 +271,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 }) => {
     const editorRef = useRef<HTMLDivElement | null>(null);
     const [isFocused, setIsFocused] = useState(false);
-    const editorClassName = `${className ?? ''} whitespace-pre-wrap break-words outline-none`;
+    const editorClassName = `${className ?? ''} whitespace-pre-wrap break-words outline-none overflow-y-auto`;
 
     useEditorSync(editorRef, value);
     const { toolbar, hideToolbar, updateSelectionState } = useToolbarState(editorRef);
@@ -309,6 +315,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onKeyDown={handleKeyDown}
                 onMouseUp={updateSelectionState}
                 onKeyUp={updateSelectionState}
+                onScroll={hideToolbar}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
                 suppressContentEditableWarning
