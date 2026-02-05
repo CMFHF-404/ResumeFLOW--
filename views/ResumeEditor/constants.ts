@@ -70,9 +70,22 @@ export const EDITING_SUGGESTION_NAV_CLASS =
 
 export const SMART_PAGE_MIN_SCALE = 0.86;
 export const SMART_PAGE_HEIGHT_TOLERANCE = 12;
+export const SMART_PAGE_ADJUSTING_TOAST_DURATION_MS = 800;
+export const A4_HEIGHT_MM = 297;
+export const PREVIEW_PADDING_MM = 20;
+export const SMART_PAGE_BOTTOM_GAP_MM = PREVIEW_PADDING_MM;
+export const LINE_HEIGHT_DEFAULT = 1.6;
+export const LINE_HEIGHT_MIN = 1.2;
+export const LINE_HEIGHT_STEP = 0.05;
+export const LIST_SPACING_REM_BY_DENSITY = {
+    compact: 0.375,
+    standard: 1,
+    spacious: 1.5,
+} as const;
 export const SMART_PAGE_TOAST_MESSAGES = {
     success: '已自动调整为一页',
-    overflow: '内容过多，无法压缩到一页',
+    overflow: '内容过多，即使调整行间距也无法保留页尾留白，请删减部分内容。',
+    adjusting: '正在尝试调整行间距...',
 } as const;
 
 export const DEFAULT_MATCH_BADGE_TONE: keyof typeof MATCH_BADGE_STYLES = 'emerald';

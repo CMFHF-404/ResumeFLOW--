@@ -8,20 +8,28 @@ import type {
     StarFields,
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
-import { sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
+import { parseRichTextList, sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
 
 const STAR_CONTEXT_SEPARATOR = ' ';
 const normalizeStarText = (value?: string) => value?.trim() ?? '';
+const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
+const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 
 const buildContextText = (star?: StarFields) => {
     const parts = [normalizeStarText(star?.s), normalizeStarText(star?.t)].filter(Boolean);
     return parts.join(STAR_CONTEXT_SEPARATOR);
 };
 
-const splitActionLines = (value?: string) => splitRichTextLines(value ?? '');
+const resolveActionList = (value?: string) => {
+    const listData = parseRichTextList(value ?? '');
+    if (listData) {
+        return { lines: listData.lines, listType: listData.listType };
+    }
+    return { lines: splitRichTextLines(value ?? ''), listType: 'unordered' as const };
+};
 
 const renderRichText = (value: string) => ({
     __html: sanitizeRichTextHtml(value),
@@ -29,10 +37,10 @@ const renderRichText = (value: string) => ({
 
 const renderStarBlocks = (star: StarFields, itemId: string) => {
     const contextText = buildContextText(star);
-    const actionLines = splitActionLines(star.a);
+    const actionList = resolveActionList(star.a);
     const resultText = normalizeStarText(star.r);
 
-    if (!contextText && actionLines.length === 0 && !resultText) {
+    if (!contextText && actionList.lines.length === 0 && !resultText) {
         return null;
     }
 
@@ -44,12 +52,18 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
                     dangerouslySetInnerHTML={renderRichText(contextText)}
                 />
             ) : null}
-            {actionLines.length > 0 ? (
-                <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
-                    {actionLines.map((line, index) => (
+            {actionList.lines.length > 0 ? (
+                React.createElement(
+                    actionList.listType === 'ordered' ? 'ol' : 'ul',
+                    {
+                        className: `${
+                            actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'
+                        } list-outside ml-4 text-xs text-gray-700 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS}`,
+                    },
+                    actionList.lines.map((line, index) => (
                         <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
-                    ))}
-                </ul>
+                    ))
+                )
             ) : null}
             {resultText ? (
                 <div
@@ -63,7 +77,11 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
 
 export type ResumePreviewProps = {
     previewRef: React.RefObject<HTMLDivElement>;
-    resumeScale: number;
+    previewContentRef: React.RefObject<HTMLDivElement>;
+    lineHeight: number;
+    listSpacingValue: string;
+    bulletSpacingValue: string;
+    previewPaddingValue: string;
     profile: ResumeEditorProfile;
     spacingClass: string;
     listSpacingClass: string;
@@ -87,7 +105,11 @@ export type ResumePreviewProps = {
 
 const ResumePreview: React.FC<ResumePreviewProps> = ({
     previewRef,
-    resumeScale,
+    previewContentRef,
+    lineHeight,
+    listSpacingValue,
+    bulletSpacingValue,
+    previewPaddingValue,
     profile,
     spacingClass,
     listSpacingClass,
@@ -183,218 +205,227 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto relative flex justify-center p-8 scroll-smooth">
             <div
                 ref={previewRef}
-                className="a4-preview text-gray-900 p-[20mm] relative"
+                className="a4-preview text-gray-900 relative"
                 style={{
-                    transform: resumeScale === 1 ? undefined : `scale(${resumeScale})`,
-                    transformOrigin: 'top center',
-                }}
+                    lineHeight,
+                    padding: previewPaddingValue,
+                    '--rf-line-height': String(lineHeight),
+                    '--rf-list-spacing': listSpacingValue,
+                    '--rf-bullet-spacing': bulletSpacingValue,
+                } as React.CSSProperties}
             >
                 <div
-                    id="basic-info"
-                    className={`border-b-2 border-gray-900 pb-4 ${spacingClass} text-center scroll-mt-8`}
+                    ref={previewContentRef}
                 >
-                    <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
-                        {profile.name}
-                    </h1>
-                    <div className="text-[11px] text-gray-600 flex justify-center flex-wrap gap-x-4 gap-y-1 font-medium">
-                        <span>{profile.email}</span>
-                        <span>{profile.phone}</span>
-                        <span>{profile.location}</span>
-                        <span>{profile.linkedin}</span>
+                    <div
+                        id="basic-info"
+                        className={`border-b-2 border-gray-900 pb-4 ${spacingClass} text-center scroll-mt-8`}
+                    >
+                        <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
+                            {profile.name}
+                        </h1>
+                        <div className="text-[11px] text-gray-600 flex justify-center flex-wrap gap-x-4 gap-y-1 font-medium">
+                            <span>{profile.email}</span>
+                            <span>{profile.phone}</span>
+                            <span>{profile.location}</span>
+                            <span>{profile.linkedin}</span>
+                        </div>
                     </div>
-                </div>
 
-                {sectionOrder.map((sectionId) => {
-                    if (sectionId === 'summary' && profile.summary) {
-                        return (
-                            <div
-                                key="summary"
-                                id="summary"
-                                className={`${spacingClass} relative group cursor-move`}
-                                draggable
-                                onDragStart={(event) => onSectionDragStart(event, 'summary')}
-                                onDragOver={(event) => onSectionDragOver(event, 'summary')}
-                                onDrop={onSectionDrop}
-                            >
-                                <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    <Edit3
-                                        className="w-4 h-4 text-primary cursor-pointer"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            onNavigateTab('profile');
-                                        }}
-                                    />
+                    {sectionOrder.map((sectionId) => {
+                        if (sectionId === 'summary' && profile.summary) {
+                            return (
+                                <div
+                                    key="summary"
+                                    id="summary"
+                                    className={`${spacingClass} relative group cursor-move`}
+                                    draggable
+                                    onDragStart={(event) => onSectionDragStart(event, 'summary')}
+                                    onDragOver={(event) => onSectionDragOver(event, 'summary')}
+                                    onDrop={onSectionDrop}
+                                >
+                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <Edit3
+                                            className="w-4 h-4 text-primary cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onNavigateTab('profile');
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
+                                            职业总结
+                                        </h2>
+                                        <p className="text-xs leading-[var(--rf-line-height)] text-gray-800">
+                                            {profile.summary}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
-                                    <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
-                                        职业总结
-                                    </h2>
-                                    <p className="text-xs leading-relaxed text-gray-800">{profile.summary}</p>
-                                </div>
-                            </div>
-                        );
-                    }
+                            );
+                        }
 
-                    if (sectionId === 'work') {
-                        return renderExperienceSection('work', '工作经历', selectedWorkItems);
-                    }
+                        if (sectionId === 'work') {
+                            return renderExperienceSection('work', '工作经历', selectedWorkItems);
+                        }
 
-                    if (sectionId === 'project') {
-                        return renderExperienceSection('project', '项目经历', selectedProjectItems);
-                    }
+                        if (sectionId === 'project') {
+                            return renderExperienceSection('project', '项目经历', selectedProjectItems);
+                        }
 
-                    if (sectionId === 'education' && selectedEduIds.size > 0) {
-                        return (
-                            <div
-                                key="education"
-                                id="education"
-                                className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                                draggable
-                                onDragStart={(event) => onSectionDragStart(event, 'education')}
-                                onDragOver={(event) => onSectionDragOver(event, 'education')}
-                                onDrop={onSectionDrop}
-                            >
-                                <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    <Edit3
-                                        className="w-4 h-4 text-primary cursor-pointer"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            onNavigateTab('profile');
-                                        }}
-                                    />
-                                </div>
+                        if (sectionId === 'education' && selectedEduIds.size > 0) {
+                            return (
+                                <div
+                                    key="education"
+                                    id="education"
+                                    className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                    draggable
+                                    onDragStart={(event) => onSectionDragStart(event, 'education')}
+                                    onDragOver={(event) => onSectionDragOver(event, 'education')}
+                                    onDrop={onSectionDrop}
+                                >
+                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <Edit3
+                                            className="w-4 h-4 text-primary cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onNavigateTab('profile');
+                                            }}
+                                        />
+                                    </div>
 
-                                <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
-                                    <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
-                                        教育背景
-                                    </h2>
-                                    <div className={listSpacingClass}>
-                                        {educations
-                                            .filter((edu) => selectedEduIds.has(edu.id))
-                                            .map((edu) => {
-                                                const dateText = buildExperienceDate(
-                                                    edu.startDate,
-                                                    edu.endDate,
-                                                    edu.isCurrent
-                                                );
-                                                return (
-                                                    <div key={edu.id} className="mb-2">
-                                                        <div className="flex justify-between items-baseline mb-0.5">
-                                                            <h3 className="text-sm font-bold text-gray-900">
-                                                                {edu.school}
-                                                            </h3>
-                                                            <span className="text-xs font-medium text-gray-600">
-                                                                {dateText}
-                                                            </span>
+                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
+                                            教育背景
+                                        </h2>
+                                        <div className={listSpacingClass}>
+                                            {educations
+                                                .filter((edu) => selectedEduIds.has(edu.id))
+                                                .map((edu) => {
+                                                    const dateText = buildExperienceDate(
+                                                        edu.startDate,
+                                                        edu.endDate,
+                                                        edu.isCurrent
+                                                    );
+                                                    return (
+                                                        <div key={edu.id} className="mb-2">
+                                                            <div className="flex justify-between items-baseline mb-0.5">
+                                                                <h3 className="text-sm font-bold text-gray-900">
+                                                                    {edu.school}
+                                                                </h3>
+                                                                <span className="text-xs font-medium text-gray-600">
+                                                                    {dateText}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-800">
+                                                                {edu.major}, {edu.degree}
+                                                            </p>
+                                                            {edu.gpa ? (
+                                                                <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>
+                                                            ) : null}
                                                         </div>
-                                                        <p className="text-xs text-gray-800">
-                                                            {edu.major}, {edu.degree}
-                                                        </p>
-                                                        {edu.gpa ? (
-                                                            <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>
-                                                        ) : null}
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    }
+                            );
+                        }
 
-                    if (sectionId === 'certifications' && selectedCertIds.size > 0) {
-                        return (
-                            <div
-                                key="certifications"
-                                id="certifications"
-                                className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                                draggable
-                                onDragStart={(event) => onSectionDragStart(event, 'certifications')}
-                                onDragOver={(event) => onSectionDragOver(event, 'certifications')}
-                                onDrop={onSectionDrop}
-                            >
-                                <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    <Edit3
-                                        className="w-4 h-4 text-primary cursor-pointer"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            onNavigateTab('experience');
-                                        }}
-                                    />
-                                </div>
+                        if (sectionId === 'certifications' && selectedCertIds.size > 0) {
+                            return (
+                                <div
+                                    key="certifications"
+                                    id="certifications"
+                                    className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                    draggable
+                                    onDragStart={(event) => onSectionDragStart(event, 'certifications')}
+                                    onDragOver={(event) => onSectionDragOver(event, 'certifications')}
+                                    onDrop={onSectionDrop}
+                                >
+                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <Edit3
+                                            className="w-4 h-4 text-primary cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onNavigateTab('experience');
+                                            }}
+                                        />
+                                    </div>
 
-                                <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
-                                    <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
-                                        证书资质
-                                    </h2>
-                                    <div className="space-y-1.5">
-                                        {sortedCertifications
-                                            .filter((cert) => selectedCertIds.has(cert.id))
-                                            .map((cert) => (
-                                                <div key={cert.id} className="flex justify-between items-baseline">
-                                                    <div>
-                                                        <span className="text-xs font-bold text-gray-900">
-                                                            {cert.name}
-                                                        </span>
-                                                        {cert.issuer ? (
-                                                            <span className="text-xs text-gray-600 ml-2">
-                                                                ({cert.issuer})
+                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
+                                            证书资质
+                                        </h2>
+                                        <div className={listSpacingClass}>
+                                            {sortedCertifications
+                                                .filter((cert) => selectedCertIds.has(cert.id))
+                                                .map((cert) => (
+                                                    <div key={cert.id} className="flex justify-between items-baseline">
+                                                        <div>
+                                                            <span className="text-xs font-bold text-gray-900">
+                                                                {cert.name}
                                                             </span>
-                                                        ) : null}
+                                                            {cert.issuer ? (
+                                                                <span className="text-xs text-gray-600 ml-2">
+                                                                    ({cert.issuer})
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                        <span className="text-xs text-gray-600">{cert.date}</span>
                                                     </div>
-                                                    <span className="text-xs text-gray-600">{cert.date}</span>
-                                                </div>
+                                                ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        if (sectionId === 'skills' && selectedSkillGroups.length > 0) {
+                            return (
+                                <div
+                                    key="skills"
+                                    id="skills"
+                                    className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                    draggable
+                                    onDragStart={(event) => onSectionDragStart(event, 'skills')}
+                                    onDragOver={(event) => onSectionDragOver(event, 'skills')}
+                                    onDrop={onSectionDrop}
+                                >
+                                    <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <Edit3
+                                            className="w-4 h-4 text-primary cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onNavigateTab('experience');
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
+                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
+                                            专业技能
+                                        </h2>
+                                        <div className={`text-xs text-gray-800 grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
+                                            {selectedSkillGroups.map((group) => (
+                                                <React.Fragment key={group.name}>
+                                                    <span className="font-bold text-gray-900">{group.name}:</span>
+                                                    <span>{group.skills.join(', ')}</span>
+                                                </React.Fragment>
                                             ))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    }
+                            );
+                        }
 
-                    if (sectionId === 'skills' && selectedSkillGroups.length > 0) {
-                        return (
-                            <div
-                                key="skills"
-                                id="skills"
-                                className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                                draggable
-                                onDragStart={(event) => onSectionDragStart(event, 'skills')}
-                                onDragOver={(event) => onSectionDragOver(event, 'skills')}
-                                onDrop={onSectionDrop}
-                            >
-                                <div className="absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    <Edit3
-                                        className="w-4 h-4 text-primary cursor-pointer"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            onNavigateTab('experience');
-                                        }}
-                                    />
-                                </div>
-
-                                <div className="group-hover:bg-primary/5 -m-2 p-2 rounded transition-colors">
-                                    <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
-                                        专业技能
-                                    </h2>
-                                    <div className="text-xs text-gray-800 grid grid-cols-[100px_1fr] gap-y-1.5">
-                                        {selectedSkillGroups.map((group) => (
-                                            <React.Fragment key={group.name}>
-                                                <span className="font-bold text-gray-900">{group.name}:</span>
-                                                <span>{group.skills.join(', ')}</span>
-                                            </React.Fragment>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    }
-
-                    return null;
-                })}
+                        return null;
+                    })}
+                </div>
             </div>
         </main>
     );

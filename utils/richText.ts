@@ -1,6 +1,7 @@
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:'];
 const ALLOWED_INLINE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR']);
-const BLOCK_TAGS = new Set(['DIV', 'P', 'LI', 'UL', 'OL']);
+const ALLOWED_BLOCK_TAGS = new Set(['UL', 'OL', 'LI']);
+const BLOCK_TAGS = new Set(['DIV', 'P']);
 const LINE_BREAK_TAG = 'BR';
 
 const escapeHtml = (value: string) =>
@@ -28,18 +29,28 @@ const decodeHtmlEntities = (value: string) => {
 
 const normalizeTextNode = (value: string) => value.replace(/\u00a0/g, ' ');
 
+const EDGE_WHITESPACE_PATTERN = /^[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]+|[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]+$/g;
+
+const normalizeMarkdownToken = (value: string) =>
+    value.replace(/[\u00a0\u3000]/g, ' ').replace(EDGE_WHITESPACE_PATTERN, '');
+
 const maybeConvertLegacyMarkdown = (input: string) => {
     if (!input || /<[^>]+>/.test(input)) {
         return input;
     }
-    if (!/(\*\*|__|\]\()/g.test(input)) {
+    if (!/(\*\*|__|\]\(|\*[^*\r\n]+\*)/g.test(input)) {
         return input;
     }
     return input
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-        .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-        .replace(/__([^_]+)__/g, '<u>$1</u>')
-        .replace(/\*([^*]+)\*/g, '<i>$1</i>');
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, href) => {
+            return `<a href="${href}">${normalizeMarkdownToken(text)}</a>`;
+        })
+        .replace(/\*\*([^*]+)\*\*/g, (_match, text) => `<b>${normalizeMarkdownToken(text)}</b>`)
+        .replace(/__([^_]+)__/g, (_match, text) => `<u>${normalizeMarkdownToken(text)}</u>`)
+        // 仅匹配同一行内的 *italic*，避免把 `* item1\n* item2` 误判为斜体。
+        .replace(/(^|[^*])\*([^\s*](?:[^*\r\n]*?[^\s*])?)\*(?!\*)/g, (_match, prefix, text) => {
+            return `${prefix}<i>${normalizeMarkdownToken(text)}</i>`;
+        });
 };
 
 const isSafeHref = (value: string | null) => {
@@ -125,6 +136,13 @@ const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
             return;
         }
 
+        if (ALLOWED_BLOCK_TAGS.has(tag)) {
+            const block = document.createElement(tag.toLowerCase());
+            sanitizeNodeList(Array.from(element.childNodes), block);
+            parent.appendChild(block);
+            return;
+        }
+
         const isBlock = BLOCK_TAGS.has(tag);
         sanitizeNodeList(Array.from(element.childNodes), parent);
         if (isBlock) {
@@ -141,6 +159,76 @@ const trimTrailingLineBreaks = (parent: HTMLElement) => {
         }
         parent.removeChild(element);
     }
+};
+
+export type RichTextListType = 'ordered' | 'unordered';
+
+type RichTextListData = {
+    lines: string[];
+    listType: RichTextListType;
+};
+
+const isIgnorableRootNode = (node: ChildNode) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+        return !(node.textContent ?? '').trim();
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+        return true;
+    }
+    return (node as HTMLElement).tagName.toUpperCase() === LINE_BREAK_TAG;
+};
+
+const resolveRootListElement = (container: HTMLElement) => {
+    const meaningfulNodes = Array.from(container.childNodes).filter((node) => !isIgnorableRootNode(node));
+    if (meaningfulNodes.length !== 1) {
+        return null;
+    }
+    const candidate = meaningfulNodes[0];
+    if (candidate instanceof HTMLOListElement || candidate instanceof HTMLUListElement) {
+        return candidate;
+    }
+    return null;
+};
+
+const extractListData = (sanitized: string): RichTextListData | null => {
+    if (typeof document !== 'undefined') {
+        const container = document.createElement('div');
+        container.innerHTML = sanitized;
+        const listElement = resolveRootListElement(container);
+        if (!(listElement instanceof HTMLOListElement || listElement instanceof HTMLUListElement)) {
+            return null;
+        }
+        const listType = listElement.tagName.toLowerCase() === 'ol' ? 'ordered' : 'unordered';
+        const items = Array.from(listElement.children).filter((child): child is HTMLLIElement => child instanceof HTMLLIElement);
+        if (!items.length) {
+            return null;
+        }
+        return {
+            listType,
+            lines: items
+                .map((item) => item.innerHTML.trim())
+                .filter(Boolean),
+        };
+    }
+    const listType: RichTextListType | null = /<ol/i.test(sanitized)
+        ? 'ordered'
+        : /<ul/i.test(sanitized)
+            ? 'unordered'
+            : null;
+    if (!listType) {
+        return null;
+    }
+    const matches = sanitized.match(/<li[^>]*>[\s\S]*?<\/li>/gi);
+    if (!matches) {
+        return null;
+    }
+    const lines = matches
+        .map((match) => match.replace(/<\/?li[^>]*>/gi, '').trim())
+        .filter(Boolean);
+    if (!lines.length) {
+        return null;
+    }
+    return { lines, listType };
 };
 
 export const sanitizeRichTextHtml = (input: string) => {
@@ -169,6 +257,9 @@ export const stripRichTextToText = (input: string) => {
     }
     const container = document.createElement('div');
     container.innerHTML = sanitizeRichTextHtml(input);
+    container.querySelectorAll('li').forEach((li) => {
+        li.appendChild(document.createTextNode('\n'));
+    });
     container.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
     return normalizeTextNode(container.textContent ?? '');
 };
@@ -178,8 +269,23 @@ export const splitRichTextLines = (input: string) => {
     if (!sanitized) {
         return [];
     }
+    const listData = extractListData(sanitized);
+    if (listData) {
+        return listData.lines;
+    }
     return sanitized
         .split(/<br\s*\/?>/i)
         .map((line) => line.trim())
         .filter(Boolean);
+};
+
+export const parseRichTextList = (input: string): RichTextListData | null => {
+    if (!input) {
+        return null;
+    }
+    const sanitized = sanitizeRichTextHtml(input);
+    if (!sanitized) {
+        return null;
+    }
+    return extractListData(sanitized);
 };

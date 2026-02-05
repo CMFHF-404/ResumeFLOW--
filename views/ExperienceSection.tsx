@@ -60,6 +60,16 @@ type ExperienceSectionModel = {
 
 const isTempId = (id: string) => id.startsWith('temp_');
 
+const sortExperiencesByStartDate = (experiences: ExperienceListItem[]) => {
+  return [...experiences].sort((a, b) => {
+    const dateA = a.latest_version?.start_date;
+    const dateB = b.latest_version?.start_date;
+    const valA = parseYearMonthValue(dateA) ?? -1;
+    const valB = parseYearMonthValue(dateB) ?? -1;
+    return valB - valA;
+  });
+};
+
 const buildExperienceCardData = (item: ExperienceListItem): ExperienceCardData => {
   const star = item.latest_version?.star || {};
   return {
@@ -851,15 +861,7 @@ const useTagActions = ({ cardData, toast, updateCardField }: ExperienceAiParams)
 };
 
 const useSortedExperiences = (experiences: ExperienceListItem[]) => {
-  return useMemo(() => {
-    return [...experiences].sort((a, b) => {
-      const dateA = a.latest_version?.start_date;
-      const dateB = b.latest_version?.start_date;
-      const valA = parseYearMonthValue(dateA) ?? -1;
-      const valB = parseYearMonthValue(dateB) ?? -1;
-      return valB - valA;
-    });
-  }, [experiences]);
+  return useMemo(() => sortExperiencesByStartDate(experiences), [experiences]);
 };
 
 type SectionModelInput = {
@@ -951,7 +953,6 @@ const useExperienceSectionModel = ({
   });
   const polishActions = usePolishActions({ cardData: store.cardData, toast, updateCardField });
   const tagActions = useTagActions({ cardData: store.cardData, toast, updateCardField });
-
   const sortedExperiences = useSortedExperiences(experiences);
 
   const handleCancel = useCallback((cardId: string) => {

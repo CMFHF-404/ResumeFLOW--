@@ -363,7 +363,12 @@ const ExpandedExperienceCard: React.FC<{
   themeColor,
 }) => (
     <div className={resolveCardMotionClass(isCollapsing)}>
-      <ExperienceCardHeader data={data} labels={labels} onFieldChange={onFieldChange} themeColor={themeColor} />
+      <ExperienceCardHeader
+        data={data}
+        labels={labels}
+        onFieldChange={onFieldChange}
+        themeColor={themeColor}
+      />
       <div className="p-6 pt-4 space-y-4">
         <StarSectionList
           data={data}
@@ -430,7 +435,12 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
         className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
       >
         {!showExpanded ? (
-          <CollapsedExperienceCard data={data} labels={labels} onToggle={onToggle} onDelete={onDelete} />
+          <CollapsedExperienceCard
+            data={data}
+            labels={labels}
+            onToggle={onToggle}
+            onDelete={onDelete}
+          />
         ) : (
           <ExpandedExperienceCard
             data={data}

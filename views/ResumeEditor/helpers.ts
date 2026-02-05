@@ -34,6 +34,7 @@ import {
     EXPERIENCE_CATEGORY_ORDER,
     PROFILE_SYNC_MODES,
     RESUME_SECTION_IDS,
+    A4_HEIGHT_MM,
     SMART_PAGE_MIN_SCALE,
 } from './constants';
 
@@ -449,7 +450,7 @@ export const normalizeSectionOrder = (order?: string[]) => {
 
 export const getA4PixelHeight = () => {
     const probe = document.createElement('div');
-    probe.style.height = '297mm';
+    probe.style.height = `${A4_HEIGHT_MM}mm`;
     probe.style.position = 'absolute';
     probe.style.visibility = 'hidden';
     document.body.appendChild(probe);

@@ -21,6 +21,7 @@ import { parseYearMonthValue } from '../experienceUtils';
 import { mergeLinkedInLink } from '../profileUtils';
 import {
     AUTO_SAVE_DELAY_MS,
+    A4_HEIGHT_MM,
     CERTIFICATION_DRAFT_PREFIX,
     CONFIRM_DELETE_CERTIFICATION_TEXT,
     CONFIRM_DELETE_CERTIFICATION_TITLE,
@@ -40,9 +41,15 @@ import {
     DEFAULT_SKILL_NAME,
     EDUCATION_DRAFT_PREFIX,
     EXPERIENCE_DRAFT_PREFIX,
+    LINE_HEIGHT_DEFAULT,
+    LINE_HEIGHT_MIN,
+    LINE_HEIGHT_STEP,
+    LIST_SPACING_REM_BY_DENSITY,
+    PREVIEW_PADDING_MM,
     PROFILE_SYNC_MODES,
+    SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
+    SMART_PAGE_BOTTOM_GAP_MM,
     SMART_PAGE_HEIGHT_TOLERANCE,
-    SMART_PAGE_MIN_SCALE,
     SMART_PAGE_TOAST_MESSAGES,
 } from './constants';
 import {
@@ -79,9 +86,59 @@ import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import ResumePreview from './components/ResumePreview';
 
+const buildLineHeightSteps = (start: number, min: number, step: number) => {
+    const steps: number[] = [];
+    for (let value = start; value >= min; value -= step) {
+        steps.push(Number(value.toFixed(2)));
+    }
+    if (steps[steps.length - 1] !== min) {
+        steps.push(min);
+    }
+    return steps;
+};
+
+const LINE_HEIGHT_STEPS = buildLineHeightSteps(LINE_HEIGHT_DEFAULT, LINE_HEIGHT_MIN, LINE_HEIGHT_STEP);
+const REDUCED_LINE_HEIGHT_STEPS = LINE_HEIGHT_STEPS.slice(1);
+
+const resolveSmartPageAvailableHeight = (a4Height: number) => {
+    const pxPerMm = a4Height / A4_HEIGHT_MM;
+    const paddingPx = pxPerMm * PREVIEW_PADDING_MM;
+    const requiredBottomGapPx = Math.max(paddingPx, pxPerMm * SMART_PAGE_BOTTOM_GAP_MM);
+    return Math.max(0, a4Height - paddingPx - requiredBottomGapPx);
+};
+
+const isWithinAvailableHeight = (contentHeight: number, availableHeight: number) =>
+    contentHeight + SMART_PAGE_HEIGHT_TOLERANCE <= availableHeight;
+
+const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
+    const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
+    return `${(baseSpacing * scale).toFixed(3)}rem`;
+};
+
+const resolveElementMarginBottom = (element: HTMLElement) => {
+    const computed = window.getComputedStyle(element);
+    const raw = computed.marginBottom;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+// scrollHeight 不一定包含“最后一个子元素的 margin-bottom”（尤其在 margin 折叠时），用 rect + margin 兜底。
+const resolveMeasuredContentHeight = (container: HTMLElement) => {
+    const baseHeight = container.scrollHeight;
+    const lastChild = container.lastElementChild;
+    if (!(lastChild instanceof HTMLElement)) {
+        return baseHeight;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const lastRect = lastChild.getBoundingClientRect();
+    const trailingMargin = resolveElementMarginBottom(lastChild);
+    const rectHeight = Math.max(0, lastRect.bottom - containerRect.top + trailingMargin);
+    return Math.max(baseHeight, rectHeight);
+};
+
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
-    const [resumeScale, setResumeScale] = useState(1);
+    const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
@@ -113,7 +170,13 @@ const ResumeEditor: React.FC = () => {
     // 3. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
-    const { toasts, success: showToastSuccess, error: showToastError, closeToast } = useToast();
+    const {
+        toasts,
+        success: showToastSuccess,
+        error: showToastError,
+        info: showToastInfo,
+        closeToast,
+    } = useToast();
     // Drag & Drop State
     const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
     // Section Order State (for draggable resume sections)
@@ -122,7 +185,9 @@ const ResumeEditor: React.FC = () => {
     );
     const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
+    const previewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
+    const smartPageAdjustingRef = useRef(false);
 
     const resumeConfigSnapshot = useMemo(
         () =>
@@ -360,32 +425,68 @@ const ResumeEditor: React.FC = () => {
         skill.setRenamingCategoryTarget(null);
         skill.setRenamingCategoryDraft('');
     };
-    const adjustToSinglePage = () => {
-        const preview = previewRef.current;
-        if (!preview) {
-            return;
-        }
+    const resolveA4Height = () => {
         if (!a4HeightRef.current) {
             a4HeightRef.current = getA4PixelHeight();
         }
-        const a4Height = a4HeightRef.current;
-        if (!a4Height) {
+        return a4HeightRef.current;
+    };
+    const waitForPreviewUpdate = () => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+    });
+    const measureContentHeight = async () => {
+        await waitForPreviewUpdate();
+        const container = previewContentRef.current;
+        if (!container) {
+            return 0;
+        }
+        return resolveMeasuredContentHeight(container);
+    };
+    const applyLineHeightAndMeasure = async (nextLineHeight: number) => {
+        setLineHeight(nextLineHeight);
+        return measureContentHeight();
+    };
+    const tryAdjustLineHeight = async (availableHeight: number) => {
+        for (const nextLineHeight of REDUCED_LINE_HEIGHT_STEPS) {
+            const height = await applyLineHeightAndMeasure(nextLineHeight);
+            if (isWithinAvailableHeight(height, availableHeight)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const handleAdjustToSinglePage = async () => {
+        if (smartPageAdjustingRef.current) {
             return;
         }
-        const contentHeight = preview.scrollHeight;
-        if (contentHeight <= a4Height + SMART_PAGE_HEIGHT_TOLERANCE) {
-            setResumeScale(1);
-            showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
-            return;
-        }
-        const requiredScale = a4Height / contentHeight;
-        if (requiredScale < SMART_PAGE_MIN_SCALE) {
-            setResumeScale(SMART_PAGE_MIN_SCALE);
+        smartPageAdjustingRef.current = true;
+        try {
+            if (!previewRef.current || !previewContentRef.current) {
+                return;
+            }
+            const a4Height = resolveA4Height();
+            if (!a4Height) {
+                return;
+            }
+            const availableHeight = resolveSmartPageAvailableHeight(a4Height);
+            showToastInfo(SMART_PAGE_TOAST_MESSAGES.adjusting, SMART_PAGE_ADJUSTING_TOAST_DURATION_MS);
+            const initialHeight = await applyLineHeightAndMeasure(LINE_HEIGHT_DEFAULT);
+            if (isWithinAvailableHeight(initialHeight, availableHeight)) {
+                showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                return;
+            }
+            const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight);
+            if (lineHeightAdjusted) {
+                showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                return;
+            }
             showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
-            return;
+        } finally {
+            smartPageAdjustingRef.current = false;
         }
-        setResumeScale(requiredScale);
-        showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+    };
+    const adjustToSinglePage = () => {
+        void handleAdjustToSinglePage();
     };
     const handleDragStart = (e: React.DragEvent, id: string) => {
         setDraggedItemId(id);
@@ -429,17 +530,21 @@ const ResumeEditor: React.FC = () => {
         clearDragState();
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
+    const listSpacingValue = useMemo(() => {
+        return buildSpacingValue(LIST_SPACING_REM_BY_DENSITY[density], lineHeight);
+    }, [density, lineHeight]);
+    const bulletSpacingValue = useMemo(
+        () => buildSpacingValue(LIST_SPACING_REM_BY_DENSITY.compact, lineHeight),
+        [lineHeight]
+    );
+    const previewPaddingValue = `${PREVIEW_PADDING_MM}mm`;
     // Spacing classes based on density
     const spacingClass = {
         compact: 'mb-2',
         standard: 'mb-6',
         spacious: 'mb-8'
     }[density];
-    const listSpacingClass = {
-        compact: 'space-y-1.5',
-        standard: 'space-y-4',
-        spacious: 'space-y-6'
-    }[density];
+    const listSpacingClass = 'space-y-[var(--rf-list-spacing)]';
     const workItems = useMemo(
         () => experienceItems.filter((item) => item.category === 'work'),
         [experienceItems]
@@ -561,7 +666,11 @@ const ResumeEditor: React.FC = () => {
                 />
                 <ResumePreview
                     previewRef={previewRef}
-                    resumeScale={resumeScale}
+                    previewContentRef={previewContentRef}
+                    lineHeight={lineHeight}
+                    listSpacingValue={listSpacingValue}
+                    bulletSpacingValue={bulletSpacingValue}
+                    previewPaddingValue={previewPaddingValue}
                     profile={profile}
                     spacingClass={spacingClass}
                     listSpacingClass={listSpacingClass}
