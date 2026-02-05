@@ -6,6 +6,7 @@ import { experienceService, ExperienceCategory, ExperienceListItem } from '../se
 import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey, STAR_FIELD_LABELS } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { mergeTags, sanitizeTagList } from './tagUtils';
+import { stripRichTextToText } from '../utils/richText';
 
 type ToastApi = {
   success: (message: string, duration?: number) => string;
@@ -109,10 +110,10 @@ const getStarFieldValue = (data: ExperienceCardData, field: StarFieldKey): strin
 
 const buildStarPolishPayload = (data: ExperienceCardData, field: StarFieldKey, fieldValue?: string) => {
   const starPayload: Record<StarFieldKey, string> = {
-    s: getStarFieldValue(data, 's'),
-    t: getStarFieldValue(data, 't'),
-    a: getStarFieldValue(data, 'a'),
-    r: getStarFieldValue(data, 'r'),
+    s: stripRichTextToText(getStarFieldValue(data, 's')),
+    t: stripRichTextToText(getStarFieldValue(data, 't')),
+    a: stripRichTextToText(getStarFieldValue(data, 'a')),
+    r: stripRichTextToText(getStarFieldValue(data, 'r')),
   };
   starPayload[field] = fieldValue ?? starPayload[field];
   return {
@@ -129,10 +130,10 @@ const buildTagGenerationText = (data: ExperienceCardData): string => {
   const parts = [
     data?.title ? `职位: ${data.title}` : '',
     data?.org ? `公司: ${data.org}` : '',
-    data?.star?.s ? `S: ${data.star.s}` : '',
-    data?.star?.t ? `T: ${data.star.t}` : '',
-    data?.star?.a ? `A: ${data.star.a}` : '',
-    data?.star?.r ? `R: ${data.star.r}` : '',
+    data?.star?.s ? `S: ${stripRichTextToText(data.star.s)}` : '',
+    data?.star?.t ? `T: ${stripRichTextToText(data.star.t)}` : '',
+    data?.star?.a ? `A: ${stripRichTextToText(data.star.a)}` : '',
+    data?.star?.r ? `R: ${stripRichTextToText(data.star.r)}` : '',
   ];
   return parts.filter(Boolean).join('\n');
 };

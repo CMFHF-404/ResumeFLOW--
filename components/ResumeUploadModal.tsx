@@ -13,6 +13,7 @@ import {
   ParsedExperienceVersion,
   parserService,
 } from '../services/parserService';
+import { stripRichTextToText } from '../utils/richText';
 
 const SUPPORTED_EXTENSIONS = ['pdf', 'docx'];
 const STAGE_TRANSITION_DELAY_MS = 180;
@@ -200,7 +201,7 @@ const ResumeItemCard: React.FC<{
         </div>
         {(version.star?.s || version.summary) && (
           <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-            {version.star?.s || version.summary}
+            {stripRichTextToText(version.star?.s ?? '') || version.summary}
           </p>
         )}
         {version.highlights && version.highlights.length > 0 && (

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
+import RichTextEditor from '../../../components/RichTextEditor';
 import type { ExperienceActions, ExperienceTabProps, StarFieldKey } from '../../../types/resume';
 import { ADD_PROJECT_EXPERIENCE_LABEL, ADD_WORK_EXPERIENCE_LABEL } from '../constants';
 import CertificationListSection from './CertificationListSection';
@@ -163,11 +164,12 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
                     <label className={`text-[10px] font-bold uppercase tracking-wider ${colorMap[key]} pl-1`}>
                         {labelMap[key]}
                     </label>
-                    <textarea
+                    <RichTextEditor
                         className={`w-full text-sm p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all ${heightClass} resize-none leading-relaxed`}
                         value={experience.editingDraft?.star?.[key] || ''}
-                        onChange={(event) => experience.updateEditingStar(key, event.target.value)}
+                        onChange={(nextValue) => experience.updateEditingStar(key, nextValue)}
                         placeholder={`Enter ${key.toUpperCase()}...`}
+                        ariaLabel={`${labelMap[key]} 输入`}
                     />
                 </div>
             );

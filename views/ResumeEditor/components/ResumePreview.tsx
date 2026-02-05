@@ -5,11 +5,61 @@ import type {
     EducationView,
     ResumeEditorProfile,
     ResumeExperienceView,
+    StarFields,
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
+import { sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
+
+const STAR_CONTEXT_SEPARATOR = ' ';
+const normalizeStarText = (value?: string) => value?.trim() ?? '';
+
+const buildContextText = (star?: StarFields) => {
+    const parts = [normalizeStarText(star?.s), normalizeStarText(star?.t)].filter(Boolean);
+    return parts.join(STAR_CONTEXT_SEPARATOR);
+};
+
+const splitActionLines = (value?: string) => splitRichTextLines(value ?? '');
+
+const renderRichText = (value: string) => ({
+    __html: sanitizeRichTextHtml(value),
+});
+
+const renderStarBlocks = (star: StarFields, itemId: string) => {
+    const contextText = buildContextText(star);
+    const actionLines = splitActionLines(star.a);
+    const resultText = normalizeStarText(star.r);
+
+    if (!contextText && actionLines.length === 0 && !resultText) {
+        return null;
+    }
+
+    return (
+        <>
+            {contextText ? (
+                <div
+                    className="text-gray-600 text-xs mb-1"
+                    dangerouslySetInnerHTML={renderRichText(contextText)}
+                />
+            ) : null}
+            {actionLines.length > 0 ? (
+                <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
+                    {actionLines.map((line, index) => (
+                        <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                    ))}
+                </ul>
+            ) : null}
+            {resultText ? (
+                <div
+                    className="text-xs text-gray-700 mt-1"
+                    dangerouslySetInnerHTML={renderRichText(resultText)}
+                />
+            ) : null}
+        </>
+    );
+};
 
 export type ResumePreviewProps = {
     previewRef: React.RefObject<HTMLDivElement>;
@@ -120,29 +170,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 </div>
                                 <p className="text-xs font-semibold text-gray-800 mb-1.5">{item.title}</p>
 
-                                <ul className="list-disc list-outside ml-4 text-xs text-gray-700 space-y-1.5 leading-relaxed">
-                                    {item.star?.s && (
-                                        <li>
-                                            <span className="font-semibold text-gray-900">S:</span> {item.star.s}
-                                        </li>
-                                    )}
-                                    {item.star?.t && (
-                                        <li>
-                                            <span className="font-semibold text-gray-900">T:</span> {item.star.t}
-                                        </li>
-                                    )}
-                                    {item.star?.a && (
-                                        <li>
-                                            <span className="font-semibold text-gray-900">A:</span>
-                                            <span className="whitespace-pre-line block mt-1">{item.star.a}</span>
-                                        </li>
-                                    )}
-                                    {item.star?.r && (
-                                        <li>
-                                            <span className="font-semibold text-gray-900">R:</span> {item.star.r}
-                                        </li>
-                                    )}
-                                </ul>
+                                {renderStarBlocks(item.star, item.id)}
                             </div>
                         </div>
                     ))}

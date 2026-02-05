@@ -1,9 +1,11 @@
 import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, Trash2 } from 'lucide-react';
 import MonthPicker from '../components/MonthPicker';
+import RichTextEditor from '../components/RichTextEditor';
 import { SKILL_TAGS } from '../data/skillTags';
 import { parseYearMonthValue, resolveCardMotionClass } from './experienceUtils';
 import TagInput from './TagInput';
+import { stripRichTextToText } from '../utils/richText';
 
 const getThemeClasses = (color: string = 'primary') => {
   if (color === 'primary') {
@@ -109,7 +111,9 @@ const CollapsedExperienceCard: React.FC<{
             <span className="text-gray-700 dark:text-gray-300 font-medium">{data.title}</span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-            {data.star?.s ? `${data.star.s.substring(0, 60)}...` : labels.summaryPlaceholder}
+            {data.star?.s
+              ? `${stripRichTextToText(data.star.s).substring(0, 60)}...`
+              : labels.summaryPlaceholder}
           </p>
         </div>
         <div className="text-right shrink-0 flex items-center gap-2">
@@ -234,13 +238,13 @@ const StarSectionItem: React.FC<{
             <Sparkles className={`w-4 h-4 ${isPolishing ? 'animate-pulse' : ''}`} />
           </button>
         </div>
-        <textarea
+        <RichTextEditor
           className={`w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm focus:ring-2 ${isPolishing ? 'focus:ring-amber-500/20 focus:border-amber-500' : getThemeClasses(themeColor).focus
-            }`}
-          rows={section.id === 'a' ? 6 : 1}
+            } ${section.id === 'a' ? 'min-h-[160px]' : 'min-h-[48px]'}`}
           value={value}
           placeholder={section.ph}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={onChange}
+          ariaLabel={`${section.label} 输入`}
         />
       </div>
     </div>
