@@ -12,7 +12,10 @@ type JDAnalysisPanelProps = {
     isCollapsed: boolean;
     onAnalyze: () => void;
     onToggleCollapse: () => void;
+
     onJdTextChange: (value: string) => void;
+    debugInfo?: any;
+    showDebugInfo?: boolean;
 };
 
 const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
@@ -22,7 +25,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     isCollapsed,
     onAnalyze,
     onToggleCollapse,
+
     onJdTextChange,
+    debugInfo,
+    showDebugInfo = false,
 }) => {
     const jobKeywords = useMemo(
         () => normalizeJobKeywords(analysisResult?.jobKeywords),
@@ -113,6 +119,12 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 </p>
                             </div>
                         ) : null}
+                    </div>
+                )}
+                {showDebugInfo && debugInfo && (
+                    <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 text-[10px] text-red-600 dark:text-red-400 font-mono overflow-x-auto whitespace-pre-wrap rounded">
+                        <strong>Debug Info:</strong>
+                        {JSON.stringify(debugInfo, null, 2)}
                     </div>
                 )}
             </div>

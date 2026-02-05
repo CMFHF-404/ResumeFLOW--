@@ -500,17 +500,8 @@ const useResumeContextLoader = (
         return () => {
             cancelled = true;
         };
-    }, [
-        applyCertificationState,
-        applyEducationState,
-        applyExperienceState,
-        applyResumeConfig,
-        applySkillState,
-        setIsLoadingExperiences,
-        setIsLoadingResume,
-        setResumeId,
-        hasHydratedConfigRef,
-    ]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 只在组件挂载时加载一次简历上下文，避免依赖项变化导致的死循环
 };
 
 const useResumeState = (): ResumeState => {

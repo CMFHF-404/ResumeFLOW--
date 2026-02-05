@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { useDebounce } from "../components/hooks/useDebounce";
 import { aiService, JDAnalysisResult } from "../services/aiService";
 import {
   clearJDAnalysisCache,
@@ -32,6 +33,82 @@ import type {
 } from "../types/resume";
 
 const DEFAULT_JD_TEXT = "";
+const AUTO_REANALYZE_DELAY_MS = 800;
+
+type MatchUpdateMode = "full" | "partial";
+
+type MatchApplyOptions = {
+  mode?: MatchUpdateMode;
+  targetIds?: Set<string>;
+};
+
+type JDItemDiff = ReturnType<typeof diffJDItemSignatures>;
+
+const buildEmptyDiff = (): JDItemDiff => ({
+  experiences: new Set(),
+  certifications: new Set(),
+  skills: new Set(),
+});
+
+const cloneDiff = (diff: JDItemDiff): JDItemDiff => ({
+  experiences: new Set(diff.experiences),
+  certifications: new Set(diff.certifications),
+  skills: new Set(diff.skills),
+});
+
+const hasDiff = (diff: JDItemDiff) =>
+  diff.experiences.size > 0 ||
+  diff.certifications.size > 0 ||
+  diff.skills.size > 0;
+
+const mergeDiffInto = (target: JDItemDiff, incoming: JDItemDiff) => {
+  incoming.experiences.forEach((id) => target.experiences.add(id));
+  incoming.certifications.forEach((id) => target.certifications.add(id));
+  incoming.skills.forEach((id) => target.skills.add(id));
+};
+
+const clearDiffTargets = (target: JDItemDiff, toClear: JDItemDiff) => {
+  toClear.experiences.forEach((id) => target.experiences.delete(id));
+  toClear.certifications.forEach((id) => target.certifications.delete(id));
+  toClear.skills.forEach((id) => target.skills.delete(id));
+};
+
+const subtractDiff = (source: JDItemDiff, toRemove: JDItemDiff): JDItemDiff => ({
+  experiences: new Set(
+    [...source.experiences].filter((id) => !toRemove.experiences.has(id))
+  ),
+  certifications: new Set(
+    [...source.certifications].filter((id) => !toRemove.certifications.has(id))
+  ),
+  skills: new Set([...source.skills].filter((id) => !toRemove.skills.has(id))),
+});
+
+const canonicalStringify = (obj: unknown): string => {
+  const stringifyValue = (value: unknown): string | undefined => {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      const items = value.map((item) => stringifyValue(item) ?? "null");
+      return `[${items.join(",")}]`;
+    }
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    const entries: string[] = [];
+    keys.forEach((key) => {
+      const serialized = stringifyValue(record[key]);
+      if (serialized !== undefined) {
+        entries.push(`${JSON.stringify(key)}:${serialized}`);
+      }
+    });
+    return `{${entries.join(",")}}`;
+  };
+
+  return stringifyValue(obj) ?? "null";
+};
 
 const buildExperienceAnalyzeEntry = (item: ResumeExperienceView) => ({
   id: item.id,
@@ -81,7 +158,7 @@ const buildAnalyzeSignature = (
   skillGroups: SkillGroupView[]
 ) => {
   const payload = buildAnalyzePayload(experiences, certifications, skillGroups);
-  return JSON.stringify({
+  return canonicalStringify({
     experiences: sortById(payload.experiences),
     certifications: sortById(payload.certifications),
     skills: sortById(payload.skills),
@@ -91,7 +168,7 @@ const buildAnalyzeSignature = (
 const buildSignatureMap = <T extends { id: string }>(items: T[]) => {
   const map: Record<string, string> = {};
   items.forEach((item) => {
-    map[item.id] = JSON.stringify(item);
+    map[item.id] = canonicalStringify(item);
   });
   return map;
 };
@@ -138,6 +215,98 @@ const buildMatchReasonMap = (matches?: MatchScoreEntry[]) => {
   return map;
 };
 
+const buildMatchEntryMap = (matches?: MatchScoreEntry[]) => {
+  const map = new Map<string, MatchScoreEntry>();
+  (matches || []).forEach((match) => {
+    map.set(match.id, match);
+  });
+  return map;
+};
+
+const mergeMatchEntries = (
+  prev?: MatchScoreEntry[],
+  next?: MatchScoreEntry[],
+  targets?: Set<string>
+) => {
+  if (!targets || targets.size === 0) {
+    return prev ?? next;
+  }
+  if (!prev && !next) {
+    return undefined;
+  }
+  const merged = buildMatchEntryMap(prev);
+  const incoming = buildMatchEntryMap(next);
+  targets.forEach((id) => {
+    if (incoming.has(id)) {
+      merged.set(id, incoming.get(id)!);
+    } else {
+      merged.delete(id);
+    }
+  });
+  const values = Array.from(merged.values());
+  return values.length ? values : undefined;
+};
+
+// 仅更新变更项的匹配结果，避免覆盖未变更项的匹配度与理由
+const mergeAnalysisResult = (
+  prev: JDAnalysisResult | null,
+  next: JDAnalysisResult,
+  diff: JDItemDiff
+): JDAnalysisResult => {
+  if (!prev) {
+    return next;
+  }
+  return {
+    ...prev,
+    matchPercentage: next.matchPercentage,
+    jobKeywords: next.jobKeywords,
+    missingKeywords: next.missingKeywords,
+    summary: next.summary,
+    experienceMatches: mergeMatchEntries(
+      prev.experienceMatches,
+      next.experienceMatches,
+      diff.experiences
+    ),
+    certificationMatches: mergeMatchEntries(
+      prev.certificationMatches,
+      next.certificationMatches,
+      diff.certifications
+    ),
+    skillMatches: mergeMatchEntries(
+      prev.skillMatches,
+      next.skillMatches,
+      diff.skills
+    ),
+  };
+};
+
+const applyScoreMapUpdate = (
+  setMap: Dispatch<SetStateAction<Map<string, number>>>,
+  scores: Map<string, number>,
+  options?: MatchApplyOptions
+) => {
+  const mode = options?.mode ?? "full";
+  const targetIds = options?.targetIds;
+  if (mode === "partial") {
+    if (!targetIds || targetIds.size === 0) {
+      return;
+    }
+    setMap((prev) => {
+      const next = new Map(prev);
+      targetIds.forEach((id) => {
+        if (scores.has(id)) {
+          next.set(id, scores.get(id)!);
+        } else {
+          next.delete(id);
+        }
+      });
+      return next;
+    });
+    return;
+  }
+  setMap(new Map(scores));
+};
+
 type UseJDAnalysisOptions = {
   resumeId: string | null;
   experienceItems: ResumeExperienceView[];
@@ -160,6 +329,7 @@ type UseJDAnalysisResult = {
   skillMatchScores: Map<string, number>;
   setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
   handleAnalyze: () => Promise<void>;
+  debugInfo?: any;
 };
 
 export const useJDAnalysis = ({
@@ -187,7 +357,34 @@ export const useJDAnalysis = ({
   const [skillMatchScores, setSkillMatchScores] = useState<
     Map<string, number>
   >(new Map());
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [needsReanalysis, setNeedsReanalysis] = useState(false);
   const hasLoadedJdCacheRef = useRef(false);
+  const pendingDiffRef = useRef<JDItemDiff>(buildEmptyDiff());
+  const experienceItemsRef = useRef(experienceItems);
+  const certificationsRef = useRef(certifications);
+  const skillGroupsRef = useRef(skillGroups);
+  const jdTextRef = useRef(jdText);
+  const debouncedNeedsReanalysis = useDebounce(
+    needsReanalysis,
+    AUTO_REANALYZE_DELAY_MS
+  );
+
+  useEffect(() => {
+    experienceItemsRef.current = experienceItems;
+  }, [experienceItems]);
+
+  useEffect(() => {
+    certificationsRef.current = certifications;
+  }, [certifications]);
+
+  useEffect(() => {
+    skillGroupsRef.current = skillGroups;
+  }, [skillGroups]);
+
+  useEffect(() => {
+    jdTextRef.current = jdText;
+  }, [jdText]);
 
   const experienceSignature = useMemo(
     () => buildAnalyzeSignature(experienceItems, certifications, skillGroups),
@@ -199,33 +396,48 @@ export const useJDAnalysis = ({
   );
 
   const applyExperienceMatchScores = useCallback(
-    (matches?: MatchScoreEntry[]) => {
+    (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       const matchScores = buildMatchScoreMap(matches);
       const matchReasons = buildMatchReasonMap(matches);
+      const mode = options?.mode ?? "full";
+      const targetIds = options?.targetIds;
+      if (mode === "partial" && (!targetIds || targetIds.size === 0)) {
+        return;
+      }
       setExperienceItems((prev) => {
-        const next = prev.map((item) => ({
-          ...item,
-          matchScore: matchScores.has(item.id)
-            ? matchScores.get(item.id)
-            : undefined,
-          matchReason: matchReasons.get(item.id),
-        }));
+        const next = prev.map((item) => {
+          if (mode === "partial" && !targetIds?.has(item.id)) {
+            return item;
+          }
+          const hasScore = matchScores.has(item.id);
+          return {
+            ...item,
+            matchScore: hasScore ? matchScores.get(item.id) : undefined,
+            matchReason: hasScore ? matchReasons.get(item.id) : undefined,
+          };
+        });
         return sortExperienceItemsForMatch(next);
       });
     },
     [setExperienceItems]
   );
 
-  const applyCertificationMatchScores = useCallback((matches?: MatchScoreEntry[]) => {
-    setCertificationMatchScores(buildMatchScoreMap(matches));
-  }, []);
+  const applyCertificationMatchScores = useCallback(
+    (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
+      applyScoreMapUpdate(setCertificationMatchScores, buildMatchScoreMap(matches), options);
+    },
+    []
+  );
 
-  const applySkillMatchScores = useCallback((matches?: MatchScoreEntry[]) => {
-    setSkillMatchScores(buildMatchScoreMap(matches));
-  }, []);
+  const applySkillMatchScores = useCallback(
+    (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
+      applyScoreMapUpdate(setSkillMatchScores, buildMatchScoreMap(matches), options);
+    },
+    []
+  );
 
   const markStaleMatches = useCallback(
-    (diff: ReturnType<typeof diffJDItemSignatures>) => {
+    (diff: JDItemDiff, options?: { replaceStale?: boolean }) => {
       if (diff.experiences.size > 0) {
         setExperienceItems((prev) => {
           const next = prev.map((item) =>
@@ -236,7 +448,7 @@ export const useJDAnalysis = ({
           return sortExperienceItemsForMatch(next);
         });
         setStaleExperienceIds((prev) => {
-          const next = new Set(prev);
+          const next = options?.replaceStale ? new Set<string>() : new Set(prev);
           diff.experiences.forEach((id) => next.add(id));
           return next;
         });
@@ -265,6 +477,9 @@ export const useJDAnalysis = ({
       setAnalysisContext(null);
       setIsJDCollapsed(false);
       setStaleExperienceIds(new Set());
+      setNeedsReanalysis(false);
+      setDebugInfo(null);
+      pendingDiffRef.current = buildEmptyDiff();
       applyExperienceMatchScores();
       applyCertificationMatchScores();
       applySkillMatchScores();
@@ -299,18 +514,27 @@ export const useJDAnalysis = ({
     if (cached) {
       const cachedSignatures =
         cached.itemSignatures ?? buildEmptyJDItemSignatures();
+      // 确保缓存的签名数据完整有效
+      const validatedSignatures = {
+        experiences: cachedSignatures.experiences || {},
+        certifications: cachedSignatures.certifications || {},
+        skills: cachedSignatures.skills || {},
+      };
       setJdText(cached.jdText);
       setAnalysisResult(cached.result);
       setAnalysisContext({
         jdTextSignature: buildJDTextSignature(cached.jdText),
         experienceSignature: cached.experienceSignature,
-        itemSignatures: cachedSignatures,
+        itemSignatures: validatedSignatures,
       });
       applyExperienceMatchScores(cached.result.experienceMatches);
       applyCertificationMatchScores(cached.result.certificationMatches);
       applySkillMatchScores(cached.result.skillMatches);
       setIsJDCollapsed(true);
       setStaleExperienceIds(new Set());
+      setNeedsReanalysis(false);
+      setDebugInfo(null);
+      pendingDiffRef.current = buildEmptyDiff();
     }
     hasLoadedJdCacheRef.current = true;
   }, [
@@ -328,6 +552,10 @@ export const useJDAnalysis = ({
     if (analysisContext.experienceSignature === experienceSignature) {
       return;
     }
+    console.log('[JD Debug] Signature Mismatch!', {
+      oldSig: analysisContext.experienceSignature,
+      newSig: experienceSignature
+    });
     const nextSignatures = buildJDItemSignatures(
       experienceItems,
       certifications,
@@ -337,20 +565,34 @@ export const useJDAnalysis = ({
       analysisContext.itemSignatures,
       nextSignatures
     );
+    console.log('[JD Debug] Diff:', diff);
     if (
       diff.experiences.size > 0 ||
       diff.certifications.size > 0 ||
       diff.skills.size > 0
     ) {
+      console.log('[JD Debug] Marking Stale!');
+      setDebugInfo({
+        diff,
+        diffDetails: {
+          items: Array.from(diff.experiences).map(id => ({
+            id,
+            prev: analysisContext.itemSignatures?.experiences?.[id] ?? null,
+            next: nextSignatures.experiences?.[id] ?? null
+          }))
+        }
+      });
+      mergeDiffInto(pendingDiffRef.current, diff);
+      setNeedsReanalysis(true);
       markStaleMatches(diff);
     }
     setAnalysisContext((prev) =>
       prev
         ? {
-            ...prev,
-            experienceSignature,
-            itemSignatures: nextSignatures,
-          }
+          ...prev,
+          experienceSignature,
+          itemSignatures: nextSignatures,
+        }
         : prev
     );
   }, [
@@ -372,55 +614,258 @@ export const useJDAnalysis = ({
     }
   }, [analysisContext, jdTextSignature, resetJDAnalysisState, resumeId]);
 
-  const handleAnalyze = useCallback(async () => {
-    setIsAnalyzing(true);
-    try {
-      const payload = buildAnalyzePayload(
-        experienceItems,
-        certifications,
-        skillGroups
-      );
-      const result = await aiService.analyzeJD(jdText, JSON.stringify(payload));
-      const itemSignatures = buildJDItemSignatures(
-        experienceItems,
-        certifications,
-        skillGroups
-      );
-      applyExperienceMatchScores(result.experienceMatches);
-      applyCertificationMatchScores(result.certificationMatches);
-      applySkillMatchScores(result.skillMatches);
+  type AnalyzeOptions = {
+    mode?: MatchUpdateMode;
+    diff?: JDItemDiff;
+  };
+
+  type AnalysisStatePayload = {
+    result: JDAnalysisResult;
+    itemSignatures: JDAnalysisItemSignatures;
+    experienceSignature: string;
+    jdTextSignature: string;
+    jdText: string;
+  };
+
+  type AnalyzeSnapshot = {
+    experiences: ResumeExperienceView[];
+    certifications: CertificationView[];
+    skillGroups: SkillGroupView[];
+    jdText: string;
+    itemSignatures: JDAnalysisItemSignatures;
+    experienceSignature: string;
+    jdTextSignature: string;
+  };
+
+  const clearStaleExperienceIds = useCallback((targetIds: Set<string>) => {
+    if (targetIds.size === 0) {
+      return;
+    }
+    setStaleExperienceIds((prev) => {
+      const next = new Set(prev);
+      targetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
+  const updateAnalysisState = useCallback(
+    ({
+      result,
+      itemSignatures,
+      experienceSignature: nextExperienceSignature,
+      jdTextSignature: nextJdTextSignature,
+      jdText: nextJdText,
+    }: AnalysisStatePayload) => {
       setAnalysisResult(result);
       setAnalysisContext({
-        jdTextSignature,
-        experienceSignature,
+        jdTextSignature: nextJdTextSignature,
+        experienceSignature: nextExperienceSignature,
         itemSignatures,
       });
       if (resumeId) {
         saveJDAnalysisCache(resumeId, {
-          jdText,
-          experienceSignature,
+          jdText: nextJdText,
+          experienceSignature: nextExperienceSignature,
           result,
           itemSignatures,
         });
       }
-      setStaleExperienceIds(new Set());
-      setIsJDCollapsed(true);
-    } catch (error) {
-      console.error("Failed to analyze JD", error);
-    } finally {
-      setIsAnalyzing(false);
+    },
+    [resumeId]
+  );
+
+  const getAnalysisSnapshot = useCallback(() => {
+    return {
+      experiences: experienceItemsRef.current,
+      certifications: certificationsRef.current,
+      skillGroups: skillGroupsRef.current,
+      jdText: jdTextRef.current,
+    };
+  }, []);
+
+  const buildAnalyzeSnapshot = useCallback((): AnalyzeSnapshot => {
+    const snapshot = getAnalysisSnapshot();
+    return {
+      ...snapshot,
+      itemSignatures: buildJDItemSignatures(
+        snapshot.experiences,
+        snapshot.certifications,
+        snapshot.skillGroups
+      ),
+      experienceSignature: buildAnalyzeSignature(
+        snapshot.experiences,
+        snapshot.certifications,
+        snapshot.skillGroups
+      ),
+      jdTextSignature: buildJDTextSignature(snapshot.jdText),
+    };
+  }, [getAnalysisSnapshot]);
+
+  const recordPostAnalyzeDiff = useCallback(
+    (
+      startSignatures: JDAnalysisItemSignatures,
+      latestSignatures: JDAnalysisItemSignatures
+    ) => {
+      const changedDuringAnalyze = diffJDItemSignatures(
+        startSignatures,
+        latestSignatures
+      );
+      if (hasDiff(changedDuringAnalyze)) {
+        mergeDiffInto(pendingDiffRef.current, changedDuringAnalyze);
+        markStaleMatches(changedDuringAnalyze);
+      }
+      return changedDuringAnalyze;
+    },
+    [markStaleMatches]
+  );
+
+  const applyMatchScoresForResult = useCallback(
+    (result: JDAnalysisResult, mode: MatchUpdateMode, diff: JDItemDiff) => {
+      if (mode === "partial") {
+        applyExperienceMatchScores(result.experienceMatches, {
+          mode: "partial",
+          targetIds: diff.experiences,
+        });
+        applyCertificationMatchScores(result.certificationMatches, {
+          mode: "partial",
+          targetIds: diff.certifications,
+        });
+        applySkillMatchScores(result.skillMatches, {
+          mode: "partial",
+          targetIds: diff.skills,
+        });
+        return;
+      }
+      applyExperienceMatchScores(result.experienceMatches);
+      applyCertificationMatchScores(result.certificationMatches);
+      applySkillMatchScores(result.skillMatches);
+    },
+    [
+      applyCertificationMatchScores,
+      applyExperienceMatchScores,
+      applySkillMatchScores,
+    ]
+  );
+
+  const updateAnalyzeDiffState = useCallback(
+    (
+      mode: MatchUpdateMode,
+      diff: JDItemDiff,
+      changedDuringAnalyze: JDItemDiff
+    ) => {
+      if (mode === "partial") {
+        const stableDiff = subtractDiff(diff, changedDuringAnalyze);
+        clearStaleExperienceIds(stableDiff.experiences);
+        clearDiffTargets(pendingDiffRef.current, stableDiff);
+        setNeedsReanalysis(hasDiff(pendingDiffRef.current));
+        return;
+      }
+      if (hasDiff(pendingDiffRef.current)) {
+        markStaleMatches(pendingDiffRef.current, { replaceStale: true });
+        setNeedsReanalysis(true);
+      } else {
+        setStaleExperienceIds(new Set());
+        setNeedsReanalysis(false);
+      }
+    },
+    [clearStaleExperienceIds, markStaleMatches]
+  );
+
+  const runAnalyze = useCallback(
+    async (options?: AnalyzeOptions) => {
+      const mode = options?.mode ?? "full";
+      const diff = options?.diff ?? buildEmptyDiff();
+      if (mode === "partial" && !hasDiff(diff)) {
+        return;
+      }
+      if (mode === "full") {
+        pendingDiffRef.current = buildEmptyDiff();
+        setNeedsReanalysis(false);
+      }
+      setIsAnalyzing(true);
+      try {
+        const startSnapshot = buildAnalyzeSnapshot();
+        const payload = buildAnalyzePayload(
+          startSnapshot.experiences,
+          startSnapshot.certifications,
+          startSnapshot.skillGroups
+        );
+        const result = await aiService.analyzeJD(
+          startSnapshot.jdText,
+          canonicalStringify(payload)
+        );
+        const latestSnapshot = buildAnalyzeSnapshot();
+        const changedDuringAnalyze = recordPostAnalyzeDiff(
+          startSnapshot.itemSignatures,
+          latestSnapshot.itemSignatures
+        );
+        const stableDiff =
+          mode === "partial" ? subtractDiff(diff, changedDuringAnalyze) : diff;
+        if (mode === "partial" && !hasDiff(stableDiff)) {
+          updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
+          return;
+        }
+        const nextResult =
+          mode === "partial"
+            ? mergeAnalysisResult(analysisResult, result, stableDiff)
+            : result;
+        applyMatchScoresForResult(nextResult, mode, stableDiff);
+        updateAnalysisState({
+          result: nextResult,
+          itemSignatures: startSnapshot.itemSignatures,
+          experienceSignature: startSnapshot.experienceSignature,
+          jdTextSignature: startSnapshot.jdTextSignature,
+          jdText: startSnapshot.jdText,
+        });
+        updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
+        if (mode === "full") {
+          setIsJDCollapsed(true);
+        }
+        setDebugInfo(null);
+      } catch (error) {
+        console.error("Failed to analyze JD", error);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    },
+    [
+      analysisResult,
+      applyMatchScoresForResult,
+      buildAnalyzeSnapshot,
+      recordPostAnalyzeDiff,
+      updateAnalyzeDiffState,
+      updateAnalysisState,
+    ]
+  );
+
+  const handleAnalyze = useCallback(async () => {
+    await runAnalyze({ mode: "full" });
+  }, [runAnalyze]);
+
+  useEffect(() => {
+    if (!debouncedNeedsReanalysis || isAnalyzing) {
+      return;
     }
+    if (!analysisResult || !jdText.trim()) {
+      return;
+    }
+    if (!analysisContext || analysisContext.jdTextSignature !== jdTextSignature) {
+      return;
+    }
+    const diffSnapshot = cloneDiff(pendingDiffRef.current);
+    if (!hasDiff(diffSnapshot)) {
+      setNeedsReanalysis(false);
+      return;
+    }
+    void runAnalyze({ mode: "partial", diff: diffSnapshot });
   }, [
-    applyCertificationMatchScores,
-    applyExperienceMatchScores,
-    applySkillMatchScores,
-    certifications,
-    experienceItems,
-    experienceSignature,
+    analysisContext,
+    analysisResult,
+    debouncedNeedsReanalysis,
+    isAnalyzing,
     jdText,
     jdTextSignature,
-    resumeId,
-    skillGroups,
+    runAnalyze,
   ]);
 
   return {
@@ -436,5 +881,6 @@ export const useJDAnalysis = ({
     skillMatchScores,
     setSkillMatchScores,
     handleAnalyze,
+    debugInfo
   };
 };

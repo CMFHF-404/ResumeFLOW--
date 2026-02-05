@@ -78,7 +78,7 @@ import {
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import ResumePreview from './components/ResumePreview';
- 
+
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [resumeScale, setResumeScale] = useState(1);
@@ -192,6 +192,7 @@ const ResumeEditor: React.FC = () => {
         skillMatchScores,
         setSkillMatchScores,
         handleAnalyze,
+        debugInfo,
     } = useJDAnalysis({
         resumeId,
         experienceItems,
@@ -479,6 +480,8 @@ const ResumeEditor: React.FC = () => {
     const handleToggleJdCollapse = () => {
         setIsJDCollapsed((prev) => !prev);
     };
+    const showDebugInfo =
+        import.meta.env.DEV && localStorage.getItem('jdDebug') === '1';
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark">
             <EditorToolbar
@@ -501,6 +504,8 @@ const ResumeEditor: React.FC = () => {
                         onAnalyze: handleAnalyze,
                         onToggleCollapse: handleToggleJdCollapse,
                         onJdTextChange: setJdText,
+                        debugInfo,
+                        showDebugInfo,
                     }}
                     profileTabProps={{
                         profile,
