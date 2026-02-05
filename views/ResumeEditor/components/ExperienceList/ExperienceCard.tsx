@@ -27,13 +27,44 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                     className={`w-4 h-4 rounded border-gray-300 ${themeStyles.checkboxText} ${themeStyles.checkboxFocus} cursor-pointer`}
                 />
             </div>
-            <div className="flex-1 space-y-1">
-                <div className="flex items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-start mb-1">
                     <h5
                         className={`text-sm font-semibold truncate ${isSelected ? themeStyles.titleSelected : 'text-gray-700 dark:text-gray-200'}`}
                     >
                         {item.title || '未填写职位'}
                     </h5>
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                            className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDelete(item.id);
+                            }}
+                            disabled={deletingIds.has(item.id)}
+                            title="删除"
+                            aria-label="删除"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            className={`p-1 text-gray-300 rounded ${themeStyles.editHoverData}`}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onEdit(item.id);
+                            }}
+                            title="编辑"
+                            aria-label="编辑"
+                        >
+                            <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                </div>
+                {item.company ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{item.company}</p>
+                ) : null}
+                <div className="flex items-center justify-between mt-2">
+                    <p className="text-[10px] text-gray-400 font-mono">{item.date || '未填写时间'}</p>
                     <div className="flex items-center gap-1">
                         {staleExperienceIds.has(item.id) ? <StaleBadge /> : null}
                         {item.matchScore && item.matchScore > 0 ? (
@@ -41,33 +72,6 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                         ) : null}
                     </div>
                 </div>
-                <p className="text-xs text-gray-500 truncate">{item.company || '未填写公司'}</p>
-                <p className="text-[10px] text-gray-400 truncate">{item.date || '未填写时间'}</p>
-            </div>
-            <div className="opacity-0 group-hover:opacity-100 flex flex-col gap-1 transition-opacity">
-                <button
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onEdit(item.id);
-                    }}
-                    className={`p-1 rounded ${themeStyles.editHoverData} transition-colors`}
-                    title="编辑"
-                    aria-label="编辑"
-                >
-                    <Edit3 className="w-3 h-3" />
-                </button>
-                <button
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(item.id);
-                    }}
-                    className="p-1 rounded hover:text-red-500 hover:bg-red-50 transition-colors"
-                    title="删除"
-                    aria-label="删除"
-                    disabled={deletingIds.has(item.id)}
-                >
-                    <Trash2 className="w-3 h-3" />
-                </button>
             </div>
         </div>
     </div>
