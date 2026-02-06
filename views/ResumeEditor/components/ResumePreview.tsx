@@ -10,14 +10,13 @@ import type {
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
 import { parseRichTextList, sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
+import { type DropPosition, resolveDragTarget } from '../../../utils/dragSort';
+import { buildDragItemKey } from '../dragKeys';
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
-type DropPosition = 'before' | 'after';
 type DragHoverHandler = (targetId: string, position: DropPosition) => void;
 type DragDropHandler = (event: React.DragEvent) => void;
-
-type DragTarget = { id: string; position: DropPosition };
 
 const STAR_CONTEXT_SEPARATOR = ' ';
 const normalizeStarText = (value?: string) => value?.trim() ?? '';
@@ -52,73 +51,6 @@ const buildPreviewTypographyCss = (scale: number) => {
         .a4-preview .text-3xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['3xl'])}; }
         .a4-preview .text-\\[11px\\] { font-size: ${px(11)}; }
     `;
-};
-
-const resolveClosestDragElement = (
-    target: EventTarget | null,
-    container: HTMLElement,
-    dataAttr: string
-) => {
-    // event.target 可能是 SVGElement/path 或 Text 节点；这里统一转换成 Element 再做 closest 命中。
-    const resolvedTarget =
-        target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
-    if (!resolvedTarget) {
-        return null;
-    }
-
-    const closest = resolvedTarget.closest(`[${dataAttr}]`);
-    if (!(closest instanceof HTMLElement)) {
-        return null;
-    }
-    return container.contains(closest) ? closest : null;
-};
-
-const resolveNearestDragCandidate = (
-    candidates: Array<{ el: HTMLElement; id: string }>,
-    clientY: number
-) => {
-    let best = candidates[0];
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (const candidate of candidates) {
-        const rect = candidate.el.getBoundingClientRect();
-        const midpoint = rect.top + rect.height / 2;
-        const distance = Math.abs(clientY - midpoint);
-        if (distance < bestDistance) {
-            best = candidate;
-            bestDistance = distance;
-        }
-    }
-
-    return best;
-};
-
-const resolveDragTarget = (
-    container: HTMLElement,
-    clientY: number,
-    dataAttr: string,
-    excludedId: string | null,
-    eventTarget: EventTarget | null
-): DragTarget | null => {
-    const elements = Array.from(container.querySelectorAll<HTMLElement>(`[${dataAttr}]`));
-    const candidates = elements
-        .map((el) => ({ el, id: el.getAttribute(dataAttr) }))
-        .filter((item): item is { el: HTMLElement; id: string } => !!item.id && item.id !== excludedId);
-
-    if (candidates.length === 0) {
-        return null;
-    }
-
-    const hoveredEl = resolveClosestDragElement(eventTarget, container, dataAttr);
-    const hoveredId = hoveredEl?.getAttribute(dataAttr) ?? null;
-    const picked =
-        hoveredEl && hoveredId && hoveredId !== excludedId
-            ? { el: hoveredEl, id: hoveredId }
-            : resolveNearestDragCandidate(candidates, clientY);
-
-    const rect = picked.el.getBoundingClientRect();
-    const midpoint = rect.top + rect.height / 2;
-    return { id: picked.id, position: clientY < midpoint ? 'before' : 'after' };
 };
 
 const buildContextText = (star?: StarFields) => {
@@ -186,6 +118,7 @@ export type ResumePreviewProps = {
     bulletSpacingValue: string;
     previewPaddingValue: string;
     profile: ResumeEditorProfile;
+    isSummaryVisible: boolean;
     spacingClass: string;
     listSpacingClass: string;
     sectionOrder: string[];
@@ -197,7 +130,7 @@ export type ResumePreviewProps = {
     selectedCertIds: Set<string>;
     selectedSkillGroups: Array<{ name: string; skills: string[] }>;
     isDragging: boolean;
-    draggedItemId: string | null;
+    draggedItemKey: string | null;
     draggedSectionId: string | null;
     onSectionDragStart: SectionDragHandler;
     onSectionDragHover: DragHoverHandler;
@@ -219,6 +152,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     bulletSpacingValue,
     previewPaddingValue,
     profile,
+    isSummaryVisible,
     spacingClass,
     listSpacingClass,
     sectionOrder,
@@ -230,7 +164,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     selectedCertIds,
     selectedSkillGroups,
     isDragging,
-    draggedItemId,
+    draggedItemKey,
     draggedSectionId,
     onSectionDragStart,
     onSectionDragHover,
@@ -257,7 +191,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         ? 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0'
         : 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity';
     const itemHoverBgClass = isDragging ? '' : 'group-hover/item:bg-primary/5';
-    const sectionHoverBgClass = isDragging ? '' : 'group-hover:bg-primary/5';
+    const sectionHoverBgClass = '';
 
     const renderExperienceSection = (
         sectionId: 'work' | 'project',
@@ -295,7 +229,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 <div
                     className={listSpacingClass}
                     onDragOver={(event) => {
-                        if (!draggedItemId || draggedSectionId) {
+                        if (!draggedItemKey || draggedSectionId) {
                             return;
                         }
                         event.preventDefault();
@@ -305,7 +239,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                             container,
                             event.clientY,
                             DATA_ITEM_ID_ATTR,
-                            draggedItemId,
+                            draggedItemKey,
                             event.target
                         );
                         if (!target) {
@@ -320,15 +254,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     }}
                 >
                     {items.map((item) => {
+                        const itemKey = buildDragItemKey('experience', item.id);
                         return (
                             <div
                                 key={item.id}
-                                data-rf-item-id={item.id}
+                                data-rf-item-id={itemKey}
                                 className="relative group/item cursor-move"
                                 draggable
                                 onDragStart={(event) => {
                                     event.stopPropagation();
-                                    onItemDragStart(event, item.id);
+                                    onItemDragStart(event, itemKey);
                                 }}
                                 onDragEnd={(event) => {
                                     event.stopPropagation();
@@ -386,7 +321,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 <div
                     ref={previewContentRef}
                     onDragOver={(event) => {
-                        if (!draggedSectionId || draggedItemId) {
+                        if (!draggedSectionId || draggedItemKey) {
                             return;
                         }
                         event.preventDefault();
@@ -424,7 +359,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     </div>
 
                     {sectionOrder.map((sectionId) => {
-                        if (sectionId === 'summary' && profile.summary) {
+                        if (sectionId === 'summary' && isSummaryVisible && profile.summary) {
                             return (
                                 <div
                                     key="summary"
@@ -444,21 +379,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 >
                                     <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                        <Edit3
-                                            className="w-4 h-4 text-primary cursor-pointer"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onNavigateTab('profile');
-                                            }}
-                                        />
                                     </div>
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
                                             职业总结
                                         </h2>
-                                        <p className="text-xs leading-[var(--rf-line-height)] text-gray-800">
-                                            {profile.summary}
-                                        </p>
+                                        <div
+                                            className="text-xs leading-[var(--rf-line-height)] text-gray-800"
+                                            dangerouslySetInnerHTML={renderRichText(profile.summary)}
+                                        />
                                     </div>
                                 </div>
                             );
@@ -473,6 +402,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         }
 
                         if (sectionId === 'education' && selectedEduIds.size > 0) {
+                            const visibleEducations = educations.filter((edu) => selectedEduIds.has(edu.id));
                             return (
                                 <div
                                     key="education"
@@ -492,30 +422,74 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 >
                                     <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                        <Edit3
-                                            className="w-4 h-4 text-primary cursor-pointer"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onNavigateTab('profile');
-                                            }}
-                                        />
                                     </div>
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
                                             教育背景
                                         </h2>
-                                        <div className={listSpacingClass}>
-                                            {educations
-                                                .filter((edu) => selectedEduIds.has(edu.id))
-                                                .map((edu) => {
-                                                    const dateText = buildExperienceDate(
-                                                        edu.startDate,
-                                                        edu.endDate,
-                                                        edu.isCurrent
-                                                    );
-                                                    return (
-                                                        <div key={edu.id} className="mb-2">
+                                        <div
+                                            className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
+                                            onDragOver={(event) => {
+                                                if (!draggedItemKey || draggedSectionId) {
+                                                    return;
+                                                }
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                const container = event.currentTarget as HTMLElement;
+                                                const target = resolveDragTarget(
+                                                    container,
+                                                    event.clientY,
+                                                    DATA_ITEM_ID_ATTR,
+                                                    draggedItemKey,
+                                                    event.target
+                                                );
+                                                if (!target) {
+                                                    return;
+                                                }
+                                                onItemDragHover(target.id, target.position);
+                                            }}
+                                            onDrop={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                onItemDrop(event);
+                                            }}
+                                        >
+                                            {visibleEducations.map((edu) => {
+                                                const itemKey = buildDragItemKey('education', edu.id);
+                                                const dateText = buildExperienceDate(
+                                                    edu.startDate,
+                                                    edu.endDate,
+                                                    edu.isCurrent
+                                                );
+                                                return (
+                                                    <div
+                                                        key={edu.id}
+                                                        data-rf-item-id={itemKey}
+                                                        className="relative group/item cursor-move"
+                                                        draggable
+                                                        onDragStart={(event) => {
+                                                            event.stopPropagation();
+                                                            onItemDragStart(event, itemKey);
+                                                        }}
+                                                        onDragEnd={(event) => {
+                                                            event.stopPropagation();
+                                                            onDragEnd();
+                                                        }}
+                                                    >
+                                                        <div className={itemControlClass}>
+                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                            <Edit3
+                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    onNavigateTab('profile');
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div
+                                                            className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                                        >
                                                             <div className="flex justify-between items-baseline mb-0.5">
                                                                 <h3 className="text-sm font-bold text-gray-900">
                                                                     {edu.school}
@@ -531,8 +505,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <p className="text-xs text-gray-900">GPA: {edu.gpa}</p>
                                                             ) : null}
                                                         </div>
-                                                    );
-                                                })}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
@@ -540,6 +515,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         }
 
                         if (sectionId === 'certifications' && selectedCertIds.size > 0) {
+                            const visibleCerts = sortedCertifications.filter((cert) => selectedCertIds.has(cert.id));
                             return (
                                 <div
                                     key="certifications"
@@ -559,37 +535,86 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 >
                                     <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                        <Edit3
-                                            className="w-4 h-4 text-primary cursor-pointer"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onNavigateTab('experience');
-                                            }}
-                                        />
                                     </div>
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
                                             证书资质
                                         </h2>
-                                        <div className={listSpacingClass}>
-                                            {sortedCertifications
-                                                .filter((cert) => selectedCertIds.has(cert.id))
-                                                .map((cert) => (
-                                                    <div key={cert.id} className="flex justify-between items-baseline">
-                                                        <div>
-                                                            <span className="text-xs font-bold text-gray-900">
-                                                                {cert.name}
-                                                            </span>
-                                                            {cert.issuer ? (
-                                                                <span className="text-xs text-gray-900 ml-2">
-                                                                    ({cert.issuer})
-                                                                </span>
-                                                            ) : null}
+                                        <div
+                                            className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
+                                            onDragOver={(event) => {
+                                                if (!draggedItemKey || draggedSectionId) {
+                                                    return;
+                                                }
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                const container = event.currentTarget as HTMLElement;
+                                                const target = resolveDragTarget(
+                                                    container,
+                                                    event.clientY,
+                                                    DATA_ITEM_ID_ATTR,
+                                                    draggedItemKey,
+                                                    event.target
+                                                );
+                                                if (!target) {
+                                                    return;
+                                                }
+                                                onItemDragHover(target.id, target.position);
+                                            }}
+                                            onDrop={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                onItemDrop(event);
+                                            }}
+                                        >
+                                            {visibleCerts.map((cert) => {
+                                                const itemKey = buildDragItemKey('certification', cert.id);
+                                                return (
+                                                    <div
+                                                        key={cert.id}
+                                                        data-rf-item-id={itemKey}
+                                                        className="relative group/item cursor-move"
+                                                        draggable
+                                                        onDragStart={(event) => {
+                                                            event.stopPropagation();
+                                                            onItemDragStart(event, itemKey);
+                                                        }}
+                                                        onDragEnd={(event) => {
+                                                            event.stopPropagation();
+                                                            onDragEnd();
+                                                        }}
+                                                    >
+                                                        <div className={itemControlClass}>
+                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                            <Edit3
+                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    onNavigateTab('experience');
+                                                                }}
+                                                            />
                                                         </div>
-                                                        <span className="text-xs text-gray-900">{cert.date}</span>
+                                                        <div
+                                                            className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                                        >
+                                                            <div className="flex justify-between items-baseline">
+                                                                <div>
+                                                                    <span className="text-xs font-bold text-gray-900">
+                                                                        {cert.name}
+                                                                    </span>
+                                                                    {cert.issuer ? (
+                                                                        <span className="text-xs text-gray-900 ml-2">
+                                                                            ({cert.issuer})
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                                <span className="text-xs text-gray-900">{cert.date}</span>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
@@ -616,26 +641,77 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 >
                                     <div className={sectionControlClass}>
                                         <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                        <Edit3
-                                            className="w-4 h-4 text-primary cursor-pointer"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onNavigateTab('experience');
-                                            }}
-                                        />
                                     </div>
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
                                             专业技能
                                         </h2>
-                                        <div className={`text-xs text-gray-800 grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
-                                            {selectedSkillGroups.map((group) => (
-                                                <React.Fragment key={group.name}>
-                                                    <span className="font-bold text-gray-900">{group.name}:</span>
-                                                    <span>{group.skills.join(', ')}</span>
-                                                </React.Fragment>
-                                            ))}
+                                        <div
+                                            className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"
+                                            onDragOver={(event) => {
+                                                if (!draggedItemKey || draggedSectionId) {
+                                                    return;
+                                                }
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                const container = event.currentTarget as HTMLElement;
+                                                const target = resolveDragTarget(
+                                                    container,
+                                                    event.clientY,
+                                                    DATA_ITEM_ID_ATTR,
+                                                    draggedItemKey,
+                                                    event.target
+                                                );
+                                                if (!target) {
+                                                    return;
+                                                }
+                                                onItemDragHover(target.id, target.position);
+                                            }}
+                                            onDrop={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                onItemDrop(event);
+                                            }}
+                                        >
+                                            {selectedSkillGroups.map((group) => {
+                                                const itemKey = buildDragItemKey('skillGroup', group.name);
+                                                return (
+                                                    <div
+                                                        key={group.name}
+                                                        data-rf-item-id={itemKey}
+                                                        className="relative group/item cursor-move"
+                                                        draggable
+                                                        onDragStart={(event) => {
+                                                            event.stopPropagation();
+                                                            onItemDragStart(event, itemKey);
+                                                        }}
+                                                        onDragEnd={(event) => {
+                                                            event.stopPropagation();
+                                                            onDragEnd();
+                                                        }}
+                                                    >
+                                                        <div className={itemControlClass}>
+                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                            <Edit3
+                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    onNavigateTab('experience');
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div
+                                                            className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                                        >
+                                                            <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
+                                                                <span className="font-bold text-gray-900">{group.name}:</span>
+                                                                <span>{group.skills.join(', ')}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>

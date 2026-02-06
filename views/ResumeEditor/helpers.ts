@@ -9,6 +9,7 @@ import type {
     ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeExperienceView,
+    ResumeLayoutOrders,
     SkillGroupView,
     StarFields,
 } from '../../types/resume';
@@ -416,7 +417,9 @@ export const buildResumeConfigSnapshot = (
     selectedCertIds: Set<string>,
     selectedSkillIds: Set<string>,
     sectionOrder: string[],
-    density: 'compact' | 'standard' | 'spacious'
+    density: 'compact' | 'standard' | 'spacious',
+    isSummaryVisible: boolean,
+    orders: ResumeLayoutOrders
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
     profileSyncMode,
@@ -429,6 +432,8 @@ export const buildResumeConfigSnapshot = (
     layout: {
         sectionOrder: [...sectionOrder],
         density,
+        isSummaryVisible,
+        orders: { ...orders },
     },
 });
 

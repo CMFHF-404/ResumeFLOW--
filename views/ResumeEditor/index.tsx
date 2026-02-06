@@ -12,13 +12,14 @@ import type {
     EducationView,
     ProfileSyncMode,
     ResumeEditorProfile,
+    ResumeLayoutOrders,
     ResumeExperienceView,
     SkillGroupView,
 } from '../../types/resume';
 import { buildExperienceDate } from '../../utils/dateUtils';
 import { buildStarFields } from '../../utils/resumeHelpers';
-import { parseYearMonthValue } from '../experienceUtils';
 import { mergeLinkedInLink } from '../profileUtils';
+import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import {
     AUTO_SAVE_DELAY_MS,
     A4_HEIGHT_MM,
@@ -55,6 +56,7 @@ import {
     SMART_PAGE_HEIGHT_TOLERANCE,
     SMART_PAGE_TOAST_MESSAGES,
 } from './constants';
+import { parseDragItemKey } from './dragKeys';
 import {
     buildCertificationDraft,
     buildCertificationPayload,
@@ -155,39 +157,6 @@ const resolveMeasuredContentHeight = (container: HTMLElement) => {
     return Math.max(baseHeight, rectHeight);
 };
 
-type DropPosition = 'before' | 'after';
-
-const resolveInsertIndex = (
-    draggedIndex: number,
-    targetIndex: number,
-    position: DropPosition
-) => {
-    const targetIndexAfterRemoval = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
-    return position === 'after' ? targetIndexAfterRemoval + 1 : targetIndexAfterRemoval;
-};
-
-const moveItemWithDropPosition = <T,>(
-    items: T[],
-    draggedIndex: number,
-    targetIndex: number,
-    position: DropPosition
-) => {
-    if (draggedIndex === targetIndex) {
-        return items;
-    }
-
-    const insertIndex = resolveInsertIndex(draggedIndex, targetIndex, position);
-    if (insertIndex === draggedIndex) {
-        return items;
-    }
-
-    const nextItems = [...items];
-    const [dragged] = nextItems.splice(draggedIndex, 1);
-
-    nextItems.splice(insertIndex, 0, dragged);
-    return nextItems;
-};
-
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
@@ -232,18 +201,30 @@ const ResumeEditor: React.FC = () => {
         closeToast,
     } = useToast();
     // Drag & Drop State
-    const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+    const [draggedItemKey, setDraggedItemKey] = useState<string | null>(null);
     // Section Order State (for draggable resume sections)
     const [sectionOrder, setSectionOrder] = useState<string[]>(
         () => [...DEFAULT_SECTION_ORDER]
     );
     const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+    const [isSummaryVisible, setIsSummaryVisible] = useState(true);
     const lastItemHoverKeyRef = useRef<string | null>(null);
     const lastSectionHoverKeyRef = useRef<string | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
     const smartPageAdjustingRef = useRef(false);
+
+    const layoutOrders: ResumeLayoutOrders = useMemo(
+        () => ({
+            workExperienceIds: experienceItems.filter((item) => item.category === 'work').map((item) => item.id),
+            projectExperienceIds: experienceItems.filter((item) => item.category === 'project').map((item) => item.id),
+            educationIds: educations.map((item) => item.id),
+            certificationIds: certifications.map((item) => item.id),
+            skillGroupNames: skillGroups.map((group) => group.name),
+        }),
+        [certifications, educations, experienceItems, skillGroups]
+    );
 
     const resumeConfigSnapshot = useMemo(
         () =>
@@ -255,9 +236,22 @@ const ResumeEditor: React.FC = () => {
                 selectedCertIds,
                 selectedSkillIds,
                 sectionOrder,
-                density
+                density,
+                isSummaryVisible,
+                layoutOrders
             ),
-        [density, profile, profileSyncMode, sectionOrder, selectedCertIds, selectedEduIds, selectedExpIds, selectedSkillIds]
+        [
+            density,
+            isSummaryVisible,
+            layoutOrders,
+            profile,
+            profileSyncMode,
+            sectionOrder,
+            selectedCertIds,
+            selectedEduIds,
+            selectedExpIds,
+            selectedSkillIds,
+        ]
     );
     const {
         resumeId,
@@ -277,6 +271,7 @@ const ResumeEditor: React.FC = () => {
         setProfileSocialLinks,
         setSectionOrder,
         setDensity,
+        setIsSummaryVisible,
         setExperienceItems,
         setSelectedExpIds,
         setEducations,
@@ -575,35 +570,82 @@ const ResumeEditor: React.FC = () => {
     const adjustToSinglePage = () => {
         void handleAdjustToSinglePage();
     };
-    const handleDragStart = (e: React.DragEvent, id: string) => {
+    const handleDragStart = (e: React.DragEvent, itemKey: string) => {
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
         setDraggedSectionId(null);
-        setDraggedItemId(id);
+        setDraggedItemKey(itemKey);
         setIsDragging(true);
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', itemKey);
     };
     const clearDragState = () => {
-        setDraggedItemId(null);
+        setDraggedItemKey(null);
         setDraggedSectionId(null);
         setIsDragging(false);
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
     };
 
-    const handleItemDragHover = (targetItemId: string, position: DropPosition) => {
-        if (!draggedItemId || draggedItemId === targetItemId) {
+    const handleItemDragHover = (targetItemKey: string, position: DropPosition) => {
+        if (!draggedItemKey || draggedItemKey === targetItemKey) {
             return;
         }
 
-        const hoverKey = `${targetItemId}:${position}`;
+        const hoverKey = `${targetItemKey}:${position}`;
         if (lastItemHoverKeyRef.current === hoverKey) {
             return;
         }
         lastItemHoverKeyRef.current = hoverKey;
-        setExperienceItems((prev) => {
-            const draggedIndex = prev.findIndex((item) => item.id === draggedItemId);
-            const targetIndex = prev.findIndex((item) => item.id === targetItemId);
+
+        const dragged = parseDragItemKey(draggedItemKey);
+        const target = parseDragItemKey(targetItemKey);
+        if (!dragged || !target || dragged.type !== target.type) {
+            return;
+        }
+
+        if (dragged.type === 'experience') {
+            setExperienceItems((prev) => {
+                const draggedIndex = prev.findIndex((item) => item.id === dragged.id);
+                const targetIndex = prev.findIndex((item) => item.id === target.id);
+                if (draggedIndex < 0 || targetIndex < 0) {
+                    return prev;
+                }
+                if (prev[draggedIndex].category !== prev[targetIndex].category) {
+                    return prev;
+                }
+                return moveItemWithDropPosition(prev, draggedIndex, targetIndex, position);
+            });
+            return;
+        }
+
+        if (dragged.type === 'education') {
+            setEducations((prev) => {
+                const draggedIndex = prev.findIndex((item) => item.id === dragged.id);
+                const targetIndex = prev.findIndex((item) => item.id === target.id);
+                if (draggedIndex < 0 || targetIndex < 0) {
+                    return prev;
+                }
+                return moveItemWithDropPosition(prev, draggedIndex, targetIndex, position);
+            });
+            return;
+        }
+
+        if (dragged.type === 'certification') {
+            setCertifications((prev) => {
+                const draggedIndex = prev.findIndex((item) => item.id === dragged.id);
+                const targetIndex = prev.findIndex((item) => item.id === target.id);
+                if (draggedIndex < 0 || targetIndex < 0) {
+                    return prev;
+                }
+                return moveItemWithDropPosition(prev, draggedIndex, targetIndex, position);
+            });
+            return;
+        }
+
+        setSkillGroups((prev) => {
+            const draggedIndex = prev.findIndex((group) => group.name === dragged.id);
+            const targetIndex = prev.findIndex((group) => group.name === target.id);
             if (draggedIndex < 0 || targetIndex < 0) {
                 return prev;
             }
@@ -649,10 +691,11 @@ const ResumeEditor: React.FC = () => {
     const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
-        setDraggedItemId(null);
+        setDraggedItemKey(null);
         setDraggedSectionId(sectionId);
         setIsDragging(true);
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', sectionId);
     };
 
     const handleSectionDragHover = (targetSectionId: string, position: DropPosition) => {
@@ -711,13 +754,7 @@ const ResumeEditor: React.FC = () => {
         () => projectItems.filter((item) => selectedExpIds.has(item.id)),
         [projectItems, selectedExpIds]
     );
-    const sortedCertifications = useMemo(() => {
-        return [...certifications].sort((a, b) => {
-            const valA = parseYearMonthValue(a.date) ?? -1;
-            const valB = parseYearMonthValue(b.date) ?? -1;
-            return valB - valA;
-        });
-    }, [certifications]);
+    const sortedCertifications = certifications;
     const selectedSkillGroups = useMemo(() => {
         return skillGroups
             .map((group) => ({
@@ -767,6 +804,8 @@ const ResumeEditor: React.FC = () => {
                         setProfile,
                         profileSyncMode,
                         setProfileSyncMode,
+                        isSummaryVisible,
+                        onToggleSummaryVisible: setIsSummaryVisible,
                         isEditingProfile,
                         isSavingProfile,
                         isProfileReadOnly,
@@ -825,6 +864,7 @@ const ResumeEditor: React.FC = () => {
                     bulletSpacingValue={bulletSpacingValue}
                     previewPaddingValue={previewPaddingValue}
                     profile={profile}
+                    isSummaryVisible={isSummaryVisible}
                     spacingClass={spacingClass}
                     listSpacingClass={listSpacingClass}
                     sectionOrder={sectionOrder}
@@ -836,7 +876,7 @@ const ResumeEditor: React.FC = () => {
                     selectedCertIds={selectedCertIds}
                     selectedSkillGroups={selectedSkillGroups}
                     isDragging={isDragging}
-                    draggedItemId={draggedItemId}
+                    draggedItemKey={draggedItemKey}
                     draggedSectionId={draggedSectionId}
                     onSectionDragStart={handleSectionDragStart}
                     onSectionDragHover={handleSectionDragHover}

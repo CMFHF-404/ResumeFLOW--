@@ -197,8 +197,8 @@ const CertificationDisplayCard: React.FC<{
                 }`}
             onClick={() => onToggleSelection(cert.id)}
         >
-            <div className="flex items-start gap-3">
-                <div className="pt-1">
+            <div className="flex items-start gap-3 group/card">
+                <div className="flex flex-col items-center pt-1 shrink-0">
                     <input
                         type="checkbox"
                         checked={isSelected}

@@ -32,6 +32,7 @@ import type {
     SkillGroupView,
 } from '../types/resume';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from '../views/resumeStorage';
+import { parseYearMonthValue } from '../views/experienceUtils';
 
 type ExperienceBuilder = (item: ExperienceListItem, resumeItem?: ResumeExperienceItem) => ResumeExperienceView;
 type EducationBuilder = (item: ExperienceListItem) => EducationView;
@@ -50,6 +51,7 @@ type UseResumeDataOptions = {
     setProfileSocialLinks: Dispatch<SetStateAction<Record<string, any>>>;
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
     setDensity: Dispatch<SetStateAction<'compact' | 'standard' | 'spacious'>>;
+    setIsSummaryVisible: Dispatch<SetStateAction<boolean>>;
     setExperienceItems: Dispatch<SetStateAction<ResumeExperienceView[]>>;
     setSelectedExpIds: Dispatch<SetStateAction<Set<string>>>;
     setEducations: Dispatch<SetStateAction<EducationView[]>>;
@@ -183,6 +185,7 @@ const createApplyResumeConfig = (
     setProfileSocialLinks: UseResumeDataOptions['setProfileSocialLinks'],
     setSectionOrder: UseResumeDataOptions['setSectionOrder'],
     setDensity: UseResumeDataOptions['setDensity'],
+    setIsSummaryVisible: UseResumeDataOptions['setIsSummaryVisible'],
     normalizeSectionOrder: UseResumeDataOptions['normalizeSectionOrder'],
     resolveProfileSyncMode: UseResumeDataOptions['resolveProfileSyncMode'],
     resolveProfileSnapshot: UseResumeDataOptions['resolveProfileSnapshot']
@@ -195,10 +198,43 @@ const createApplyResumeConfig = (
         }
         setProfile(resolveProfileSnapshot(config, profileData || undefined));
         setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
+        setIsSummaryVisible(config.layout?.isSummaryVisible ?? true);
         if (config.layout?.density) {
             setDensity(config.layout.density);
         }
     };
+};
+
+const applyExplicitOrder = <T,>(
+    items: T[],
+    getId: (item: T) => string,
+    orderedIds?: string[]
+) => {
+    if (!orderedIds || orderedIds.length === 0 || items.length <= 1) {
+        return items;
+    }
+    const index = new Map(items.map((item) => [getId(item), item]));
+    const used = new Set<string>();
+    const next: T[] = [];
+
+    orderedIds.forEach((id) => {
+        const resolved = index.get(id);
+        if (!resolved || used.has(id)) {
+            return;
+        }
+        used.add(id);
+        next.push(resolved);
+    });
+
+    items.forEach((item) => {
+        const id = getId(item);
+        if (used.has(id)) {
+            return;
+        }
+        next.push(item);
+    });
+
+    return next;
 };
 
 const createApplyExperienceState = (
@@ -221,7 +257,14 @@ const createApplyExperienceState = (
             experiences.map((item) => buildResumeExperienceView(item, resumeMap.get(item.master.id))),
             compareByDateDesc
         );
-        setExperienceItems(views);
+        const workViews = views.filter((item) => item.category === 'work');
+        const projectViews = views.filter((item) => item.category === 'project');
+        const orders = config.layout?.orders;
+        const ordered = [
+            ...applyExplicitOrder(workViews, (item) => item.id, orders?.workExperienceIds),
+            ...applyExplicitOrder(projectViews, (item) => item.id, orders?.projectExperienceIds),
+        ];
+        setExperienceItems(ordered);
         const configSelection = resolveSelectionSet(config.selection?.experienceIds);
         if (configSelection.size > 0) {
             setSelectedExpIds(configSelection);
@@ -243,7 +286,8 @@ const createApplyEducationState = (
 ) => {
     return (items: ExperienceListItem[], config: ResumeEditorConfig) => {
         const views = items.map(buildEducationView);
-        setEducations(views);
+        const ordered = applyExplicitOrder(views, (item) => item.id, config.layout?.orders?.educationIds);
+        setEducations(ordered);
         setEducationSourceMap(buildSourceMap(items));
         const selection = resolveSelectionSet(config.selection?.educationIds);
         const validIds = new Set(views.map((item) => item.id));
@@ -260,8 +304,11 @@ const createApplyCertificationState = (
     resolveSelectionSet: UseResumeDataOptions['resolveSelectionSet']
 ) => {
     return (items: CertificationRecord[], config: ResumeEditorConfig) => {
-        const views = items.map(buildCertificationView);
-        setCertifications(views);
+        const views = items
+            .map(buildCertificationView)
+            .sort((a, b) => (parseYearMonthValue(b.date) ?? -1) - (parseYearMonthValue(a.date) ?? -1));
+        const ordered = applyExplicitOrder(views, (item) => item.id, config.layout?.orders?.certificationIds);
+        setCertifications(ordered);
         setCertificationSourceMap(new Map(items.map((item) => [item.id, item])));
         const selection = resolveSelectionSet(config.selection?.certificationIds);
         const validIds = new Set(views.map((item) => item.id));
@@ -278,7 +325,12 @@ const createApplySkillState = (
 ) => {
     return (items: UserSkill[], config: ResumeEditorConfig) => {
         const groups = buildSkillGroups(items);
-        setSkillGroups(groups);
+        const ordered = applyExplicitOrder(
+            groups,
+            (group) => group.name,
+            config.layout?.orders?.skillGroupNames
+        );
+        setSkillGroups(ordered);
         const selection = resolveSelectionSet(config.selection?.skillIds);
         const validIds = new Set(items.map((skill) => skill.id));
         const normalized = new Set([...selection].filter((id) => validIds.has(id)));
@@ -293,6 +345,7 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
         setProfileSocialLinks,
         setSectionOrder,
         setDensity,
+        setIsSummaryVisible,
         normalizeSectionOrder,
         resolveProfileSyncMode,
         resolveProfileSnapshot,
@@ -304,6 +357,7 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
             setProfileSocialLinks,
             setSectionOrder,
             setDensity,
+            setIsSummaryVisible,
             normalizeSectionOrder,
             resolveProfileSyncMode,
             resolveProfileSnapshot
@@ -313,6 +367,7 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
             resolveProfileSnapshot,
             resolveProfileSyncMode,
             setDensity,
+            setIsSummaryVisible,
             setProfile,
             setProfileSocialLinks,
             setProfileSyncMode,

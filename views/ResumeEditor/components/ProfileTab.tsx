@@ -15,6 +15,8 @@ type ProfileTabProps = {
     setProfile: React.Dispatch<React.SetStateAction<ResumeEditorProfile>>;
     profileSyncMode: ProfileSyncMode;
     setProfileSyncMode: React.Dispatch<React.SetStateAction<ProfileSyncMode>>;
+    isSummaryVisible: boolean;
+    onToggleSummaryVisible: (nextValue: boolean) => void;
     isEditingProfile: boolean;
     isSavingProfile: boolean;
     isProfileReadOnly: boolean;
@@ -35,6 +37,8 @@ type ProfileTabProps = {
     onSaveEducation: () => void;
     onRequestDeleteEducation: (id: string) => void;
     onToggleEducationSelection: (id: string) => void;
+    onEducationDragStart?: (id: string) => void;
+    onEducationDragEnd?: () => void;
 };
 
 const ProfileTab: React.FC<ProfileTabProps> = ({
@@ -42,6 +46,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
     setProfile,
     profileSyncMode,
     setProfileSyncMode,
+    isSummaryVisible,
+    onToggleSummaryVisible,
     isEditingProfile,
     isSavingProfile,
     isProfileReadOnly,
@@ -62,6 +68,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
     onSaveEducation,
     onRequestDeleteEducation,
     onToggleEducationSelection,
+    onEducationDragStart,
+    onEducationDragEnd,
 }) => (
     <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
@@ -181,14 +189,39 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
             onToggleEducationSelection={onToggleEducationSelection}
         />
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">职业总结</h3>
+            <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">职业总结</h3>
+                <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={isSummaryVisible}
+                            onChange={(event) => onToggleSummaryVisible(event.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        显示
+                    </label>
+                    <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-md hover:bg-primary/20 transition-colors"
+                        onClick={() => {/* TODO: 添加AI生成逻辑 */ }}
+                    >
+                        <Wrench className="w-3 h-3" />
+                        AI生成
+                    </button>
+                </div>
+            </div>
             <textarea
                 className="w-full text-sm p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary h-28 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                 value={profile.summary}
                 onChange={(event) => setProfile({ ...profile, summary: event.target.value })}
-                placeholder="用 2-4 句话概括你的优势、方向与量化成果"
+                placeholder="用 2-4 句话概括你的优势、方向与量化成果，支持Markdown格式（**加粗**）"
+                maxLength={300}
                 disabled={isProfileReadOnly}
             />
+            <div className="text-xs text-gray-400 mt-1 text-right">
+                {profile.summary.length} / 300 字
+            </div>
         </div>
     </div>
 );
@@ -337,14 +370,16 @@ const EducationCard: React.FC<EducationCardProps> = ({
                 }`}
             onClick={() => onToggleSelection(education.id)}
         >
-            <div className="flex gap-3">
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => onToggleSelection(education.id)}
-                    onClick={(event) => event.stopPropagation()}
-                    className="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer shrink-0"
-                />
+            <div className="flex gap-3 group/card">
+                <div className="flex flex-col items-center shrink-0">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelection(education.id)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                    />
+                </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-1">
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white">{education.school}</h4>

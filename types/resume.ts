@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { Dispatch, DragEvent, ReactNode, SetStateAction } from "react";
 import type { ResumeDetail } from "../services/resumeService";
 
 export type StarFields = {
@@ -71,6 +71,9 @@ export type ExperienceCardProps = {
   onEdit: (id: string) => void;
   deletingIds: Set<string>;
   staleExperienceIds: Set<string>;
+  dragItemKey?: string;
+  onDragStart?: (event: DragEvent, itemKey: string) => void;
+  onDragEnd?: () => void;
 };
 
 export type ResumeEditorProfile = {
@@ -96,7 +99,17 @@ export type ResumeEditorConfig = {
   layout?: {
     sectionOrder?: string[];
     density?: "compact" | "standard" | "spacious";
+    isSummaryVisible?: boolean;
+    orders?: ResumeLayoutOrders;
   };
+};
+
+export type ResumeLayoutOrders = {
+  workExperienceIds?: string[];
+  projectExperienceIds?: string[];
+  educationIds?: string[];
+  certificationIds?: string[];
+  skillGroupNames?: string[];
 };
 
 export type ActiveResumeContext = {
