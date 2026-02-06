@@ -113,7 +113,6 @@ export type ResumePreviewProps = {
     bulletSpacingValue: string;
     previewPaddingValue: string;
     profile: ResumeEditorProfile;
-    isSummaryVisible: boolean;
     spacingClass: string;
     listSpacingClass: string;
     sectionOrder: string[];
@@ -147,7 +146,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     bulletSpacingValue,
     previewPaddingValue,
     profile,
-    isSummaryVisible,
     spacingClass,
     listSpacingClass,
     sectionOrder,
@@ -354,38 +352,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     </div>
 
                     {sectionOrder.map((sectionId) => {
-                        if (sectionId === 'summary' && isSummaryVisible && profile.summary) {
-                            return (
-                                <div
-                                    key="summary"
-                                    id="summary"
-                                    data-rf-section-id="summary"
-                                    className={`${spacingClass} relative group cursor-move`}
-                                    draggable
-                                    onDragStart={(event) => onSectionDragStart(event, 'summary')}
-                                    onDrop={(event) => {
-                                        event.stopPropagation();
-                                        onSectionDrop(event);
-                                    }}
-                                    onDragEnd={(event) => {
-                                        event.stopPropagation();
-                                        onDragEnd();
-                                    }}
-                                >
-                                    <div className={sectionControlClass}>
-                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    </div>
-                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
-                                            职业总结
-                                        </h2>
-                                        <div
-                                            className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
-                                            dangerouslySetInnerHTML={renderRichText(profile.summary)}
-                                        />
-                                    </div>
-                                </div>
-                            );
+                        if (sectionId === 'summary') {
+                            // 职业总结模块已从编辑流程移除，预览保持隐藏。
+                            return null;
                         }
 
                         if (sectionId === 'work') {

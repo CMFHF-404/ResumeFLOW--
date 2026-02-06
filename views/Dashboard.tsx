@@ -3,28 +3,14 @@ import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Tras
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
 import { setActiveResumeId } from './resumeStorage';
+import { formatRelativeTime } from '../utils/timeUtils';
+import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
 
 interface DashboardProps {
   setView: (view: ViewState) => void;
   cachedResumes?: Resume[]; // 从 App 传入的缓存数据
   onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
 }
-
-// 格式化时间为相对时间
-const formatRelativeTime = (dateStr: string): string => {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 60) return `${diffMins}分钟前`;
-  if (diffHours < 24) return `${diffHours}小时前`;
-  if (diffDays < 7) return `${diffDays}天前`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}周前`;
-  return `${Math.floor(diffDays / 30)}个月前`;
-};
 
 const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onResumesUpdate }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -103,7 +89,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
     }
     try {
       setIsCreatingResume(true);
-      const created = await resumeService.create({ title: '未命名简历' });
+      const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
       const newResume: Resume = {
         id: created.id,
         name: created.title,
@@ -265,14 +251,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                     <div className="flex justify-between items-start mb-1">
                       <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2 text-lg">{resume.name}</h3>
                     </div>
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">针对: {resume.targetRole}</p>
-                      {resume.matchRate > 0 && (
+                    {resume.matchRate > 0 && (
+                      <div className="mb-4">
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 font-bold border border-emerald-200 dark:border-emerald-500/20">
                           匹配度: {resume.matchRate}%
                         </span>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between relative">
                       <span className="text-xs text-gray-400 font-medium">{resume.lastModified}</span>
                       <div className="relative">
@@ -306,7 +291,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       <th className="px-6 py-4">简历名称</th>
-                      <th className="px-6 py-4">针对岗位</th>
                       <th className="px-6 py-4 w-40">匹配度</th>
                       <th className="px-6 py-4 w-40">最后修改</th>
                       <th className="px-6 py-4 w-32 text-right">操作</th>
@@ -314,7 +298,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {resumes.map(resume => (
-                    <tr key={resume.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => openResume(resume.id)}>
+                      <tr key={resume.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => openResume(resume.id)}>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
                             <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
@@ -322,9 +306,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
                             </div>
                             <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight">{resume.name}</h3>
                           </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">{resume.targetRole}</span>
                         </td>
                         <td className="px-6 py-4">
                           {resume.matchRate > 0 ? (

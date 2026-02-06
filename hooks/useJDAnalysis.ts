@@ -310,6 +310,8 @@ const mergeAnalysisResult = (
     matchPercentage: next.matchPercentage,
     jobKeywords: next.jobKeywords,
     missingKeywords: next.missingKeywords,
+    jobTitle: next.jobTitle ?? prev.jobTitle,
+    company: next.company ?? prev.company,
     summary: next.summary,
     experienceMatches: mergeMatchEntries(
       prev.experienceMatches,
@@ -456,7 +458,7 @@ type UseJDAnalysisResult = {
   setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
   skillMatchTrends: Map<string, MatchTrend>;
   setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
-  handleAnalyze: () => Promise<void>;
+  handleAnalyze: () => Promise<JDAnalysisResult | null>;
   debugInfo?: any;
 };
 
@@ -938,11 +940,11 @@ export const useJDAnalysis = ({
   );
 
   const runAnalyze = useCallback(
-    async (options?: AnalyzeOptions) => {
+    async (options?: AnalyzeOptions): Promise<JDAnalysisResult | null> => {
       const mode = options?.mode ?? "full";
       const diff = options?.diff ?? buildEmptyDiff();
       if (mode === "partial" && !hasDiff(diff)) {
-        return;
+        return null;
       }
       if (mode === "full") {
         pendingDiffRef.current = buildEmptyDiff();
@@ -971,7 +973,7 @@ export const useJDAnalysis = ({
           mode === "partial" ? subtractDiff(diff, changedDuringAnalyze) : diff;
         if (mode === "partial" && !hasDiff(stableDiff)) {
           updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
-          return;
+          return null;
         }
         const nextResult =
           mode === "partial"
@@ -994,8 +996,10 @@ export const useJDAnalysis = ({
           setIsJDCollapsed(true);
         }
         setDebugInfo(null);
+        return stabilizedResult;
       } catch (error) {
         console.error("Failed to analyze JD", error);
+        return null;
       } finally {
         setIsAnalyzing(false);
       }
@@ -1011,7 +1015,7 @@ export const useJDAnalysis = ({
   );
 
   const handleAnalyze = useCallback(async () => {
-    await runAnalyze({ mode: "full" });
+    return runAnalyze({ mode: "full" });
   }, [runAnalyze]);
 
   useEffect(() => {

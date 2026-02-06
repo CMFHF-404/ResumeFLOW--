@@ -27,6 +27,8 @@ export interface JDAnalysisResult {
     matchTrend?: MatchTrend;
     jobKeywords: string[];
     missingKeywords: string[];
+    jobTitle?: string;
+    company?: string;
     summary: string;
     experienceMatches?: MatchScoreEntry[];
     certificationMatches?: MatchScoreEntry[];

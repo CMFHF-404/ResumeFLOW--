@@ -1,12 +1,16 @@
-import React, { useMemo } from 'react';
-import { Download, LayoutTemplate, Moon, Sun } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Download, LayoutTemplate, Moon, Sun, Edit2, Check } from 'lucide-react';
 
 type EditorToolbarProps = {
     isDarkMode: boolean;
     saveState: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
     lastSavedAt: string | null;
     onToggleTheme: () => void;
+    isSmartPageApplied: boolean;
     onAdjustToSinglePage: () => void;
+    onRestoreDefault: () => void;
+    resumeName: string;
+    onResumeNameChange: (name: string) => void;
 };
 
 const buildSaveStatusText = (state: EditorToolbarProps['saveState'], lastSavedAt: string | null) => {
@@ -36,8 +40,40 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     saveState,
     lastSavedAt,
     onToggleTheme,
+    isSmartPageApplied,
     onAdjustToSinglePage,
+    onRestoreDefault,
+    resumeName,
+    onResumeNameChange,
 }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState(resumeName);
+
+    const handleStartEdit = () => {
+        setEditValue(resumeName);
+        setIsEditing(true);
+    };
+
+    const handleSave = () => {
+        if (editValue.trim()) {
+            onResumeNameChange(editValue.trim());
+        }
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditValue(resumeName);
+        setIsEditing(false);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSave();
+        } else if (e.key === 'Escape') {
+            handleCancel();
+        }
+    };
+
     const saveStatusText = useMemo(
         () => buildSaveStatusText(saveState, lastSavedAt),
         [lastSavedAt, saveState]
@@ -58,14 +94,48 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-500">简历工厂 / Resume Factory</span>
                 </div>
+                <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
+                <div className="flex items-center gap-2">
+                    {isEditing ? (
+                        <>
+                            <input
+                                type="text"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                onBlur={handleSave}
+                                autoFocus
+                                className="text-sm font-medium text-gray-900 dark:text-white bg-white dark:bg-gray-800 border border-primary rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                            <button
+                                onClick={handleSave}
+                                className="p-1 text-primary hover:bg-primary/10 rounded transition-colors"
+                                title="保存"
+                            >
+                                <Check className="w-4 h-4" />
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">{resumeName}</span>
+                            <button
+                                onClick={handleStartEdit}
+                                className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                                title="编辑简历名称"
+                            >
+                                <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
             <div className="flex items-center gap-4">
                 <button
-                    onClick={onAdjustToSinglePage}
+                    onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
                     className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                     <LayoutTemplate className="w-4 h-4" />
-                    智能一页
+                    {isSmartPageApplied ? '恢复默认' : '智能一页'}
                 </button>
                 <div className="flex items-center gap-2 text-xs">
                     <span className="text-gray-400">自动保存</span>

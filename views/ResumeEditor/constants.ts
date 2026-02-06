@@ -52,7 +52,6 @@ export const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView['category']> 
 ];
 
 export const DEFAULT_SECTION_ORDER = [
-    'summary',
     'work',
     'project',
     'education',

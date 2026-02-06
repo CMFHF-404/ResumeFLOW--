@@ -198,7 +198,7 @@ const createApplyResumeConfig = (
         }
         setProfile(resolveProfileSnapshot(config, profileData || undefined));
         setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
-        setIsSummaryVisible(config.layout?.isSummaryVisible ?? true);
+        setIsSummaryVisible(config.layout?.isSummaryVisible ?? false);
         if (config.layout?.density) {
             setDensity(config.layout.density);
         }

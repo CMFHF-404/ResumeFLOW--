@@ -1,10 +1,12 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeData } from '../../hooks/useResumeData';
 import { profileService } from '../../services/profileService';
+import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
+import type { JDAnalysisResult } from '../../services/aiService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type {
@@ -16,10 +18,13 @@ import type {
     ResumeExperienceView,
     SkillGroupView,
 } from '../../types/resume';
+import type { Resume as DashboardResume } from '../../types';
 import { buildExperienceDate } from '../../utils/dateUtils';
 import { buildStarFields, mergeStarFieldsWithSource } from '../../utils/resumeHelpers';
 import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
+import { formatRelativeTime } from '../../utils/timeUtils';
+import { DEFAULT_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
     A4_HEIGHT_MM,
@@ -120,6 +125,62 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const REDUCED_FONT_SIZE_STEPS = FONT_SIZE_STEPS.slice(1);
 
+const RESUME_AUTO_NAME_SEPARATOR = ' - ';
+const MAX_AUTO_NAME_PART_LENGTH = 40;
+const JD_TITLE_PATTERNS = [
+    /(?:职位|岗位|角色|招聘职位|招聘岗位|Position|Title)\s*[:：]\s*([^\n\r]+)/i,
+    /(?:需求|开放岗位)\s*[:：]\s*([^\n\r]+)/i,
+];
+const JD_COMPANY_PATTERNS = [
+    /(?:公司|企业|单位|组织|公司名称|公司名|Company|Organization)\s*[:：]\s*([^\n\r]+)/i,
+];
+
+const normalizeResumeTitle = (value: string) => value.trim();
+const isDefaultResumeTitle = (value: string) => normalizeResumeTitle(value) === DEFAULT_RESUME_TITLE;
+
+const sanitizeAutoNamePart = (value?: string) => {
+    const trimmed = value?.trim() ?? '';
+    if (!trimmed) {
+        return '';
+    }
+    return trimmed.length > MAX_AUTO_NAME_PART_LENGTH
+        ? trimmed.slice(0, MAX_AUTO_NAME_PART_LENGTH)
+        : trimmed;
+};
+
+const extractFirstMatch = (text: string, patterns: RegExp[]) => {
+    if (!text.trim()) {
+        return '';
+    }
+    for (const pattern of patterns) {
+        const match = pattern.exec(text);
+        if (match?.[1]) {
+            return sanitizeAutoNamePart(match[1]);
+        }
+    }
+    return '';
+};
+
+const buildAutoResumeName = (jobTitle?: string, company?: string) => {
+    const safeTitle = sanitizeAutoNamePart(jobTitle);
+    const safeCompany = sanitizeAutoNamePart(company);
+    if (safeTitle && safeCompany) {
+        return `${safeTitle}${RESUME_AUTO_NAME_SEPARATOR}${safeCompany}`;
+    }
+    return safeTitle || safeCompany || '';
+};
+
+const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText: string) => {
+    if (!analysisResult) {
+        return '';
+    }
+    const jobTitle = sanitizeAutoNamePart(analysisResult.jobTitle)
+        || extractFirstMatch(jdText, JD_TITLE_PATTERNS);
+    const company = sanitizeAutoNamePart(analysisResult.company)
+        || extractFirstMatch(jdText, JD_COMPANY_PATTERNS);
+    return buildAutoResumeName(jobTitle, company);
+};
+
 const resolveSmartPageAvailableHeight = (a4Height: number) => {
     const pxPerMm = a4Height / A4_HEIGHT_MM;
     const paddingPx = pxPerMm * PREVIEW_PADDING_MM;
@@ -157,11 +218,21 @@ const resolveMeasuredContentHeight = (container: HTMLElement) => {
     return Math.max(baseHeight, rectHeight);
 };
 
-const ResumeEditor: React.FC = () => {
+type ResumeEditorProps = {
+    cachedResumes?: DashboardResume[];
+    onResumesUpdate?: (resumes: DashboardResume[]) => void;
+};
+
+const ResumeEditor: React.FC<ResumeEditorProps> = ({
+    cachedResumes = [],
+    onResumesUpdate,
+}) => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
     const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
     const [isDragging, setIsDragging] = useState(false);
+    const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
+    const [resumeName, setResumeName] = useState(DEFAULT_RESUME_TITLE);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
@@ -207,13 +278,14 @@ const ResumeEditor: React.FC = () => {
         () => [...DEFAULT_SECTION_ORDER]
     );
     const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
-    const [isSummaryVisible, setIsSummaryVisible] = useState(true);
+    const [isSummaryVisible, setIsSummaryVisible] = useState(false);
     const lastItemHoverKeyRef = useRef<string | null>(null);
     const lastSectionHoverKeyRef = useRef<string | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
     const smartPageAdjustingRef = useRef(false);
+    const isUpdatingResumeNameRef = useRef(false);
 
     const layoutOrders: ResumeLayoutOrders = useMemo(
         () => ({
@@ -255,6 +327,7 @@ const ResumeEditor: React.FC = () => {
     );
     const {
         resumeId,
+        resumeDetail,
         resumeExperienceMap,
         experienceSourceMap,
         setResumeExperienceMap,
@@ -431,6 +504,105 @@ const ResumeEditor: React.FC = () => {
             certification: CERTIFICATION_DRAFT_PREFIX,
         },
     });
+    const updateDashboardCache = useCallback(
+        (updated: ResumeRecord) => {
+            if (!onResumesUpdate || cachedResumes.length === 0) {
+                return;
+            }
+            const next = cachedResumes.map((resume) =>
+                resume.id === updated.id
+                    ? {
+                        ...resume,
+                        name: updated.title,
+                        lastModified: formatRelativeTime(updated.updated_at),
+                    }
+                    : resume
+            );
+            onResumesUpdate(next);
+        },
+        [cachedResumes, onResumesUpdate]
+    );
+    useEffect(() => {
+        if (!resumeDetail?.resume) {
+            return;
+        }
+        const nextTitle = normalizeResumeTitle(resumeDetail.resume.title || DEFAULT_RESUME_TITLE);
+        setResumeName(nextTitle || DEFAULT_RESUME_TITLE);
+    }, [resumeDetail]);
+    const applyResumeNameUpdate = useCallback(
+        async (nextName: string, options?: { silent?: boolean }) => {
+            const normalized = normalizeResumeTitle(nextName);
+            if (!normalized || normalized === resumeName) {
+                return;
+            }
+            if (isUpdatingResumeNameRef.current) {
+                return;
+            }
+            const previousName = resumeName;
+            setResumeName(normalized);
+            if (!resumeId) {
+                return;
+            }
+            isUpdatingResumeNameRef.current = true;
+            try {
+                const updated = await resumeService.update(resumeId, { title: normalized });
+                const updatedTitle = normalizeResumeTitle(updated.title || normalized);
+                setResumeName(updatedTitle || DEFAULT_RESUME_TITLE);
+                if (resumeDetail) {
+                    applyResumeDetail({
+                        ...resumeDetail,
+                        resume: {
+                            ...resumeDetail.resume,
+                            ...updated,
+                            title: updatedTitle || DEFAULT_RESUME_TITLE,
+                        },
+                    });
+                }
+                updateDashboardCache(updated);
+                if (!options?.silent) {
+                    showToastSuccess('简历名称已更新');
+                }
+            } catch (error) {
+                console.error('[ResumeEditor] 更新简历名称失败:', error);
+                setResumeName(previousName);
+                if (!options?.silent) {
+                    showToastError('简历名称更新失败');
+                }
+            } finally {
+                isUpdatingResumeNameRef.current = false;
+            }
+        },
+        [
+            applyResumeDetail,
+            resumeDetail,
+            resumeId,
+            resumeName,
+            showToastError,
+            showToastSuccess,
+            updateDashboardCache,
+        ]
+    );
+    const canAutoNameResume = useCallback(
+        (name: string) => {
+            const normalized = normalizeResumeTitle(name);
+            return !normalized || isDefaultResumeTitle(normalized);
+        },
+        []
+    );
+    const handleAnalyzeWithAutoName = useCallback(async () => {
+        const result = await handleAnalyze();
+        if (!result) {
+            return;
+        }
+        if (!canAutoNameResume(resumeName)) {
+            return;
+        }
+        const autoName = resolveAutoResumeName(result, jdText);
+        if (!autoName) {
+            return;
+        }
+        await applyResumeNameUpdate(autoName, { silent: true });
+    }, [applyResumeNameUpdate, canAutoNameResume, handleAnalyze, jdText, resumeName]);
     const isProfileReadOnly = !isEditingProfile || isSavingProfile;
     const toggleTheme = () => {
         setIsDarkMode(!isDarkMode);
@@ -552,6 +724,7 @@ const ResumeEditor: React.FC = () => {
             const initialHeight = await applyLayoutParamsAndMeasure(LINE_HEIGHT_DEFAULT, FONT_SIZE_DEFAULT);
             if (isWithinAvailableHeight(initialHeight, availableHeight)) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                setIsSmartPageApplied(true);
                 return;
             }
 
@@ -559,6 +732,7 @@ const ResumeEditor: React.FC = () => {
             const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight, FONT_SIZE_DEFAULT);
             if (lineHeightAdjusted) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                setIsSmartPageApplied(true);
                 return;
             }
 
@@ -566,6 +740,7 @@ const ResumeEditor: React.FC = () => {
             const fontSizeAdjusted = await tryAdjustFontSize(availableHeight);
             if (fontSizeAdjusted) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                setIsSmartPageApplied(true);
                 return;
             }
 
@@ -576,6 +751,17 @@ const ResumeEditor: React.FC = () => {
     };
     const adjustToSinglePage = () => {
         void handleAdjustToSinglePage();
+    };
+    const handleRestoreDefault = () => {
+        setLineHeight(LINE_HEIGHT_DEFAULT);
+        setFontSize(FONT_SIZE_DEFAULT);
+        setIsSmartPageApplied(false);
+    };
+    const restoreDefault = () => {
+        handleRestoreDefault();
+    };
+    const handleResumeNameChange = (name: string) => {
+        void applyResumeNameUpdate(name);
     };
     const handleDragStart = (e: React.DragEvent, itemKey: string) => {
         lastItemHoverKeyRef.current = null;
@@ -788,7 +974,11 @@ const ResumeEditor: React.FC = () => {
                 saveState={saveState}
                 lastSavedAt={lastSavedAt}
                 onToggleTheme={toggleTheme}
+                isSmartPageApplied={isSmartPageApplied}
                 onAdjustToSinglePage={adjustToSinglePage}
+                onRestoreDefault={restoreDefault}
+                resumeName={resumeName}
+                onResumeNameChange={handleResumeNameChange}
             />
             <div className="flex flex-1 overflow-hidden">
                 <EditorSidebar
@@ -800,7 +990,7 @@ const ResumeEditor: React.FC = () => {
                         analysisResult,
                         isAnalyzing,
                         isCollapsed: isJDCollapsed,
-                        onAnalyze: handleAnalyze,
+                        onAnalyze: handleAnalyzeWithAutoName,
                         onToggleCollapse: handleToggleJdCollapse,
                         onJdTextChange: setJdText,
                         debugInfo,
@@ -811,8 +1001,6 @@ const ResumeEditor: React.FC = () => {
                         setProfile,
                         profileSyncMode,
                         setProfileSyncMode,
-                        isSummaryVisible,
-                        onToggleSummaryVisible: setIsSummaryVisible,
                         isEditingProfile,
                         isSavingProfile,
                         isProfileReadOnly,
@@ -873,7 +1061,6 @@ const ResumeEditor: React.FC = () => {
                     bulletSpacingValue={bulletSpacingValue}
                     previewPaddingValue={previewPaddingValue}
                     profile={profile}
-                    isSummaryVisible={isSummaryVisible}
                     spacingClass={spacingClass}
                     listSpacingClass={listSpacingClass}
                     sectionOrder={sectionOrder}

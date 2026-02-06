@@ -69,7 +69,7 @@ const App: React.FC = () => {
       case ViewState.EXPERIENCE_BANK:
         return <ExperienceBank cachedProfile={profileCache} onProfileUpdate={handleProfileUpdate} />;
       case ViewState.EDITOR:
-        return <ResumeEditor />;
+        return <ResumeEditor cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
       default:
         return <Dashboard setView={handleSetView} cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
     }
