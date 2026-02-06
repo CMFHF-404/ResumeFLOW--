@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { sanitizeRichTextHtml, stripRichTextToText } from '../utils/richText';
+import { RICH_TEXT_INLINE_STYLES_CLASS, sanitizeRichTextHtml, stripRichTextToText } from '../utils/richText';
 
 type RichTextEditorProps = {
     value: string;
@@ -791,7 +791,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const [isFocused, setIsFocused] = useState(false);
     const listStylesClass =
         '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1';
-    const editorClassName = `${className ?? ''} whitespace-pre-wrap break-words outline-none overflow-y-auto ${listStylesClass}`;
+    const editorClassName = `${className ?? ''} whitespace-pre-wrap break-words outline-none overflow-y-auto ${listStylesClass} ${RICH_TEXT_INLINE_STYLES_CLASS}`;
 
     useEditorSync(editorRef, value);
     const { toolbar, hideToolbar, updateSelectionState } = useToolbarState(editorRef);

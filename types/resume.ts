@@ -132,6 +132,7 @@ export type ExperienceEditDraft = {
   endDate: string;
   isCurrent?: boolean;
   star: StarFields;
+  starTouched: boolean;
   category: ResumeExperienceView["category"];
   isDraft?: boolean;
 };

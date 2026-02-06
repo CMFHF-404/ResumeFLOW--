@@ -1,5 +1,10 @@
 import { parseYearMonthValue } from "../views/experienceUtils";
-import { decodeRichTextEntities } from "./richText";
+import {
+  decodeRichTextEntitiesDeep,
+  hasRichTextDecoration,
+  sanitizeRichTextHtml,
+  stripRichTextToText,
+} from "./richText";
 import type { JDAnalysisItemSignatures } from "../types/analysis";
 import type { ResumeExperienceView, StarFields } from "../types/resume";
 
@@ -8,23 +13,22 @@ const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView["category"]> = [
   "work",
   "project",
 ];
+const STAR_FIELD_KEYS: Array<keyof StarFields> = ["s", "t", "a", "r"];
 
 export const normalizeStarValue = (value: unknown): string => {
   if (value === null || value === undefined) {
     return "";
   }
+  const hasDocument = typeof document !== "undefined";
+  const shouldSanitize = (text: string) => hasDocument && hasRichTextDecoration(text);
   if (Array.isArray(value)) {
     const joined = value.join("、");
-    if (joined.includes("&lt;") || joined.includes("&gt;")) {
-      return decodeRichTextEntities(joined);
-    }
-    return joined;
+    const decoded = decodeRichTextEntitiesDeep(joined);
+    return shouldSanitize(decoded) ? sanitizeRichTextHtml(decoded) : decoded;
   }
   const text = String(value);
-  if (text.includes("&lt;") || text.includes("&gt;")) {
-    return decodeRichTextEntities(text);
-  }
-  return text;
+  const decoded = decodeRichTextEntitiesDeep(text);
+  return shouldSanitize(decoded) ? sanitizeRichTextHtml(decoded) : decoded;
 };
 
 export const buildStarFields = (star?: Record<string, any>): StarFields => ({
@@ -33,6 +37,41 @@ export const buildStarFields = (star?: Record<string, any>): StarFields => ({
   a: normalizeStarValue(star?.a),
   r: normalizeStarValue(star?.r),
 });
+
+const resolveStarFieldWithSource = (draftValue: string, sourceValue: string) => {
+  if (!draftValue || !sourceValue) {
+    return draftValue;
+  }
+  const draftText = stripRichTextToText(draftValue);
+  const sourceText = stripRichTextToText(sourceValue);
+  if (!draftText || draftText !== sourceText) {
+    return draftValue;
+  }
+  if (!hasRichTextDecoration(draftValue) && hasRichTextDecoration(sourceValue)) {
+    return sourceValue;
+  }
+  return draftValue;
+};
+
+export const mergeStarFieldsWithSource = (
+  draft: StarFields,
+  sourceStar?: Record<string, any>
+) => {
+  if (!sourceStar) {
+    return draft;
+  }
+  const sourceFields = buildStarFields(sourceStar);
+  let changed = false;
+  const next: StarFields = { ...draft };
+  STAR_FIELD_KEYS.forEach((key) => {
+    const resolved = resolveStarFieldWithSource(draft[key], sourceFields[key]);
+    if (resolved !== draft[key]) {
+      next[key] = resolved;
+      changed = true;
+    }
+  });
+  return changed ? next : draft;
+};
 
 export const buildJDTextSignature = (value: string) => {
   const trimmed = value.trim();

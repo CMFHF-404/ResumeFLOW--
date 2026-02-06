@@ -5,6 +5,15 @@ const BLOCK_TAGS = new Set(['DIV', 'P']);
 const LINE_BREAK_TAG = 'BR';
 const ORDERED_LIST_LINE_PATTERN = /^\s*\d+[.、)）]\s*(.+)$/;
 const UNORDERED_LIST_LINE_PATTERN = /^\s*[-*•·]\s*(.+)$/;
+const RICH_TEXT_DECODE_PATTERN = /&(lt|gt|amp;lt|amp;gt);/i;
+const MAX_HTML_DECODE_PASSES = 2;
+const RICH_TEXT_HTML_TAG_PATTERN = /<\/?(?:b|strong|i|em|u|a|br|ul|ol|li)\b/i;
+const RICH_TEXT_MARKDOWN_TOKEN_PATTERN = /(\*\*|__|\]\(|\*[^*\r\n]+\*)/;
+
+export const RICH_TEXT_INLINE_STYLES_CLASS =
+    '[&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_a]:text-blue-600 [&_a]:underline';
+export const hasRichTextDecoration = (value: string) =>
+    RICH_TEXT_HTML_TAG_PATTERN.test(value) || RICH_TEXT_MARKDOWN_TOKEN_PATTERN.test(value);
 
 const escapeHtml = (value: string) =>
     value
@@ -358,3 +367,18 @@ export const normalizeAiRichText = (input: string) => {
 };
 
 export const decodeRichTextEntities = (value: string) => decodeHtmlEntities(value);
+
+export const decodeRichTextEntitiesDeep = (value: string) => {
+    let current = value;
+    for (let index = 0; index < MAX_HTML_DECODE_PASSES; index += 1) {
+        if (!RICH_TEXT_DECODE_PATTERN.test(current)) {
+            break;
+        }
+        const decoded = decodeHtmlEntities(current);
+        if (decoded === current) {
+            break;
+        }
+        current = decoded;
+    }
+    return current;
+};

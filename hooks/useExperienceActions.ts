@@ -113,6 +113,7 @@ type ExperienceHelpers = {
     buildResumeExperienceMap: (detail: ResumeDetail | null) => Map<string, ResumeExperienceItem>;
     buildExperienceDate: (start?: string, end?: string, isCurrent?: boolean) => string;
     buildStarFields: (star?: Record<string, any>) => StarFields;
+    mergeStarFieldsWithSource: (draft: StarFields, sourceStar?: Record<string, any>) => StarFields;
     mergeStarFields: (base: StarFields, updates: Partial<StarFields>) => StarFields;
     resolveExperienceDatePayload: (draft: ExperienceEditDraft, fallback?: DatePayloadFallback) => {
         startDate?: string;
@@ -143,6 +144,23 @@ type ExperienceHelpers = {
     buildCertificationView: (record: CertificationRecord) => CertificationView;
     buildCertificationPayload: (draft: CertificationEditDraft) => CertificationCreatePayload;
     buildSkillGroups: (skills: UserSkill[]) => SkillGroupView[];
+};
+
+const STAR_FIELD_KEYS: StarFieldKey[] = ['s', 't', 'a', 'r'];
+
+const hasStarFieldsChange = (base: StarFields, next: StarFields) =>
+    STAR_FIELD_KEYS.some((key) => base[key] !== next[key]);
+
+const resolveStarPayload = (
+    draft: ExperienceEditDraft,
+    sourceStar: Record<string, any> | undefined,
+    mergeStarFieldsWithSource: ExperienceHelpers['mergeStarFieldsWithSource'],
+    options?: { hasStarOverride?: boolean }
+) => {
+    if (draft.starTouched || options?.hasStarOverride) {
+        return draft.star;
+    }
+    return mergeStarFieldsWithSource(draft.star, sourceStar);
 };
 
 type ConfirmCopy = {
@@ -522,8 +540,21 @@ const createExperienceEditHandlers = (
         if (!item) {
             return;
         }
+        const draft = helpers.buildExperienceEditDraft(item);
+        const resumeItem = domain.resumeMap.get(id);
+        const hasStarOverride = Boolean(
+            resumeItem?.overrides_json
+            && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
+        );
+        const sourceStar = domain.sourceMap.get(id)?.latest_version?.star;
+        const resolvedStar = resolveStarPayload(
+            draft,
+            sourceStar,
+            helpers.mergeStarFieldsWithSource,
+            { hasStarOverride }
+        );
         state.setEditingExpId(id);
-        state.setEditingDraft(helpers.buildExperienceEditDraft(item));
+        state.setEditingDraft(resolvedStar === draft.star ? draft : { ...draft, star: resolvedStar });
         state.setSyncToMaster(true);
     };
 
@@ -540,12 +571,16 @@ const createExperienceEditHandlers = (
             if (!prev) {
                 return prev;
             }
+            if (prev.star[field] === value) {
+                return prev;
+            }
             return {
                 ...prev,
                 star: {
                     ...prev.star,
                     [field]: value,
                 },
+                starTouched: true,
             };
         });
     };
@@ -648,12 +683,15 @@ const createExperienceUpdateHelpers = (
 const buildMasterUpdatePayload = (
     source: ExperienceListItem,
     draft: ExperienceEditDraft,
-    resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload']
+    resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload'],
+    mergeStarFieldsWithSource: ExperienceHelpers['mergeStarFieldsWithSource'],
+    options?: { hasStarOverride?: boolean }
 ) => {
     const latest = source.latest_version;
     const title = draft.title.trim() || latest?.title || '';
     const org = draft.company.trim() || latest?.org;
     const dates = resolveExperienceDatePayload(draft, latest);
+    const star = resolveStarPayload(draft, latest?.star, mergeStarFieldsWithSource, options);
     return {
         title,
         org,
@@ -664,7 +702,7 @@ const buildMasterUpdatePayload = (
         summary: latest?.summary,
         highlights: latest?.highlights || [],
         tags: latest?.tags || [],
-        star: draft.star,
+        star,
     };
 };
 
@@ -674,17 +712,30 @@ const syncExperienceToMaster = async (
     sourceMap: ExperienceDomain['sourceMap'],
     setSourceMap: ExperienceDomain['setSourceMap'],
     updateHelpers: ExperienceUpdateHelpers,
-    resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload']
+    resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload'],
+    mergeStarFieldsWithSource: ExperienceHelpers['mergeStarFieldsWithSource'],
+    resumeMap: ExperienceDomain['resumeMap']
 ) => {
     const source = sourceMap.get(masterId);
     if (!source) {
         throw new Error('缺少经历源数据，无法同步到经历库');
     }
+    const resumeItem = resumeMap.get(masterId);
+    const hasStarOverride = Boolean(
+        resumeItem?.overrides_json
+        && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
+    );
     const resolvedTitle = draft.title.trim() || source.latest_version?.title || '';
     if (!resolvedTitle) {
         throw new Error('缺少经历标题，无法同步到经历库');
     }
-    const payload = buildMasterUpdatePayload(source, draft, resolveExperienceDatePayload);
+    const payload = buildMasterUpdatePayload(
+        source,
+        draft,
+        resolveExperienceDatePayload,
+        mergeStarFieldsWithSource,
+        { hasStarOverride }
+    );
     const detail: ExperienceDetail = await experienceService.update(masterId, { version: payload });
     const updatedVersion = detail.latest_version || source.latest_version;
     setSourceMap((prev) =>
@@ -693,7 +744,7 @@ const syncExperienceToMaster = async (
             latest_version: updatedVersion,
         })
     );
-    updateHelpers.applyExperienceVersionUpdate(masterId, updatedVersion, draft.star);
+    updateHelpers.applyExperienceVersionUpdate(masterId, updatedVersion, payload.star);
 };
 
 const ensureResumeLink = async (
@@ -730,6 +781,7 @@ const ensureResumeLink = async (
 const buildExperienceOverridePayload = (
     draft: ExperienceEditDraft,
     fallback: ResumeExperienceView | undefined,
+    resolvedStar: StarFields,
     resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload']
 ) => {
     const title = draft.title.trim();
@@ -745,7 +797,7 @@ const buildExperienceOverridePayload = (
             : undefined
     );
     const overrides: Record<string, any> = {
-        star: draft.star,
+        star: resolvedStar,
         is_current: dates.isCurrent,
     };
     if (dates.startDate) {
@@ -764,6 +816,7 @@ const buildExperienceOverridePayload = (
         overrides,
         resolvedTitle: title || fallback?.title || '',
         resolvedOrg: org || fallback?.company || '',
+        resolvedStar,
         dates,
     };
 };
@@ -778,6 +831,18 @@ const saveExperienceOverride = async (
     updateHelpers: ExperienceUpdateHelpers
 ) => {
     const targetItem = domain.items.find((item) => item.id === masterId);
+    const resumeItem = domain.resumeMap.get(masterId);
+    const hasStarOverride = Boolean(
+        resumeItem?.overrides_json
+        && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
+    );
+    const sourceStar = domain.sourceMap.get(masterId)?.latest_version?.star;
+    const resolvedStar = resolveStarPayload(
+        draft,
+        sourceStar,
+        helpers.mergeStarFieldsWithSource,
+        { hasStarOverride }
+    );
     const linkId = await ensureResumeLink(
         resumeId,
         masterId,
@@ -792,6 +857,7 @@ const saveExperienceOverride = async (
     const payload = buildExperienceOverridePayload(
         draft,
         targetItem,
+        resolvedStar,
         helpers.resolveExperienceDatePayload
     );
     const detail = await resumeService.updateAssembly(resumeId, {
@@ -807,7 +873,7 @@ const saveExperienceOverride = async (
     updateHelpers.applyExperienceUpdate(masterId, {
         title: payload.resolvedTitle,
         company: payload.resolvedOrg,
-        star: draft.star,
+        star: payload.resolvedStar,
         startDate: payload.dates.startDate,
         endDate: payload.dates.endDate,
         isCurrent: payload.dates.isCurrent,
@@ -868,7 +934,9 @@ const createExperienceSaveHandlers = (
                     domain.sourceMap,
                     domain.setSourceMap,
                     updateHelpers,
-                    helpers.resolveExperienceDatePayload
+                    helpers.resolveExperienceDatePayload,
+                    helpers.mergeStarFieldsWithSource,
+                    domain.resumeMap
                 );
             } else {
                 await saveExperienceOverride(
@@ -921,9 +989,14 @@ const createExperienceSaveHandlers = (
                 if (!prev) {
                     return prev;
                 }
+                const nextStar = helpers.mergeStarFields(prev.star, normalizedResult);
+                if (!hasStarFieldsChange(prev.star, nextStar)) {
+                    return prev;
+                }
                 return {
                     ...prev,
-                    star: helpers.mergeStarFields(prev.star, normalizedResult),
+                    star: nextStar,
+                    starTouched: true,
                 };
             });
         } catch (error) {

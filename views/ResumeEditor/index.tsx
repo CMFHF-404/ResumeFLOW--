@@ -17,7 +17,7 @@ import type {
     SkillGroupView,
 } from '../../types/resume';
 import { buildExperienceDate } from '../../utils/dateUtils';
-import { buildStarFields } from '../../utils/resumeHelpers';
+import { buildStarFields, mergeStarFieldsWithSource } from '../../utils/resumeHelpers';
 import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import {
@@ -379,6 +379,7 @@ const ResumeEditor: React.FC = () => {
             buildResumeExperienceMap,
             buildExperienceDate,
             buildStarFields,
+            mergeStarFieldsWithSource,
             mergeStarFields,
             resolveExperienceDatePayload,
             resolveEducationDatePayload,

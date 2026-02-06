@@ -9,7 +9,7 @@ import type {
     StarFields,
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
-import { sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
+import { RICH_TEXT_INLINE_STYLES_CLASS, sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
 import { type DropPosition, resolveDragTarget } from '../../../utils/dragSort';
 import { buildDragItemKey } from '../dragKeys';
 
@@ -22,7 +22,6 @@ const STAR_CONTEXT_SEPARATOR = ' ';
 const normalizeStarText = (value?: string) => value?.trim() ?? '';
 const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
-const RICH_TEXT_STYLES_CLASS = '[&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_a]:text-blue-600 [&_a]:underline';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
 
@@ -82,13 +81,13 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
         <>
             {contextText ? (
                 <div
-                    className={`text-gray-900 text-xs mb-1 ${RICH_TEXT_STYLES_CLASS}`}
+                    className={`text-gray-900 text-xs mb-1 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                     dangerouslySetInnerHTML={renderRichText(contextText)}
                 />
             ) : null}
             {actionList.lines.length > 0 ? (
                 <ul
-                    className={`list-disc list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_STYLES_CLASS}`}
+                    className={`list-disc list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                 >
                     {actionList.lines.map((line, index) => (
                         <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
@@ -97,7 +96,7 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
             ) : null}
             {resultText ? (
                 <div
-                    className={`text-xs text-gray-900 mt-1 ${RICH_TEXT_STYLES_CLASS}`}
+                    className={`text-xs text-gray-900 mt-1 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                     dangerouslySetInnerHTML={renderRichText(resultText)}
                 />
             ) : null}
@@ -381,7 +380,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             职业总结
                                         </h2>
                                         <div
-                                            className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_STYLES_CLASS}`}
+                                            className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                                             dangerouslySetInnerHTML={renderRichText(profile.summary)}
                                         />
                                     </div>

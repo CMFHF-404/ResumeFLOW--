@@ -19,7 +19,7 @@ import type { ResumeDetail, ResumeExperienceItem } from '../../services/resumeSe
 import type { UserSkill } from '../../services/skillsService';
 import type { Profile } from '../../services/profileService';
 import { buildExperienceDate, formatYearMonth, normalizeDateInput } from '../../utils/dateUtils';
-import { buildStarFields, normalizeStarValue } from '../../utils/resumeHelpers';
+import { buildStarFields, mergeStarFieldsWithSource, normalizeStarValue } from '../../utils/resumeHelpers';
 import { parseYearMonthValue } from '../experienceUtils';
 import { resolveLinkedInLink } from '../profileUtils';
 import {
@@ -274,7 +274,12 @@ export const buildResumeExperienceView = (
     const startDate = snapshot?.start_date ?? latest?.start_date;
     const endDate = snapshot?.end_date ?? latest?.end_date;
     const isCurrent = snapshot?.is_current ?? latest?.is_current ?? false;
-    const star = buildStarFields(snapshot?.star ?? latest?.star);
+    const baseStar = buildStarFields(snapshot?.star ?? latest?.star);
+    const hasStarOverride = Boolean(
+        resumeItem?.overrides_json
+        && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
+    );
+    const star = hasStarOverride ? baseStar : mergeStarFieldsWithSource(baseStar, latest?.star);
     return {
         id: item.master.id,
         title,
@@ -314,6 +319,7 @@ export const buildExperienceEditDraft = (item: ResumeExperienceView): Experience
     endDate: item.isCurrent ? '至今' : item.endDate ?? '',
     isCurrent: item.isCurrent,
     star: { ...item.star },
+    starTouched: false,
     category: item.category,
     isDraft: item.isDraft,
 });

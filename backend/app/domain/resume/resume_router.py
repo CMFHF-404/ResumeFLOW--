@@ -101,3 +101,4 @@ async def patch_resume_assembly(
     except ValueError as exc:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ResumeDetail(resume=_resume_to_read(resume), experiences=items)
+
