@@ -132,6 +132,7 @@ type ExperienceHelpers = {
         compare: (a: ResumeExperienceView, b: ResumeExperienceView) => number
     ) => ResumeExperienceView[];
     compareByDateDesc: (a: ResumeExperienceView, b: ResumeExperienceView) => number;
+    compareCertificationByDateDesc: (a: CertificationView, b: CertificationView) => number;
     buildEducationDraft: (source?: ExperienceListItem, draftId?: string) => EducationEditDraft;
     buildDraftEducationView: (draftId: string, draft: EducationEditDraft) => EducationView;
     buildEducationView: (item: ExperienceListItem) => EducationView;
@@ -143,7 +144,6 @@ type ExperienceHelpers = {
     buildDraftCertificationView: (draftId: string, draft: CertificationEditDraft) => CertificationView;
     buildCertificationView: (record: CertificationRecord) => CertificationView;
     buildCertificationPayload: (draft: CertificationEditDraft) => CertificationCreatePayload;
-    compareCertificationByDateDesc: (a: CertificationView, b: CertificationView) => number;
     buildSkillGroups: (skills: UserSkill[]) => SkillGroupView[];
 };
 

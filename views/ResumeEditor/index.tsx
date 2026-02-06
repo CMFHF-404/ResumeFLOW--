@@ -880,9 +880,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     };
 
     // 重置排序函数：将指定类别的经历恢复为时间倒序
-    const handleResetSort = (category: 'work' | 'project') => {
-        setExperienceItems((prev) => resetExperienceSortForCategory(prev, category));
-    };
+const handleResetSort = (category: 'work' | 'project') => {
+    setExperienceItems((prev) => resetExperienceSortForCategory(prev, category));
+};
+
+const handleResetCertificationSort = () => {
+    setCertifications((prev) => {
+        if (prev.length <= 1) {
+            return prev;
+        }
+        return [...prev].sort(compareCertificationByDateDesc);
+    });
+};
     // Section drag handlers
     const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
         lastItemHoverKeyRef.current = null;
@@ -1042,10 +1051,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         selectedSkillIds,
                         skillMatchScores,
                         skillMatchTrends,
-                        onResetRenamingCategory: resetRenamingCategory,
-                        onResetWorkSort: () => handleResetSort('work'),
-                        onResetProjectSort: () => handleResetSort('project'),
-                    }}
+                    onResetRenamingCategory: resetRenamingCategory,
+                    onResetWorkSort: () => handleResetSort('work'),
+                    onResetProjectSort: () => handleResetSort('project'),
+                    onResetCertificationSort: handleResetCertificationSort,
+                }}
                     editingSuggestion={{
                         editingItem,
                         analysisResult,

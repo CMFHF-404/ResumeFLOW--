@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, Edit3, Plus, Trash2, ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, Award, Edit3, Plus, Trash2 } from 'lucide-react';
 import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../../../components/MonthPicker';
 import type { MatchTrend } from '../../../types/analysis';
 import type { CertificationEditDraft, CertificationView } from '../../../types/resume';
@@ -52,7 +52,7 @@ const CertificationHeader: React.FC<{
             </h4>
         </div>
         <div className="flex items-center gap-1">
-            {onResetSort && (
+            {onResetSort ? (
                 <button
                     onClick={onResetSort}
                     title="重置为时间倒序"
@@ -61,7 +61,7 @@ const CertificationHeader: React.FC<{
                 >
                     <ArrowUpDown className="w-3.5 h-3.5" />
                 </button>
-            )}
+            ) : null}
             <button
                 onClick={onCreate}
                 title={ADD_CERTIFICATION_LABEL}

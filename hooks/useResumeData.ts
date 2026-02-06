@@ -302,13 +302,12 @@ const createApplyCertificationState = (
     setCertificationSourceMap: UseResumeDataOptions['setCertificationSourceMap'],
     setSelectedCertIds: UseResumeDataOptions['setSelectedCertIds'],
     buildCertificationView: UseResumeDataOptions['buildCertificationView'],
-    resolveSelectionSet: UseResumeDataOptions['resolveSelectionSet'],
-    compareCertificationByDateDesc: UseResumeDataOptions['compareCertificationByDateDesc']
+    resolveSelectionSet: UseResumeDataOptions['resolveSelectionSet']
 ) => {
     return (items: CertificationRecord[], config: ResumeEditorConfig) => {
         const views = items
             .map(buildCertificationView)
-            .sort(compareCertificationByDateDesc);
+            .sort((a, b) => (parseYearMonthValue(b.date) ?? -1) - (parseYearMonthValue(a.date) ?? -1));
         const ordered = applyExplicitOrder(views, (item) => item.id, config.layout?.orders?.certificationIds);
         setCertifications(ordered);
         setCertificationSourceMap(new Map(items.map((item) => [item.id, item])));
@@ -392,7 +391,6 @@ const useExperienceStateApplier = (
         sortByCategory,
         compareByDateDesc,
         resolveSelectionSet,
-        compareCertificationByDateDesc,
     } = options;
     return useCallback(
         createApplyExperienceState(
@@ -458,7 +456,6 @@ const useCertificationStateApplier = (options: UseResumeDataOptions) => {
         setSelectedCertIds,
         buildCertificationView,
         resolveSelectionSet,
-        compareCertificationByDateDesc,
     } = options;
     return useCallback(
         createApplyCertificationState(
@@ -466,8 +463,7 @@ const useCertificationStateApplier = (options: UseResumeDataOptions) => {
             setCertificationSourceMap,
             setSelectedCertIds,
             buildCertificationView,
-            resolveSelectionSet,
-            compareCertificationByDateDesc
+            resolveSelectionSet
         ),
         [
             buildCertificationView,
@@ -475,7 +471,6 @@ const useCertificationStateApplier = (options: UseResumeDataOptions) => {
             setCertifications,
             setCertificationSourceMap,
             setSelectedCertIds,
-            compareCertificationByDateDesc,
         ]
     );
 };
