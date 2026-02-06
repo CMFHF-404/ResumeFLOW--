@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, LayoutTemplate, Moon, Sun, Edit2, Check } from 'lucide-react';
+import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText } from 'lucide-react';
 
 type EditorToolbarProps = {
     isDarkMode: boolean;
@@ -87,8 +87,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
         <header className="h-16 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark flex items-center justify-between px-6 shrink-0 z-20">
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
-                    <LayoutTemplate className="w-8 h-8" />
-                    <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">Elephant</span>
+                    <FileText className="w-8 h-8" />
+                    <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">ResumeFLOW</span>
                 </div>
                 <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
                 <div className="flex items-center gap-2">

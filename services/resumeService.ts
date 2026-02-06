@@ -54,9 +54,16 @@ export interface ResumeUpdatePayload {
 // 简历列表缓存 + in-flight 去重，避免视图切换导致请求风暴
 let cachedResumeList: Resume[] | null = null;
 let inFlightResumeListRequest: Promise<Resume[]> | null = null;
+let resumeListRequestVersion = 0;
 
-const requestResumeList = async (): Promise<Resume[]> => {
-    const response = await apiClient.get<Resume[]>('/resumes');
+const requestResumeList = async (options?: { cacheBust?: boolean }): Promise<Resume[]> => {
+    const requestConfig = options?.cacheBust
+        ? {
+            params: { _ts: Date.now() },
+            headers: { 'Cache-Control': 'no-cache' },
+        }
+        : undefined;
+    const response = await apiClient.get<Resume[]>('/resumes', requestConfig);
     return response.data;
 };
 
@@ -66,15 +73,22 @@ export const resumeService = {
         if (shouldUseCache && cachedResumeList) {
             return cachedResumeList;
         }
-        if (inFlightResumeListRequest) {
+        if (!options?.force && inFlightResumeListRequest) {
             return inFlightResumeListRequest;
         }
-        inFlightResumeListRequest = requestResumeList();
+        const requestVersion = (resumeListRequestVersion += 1);
+        const requestPromise = requestResumeList({ cacheBust: options?.force });
+        inFlightResumeListRequest = requestPromise;
         try {
-            cachedResumeList = await inFlightResumeListRequest;
-            return cachedResumeList;
+            const data = await requestPromise;
+            if (requestVersion === resumeListRequestVersion) {
+                cachedResumeList = data;
+            }
+            return data;
         } finally {
-            inFlightResumeListRequest = null;
+            if (inFlightResumeListRequest === requestPromise) {
+                inFlightResumeListRequest = null;
+            }
         }
     },
 
@@ -122,6 +136,7 @@ export const resumeService = {
     },
 
     clearListCache() {
+        resumeListRequestVersion += 1;
         cachedResumeList = null;
         inFlightResumeListRequest = null;
     },

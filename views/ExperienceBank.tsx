@@ -13,6 +13,7 @@ import {
   MapPin,
   Link as LinkIcon,
   LayoutTemplate,
+  FileText,
 } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
@@ -210,8 +211,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       <header className="h-16 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark flex items-center justify-between px-8 shrink-0 z-20">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
-            <LayoutTemplate className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">Elephant</span>
+            <FileText className="w-8 h-8" />
+            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">ResumeFLOW</span>
           </div>
           <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
           <div className="flex items-center gap-2">

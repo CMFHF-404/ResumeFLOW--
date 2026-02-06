@@ -123,6 +123,7 @@ export type ResumePreviewProps = {
     sortedCertifications: CertificationView[];
     selectedCertIds: Set<string>;
     selectedSkillGroups: Array<{ name: string; skills: string[] }>;
+    readOnly?: boolean;
     isDragging: boolean;
     draggedItemKey: string | null;
     draggedSectionId: string | null;
@@ -156,6 +157,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     sortedCertifications,
     selectedCertIds,
     selectedSkillGroups,
+    readOnly,
     isDragging,
     draggedItemKey,
     draggedSectionId,
@@ -174,17 +176,21 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         [fontSize]
     );
 
+    const isReadOnly = Boolean(readOnly);
+
     // 拖拽时浏览器可能“冻结”hover 状态（尤其是起始元素），导致 hover 高光在拖动过程中残留。
     // 因此拖拽期间禁用所有 hover 视觉反馈，只保留拖拽交互本身（实时重排）。
     const sectionControlBaseClass = 'absolute -left-6 top-0 flex flex-col gap-1';
-    const sectionControlClass = isDragging
+    const sectionControlClass = isDragging || isReadOnly
         ? `${sectionControlBaseClass} opacity-0`
         : `${sectionControlBaseClass} opacity-0 group-hover:opacity-100 transition-opacity`;
-    const itemControlClass = isDragging
+    const itemControlClass = isDragging || isReadOnly
         ? 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0'
         : 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity';
-    const itemHoverBgClass = isDragging ? '' : 'group-hover/item:bg-primary/5';
+    const itemHoverBgClass = isDragging || isReadOnly ? '' : 'group-hover/item:bg-primary/5';
     const sectionHoverBgClass = '';
+    const sectionDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
+    const itemDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
 
     const renderExperienceSection = (
         sectionId: 'work' | 'project',
@@ -200,51 +206,71 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 key={sectionId}
                 id={sectionId}
                 data-rf-section-id={sectionId}
-                className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                draggable
-                onDragStart={(event) => onSectionDragStart(event, sectionId)}
-                onDrop={(event) => {
-                    event.stopPropagation();
-                    onSectionDrop(event);
-                }}
-                onDragEnd={(event) => {
-                    event.stopPropagation();
-                    onDragEnd();
-                }}
+                className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                draggable={!isReadOnly}
+                onDragStart={
+                    isReadOnly ? undefined : (event) => onSectionDragStart(event, sectionId)
+                }
+                onDrop={
+                    isReadOnly
+                        ? undefined
+                        : (event) => {
+                            event.stopPropagation();
+                            onSectionDrop(event);
+                        }
+                }
+                onDragEnd={
+                    isReadOnly
+                        ? undefined
+                        : (event) => {
+                            event.stopPropagation();
+                            onDragEnd();
+                        }
+                }
             >
-                <div className={sectionControlClass}>
-                    <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                </div>
+                {!isReadOnly ? (
+                    <div className={sectionControlClass}>
+                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                    </div>
+                ) : null}
 
                 <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
                     {title}
                 </h2>
                 <div
                     className={listSpacingClass}
-                    onDragOver={(event) => {
-                        if (!draggedItemKey || draggedSectionId) {
-                            return;
-                        }
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const container = event.currentTarget as HTMLElement;
-                        const target = resolveDragTarget(
-                            container,
-                            event.clientY,
-                            DATA_ITEM_ID_ATTR,
-                            draggedItemKey,
-                            event.target
-                        );
-                        if (!target) {
-                            return;
-                        }
-                        onItemDragHover(target.id, target.position);
-                    }}
-                    onDrop={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onItemDrop(event);
-                    }}
+                    onDragOver={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                if (!draggedItemKey || draggedSectionId) {
+                                    return;
+                                }
+                                event.preventDefault();
+                                event.stopPropagation();
+                                const container = event.currentTarget as HTMLElement;
+                                const target = resolveDragTarget(
+                                    container,
+                                    event.clientY,
+                                    DATA_ITEM_ID_ATTR,
+                                    draggedItemKey,
+                                    event.target
+                                );
+                                if (!target) {
+                                    return;
+                                }
+                                onItemDragHover(target.id, target.position);
+                            }
+                    }
+                    onDrop={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onItemDrop(event);
+                            }
+                    }
                 >
                     {items.map((item) => {
                         const itemKey = buildDragItemKey('experience', item.id);
@@ -252,27 +278,37 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                             <div
                                 key={item.id}
                                 data-rf-item-id={itemKey}
-                                className="relative group/item cursor-move"
-                                draggable
-                                onDragStart={(event) => {
-                                    event.stopPropagation();
-                                    onItemDragStart(event, itemKey);
-                                }}
-                                onDragEnd={(event) => {
-                                    event.stopPropagation();
-                                    onDragEnd();
-                                }}
-                            >
-                                <div className={itemControlClass}>
-                                    <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                    <Edit3
-                                        className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                        onClick={(event) => {
+                                className={`relative group/item ${itemDragClass}`}
+                                draggable={!isReadOnly}
+                                onDragStart={
+                                    isReadOnly
+                                        ? undefined
+                                        : (event) => {
                                             event.stopPropagation();
-                                            onEditExperience(item.id);
-                                        }}
-                                    />
-                                </div>
+                                            onItemDragStart(event, itemKey);
+                                        }
+                                }
+                                onDragEnd={
+                                    isReadOnly
+                                        ? undefined
+                                        : (event) => {
+                                            event.stopPropagation();
+                                            onDragEnd();
+                                        }
+                                }
+                            >
+                                {!isReadOnly ? (
+                                    <div className={itemControlClass}>
+                                        <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                        <Edit3
+                                            className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onEditExperience(item.id);
+                                            }}
+                                        />
+                                    </div>
+                                ) : null}
 
                                 <div className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                     <div className="flex justify-between items-baseline mb-1">
@@ -313,28 +349,36 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             >
                 <div
                     ref={previewContentRef}
-                    onDragOver={(event) => {
-                        if (!draggedSectionId || draggedItemKey) {
-                            return;
-                        }
-                        event.preventDefault();
-                        const container = event.currentTarget as HTMLElement;
-                        const target = resolveDragTarget(
-                            container,
-                            event.clientY,
-                            DATA_SECTION_ID_ATTR,
-                            draggedSectionId,
-                            event.target
-                        );
-                        if (!target) {
-                            return;
-                        }
-                        onSectionDragHover(target.id, target.position);
-                    }}
-                    onDrop={(event) => {
-                        event.preventDefault();
-                        onSectionDrop(event);
-                    }}
+                    onDragOver={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                if (!draggedSectionId || draggedItemKey) {
+                                    return;
+                                }
+                                event.preventDefault();
+                                const container = event.currentTarget as HTMLElement;
+                                const target = resolveDragTarget(
+                                    container,
+                                    event.clientY,
+                                    DATA_SECTION_ID_ATTR,
+                                    draggedSectionId,
+                                    event.target
+                                );
+                                if (!target) {
+                                    return;
+                                }
+                                onSectionDragHover(target.id, target.position);
+                            }
+                    }
+                    onDrop={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                event.preventDefault();
+                                onSectionDrop(event);
+                            }
+                    }
                 >
                     <div
                         id="basic-info"
@@ -372,21 +416,33 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="education"
                                     id="education"
                                     data-rf-section-id="education"
-                                    className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                                    draggable
-                                    onDragStart={(event) => onSectionDragStart(event, 'education')}
-                                    onDrop={(event) => {
-                                        event.stopPropagation();
-                                        onSectionDrop(event);
-                                    }}
-                                    onDragEnd={(event) => {
-                                        event.stopPropagation();
-                                        onDragEnd();
-                                    }}
+                                    className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    draggable={!isReadOnly}
+                                    onDragStart={
+                                        isReadOnly ? undefined : (event) => onSectionDragStart(event, 'education')
+                                    }
+                                    onDrop={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onSectionDrop(event);
+                                            }
+                                    }
+                                    onDragEnd={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onDragEnd();
+                                            }
+                                    }
                                 >
-                                    <div className={sectionControlClass}>
-                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    </div>
+                                    {!isReadOnly ? (
+                                        <div className={sectionControlClass}>
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        </div>
+                                    ) : null}
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
@@ -394,30 +450,38 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </h2>
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
-                                            onDragOver={(event) => {
-                                                if (!draggedItemKey || draggedSectionId) {
-                                                    return;
-                                                }
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                const container = event.currentTarget as HTMLElement;
-                                                const target = resolveDragTarget(
-                                                    container,
-                                                    event.clientY,
-                                                    DATA_ITEM_ID_ATTR,
-                                                    draggedItemKey,
-                                                    event.target
-                                                );
-                                                if (!target) {
-                                                    return;
-                                                }
-                                                onItemDragHover(target.id, target.position);
-                                            }}
-                                            onDrop={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                onItemDrop(event);
-                                            }}
+                                            onDragOver={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => {
+                                                        if (!draggedItemKey || draggedSectionId) {
+                                                            return;
+                                                        }
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        const container = event.currentTarget as HTMLElement;
+                                                        const target = resolveDragTarget(
+                                                            container,
+                                                            event.clientY,
+                                                            DATA_ITEM_ID_ATTR,
+                                                            draggedItemKey,
+                                                            event.target
+                                                        );
+                                                        if (!target) {
+                                                            return;
+                                                        }
+                                                        onItemDragHover(target.id, target.position);
+                                                    }
+                                            }
+                                            onDrop={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        onItemDrop(event);
+                                                    }
+                                            }
                                         >
                                             {visibleEducations.map((edu) => {
                                                 const itemKey = buildDragItemKey('education', edu.id);
@@ -430,27 +494,37 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     <div
                                                         key={edu.id}
                                                         data-rf-item-id={itemKey}
-                                                        className="relative group/item cursor-move"
-                                                        draggable
-                                                        onDragStart={(event) => {
-                                                            event.stopPropagation();
-                                                            onItemDragStart(event, itemKey);
-                                                        }}
-                                                        onDragEnd={(event) => {
-                                                            event.stopPropagation();
-                                                            onDragEnd();
-                                                        }}
-                                                    >
-                                                        <div className={itemControlClass}>
-                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                            <Edit3
-                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                                                onClick={(event) => {
+                                                        className={`relative group/item ${itemDragClass}`}
+                                                        draggable={!isReadOnly}
+                                                        onDragStart={
+                                                            isReadOnly
+                                                                ? undefined
+                                                                : (event) => {
                                                                     event.stopPropagation();
-                                                                    onNavigateTab('profile');
-                                                                }}
-                                                            />
-                                                        </div>
+                                                                    onItemDragStart(event, itemKey);
+                                                                }
+                                                        }
+                                                        onDragEnd={
+                                                            isReadOnly
+                                                                ? undefined
+                                                                : (event) => {
+                                                                    event.stopPropagation();
+                                                                    onDragEnd();
+                                                                }
+                                                        }
+                                                    >
+                                                        {!isReadOnly ? (
+                                                            <div className={itemControlClass}>
+                                                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                                <Edit3
+                                                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        onNavigateTab('profile');
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
                                                         >
@@ -484,22 +558,34 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 <div
                                     key="certifications"
                                     id="certifications"
-                                    className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
+                                    className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     data-rf-section-id="certifications"
-                                    draggable
-                                    onDragStart={(event) => onSectionDragStart(event, 'certifications')}
-                                    onDrop={(event) => {
-                                        event.stopPropagation();
-                                        onSectionDrop(event);
-                                    }}
-                                    onDragEnd={(event) => {
-                                        event.stopPropagation();
-                                        onDragEnd();
-                                    }}
+                                    draggable={!isReadOnly}
+                                    onDragStart={
+                                        isReadOnly ? undefined : (event) => onSectionDragStart(event, 'certifications')
+                                    }
+                                    onDrop={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onSectionDrop(event);
+                                            }
+                                    }
+                                    onDragEnd={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onDragEnd();
+                                            }
+                                    }
                                 >
-                                    <div className={sectionControlClass}>
-                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    </div>
+                                    {!isReadOnly ? (
+                                        <div className={sectionControlClass}>
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        </div>
+                                    ) : null}
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
@@ -507,30 +593,38 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </h2>
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
-                                            onDragOver={(event) => {
-                                                if (!draggedItemKey || draggedSectionId) {
-                                                    return;
-                                                }
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                const container = event.currentTarget as HTMLElement;
-                                                const target = resolveDragTarget(
-                                                    container,
-                                                    event.clientY,
-                                                    DATA_ITEM_ID_ATTR,
-                                                    draggedItemKey,
-                                                    event.target
-                                                );
-                                                if (!target) {
-                                                    return;
-                                                }
-                                                onItemDragHover(target.id, target.position);
-                                            }}
-                                            onDrop={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                onItemDrop(event);
-                                            }}
+                                            onDragOver={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => {
+                                                        if (!draggedItemKey || draggedSectionId) {
+                                                            return;
+                                                        }
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        const container = event.currentTarget as HTMLElement;
+                                                        const target = resolveDragTarget(
+                                                            container,
+                                                            event.clientY,
+                                                            DATA_ITEM_ID_ATTR,
+                                                            draggedItemKey,
+                                                            event.target
+                                                        );
+                                                        if (!target) {
+                                                            return;
+                                                        }
+                                                        onItemDragHover(target.id, target.position);
+                                                    }
+                                            }
+                                            onDrop={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        onItemDrop(event);
+                                                    }
+                                            }
                                         >
                                             {visibleCerts.map((cert) => {
                                                 const itemKey = buildDragItemKey('certification', cert.id);
@@ -538,27 +632,37 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     <div
                                                         key={cert.id}
                                                         data-rf-item-id={itemKey}
-                                                        className="relative group/item cursor-move"
-                                                        draggable
-                                                        onDragStart={(event) => {
-                                                            event.stopPropagation();
-                                                            onItemDragStart(event, itemKey);
-                                                        }}
-                                                        onDragEnd={(event) => {
-                                                            event.stopPropagation();
-                                                            onDragEnd();
-                                                        }}
-                                                    >
-                                                        <div className={itemControlClass}>
-                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                            <Edit3
-                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                                                onClick={(event) => {
+                                                        className={`relative group/item ${itemDragClass}`}
+                                                        draggable={!isReadOnly}
+                                                        onDragStart={
+                                                            isReadOnly
+                                                                ? undefined
+                                                                : (event) => {
                                                                     event.stopPropagation();
-                                                                    onNavigateTab('experience');
-                                                                }}
-                                                            />
-                                                        </div>
+                                                                    onItemDragStart(event, itemKey);
+                                                                }
+                                                        }
+                                                        onDragEnd={
+                                                            isReadOnly
+                                                                ? undefined
+                                                                : (event) => {
+                                                                    event.stopPropagation();
+                                                                    onDragEnd();
+                                                                }
+                                                        }
+                                                    >
+                                                        {!isReadOnly ? (
+                                                            <div className={itemControlClass}>
+                                                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                                <Edit3
+                                                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        onNavigateTab('experience');
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
                                                         >
@@ -591,21 +695,33 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="skills"
                                     id="skills"
                                     data-rf-section-id="skills"
-                                    className={`${spacingClass} scroll-mt-20 relative group cursor-move`}
-                                    draggable
-                                    onDragStart={(event) => onSectionDragStart(event, 'skills')}
-                                    onDrop={(event) => {
-                                        event.stopPropagation();
-                                        onSectionDrop(event);
-                                    }}
-                                    onDragEnd={(event) => {
-                                        event.stopPropagation();
-                                        onDragEnd();
-                                    }}
+                                    className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    draggable={!isReadOnly}
+                                    onDragStart={
+                                        isReadOnly ? undefined : (event) => onSectionDragStart(event, 'skills')
+                                    }
+                                    onDrop={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onSectionDrop(event);
+                                            }
+                                    }
+                                    onDragEnd={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onDragEnd();
+                                            }
+                                    }
                                 >
-                                    <div className={sectionControlClass}>
-                                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
-                                    </div>
+                                    {!isReadOnly ? (
+                                        <div className={sectionControlClass}>
+                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        </div>
+                                    ) : null}
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
                                         <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
@@ -613,30 +729,38 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </h2>
                                         <div
                                             className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"
-                                            onDragOver={(event) => {
-                                                if (!draggedItemKey || draggedSectionId) {
-                                                    return;
-                                                }
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                const container = event.currentTarget as HTMLElement;
-                                                const target = resolveDragTarget(
-                                                    container,
-                                                    event.clientY,
-                                                    DATA_ITEM_ID_ATTR,
-                                                    draggedItemKey,
-                                                    event.target
-                                                );
-                                                if (!target) {
-                                                    return;
-                                                }
-                                                onItemDragHover(target.id, target.position);
-                                            }}
-                                            onDrop={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                onItemDrop(event);
-                                            }}
+                                            onDragOver={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => {
+                                                        if (!draggedItemKey || draggedSectionId) {
+                                                            return;
+                                                        }
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        const container = event.currentTarget as HTMLElement;
+                                                        const target = resolveDragTarget(
+                                                            container,
+                                                            event.clientY,
+                                                            DATA_ITEM_ID_ATTR,
+                                                            draggedItemKey,
+                                                            event.target
+                                                        );
+                                                        if (!target) {
+                                                            return;
+                                                        }
+                                                        onItemDragHover(target.id, target.position);
+                                                    }
+                                            }
+                                            onDrop={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        onItemDrop(event);
+                                                    }
+                                            }
                                         >
                                             {selectedSkillGroups.map((group) => {
                                                 const itemKey = buildDragItemKey('skillGroup', group.name);
@@ -644,27 +768,37 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     <div
                                                         key={group.name}
                                                         data-rf-item-id={itemKey}
-                                                        className="relative group/item cursor-move"
-                                                        draggable
-                                                        onDragStart={(event) => {
-                                                            event.stopPropagation();
-                                                            onItemDragStart(event, itemKey);
-                                                        }}
-                                                        onDragEnd={(event) => {
-                                                            event.stopPropagation();
-                                                            onDragEnd();
-                                                        }}
-                                                    >
-                                                        <div className={itemControlClass}>
-                                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                            <Edit3
-                                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                                                onClick={(event) => {
+                                                        className={`relative group/item ${itemDragClass}`}
+                                                        draggable={!isReadOnly}
+                                                        onDragStart={
+                                                            isReadOnly
+                                                                ? undefined
+                                                                : (event) => {
                                                                     event.stopPropagation();
-                                                                    onNavigateTab('experience');
-                                                                }}
-                                                            />
-                                                        </div>
+                                                                    onItemDragStart(event, itemKey);
+                                                                }
+                                                        }
+                                                        onDragEnd={
+                                                            isReadOnly
+                                                                ? undefined
+                                                                : (event) => {
+                                                                    event.stopPropagation();
+                                                                    onDragEnd();
+                                                                }
+                                                        }
+                                                    >
+                                                        {!isReadOnly ? (
+                                                            <div className={itemControlClass}>
+                                                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                                                <Edit3
+                                                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        onNavigateTab('experience');
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
                                                         >

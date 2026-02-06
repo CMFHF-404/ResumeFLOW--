@@ -79,7 +79,7 @@ async def delete_resume(
     session: AsyncSession, user_id: str, resume_id: str
 ) -> None:
     resume = await _get_resume(session, user_id, resume_id)
-    session.delete(resume)
+    await session.delete(resume)
     await session.commit()
 
 
