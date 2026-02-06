@@ -1,6 +1,8 @@
 from ..domain.resume.resume_service import (
     NotFoundError,
     create_resume,
+    delete_resume,
+    duplicate_resume,
     get_resume_detail,
     list_resumes,
     update_resume,
@@ -10,6 +12,8 @@ from ..domain.resume.resume_service import (
 __all__ = [
     "NotFoundError",
     "create_resume",
+    "delete_resume",
+    "duplicate_resume",
     "get_resume_detail",
     "list_resumes",
     "update_resume",

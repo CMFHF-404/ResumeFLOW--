@@ -101,6 +101,21 @@ export const resumeService = {
         return response.data;
     },
 
+    async remove(id: string) {
+        await apiClient.delete(`/resumes/${id}`);
+        if (cachedResumeList) {
+            cachedResumeList = cachedResumeList.filter((item) => item.id !== id);
+        }
+    },
+
+    async duplicate(id: string, payload?: { title?: string }) {
+        const response = await apiClient.post<Resume>(`/resumes/${id}/duplicate`, payload ?? {});
+        if (cachedResumeList) {
+            cachedResumeList = [response.data, ...cachedResumeList];
+        }
+        return response.data;
+    },
+
     async updateAssembly(id: string, data: any) {
         const response = await apiClient.patch<ResumeDetail>(`/resumes/${id}/assembly`, data);
         return response.data;

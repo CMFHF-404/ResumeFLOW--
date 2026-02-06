@@ -28,6 +28,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetRenamingCategory,
     onResetWorkSort,
     onResetProjectSort,
+    onResetCertificationSort,
 }) => {
     if (experience.editingExpId) {
         return (
@@ -97,6 +98,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 editingId={certification.editingCertificationId}
                 deletingIds={certification.deletingCertificationIds}
                 isSaving={certification.isSavingCertification}
+                onResetSort={onResetCertificationSort}
             />
             <SkillListSection
                 title="专业技能"

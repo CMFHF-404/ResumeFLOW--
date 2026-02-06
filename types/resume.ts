@@ -284,6 +284,7 @@ export type ExperienceTabProps = {
   onResetRenamingCategory: () => void;
   onResetWorkSort?: () => void;
   onResetProjectSort?: () => void;
+  onResetCertificationSort?: () => void;
 };
 
 export type DatePayloadFallback = {

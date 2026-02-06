@@ -80,6 +80,7 @@ import {
     buildSkillGroups,
     buildSourceMap,
     compareByDateDesc,
+    compareCertificationByDateDesc,
     getA4PixelHeight,
     isPresentLabel,
     mergeStarFields,
@@ -367,6 +368,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resolveProfileSnapshot,
         sortByCategory,
         compareByDateDesc,
+        compareCertificationByDateDesc,
     });
     const {
         jdText,
@@ -460,6 +462,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isPresentLabel,
             sortByCategory,
             compareByDateDesc,
+            compareCertificationByDateDesc,
             buildEducationDraft,
             buildDraftEducationView,
             buildEducationView,

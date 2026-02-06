@@ -143,6 +143,7 @@ type ExperienceHelpers = {
     buildDraftCertificationView: (draftId: string, draft: CertificationEditDraft) => CertificationView;
     buildCertificationView: (record: CertificationRecord) => CertificationView;
     buildCertificationPayload: (draft: CertificationEditDraft) => CertificationCreatePayload;
+    compareCertificationByDateDesc: (a: CertificationView, b: CertificationView) => number;
     buildSkillGroups: (skills: UserSkill[]) => SkillGroupView[];
 };
 
@@ -790,10 +791,10 @@ const buildExperienceOverridePayload = (
         draft,
         fallback
             ? {
-                  start_date: fallback.startDate,
-                  end_date: fallback.endDate,
-                  is_current: fallback.isCurrent,
-              }
+                start_date: fallback.startDate,
+                end_date: fallback.endDate,
+                is_current: fallback.isCurrent,
+            }
             : undefined
     );
     const overrides: Record<string, any> = {

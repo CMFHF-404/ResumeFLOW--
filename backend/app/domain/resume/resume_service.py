@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from sqlalchemy import desc
 from sqlmodel import select
@@ -73,6 +73,45 @@ async def update_resume(
     await session.commit()
     await session.refresh(resume)
     return resume
+
+
+async def delete_resume(
+    session: AsyncSession, user_id: str, resume_id: str
+) -> None:
+    resume = await _get_resume(session, user_id, resume_id)
+    session.delete(resume)
+    await session.commit()
+
+
+async def duplicate_resume(
+    session: AsyncSession,
+    user_id: str,
+    resume_id: str,
+    title: Optional[str] = None,
+) -> Resume:
+    source = await _get_resume(session, user_id, resume_id)
+    duplicated_title = title or f"{source.title} (副本)"
+    duplicated = Resume(
+        user_id=user_id,
+        title=duplicated_title,
+        target_role=source.target_role,
+        config={**(source.config or {})},
+    )
+    session.add(duplicated)
+    await session.flush()
+    pairs = await _list_resume_experiences(session, source.id)
+    for link, _version in pairs:
+        session.add(
+            ResumeExperienceLink(
+                resume_id=duplicated.id,
+                experience_version_id=link.experience_version_id,
+                overrides_json={**(link.overrides_json or {})},
+                display_order=link.display_order,
+            )
+        )
+    await session.commit()
+    await session.refresh(duplicated)
+    return duplicated
 
 
 async def get_resume_detail(

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, Edit3, Plus, Trash2 } from 'lucide-react';
+import { Award, Edit3, Plus, Trash2, ArrowUpDown } from 'lucide-react';
 import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../../../components/MonthPicker';
 import type { MatchTrend } from '../../../types/analysis';
 import type { CertificationEditDraft, CertificationView } from '../../../types/resume';
@@ -23,6 +23,7 @@ type CertificationListSectionProps = {
     editingId: string | null;
     deletingIds: Set<string>;
     isSaving: boolean;
+    onResetSort?: () => void;
 };
 
 const resolveCertificationMatchRate = (
@@ -41,7 +42,8 @@ const resolveCertificationMatchTrend = (
 const CertificationHeader: React.FC<{
     title: string;
     onCreate: () => void;
-}> = ({ title, onCreate }) => (
+    onResetSort?: () => void;
+}> = ({ title, onCreate, onResetSort }) => (
     <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
             <Award className="w-3.5 h-3.5 text-amber-500" />
@@ -49,14 +51,26 @@ const CertificationHeader: React.FC<{
                 {title}
             </h4>
         </div>
-        <button
-            onClick={onCreate}
-            title={ADD_CERTIFICATION_LABEL}
-            aria-label={ADD_CERTIFICATION_LABEL}
-            className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50"
-        >
-            <Plus className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+            {onResetSort && (
+                <button
+                    onClick={onResetSort}
+                    title="重置为时间倒序"
+                    aria-label="重置排序"
+                    className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50"
+                >
+                    <ArrowUpDown className="w-3.5 h-3.5" />
+                </button>
+            )}
+            <button
+                onClick={onCreate}
+                title={ADD_CERTIFICATION_LABEL}
+                aria-label={ADD_CERTIFICATION_LABEL}
+                className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50"
+            >
+                <Plus className="w-3.5 h-3.5" />
+            </button>
+        </div>
     </div>
 );
 
@@ -283,11 +297,12 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
     editingId,
     deletingIds,
     isSaving,
+    onResetSort,
 }) => {
     if (!items.length) {
         return (
             <div className="space-y-3">
-                <CertificationHeader title={title} onCreate={onBeginCreate} />
+                <CertificationHeader title={title} onCreate={onBeginCreate} onResetSort={onResetSort} />
                 <p className="text-xs text-gray-400">暂无证书</p>
             </div>
         );
@@ -295,7 +310,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
 
     return (
         <div className="space-y-3">
-            <CertificationHeader title={title} onCreate={onBeginCreate} />
+            <CertificationHeader title={title} onCreate={onBeginCreate} onResetSort={onResetSort} />
             {items.map((cert) => (
                 <CertificationItem
                     key={cert.id}

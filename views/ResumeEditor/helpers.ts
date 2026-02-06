@@ -476,3 +476,9 @@ export const resolveScaleForHeight = (contentHeight: number, a4Height: number) =
     }
     return Math.max(SMART_PAGE_MIN_SCALE, a4Height / contentHeight);
 };
+// 证书按颁发时间倒序比较
+export const compareCertificationByDateDesc = (a: CertificationView, b: CertificationView) => {
+    const valA = parseYearMonthValue(a.date) ?? -1;
+    const valB = parseYearMonthValue(b.date) ?? -1;
+    return valB - valA;
+};

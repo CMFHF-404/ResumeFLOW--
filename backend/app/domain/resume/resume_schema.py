@@ -28,6 +28,10 @@ class ResumeUpdate(BaseModel):
     config: Optional[Dict[str, Any]] = None
 
 
+class ResumeDuplicate(BaseModel):
+    title: Optional[str] = None
+
+
 class ResumeExperienceMerged(BaseModel):
     id: str
     master_experience_id: str

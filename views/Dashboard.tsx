@@ -1,16 +1,48 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate } from 'lucide-react';
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
 import { setActiveResumeId } from './resumeStorage';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { ToastContainer, useToast } from '../components/Toast';
 
 interface DashboardProps {
   setView: (view: ViewState) => void;
   cachedResumes?: Resume[]; // 从 App 传入的缓存数据
   onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
 }
+
+const DELETE_CONFIRM_TITLE = '删除简历';
+const DELETE_CONFIRM_LABEL = '删除';
+const DELETE_CANCEL_LABEL = '取消';
+const COPY_SUFFIX = ' (副本)';
+const DELETE_TOAST_MESSAGES = {
+  loading: '正在删除简历...',
+  success: '删除成功',
+  error: '删除失败，请重试',
+} as const;
+const COPY_TOAST_MESSAGES = {
+  loading: '正在创建副本...',
+  success: '副本已创建',
+  error: '创建副本失败，请重试',
+} as const;
+
+const mapResumeToDashboard = (resume: {
+  id: string;
+  title: string;
+  target_role?: string;
+  updated_at: string;
+}): Resume => ({
+  id: resume.id,
+  name: resume.title,
+  targetRole: resume.target_role || '通用',
+  matchRate: 0,
+  lastModified: formatRelativeTime(resume.updated_at),
+  status: 'draft',
+  type: 'general',
+});
 
 const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onResumesUpdate }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -21,6 +53,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number, left: number } | null>(null);
   const [isCreatingResume, setIsCreatingResume] = useState(false);
+  const [isDeletingResume, setIsDeletingResume] = useState(false);
+  const [isCopyingResume, setIsCopyingResume] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const {
+    toasts,
+    loading: showToastLoading,
+    updateToast,
+    closeToast,
+  } = useToast();
 
   // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
   const onResumesUpdateRef = useRef(onResumesUpdate);
@@ -40,15 +81,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
         const data = await resumeService.list();
 
         // 将后端数据转换为前端Resume格式
-        const mappedResumes: Resume[] = data.map(r => ({
-          id: r.id,
-          name: r.title,
-          targetRole: r.target_role || '通用',
-          matchRate: 0, // 匹配度功能待实现
-          lastModified: formatRelativeTime(r.updated_at),
-          status: 'draft', // 默认为草稿状态
-          type: 'general', // 默认为通用类型
-        }));
+        const mappedResumes: Resume[] = data.map(mapResumeToDashboard);
 
         console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
         setResumes(mappedResumes);
@@ -90,15 +123,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
     try {
       setIsCreatingResume(true);
       const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
-      const newResume: Resume = {
-        id: created.id,
-        name: created.title,
-        targetRole: created.target_role || '通用',
-        matchRate: 0,
-        lastModified: formatRelativeTime(created.updated_at),
-        status: 'draft',
-        type: 'general',
-      };
+      const newResume = mapResumeToDashboard(created);
       setResumes((prev) => {
         const next = [newResume, ...prev];
         if (onResumesUpdateRef.current) {
@@ -133,18 +158,80 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setResumes(resumes.filter(r => r.id !== id));
+    setDeleteTargetId(id);
     setOpenDropdownId(null);
+  };
+
+  const duplicateResume = async (id: string, sourceName: string) => {
+    const toastId = showToastLoading(COPY_TOAST_MESSAGES.loading);
+    try {
+      setIsCopyingResume(true);
+      const duplicated = await resumeService.duplicate(id, { title: `${sourceName}${COPY_SUFFIX}` });
+      const nextResume = mapResumeToDashboard(duplicated);
+      setResumes((prev) => {
+        const next = [nextResume, ...prev];
+        if (onResumesUpdateRef.current) {
+          onResumesUpdateRef.current(next);
+        }
+        return next;
+      });
+      updateToast(toastId, { message: COPY_TOAST_MESSAGES.success, type: 'success', duration: 2000 });
+    } catch (error) {
+      console.error('[Dashboard] 创建副本失败:', error);
+      updateToast(toastId, { message: COPY_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
+    } finally {
+      setIsCopyingResume(false);
+    }
   };
 
   const handleCopy = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const resume = resumes.find(r => r.id === id);
-    if (resume) {
-      const newResume = { ...resume, id: Date.now().toString(), name: `${resume.name} (副本)` };
-      setResumes([...resumes, newResume]);
+    if (isCopyingResume) {
+      return;
     }
     setOpenDropdownId(null);
+    const source = resumes.find(r => r.id === id);
+    if (!source) {
+      return;
+    }
+    void duplicateResume(id, source.name);
+  };
+
+  const deleteTarget = useMemo(
+    () => resumes.find((resume) => resume.id === deleteTargetId) ?? null,
+    [deleteTargetId, resumes]
+  );
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId || isDeletingResume) {
+      return;
+    }
+    const toastId = showToastLoading(DELETE_TOAST_MESSAGES.loading);
+    try {
+      setIsDeletingResume(true);
+      await resumeService.remove(deleteTargetId);
+      setResumes((prev) => {
+        const next = prev.filter((resume) => resume.id !== deleteTargetId);
+        if (onResumesUpdateRef.current) {
+          onResumesUpdateRef.current(next);
+        }
+        return next;
+      });
+      setDeleteTargetId(null);
+      updateToast(toastId, { message: DELETE_TOAST_MESSAGES.success, type: 'success', duration: 2000 });
+    } catch (error) {
+      console.error('[Dashboard] 删除简历失败:', error);
+      updateToast(toastId, { message: DELETE_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
+    } finally {
+      setIsDeletingResume(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (isDeletingResume) {
+      return;
+    }
+    setDeleteTargetId(null);
   };
 
   useEffect(() => {
@@ -376,6 +463,20 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
           </button>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={Boolean(deleteTargetId)}
+        title={DELETE_CONFIRM_TITLE}
+        description={
+          deleteTarget
+            ? `确定删除简历「${deleteTarget.name}」吗？此操作无法撤销。`
+            : '确定删除该简历吗？此操作无法撤销。'
+        }
+        confirmLabel={DELETE_CONFIRM_LABEL}
+        cancelLabel={DELETE_CANCEL_LABEL}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
+      <ToastContainer toasts={toasts} onClose={closeToast} />
     </div>
   );
 };
