@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api", tags=["ai"])
 class AnalyzeJDRequest(BaseModel):
     text: str
     resume_text: Optional[str] = None
+    prev_result: Optional[Dict[str, Any]] = None
 
 
 class PolishTextRequest(BaseModel):
@@ -29,7 +30,7 @@ async def analyze_jd_endpoint(
     payload: AnalyzeJDRequest,
     current_user=Depends(get_current_user),
 ):
-    return await analyze_jd(payload.text, payload.resume_text)
+    return await analyze_jd(payload.text, payload.resume_text, payload.prev_result)
 
 
 @router.post("/polish-text", response_model=Dict[str, Any])

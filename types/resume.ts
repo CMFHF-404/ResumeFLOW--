@@ -1,4 +1,5 @@
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from "react";
+import type { MatchTrend } from "./analysis";
 import type { ResumeDetail } from "../services/resumeService";
 
 export type StarFields = {
@@ -21,6 +22,7 @@ export type ResumeExperienceView = {
   star: StarFields;
   matchScore?: number;
   matchReason?: string;
+  matchTrend?: MatchTrend;
   resumeLinkId?: string;
   experienceVersionId?: string;
   category: "work" | "project";
@@ -273,9 +275,11 @@ export type ExperienceTabProps = {
   sortedCertifications: CertificationView[];
   selectedCertIds: Set<string>;
   certificationMatchScores: Map<string, number>;
+  certificationMatchTrends: Map<string, MatchTrend>;
   skillGroups: SkillGroupView[];
   selectedSkillIds: Set<string>;
   skillMatchScores: Map<string, number>;
+  skillMatchTrends: Map<string, MatchTrend>;
   onResetRenamingCategory: () => void;
   onResetWorkSort?: () => void;
   onResetProjectSort?: () => void;

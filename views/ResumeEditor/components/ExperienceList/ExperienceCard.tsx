@@ -68,7 +68,7 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                     <div className="flex items-center gap-1">
                         {staleExperienceIds.has(item.id) ? <StaleBadge /> : null}
                         {item.matchScore && item.matchScore > 0 ? (
-                            <MatchBadge score={item.matchScore} />
+                            <MatchBadge score={item.matchScore} trend={item.matchTrend} />
                         ) : null}
                     </div>
                 </div>

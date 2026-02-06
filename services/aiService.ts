@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import type { MatchScoreEntry, MatchTrend } from '../types/analysis';
 
 export interface PolishExperiencePayload {
     content: {
@@ -23,24 +24,13 @@ export interface PolishExperienceResponse {
 
 export interface JDAnalysisResult {
     matchPercentage: number;
+    matchTrend?: MatchTrend;
     jobKeywords: string[];
     missingKeywords: string[];
     summary: string;
-    experienceMatches?: Array<{
-        id: string;
-        score: number;
-        reason?: string;
-    }>;
-    certificationMatches?: Array<{
-        id: string;
-        score: number;
-        reason?: string;
-    }>;
-    skillMatches?: Array<{
-        id: string;
-        score: number;
-        reason?: string;
-    }>;
+    experienceMatches?: MatchScoreEntry[];
+    certificationMatches?: MatchScoreEntry[];
+    skillMatches?: MatchScoreEntry[];
 }
 
 export interface GenerateTagsResponse {
@@ -65,10 +55,20 @@ export const aiService = {
         return response.data;
     },
 
-    async analyzeJD(text: string, resumeText?: string) {
+    async analyzeJD(
+        text: string,
+        resumeText?: string,
+        prevResult?: {
+            matchPercentage?: number;
+            experienceMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
+            certificationMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
+            skillMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
+        }
+    ) {
         const response = await apiClient.post<JDAnalysisResult>('/api/analyze-jd', {
             text,
             resume_text: resumeText,
+            prev_result: prevResult,
         });
         return response.data;
     },

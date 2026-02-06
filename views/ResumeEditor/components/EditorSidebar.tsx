@@ -65,7 +65,11 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
             <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3">
                 <div className="shrink-0">
                     {typeof editingItem.matchScore === 'number' ? (
-                        <MatchBadge score={editingItem.matchScore} variant="solid" />
+                        <MatchBadge
+                            score={editingItem.matchScore}
+                            trend={editingItem.matchTrend}
+                            variant="solid"
+                        />
                     ) : staleExperienceIds.has(editingItem.id) ? (
                         <StaleBadge />
                     ) : (

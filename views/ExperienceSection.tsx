@@ -6,7 +6,7 @@ import { experienceService, ExperienceCategory, ExperienceListItem } from '../se
 import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey, STAR_FIELD_LABELS } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { mergeTags, sanitizeTagList } from './tagUtils';
-import { stripRichTextToText } from '../utils/richText';
+import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
 
 type ToastApi = {
   success: (message: string, duration?: number) => string;
@@ -795,8 +795,13 @@ const usePolishActions = ({ cardData, toast, updateCardField }: ExperienceAiPara
           buildStarPolishPayload(data, field, currentValue)
         );
         const polished = response?.[field];
-        if (typeof polished === 'string' && polished.trim()) {
-          updateCardField(cardId, `star.${field}`, polished.trim());
+        if (typeof polished === 'string') {
+          const normalized = normalizeAiRichText(polished);
+          if (normalized.trim()) {
+            updateCardField(cardId, `star.${field}`, normalized);
+          } else {
+            toast.error('未获取到有效润色结果，请稍后重试');
+          }
         } else {
           toast.error('未获取到有效润色结果，请稍后重试');
         }

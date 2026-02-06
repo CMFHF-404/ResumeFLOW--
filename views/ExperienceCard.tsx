@@ -245,6 +245,7 @@ const StarSectionItem: React.FC<{
           placeholder={section.ph}
           onChange={onChange}
           ariaLabel={`${section.label} 输入`}
+          enableList={false}
         />
       </div>
     </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2, Edit3, Plus, Trash2, Wrench } from 'lucide-react';
+import type { MatchTrend } from '../../../types/analysis';
 import type { SkillActions, SkillGroupView, SkillItemView } from '../../../types/resume';
 import {
     ADD_SKILL_TAG_LABEL,
@@ -13,6 +14,7 @@ type SkillListSectionProps = {
     groups: SkillGroupView[];
     selectedIds: Set<string>;
     matchScores: Map<string, number>;
+    matchTrends: Map<string, MatchTrend>;
     skill: SkillActions;
     onToggleSelection: (id: string) => void;
     onResetRenamingCategory: () => void;
@@ -157,6 +159,7 @@ const SkillTag: React.FC<{
     isSelected: boolean;
     isEditing: boolean;
     matchScore?: number;
+    matchTrend?: MatchTrend;
     onToggleSelection: (id: string) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string) => void;
@@ -167,6 +170,7 @@ const SkillTag: React.FC<{
     isSelected,
     isEditing,
     matchScore,
+    matchTrend,
     onToggleSelection,
     onDelete,
     onEdit,
@@ -188,7 +192,7 @@ const SkillTag: React.FC<{
         {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
         <span>{isEditing ? (draftName || skill.name) : skill.name}</span>
         {typeof matchScore === 'number' && matchScore > 0 ? (
-            <MatchBadge score={matchScore} />
+            <MatchBadge score={matchScore} trend={matchTrend} />
         ) : null}
         <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
@@ -291,8 +295,9 @@ const SkillGroupBody: React.FC<{
     skill: SkillActions;
     selectedIds: Set<string>;
     matchScores: Map<string, number>;
+    matchTrends: Map<string, MatchTrend>;
     onToggleSelection: (id: string) => void;
-}> = ({ group, skill, selectedIds, matchScores, onToggleSelection }) => (
+}> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection }) => (
     <div className="p-3 bg-white dark:bg-gray-800/50">
         {skill.skillDraftContext?.mode === 'edit' ? (
             <div className="mb-2">
@@ -314,6 +319,7 @@ const SkillGroupBody: React.FC<{
                     isSelected={selectedIds.has(item.id)}
                     isEditing={skill.editingSkillId === item.id}
                     matchScore={matchScores.get(item.id)}
+                    matchTrend={matchTrends.get(item.id)}
                     onToggleSelection={onToggleSelection}
                     onDelete={skill.requestDeleteSkill}
                     onEdit={skill.beginEditSkill}
@@ -357,9 +363,10 @@ const SkillGroupCard: React.FC<{
     skill: SkillActions;
     selectedIds: Set<string>;
     matchScores: Map<string, number>;
+    matchTrends: Map<string, MatchTrend>;
     onToggleSelection: (id: string) => void;
     onResetRenamingCategory: () => void;
-}> = ({ group, skill, selectedIds, matchScores, onToggleSelection, onResetRenamingCategory }) => (
+}> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection, onResetRenamingCategory }) => (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden">
         <SkillGroupHeader
             groupName={group.name}
@@ -371,6 +378,7 @@ const SkillGroupCard: React.FC<{
             skill={skill}
             selectedIds={selectedIds}
             matchScores={matchScores}
+            matchTrends={matchTrends}
             onToggleSelection={onToggleSelection}
         />
     </div>
@@ -381,6 +389,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
     groups,
     selectedIds,
     matchScores,
+    matchTrends,
     skill,
     onToggleSelection,
     onResetRenamingCategory,
@@ -403,6 +412,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
                     skill={skill}
                     selectedIds={selectedIds}
                     matchScores={matchScores}
+                    matchTrends={matchTrends}
                     onToggleSelection={onToggleSelection}
                     onResetRenamingCategory={onResetRenamingCategory}
                 />

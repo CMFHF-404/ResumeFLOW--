@@ -56,7 +56,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                     <div className="space-y-2">
                         <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                                <MatchBadge score={analysisResult?.matchPercentage ?? 0} />
+                                <MatchBadge
+                                    score={analysisResult?.matchPercentage ?? 0}
+                                    trend={analysisResult?.matchTrend}
+                                />
                                 <button
                                     onClick={onAnalyze}
                                     disabled={isAnalyzing}
@@ -109,7 +112,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                         {analysisResult ? (
                             <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-lg p-3">
                                 <div className="flex justify-between items-center mb-2">
-                                    <MatchBadge score={analysisResult.matchPercentage ?? 0} />
+                                    <MatchBadge
+                                        score={analysisResult.matchPercentage ?? 0}
+                                        trend={analysisResult.matchTrend}
+                                    />
                                     <span className="text-[10px] text-emerald-600/80">
                                         Missing: {(analysisResult.missingKeywords || []).join(', ')}
                                     </span>

@@ -1,4 +1,5 @@
 import { parseYearMonthValue } from "../views/experienceUtils";
+import { decodeRichTextEntities } from "./richText";
 import type { JDAnalysisItemSignatures } from "../types/analysis";
 import type { ResumeExperienceView, StarFields } from "../types/resume";
 
@@ -13,9 +14,17 @@ export const normalizeStarValue = (value: unknown): string => {
     return "";
   }
   if (Array.isArray(value)) {
-    return value.join("、");
+    const joined = value.join("、");
+    if (joined.includes("&lt;") || joined.includes("&gt;")) {
+      return decodeRichTextEntities(joined);
+    }
+    return joined;
   }
-  return String(value);
+  const text = String(value);
+  if (text.includes("&lt;") || text.includes("&gt;")) {
+    return decodeRichTextEntities(text);
+  }
+  return text;
 };
 
 export const buildStarFields = (star?: Record<string, any>): StarFields => ({

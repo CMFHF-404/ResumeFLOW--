@@ -20,9 +20,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     sortedCertifications,
     selectedCertIds,
     certificationMatchScores,
+    certificationMatchTrends,
     skillGroups,
     selectedSkillIds,
     skillMatchScores,
+    skillMatchTrends,
     onResetRenamingCategory,
     onResetWorkSort,
     onResetProjectSort,
@@ -83,6 +85,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 items={sortedCertifications}
                 selectedIds={selectedCertIds}
                 matchScores={certificationMatchScores}
+                matchTrends={certificationMatchTrends}
                 onToggleSelection={selection.toggleCertificationSelection}
                 onBeginCreate={certification.beginCreateCertification}
                 onBeginEdit={certification.beginEditCertification}
@@ -100,6 +103,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 groups={skillGroups}
                 selectedIds={selectedSkillIds}
                 matchScores={skillMatchScores}
+                matchTrends={skillMatchTrends}
                 skill={skill}
                 onToggleSelection={selection.toggleSkillSelection}
                 onResetRenamingCategory={onResetRenamingCategory}
@@ -174,6 +178,7 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
                         onChange={(nextValue) => experience.updateEditingStar(key, nextValue)}
                         placeholder={`Enter ${key.toUpperCase()}...`}
                         ariaLabel={`${labelMap[key]} 输入`}
+                        enableList={false}
                     />
                 </div>
             );
@@ -227,4 +232,3 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
 );
 
 export default ExperienceTab;
-

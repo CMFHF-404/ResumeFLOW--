@@ -3,6 +3,8 @@ const ALLOWED_INLINE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR']);
 const ALLOWED_BLOCK_TAGS = new Set(['UL', 'OL', 'LI']);
 const BLOCK_TAGS = new Set(['DIV', 'P']);
 const LINE_BREAK_TAG = 'BR';
+const ORDERED_LIST_LINE_PATTERN = /^\s*\d+[.、)）]\s*(.+)$/;
+const UNORDERED_LIST_LINE_PATTERN = /^\s*[-*•·]\s*(.+)$/;
 
 const escapeHtml = (value: string) =>
     value
@@ -289,3 +291,70 @@ export const parseRichTextList = (input: string): RichTextListData | null => {
     }
     return extractListData(sanitized);
 };
+
+const extractListLines = (lines: string[], pattern: RegExp) => {
+    const matches = lines.map((line) => line.match(pattern));
+    if (!matches.length || matches.some((match) => !match)) {
+        return null;
+    }
+    const contents = matches
+        .map((match) => match?.[1]?.trim() ?? '')
+        .filter(Boolean);
+    return contents.length ? contents : null;
+};
+
+const splitInlineOrderedList = (line: string) => {
+    if (!ORDERED_LIST_LINE_PATTERN.test(line)) {
+        return null;
+    }
+    const parts = line
+        .split(/(?=\d+[.、)）]\s+)/)
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+    if (parts.length <= 1) {
+        return null;
+    }
+    return parts;
+};
+
+export const normalizeAiRichText = (input: string) => {
+    if (!input) {
+        return '';
+    }
+    const trimmed = input.trim();
+    if (!trimmed) {
+        return '';
+    }
+    const sanitized = sanitizeRichTextHtml(trimmed);
+    if (/<(ul|ol|li)(\s|>)/i.test(sanitized)) {
+        return sanitized;
+    }
+
+    let lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 1) {
+        const inlineParts = splitInlineOrderedList(lines[0]);
+        if (inlineParts) {
+            lines = inlineParts;
+        }
+    }
+
+    const orderedLines = extractListLines(lines, ORDERED_LIST_LINE_PATTERN);
+    if (orderedLines) {
+        const items = orderedLines
+            .map((line) => `<li>${sanitizeRichTextHtml(line)}</li>`)
+            .join('');
+        return `<ol>${items}</ol>`;
+    }
+
+    const unorderedLines = extractListLines(lines, UNORDERED_LIST_LINE_PATTERN);
+    if (unorderedLines) {
+        const items = unorderedLines
+            .map((line) => `<li>${sanitizeRichTextHtml(line)}</li>`)
+            .join('');
+        return `<ul>${items}</ul>`;
+    }
+
+    return sanitized;
+};
+
+export const decodeRichTextEntities = (value: string) => decodeHtmlEntities(value);

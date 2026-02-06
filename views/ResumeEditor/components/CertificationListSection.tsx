@@ -1,6 +1,7 @@
 import React from 'react';
 import { Award, Edit3, Plus, Trash2 } from 'lucide-react';
 import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../../../components/MonthPicker';
+import type { MatchTrend } from '../../../types/analysis';
 import type { CertificationEditDraft, CertificationView } from '../../../types/resume';
 import { ADD_CERTIFICATION_LABEL } from '../constants';
 import { MatchBadge } from './Badges';
@@ -10,6 +11,7 @@ type CertificationListSectionProps = {
     items: CertificationView[];
     selectedIds: Set<string>;
     matchScores: Map<string, number>;
+    matchTrends: Map<string, MatchTrend>;
     onToggleSelection: (id: string) => void;
     onBeginCreate: () => void;
     onBeginEdit: (id: string) => void;
@@ -30,6 +32,11 @@ const resolveCertificationMatchRate = (
     const score = matchScores.get(cert.id);
     return typeof score === 'number' ? score : cert.matchRate;
 };
+
+const resolveCertificationMatchTrend = (
+    cert: CertificationView,
+    matchTrends: Map<string, MatchTrend>
+) => matchTrends.get(cert.id);
 
 const CertificationHeader: React.FC<{
     title: string;
@@ -123,6 +130,7 @@ const CertificationItem: React.FC<{
     cert: CertificationView;
     isSelected: boolean;
     matchRate?: number;
+    matchTrend?: MatchTrend;
     isEditing: boolean;
     draft: CertificationEditDraft | null;
     onToggleSelection: (id: string) => void;
@@ -147,6 +155,7 @@ const CertificationItem: React.FC<{
     onUpdateDraft,
     deletingIds,
     isSaving,
+    matchTrend,
 }) => {
         if (isEditing) {
             return (
@@ -165,6 +174,7 @@ const CertificationItem: React.FC<{
                 cert={cert}
                 isSelected={isSelected}
                 matchRate={matchRate}
+                matchTrend={matchTrend}
                 onToggleSelection={onToggleSelection}
                 onBeginEdit={onBeginEdit}
                 onDelete={onDelete}
@@ -177,6 +187,7 @@ const CertificationDisplayCard: React.FC<{
     cert: CertificationView;
     isSelected: boolean;
     matchRate?: number;
+    matchTrend?: MatchTrend;
     onToggleSelection: (id: string) => void;
     onBeginEdit: (id: string) => void;
     onDelete: (id: string) => void;
@@ -185,6 +196,7 @@ const CertificationDisplayCard: React.FC<{
     cert,
     isSelected,
     matchRate,
+    matchTrend,
     onToggleSelection,
     onBeginEdit,
     onDelete,
@@ -246,7 +258,7 @@ const CertificationDisplayCard: React.FC<{
                     <div className="flex items-center justify-between mt-2">
                         <p className="text-[10px] text-gray-400 font-mono">{cert.date}</p>
                         {typeof matchRate === 'number' && matchRate > 0 ? (
-                            <MatchBadge score={matchRate} />
+                            <MatchBadge score={matchRate} trend={matchTrend} />
                         ) : null}
                     </div>
                 </div>
@@ -259,6 +271,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
     items,
     selectedIds,
     matchScores,
+    matchTrends,
     onToggleSelection,
     onBeginCreate,
     onBeginEdit,
@@ -289,6 +302,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
                     cert={cert}
                     isSelected={selectedIds.has(cert.id)}
                     matchRate={resolveCertificationMatchRate(cert, matchScores)}
+                    matchTrend={resolveCertificationMatchTrend(cert, matchTrends)}
                     isEditing={editingId === cert.id && !!draft}
                     draft={draft}
                     onToggleSelection={onToggleSelection}

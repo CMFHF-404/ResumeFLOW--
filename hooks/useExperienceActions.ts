@@ -23,6 +23,8 @@ import {
     type ResumeExperienceItem,
 } from '../services/resumeService';
 import { skillsService, type UserSkill } from '../services/skillsService';
+import type { MatchTrend } from '../types/analysis';
+import { normalizeAiRichText } from '../utils/richText';
 import type {
     CertificationEditDraft,
     CertificationView,
@@ -195,7 +197,9 @@ type SkillDomain = {
 
 type MatchScoreDomain = {
     setCertificationMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
+    setCertificationMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
     setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
+    setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
 };
 
 type UseExperienceActionsOptions = {
@@ -907,13 +911,19 @@ const createExperienceSaveHandlers = (
                 },
                 jdText: trimmedJD,
             });
+            const normalizedResult: Partial<StarFields> = {
+                s: typeof result.s === 'string' ? normalizeAiRichText(result.s) : undefined,
+                t: typeof result.t === 'string' ? normalizeAiRichText(result.t) : undefined,
+                a: typeof result.a === 'string' ? normalizeAiRichText(result.a) : undefined,
+                r: typeof result.r === 'string' ? normalizeAiRichText(result.r) : undefined,
+            };
             state.setEditingDraft((prev) => {
                 if (!prev) {
                     return prev;
                 }
                 return {
                     ...prev,
-                    star: helpers.mergeStarFields(prev.star, result),
+                    star: helpers.mergeStarFields(prev.star, normalizedResult),
                 };
             });
         } catch (error) {
@@ -1431,6 +1441,11 @@ const createCertificationDeleteHandlers = (
                     next.delete(id);
                     return next;
                 });
+                matchScore.setCertificationMatchTrends((prev) => {
+                    const next = new Map(prev);
+                    next.delete(id);
+                    return next;
+                });
                 if (state.editingCertificationId === id) {
                     draftHandlers.cancelCertificationEdit();
                 }
@@ -1568,6 +1583,15 @@ const createSkillHelperContext = (
             return next;
         });
         matchScore.setSkillMatchScores((prev) => {
+            const next = new Map(prev);
+            for (const key of next.keys()) {
+                if (!validIds.has(key)) {
+                    next.delete(key);
+                }
+            }
+            return next;
+        });
+        matchScore.setSkillMatchTrends((prev) => {
             const next = new Map(prev);
             for (const key of next.keys()) {
                 if (!validIds.has(key)) {

@@ -24,6 +24,7 @@ import type {
   JDAnalysisContext,
   JDAnalysisItemSignatures,
   MatchScoreEntry,
+  MatchTrend,
 } from "../types/analysis";
 import type {
   CertificationView,
@@ -215,12 +216,60 @@ const buildMatchReasonMap = (matches?: MatchScoreEntry[]) => {
   return map;
 };
 
+const buildMatchTrendMap = (matches?: MatchScoreEntry[]) => {
+  const map = new Map<string, MatchTrend>();
+  (matches || []).forEach((match) => {
+    if (match.trend) {
+      map.set(match.id, match.trend);
+    }
+  });
+  return map;
+};
+
 const buildMatchEntryMap = (matches?: MatchScoreEntry[]) => {
   const map = new Map<string, MatchScoreEntry>();
   (matches || []).forEach((match) => {
     map.set(match.id, match);
   });
   return map;
+};
+
+const normalizeScore = (value: unknown): number | undefined =>
+  clampMatchScore(value);
+
+const resolveTrend = (
+  prevScore?: number,
+  nextScore?: number
+): MatchTrend | undefined => {
+  if (typeof prevScore !== "number" || typeof nextScore !== "number") {
+    return undefined;
+  }
+  if (nextScore > prevScore) {
+    return "up";
+  }
+  if (nextScore < prevScore) {
+    return "down";
+  }
+  return "same";
+};
+
+const buildPrevResultPayload = (result: JDAnalysisResult | null) => {
+  if (!result) {
+    return undefined;
+  }
+  const pickScores = (matches?: MatchScoreEntry[]) =>
+    (matches || [])
+      .map((match) => ({
+        id: match.id,
+        score: match.score,
+      }))
+      .filter((item) => typeof item.score === "number");
+  return {
+    matchPercentage: result.matchPercentage,
+    experienceMatches: pickScores(result.experienceMatches),
+    certificationMatches: pickScores(result.certificationMatches),
+    skillMatches: pickScores(result.skillMatches),
+  };
 };
 
 const mergeMatchEntries = (
@@ -280,6 +329,54 @@ const mergeAnalysisResult = (
   };
 };
 
+const stabilizeMatchEntries = (
+  prev: MatchScoreEntry[] | undefined,
+  next: MatchScoreEntry[] | undefined
+) => {
+  if (!next || next.length === 0) {
+    return next;
+  }
+  const prevMap = buildMatchEntryMap(prev);
+  const stabilized = next
+    .map((entry): MatchScoreEntry | null => {
+      const normalized = normalizeScore(entry.score);
+      const prevScore = normalizeScore(prevMap.get(entry.id)?.score);
+      if (typeof normalized !== "number") {
+        return null;
+      }
+      return {
+        ...entry,
+        score: normalized,
+        trend: resolveTrend(prevScore, normalized),
+      };
+    })
+    .filter((entry): entry is MatchScoreEntry => entry !== null);
+  return stabilized.length ? stabilized : undefined;
+};
+
+const stabilizeAnalysisResult = (
+  prev: JDAnalysisResult | null,
+  next: JDAnalysisResult
+) => {
+  const prevOverall = normalizeScore(prev?.matchPercentage);
+  const normalizedOverall =
+    normalizeScore(next.matchPercentage) ?? prevOverall ?? 0;
+  return {
+    ...next,
+    matchPercentage: normalizedOverall,
+    matchTrend: resolveTrend(prevOverall, normalizedOverall),
+    experienceMatches: stabilizeMatchEntries(
+      prev?.experienceMatches,
+      next.experienceMatches
+    ),
+    certificationMatches: stabilizeMatchEntries(
+      prev?.certificationMatches,
+      next.certificationMatches
+    ),
+    skillMatches: stabilizeMatchEntries(prev?.skillMatches, next.skillMatches),
+  };
+};
+
 const applyScoreMapUpdate = (
   setMap: Dispatch<SetStateAction<Map<string, number>>>,
   scores: Map<string, number>,
@@ -307,6 +404,33 @@ const applyScoreMapUpdate = (
   setMap(new Map(scores));
 };
 
+const applyTrendMapUpdate = (
+  setMap: Dispatch<SetStateAction<Map<string, MatchTrend>>>,
+  trends: Map<string, MatchTrend>,
+  options?: MatchApplyOptions
+) => {
+  const mode = options?.mode ?? "full";
+  const targetIds = options?.targetIds;
+  if (mode === "partial") {
+    if (!targetIds || targetIds.size === 0) {
+      return;
+    }
+    setMap((prev) => {
+      const next = new Map(prev);
+      targetIds.forEach((id) => {
+        if (trends.has(id)) {
+          next.set(id, trends.get(id)!);
+        } else {
+          next.delete(id);
+        }
+      });
+      return next;
+    });
+    return;
+  }
+  setMap(new Map(trends));
+};
+
 type UseJDAnalysisOptions = {
   resumeId: string | null;
   experienceItems: ResumeExperienceView[];
@@ -326,8 +450,12 @@ type UseJDAnalysisResult = {
   staleExperienceIds: Set<string>;
   certificationMatchScores: Map<string, number>;
   setCertificationMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
+  certificationMatchTrends: Map<string, MatchTrend>;
+  setCertificationMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
   skillMatchScores: Map<string, number>;
   setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
+  skillMatchTrends: Map<string, MatchTrend>;
+  setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
   handleAnalyze: () => Promise<void>;
   debugInfo?: any;
 };
@@ -354,8 +482,14 @@ export const useJDAnalysis = ({
   const [certificationMatchScores, setCertificationMatchScores] = useState<
     Map<string, number>
   >(new Map());
+  const [certificationMatchTrends, setCertificationMatchTrends] = useState<
+    Map<string, MatchTrend>
+  >(new Map());
   const [skillMatchScores, setSkillMatchScores] = useState<
     Map<string, number>
+  >(new Map());
+  const [skillMatchTrends, setSkillMatchTrends] = useState<
+    Map<string, MatchTrend>
   >(new Map());
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [needsReanalysis, setNeedsReanalysis] = useState(false);
@@ -399,6 +533,7 @@ export const useJDAnalysis = ({
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       const matchScores = buildMatchScoreMap(matches);
       const matchReasons = buildMatchReasonMap(matches);
+      const matchTrends = buildMatchTrendMap(matches);
       const mode = options?.mode ?? "full";
       const targetIds = options?.targetIds;
       if (mode === "partial" && (!targetIds || targetIds.size === 0)) {
@@ -414,17 +549,33 @@ export const useJDAnalysis = ({
             ...item,
             matchScore: hasScore ? matchScores.get(item.id) : undefined,
             matchReason: hasScore ? matchReasons.get(item.id) : undefined,
+            matchTrend: hasScore ? matchTrends.get(item.id) : undefined,
           };
         });
         return next;
       });
     },
-    [setExperienceItems]
+    [
+      setCertificationMatchScores,
+      setCertificationMatchTrends,
+      setExperienceItems,
+      setSkillMatchScores,
+      setSkillMatchTrends,
+    ]
   );
 
   const applyCertificationMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
-      applyScoreMapUpdate(setCertificationMatchScores, buildMatchScoreMap(matches), options);
+      applyScoreMapUpdate(
+        setCertificationMatchScores,
+        buildMatchScoreMap(matches),
+        options
+      );
+      applyTrendMapUpdate(
+        setCertificationMatchTrends,
+        buildMatchTrendMap(matches),
+        options
+      );
     },
     []
   );
@@ -432,6 +583,11 @@ export const useJDAnalysis = ({
   const applySkillMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       applyScoreMapUpdate(setSkillMatchScores, buildMatchScoreMap(matches), options);
+      applyTrendMapUpdate(
+        setSkillMatchTrends,
+        buildMatchTrendMap(matches),
+        options
+      );
     },
     []
   );
@@ -442,7 +598,7 @@ export const useJDAnalysis = ({
         setExperienceItems((prev) => {
           const next = prev.map((item) =>
             diff.experiences.has(item.id)
-              ? { ...item, matchScore: undefined, matchReason: undefined }
+              ? { ...item, matchScore: undefined, matchReason: undefined, matchTrend: undefined }
               : item
           );
           return next;
@@ -459,9 +615,19 @@ export const useJDAnalysis = ({
           diff.certifications.forEach((id) => next.delete(id));
           return next;
         });
+        setCertificationMatchTrends((prev) => {
+          const next = new Map(prev);
+          diff.certifications.forEach((id) => next.delete(id));
+          return next;
+        });
       }
       if (diff.skills.size > 0) {
         setSkillMatchScores((prev) => {
+          const next = new Map(prev);
+          diff.skills.forEach((id) => next.delete(id));
+          return next;
+        });
+        setSkillMatchTrends((prev) => {
           const next = new Map(prev);
           diff.skills.forEach((id) => next.delete(id));
           return next;
@@ -790,9 +956,11 @@ export const useJDAnalysis = ({
           startSnapshot.certifications,
           startSnapshot.skillGroups
         );
+        const prevResultPayload = buildPrevResultPayload(analysisResult);
         const result = await aiService.analyzeJD(
           startSnapshot.jdText,
-          canonicalStringify(payload)
+          canonicalStringify(payload),
+          prevResultPayload
         );
         const latestSnapshot = buildAnalyzeSnapshot();
         const changedDuringAnalyze = recordPostAnalyzeDiff(
@@ -809,9 +977,13 @@ export const useJDAnalysis = ({
           mode === "partial"
             ? mergeAnalysisResult(analysisResult, result, stableDiff)
             : result;
-        applyMatchScoresForResult(nextResult, mode, stableDiff);
+        const stabilizedResult = stabilizeAnalysisResult(
+          analysisResult,
+          nextResult
+        );
+        applyMatchScoresForResult(stabilizedResult, mode, stableDiff);
         updateAnalysisState({
-          result: nextResult,
+          result: stabilizedResult,
           itemSignatures: startSnapshot.itemSignatures,
           experienceSignature: startSnapshot.experienceSignature,
           jdTextSignature: startSnapshot.jdTextSignature,
@@ -878,8 +1050,12 @@ export const useJDAnalysis = ({
     staleExperienceIds,
     certificationMatchScores,
     setCertificationMatchScores,
+    certificationMatchTrends,
+    setCertificationMatchTrends,
     skillMatchScores,
     setSkillMatchScores,
+    skillMatchTrends,
+    setSkillMatchTrends,
     handleAnalyze,
     debugInfo
   };

@@ -8,6 +8,7 @@ type RichTextEditorProps = {
     className?: string;
     placeholder?: string;
     ariaLabel?: string;
+    enableList?: boolean;
 };
 
 type ToolbarState = {
@@ -563,12 +564,14 @@ const useRichTextHandlers = ({
     updateSelectionState,
     hideToolbar,
     setIsFocused,
+    enableList,
 }: {
     editorRef: React.RefObject<HTMLDivElement>;
     onChange: (value: string) => void;
     updateSelectionState: () => void;
     hideToolbar: () => void;
     setIsFocused: (state: boolean) => void;
+    enableList: boolean;
 }) => {
     // 抽取保存内容逻辑，避免在blur时触发selection更新
     const saveContent = useCallback(() => {
@@ -666,7 +669,7 @@ const useRichTextHandlers = ({
             if (!segments.length) {
                 return false;
             }
-            if (triggerKey === SPACE_KEY) {
+            if (enableList && triggerKey === SPACE_KEY) {
                 const normalizedLineText = normalizeMarkerText(lineText);
                 if (normalizedLineText === UNORDERED_LIST_MARKER) {
                     const handled = tryApplyListMarker('insertUnorderedList', segments, lineText);
@@ -714,7 +717,7 @@ const useRichTextHandlers = ({
 
             return false;
         },
-        [editorRef, tryApplyListMarker, tryReplaceInlineMarkdown]
+        [editorRef, enableList, tryApplyListMarker, tryReplaceInlineMarkdown]
     );
 
     const handlePaste = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -782,6 +785,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     className,
     placeholder,
     ariaLabel,
+    enableList = true,
 }) => {
     const editorRef = useRef<HTMLDivElement | null>(null);
     const [isFocused, setIsFocused] = useState(false);
@@ -879,11 +883,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         closeLinkPopover();
     }, [closeLinkPopover, editorRef, linkPopover.text, linkPopover.url, onChange, updateSelectionState]);
 
-    const toolbarButtons = useMemo(
-        () => [
+    const toolbarButtons = useMemo(() => {
+        const baseButtons = [
             { id: 'bold', label: 'B', title: '加粗', onClick: () => applyWrap('bold'), className: 'font-bold' },
             { id: 'italic', label: 'I', title: '斜体', onClick: () => applyWrap('italic'), className: 'italic' },
             { id: 'underline', label: 'U', title: '下划线', onClick: () => applyWrap('underline'), className: 'underline' },
+            { id: 'link', label: 'Link', title: '超链接', onClick: openLinkPopover, className: 'text-xs' },
+        ];
+        if (!enableList) {
+            return baseButtons;
+        }
+        return [
+            ...baseButtons.slice(0, 3),
             {
                 id: 'unordered-list',
                 label: '•',
@@ -898,10 +909,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onClick: () => applyList('insertOrderedList'),
                 className: 'text-xs',
             },
-            { id: 'link', label: 'Link', title: '超链接', onClick: openLinkPopover, className: 'text-xs' },
-        ],
-        [applyList, applyWrap, openLinkPopover]
-    );
+            baseButtons[3],
+        ];
+    }, [applyList, applyWrap, enableList, openLinkPopover]);
 
     const { handleInput, handlePaste, handleKeyDown, handleFocus, handleBlur } = useRichTextHandlers({
         editorRef,
@@ -909,6 +919,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         updateSelectionState,
         hideToolbar,
         setIsFocused,
+        enableList,
     });
 
     const isEmpty = !stripRichTextToText(value).trim();

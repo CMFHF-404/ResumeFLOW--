@@ -137,13 +137,29 @@ async def call_llm_json(messages: List[Dict[str, str]]) -> Dict[str, Any]:
     return await _call_llm(messages, json_mode=True)
 
 
-async def analyze_jd(text: str, resume_text: Optional[str] = None) -> Dict[str, Any]:
+async def analyze_jd(
+    text: str,
+    resume_text: Optional[str] = None,
+    prev_result: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     resume_payload = resume_text or "Resume content not provided."
+    previous_payload = (
+        json.dumps(prev_result, ensure_ascii=False)
+        if prev_result
+        else "None"
+    )
     messages = [
         {"role": "system", "content": JD_ANALYSIS},
         {
             "role": "user",
-            "content": f"Job Description:\n{text}\n\nResume Content:\n{resume_payload}",
+            "content": (
+                "Job Description:\n"
+                f"{text}\n\n"
+                "Resume Content:\n"
+                f"{resume_payload}\n\n"
+                "Previous Result:\n"
+                f"{previous_payload}"
+            ),
         },
     ]
     return await _call_llm(messages, json_mode=True)

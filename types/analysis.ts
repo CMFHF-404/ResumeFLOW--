@@ -4,6 +4,8 @@ export type JDAnalysisItemSignatures = {
   skills: Record<string, string>;
 };
 
+export type MatchTrend = "up" | "same" | "down";
+
 export type JDAnalysisContext = {
   jdTextSignature: string;
   experienceSignature: string;
@@ -14,4 +16,5 @@ export type MatchScoreEntry = {
   id: string;
   score: number;
   reason?: string;
+  trend?: MatchTrend;
 };
