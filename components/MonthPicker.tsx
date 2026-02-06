@@ -5,6 +5,9 @@ import { ChevronDown, Calendar, X } from 'lucide-react';
 import { zhCN } from 'date-fns/locale';
 import { format } from 'date-fns';
 
+// 不要使用 "root" 作为 portalId（它是 React 挂载容器）；用专用容器 id 让库挂到 body 下，避免 React/DOM 冲突。
+export const DEFAULT_DATE_PICKER_PORTAL_ID = 'rf-datepicker-portal';
+
 interface MonthPickerProps {
   value: string; // Format: YYYY.MM or "至今" or empty
   onChange: (value: string) => void;
@@ -15,7 +18,83 @@ interface MonthPickerProps {
   className?: string;
   minDate?: string;       // Format: YYYY.MM
   maxDate?: string;       // Format: YYYY.MM
+  portalId?: string;      // Optional ID of the DOM element to render the calendar in (requires react-datepicker portal support)
 }
+
+type CustomInputProps = {
+  value?: string;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
+  className?: string;
+  disabled?: boolean;
+  placeholder?: string;
+  allowPresent?: boolean;
+  selectedDate: Date | null;
+  rawValue: string;
+  onPresentClick: (e: React.MouseEvent) => void;
+  onClear: (e: React.MouseEvent) => void;
+};
+
+const CustomInput = forwardRef<HTMLDivElement, CustomInputProps>(({
+  onClick,
+  className,
+  disabled,
+  placeholder,
+  allowPresent,
+  selectedDate,
+  rawValue,
+  onPresentClick,
+  onClear,
+}, inputRef) => {
+  // 注意：DatePicker 注入的 `value` 在 selected 为 null 时可能为空字符串，不能用它判断“至今”。
+  const isPresentValue = rawValue === '至今' || rawValue === 'Present';
+  const showValue = isPresentValue ? '至今' : (selectedDate ? format(selectedDate, 'yyyy.MM') : '');
+
+  return (
+    <div
+      className={`relative group cursor-pointer h-full ${className}`}
+      onClick={disabled ? undefined : onClick}
+      ref={inputRef}
+    >
+      <div className={`
+        fluid-input flex items-center justify-between w-full h-full
+        ${disabled ? 'opacity-60 cursor-not-allowed' : ''}
+      `}>
+        <div className="flex items-center gap-2 overflow-hidden flex-1 shrink-0">
+          <Calendar className={`w-4 h-4 shrink-0 ${showValue ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400'}`} />
+          <span className={`block truncate ${showValue ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}`}>
+            {showValue || placeholder}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {/* "Present" Button for End Date */}
+          {allowPresent && !showValue && !disabled && (
+            <button
+              type="button"
+              onClick={onPresentClick}
+              className="text-xs font-medium text-primary hover:text-primary-dark px-2 py-1 rounded hover:bg-primary/5 transition-colors mr-1 shrink-0"
+            >
+              设为至今
+            </button>
+          )}
+
+          {/* Clear Button */}
+          {(showValue) && !disabled && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+
+          <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
   value,
@@ -26,7 +105,8 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
   isPresent = false,
   className = "",
   minDate,
-  maxDate
+  maxDate,
+  portalId
 }, ref) => {
 
   const parseMonthValue = (rawValue?: string) => {
@@ -75,57 +155,6 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
     onChange('');
   };
 
-  const CustomInput = forwardRef<HTMLDivElement, any>(({ value: displayValue, onClick }, inputRef) => {
-    const isPresentValue = value === '至今' || value === 'Present';
-    const showValue = isPresentValue ? '至今' : (selectedDate ? format(selectedDate, 'yyyy.MM') : '');
-
-    return (
-      <div
-        className={`relative group cursor-pointer h-full ${className}`}
-        onClick={disabled ? undefined : onClick}
-        ref={inputRef}
-      >
-        <div className={`
-          fluid-input flex items-center justify-between w-full h-full
-          ${disabled ? 'opacity-60 cursor-not-allowed' : ''}
-        `}>
-          <div className="flex items-center gap-2 overflow-hidden flex-1 shrink-0">
-            <Calendar className={`w-4 h-4 shrink-0 ${showValue ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400'}`} />
-            <span className={`block truncate ${showValue ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}`}>
-              {showValue || placeholder}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            {/* "Present" Button for End Date */}
-            {allowPresent && !showValue && !disabled && (
-              <button
-                type="button"
-                onClick={handlePresentClick}
-                className="text-xs font-medium text-primary hover:text-primary-dark px-2 py-1 rounded hover:bg-primary/5 transition-colors mr-1 shrink-0"
-              >
-                设为至今
-              </button>
-            )}
-
-            {/* Clear Button */}
-            {(showValue) && !disabled && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-
-            <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
-          </div>
-        </div>
-      </div>
-    );
-  });
-
   return (
     <div className="w-full relative" ref={ref}>
       <DatePicker
@@ -133,15 +162,31 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
         onChange={handleChange}
         dateFormat="yyyy.MM"
         showMonthYearPicker
-        customInput={<CustomInput />}
+        customInput={
+          <CustomInput
+            className={className}
+            disabled={disabled}
+            placeholder={placeholder}
+            allowPresent={allowPresent}
+            selectedDate={selectedDate}
+            rawValue={isPresent ? '至今' : value}
+            onPresentClick={handlePresentClick}
+            onClear={handleClear}
+          />
+        }
         disabled={disabled}
         locale={zhCN}
         preventOpenOnFocus // Prevent auto open when tabbing
         minDate={minDateObj}
         maxDate={maxDateObj}
         calendarClassName="!font-sans shadow-xl border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden"
+        popperClassName="z-[9999]"
         showPopperArrow={false}
         popperPlacement="bottom-end"
+        portalId={portalId}
+        popperProps={{
+          strategy: 'fixed',
+        }}
       />
       {/* Global styles override for react-datepicker to match theme */}
       <style>{`
@@ -198,6 +243,10 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
         }
         .dark .react-datepicker__month-text--selected {
           color: white;
+        }
+        /* Ensure portal is on top */
+        .react-datepicker-popper {
+          z-index: 9999 !important;
         }
       `}</style>
     </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Edit3, GripVertical } from 'lucide-react';
+import { FONT_SIZE_DEFAULT } from '../constants';
 import type {
     CertificationView,
     EducationView,
@@ -24,6 +25,34 @@ const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
+
+// Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
+// 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
+const TAILWIND_TEXT_SIZES_PX = {
+    xs: 12,
+    sm: 14,
+    base: 16,
+    lg: 18,
+    xl: 20,
+    '2xl': 24,
+    '3xl': 30,
+} as const;
+
+const buildPreviewTypographyCss = (scale: number) => {
+    const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const px = (value: number) => `${(value * safeScale).toFixed(3)}px`;
+
+    return `
+        .a4-preview .text-xs { font-size: ${px(TAILWIND_TEXT_SIZES_PX.xs)}; }
+        .a4-preview .text-sm { font-size: ${px(TAILWIND_TEXT_SIZES_PX.sm)}; }
+        .a4-preview .text-base { font-size: ${px(TAILWIND_TEXT_SIZES_PX.base)}; }
+        .a4-preview .text-lg { font-size: ${px(TAILWIND_TEXT_SIZES_PX.lg)}; }
+        .a4-preview .text-xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX.xl)}; }
+        .a4-preview .text-2xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['2xl'])}; }
+        .a4-preview .text-3xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['3xl'])}; }
+        .a4-preview .text-\\[11px\\] { font-size: ${px(11)}; }
+    `;
+};
 
 const resolveClosestDragElement = (
     target: EventTarget | null,
@@ -122,7 +151,7 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
         <>
             {contextText ? (
                 <div
-                    className="text-gray-600 text-xs mb-1"
+                    className="text-gray-900 text-xs mb-1"
                     dangerouslySetInnerHTML={renderRichText(contextText)}
                 />
             ) : null}
@@ -131,7 +160,7 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
                     actionList.listType === 'ordered' ? 'ol' : 'ul',
                     {
                         className: `${actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'
-                            } list-outside ml-4 text-xs text-gray-700 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS}`,
+                            } list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS}`,
                     },
                     actionList.lines.map((line, index) => (
                         <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
@@ -140,7 +169,7 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
             ) : null}
             {resultText ? (
                 <div
-                    className="text-xs text-gray-700 mt-1"
+                    className="text-xs text-gray-900 mt-1"
                     dangerouslySetInnerHTML={renderRichText(resultText)}
                 />
             ) : null}
@@ -152,6 +181,7 @@ export type ResumePreviewProps = {
     previewRef: React.RefObject<HTMLDivElement>;
     previewContentRef: React.RefObject<HTMLDivElement>;
     lineHeight: number;
+    fontSize: number;
     listSpacingValue: string;
     bulletSpacingValue: string;
     previewPaddingValue: string;
@@ -184,6 +214,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     previewRef,
     previewContentRef,
     lineHeight,
+    fontSize,
     listSpacingValue,
     bulletSpacingValue,
     previewPaddingValue,
@@ -211,6 +242,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onNavigateTab,
     onEditExperience,
 }) => {
+    const previewTypographyCss = React.useMemo(
+        () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT),
+        [fontSize]
+    );
+
     // 拖拽时浏览器可能“冻结”hover 状态（尤其是起始元素），导致 hover 高光在拖动过程中残留。
     // 因此拖拽期间禁用所有 hover 视觉反馈，只保留拖拽交互本身（实时重排）。
     const sectionControlBaseClass = 'absolute -left-6 top-0 flex flex-col gap-1';
@@ -315,7 +351,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         <h3 className="text-sm font-bold text-gray-900">
                                             {item.company}
                                         </h3>
-                                        <span className="text-xs font-medium text-gray-600">
+                                        <span className="text-xs font-medium text-gray-900">
                                             {item.date}
                                         </span>
                                     </div>
@@ -340,6 +376,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 className="a4-preview text-gray-900 relative"
                 style={{
                     lineHeight,
+                    fontSize: `${fontSize}px`,
                     padding: previewPaddingValue,
                     '--rf-line-height': String(lineHeight),
                     '--rf-list-spacing': listSpacingValue,
@@ -483,15 +520,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <h3 className="text-sm font-bold text-gray-900">
                                                                     {edu.school}
                                                                 </h3>
-                                                                <span className="text-xs font-medium text-gray-600">
+                                                                <span className="text-xs font-medium text-gray-900">
                                                                     {dateText}
                                                                 </span>
                                                             </div>
-                                                            <p className="text-xs text-gray-800">
+                                                            <p className="text-xs text-gray-900">
                                                                 {edu.major}, {edu.degree}
                                                             </p>
                                                             {edu.gpa ? (
-                                                                <p className="text-xs text-gray-600">GPA: {edu.gpa}</p>
+                                                                <p className="text-xs text-gray-900">GPA: {edu.gpa}</p>
                                                             ) : null}
                                                         </div>
                                                     );
@@ -545,12 +582,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 {cert.name}
                                                             </span>
                                                             {cert.issuer ? (
-                                                                <span className="text-xs text-gray-600 ml-2">
+                                                                <span className="text-xs text-gray-900 ml-2">
                                                                     ({cert.issuer})
                                                                 </span>
                                                             ) : null}
                                                         </div>
-                                                        <span className="text-xs text-gray-600">{cert.date}</span>
+                                                        <span className="text-xs text-gray-900">{cert.date}</span>
                                                     </div>
                                                 ))}
                                         </div>
@@ -609,6 +646,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     })}
                 </div>
             </div>
+            <style>{previewTypographyCss}</style>
         </main>
     );
 };

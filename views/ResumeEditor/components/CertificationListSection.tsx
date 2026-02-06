@@ -1,5 +1,6 @@
 import React from 'react';
 import { Award, Edit3, Plus, Trash2 } from 'lucide-react';
+import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../../../components/MonthPicker';
 import type { CertificationEditDraft, CertificationView } from '../../../types/resume';
 import { ADD_CERTIFICATION_LABEL } from '../constants';
 import { MatchBadge } from './Badges';
@@ -76,13 +77,16 @@ const CertificationForm: React.FC<{
             </div>
         </div>
         <div>
-            <label className="text-[10px] text-gray-400">取得时间 (YYYY-MM)</label>
-            <input
-                className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
-                value={draft.issueDate}
-                onChange={(event) => onUpdate('issueDate', event.target.value)}
-                placeholder="2026-07"
-            />
+            <label className="text-[10px] text-gray-400">取得时间 (YYYY.MM)</label>
+            <div className="h-9 mt-0.5">
+                <MonthPicker
+                    value={draft.issueDate}
+                    onChange={(val) => onUpdate('issueDate', val)}
+                    placeholder="2026.07"
+                    className="w-full h-full text-xs bg-white dark:bg-gray-900"
+                    portalId={DEFAULT_DATE_PICKER_PORTAL_ID}
+                />
+            </div>
         </div>
     </div>
 );
@@ -144,30 +148,30 @@ const CertificationItem: React.FC<{
     deletingIds,
     isSaving,
 }) => {
-    if (isEditing) {
+        if (isEditing) {
+            return (
+                <CertificationEditCard
+                    draft={draft}
+                    onUpdateDraft={onUpdateDraft}
+                    onCancelEdit={onCancelEdit}
+                    onSave={onSave}
+                    isSaving={isSaving}
+                />
+            );
+        }
+
         return (
-            <CertificationEditCard
-                draft={draft}
-                onUpdateDraft={onUpdateDraft}
-                onCancelEdit={onCancelEdit}
-                onSave={onSave}
-                isSaving={isSaving}
+            <CertificationDisplayCard
+                cert={cert}
+                isSelected={isSelected}
+                matchRate={matchRate}
+                onToggleSelection={onToggleSelection}
+                onBeginEdit={onBeginEdit}
+                onDelete={onDelete}
+                deletingIds={deletingIds}
             />
         );
-    }
-
-    return (
-        <CertificationDisplayCard
-            cert={cert}
-            isSelected={isSelected}
-            matchRate={matchRate}
-            onToggleSelection={onToggleSelection}
-            onBeginEdit={onBeginEdit}
-            onDelete={onDelete}
-            deletingIds={deletingIds}
-        />
-    );
-};
+    };
 
 const CertificationDisplayCard: React.FC<{
     cert: CertificationView;
@@ -186,69 +190,69 @@ const CertificationDisplayCard: React.FC<{
     onDelete,
     deletingIds,
 }) => (
-    <div
-        className={`bg-white dark:bg-gray-800 rounded-xl border p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected
-            ? 'border-amber-500 ring-1 ring-amber-500/20'
-            : 'border-amber-500/30 hover:shadow-md'
-            }`}
-        onClick={() => onToggleSelection(cert.id)}
-    >
-        <div className="flex items-start gap-3">
-            <div className="pt-1">
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => onToggleSelection(cert.id)}
-                    className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                    onClick={(event) => event.stopPropagation()}
-                />
-            </div>
-            <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start mb-1">
-                    <h4
-                        className={`font-bold text-sm truncate ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}
-                    >
-                        {cert.name}
-                    </h4>
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                        <button
-                            className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onDelete(cert.id);
-                            }}
-                            disabled={deletingIds.has(cert.id)}
-                            title="删除证书"
-                            aria-label="删除证书"
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                            className="p-1 text-gray-300 rounded hover:text-amber-600 hover:bg-amber-50"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onBeginEdit(cert.id);
-                            }}
-                            title="编辑证书"
-                            aria-label="编辑证书"
-                        >
-                            <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                    </div>
+        <div
+            className={`bg-white dark:bg-gray-800 rounded-xl border p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected
+                ? 'border-amber-500 ring-1 ring-amber-500/20'
+                : 'border-amber-500/30 hover:shadow-md'
+                }`}
+            onClick={() => onToggleSelection(cert.id)}
+        >
+            <div className="flex items-start gap-3">
+                <div className="pt-1">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelection(cert.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        onClick={(event) => event.stopPropagation()}
+                    />
                 </div>
-                {cert.issuer ? (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{cert.issuer}</p>
-                ) : null}
-                <div className="flex items-center justify-between mt-2">
-                    <p className="text-[10px] text-gray-400 font-mono">{cert.date}</p>
-                    {typeof matchRate === 'number' && matchRate > 0 ? (
-                        <MatchBadge score={matchRate} />
+                <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-1">
+                        <h4
+                            className={`font-bold text-sm truncate ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}
+                        >
+                            {cert.name}
+                        </h4>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                            <button
+                                className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onDelete(cert.id);
+                                }}
+                                disabled={deletingIds.has(cert.id)}
+                                title="删除证书"
+                                aria-label="删除证书"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                                className="p-1 text-gray-300 rounded hover:text-amber-600 hover:bg-amber-50"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onBeginEdit(cert.id);
+                                }}
+                                title="编辑证书"
+                                aria-label="编辑证书"
+                            >
+                                <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                    {cert.issuer ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{cert.issuer}</p>
                     ) : null}
+                    <div className="flex items-center justify-between mt-2">
+                        <p className="text-[10px] text-gray-400 font-mono">{cert.date}</p>
+                        {typeof matchRate === 'number' && matchRate > 0 ? (
+                            <MatchBadge score={matchRate} />
+                        ) : null}
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-);
+    );
 
 const CertificationListSection: React.FC<CertificationListSectionProps> = ({
     title,

@@ -41,10 +41,13 @@ import {
     DEFAULT_SKILL_NAME,
     EDUCATION_DRAFT_PREFIX,
     EXPERIENCE_DRAFT_PREFIX,
+    FONT_SIZE_DEFAULT,
+    FONT_SIZE_MIN,
+    FONT_SIZE_STEP,
     LINE_HEIGHT_DEFAULT,
     LINE_HEIGHT_MIN,
     LINE_HEIGHT_STEP,
-    LIST_SPACING_REM_BY_DENSITY,
+    LIST_SPACING_BY_DENSITY,
     PREVIEW_PADDING_MM,
     PROFILE_SYNC_MODES,
     SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
@@ -100,6 +103,21 @@ const buildLineHeightSteps = (start: number, min: number, step: number) => {
 const LINE_HEIGHT_STEPS = buildLineHeightSteps(LINE_HEIGHT_DEFAULT, LINE_HEIGHT_MIN, LINE_HEIGHT_STEP);
 const REDUCED_LINE_HEIGHT_STEPS = LINE_HEIGHT_STEPS.slice(1);
 
+// 字号调整步骤（用于智能一页算法）
+const buildFontSizeSteps = (start: number, min: number, step: number) => {
+    const steps: number[] = [];
+    for (let value = start; value >= min; value -= step) {
+        steps.push(Number(value.toFixed(1)));
+    }
+    if (steps[steps.length - 1] !== min) {
+        steps.push(min);
+    }
+    return steps;
+};
+
+const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
+const REDUCED_FONT_SIZE_STEPS = FONT_SIZE_STEPS.slice(1);
+
 const resolveSmartPageAvailableHeight = (a4Height: number) => {
     const pxPerMm = a4Height / A4_HEIGHT_MM;
     const paddingPx = pxPerMm * PREVIEW_PADDING_MM;
@@ -112,7 +130,8 @@ const isWithinAvailableHeight = (contentHeight: number, availableHeight: number)
 
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
     const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
-    return `${(baseSpacing * scale).toFixed(3)}rem`;
+    // 用 em 而不是 rem：这样间距会跟随预览容器的 fontSize 缩放（智能一页阶段2会调整字号）。
+    return `${(baseSpacing * scale).toFixed(3)}em`;
 };
 
 const resolveElementMarginBottom = (element: HTMLElement) => {
@@ -172,6 +191,7 @@ const moveItemWithDropPosition = <T,>(
 const ResumeEditor: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
+    const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
     const [isDragging, setIsDragging] = useState(false);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
@@ -478,19 +498,38 @@ const ResumeEditor: React.FC = () => {
         }
         return resolveMeasuredContentHeight(container);
     };
-    const applyLineHeightAndMeasure = async (nextLineHeight: number) => {
+    const applyLayoutParamsAndMeasure = async (nextLineHeight: number, nextFontSize: number) => {
         setLineHeight(nextLineHeight);
+        setFontSize(nextFontSize);
         return measureContentHeight();
     };
-    const tryAdjustLineHeight = async (availableHeight: number) => {
+
+    const tryAdjustLineHeight = async (availableHeight: number, currentFontSize: number) => {
         for (const nextLineHeight of REDUCED_LINE_HEIGHT_STEPS) {
-            const height = await applyLineHeightAndMeasure(nextLineHeight);
+            const height = await applyLayoutParamsAndMeasure(nextLineHeight, currentFontSize);
             if (isWithinAvailableHeight(height, availableHeight)) {
                 return true;
             }
         }
         return false;
     };
+
+    const tryAdjustFontSize = async (availableHeight: number) => {
+        for (const nextFontSize of REDUCED_FONT_SIZE_STEPS) {
+            // 每次调整字号后，先尝试默认行高
+            let height = await applyLayoutParamsAndMeasure(LINE_HEIGHT_DEFAULT, nextFontSize);
+            if (isWithinAvailableHeight(height, availableHeight)) {
+                return true;
+            }
+            // 如果默认行高不够，再尝试调整行高
+            const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight, nextFontSize);
+            if (lineHeightAdjusted) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     const handleAdjustToSinglePage = async () => {
         if (smartPageAdjustingRef.current) {
             return;
@@ -506,16 +545,28 @@ const ResumeEditor: React.FC = () => {
             }
             const availableHeight = resolveSmartPageAvailableHeight(a4Height);
             showToastInfo(SMART_PAGE_TOAST_MESSAGES.adjusting, SMART_PAGE_ADJUSTING_TOAST_DURATION_MS);
-            const initialHeight = await applyLineHeightAndMeasure(LINE_HEIGHT_DEFAULT);
+
+            // 阶段0：重置到默认值并测量
+            const initialHeight = await applyLayoutParamsAndMeasure(LINE_HEIGHT_DEFAULT, FONT_SIZE_DEFAULT);
             if (isWithinAvailableHeight(initialHeight, availableHeight)) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 return;
             }
-            const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight);
+
+            // 阶段1：优先调整行高（保持默认字号）
+            const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight, FONT_SIZE_DEFAULT);
             if (lineHeightAdjusted) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 return;
             }
+
+            // 阶段2：行高已到极限，开始调整字号
+            const fontSizeAdjusted = await tryAdjustFontSize(availableHeight);
+            if (fontSizeAdjusted) {
+                showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+                return;
+            }
+
             showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
         } finally {
             smartPageAdjustingRef.current = false;
@@ -630,10 +681,10 @@ const ResumeEditor: React.FC = () => {
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const listSpacingValue = useMemo(() => {
-        return buildSpacingValue(LIST_SPACING_REM_BY_DENSITY[density], lineHeight);
+        return buildSpacingValue(LIST_SPACING_BY_DENSITY[density], lineHeight);
     }, [density, lineHeight]);
     const bulletSpacingValue = useMemo(
-        () => buildSpacingValue(LIST_SPACING_REM_BY_DENSITY.compact, lineHeight),
+        () => buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, lineHeight),
         [lineHeight]
     );
     const previewPaddingValue = `${PREVIEW_PADDING_MM}mm`;
@@ -769,6 +820,7 @@ const ResumeEditor: React.FC = () => {
                     previewRef={previewRef}
                     previewContentRef={previewContentRef}
                     lineHeight={lineHeight}
+                    fontSize={fontSize}
                     listSpacingValue={listSpacingValue}
                     bulletSpacingValue={bulletSpacingValue}
                     previewPaddingValue={previewPaddingValue}

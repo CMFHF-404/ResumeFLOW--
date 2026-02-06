@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
-import MonthPicker from '../components/MonthPicker';
+import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../components/MonthPicker';
 import { resolveCardMotionClass } from './experienceUtils';
 
 export type CertificationCardData = {
@@ -132,6 +132,7 @@ const ExpandedCertificationCard: React.FC<{
                                 onChange={(val) => onFieldChange('date', val)}
                                 placeholder="获得时间"
                                 className="w-full h-full"
+                                portalId={DEFAULT_DATE_PICKER_PORTAL_ID}
                             />
                         </div>
                     </div>
