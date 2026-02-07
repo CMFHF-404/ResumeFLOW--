@@ -1,8 +1,17 @@
 import { useHandleSignInCallback } from '@logto/react';
 import { useEffect } from 'react';
+import { trackSignUpSuccessImmediate } from '../utils/analyticsTracker';
 
 export default function Callback() {
-    const { isLoading, error } = useHandleSignInCallback(() => {
+    const { isLoading, error } = useHandleSignInCallback(async () => {
+        const flushPromise = trackSignUpSuccessImmediate();
+        if (flushPromise && typeof (flushPromise as Promise<void>).then === 'function') {
+            try {
+                await flushPromise;
+            } catch (flushError) {
+                console.warn('[Callback] PostHog flush failed:', flushError);
+            }
+        }
         // 登录成功后重定向到首页
         window.location.href = '/';
     });
@@ -38,3 +47,4 @@ export default function Callback() {
 
     return null;
 }
+

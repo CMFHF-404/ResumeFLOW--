@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import { trackFirstExperienceCreated } from '../utils/analyticsTracker';
 
 export type ExperienceCategory = 'work' | 'project' | 'education';
 
@@ -163,6 +164,7 @@ export const experienceService = {
     async create(data: ExperienceCreatePayload) {
         const response = await apiClient.post<ExperienceDetail>('/experiences', data);
         clearExperienceListCache();
+        trackFirstExperienceCreated(data.category);
         return response.data;
     },
 

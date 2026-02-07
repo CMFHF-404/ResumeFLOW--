@@ -27,6 +27,12 @@ import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
+import {
+    trackLayoutModeChange,
+    trackModuleReordered,
+    trackResumeExported,
+    trackSmartOnePageTriggered,
+} from '../../utils/analyticsTracker';
 import { DEFAULT_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
@@ -64,7 +70,7 @@ import {
     SMART_PAGE_HEIGHT_TOLERANCE,
     SMART_PAGE_TOAST_MESSAGES,
 } from './constants';
-import { parseDragItemKey } from './dragKeys';
+import { parseDragItemKey, type DragItemType } from './dragKeys';
 import {
     buildCertificationDraft,
     buildCertificationPayload,
@@ -128,6 +134,35 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const REDUCED_FONT_SIZE_STEPS = FONT_SIZE_STEPS.slice(1);
+
+type ModuleReorderContext = {
+    moduleType: 'experience' | 'education' | 'certification' | 'skill_group' | 'section';
+    moduleKey: string;
+    id: string;
+    fromPosition: number;
+    sectionId?: string;
+    category?: 'work' | 'project';
+};
+
+type SmartPageResult = { lineHeight: number; fontSize: number } | null;
+
+const mapDragTypeToModuleType = (dragType: DragItemType): ModuleReorderContext['moduleType'] => {
+    return dragType === 'skillGroup' ? 'skill_group' : dragType;
+};
+
+const resolveModuleKey = (
+    moduleType: ModuleReorderContext['moduleType'],
+    category?: ModuleReorderContext['category'],
+    sectionId?: string
+) => {
+    if (moduleType === 'experience' && category) {
+        return `experience:${category}`;
+    }
+    if (moduleType === 'section' && sectionId) {
+        return `section:${sectionId}`;
+    }
+    return moduleType;
+};
 
 const RESUME_AUTO_NAME_SEPARATOR = ' - ';
 const MAX_AUTO_NAME_PART_LENGTH = 40;
@@ -268,6 +303,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     // 3. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
+    const previousDensityRef = useRef<'compact' | 'standard' | 'spacious'>(density);
     const {
         toasts,
         success: showToastSuccess,
@@ -275,6 +311,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         info: showToastInfo,
         closeToast,
     } = useToast();
+    useEffect(() => {
+        if (previousDensityRef.current !== density) {
+            trackLayoutModeChange({
+                from: previousDensityRef.current,
+                to: density,
+            });
+            previousDensityRef.current = density;
+        }
+    }, [density]);
     // Drag & Drop State
     const [draggedItemKey, setDraggedItemKey] = useState<string | null>(null);
     // Section Order State (for draggable resume sections)
@@ -285,6 +330,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isSummaryVisible, setIsSummaryVisible] = useState(false);
     const lastItemHoverKeyRef = useRef<string | null>(null);
     const lastSectionHoverKeyRef = useRef<string | null>(null);
+    const reorderContextRef = useRef<ModuleReorderContext | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
     const printPreviewRef = useRef<HTMLDivElement | null>(null);
@@ -687,30 +733,41 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         return measureContentHeight();
     };
 
-    const tryAdjustLineHeight = async (availableHeight: number, currentFontSize: number) => {
+    const tryAdjustLineHeight = async (
+        availableHeight: number,
+        currentFontSize: number
+    ): Promise<SmartPageResult> => {
         for (const nextLineHeight of REDUCED_LINE_HEIGHT_STEPS) {
             const height = await applyLayoutParamsAndMeasure(nextLineHeight, currentFontSize);
             if (isWithinAvailableHeight(height, availableHeight)) {
-                return true;
+                return { lineHeight: nextLineHeight, fontSize: currentFontSize };
             }
         }
-        return false;
+        return null;
     };
 
-    const tryAdjustFontSize = async (availableHeight: number) => {
+    const tryAdjustFontSize = async (
+        availableHeight: number
+    ): Promise<SmartPageResult> => {
         for (const nextFontSize of REDUCED_FONT_SIZE_STEPS) {
             // 每次调整字号后，先尝试默认行高
-            let height = await applyLayoutParamsAndMeasure(LINE_HEIGHT_DEFAULT, nextFontSize);
+            const height = await applyLayoutParamsAndMeasure(
+                LINE_HEIGHT_DEFAULT,
+                nextFontSize
+            );
             if (isWithinAvailableHeight(height, availableHeight)) {
-                return true;
+                return { lineHeight: LINE_HEIGHT_DEFAULT, fontSize: nextFontSize };
             }
             // 如果默认行高不够，再尝试调整行高
-            const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight, nextFontSize);
+            const lineHeightAdjusted = await tryAdjustLineHeight(
+                availableHeight,
+                nextFontSize
+            );
             if (lineHeightAdjusted) {
-                return true;
+                return lineHeightAdjusted;
             }
         }
-        return false;
+        return null;
     };
 
     const handleAdjustToSinglePage = async () => {
@@ -734,6 +791,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             if (isWithinAvailableHeight(initialHeight, availableHeight)) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 setIsSmartPageApplied(true);
+                trackSmartOnePageTriggered({
+                    lineHeight: LINE_HEIGHT_DEFAULT,
+                    fontSize: FONT_SIZE_DEFAULT,
+                });
                 return;
             }
 
@@ -742,6 +803,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             if (lineHeightAdjusted) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 setIsSmartPageApplied(true);
+                trackSmartOnePageTriggered(lineHeightAdjusted);
                 return;
             }
 
@@ -750,6 +812,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             if (fontSizeAdjusted) {
                 showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 setIsSmartPageApplied(true);
+                trackSmartOnePageTriggered(fontSizeAdjusted);
                 return;
             }
 
@@ -773,11 +836,122 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         void applyResumeNameUpdate(name);
     };
 
+    const resolveIndexPosition = <T,>(
+        items: T[],
+        predicate: (item: T) => boolean
+    ) => {
+        const index = items.findIndex(predicate);
+        return index >= 0 ? index + 1 : null;
+    };
+
+    const resolveExperiencePosition = (id: string, category: 'work' | 'project') => {
+        const items = experienceItems.filter((item) => item.category === category);
+        return resolveIndexPosition(items, (item) => item.id === id);
+    };
+
+    const buildItemReorderContext = (itemKey: string): ModuleReorderContext | null => {
+        const parsed = parseDragItemKey(itemKey);
+        if (!parsed) {
+            return null;
+        }
+        const moduleType = mapDragTypeToModuleType(parsed.type);
+        if (parsed.type === 'experience') {
+            const item = experienceItems.find((entry) => entry.id === parsed.id);
+            if (!item) {
+                return null;
+            }
+            const position = resolveExperiencePosition(parsed.id, item.category);
+            if (!position) {
+                return null;
+            }
+            return {
+                moduleType,
+                moduleKey: resolveModuleKey(moduleType, item.category),
+                id: parsed.id,
+                fromPosition: position,
+                category: item.category,
+            };
+        }
+        if (parsed.type === 'education') {
+            const position = resolveIndexPosition(educations, (item) => item.id === parsed.id);
+            if (!position) {
+                return null;
+            }
+            return {
+                moduleType,
+                moduleKey: resolveModuleKey(moduleType),
+                id: parsed.id,
+                fromPosition: position,
+            };
+        }
+        if (parsed.type === 'certification') {
+            const position = resolveIndexPosition(certifications, (item) => item.id === parsed.id);
+            if (!position) {
+                return null;
+            }
+            return {
+                moduleType,
+                moduleKey: resolveModuleKey(moduleType),
+                id: parsed.id,
+                fromPosition: position,
+            };
+        }
+        const position = resolveIndexPosition(skillGroups, (group) => group.name === parsed.id);
+        if (!position) {
+            return null;
+        }
+        return {
+            moduleType,
+            moduleKey: resolveModuleKey(moduleType),
+            id: parsed.id,
+            fromPosition: position,
+        };
+    };
+
+    const resolveCurrentPosition = (context: ModuleReorderContext) => {
+        switch (context.moduleType) {
+            case 'experience':
+                if (!context.category) {
+                    return null;
+                }
+                return resolveExperiencePosition(context.id, context.category);
+            case 'education':
+                return resolveIndexPosition(educations, (item) => item.id === context.id);
+            case 'certification':
+                return resolveIndexPosition(certifications, (item) => item.id === context.id);
+            case 'skill_group':
+                return resolveIndexPosition(skillGroups, (group) => group.name === context.id);
+            case 'section':
+                return resolveIndexPosition(sectionOrder, (item) => item === context.id);
+            default:
+                return null;
+        }
+    };
+
+    const finalizeReorderTracking = () => {
+        const context = reorderContextRef.current;
+        if (!context) {
+            return;
+        }
+        const toPosition = resolveCurrentPosition(context);
+        reorderContextRef.current = null;
+        if (!toPosition || toPosition === context.fromPosition) {
+            return;
+        }
+        trackModuleReordered({
+            moduleType: context.moduleType,
+            moduleKey: context.moduleKey,
+            fromPosition: context.fromPosition,
+            toPosition,
+            sectionId: context.sectionId,
+        });
+    };
     const handleDragStart = (e: React.DragEvent, itemKey: string) => {
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
         setDraggedSectionId(null);
         setDraggedItemKey(itemKey);
+        reorderContextRef.current = buildItemReorderContext(itemKey);
         setIsDragging(true);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', itemKey);
@@ -788,6 +962,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsDragging(false);
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
+        reorderContextRef.current = null;
     };
 
     const handleItemDragHover = (targetItemKey: string, position: DropPosition) => {
@@ -858,6 +1033,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     const handleItemDrop = (e: React.DragEvent) => {
         e.preventDefault();
+        finalizeReorderTracking();
         clearDragState();
     };
 
@@ -905,6 +1081,16 @@ const handleResetCertificationSort = () => {
         lastSectionHoverKeyRef.current = null;
         setDraggedItemKey(null);
         setDraggedSectionId(sectionId);
+        const sectionPosition = resolveIndexPosition(sectionOrder, (item) => item === sectionId);
+        reorderContextRef.current = sectionPosition
+            ? {
+                moduleType: 'section',
+                moduleKey: resolveModuleKey('section', undefined, sectionId),
+                id: sectionId,
+                fromPosition: sectionPosition,
+                sectionId,
+            }
+            : null;
         setIsDragging(true);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', sectionId);
@@ -932,6 +1118,7 @@ const handleResetCertificationSort = () => {
 
     const handleSectionDrop = (e: React.DragEvent) => {
         e.preventDefault();
+        finalizeReorderTracking();
         clearDragState();
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
@@ -1023,6 +1210,7 @@ const handleResetCertificationSort = () => {
             title: buildResumeExportTitle(resumeName),
             content,
         });
+        trackResumeExported();
     }, [
         bulletSpacingValue,
         educations,
@@ -1200,3 +1388,10 @@ const handleResetCertificationSort = () => {
     );
 };
 export default ResumeEditor;
+
+
+
+
+
+
+

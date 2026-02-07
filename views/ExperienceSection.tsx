@@ -7,6 +7,7 @@ import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey,
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { mergeTags, sanitizeTagList } from './tagUtils';
 import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
+import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
 
 type ToastApi = {
   success: (message: string, duration?: number) => string;
@@ -761,7 +762,13 @@ type ExperienceAiParams = {
   updateCardField: (cardId: string, field: string, value: string | string[]) => void;
 };
 
-const usePolishActions = ({ cardData, toast, updateCardField }: ExperienceAiParams) => {
+type ExperiencePolishParams = ExperienceAiParams & {
+  category: ExperienceSectionProps['category'];
+};
+
+const POLISH_SOURCE = 'experience_bank';
+
+const usePolishActions = ({ cardData, toast, updateCardField, category }: ExperiencePolishParams) => {
   const [polishingTargets, setPolishingTargets] = useState<Set<string>>(new Set());
 
   const updatePolishingTarget = useCallback((cardId: string, field: StarFieldKey, polishing: boolean) => {
@@ -789,6 +796,9 @@ const usePolishActions = ({ cardData, toast, updateCardField }: ExperienceAiPara
         return;
       }
 
+      const startTime = Date.now();
+      let action: 'applied' | 'discarded' = 'discarded';
+      trackAiPolishStart({ source: POLISH_SOURCE, field, category });
       updatePolishingTarget(cardId, field, true);
       try {
         const response = await aiService.polishExperience(
@@ -799,6 +809,7 @@ const usePolishActions = ({ cardData, toast, updateCardField }: ExperienceAiPara
           const normalized = normalizeAiRichText(polished);
           if (normalized.trim()) {
             updateCardField(cardId, `star.${field}`, normalized);
+            action = 'applied';
           } else {
             toast.error('未获取到有效润色结果，请稍后重试');
           }
@@ -809,10 +820,17 @@ const usePolishActions = ({ cardData, toast, updateCardField }: ExperienceAiPara
         console.error('[ExperienceSection] AI 润色失败:', error);
         toast.error('AI 润色失败，请稍后重试');
       } finally {
+        trackAiPolishResult({
+          source: POLISH_SOURCE,
+          field,
+          category,
+          action,
+          durationMs: Date.now() - startTime,
+        });
         updatePolishingTarget(cardId, field, false);
       }
     },
-    [cardData, toast, updateCardField, updatePolishingTarget]
+    [cardData, category, toast, updateCardField, updatePolishingTarget]
   );
 
   const isFieldPolishing = useCallback(
@@ -956,7 +974,7 @@ const useExperienceSectionModel = ({
     removeCardState,
     removeCardExpansion: expansion.removeCardExpansion,
   });
-  const polishActions = usePolishActions({ cardData: store.cardData, toast, updateCardField });
+  const polishActions = usePolishActions({ cardData: store.cardData, toast, updateCardField, category });
   const tagActions = useTagActions({ cardData: store.cardData, toast, updateCardField });
   const sortedExperiences = useSortedExperiences(experiences);
 
@@ -1171,3 +1189,9 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
 };
 
 export default ExperienceSection;
+
+
+
+
+
+

@@ -25,6 +25,7 @@ import {
 import { skillsService, type UserSkill } from '../services/skillsService';
 import type { MatchTrend } from '../types/analysis';
 import { normalizeAiRichText } from '../utils/richText';
+import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
 import type {
     CertificationEditDraft,
     CertificationView,
@@ -967,16 +968,20 @@ const createExperienceSaveHandlers = (
         if (!trimmedJD) {
             return;
         }
+        const startTime = Date.now();
+        let action: 'applied' | 'discarded' = 'discarded';
+        trackAiPolishStart({ source: 'resume_editor', field: 'all' });
         state.setIsPolishing(true);
         try {
+            const draftSnapshot = state.editingDraft;
             const result = await aiService.polishExperience({
                 content: {
-                    company: state.editingDraft.company,
-                    role: state.editingDraft.title,
-                    s: state.editingDraft.star.s,
-                    t: state.editingDraft.star.t,
-                    a: state.editingDraft.star.a,
-                    r: state.editingDraft.star.r,
+                    company: draftSnapshot.company,
+                    role: draftSnapshot.title,
+                    s: draftSnapshot.star.s,
+                    t: draftSnapshot.star.t,
+                    a: draftSnapshot.star.a,
+                    r: draftSnapshot.star.r,
                 },
                 jdText: trimmedJD,
             });
@@ -986,12 +991,13 @@ const createExperienceSaveHandlers = (
                 a: typeof result.a === 'string' ? normalizeAiRichText(result.a) : undefined,
                 r: typeof result.r === 'string' ? normalizeAiRichText(result.r) : undefined,
             };
+            const nextStar = helpers.mergeStarFields(draftSnapshot.star, normalizedResult);
+            action = hasStarFieldsChange(draftSnapshot.star, nextStar) ? 'applied' : 'discarded';
             state.setEditingDraft((prev) => {
                 if (!prev) {
                     return prev;
                 }
-                const nextStar = helpers.mergeStarFields(prev.star, normalizedResult);
-                if (!hasStarFieldsChange(prev.star, nextStar)) {
+                if (action !== 'applied') {
                     return prev;
                 }
                 return {
@@ -1001,8 +1007,14 @@ const createExperienceSaveHandlers = (
                 };
             });
         } catch (error) {
-            console.error('[ResumeEditor] 基于JD润色失败:', error);
+            console.error('[ResumeEditor] 基于 JD 润色失败:', error);
         } finally {
+            trackAiPolishResult({
+                source: 'resume_editor',
+                field: 'all',
+                action,
+                durationMs: Date.now() - startTime,
+            });
             state.setIsPolishing(false);
         }
     };
@@ -2136,3 +2148,4 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         },
     };
 };
+

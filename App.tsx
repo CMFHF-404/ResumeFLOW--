@@ -6,7 +6,9 @@ import Dashboard from './views/Dashboard';
 import ExperienceBank from './views/ExperienceBank';
 import ResumeEditor from './views/ResumeEditor';
 import Callback from './views/Callback';
+import Analytics from './views/Analytics';
 import { ViewState, Resume } from './types';
+import { trackPageView } from './utils/analyticsTracker';
 
 const VIEW_STORAGE_KEY = 'resumeFlow.currentView';
 
@@ -19,21 +21,16 @@ const resolveStoredView = (value: string | null): ViewState | null => {
 };
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
+  const [currentView, setCurrentView] = useState<ViewState>(() => {
+    const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
+    return storedView ?? ViewState.DASHBOARD;
+  });
 
   // 全局简历数据缓存，避免每次切换视图都重新请求
   const [cachedResumes, setCachedResumes] = useState<Resume[]>([]);
 
   // 经历库数据缓存，存储个人资料、工作经历、教育背景等
   const [profileCache, setProfileCache] = useState<any>(null);
-
-  // 恢复上次停留的视图
-  useEffect(() => {
-    const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
-    if (storedView) {
-      setCurrentView(storedView);
-    }
-  }, []);
 
   // 如果是callback路径,只渲染Callback组件
   if (window.location.pathname === '/callback') {
@@ -49,6 +46,10 @@ const App: React.FC = () => {
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
+
+  useEffect(() => {
+    trackPageView(currentView);
+  }, [currentView]);
 
   // 处理简历数据更新的回调
   const handleResumesUpdate = useCallback((resumes: Resume[]) => {
@@ -70,6 +71,8 @@ const App: React.FC = () => {
         return <ExperienceBank cachedProfile={profileCache} onProfileUpdate={handleProfileUpdate} />;
       case ViewState.EDITOR:
         return <ResumeEditor cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
+      case ViewState.ANALYTICS:
+        return <Analytics />;
       default:
         return <Dashboard setView={handleSetView} cachedResumes={cachedResumes} onResumesUpdate={handleResumesUpdate} />;
     }

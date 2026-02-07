@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.status import HTTP_403_FORBIDDEN
 
-from ..database import get_async_session
+from ..database import get_session
 from ..dependencies import get_current_user
 from ..auth_middleware import AuthenticatedUser
 from ..models import User
@@ -39,7 +39,7 @@ async def is_admin(user_id: str, session: AsyncSession) -> bool:
 
 async def require_admin(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_async_session)]
+    session: Annotated[AsyncSession, Depends(get_session)]
 ) -> AuthenticatedUser:
     """
     FastAPI 依赖注入：验证当前用户是否为管理员

@@ -9,8 +9,16 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_users_is_admin
+    ON users (is_admin)
+    WHERE is_admin = TRUE;
 
 CREATE TABLE IF NOT EXISTS profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

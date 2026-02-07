@@ -1,8 +1,9 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, Settings, LogOut } from 'lucide-react';
+import { FolderOpen, Database, Wand2, Settings, LogOut, BarChart3 } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
+import { useAdmin } from '../hooks/useAdmin';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
 
 interface GlobalSidebarProps {
@@ -16,8 +17,10 @@ const DEFAULT_AVATAR_PLACEHOLDER = '?';
 const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) => {
   const { signOut } = useLogto();
   const { profile } = useProfile();
+  const { isAdmin, loading: isAdminLoading } = useAdmin();
   const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
   const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
+  const showAnalyticsEntry = isAdmin && !isAdminLoading;
 
   const getButtonClass = (view: ViewState) => {
     const baseClass = "p-3 rounded-xl transition-all relative group";
@@ -66,6 +69,15 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
           <Wand2 className="w-6 h-6" />
           <div className="nav-tooltip">简历工厂</div>
         </button>
+        {showAnalyticsEntry ? (
+          <button
+            className={getButtonClass(ViewState.ANALYTICS)}
+            onClick={() => setView(ViewState.ANALYTICS)}
+          >
+            <BarChart3 className="w-6 h-6" />
+            <div className="nav-tooltip">数据分析</div>
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-auto flex flex-col gap-6 w-full items-center mb-2">
@@ -86,3 +98,4 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
 };
 
 export default GlobalSidebar;
+

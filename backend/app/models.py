@@ -22,6 +22,7 @@ class User(SQLModel, table=True):
     __tablename__ = "users"
 
     id: str = Field(primary_key=True, index=True)
+    is_admin: bool = Field(default=False, nullable=False)
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 

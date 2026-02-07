@@ -20,6 +20,7 @@ import {
   diffJDItemSignatures,
   sortExperienceItemsForMatch,
 } from "../utils/resumeHelpers";
+import { trackJDAnalysisComplete, trackJDAnalysisStart } from "../utils/analyticsTracker";
 import type {
   JDAnalysisContext,
   JDAnalysisItemSignatures,
@@ -950,6 +951,10 @@ export const useJDAnalysis = ({
         pendingDiffRef.current = buildEmptyDiff();
         setNeedsReanalysis(false);
       }
+      const startedAt = Date.now();
+      if (mode === "full") {
+        trackJDAnalysisStart({ resumeId });
+      }
       setIsAnalyzing(true);
       try {
         const startSnapshot = buildAnalyzeSnapshot();
@@ -996,6 +1001,13 @@ export const useJDAnalysis = ({
           setIsJDCollapsed(true);
         }
         setDebugInfo(null);
+        if (mode === "full") {
+          trackJDAnalysisComplete({
+            resumeId,
+            matchScore: stabilizedResult.matchPercentage,
+            durationMs: Date.now() - startedAt,
+          });
+        }
         return stabilizedResult;
       } catch (error) {
         console.error("Failed to analyze JD", error);

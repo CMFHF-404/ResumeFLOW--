@@ -15,10 +15,14 @@ ENV_AI_BASE_URL = "AI_BASE_URL"
 ENV_AI_MODEL = "AI_MODEL"
 ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
+ENV_POSTHOG_API_KEY = "POSTHOG_API_KEY"
+ENV_POSTHOG_HOST = "POSTHOG_HOST"
+ENV_POSTHOG_PROJECT_ID = "POSTHOG_PROJECT_ID"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
 DEFAULT_AI_MODEL = "gemini-3-flash"
 DEFAULT_DEV_USER_ID = "dev-user-test-123"
+DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
 ENV_FILE_NAME = ".env"
 
 
@@ -56,6 +60,9 @@ class Settings:
     ai_model: str
     enable_dev_auth_bypass: bool
     dev_user_id: str
+    posthog_api_key: Optional[str]
+    posthog_host: str
+    posthog_project_id: Optional[str]
 
 
 _settings: Optional[Settings] = None
@@ -77,6 +84,9 @@ def load_settings() -> Settings:
     ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
     enable_dev_auth_bypass = _get_bool_env(ENV_ENABLE_DEV_AUTH_BYPASS, False)
     dev_user_id = os.getenv(ENV_DEV_USER_ID, DEFAULT_DEV_USER_ID)
+    posthog_api_key = os.getenv(ENV_POSTHOG_API_KEY)
+    posthog_host = os.getenv(ENV_POSTHOG_HOST, DEFAULT_POSTHOG_HOST)
+    posthog_project_id = os.getenv(ENV_POSTHOG_PROJECT_ID)
 
     _settings = Settings(
         database_url=database_url,
@@ -89,5 +99,8 @@ def load_settings() -> Settings:
         ai_model=ai_model,
         enable_dev_auth_bypass=enable_dev_auth_bypass,
         dev_user_id=dev_user_id,
+        posthog_api_key=posthog_api_key,
+        posthog_host=posthog_host,
+        posthog_project_id=posthog_project_id,
     )
     return _settings
