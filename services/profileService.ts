@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { getAuthCacheKey } from './apiClient';
 
 export interface Profile {
     user_id: string;
@@ -36,14 +36,27 @@ export interface ProfileUpdate {
 let cachedProfile: Profile | null = null;
 let inFlightProfileRequest: Promise<Profile> | null = null;
 let cacheRevision = 0;
+let profileCacheOwnerKey: string | null = null;
 
 const requestProfile = async (): Promise<Profile> => {
     const response = await apiClient.get<Profile>('/profile');
     return response.data;
 };
 
+const clearProfileCache = () => {
+    cacheRevision += 1;
+    cachedProfile = null;
+    inFlightProfileRequest = null;
+    profileCacheOwnerKey = null;
+};
+
 export const profileService = {
     async getProfile(options?: { force?: boolean }) {
+        const cacheOwnerKey = await getAuthCacheKey();
+        if (profileCacheOwnerKey !== cacheOwnerKey) {
+            clearProfileCache();
+            profileCacheOwnerKey = cacheOwnerKey;
+        }
         const shouldUseCache = !options?.force;
         if (shouldUseCache && cachedProfile) {
             return cachedProfile;
@@ -79,8 +92,6 @@ export const profileService = {
     },
 
     clearProfileCache() {
-        cacheRevision += 1;
-        cachedProfile = null;
-        inFlightProfileRequest = null;
+        clearProfileCache();
     },
 };

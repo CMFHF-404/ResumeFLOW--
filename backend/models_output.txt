@@ -1,0 +1,10 @@
+
+--- Listing Models (Standard /v1) ---
+Listing models from Base URL: https://www.packyapi.com/v1
+Status: 401
+Error Response: {"error":{"code":"","message":"Œﬁ–ßµƒ¡Ó≈∆ (request id: 20260207214027344455837BpdIzqMB)","type":"packy_api_error"}}
+
+--- Listing Models (No /v1) ---
+Listing models from Base URL: https://www.packyapi.com
+Status: 200
+Exception: Expecting value: line 1 column 1 (char 0)

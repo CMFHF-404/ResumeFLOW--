@@ -17,6 +17,7 @@ ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
 ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
 ENV_POSTHOG_API_KEY = "POSTHOG_API_KEY"
+ENV_POSTHOG_ENABLED = "POSTHOG_ENABLED"
 ENV_POSTHOG_HOST = "POSTHOG_HOST"
 ENV_POSTHOG_PROJECT_ID = "POSTHOG_PROJECT_ID"
 DEFAULT_JWKS_TTL_SECONDS = 3600
@@ -28,6 +29,7 @@ DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:3000",
 ]
 DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
+DEFAULT_POSTHOG_ENABLED = True
 ENV_FILE_NAME = ".env"
 
 
@@ -74,6 +76,7 @@ class Settings:
     dev_user_id: str
     cors_allow_origins: List[str]
     posthog_api_key: Optional[str]
+    posthog_enabled: bool
     posthog_host: str
     posthog_project_id: Optional[str]
 
@@ -102,6 +105,7 @@ def load_settings() -> Settings:
         DEFAULT_CORS_ALLOW_ORIGINS,
     )
     posthog_api_key = os.getenv(ENV_POSTHOG_API_KEY)
+    posthog_enabled = _get_bool_env(ENV_POSTHOG_ENABLED, DEFAULT_POSTHOG_ENABLED)
     posthog_host = os.getenv(ENV_POSTHOG_HOST, DEFAULT_POSTHOG_HOST)
     posthog_project_id = os.getenv(ENV_POSTHOG_PROJECT_ID)
 
@@ -118,6 +122,7 @@ def load_settings() -> Settings:
         dev_user_id=dev_user_id,
         cors_allow_origins=cors_allow_origins,
         posthog_api_key=posthog_api_key,
+        posthog_enabled=posthog_enabled,
         posthog_host=posthog_host,
         posthog_project_id=posthog_project_id,
     )

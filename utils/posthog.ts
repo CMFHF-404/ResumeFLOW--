@@ -1,11 +1,14 @@
 import posthog from 'posthog-js';
+import { isPosthogEnabled } from './posthogConfig';
 
 const TRACK_ONCE_PREFIX = 'resumeFlow.analytics.once';
 
 const resolveOnceKey = (key: string) => `${TRACK_ONCE_PREFIX}.${key}`;
 
+const canTrack = () => typeof window !== 'undefined' && isPosthogEnabled();
+
 const scheduleCapture = (action: () => void) => {
-  if (typeof window === 'undefined') {
+  if (!canTrack()) {
     return;
   }
   if ('requestIdleCallback' in window) {
@@ -40,7 +43,7 @@ export const trackEvent = (event: string, properties?: Record<string, any>) => {
 };
 
 const resolveFlush = () => {
-  if (typeof window === 'undefined') {
+  if (!canTrack()) {
     return null;
   }
   const typedPosthog = posthog as typeof posthog & { flush?: () => Promise<void> | void };
@@ -48,7 +51,7 @@ const resolveFlush = () => {
 };
 
 export const trackEventImmediate = (event: string, properties?: Record<string, any>) => {
-  if (typeof window === 'undefined') {
+  if (!canTrack()) {
     return null;
   }
   posthog.capture(event, properties ?? {});
@@ -61,6 +64,9 @@ export const trackEventOnce = (
   onceKey: string,
   properties?: Record<string, any>
 ) => {
+  if (!canTrack()) {
+    return;
+  }
   if (hasTracked(onceKey)) {
     return;
   }

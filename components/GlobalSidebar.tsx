@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, Settings, LogOut, BarChart3 } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, BarChart3 } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { useAdmin } from '../hooks/useAdmin';
@@ -81,10 +81,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
       </div>
 
       <div className="mt-auto flex flex-col gap-6 w-full items-center mb-2">
-        <button className="p-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all relative group">
-          <Settings className="w-6 h-6" />
-          <div className="nav-tooltip">全局设置</div>
-        </button>
         <button
           className="p-3 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-950/30 transition-all relative group"
           onClick={handleSignOut}

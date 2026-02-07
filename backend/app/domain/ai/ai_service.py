@@ -111,6 +111,17 @@ def _log_http_error(response: httpx.Response) -> None:
         _safe_response_text(response),
     )
 
+def _log_http_success(response: httpx.Response, model: str, message_count: int) -> None:
+    request_id = response.headers.get("x-request-id") or response.headers.get("x-requestid")
+    logger.info(
+        "AI request success: url=%s model=%s messages=%s status=%s request_id=%s",
+        str(response.request.url) if response.request else "<unknown>",
+        model,
+        message_count,
+        response.status_code,
+        request_id or "<none>",
+    )
+
 
 async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> Dict[str, Any]:
     payload = {
@@ -127,6 +138,7 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
             _log_http_error(response)
             raise
         data = response.json()
+        _log_http_success(response, payload["model"], len(messages))
     content = _extract_content(data)
     if json_mode:
         return _parse_json_content(content)

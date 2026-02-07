@@ -73,20 +73,20 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     jobKeywords.map((keyword) => (
                                         <span
                                             key={keyword}
-                                            className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
+                                            className="text-[11.5px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
                                         >
                                             {keyword}
                                         </span>
                                     ))
                                 ) : (
-                                    <span className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">
+                                    <span className="text-[11.5px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">
                                         暂无关键词
                                     </span>
                                 )}
                             </div>
                         </div>
                         {analysisResult?.summary ? (
-                            <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                            <p className="text-[11.5px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
                                 {analysisResult.summary}
                             </p>
                         ) : null}
@@ -95,7 +95,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
                         <div className="relative group">
                             <textarea
-                                className="w-full h-24 p-3 text-xs bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
+                                className="w-full h-24 p-3 text-sm bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
                                 placeholder="在此粘贴职位要求 (Job Description)..."
                                 value={jdText}
                                 onChange={(e) => onJdTextChange(e.target.value)}
@@ -103,7 +103,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             <button
                                 onClick={onAnalyze}
                                 disabled={isAnalyzing}
-                                className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[10px] font-bold px-2 disabled:opacity-60"
+                                className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[11.5px] font-bold px-2 disabled:opacity-60"
                             >
                                 <Wand2 className="w-3 h-3" />
                                 {isAnalyzing ? '分析中...' : '开始分析'}
@@ -116,11 +116,11 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         score={analysisResult.matchPercentage ?? 0}
                                         trend={analysisResult.matchTrend}
                                     />
-                                    <span className="text-[10px] text-emerald-600/80">
+                                    <span className="text-[11.5px] text-emerald-600/80">
                                         Missing: {(analysisResult.missingKeywords || []).join(', ')}
                                     </span>
                                 </div>
-                                <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                                <p className="text-[11.5px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
                                     {analysisResult.summary}
                                 </p>
                             </div>

@@ -259,11 +259,15 @@ const resolveMeasuredContentHeight = (container: HTMLElement) => {
 
 type ResumeEditorProps = {
     cachedResumes?: DashboardResume[];
+    cachedResumesOwnerKey?: string | null;
+    authUserKey?: string | null;
     onResumesUpdate?: (resumes: DashboardResume[]) => void;
 };
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({
     cachedResumes = [],
+    cachedResumesOwnerKey = null,
+    authUserKey = null,
     onResumesUpdate,
 }) => {
     const [isDarkMode, setIsDarkMode] = useState(false);
@@ -293,6 +297,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         new Map()
     );
     const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([]);
+    const isCacheOwnerMatched = Boolean(
+        cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
+    );
     // 教育背景/证书/技能选择状态
     const [selectedEduIds, setSelectedEduIds] = useState<Set<string>>(new Set());
     const [selectedCertIds, setSelectedCertIds] = useState<Set<string>>(new Set());
@@ -561,7 +568,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     });
     const updateDashboardCache = useCallback(
         (updated: ResumeRecord) => {
-            if (!onResumesUpdate || cachedResumes.length === 0) {
+            if (!onResumesUpdate || cachedResumes.length === 0 || !isCacheOwnerMatched) {
                 return;
             }
             const next = cachedResumes.map((resume) =>
@@ -575,7 +582,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             );
             onResumesUpdate(next);
         },
-        [cachedResumes, onResumesUpdate]
+        [cachedResumes, isCacheOwnerMatched, onResumesUpdate]
     );
     useEffect(() => {
         if (!resumeDetail?.resume) {

@@ -31,7 +31,7 @@ export const MatchBadge: React.FC<MatchBadgeProps> = ({
     trend,
 }) => (
     <span
-        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${MATCH_BADGE_STYLES[tone][variant]} ${className}`.trim()}
+        className={`text-[11.5px] font-semibold px-2 py-0.5 rounded-full ${MATCH_BADGE_STYLES[tone][variant]} ${className}`.trim()}
     >
         匹配度 {score}%
         {trend ? <span className={`ml-1 ${TREND_CLASSES[trend]}`}>{TREND_LABELS[trend]}</span> : null}
@@ -39,7 +39,7 @@ export const MatchBadge: React.FC<MatchBadgeProps> = ({
 );
 
 export const StaleBadge: React.FC = () => (
-    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+    <span className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
         待更新
     </span>
 );

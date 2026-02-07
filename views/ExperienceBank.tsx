@@ -73,9 +73,10 @@ const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankExportS
 interface ExperienceBankProps {
   cachedProfile?: any;
   onProfileUpdate?: (data: any) => void;
+  shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
 }
 
-const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfileUpdate }) => {
+const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfileUpdate, shouldOpenResumeUpload = false }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -177,6 +178,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
     loadProfile();
   }, []); // ✅ 空依赖数组，只在挂载时执行一次
+
+  // 检测是否需要自动打开简历上传弹窗
+  useEffect(() => {
+    if (shouldOpenResumeUpload) {
+      console.log('[ExperienceBank] 自动打开简历上传弹窗');
+      setIsResumeModalOpen(true);
+    }
+  }, [shouldOpenResumeUpload]);
 
   // 开始编辑个人信息
   const handleEditProfile = () => {

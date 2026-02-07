@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate, Eye, PencilLine } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate, Eye, PencilLine, UploadCloud } from 'lucide-react';
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
@@ -15,8 +15,10 @@ import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
 import { loadJDAnalysisCache } from './jdAnalysisStorage';
 
 interface DashboardProps {
-  setView: (view: ViewState) => void;
+  setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
   cachedResumes?: Resume[]; // 从 App 传入的缓存数据
+  cachedResumesOwnerKey?: string | null;
+  authUserKey?: string | null;
   onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
 }
 
@@ -46,6 +48,67 @@ const RENAME_TOAST_MESSAGES = {
   success: '名称已更新',
   error: '重命名失败，请重试',
 } as const;
+const DROPDOWN_WIDTH = 192;
+const DROPDOWN_OFFSET = 4;
+const DROPDOWN_VIEWPORT_PADDING = 8;
+// 首次定位时的预估高度，实际渲染后会用真实高度校正，避免菜单被视口裁切。
+const DROPDOWN_ESTIMATED_HEIGHT = 200;
+
+type DropdownAnchor = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+type DropdownPosition = {
+  top: number;
+  left: number;
+};
+
+const buildDropdownAnchor = (rect: DOMRect): DropdownAnchor => ({
+  top: rect.top,
+  right: rect.right,
+  bottom: rect.bottom,
+  left: rect.left,
+});
+
+const clampNumber = (value: number, min: number, max: number) => {
+  return Math.min(Math.max(value, min), max);
+};
+
+const resolveDropdownPosition = (
+  anchor: DropdownAnchor,
+  menuSize: { width: number; height: number }
+): DropdownPosition => {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const menuWidth = menuSize.width || DROPDOWN_WIDTH;
+  const menuHeight = menuSize.height || DROPDOWN_ESTIMATED_HEIGHT;
+  const spaceBelow = viewportHeight - anchor.bottom;
+  const spaceAbove = anchor.top;
+  const shouldOpenUp = spaceBelow < menuHeight + DROPDOWN_OFFSET && spaceAbove > spaceBelow;
+  const maxTop = Math.max(DROPDOWN_VIEWPORT_PADDING, viewportHeight - menuHeight - DROPDOWN_VIEWPORT_PADDING);
+  const maxLeft = Math.max(DROPDOWN_VIEWPORT_PADDING, viewportWidth - menuWidth - DROPDOWN_VIEWPORT_PADDING);
+  const top = shouldOpenUp
+    ? clampNumber(
+      anchor.top - menuHeight - DROPDOWN_OFFSET,
+      DROPDOWN_VIEWPORT_PADDING,
+      maxTop
+    )
+    : clampNumber(
+      anchor.bottom + DROPDOWN_OFFSET,
+      DROPDOWN_VIEWPORT_PADDING,
+      maxTop
+    );
+  const idealLeft = anchor.right - menuWidth;
+  const left = clampNumber(
+    idealLeft,
+    DROPDOWN_VIEWPORT_PADDING,
+    maxLeft
+  );
+  return { top, left };
+};
 
 const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
   return value === 'list' ? 'list' : 'grid';
@@ -108,17 +171,30 @@ type ResumeRecord = Parameters<typeof mapResumeToDashboard>[0];
 
 const mapResumesToDashboard = (resumes: ResumeRecord[]) => resumes.map(mapResumeToDashboard);
 
-const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onResumesUpdate }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+  setView,
+  cachedResumes = [],
+  cachedResumesOwnerKey = null,
+  authUserKey = null,
+  onResumesUpdate,
+}) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const { profile: userProfile } = useProfile();
+  const isCacheOwnerMatched = Boolean(
+    cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
+  );
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     resolveStoredViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
   );
-  const [resumes, setResumes] = useState<Resume[]>(cachedResumes);
-  const [isLoading, setIsLoading] = useState(cachedResumes.length === 0);
+  const [resumes, setResumes] = useState<Resume[]>(() =>
+    isCacheOwnerMatched ? cachedResumes : []
+  );
+  const [isLoading, setIsLoading] = useState(!isCacheOwnerMatched);
   const [error, setError] = useState<string | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number, left: number } | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownAnchor, setDropdownAnchor] = useState<DropdownAnchor | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<DropdownPosition | null>(null);
   const [isCreatingResume, setIsCreatingResume] = useState(false);
   const [isDeletingResume, setIsDeletingResume] = useState(false);
   const [isCopyingResume, setIsCopyingResume] = useState(false);
@@ -143,13 +219,16 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
   }, [onResumesUpdate]);
 
   useEffect(() => {
+    if (!isCacheOwnerMatched) {
+      return;
+    }
     if (cachedResumes.length === 0) {
       setResumes((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     const hydrated = mergeMatchRatesIntoResumes(cachedResumes);
     setResumes((prev) => (areResumeListsEqual(prev, hydrated) ? prev : hydrated));
-  }, [cachedResumes]);
+  }, [cachedResumes, isCacheOwnerMatched]);
 
   useEffect(() => {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
@@ -165,37 +244,40 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
     handler(resumes);
   }, [resumes]);
 
-  const fetchDashboardResumes = async (options?: { force?: boolean }) => {
+  const fetchDashboardResumes = useCallback(async (options?: { force?: boolean }) => {
     const data = await resumeService.list(options);
     return mapResumesToDashboard(data);
-  };
+  }, []);
 
-  // 从后端加载简历列表
-  useEffect(() => {
-    const loadResumes = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        console.log('[Dashboard] 开始加载简历列表...');
-        const mappedResumes = await fetchDashboardResumes({ force: true });
-
-        console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
-        setResumes(mappedResumes);
-      } catch (err) {
-        console.error('Failed to load resumes:', err);
-        setError('加载简历列表失败,请稍后重试');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // 只在组件挂载时执行一次，如果有缓存数据则直接使用
-    if (resumes.length === 0) {
-      loadResumes();
-    } else {
-      console.log('[Dashboard] 已有数据，跳过加载');
+  const loadKey = authUserKey ?? 'unknown';
+  const lastLoadKeyRef = useRef<string | null>(null);
+  const loadResumes = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log('[Dashboard] 开始加载简历列表...');
+      const mappedResumes = await fetchDashboardResumes({ force: true });
+      console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
+      setResumes(mappedResumes);
+    } catch (err) {
+      console.error('Failed to load resumes:', err);
+      setError('加载简历列表失败,请稍后重试');
+    } finally {
+      setIsLoading(false);
     }
-  }, []); // ✅ 空依赖数组，只在挂载时执行一次
+  }, [fetchDashboardResumes]);
+
+  // 从后端加载简历列表（用户切换时强制刷新）
+  useEffect(() => {
+    if (lastLoadKeyRef.current === loadKey) {
+      return;
+    }
+    lastLoadKeyRef.current = loadKey;
+    if (!isCacheOwnerMatched) {
+      setResumes([]);
+    }
+    void loadResumes();
+  }, [isCacheOwnerMatched, loadKey, loadResumes]);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -227,26 +309,43 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
     }
   };
 
+  const closeDropdown = useCallback(() => {
+    setOpenDropdownId(null);
+    setDropdownPos(null);
+    setDropdownAnchor(null);
+  }, []);
+
+  const syncDropdownPosition = useCallback((anchor: DropdownAnchor) => {
+    if (!dropdownRef.current) {
+      return;
+    }
+    const rect = dropdownRef.current.getBoundingClientRect();
+    const nextPos = resolveDropdownPosition(anchor, { width: rect.width, height: rect.height });
+    setDropdownPos((prev) => {
+      if (prev && prev.top === nextPos.top && prev.left === nextPos.left) {
+        return prev;
+      }
+      return nextPos;
+    });
+  }, []);
+
   const handleDropdownClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (openDropdownId === id) {
-      setOpenDropdownId(null);
-      setDropdownPos(null);
-    } else {
-      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-      setOpenDropdownId(id);
-      // Position the fixed dropdown near the button
-      setDropdownPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.right - 192 + window.scrollX // 192px is w-48
-      });
+      closeDropdown();
+      return;
     }
+    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+    const anchor = buildDropdownAnchor(rect);
+    setOpenDropdownId(id);
+    setDropdownAnchor(anchor);
+    setDropdownPos(resolveDropdownPosition(anchor, { width: DROPDOWN_WIDTH, height: DROPDOWN_ESTIMATED_HEIGHT }));
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setDeleteTargetId(id);
-    setOpenDropdownId(null);
+    closeDropdown();
   };
 
   const duplicateResume = async (id: string, sourceName: string) => {
@@ -272,7 +371,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
     if (isCopyingResume) {
       return;
     }
-    setOpenDropdownId(null);
+    closeDropdown();
     const source = resumes.find(r => r.id === id);
     if (!source) {
       return;
@@ -282,13 +381,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
 
   const handleRename = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setOpenDropdownId(null);
+    closeDropdown();
     setRenameTargetId(id);
   };
 
   const handlePreview = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setOpenDropdownId(null);
+    closeDropdown();
     setPreviewTargetId(id);
   };
 
@@ -406,21 +505,40 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
     setDeleteTargetId(null);
   };
 
+  useLayoutEffect(() => {
+    if (!openDropdownId || !dropdownAnchor) {
+      return;
+    }
+    syncDropdownPosition(dropdownAnchor);
+  }, [dropdownAnchor, openDropdownId, syncDropdownPosition]);
+
+  useEffect(() => {
+    if (!openDropdownId || !dropdownAnchor) {
+      return;
+    }
+    const handleResize = () => syncDropdownPosition(dropdownAnchor);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [dropdownAnchor, openDropdownId, syncDropdownPosition]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       // If clicking outside the dropdown menu
       const target = event.target as Element;
       if (!target.closest('.dropdown-menu') && !target.closest('.dropdown-trigger')) {
-        setOpenDropdownId(null);
+        closeDropdown();
       }
     };
+    const handleScroll = () => closeDropdown();
     document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('scroll', () => setOpenDropdownId(null), true); // Close on scroll
+    window.addEventListener('scroll', handleScroll, true); // Close on scroll
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('scroll', () => setOpenDropdownId(null), true);
+      window.removeEventListener('scroll', handleScroll, true);
     };
-  }, []);
+  }, [closeDropdown]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -452,6 +570,29 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-8">
         <div className="max-w-7xl mx-auto space-y-10">
+          {/* 推广卡片：当没有简历时显示 */}
+          {resumes.length === 0 && (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-800 p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                    <UploadCloud className="w-6 h-6 text-primary" />
+                    快速开始，从导入简历开始
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    暂无经历数据，导入您的简历快速构建经历库，让ResumeFLOW为您智能分析和优化
+                  </p>
+                </div>
+                <button
+                  onClick={() => setView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
+                  className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
+                >
+                  <UploadCloud className="w-5 h-5" />
+                  导入简历
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">欢迎回来，{welcomeName}</h1>
@@ -613,6 +754,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
       {/* Global Portal-like Dropdown */}
       {openDropdownId && dropdownPos && (
         <div
+          ref={dropdownRef}
           className="dropdown-menu fixed w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 z-[9999]"
           style={{ top: dropdownPos.top, left: dropdownPos.left }}
         >

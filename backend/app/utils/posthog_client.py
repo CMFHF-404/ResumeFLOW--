@@ -28,7 +28,7 @@ def _normalize_host(host: str) -> str:
 
 def _load_config() -> Optional[PosthogClientConfig]:
     settings = load_settings()
-    if not settings.posthog_api_key:
+    if not settings.posthog_enabled or not settings.posthog_api_key:
         return None
     return PosthogClientConfig(
         api_key=settings.posthog_api_key,

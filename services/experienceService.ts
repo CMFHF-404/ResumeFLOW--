@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { getAuthCacheKey } from './apiClient';
 import { trackFirstExperienceCreated } from '../utils/analyticsTracker';
 
 export type ExperienceCategory = 'work' | 'project' | 'education';
@@ -94,11 +94,13 @@ const isExperienceListCacheFresh = (entry: ExperienceListCacheEntry, now: number
 const experienceListCache = new Map<ExperienceListCacheKey, ExperienceListCacheEntry>();
 const experienceListInFlight = new Map<ExperienceListCacheKey, Promise<ExperienceListItem[]>>();
 let experienceListCacheVersion = 0;
+let experienceListCacheOwnerKey: string | null = null;
 
 const clearExperienceListCache = () => {
     experienceListCacheVersion += 1;
     experienceListCache.clear();
     experienceListInFlight.clear();
+    experienceListCacheOwnerKey = null;
 };
 
 const filterArchivedExperiences = (items: ExperienceListItem[]): ExperienceListItem[] => {
@@ -117,12 +119,21 @@ const getCachedExperienceList = (category?: ExperienceCategory): ExperienceListI
     return filterArchivedExperiences(cached.data);
 };
 
+const ensureExperienceCacheOwner = async () => {
+    const cacheOwnerKey = await getAuthCacheKey();
+    if (experienceListCacheOwnerKey !== cacheOwnerKey) {
+        clearExperienceListCache();
+        experienceListCacheOwnerKey = cacheOwnerKey;
+    }
+};
+
 export const experienceService = {
     peekList(category?: ExperienceCategory) {
         return getCachedExperienceList(category);
     },
 
     async list(category?: ExperienceCategory, options?: ExperienceListOptions) {
+        await ensureExperienceCacheOwner();
         const cacheKey = buildExperienceListCacheKey(category);
         const now = Date.now();
         const shouldUseCache = !options?.force;
@@ -183,5 +194,9 @@ export const experienceService = {
         const response = await apiClient.delete<ExperienceDetail>(`/experiences/${id}`);
         clearExperienceListCache();
         return response.data;
+    },
+
+    clearListCache() {
+        clearExperienceListCache();
     },
 };

@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { getAuthCacheKey } from './apiClient';
 
 export interface Resume {
     id: string;
@@ -55,6 +55,7 @@ export interface ResumeUpdatePayload {
 let cachedResumeList: Resume[] | null = null;
 let inFlightResumeListRequest: Promise<Resume[]> | null = null;
 let resumeListRequestVersion = 0;
+let resumeListCacheOwnerKey: string | null = null;
 
 const requestResumeList = async (options?: { cacheBust?: boolean }): Promise<Resume[]> => {
     const requestConfig = options?.cacheBust
@@ -67,8 +68,20 @@ const requestResumeList = async (options?: { cacheBust?: boolean }): Promise<Res
     return response.data;
 };
 
+const clearResumeListCache = () => {
+    resumeListRequestVersion += 1;
+    cachedResumeList = null;
+    inFlightResumeListRequest = null;
+    resumeListCacheOwnerKey = null;
+};
+
 export const resumeService = {
     async list(options?: { force?: boolean }) {
+        const cacheOwnerKey = await getAuthCacheKey();
+        if (resumeListCacheOwnerKey !== cacheOwnerKey) {
+            clearResumeListCache();
+            resumeListCacheOwnerKey = cacheOwnerKey;
+        }
         const shouldUseCache = !options?.force;
         if (shouldUseCache && cachedResumeList) {
             return cachedResumeList;
@@ -136,8 +149,6 @@ export const resumeService = {
     },
 
     clearListCache() {
-        resumeListRequestVersion += 1;
-        cachedResumeList = null;
-        inFlightResumeListRequest = null;
+        clearResumeListCache();
     },
 };
