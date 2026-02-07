@@ -2,14 +2,22 @@ import React from 'react';
 import { useLogto } from '@logto/react';
 import { FolderOpen, Database, Wand2, Settings, LogOut } from 'lucide-react';
 import { ViewState } from '../types';
+import { useProfile } from '../hooks/useProfile';
+import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
 
 interface GlobalSidebarProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
 }
 
+const DEFAULT_PROFILE_NAME = '即刻开始';
+const DEFAULT_AVATAR_PLACEHOLDER = '?';
+
 const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) => {
   const { signOut } = useLogto();
+  const { profile } = useProfile();
+  const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
+  const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
 
   const getButtonClass = (view: ViewState) => {
     const baseClass = "p-3 rounded-xl transition-all relative group";
@@ -29,9 +37,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
     <nav className="w-[72px] bg-slate-900 flex flex-col items-center py-6 shrink-0 z-50 gap-8 h-full">
       <div className="relative group cursor-pointer" onClick={() => setView(ViewState.DASHBOARD)}>
         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg ring-2 ring-slate-800 hover:ring-slate-700 transition-all">
-          XC
+          {avatarInitial}
         </div>
-        <div className="nav-tooltip">陈小象</div>
+        <div className="nav-tooltip">{displayName}</div>
       </div>
 
       <div className="flex flex-col gap-6 w-full items-center">

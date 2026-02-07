@@ -2,6 +2,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate, Eye, PencilLine } from 'lucide-react';
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
+import { useProfile } from '../hooks/useProfile';
+import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
@@ -21,6 +23,7 @@ const DELETE_CONFIRM_LABEL = '删除';
 const DELETE_CANCEL_LABEL = '取消';
 const COPY_SUFFIX = ' (副本)';
 const VIEW_MODE_STORAGE_KEY = 'resumeFlow.dashboardViewMode';
+const DEFAULT_WELCOME_NAME = '即刻开始';
 const DELETE_TOAST_MESSAGES = {
   loading: '正在删除简历...',
   success: '删除成功',
@@ -66,6 +69,7 @@ const mapResumesToDashboard = (resumes: ResumeRecord[]) => resumes.map(mapResume
 
 const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onResumesUpdate }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const { profile: userProfile } = useProfile();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     resolveStoredViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
   );
@@ -81,6 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
+  const welcomeName = resolveDisplayName(userProfile?.full_name, DEFAULT_WELCOME_NAME);
   const {
     toasts,
     loading: showToastLoading,
@@ -399,10 +404,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
         <div className="max-w-7xl mx-auto space-y-10">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">欢迎回来，陈小象</h1>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">欢迎回来，{welcomeName}</h1>
               <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-                你已创建了 <span className="font-bold text-gray-900 dark:text-white">{resumes.length}</span> 份简历，本周有 3 次优化建议。
+                你已创建了 <span className="font-bold text-gray-900 dark:text-white">{resumes.length}</span> 份简历。
               </p>
             </div>
 

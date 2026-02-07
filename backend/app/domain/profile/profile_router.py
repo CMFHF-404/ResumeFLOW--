@@ -1,6 +1,6 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...database import get_session
@@ -10,6 +10,23 @@ from .profile_service import get_current_profile, update_profile
 from .schemas import ProfileLinkPayload, ProfileRead, ProfileUpdate
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+NAME_CLAIM_KEYS = ("name", "username", "email")
+
+
+def _normalize_full_name(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _extract_full_name_hint(claims: Dict[str, Any]) -> Optional[str]:
+    for key in NAME_CLAIM_KEYS:
+        candidate = _normalize_full_name(claims.get(key))
+        if candidate:
+            return candidate
+    return None
 
 
 def _build_legacy_links(social_links: Dict[str, Any]) -> List[ProfileLinkPayload]:
@@ -46,10 +63,19 @@ def _profile_to_read(profile: Profile) -> ProfileRead:
 
 @router.get("", response_model=ProfileRead)
 async def get_profile(
+    request: Request,
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    profile = await get_current_profile(session, current_user.id)
+    claims = getattr(request.state, "claims", None)
+    if not isinstance(claims, dict):
+        claims = {}
+    full_name_hint = _extract_full_name_hint(claims)
+    profile = await get_current_profile(
+        session,
+        current_user.id,
+        full_name_hint=full_name_hint,
+    )
     return _profile_to_read(profile)
 
 

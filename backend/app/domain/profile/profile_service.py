@@ -14,12 +14,16 @@ class NotFoundError(Exception):
     pass
 
 
-async def get_current_profile(session: AsyncSession, user_id: str) -> Profile:
+async def get_current_profile(
+    session: AsyncSession,
+    user_id: str,
+    full_name_hint: Optional[str] = None,
+) -> Profile:
     profile = await _fetch_profile(session, user_id)
     if profile:
         return await _hydrate_social_links(session, profile)
     # Lazy registration: create local user/profile on first access.
-    return await _create_profile(session, user_id)
+    return await _create_profile(session, user_id, full_name_hint=full_name_hint)
 
 
 async def update_profile(
@@ -105,10 +109,22 @@ async def _hydrate_social_links(session: AsyncSession, profile: Profile) -> Prof
     return profile
 
 
-async def _create_profile(session: AsyncSession, user_id: str) -> Profile:
+def _normalize_full_name_hint(full_name_hint: Optional[str]) -> Optional[str]:
+    if not full_name_hint:
+        return None
+    normalized = full_name_hint.strip()
+    return normalized or None
+
+
+async def _create_profile(
+    session: AsyncSession,
+    user_id: str,
+    full_name_hint: Optional[str] = None,
+) -> Profile:
     try:
         await _ensure_user(session, user_id)
-        profile = Profile(user_id=user_id)
+        normalized_full_name = _normalize_full_name_hint(full_name_hint)
+        profile = Profile(user_id=user_id, full_name=normalized_full_name)
         session.add(profile)
         await session.commit()
     except IntegrityError:
