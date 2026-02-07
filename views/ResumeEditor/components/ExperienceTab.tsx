@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
@@ -7,6 +7,43 @@ import { ADD_PROJECT_EXPERIENCE_LABEL, ADD_WORK_EXPERIENCE_LABEL } from '../cons
 import CertificationListSection from './CertificationListSection';
 import ExperienceListSection from './ExperienceList/ListSection';
 import SkillListSection from './SkillListSection';
+
+const SCROLL_TARGET_ATTR = 'data-rf-edit-target';
+const SCROLL_BEHAVIOR: ScrollBehavior = 'smooth';
+const SCROLL_BLOCK: ScrollLogicalPosition = 'center';
+const SCROLL_TARGET_PREFIX = {
+    certification: 'certification',
+    skillGroup: 'skill-group',
+} as const;
+
+const escapeSelectorValue = (value: string) => {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+        return CSS.escape(value);
+    }
+    return value.replace(/"/g, '\\"');
+};
+
+const buildScrollSelector = (target: string) => (
+    `[${SCROLL_TARGET_ATTR}="${escapeSelectorValue(target)}"]`
+);
+
+const scrollToTarget = (target: string) => {
+    if (typeof document === 'undefined') {
+        return;
+    }
+    const element = document.querySelector(buildScrollSelector(target));
+    if (element instanceof HTMLElement) {
+        element.scrollIntoView({ behavior: SCROLL_BEHAVIOR, block: SCROLL_BLOCK });
+    }
+};
+
+const resolveSkillGroupTarget = (
+    skillId: string,
+    groups: ExperienceTabProps['skillGroups']
+) => {
+    const group = groups.find((item) => item.skills.some((skill) => skill.id === skillId));
+    return group ? `${SCROLL_TARGET_PREFIX.skillGroup}:${group.name}` : null;
+};
 
 const ExperienceTab: React.FC<ExperienceTabProps> = ({
     experience,
@@ -30,6 +67,34 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetProjectSort,
     onResetCertificationSort,
 }) => {
+    const scrollTarget = useMemo(() => {
+        if (experience.editingExpId) {
+            return null;
+        }
+        if (certification.editingCertificationId) {
+            return `${SCROLL_TARGET_PREFIX.certification}:${certification.editingCertificationId}`;
+        }
+        if (skill.editingSkillId) {
+            return resolveSkillGroupTarget(skill.editingSkillId, skillGroups);
+        }
+        return null;
+    }, [
+        experience.editingExpId,
+        certification.editingCertificationId,
+        skill.editingSkillId,
+        skillGroups,
+    ]);
+
+    useEffect(() => {
+        if (!scrollTarget || typeof window === 'undefined') {
+            return;
+        }
+        const frameId = window.requestAnimationFrame(() => {
+            scrollToTarget(scrollTarget);
+        });
+        return () => window.cancelAnimationFrame(frameId);
+    }, [scrollTarget]);
+
     if (experience.editingExpId) {
         return (
             <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">

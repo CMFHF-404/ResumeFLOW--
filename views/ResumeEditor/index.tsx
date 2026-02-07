@@ -971,9 +971,7 @@ const handleResetCertificationSort = () => {
         return skillGroups
             .map((group) => ({
                 name: group.name,
-                skills: group.skills
-                    .filter((skill) => selectedSkillIds.has(skill.id))
-                    .map((skill) => skill.name),
+                skills: group.skills.filter((skill) => selectedSkillIds.has(skill.id)),
             }))
             .filter((group) => group.skills.length > 0);
     }, [skillGroups, selectedSkillIds]);
@@ -1016,6 +1014,8 @@ const handleResetCertificationSort = () => {
                     onDragEnd={() => {}}
                     onNavigateTab={() => {}}
                     onEditExperience={() => {}}
+                    onEditCertification={() => {}}
+                    onEditSkill={() => {}}
                 />
             </div>
         );
@@ -1047,6 +1047,16 @@ const handleResetCertificationSort = () => {
     const handleEditExperience = (id: string) => {
         setSidebarTab('experience');
         experience.startEditingExperience(id);
+    };
+    const handleEditCertification = (id: string) => {
+        experience.cancelEditingExperience();
+        setSidebarTab('experience');
+        certification.beginEditCertification(id);
+    };
+    const handleEditSkill = (id: string) => {
+        experience.cancelEditingExperience();
+        setSidebarTab('experience');
+        skill.beginEditSkill(id);
     };
     const handleToggleJdCollapse = () => {
         setIsJDCollapsed((prev) => !prev);
@@ -1171,6 +1181,8 @@ const handleResetCertificationSort = () => {
                     onDragEnd={clearDragState}
                     onNavigateTab={setSidebarTab}
                     onEditExperience={handleEditExperience}
+                    onEditCertification={handleEditCertification}
+                    onEditSkill={handleEditSkill}
                 />
             </div>
             <ToastContainer toasts={toasts} onClose={closeToast} />

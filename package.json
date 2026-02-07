@@ -15,6 +15,7 @@
     "axios": "^1.13.4",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
+    "posthog-js": "^1.342.1",
     "react": "^19.2.4",
     "react-datepicker": "^9.1.0",
     "react-dom": "^19.2.4"

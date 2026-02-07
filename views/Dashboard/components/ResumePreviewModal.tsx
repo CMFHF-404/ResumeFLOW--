@@ -55,7 +55,7 @@ type PreviewState = {
     selectedEduIds: Set<string>;
     sortedCertifications: CertificationView[];
     selectedCertIds: Set<string>;
-    selectedSkillGroups: Array<{ name: string; skills: string[] }>;
+    selectedSkillGroups: SkillGroupView[];
     density: 'compact' | 'standard' | 'spacious';
 };
 
@@ -130,9 +130,7 @@ const buildSelectedSkillGroups = (groups: SkillGroupView[], selectedIds: Set<str
     return groups
         .map((group) => ({
             name: group.name,
-            skills: group.skills
-                .filter((skill) => selectedIds.has(skill.id))
-                .map((skill) => skill.name),
+            skills: group.skills.filter((skill) => selectedIds.has(skill.id)),
         }))
         .filter((group) => group.skills.length > 0);
 };
@@ -398,6 +396,8 @@ const buildResumePreviewProps = (
     onDragEnd: noopDragEnd,
     onNavigateTab: noopNavigate,
     onEditExperience: noopEdit,
+    onEditCertification: noopEdit,
+    onEditSkill: noopEdit,
 });
 
 const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({

@@ -101,59 +101,6 @@ const SkillHeader: React.FC<{
     </div>
 );
 
-const SkillEditor: React.FC<{
-    draft: SkillActions['skillDraft'] | null;
-    onUpdate: SkillActions['updateSkillDraft'];
-    onCancel: SkillActions['cancelSkillEdit'];
-    onSave: SkillActions['handleSaveSkill'];
-    isSaving: boolean;
-    className?: string;
-}> = ({ draft, onUpdate, onCancel, onSave, isSaving, className }) => {
-    if (!draft) {
-        return null;
-    }
-    return (
-        <div
-            className={`bg-white dark:bg-gray-800 rounded-lg border border-rose-200/60 dark:border-rose-800/40 p-3 space-y-2 ${className || ''}`.trim()}
-        >
-            <div className="grid grid-cols-2 gap-2">
-                <div>
-                    <label className="text-[10px] text-gray-400">技能名称</label>
-                    <input
-                        className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-rose-400 focus:border-rose-400"
-                        value={draft.name}
-                        onChange={(event) => onUpdate('name', event.target.value)}
-                    />
-                </div>
-                <div>
-                    <label className="text-[10px] text-gray-400">技能分类</label>
-                    <input
-                        className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-rose-400 focus:border-rose-400 disabled:bg-gray-100 dark:disabled:bg-gray-900/40"
-                        value={draft.category}
-                        onChange={(event) => onUpdate('category', event.target.value)}
-                    />
-                </div>
-            </div>
-            <div className="flex items-center justify-end gap-2">
-                <button
-                    onClick={onCancel}
-                    className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded"
-                    disabled={isSaving}
-                >
-                    取消
-                </button>
-                <button
-                    onClick={onSave}
-                    className="text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 px-3 py-1 rounded disabled:opacity-60"
-                    disabled={isSaving}
-                >
-                    {isSaving ? '保存中...' : '保存'}
-                </button>
-            </div>
-        </div>
-    );
-};
-
 const SkillTag: React.FC<{
     skill: SkillItemView;
     isSelected: boolean;
@@ -163,8 +110,12 @@ const SkillTag: React.FC<{
     onToggleSelection: (id: string) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string) => void;
+    onUpdateDraftName: (value: string) => void;
+    onSaveEdit: () => void;
+    onCancelEdit: () => void;
     deletingIds: Set<string>;
     draftName: string;
+    isSaving: boolean;
 }> = ({
     skill,
     isSelected,
@@ -174,56 +125,95 @@ const SkillTag: React.FC<{
     onToggleSelection,
     onDelete,
     onEdit,
+    onUpdateDraftName,
+    onSaveEdit,
+    onCancelEdit,
     deletingIds,
     draftName,
+    isSaving,
 }) => (
-    <label
-        className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected || isEditing
-            ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
-            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
-            }`}
-    >
-        <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggleSelection(skill.id)}
-            className="hidden"
-        />
-        {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
-        <span>{isEditing ? (draftName || skill.name) : skill.name}</span>
-        {typeof matchScore === 'number' && matchScore > 0 ? (
-            <MatchBadge score={matchScore} trend={matchTrend} />
-        ) : null}
-        <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-                type="button"
-                className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
-                onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onDelete(skill.id);
+    isEditing ? (
+        <div
+            className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none"
+        >
+            {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
+            <input
+                autoFocus
+                className="bg-transparent border-none text-xs text-white p-0 m-0 w-24 outline-none focus:ring-0 placeholder-rose-200"
+                placeholder={skill.name}
+                value={draftName}
+                onChange={(event) => onUpdateDraftName(event.target.value)}
+                onBlur={() => {
+                    if (!isSaving) {
+                        onSaveEdit();
+                    }
                 }}
-                disabled={deletingIds.has(skill.id)}
-                title="删除技能"
-                aria-label="删除技能"
-            >
-                <Trash2 className="w-3 h-3" />
-            </button>
-            <button
-                type="button"
-                className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
-                onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onEdit(skill.id);
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        if (!isSaving) {
+                            onSaveEdit();
+                        }
+                    } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        onCancelEdit();
+                    }
                 }}
-                title="编辑技能"
-                aria-label="编辑技能"
-            >
-                <Edit3 className="w-3 h-3" />
-            </button>
-        </span>
-    </label>
+                disabled={isSaving}
+            />
+            {typeof matchScore === 'number' && matchScore > 0 ? (
+                <MatchBadge score={matchScore} trend={matchTrend} />
+            ) : null}
+        </div>
+    ) : (
+        <label
+            className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
+                ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
+                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
+                }`}
+        >
+            <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onToggleSelection(skill.id)}
+                className="hidden"
+            />
+            {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
+            <span>{skill.name}</span>
+            {typeof matchScore === 'number' && matchScore > 0 ? (
+                <MatchBadge score={matchScore} trend={matchTrend} />
+            ) : null}
+            <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                    type="button"
+                    className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onDelete(skill.id);
+                    }}
+                    disabled={deletingIds.has(skill.id)}
+                    title="删除技能"
+                    aria-label="删除技能"
+                >
+                    <Trash2 className="w-3 h-3" />
+                </button>
+                <button
+                    type="button"
+                    className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onEdit(skill.id);
+                    }}
+                    title="编辑技能"
+                    aria-label="编辑技能"
+                >
+                    <Edit3 className="w-3 h-3" />
+                </button>
+            </span>
+        </label>
+    )
 );
 
 const SkillGroupHeader: React.FC<{
@@ -299,18 +289,6 @@ const SkillGroupBody: React.FC<{
     onToggleSelection: (id: string) => void;
 }> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection }) => (
     <div className="p-3 bg-white dark:bg-gray-800/50">
-        {skill.skillDraftContext?.mode === 'edit' ? (
-            <div className="mb-2">
-                <SkillEditor
-                    draft={skill.skillDraft}
-                    onUpdate={skill.updateSkillDraft}
-                    onCancel={skill.cancelSkillEdit}
-                    onSave={skill.handleSaveSkill}
-                    isSaving={skill.isSavingSkill}
-                    className="border-rose-200/50 bg-rose-50/40 dark:bg-rose-900/10"
-                />
-            </div>
-        ) : null}
         <div className="flex flex-wrap gap-2">
             {group.skills.map((item) => (
                 <SkillTag
@@ -323,8 +301,12 @@ const SkillGroupBody: React.FC<{
                     onToggleSelection={onToggleSelection}
                     onDelete={skill.requestDeleteSkill}
                     onEdit={skill.beginEditSkill}
+                    onUpdateDraftName={(value) => skill.updateSkillDraft('name', value)}
+                    onSaveEdit={skill.handleSaveSkill}
+                    onCancelEdit={skill.cancelSkillEdit}
                     deletingIds={skill.deletingSkillIds}
                     draftName={skill.skillDraft?.name || ''}
+                    isSaving={skill.isSavingSkill}
                 />
             ))}
             {skill.skillDraftContext?.mode === 'group'
@@ -406,16 +388,17 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
             <SkillHeader title={title} onCreateType={skill.beginCreateSkillType} />
             {shouldShowTypeEditor ? <SkillTypeEditor skill={skill} /> : null}
             {groups.map((group) => (
-                <SkillGroupCard
-                    key={group.name}
-                    group={group}
-                    skill={skill}
-                    selectedIds={selectedIds}
-                    matchScores={matchScores}
-                    matchTrends={matchTrends}
-                    onToggleSelection={onToggleSelection}
-                    onResetRenamingCategory={onResetRenamingCategory}
-                />
+                <div key={group.name} data-rf-edit-target={`skill-group:${group.name}`}>
+                    <SkillGroupCard
+                        group={group}
+                        skill={skill}
+                        selectedIds={selectedIds}
+                        matchScores={matchScores}
+                        matchTrends={matchTrends}
+                        onToggleSelection={onToggleSelection}
+                        onResetRenamingCategory={onResetRenamingCategory}
+                    />
+                </div>
             ))}
         </div>
     );

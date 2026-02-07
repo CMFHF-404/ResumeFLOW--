@@ -6,6 +6,7 @@ import type {
     EducationView,
     ResumeEditorProfile,
     ResumeExperienceView,
+    SkillGroupView,
     StarFields,
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
@@ -122,7 +123,7 @@ export type ResumePreviewProps = {
     selectedEduIds: Set<string>;
     sortedCertifications: CertificationView[];
     selectedCertIds: Set<string>;
-    selectedSkillGroups: Array<{ name: string; skills: string[] }>;
+    selectedSkillGroups: SkillGroupView[];
     readOnly?: boolean;
     isDragging: boolean;
     draggedItemKey: string | null;
@@ -136,6 +137,8 @@ export type ResumePreviewProps = {
     onDragEnd: () => void;
     onNavigateTab: (tab: 'profile' | 'experience') => void;
     onEditExperience: (id: string) => void;
+    onEditCertification: (id: string) => void;
+    onEditSkill: (id: string) => void;
 };
 
 const ResumePreview: React.FC<ResumePreviewProps> = ({
@@ -170,6 +173,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onDragEnd,
     onNavigateTab,
     onEditExperience,
+    onEditCertification,
+    onEditSkill,
 }) => {
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT),
@@ -658,7 +663,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                     className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
-                                                                        onNavigateTab('experience');
+                                                                        onEditCertification(cert.id);
                                                                     }}
                                                                 />
                                                             </div>
@@ -764,6 +769,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         >
                                             {selectedSkillGroups.map((group) => {
                                                 const itemKey = buildDragItemKey('skillGroup', group.name);
+                                                const editableSkill = group.skills[0];
                                                 return (
                                                     <div
                                                         key={group.name}
@@ -794,7 +800,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                     className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
-                                                                        onNavigateTab('experience');
+                                                                        if (!editableSkill) {
+                                                                            return;
+                                                                        }
+                                                                        onEditSkill(editableSkill.id);
                                                                     }}
                                                                 />
                                                             </div>
@@ -804,7 +813,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         >
                                                             <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
                                                                 <span className="font-bold text-gray-900">{group.name}:</span>
-                                                                <span>{group.skills.join(', ')}</span>
+                                                                <span>{group.skills.map((skill) => skill.name).join(', ')}</span>
                                                             </div>
                                                         </div>
                                                     </div>

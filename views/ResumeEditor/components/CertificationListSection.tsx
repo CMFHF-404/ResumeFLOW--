@@ -312,23 +312,24 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
         <div className="space-y-3">
             <CertificationHeader title={title} onCreate={onBeginCreate} onResetSort={onResetSort} />
             {items.map((cert) => (
-                <CertificationItem
-                    key={cert.id}
-                    cert={cert}
-                    isSelected={selectedIds.has(cert.id)}
-                    matchRate={resolveCertificationMatchRate(cert, matchScores)}
-                    matchTrend={resolveCertificationMatchTrend(cert, matchTrends)}
-                    isEditing={editingId === cert.id && !!draft}
-                    draft={draft}
-                    onToggleSelection={onToggleSelection}
-                    onBeginEdit={onBeginEdit}
-                    onCancelEdit={onCancelEdit}
-                    onSave={onSave}
-                    onDelete={onDelete}
-                    onUpdateDraft={onUpdateDraft}
-                    deletingIds={deletingIds}
-                    isSaving={isSaving}
-                />
+                <div key={cert.id} data-rf-edit-target={`certification:${cert.id}`}>
+                    <CertificationItem
+                        cert={cert}
+                        isSelected={selectedIds.has(cert.id)}
+                        matchRate={resolveCertificationMatchRate(cert, matchScores)}
+                        matchTrend={resolveCertificationMatchTrend(cert, matchTrends)}
+                        isEditing={editingId === cert.id && !!draft}
+                        draft={draft}
+                        onToggleSelection={onToggleSelection}
+                        onBeginEdit={onBeginEdit}
+                        onCancelEdit={onCancelEdit}
+                        onSave={onSave}
+                        onDelete={onDelete}
+                        onUpdateDraft={onUpdateDraft}
+                        deletingIds={deletingIds}
+                        isSaving={isSaving}
+                    />
+                </div>
             ))}
         </div>
     );
