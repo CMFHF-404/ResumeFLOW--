@@ -11,6 +11,7 @@ type EditorToolbarProps = {
     onRestoreDefault: () => void;
     resumeName: string;
     onResumeNameChange: (name: string) => void;
+    onExportPdf: () => void;
 };
 
 const buildSaveStatusText = (state: EditorToolbarProps['saveState'], lastSavedAt: string | null) => {
@@ -45,6 +46,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     onRestoreDefault,
     resumeName,
     onResumeNameChange,
+    onExportPdf,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(resumeName);
@@ -148,7 +150,11 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                 >
                     {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                 </button>
-                <button className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                <button
+                    className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                    onClick={onExportPdf}
+                    type="button"
+                >
                     <Download className="w-4 h-4" />
                     导出 PDF
                 </button>

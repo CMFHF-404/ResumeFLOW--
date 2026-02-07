@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PrintPortal from '../../components/PrintPortal';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
+import { usePrintJob } from '../../hooks/usePrintJob';
 import { useResumeData } from '../../hooks/useResumeData';
 import { profileService } from '../../services/profileService';
 import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
@@ -24,6 +26,7 @@ import { buildStarFields, mergeStarFieldsWithSource } from '../../utils/resumeHe
 import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
+import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { DEFAULT_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
@@ -284,9 +287,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const lastSectionHoverKeyRef = useRef<string | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
+    const printPreviewRef = useRef<HTMLDivElement | null>(null);
+    const printPreviewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
     const smartPageAdjustingRef = useRef(false);
     const isUpdatingResumeNameRef = useRef(false);
+    const { printContent, isPrinting, startPrint } = usePrintJob();
 
     const layoutOrders: ResumeLayoutOrders = useMemo(
         () => ({
@@ -766,6 +772,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const handleResumeNameChange = (name: string) => {
         void applyResumeNameUpdate(name);
     };
+
     const handleDragStart = (e: React.DragEvent, itemKey: string) => {
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
@@ -970,6 +977,73 @@ const handleResetCertificationSort = () => {
             }))
             .filter((group) => group.skills.length > 0);
     }, [skillGroups, selectedSkillIds]);
+
+    const handleExportPdf = useCallback(() => {
+        if (isPrinting) {
+            return;
+        }
+        const content = (
+            <div className="rf-print-preview">
+                <ResumePreview
+                    previewRef={printPreviewRef}
+                    previewContentRef={printPreviewContentRef}
+                    lineHeight={lineHeight}
+                    fontSize={fontSize}
+                    listSpacingValue={listSpacingValue}
+                    bulletSpacingValue={bulletSpacingValue}
+                    previewPaddingValue={previewPaddingValue}
+                    profile={profile}
+                    spacingClass={spacingClass}
+                    listSpacingClass={listSpacingClass}
+                    sectionOrder={sectionOrder}
+                    selectedWorkItems={selectedWorkItems}
+                    selectedProjectItems={selectedProjectItems}
+                    educations={educations}
+                    selectedEduIds={selectedEduIds}
+                    sortedCertifications={sortedCertifications}
+                    selectedCertIds={selectedCertIds}
+                    selectedSkillGroups={selectedSkillGroups}
+                    readOnly
+                    isDragging={false}
+                    draggedItemKey={null}
+                    draggedSectionId={null}
+                    onSectionDragStart={() => {}}
+                    onSectionDragHover={() => {}}
+                    onSectionDrop={() => {}}
+                    onItemDragStart={() => {}}
+                    onItemDragHover={() => {}}
+                    onItemDrop={() => {}}
+                    onDragEnd={() => {}}
+                    onNavigateTab={() => {}}
+                    onEditExperience={() => {}}
+                />
+            </div>
+        );
+        startPrint({
+            title: buildResumeExportTitle(resumeName),
+            content,
+        });
+    }, [
+        bulletSpacingValue,
+        educations,
+        fontSize,
+        isPrinting,
+        lineHeight,
+        listSpacingClass,
+        listSpacingValue,
+        previewPaddingValue,
+        profile,
+        resumeName,
+        sectionOrder,
+        selectedCertIds,
+        selectedEduIds,
+        selectedProjectItems,
+        selectedSkillGroups,
+        selectedWorkItems,
+        sortedCertifications,
+        spacingClass,
+        startPrint,
+    ]);
     const handleEditExperience = (id: string) => {
         setSidebarTab('experience');
         experience.startEditingExperience(id);
@@ -991,6 +1065,7 @@ const handleResetCertificationSort = () => {
                 onRestoreDefault={restoreDefault}
                 resumeName={resumeName}
                 onResumeNameChange={handleResumeNameChange}
+                onExportPdf={handleExportPdf}
             />
             <div className="flex flex-1 overflow-hidden">
                 <EditorSidebar
@@ -1099,6 +1174,9 @@ const handleResetCertificationSort = () => {
                 />
             </div>
             <ToastContainer toasts={toasts} onClose={closeToast} />
+            <PrintPortal isActive={Boolean(printContent)}>
+                {printContent}
+            </PrintPortal>
             <ConfirmDialog
                 isOpen={!!confirmDialog}
                 title={confirmDialog?.title || ''}

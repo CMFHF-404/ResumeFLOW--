@@ -12,19 +12,64 @@ import {
   Phone,
   MapPin,
   Link as LinkIcon,
-  LayoutTemplate,
   FileText,
 } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
+import PrintPortal from '../components/PrintPortal';
 import { ToastContainer, useToast } from '../components/Toast';
 import { Profile, profileService } from '../services/profileService';
+import type { Certification } from '../services/certificationsService';
+import { certificationsService } from '../services/certificationsService';
+import type { ExperienceListItem } from '../services/experienceService';
+import { experienceService } from '../services/experienceService';
+import type { UserSkill } from '../services/skillsService';
+import { skillsService } from '../services/skillsService';
 import { useEducationManager } from '../hooks/useEducationManager';
+import { usePrintJob } from '../hooks/usePrintJob';
 import EducationSection from './EducationSection';
 import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
+import ExperienceBankPrint from './ExperienceBankPrint';
+import { buildExperienceBankExportTitle } from '../utils/exportFilename';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
+
+type ExperienceBankExportSnapshot = {
+  profile: Profile;
+  workItems: ExperienceListItem[];
+  projectItems: ExperienceListItem[];
+  educationItems: ExperienceListItem[];
+  certifications: Certification[];
+  skills: UserSkill[];
+};
+
+const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankExportSnapshot> => {
+  const [
+    profile,
+    workItems,
+    projectItems,
+    educationItems,
+    certifications,
+    skills,
+  ] = await Promise.all([
+    profileService.getProfile({ force: true }),
+    experienceService.list('work', { force: true }),
+    experienceService.list('project', { force: true }),
+    experienceService.list('education', { force: true }),
+    certificationsService.list({ force: true }),
+    skillsService.list({ force: true }),
+  ]);
+
+  return {
+    profile,
+    workItems,
+    projectItems,
+    educationItems,
+    certifications,
+    skills,
+  };
+};
 interface ExperienceBankProps {
   cachedProfile?: any;
   onProfileUpdate?: (data: any) => void;
@@ -187,6 +232,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // Toast 状态管理
   const { toasts, success, error: toastError, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
+  const { printContent, isPrinting, startPrint } = usePrintJob();
 
   const toastApi = useMemo(
     () => ({ success, error: toastError, loading, updateToast }),
@@ -205,6 +251,31 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     setExperienceRefreshSignal((prev) => prev + 1);
     await refreshEducation();
   }, [refreshEducation]);
+
+  const handleExportAll = useCallback(async () => {
+    if (isPrinting) {
+      return;
+    }
+    const toastId = loading('正在准备导出...');
+    try {
+      const snapshot = await loadExperienceBankExportSnapshot();
+      startPrint({
+        title: buildExperienceBankExportTitle(),
+        content: <ExperienceBankPrint {...snapshot} />,
+      });
+      updateToast(toastId, {
+        message: '导出窗口已打开',
+        type: 'success',
+        duration: 1500,
+      });
+    } catch (error) {
+      console.error('[ExperienceBank] 导出失败:', error);
+      updateToast(toastId, {
+        message: '导出失败，请稍后重试',
+        type: 'error',
+      });
+    }
+  }, [isPrinting, loading, startPrint, updateToast]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -228,7 +299,12 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             <UploadCloud className="w-4 h-4" />
             导入简历
           </button>
-          <button className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+          <button
+            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={handleExportAll}
+            disabled={isPrinting}
+            type="button"
+          >
             <Download className="w-4 h-4" />
             导出全部
           </button>
@@ -390,10 +466,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         toast={{ success, error: toastError, loading, updateToast }}
       />
 
+      <PrintPortal isActive={Boolean(printContent)}>
+        {printContent}
+      </PrintPortal>
+
       <ToastContainer toasts={toasts} onClose={closeToast} />
     </div>
   );
 };
 
 export default ExperienceBank;
-

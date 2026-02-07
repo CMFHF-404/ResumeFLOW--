@@ -51,6 +51,14 @@
             position: relative;
         }
 
+        #rf-print-root {
+            display: none;
+        }
+
+        .rf-print-surface {
+            background: white;
+        }
+
         @media (max-width: 850px) {
             .a4-preview {
                 width: 100%;
@@ -80,6 +88,40 @@
 
         .dark .fluid-input:focus {
             border-bottom-color: #2DD4BF;
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        @media print {
+            body {
+                background: white !important;
+            }
+
+            #root {
+                display: none !important;
+            }
+
+            #rf-print-root {
+                display: block !important;
+            }
+
+            .a4-preview {
+                box-shadow: none !important;
+                margin: 0 auto !important;
+            }
+
+            .rf-print-preview main {
+                background: white !important;
+                padding: 0 !important;
+            }
+
+            .rf-break-avoid {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
         }
 
         .nav-tooltip {
