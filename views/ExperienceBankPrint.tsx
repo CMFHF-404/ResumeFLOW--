@@ -8,6 +8,7 @@ import { buildEduCardData, buildEducationDateLabel } from '../utils/educationUti
 import { stripRichTextToText } from '../utils/richText';
 import { parseYearMonthValue } from './experienceUtils';
 import { resolveLinkedInLink } from './profileUtils';
+import { CERT_META_PREFIX } from './ResumeEditor/constants';
 
 const ST_SEPARATOR = '； ';
 const EXPORT_DATE_SEPARATOR = '.';
@@ -52,6 +53,17 @@ const formatCertDate = (value?: string | null) => {
     return '';
   }
   return formatYearMonth(value);
+};
+
+const resolveCertificationDescription = (description?: string | null) => {
+  const normalized = normalizePlainText(description);
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.startsWith(CERT_META_PREFIX)) {
+    return '';
+  }
+  return normalized;
 };
 
 const buildCertDateLabel = (cert: Certification) => {
@@ -110,7 +122,6 @@ const ExperienceItem: React.FC<{ item: ExperienceListItem }> = ({ item }) => {
   const title = normalizePlainText(version.title);
   const dateLabel = buildExperienceDateLabel(item);
   const starLines = buildStarLines(version.star);
-  const tags = Array.isArray(version.tags) ? version.tags.filter(Boolean) : [];
 
   return (
     <div className="rf-break-avoid space-y-2 border-b border-gray-200 pb-4">
@@ -127,19 +138,6 @@ const ExperienceItem: React.FC<{ item: ExperienceListItem }> = ({ item }) => {
           <div className="text-xs text-gray-500 whitespace-nowrap">{dateLabel}</div>
         ) : null}
       </div>
-
-      {tags.length > 0 ? (
-        <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-          {tags.map((tag, index) => (
-            <span
-              key={`${item.master.id}-tag-${index}`}
-              className="px-2 py-0.5 rounded bg-gray-100"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
 
       {starLines.length > 0 ? (
         <div className="space-y-1 text-xs text-gray-800 leading-relaxed">
@@ -189,10 +187,11 @@ const EducationItem: React.FC<{ item: ExperienceListItem }> = ({ item }) => {
 
 const CertificationItem: React.FC<{ cert: Certification }> = ({ cert }) => {
   const dateLabel = buildCertDateLabel(cert);
+  const description = resolveCertificationDescription(cert.description);
   const extraLines = [
     cert.credential_id ? `证书编号：${cert.credential_id}` : '',
     cert.credential_url ? `链接：${cert.credential_url}` : '',
-    cert.description ? cert.description : '',
+    description,
   ].filter(Boolean);
 
   return (

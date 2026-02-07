@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 
@@ -15,6 +15,7 @@ ENV_AI_BASE_URL = "AI_BASE_URL"
 ENV_AI_MODEL = "AI_MODEL"
 ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
+ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
 ENV_POSTHOG_API_KEY = "POSTHOG_API_KEY"
 ENV_POSTHOG_HOST = "POSTHOG_HOST"
 ENV_POSTHOG_PROJECT_ID = "POSTHOG_PROJECT_ID"
@@ -22,6 +23,10 @@ DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
 DEFAULT_AI_MODEL = "gemini-3-flash"
 DEFAULT_DEV_USER_ID = "dev-user-test-123"
+DEFAULT_CORS_ALLOW_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
 ENV_FILE_NAME = ".env"
 
@@ -42,6 +47,13 @@ def _get_bool_env(name: str, default: bool) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+def _parse_csv_env(name: str, default: List[str]) -> List[str]:
+    value = os.getenv(name)
+    if not value:
+        return list(default)
+    items = [item.strip() for item in value.split(",")]
+    return [item for item in items if item]
+
 
 def _load_env() -> None:
     env_path = Path(__file__).resolve().parents[1] / ENV_FILE_NAME
@@ -60,6 +72,7 @@ class Settings:
     ai_model: str
     enable_dev_auth_bypass: bool
     dev_user_id: str
+    cors_allow_origins: List[str]
     posthog_api_key: Optional[str]
     posthog_host: str
     posthog_project_id: Optional[str]
@@ -84,6 +97,10 @@ def load_settings() -> Settings:
     ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
     enable_dev_auth_bypass = _get_bool_env(ENV_ENABLE_DEV_AUTH_BYPASS, False)
     dev_user_id = os.getenv(ENV_DEV_USER_ID, DEFAULT_DEV_USER_ID)
+    cors_allow_origins = _parse_csv_env(
+        ENV_CORS_ALLOW_ORIGINS,
+        DEFAULT_CORS_ALLOW_ORIGINS,
+    )
     posthog_api_key = os.getenv(ENV_POSTHOG_API_KEY)
     posthog_host = os.getenv(ENV_POSTHOG_HOST, DEFAULT_POSTHOG_HOST)
     posthog_project_id = os.getenv(ENV_POSTHOG_PROJECT_ID)
@@ -99,6 +116,7 @@ def load_settings() -> Settings:
         ai_model=ai_model,
         enable_dev_auth_bypass=enable_dev_auth_bypass,
         dev_user_id=dev_user_id,
+        cors_allow_origins=cors_allow_origins,
         posthog_api_key=posthog_api_key,
         posthog_host=posthog_host,
         posthog_project_id=posthog_project_id,

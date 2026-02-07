@@ -52,9 +52,9 @@ export const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView['category']> 
 ];
 
 export const DEFAULT_SECTION_ORDER = [
+    'education',
     'work',
     'project',
-    'education',
     'certifications',
     'skills',
 ] as const;

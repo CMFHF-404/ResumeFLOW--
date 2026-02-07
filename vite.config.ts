@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: '0.0.0.0',
+      allowedHosts: ['.cpolar.top', '.localtunnel.me', '.ngrok.io', '.loca.lt'],
       proxy: {
         '/api': {
           target: apiTarget,

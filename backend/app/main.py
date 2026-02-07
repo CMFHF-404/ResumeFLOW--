@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 
 from .auth_middleware import LogtoAuthMiddleware
 from .config import load_settings
@@ -13,6 +14,9 @@ from .routers import analytics, experience_versions, resumes
 
 from contextlib import asynccontextmanager
 from .database import ensure_experience_version_tags_column, verify_db_connection
+
+def build_cors_allow_credentials(allow_origins: List[str]) -> bool:
+    return "*" not in allow_origins
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,13 +36,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
 settings = load_settings()
+allow_credentials = build_cors_allow_credentials(settings.cors_allow_origins)
 
 # CORS配置 - 必须在认证中间件之前，确保所有响应都有CORS头
 # FastAPI中间件采用洋葱模型，先注册的后执行响应处理
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=settings.cors_allow_origins,
+    # 若允许所有来源，必须禁用凭证，避免跨域凭证泄露风险。
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
