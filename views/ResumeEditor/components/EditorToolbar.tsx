@@ -50,6 +50,11 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(resumeName);
+    const smartPageButtonBaseClass =
+        'flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors';
+    const smartPageButtonClass = isSmartPageApplied
+        ? `${smartPageButtonBaseClass} font-medium border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700`
+        : `${smartPageButtonBaseClass} font-semibold border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400`;
 
     const handleStartEdit = () => {
         setEditValue(resumeName);
@@ -134,7 +139,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
             <div className="flex items-center gap-4">
                 <button
                     onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className={smartPageButtonClass}
                 >
                     <LayoutTemplate className="w-4 h-4" />
                     {isSmartPageApplied ? '恢复默认' : '智能一页'}

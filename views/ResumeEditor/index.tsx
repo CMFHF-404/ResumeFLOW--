@@ -817,6 +817,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
 
             showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
+            setIsSmartPageApplied(true);
         } finally {
             smartPageAdjustingRef.current = false;
         }

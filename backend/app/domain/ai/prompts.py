@@ -33,8 +33,8 @@ STAR_POLISH = (
     "Use only the provided facts; do not invent anything. Use the same language as the input. Use other fields for "
     "context to avoid semantic repetition and repetitive subjects across S/T/A/R, "
     "and keep the overall flow smooth. For S/T/R, write one sentence each, within "
-    "100 Chinese characters. For A, output an ordered list of concise action points "
-    "(each on its own line, e.g. '1. ...\\n2. ...'), based strictly on provided info. "
+    "100 Chinese characters. For A, output concise action points separated by newlines "
+    "(without numbering, e.g. '...\\n...\\n...'), based strictly on provided info. "
     "Return JSON only with "
     "keys: 's', 't', 'a', 'r'."
 )
@@ -73,8 +73,8 @@ STAR_POLISH_A = (
     "each bullet includes one bold highlight if possible (otherwise bold the core action verb). Use only the "
     "provided facts; do not invent anything. Use the same language as the input. "
     "Refer to other fields for context to avoid repeating their meaning or subject. "
-    "Output an ordered list of concise action points (each on its own line, "
-    "e.g. '1. ...\\n2. ...'). Return "
+    "Output concise action points separated by newlines without numbering "
+    "(e.g. '...\\n...\\n...'). Return "
     "JSON only with key: 'a'."
 )
 

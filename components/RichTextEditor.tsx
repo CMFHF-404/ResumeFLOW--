@@ -23,6 +23,7 @@ type LinkPopoverState = {
     y: number;
     url: string;
     text: string;
+    isEditing: boolean;
 };
 
 type ToolbarButton = {
@@ -355,6 +356,58 @@ const normalizeLink = (value: string) => {
     return `${DEFAULT_LINK_PROTOCOL}${trimmed}`;
 };
 
+const getClosestLinkElement = (node: Node | null, editor: HTMLDivElement) => {
+    if (!node) {
+        return null;
+    }
+    const element = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
+    if (!element) {
+        return null;
+    }
+    const link = element.closest('a');
+    if (!(link instanceof HTMLAnchorElement) || !editor.contains(link)) {
+        return null;
+    }
+    return link;
+};
+
+const resolveLinkFromSelection = (selection: Selection, editor: HTMLDivElement) => {
+    const anchorLink = getClosestLinkElement(selection.anchorNode, editor);
+    const focusLink = getClosestLinkElement(selection.focusNode, editor);
+    if (anchorLink && focusLink && anchorLink === focusLink) {
+        return anchorLink;
+    }
+    if (selection.isCollapsed && anchorLink) {
+        return anchorLink;
+    }
+    return null;
+};
+
+const createRangeFromNode = (node: Node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return range;
+};
+
+const restoreSelectionRange = (range: Range | null) => {
+    const selection = window.getSelection();
+    if (!selection || !range) {
+        return null;
+    }
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return selection;
+};
+
+const updateLinkElement = (link: HTMLAnchorElement, href: string, label: string, shouldUpdateText: boolean) => {
+    link.setAttribute('href', href);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noreferrer');
+    if (shouldUpdateText && label) {
+        link.textContent = label;
+    }
+};
+
 const RichTextToolbar: React.FC<{ state: ToolbarState; buttons: ToolbarButton[] }> = ({ state, buttons }) => {
     if (!state.visible || typeof document === 'undefined') {
         return null;
@@ -386,9 +439,10 @@ const RichTextLinkPopover: React.FC<{
     state: LinkPopoverState;
     onClose: () => void;
     onSubmit: () => void;
+    onRemove: () => void;
     onUrlChange: (value: string) => void;
     onTextChange: (value: string) => void;
-}> = ({ state, onClose, onSubmit, onUrlChange, onTextChange }) => {
+}> = ({ state, onClose, onSubmit, onRemove, onUrlChange, onTextChange }) => {
     if (!state.visible || typeof document === 'undefined') {
         return null;
     }
@@ -435,6 +489,15 @@ const RichTextLinkPopover: React.FC<{
                 onKeyDown={handleKeyDown}
             />
             <div className="flex items-center justify-end gap-2 pt-1">
+                {state.isEditing ? (
+                    <button
+                        type="button"
+                        className="mr-auto px-2 py-1 text-xs text-rose-500 hover:text-rose-600"
+                        onClick={onRemove}
+                    >
+                        解除链接
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
@@ -801,17 +864,20 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         updateSelectionState,
     });
     const linkRangeRef = useRef<Range | null>(null);
+    const linkElementRef = useRef<HTMLAnchorElement | null>(null);
     const [linkPopover, setLinkPopover] = useState<LinkPopoverState>({
         visible: false,
         x: 0,
         y: 0,
         url: '',
         text: '',
+        isEditing: false,
     });
 
     const closeLinkPopover = useCallback(() => {
         setLinkPopover((prev) => (prev.visible ? { ...prev, visible: false } : prev));
         linkRangeRef.current = null;
+        linkElementRef.current = null;
     }, []);
 
     const openLinkPopover = useCallback(() => {
@@ -829,18 +895,31 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             return;
         }
         const range = selection.getRangeAt(0);
-        linkRangeRef.current = range.cloneRange();
-        const selectionRect = getSelectionRect(selection) ?? range.getBoundingClientRect();
+        const existingLink = resolveLinkFromSelection(selection, editor);
+        const linkRange = existingLink ? createRangeFromNode(existingLink) : range.cloneRange();
+        linkRangeRef.current = linkRange;
+        linkElementRef.current = existingLink;
+        const selectionRect = getSelectionRect(selection);
+        const rangeRect = linkRange.getBoundingClientRect();
         const fallbackRect = editor.getBoundingClientRect();
-        const rect = selectionRect && (selectionRect.width || selectionRect.height) ? selectionRect : fallbackRect;
+        const rect =
+            selectionRect && (selectionRect.width || selectionRect.height)
+                ? selectionRect
+                : rangeRect && (rangeRect.width || rangeRect.height)
+                    ? rangeRect
+                    : fallbackRect;
         const x = clampPositionX(rect.left + rect.width / 2);
         const y = rect.top - LINK_POPOVER_OFFSET_Y;
+        const selectionText = selection.toString();
+        const existingText = existingLink?.textContent ?? '';
+        const existingUrl = existingLink?.getAttribute('href') ?? '';
         setLinkPopover({
             visible: true,
             x,
             y,
-            url: DEFAULT_LINK_PROTOCOL,
-            text: selection.toString(),
+            url: existingUrl || DEFAULT_LINK_PROTOCOL,
+            text: existingLink ? existingText : selectionText,
+            isEditing: Boolean(existingLink),
         });
         hideToolbar();
     }, [editorRef, hideToolbar]);
@@ -860,28 +939,55 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             return;
         }
         const range = linkRangeRef.current;
+        const existingLink = linkElementRef.current;
         const selectedText = range?.toString() ?? '';
-        const label = linkPopover.text.trim() || selectedText.trim();
+        const existingText = existingLink?.textContent ?? '';
+        const inputText = linkPopover.text.trim();
+        const fallbackText = selectedText.trim() || existingText.trim();
+        const label = inputText || fallbackText;
         if (!label) {
             closeLinkPopover();
             return;
         }
         editor.focus();
-        const selection = window.getSelection();
-        if (selection && range) {
-            selection.removeAllRanges();
-            selection.addRange(range);
-        }
-        if (selection && selection.toString()) {
-            document.execCommand('createLink', false, href);
+        if (existingLink && editor.contains(existingLink)) {
+            const shouldUpdateText = Boolean(inputText) && inputText !== existingText.trim();
+            updateLinkElement(existingLink, href, label, shouldUpdateText);
         } else {
-            document.execCommand('insertHTML', false, `<a href="${href}">${escapeHtml(label)}</a>`);
+            const selection = restoreSelectionRange(range);
+            if (selection && selection.toString()) {
+                document.execCommand('createLink', false, href);
+            } else {
+                document.execCommand('insertHTML', false, `<a href="${href}">${escapeHtml(label)}</a>`);
+            }
         }
         const updated = sanitizeRichTextHtml(editor.innerHTML);
         onChange(updated);
         updateSelectionState();
         closeLinkPopover();
     }, [closeLinkPopover, editorRef, linkPopover.text, linkPopover.url, onChange, updateSelectionState]);
+
+    const removeLinkFromPopover = useCallback(() => {
+        const editor = editorRef.current;
+        if (!editor) {
+            return;
+        }
+        const existingLink = linkElementRef.current;
+        if (!existingLink || !editor.contains(existingLink)) {
+            closeLinkPopover();
+            return;
+        }
+        editor.focus();
+        const range = createRangeFromNode(existingLink);
+        const selection = restoreSelectionRange(range);
+        if (selection) {
+            document.execCommand('unlink');
+        }
+        const updated = sanitizeRichTextHtml(editor.innerHTML);
+        onChange(updated);
+        updateSelectionState();
+        closeLinkPopover();
+    }, [closeLinkPopover, editorRef, onChange, updateSelectionState]);
 
     const toolbarButtons = useMemo(() => {
         const baseButtons = [
@@ -953,6 +1059,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 state={linkPopover}
                 onClose={closeLinkPopover}
                 onSubmit={applyLinkFromPopover}
+                onRemove={removeLinkFromPopover}
                 onUrlChange={(value) => updateLinkPopover({ url: value })}
                 onTextChange={(value) => updateLinkPopover({ text: value })}
             />
