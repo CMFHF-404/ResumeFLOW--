@@ -67,7 +67,7 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                     <p className="text-[10px] text-gray-400 font-mono">{item.date || '未填写时间'}</p>
                     <div className="flex items-center gap-1">
                         {staleExperienceIds.has(item.id) ? <StaleBadge /> : null}
-                        {item.matchScore && item.matchScore > 0 ? (
+                        {item.matchScore !== undefined ? (
                             <MatchBadge score={item.matchScore} trend={item.matchTrend} />
                         ) : null}
                     </div>

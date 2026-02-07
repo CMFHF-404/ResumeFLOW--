@@ -138,11 +138,10 @@ const ProgressSteps: React.FC<{ stage: ParseStage }> = ({ stage }) => {
         return (
           <div key={step.key} className="flex items-center gap-2">
             <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                isActive
-                  ? 'bg-emerald-500 text-white shadow-emerald-500/30 shadow'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
-              }`}
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${isActive
+                ? 'bg-emerald-500 text-white shadow-emerald-500/30 shadow'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                }`}
             >
               {isActive ? <CheckCircle2 className="w-4 h-4" /> : index + 1}
             </span>
@@ -170,11 +169,10 @@ const ResumeItemCard: React.FC<{
 
   return (
     <label
-      className={`group flex items-start gap-4 rounded-xl border px-4 py-4 transition-all ${
-        checked
-          ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10'
-          : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-surface-dark'
-      }`}
+      className={`group flex items-start gap-4 rounded-xl border px-4 py-4 transition-all ${checked
+        ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10'
+        : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-surface-dark'
+        }`}
     >
       <input
         type="checkbox"
@@ -227,7 +225,7 @@ const ModalHeader: React.FC<{ onClose: () => void }> = ({ onClose }) => (
       <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Resume Intake</p>
       <h3 className="text-2xl font-bold text-gray-900 dark:text-white">导入简历经验池</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-        上传 PDF/DOCX，自动拆解 STAR 并智能查重。
+        上传 PDF/DOCX，自动拆解 STAR 并智能查重。AI 深度分析约需 40-60 秒，请耐心等待。
       </p>
     </div>
     <button
@@ -248,11 +246,10 @@ const UploadDropzone: React.FC<{
   onDragState: (next: boolean) => void;
 }> = ({ isDragging, inputRef, onFileChange, onDrop, onDragState }) => (
   <div
-    className={`relative rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-all ${
-      isDragging
-        ? 'border-emerald-400 bg-emerald-50/70 dark:bg-emerald-900/20'
-        : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40'
-    }`}
+    className={`relative rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-all ${isDragging
+      ? 'border-emerald-400 bg-emerald-50/70 dark:bg-emerald-900/20'
+      : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40'
+      }`}
     onDragOver={(event) => {
       event.preventDefault();
       onDragState(true);
@@ -330,23 +327,23 @@ const UploadPanel: React.FC<{
   onDragState,
   onReupload,
 }) => (
-  <div className="space-y-4">
-    <UploadDropzone
-      isDragging={isDragging}
-      inputRef={inputRef}
-      onFileChange={onFileChange}
-      onDrop={onDrop}
-      onDragState={onDragState}
-    />
-    <FileStatusCard file={file} stage={stage} progress={progress} errorMessage={errorMessage} />
-    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-      <span>默认已勾选非重复条目</span>
-      <button type="button" onClick={onReupload} className="hover:text-emerald-600 transition">
-        重新上传
-      </button>
+    <div className="space-y-4">
+      <UploadDropzone
+        isDragging={isDragging}
+        inputRef={inputRef}
+        onFileChange={onFileChange}
+        onDrop={onDrop}
+        onDragState={onDragState}
+      />
+      <FileStatusCard file={file} stage={stage} progress={progress} errorMessage={errorMessage} />
+      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+        <span>默认已勾选非重复条目</span>
+        <button type="button" onClick={onReupload} className="hover:text-emerald-600 transition">
+          重新上传
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
 
 const PreviewPanel: React.FC<{
   items: ParsedExperienceItem[];

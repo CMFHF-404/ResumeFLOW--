@@ -7,7 +7,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { useDebounce } from "../components/hooks/useDebounce";
 import { aiService, JDAnalysisResult } from "../services/aiService";
 import {
   clearJDAnalysisCache,
@@ -35,7 +34,6 @@ import type {
 } from "../types/resume";
 
 const DEFAULT_JD_TEXT = "";
-const AUTO_REANALYZE_DELAY_MS = 800;
 
 type MatchUpdateMode = "full" | "partial";
 
@@ -461,6 +459,7 @@ type UseJDAnalysisResult = {
   setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
   handleAnalyze: () => Promise<JDAnalysisResult | null>;
   debugInfo?: any;
+  isOutdated: boolean;
 };
 
 export const useJDAnalysis = ({
@@ -502,10 +501,6 @@ export const useJDAnalysis = ({
   const certificationsRef = useRef(certifications);
   const skillGroupsRef = useRef(skillGroups);
   const jdTextRef = useRef(jdText);
-  const debouncedNeedsReanalysis = useDebounce(
-    needsReanalysis,
-    AUTO_REANALYZE_DELAY_MS
-  );
 
   useEffect(() => {
     experienceItemsRef.current = experienceItems;
@@ -531,6 +526,15 @@ export const useJDAnalysis = ({
     () => buildJDTextSignature(jdText),
     [jdText]
   );
+
+  const isOutdated = useMemo(() => {
+    if (!analysisResult || !analysisContext) {
+      return true;
+    }
+    return (
+      analysisContext.jdTextSignature !== jdTextSignature || needsReanalysis
+    );
+  }, [analysisContext, analysisResult, jdTextSignature, needsReanalysis]);
 
   const applyExperienceMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
@@ -668,6 +672,15 @@ export const useJDAnalysis = ({
   );
 
   useEffect(() => {
+    if (!analysisContext || !resumeId) {
+      return;
+    }
+    if (analysisContext.jdTextSignature !== jdTextSignature) {
+      resetJDAnalysisState({ clearCache: true });
+    }
+  }, [analysisContext, jdTextSignature, resetJDAnalysisState, resumeId]);
+
+  useEffect(() => {
     if (!resumeId) {
       return;
     }
@@ -774,14 +787,7 @@ export const useJDAnalysis = ({
     skillGroups,
   ]);
 
-  useEffect(() => {
-    if (!analysisContext || !resumeId) {
-      return;
-    }
-    if (analysisContext.jdTextSignature !== jdTextSignature) {
-      resetJDAnalysisState({ clearCache: true });
-    }
-  }, [analysisContext, jdTextSignature, resetJDAnalysisState, resumeId]);
+
 
   type AnalyzeOptions = {
     mode?: MatchUpdateMode;
@@ -1027,34 +1033,21 @@ export const useJDAnalysis = ({
   );
 
   const handleAnalyze = useCallback(async () => {
-    return runAnalyze({ mode: "full" });
-  }, [runAnalyze]);
-
-  useEffect(() => {
-    if (!debouncedNeedsReanalysis || isAnalyzing) {
-      return;
-    }
-    if (!analysisResult || !jdText.trim()) {
-      return;
-    }
-    if (!analysisContext || analysisContext.jdTextSignature !== jdTextSignature) {
-      return;
-    }
     const diffSnapshot = cloneDiff(pendingDiffRef.current);
-    if (!hasDiff(diffSnapshot)) {
-      setNeedsReanalysis(false);
-      return;
+    const hasPendingDiff = hasDiff(diffSnapshot);
+    const hasJdTextChanged =
+      analysisContext?.jdTextSignature !== jdTextSignature;
+
+    if (
+      analysisResult &&
+      analysisContext &&
+      hasPendingDiff &&
+      !hasJdTextChanged
+    ) {
+      return runAnalyze({ mode: "partial", diff: diffSnapshot });
     }
-    void runAnalyze({ mode: "partial", diff: diffSnapshot });
-  }, [
-    analysisContext,
-    analysisResult,
-    debouncedNeedsReanalysis,
-    isAnalyzing,
-    jdText,
-    jdTextSignature,
-    runAnalyze,
-  ]);
+    return runAnalyze({ mode: "full" });
+  }, [analysisContext, analysisResult, jdTextSignature, runAnalyze]);
 
   return {
     jdText,
@@ -1073,6 +1066,7 @@ export const useJDAnalysis = ({
     skillMatchTrends,
     setSkillMatchTrends,
     handleAnalyze,
-    debugInfo
+    debugInfo,
+    isOutdated,
   };
 };

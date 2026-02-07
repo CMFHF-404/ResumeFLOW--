@@ -16,6 +16,7 @@ type JDAnalysisPanelProps = {
     onJdTextChange: (value: string) => void;
     debugInfo?: any;
     showDebugInfo?: boolean;
+    isOutdated?: boolean;
 };
 
 const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
@@ -29,6 +30,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     onJdTextChange,
     debugInfo,
     showDebugInfo = false,
+    isOutdated = false,
 }) => {
     const jobKeywords = useMemo(
         () => normalizeJobKeywords(analysisResult?.jobKeywords),
@@ -56,10 +58,16 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                     <div className="space-y-2">
                         <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                                <MatchBadge
-                                    score={analysisResult?.matchPercentage ?? 0}
-                                    trend={analysisResult?.matchTrend}
-                                />
+                                {isOutdated ? (
+                                    <span className="inline-flex items-center whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+                                        待更新
+                                    </span>
+                                ) : (
+                                    <MatchBadge
+                                        score={analysisResult?.matchPercentage ?? 0}
+                                        trend={analysisResult?.matchTrend}
+                                    />
+                                )}
                                 <button
                                     onClick={onAnalyze}
                                     disabled={isAnalyzing}

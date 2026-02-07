@@ -39,7 +39,7 @@ export const MatchBadge: React.FC<MatchBadgeProps> = ({
 );
 
 export const StaleBadge: React.FC = () => (
-    <span className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+    <span className="inline-flex items-center whitespace-nowrap text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
         待更新
     </span>
 );

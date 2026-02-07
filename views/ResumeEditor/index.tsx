@@ -447,6 +447,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setSkillMatchTrends,
         handleAnalyze,
         debugInfo,
+        isOutdated,
     } = useJDAnalysis({
         resumeId,
         experienceItems,
@@ -1071,18 +1072,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     };
 
     // 重置排序函数：将指定类别的经历恢复为时间倒序
-const handleResetSort = (category: 'work' | 'project') => {
-    setExperienceItems((prev) => resetExperienceSortForCategory(prev, category));
-};
+    const handleResetSort = (category: 'work' | 'project') => {
+        setExperienceItems((prev) => resetExperienceSortForCategory(prev, category));
+    };
 
-const handleResetCertificationSort = () => {
-    setCertifications((prev) => {
-        if (prev.length <= 1) {
-            return prev;
-        }
-        return [...prev].sort(compareCertificationByDateDesc);
-    });
-};
+    const handleResetCertificationSort = () => {
+        setCertifications((prev) => {
+            if (prev.length <= 1) {
+                return prev;
+            }
+            return [...prev].sort(compareCertificationByDateDesc);
+        });
+    };
     // Section drag handlers
     const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
         lastItemHoverKeyRef.current = null;
@@ -1200,17 +1201,17 @@ const handleResetCertificationSort = () => {
                     isDragging={false}
                     draggedItemKey={null}
                     draggedSectionId={null}
-                    onSectionDragStart={() => {}}
-                    onSectionDragHover={() => {}}
-                    onSectionDrop={() => {}}
-                    onItemDragStart={() => {}}
-                    onItemDragHover={() => {}}
-                    onItemDrop={() => {}}
-                    onDragEnd={() => {}}
-                    onNavigateTab={() => {}}
-                    onEditExperience={() => {}}
-                    onEditCertification={() => {}}
-                    onEditSkill={() => {}}
+                    onSectionDragStart={() => { }}
+                    onSectionDragHover={() => { }}
+                    onSectionDrop={() => { }}
+                    onItemDragStart={() => { }}
+                    onItemDragHover={() => { }}
+                    onItemDrop={() => { }}
+                    onDragEnd={() => { }}
+                    onNavigateTab={() => { }}
+                    onEditExperience={() => { }}
+                    onEditCertification={() => { }}
+                    onEditSkill={() => { }}
                 />
             </div>
         );
@@ -1288,6 +1289,7 @@ const handleResetCertificationSort = () => {
                         onJdTextChange: setJdText,
                         debugInfo,
                         showDebugInfo,
+                        isOutdated,
                     }}
                     profileTabProps={{
                         profile,
@@ -1332,11 +1334,11 @@ const handleResetCertificationSort = () => {
                         selectedSkillIds,
                         skillMatchScores,
                         skillMatchTrends,
-                    onResetRenamingCategory: resetRenamingCategory,
-                    onResetWorkSort: () => handleResetSort('work'),
-                    onResetProjectSort: () => handleResetSort('project'),
-                    onResetCertificationSort: handleResetCertificationSort,
-                }}
+                        onResetRenamingCategory: resetRenamingCategory,
+                        onResetWorkSort: () => handleResetSort('work'),
+                        onResetProjectSort: () => handleResetSort('project'),
+                        onResetCertificationSort: handleResetCertificationSort,
+                    }}
                     editingSuggestion={{
                         editingItem,
                         analysisResult,
