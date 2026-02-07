@@ -119,8 +119,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         if (onProfileUpdateRef.current) {
           onProfileUpdateRef.current(profile);
         }
-      } catch (error) {
-        console.error('Failed to load profile:', error);
+      } catch (err) {
+        console.error('Failed to load profile:', err);
       } finally {
         setIsLoadingProfile(false);
         // 延迟重置请求状态
@@ -175,22 +175,22 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       if (onProfileUpdateRef.current) {
         onProfileUpdateRef.current(updated);
       }
-      // TODO: 显示成功提示
-    } catch (error) {
-      console.error('Failed to save profile:', error);
-      // TODO: 显示错误提示
+      success('个人信息保存成功');
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      toastError('个人信息保存失败');
     } finally {
       setIsSavingProfile(false);
     }
   };
 
   // Toast 状态管理
-  const { toasts, success, error, loading, updateToast, closeToast } = useToast();
+  const { toasts, success, error: toastError, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
 
   const toastApi = useMemo(
-    () => ({ success, error, loading, updateToast }),
-    [success, error, loading, updateToast]
+    () => ({ success, error: toastError, loading, updateToast }),
+    [success, toastError, loading, updateToast]
   );
 
   const education = useEducationManager(toastApi);
@@ -387,7 +387,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         isOpen={isResumeModalOpen}
         onClose={() => setIsResumeModalOpen(false)}
         onImported={handleResumeImported}
-        toast={{ success, error, loading, updateToast }}
+        toast={{ success, error: toastError, loading, updateToast }}
       />
 
       <ToastContainer toasts={toasts} onClose={closeToast} />
@@ -396,5 +396,4 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 };
 
 export default ExperienceBank;
-
 

@@ -6,11 +6,13 @@ import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import { formatRelativeTime } from '../utils/timeUtils';
+import { clampMatchScore } from '../utils/resumeHelpers';
 import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
+import { loadJDAnalysisCache } from './jdAnalysisStorage';
 
 interface DashboardProps {
   setView: (view: ViewState) => void;
@@ -24,6 +26,7 @@ const DELETE_CANCEL_LABEL = '取消';
 const COPY_SUFFIX = ' (副本)';
 const VIEW_MODE_STORAGE_KEY = 'resumeFlow.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
+const DEFAULT_MATCH_RATE = 0;
 const DELETE_TOAST_MESSAGES = {
   loading: '正在删除简历...',
   success: '删除成功',
@@ -48,6 +51,44 @@ const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
   return value === 'list' ? 'list' : 'grid';
 };
 
+const resolveResumeMatchRate = (resumeId: string) => {
+  const cached = loadJDAnalysisCache(resumeId);
+  const score = clampMatchScore(cached?.result?.matchPercentage);
+  return typeof score === 'number' ? score : DEFAULT_MATCH_RATE;
+};
+
+const mergeMatchRatesIntoResumes = (items: Resume[]) => {
+  let changed = false;
+  const next = items.map((resume) => {
+    const matchRate = resolveResumeMatchRate(resume.id);
+    if (resume.matchRate === matchRate) {
+      return resume;
+    }
+    changed = true;
+    return { ...resume, matchRate };
+  });
+  return changed ? next : items;
+};
+
+const areResumeListsEqual = (prev: Resume[], next: Resume[]) => {
+  if (prev === next) {
+    return true;
+  }
+  if (prev.length !== next.length) {
+    return false;
+  }
+  return prev.every((item, index) => {
+    const other = next[index];
+    return item.id === other.id
+      && item.name === other.name
+      && item.targetRole === other.targetRole
+      && item.matchRate === other.matchRate
+      && item.lastModified === other.lastModified
+      && item.status === other.status
+      && item.type === other.type;
+  });
+};
+
 const mapResumeToDashboard = (resume: {
   id: string;
   title: string;
@@ -57,7 +98,7 @@ const mapResumeToDashboard = (resume: {
   id: resume.id,
   name: resume.title,
   targetRole: resume.target_role || '通用',
-  matchRate: 0,
+  matchRate: resolveResumeMatchRate(resume.id),
   lastModified: formatRelativeTime(resume.updated_at),
   status: 'draft',
   type: 'general',
@@ -100,6 +141,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setView, cachedResumes = [], onRe
   useEffect(() => {
     onResumesUpdateRef.current = onResumesUpdate;
   }, [onResumesUpdate]);
+
+  useEffect(() => {
+    if (cachedResumes.length === 0) {
+      setResumes((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const hydrated = mergeMatchRatesIntoResumes(cachedResumes);
+    setResumes((prev) => (areResumeListsEqual(prev, hydrated) ? prev : hydrated));
+  }, [cachedResumes]);
 
   useEffect(() => {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);

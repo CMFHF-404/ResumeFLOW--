@@ -26,8 +26,4 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": [
-    "temp_work_handlers.ts",
-    "temp_work_ui.tsx"
-  ]
 }
