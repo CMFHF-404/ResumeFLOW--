@@ -4,7 +4,7 @@ const ALLOWED_BLOCK_TAGS = new Set(['UL', 'OL', 'LI']);
 const BLOCK_TAGS = new Set(['DIV', 'P']);
 const LINE_BREAK_TAG = 'BR';
 const ORDERED_LIST_LINE_PATTERN = /^\s*\d+[.、)）]\s*(.+)$/;
-const UNORDERED_LIST_LINE_PATTERN = /^\s*[-*•·]\s*(.+)$/;
+const UNORDERED_LIST_LINE_PATTERN = /^\s*[-*＊•·]\s*(.+)$/;
 const RICH_TEXT_DECODE_PATTERN = /&(lt|gt|amp;lt|amp;gt);/i;
 const MAX_HTML_DECODE_PASSES = 2;
 const RICH_TEXT_HTML_TAG_PATTERN = /<\/?(?:b|strong|i|em|u|a|br|ul|ol|li)\b/i;
@@ -326,7 +326,181 @@ const splitInlineOrderedList = (line: string) => {
     return parts;
 };
 
-export const normalizeAiRichText = (input: string) => {
+type NormalizeAiRichTextOptions = {
+    allowList?: boolean;
+};
+
+const ORDERED_LIST_PREFIX_PATTERN = /^\s*(\d+)([.、)）])\s*(.+)$/;
+const UNORDERED_LIST_PREFIX_PATTERN = /^\s*([-*＊•·])\s*(.+)$/;
+
+const isPlainItalicMarkdown = (value: string) => /^\*[^*\r\n]+\*$/.test(value.trim());
+
+const isLikelyOrderedListLine = (value: string) => {
+    const match = value.match(ORDERED_LIST_PREFIX_PATTERN);
+    if (!match) {
+        return false;
+    }
+    const numberPart = match[1];
+    const content = match[3]?.trim() ?? '';
+    if (!content) {
+        return false;
+    }
+    if (numberPart.length >= 3) {
+        return false;
+    }
+    if (/^\d/.test(content)) {
+        return false;
+    }
+    return true;
+};
+
+const isLikelyUnorderedListLine = (value: string) => {
+    const match = value.match(UNORDERED_LIST_PREFIX_PATTERN);
+    if (!match) {
+        return false;
+    }
+    const bullet = match[1];
+    const content = match[2]?.trim() ?? '';
+    if (!content) {
+        return false;
+    }
+    if ((bullet === '*' || bullet === '＊') && isPlainItalicMarkdown(value)) {
+        return false;
+    }
+    if (bullet === '-' && /^\d/.test(content)) {
+        return false;
+    }
+    return true;
+};
+
+const resolveListPrefixMode = (lines: string[]) => {
+    const trimmedLines = lines.map((line) => line.trim()).filter(Boolean);
+    if (!trimmedLines.length) {
+        return null;
+    }
+    const orderedHits = trimmedLines.filter((line) => isLikelyOrderedListLine(line)).length;
+    if (orderedHits === trimmedLines.length) {
+        return 'ordered';
+    }
+    const unorderedHits = trimmedLines.filter((line) => isLikelyUnorderedListLine(line)).length;
+    if (unorderedHits === trimmedLines.length) {
+        return 'unordered';
+    }
+    return null;
+};
+
+const joinNormalizedLines = (lines: string[], shouldStrip: boolean, fallback: string) => {
+    if (lines.length > 1) {
+        const joined = lines.join('<br>');
+        return shouldStrip ? stripListPrefixFromHtml(joined) : joined;
+    }
+    if (lines.length === 1) {
+        return shouldStrip ? stripListPrefixFromHtml(lines[0]) : lines[0];
+    }
+    return fallback;
+};
+
+const stripLooseAsteriskPrefix = (value: string) => {
+    const trimmedLeft = value.replace(EDGE_WHITESPACE_PATTERN, '');
+    if (!(trimmedLeft.startsWith('*') || trimmedLeft.startsWith('＊')) || trimmedLeft.startsWith('**')) {
+        return value;
+    }
+    if (isPlainItalicMarkdown(trimmedLeft)) {
+        return value;
+    }
+    return value.replace(/^[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]*[\*＊]\s*/, '');
+};
+
+const stripListPrefix = (value: string) => {
+    const trimmed = value.replace(EDGE_WHITESPACE_PATTERN, '');
+    const stripped = trimmed
+        .replace(ORDERED_LIST_LINE_PATTERN, '$1')
+        .replace(UNORDERED_LIST_LINE_PATTERN, '$1')
+        .trim();
+    if (stripped !== trimmed) {
+        return stripped;
+    }
+    return stripLooseAsteriskPrefix(trimmed);
+};
+
+const stripListPrefixFromHtml = (value: string) => {
+    if (!value) {
+        return '';
+    }
+    if (typeof document === 'undefined') {
+        return stripListPrefix(value);
+    }
+    const container = document.createElement('div');
+    container.innerHTML = value;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode() as Text | null;
+    while (node) {
+        if (typeof node.textContent === 'string' && node.textContent.replace(EDGE_WHITESPACE_PATTERN, '')) {
+            node.textContent = stripListPrefix(node.textContent);
+            break;
+        }
+        node = walker.nextNode() as Text | null;
+    }
+    return container.innerHTML.trim();
+};
+
+const normalizeAiPlainText = (input: string) => {
+    if (!input) {
+        return '';
+    }
+    const trimmed = input.trim();
+    if (!trimmed) {
+        return '';
+    }
+    const sanitized = sanitizeRichTextHtml(trimmed);
+    if (/<(ul|ol|li)(\s|>)/i.test(sanitized)) {
+        const listLines = splitRichTextLines(sanitized);
+        const textLines = listLines.map((line) => stripRichTextToText(line));
+        const shouldStrip = resolveListPrefixMode(textLines) !== null;
+        const normalizedListLines = listLines
+            .map((line) => (shouldStrip ? stripListPrefixFromHtml(line) : line.trim()))
+            .filter(Boolean);
+        return joinNormalizedLines(
+            normalizedListLines,
+            false,
+            shouldStrip ? stripListPrefixFromHtml(sanitized) : sanitized
+        );
+    }
+    if (/<\/?[a-z][\s\S]*>/i.test(sanitized)) {
+        const htmlLines = splitRichTextLines(sanitized);
+        const textLines = htmlLines.map((line) => stripRichTextToText(line));
+        const shouldStrip = resolveListPrefixMode(textLines) !== null;
+        const normalizedHtmlLines = htmlLines
+            .map((line) => (shouldStrip ? stripListPrefixFromHtml(line) : line.trim()))
+            .filter(Boolean);
+        return joinNormalizedLines(normalizedHtmlLines, shouldStrip, shouldStrip ? stripListPrefixFromHtml(sanitized) : sanitized);
+    }
+
+    let lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 1) {
+        const inlineParts = splitInlineOrderedList(lines[0]);
+        if (inlineParts) {
+            lines = inlineParts;
+        }
+    }
+
+    const shouldStrip = resolveListPrefixMode(lines) !== null;
+    const normalizedLines = lines
+        .map((line) => (shouldStrip ? stripListPrefix(line) : line))
+        .filter(Boolean)
+        .map((line) => sanitizeRichTextHtml(line));
+
+    return joinNormalizedLines(
+        normalizedLines,
+        shouldStrip,
+        shouldStrip ? stripListPrefixFromHtml(sanitizeRichTextHtml(trimmed)) : sanitizeRichTextHtml(trimmed)
+    );
+};
+
+export const normalizeAiRichText = (input: string, options?: NormalizeAiRichTextOptions) => {
+    if (options?.allowList === false) {
+        return normalizeAiPlainText(input);
+    }
     if (!input) {
         return '';
     }

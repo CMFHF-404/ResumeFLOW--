@@ -806,7 +806,7 @@ const usePolishActions = ({ cardData, toast, updateCardField, category }: Experi
         );
         const polished = response?.[field];
         if (typeof polished === 'string') {
-          const normalized = normalizeAiRichText(polished);
+          const normalized = normalizeAiRichText(polished, { allowList: false });
           if (normalized.trim()) {
             updateCardField(cardId, `star.${field}`, normalized);
             action = 'applied';

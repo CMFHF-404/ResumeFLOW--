@@ -986,10 +986,10 @@ const createExperienceSaveHandlers = (
                 jdText: trimmedJD,
             });
             const normalizedResult: Partial<StarFields> = {
-                s: typeof result.s === 'string' ? normalizeAiRichText(result.s) : undefined,
-                t: typeof result.t === 'string' ? normalizeAiRichText(result.t) : undefined,
-                a: typeof result.a === 'string' ? normalizeAiRichText(result.a) : undefined,
-                r: typeof result.r === 'string' ? normalizeAiRichText(result.r) : undefined,
+                s: typeof result.s === 'string' ? normalizeAiRichText(result.s, { allowList: false }) : undefined,
+                t: typeof result.t === 'string' ? normalizeAiRichText(result.t, { allowList: false }) : undefined,
+                a: typeof result.a === 'string' ? normalizeAiRichText(result.a, { allowList: false }) : undefined,
+                r: typeof result.r === 'string' ? normalizeAiRichText(result.r, { allowList: false }) : undefined,
             };
             const nextStar = helpers.mergeStarFields(draftSnapshot.star, normalizedResult);
             action = hasStarFieldsChange(draftSnapshot.star, nextStar) ? 'applied' : 'discarded';

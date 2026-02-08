@@ -547,6 +547,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             {edu.gpa ? (
                                                                 <p className="text-xs text-gray-900">GPA: {edu.gpa}</p>
                                                             ) : null}
+                                                            {edu.courses ? (
+                                                                <p className="text-xs text-gray-900">课程：{edu.courses}</p>
+                                                            ) : null}
                                                         </div>
                                                     </div>
                                                 );
