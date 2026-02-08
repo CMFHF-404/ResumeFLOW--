@@ -12,6 +12,7 @@ __pycache__
 .coverage
 *.db
 *.sql
+!schema.sql
 migrations/
 create_dev_user.py
 init_local_db.py

@@ -6,6 +6,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 复制启动脚本
+COPY prestart.sh .
+
 # 复制应用代码
 COPY . .
 
@@ -13,4 +16,4 @@ COPY . .
 EXPOSE 8000
 
 # 启动命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "./prestart.sh"]
