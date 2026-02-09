@@ -549,7 +549,6 @@ export const useJDAnalysis = ({
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       const matchScores = buildMatchScoreMap(matches);
       const matchReasons = buildMatchReasonMap(matches);
-      const matchTrends = buildMatchTrendMap(matches);
       const mode = options?.mode ?? "full";
       const targetIds = options?.targetIds;
       if (mode === "partial" && (!targetIds || targetIds.size === 0)) {
@@ -565,19 +564,43 @@ export const useJDAnalysis = ({
             ...item,
             matchScore: hasScore ? matchScores.get(item.id) : undefined,
             matchReason: hasScore ? matchReasons.get(item.id) : undefined,
-            matchTrend: hasScore ? matchTrends.get(item.id) : undefined,
           };
         });
         return next;
       });
     },
-    [
-      setCertificationMatchScores,
-      setCertificationMatchTrends,
-      setExperienceItems,
-      setSkillMatchScores,
-      setSkillMatchTrends,
-    ]
+    [setExperienceItems]
+  );
+
+  const applyExperienceMatchTrends = useCallback(
+    (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
+      const matchTrends = buildMatchTrendMap(matches);
+      const mode = options?.mode ?? "full";
+      const targetIds = options?.targetIds;
+      if (mode === "partial" && (!targetIds || targetIds.size === 0)) {
+        return;
+      }
+      setExperienceItems((prev) => {
+        const next = prev.map((item) => {
+          if (mode === "partial" && !targetIds?.has(item.id)) {
+            return item;
+          }
+          const nextTrend = matchTrends.get(item.id);
+          if (nextTrend === item.matchTrend) {
+            return item;
+          }
+          if (nextTrend !== undefined) {
+            return { ...item, matchTrend: nextTrend };
+          }
+          if (item.matchTrend === undefined) {
+            return item;
+          }
+          return { ...item, matchTrend: undefined };
+        });
+        return next;
+      });
+    },
+    [setExperienceItems]
   );
 
   const applyCertificationMatchScores = useCallback(
@@ -587,25 +610,37 @@ export const useJDAnalysis = ({
         buildMatchScoreMap(matches),
         options
       );
+    },
+    [setCertificationMatchScores]
+  );
+
+  const applyCertificationMatchTrends = useCallback(
+    (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       applyTrendMapUpdate(
         setCertificationMatchTrends,
         buildMatchTrendMap(matches),
         options
       );
     },
-    []
+    [setCertificationMatchTrends]
   );
 
   const applySkillMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       applyScoreMapUpdate(setSkillMatchScores, buildMatchScoreMap(matches), options);
+    },
+    [setSkillMatchScores]
+  );
+
+  const applySkillMatchTrends = useCallback(
+    (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
       applyTrendMapUpdate(
         setSkillMatchTrends,
         buildMatchTrendMap(matches),
         options
       );
     },
-    []
+    [setSkillMatchTrends]
   );
 
   const markStaleMatches = useCallback(
@@ -663,8 +698,11 @@ export const useJDAnalysis = ({
       setDebugInfo(null);
       pendingDiffRef.current = buildEmptyDiff();
       applyExperienceMatchScores();
+      applyExperienceMatchTrends();
       applyCertificationMatchScores();
+      applyCertificationMatchTrends();
       applySkillMatchScores();
+      applySkillMatchTrends();
       if (options?.resetJdText) {
         setJdText(DEFAULT_JD_TEXT);
       }
@@ -674,8 +712,11 @@ export const useJDAnalysis = ({
     },
     [
       applyCertificationMatchScores,
+      applyCertificationMatchTrends,
       applyExperienceMatchScores,
+      applyExperienceMatchTrends,
       applySkillMatchScores,
+      applySkillMatchTrends,
       resumeId,
     ]
   );
@@ -720,8 +761,11 @@ export const useJDAnalysis = ({
         experienceText: cached.experienceText,
       });
       applyExperienceMatchScores(cached.result.experienceMatches);
+      applyExperienceMatchTrends(cached.result.experienceMatches);
       applyCertificationMatchScores(cached.result.certificationMatches);
+      applyCertificationMatchTrends(cached.result.certificationMatches);
       applySkillMatchScores(cached.result.skillMatches);
+      applySkillMatchTrends(cached.result.skillMatches);
       setIsJDCollapsed(true);
       setStaleExperienceIds(new Set());
       setNeedsReanalysis(false);
@@ -731,8 +775,11 @@ export const useJDAnalysis = ({
     hasLoadedJdCacheRef.current = true;
   }, [
     applyCertificationMatchScores,
+    applyCertificationMatchTrends,
     applyExperienceMatchScores,
+    applyExperienceMatchTrends,
     applySkillMatchScores,
+    applySkillMatchTrends,
     isLoadingExperiences,
     resumeId,
   ]);
@@ -917,7 +964,15 @@ export const useJDAnalysis = ({
           mode: "partial",
           targetIds: diff.experiences,
         });
+        applyExperienceMatchTrends(result.experienceMatches, {
+          mode: "partial",
+          targetIds: diff.experiences,
+        });
         applyCertificationMatchScores(result.certificationMatches, {
+          mode: "partial",
+          targetIds: diff.certifications,
+        });
+        applyCertificationMatchTrends(result.certificationMatches, {
           mode: "partial",
           targetIds: diff.certifications,
         });
@@ -925,16 +980,26 @@ export const useJDAnalysis = ({
           mode: "partial",
           targetIds: diff.skills,
         });
-        return;
+        applySkillMatchTrends(result.skillMatches, {
+          mode: "partial",
+          targetIds: diff.skills,
+        });
+      } else {
+        applyExperienceMatchScores(result.experienceMatches);
+        applyCertificationMatchScores(result.certificationMatches);
+        applySkillMatchScores(result.skillMatches);
+        applyExperienceMatchTrends(result.experienceMatches);
+        applyCertificationMatchTrends(result.certificationMatches);
+        applySkillMatchTrends(result.skillMatches);
       }
-      applyExperienceMatchScores(result.experienceMatches);
-      applyCertificationMatchScores(result.certificationMatches);
-      applySkillMatchScores(result.skillMatches);
     },
     [
       applyCertificationMatchScores,
+      applyCertificationMatchTrends,
       applyExperienceMatchScores,
+      applyExperienceMatchTrends,
       applySkillMatchScores,
+      applySkillMatchTrends,
     ]
   );
 

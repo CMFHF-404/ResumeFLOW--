@@ -317,7 +317,7 @@ const buildCertificationImportPayloads = async (items: ParsedCertificationView[]
       })
     )
   );
-  return dedupeBySignature(validItems, buildCertificationSignature)
+  return dedupeBySignature<ParsedCertificationView>(validItems, buildCertificationSignature)
     .filter((item) => !existingSignatures.has(buildCertificationSignature(item)))
     .map((item) => ({
       name: normalizeParsedText(item.name),
@@ -942,68 +942,68 @@ const PreviewPanel: React.FC<{
   onToggleSkill,
   onToggleAllSkills,
 }) => {
-  const workItems = items.filter((item) => item.category === 'work');
-  const projectItems = items.filter((item) => item.category === 'project');
-  const educationItems = items.filter((item) => item.category === 'education');
+    const workItems = items.filter((item) => item.category === 'work');
+    const projectItems = items.filter((item) => item.category === 'project');
+    const educationItems = items.filter((item) => item.category === 'education');
 
-  return (
-    <div className="space-y-4">
-      <SectionTitle title="解析结果预览" />
-      <div className="space-y-6 max-h-[420px] overflow-y-auto pr-2">
-        <div className="space-y-3">
-          <SectionTitle title="个人信息" />
-          <PersonalInfoPreview
-            info={personalInfo}
-            selection={personalInfoSelection}
-            onToggle={onTogglePersonalInfo}
+    return (
+      <div className="space-y-4">
+        <SectionTitle title="解析结果预览" />
+        <div className="space-y-6 max-h-[420px] overflow-y-auto pr-2">
+          <div className="space-y-3">
+            <SectionTitle title="个人信息" />
+            <PersonalInfoPreview
+              info={personalInfo}
+              selection={personalInfoSelection}
+              onToggle={onTogglePersonalInfo}
+            />
+          </div>
+
+          <ExperiencePreviewSection
+            title="工作经历"
+            emptyLabel="未解析到工作经历"
+            items={workItems}
+            selectedIds={selectedExperienceIds}
+            onToggleItem={onToggleExperience}
+            onToggleGroup={onToggleExperienceGroup}
+          />
+
+          <ExperiencePreviewSection
+            title="项目经历"
+            emptyLabel="未解析到项目经历"
+            items={projectItems}
+            selectedIds={selectedExperienceIds}
+            onToggleItem={onToggleExperience}
+            onToggleGroup={onToggleExperienceGroup}
+          />
+
+          <ExperiencePreviewSection
+            title="教育背景"
+            emptyLabel="未解析到教育背景"
+            items={educationItems}
+            selectedIds={selectedExperienceIds}
+            onToggleItem={onToggleExperience}
+            onToggleGroup={onToggleExperienceGroup}
+          />
+
+          <CertificationPreviewSection
+            items={certifications}
+            selectedIds={selectedCertificationIds}
+            onToggleItem={onToggleCertification}
+            onToggleAll={onToggleAllCertifications}
+          />
+
+          <SkillPreviewSection
+            groups={skillGroups}
+            selectedIds={selectedSkillIds}
+            duplicateIds={duplicateSkillIds}
+            onToggleItem={onToggleSkill}
+            onToggleAll={onToggleAllSkills}
           />
         </div>
-
-        <ExperiencePreviewSection
-          title="工作经历"
-          emptyLabel="未解析到工作经历"
-          items={workItems}
-          selectedIds={selectedExperienceIds}
-          onToggleItem={onToggleExperience}
-          onToggleGroup={onToggleExperienceGroup}
-        />
-
-        <ExperiencePreviewSection
-          title="项目经历"
-          emptyLabel="未解析到项目经历"
-          items={projectItems}
-          selectedIds={selectedExperienceIds}
-          onToggleItem={onToggleExperience}
-          onToggleGroup={onToggleExperienceGroup}
-        />
-
-        <ExperiencePreviewSection
-          title="教育背景"
-          emptyLabel="未解析到教育背景"
-          items={educationItems}
-          selectedIds={selectedExperienceIds}
-          onToggleItem={onToggleExperience}
-          onToggleGroup={onToggleExperienceGroup}
-        />
-
-        <CertificationPreviewSection
-          items={certifications}
-          selectedIds={selectedCertificationIds}
-          onToggleItem={onToggleCertification}
-          onToggleAll={onToggleAllCertifications}
-        />
-
-        <SkillPreviewSection
-          groups={skillGroups}
-          selectedIds={selectedSkillIds}
-          duplicateIds={duplicateSkillIds}
-          onToggleItem={onToggleSkill}
-          onToggleAll={onToggleAllSkills}
-        />
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 const ModalFooter: React.FC<{
   selectedCount: number;

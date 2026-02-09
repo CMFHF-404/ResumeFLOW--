@@ -95,39 +95,49 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
     profileTabProps,
     experienceTabProps,
     editingSuggestion,
-}) => (
-    <aside
-        className={`${SIDEBAR_WIDTH_CLASS} flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex`}
-    >
-        <JDAnalysisPanel {...jdPanelProps} />
-        <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
-            <div className="flex">
-                <button
-                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                    onClick={() => onSelectTab('experience')}
-                >
-                    <Database className="w-4 h-4" /> 经历库
-                </button>
-                <button
-                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                    onClick={() => {
-                        onSelectTab('profile');
-                        onProfileTabSelected();
-                    }}
-                >
-                    <User className="w-4 h-4" /> 个人档案
-                </button>
+}) => {
+    const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+    return (
+        <aside
+            className={`${SIDEBAR_WIDTH_CLASS} flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex`}
+        >
+            <JDAnalysisPanel {...jdPanelProps} />
+            <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
+                <div className="flex">
+                    <button
+                        className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        onClick={() => onSelectTab('experience')}
+                    >
+                        <Database className="w-4 h-4" /> 经历库
+                    </button>
+                    <button
+                        className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        onClick={() => {
+                            onSelectTab('profile');
+                            onProfileTabSelected();
+                        }}
+                    >
+                        <User className="w-4 h-4" /> 个人档案
+                    </button>
+                </div>
+                <EditingSuggestionNav {...editingSuggestion} />
             </div>
-            <EditingSuggestionNav {...editingSuggestion} />
-        </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/30 dark:bg-black/20">
-            {sidebarTab === 'profile' ? (
-                <ProfileTab {...profileTabProps} />
-            ) : (
-                <ExperienceTab {...experienceTabProps} />
-            )}
-        </div>
-    </aside>
-);
+            <div
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/30 dark:bg-black/20"
+            >
+                {sidebarTab === 'profile' ? (
+                    <ProfileTab {...profileTabProps} />
+                ) : (
+                    <ExperienceTab
+                        {...experienceTabProps}
+                        scrollContainerRef={scrollContainerRef}
+                    />
+                )}
+            </div>
+        </aside>
+    );
+};
 
 export default EditorSidebar;

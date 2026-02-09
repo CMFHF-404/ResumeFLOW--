@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
@@ -50,6 +50,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     certification,
     skill,
     selection,
+    scrollContainerRef,
     workItems,
     projectItems,
     selectedExpIds,
@@ -67,6 +68,21 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetProjectSort,
     onResetCertificationSort,
 }) => {
+    const listScrollSnapshotRef = useRef<number | null>(null);
+    const shouldRestoreScrollRef = useRef(false);
+    const prevEditingExpIdRef = useRef<string | null>(experience.editingExpId);
+
+    const recordListScroll = useCallback(() => {
+        const container = scrollContainerRef?.current;
+        listScrollSnapshotRef.current = container ? container.scrollTop : null;
+        shouldRestoreScrollRef.current = true;
+    }, [scrollContainerRef]);
+
+    const handleEditExperienceFromList = useCallback((id: string) => {
+        recordListScroll();
+        experience.startEditingExperience(id);
+    }, [experience.startEditingExperience, recordListScroll]);
+
     const scrollTarget = useMemo(() => {
         if (experience.editingExpId) {
             return null;
@@ -84,6 +100,33 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         skill.editingSkillId,
         skillGroups,
     ]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        const prevEditingExpId = prevEditingExpIdRef.current;
+        prevEditingExpIdRef.current = experience.editingExpId;
+        if (!prevEditingExpId || experience.editingExpId) {
+            return;
+        }
+        if (!shouldRestoreScrollRef.current) {
+            return;
+        }
+        shouldRestoreScrollRef.current = false;
+        if (scrollTarget) {
+            return;
+        }
+        const container = scrollContainerRef?.current;
+        const scrollTop = listScrollSnapshotRef.current;
+        if (!container || scrollTop === null) {
+            return;
+        }
+        const frameId = window.requestAnimationFrame(() => {
+            container.scrollTop = scrollTop;
+        });
+        return () => window.cancelAnimationFrame(frameId);
+    }, [experience.editingExpId, scrollContainerRef, scrollTarget]);
 
     useEffect(() => {
         if (!scrollTarget || typeof window === 'undefined') {
@@ -123,7 +166,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 actionLabel={ADD_WORK_EXPERIENCE_LABEL}
                 onToggleSelection={selection.toggleExperienceSelection}
                 onAddItem={() => experience.handleAddExperience('work')}
-                onEditItem={experience.startEditingExperience}
+                onEditItem={handleEditExperienceFromList}
                 onDeleteItem={experience.requestDeleteExperience}
                 deletingIds={experience.deletingExperienceIds}
                 staleExperienceIds={staleExperienceIds}
@@ -139,7 +182,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 actionLabel={ADD_PROJECT_EXPERIENCE_LABEL}
                 onToggleSelection={selection.toggleExperienceSelection}
                 onAddItem={() => experience.handleAddExperience('project')}
-                onEditItem={experience.startEditingExperience}
+                onEditItem={handleEditExperienceFromList}
                 onDeleteItem={experience.requestDeleteExperience}
                 deletingIds={experience.deletingExperienceIds}
                 staleExperienceIds={staleExperienceIds}

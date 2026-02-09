@@ -31,7 +31,8 @@ export const MatchBadge: React.FC<MatchBadgeProps & { children?: React.ReactNode
     trend,
     children,
 }) => {
-    const trendFallback = trend ? (
+    const shouldShowTrend = trend && trend !== 'same';
+    const trendFallback = shouldShowTrend ? (
         <span className={`ml-1 ${TREND_CLASSES[trend]}`}>{TREND_LABELS[trend]}</span>
     ) : null;
 

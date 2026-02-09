@@ -1,4 +1,4 @@
-import type { Dispatch, DragEvent, ReactNode, SetStateAction } from "react";
+import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { MatchTrend } from "./analysis";
 import type { ResumeDetail } from "../services/resumeService";
 
@@ -271,6 +271,7 @@ export type ExperienceTabProps = {
   certification: CertificationActions;
   skill: SkillActions;
   selection: SelectionActions;
+  scrollContainerRef?: RefObject<HTMLDivElement>;
   workItems: ResumeExperienceView[];
   projectItems: ResumeExperienceView[];
   selectedExpIds: Set<string>;

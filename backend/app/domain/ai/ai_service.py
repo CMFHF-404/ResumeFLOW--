@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,14 @@ settings = load_settings()
 logger = logging.getLogger(__name__)
 
 MAX_ERROR_BODY_LOG_LENGTH = 2000
+
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+
+def _summarize_text(text: str) -> str:
+    if not text:
+        return "len=0 sha256=<empty>"
+    return f"len={len(text)} sha256={_hash_text(text)}"
 
 def _strip_json_wrappers(text: str) -> str:
     cleaned = text.strip()
@@ -54,7 +63,10 @@ def _parse_json_content(text: str) -> Dict[str, Any]:
     try:
         return json.loads(payload)
     except json.JSONDecodeError as exc:
-        raise ValueError("Invalid JSON returned by model") from exc
+        logger.error("JSON Parse Error: %s", exc)
+        logger.error("Raw Text Summary: %s", _summarize_text(text))
+        logger.error("Extracted Payload Summary: %s", _summarize_text(payload))
+        raise ValueError(f"Invalid JSON returned by model: {exc}") from exc
 
 
 def _extract_content(response_data: Dict[str, Any]) -> str:
