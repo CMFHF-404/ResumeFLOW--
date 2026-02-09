@@ -41,6 +41,23 @@ class ParsedPersonalInfo(BaseModel):
     links: List[str] = Field(default_factory=list)
 
 
+class ParsedCertification(BaseModel):
+    name: str
+    issuer: Optional[str] = None
+    issue_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    credential_id: Optional[str] = None
+    credential_url: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ParsedSkillGroup(BaseModel):
+    category: str
+    tags: List[str] = Field(default_factory=list)
+
+
 class ResumeParseResponse(BaseModel):
     items: List[ParsedExperienceItem] = Field(default_factory=list)
     personal_info: Optional[ParsedPersonalInfo] = None
+    certifications: List[ParsedCertification] = Field(default_factory=list)
+    skills: List[ParsedSkillGroup] = Field(default_factory=list)

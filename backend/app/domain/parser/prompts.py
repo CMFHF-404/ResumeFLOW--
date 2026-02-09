@@ -1,6 +1,7 @@
 RESUME_PARSING_PROMPT = (
     "You are a resume parser. Return JSON only (no markdown). "
-    "Extract personal info, work experience, project experience, and education into the schema below. "
+    "Extract personal info, work experience, project experience, education, certifications, and skills "
+    "into the schema below. "
     "Personal info includes full_name, email, phone, location, links. "
     "Keep the original language of the resume. If a field is missing, use an empty string or empty array. "
     "Do not rewrite or summarize. Preserve the original wording as much as possible, "
@@ -23,7 +24,12 @@ RESUME_PARSING_PROMPT = (
     "\"star\": {\"s\": \"\", \"t\": \"\", \"a\": \"\", \"r\": \"\"}}, ...], "
     "\"education\": ["
     "{\"school\": \"\", \"major\": \"\", \"degree\": \"\", "
-    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...]"
+    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...], "
+    "\"certifications\": ["
+    "{\"name\": \"\", \"issuer\": \"\", \"issue_date\": \"\", \"expiry_date\": \"\", "
+    "\"credential_id\": \"\", \"credential_url\": \"\", \"description\": \"\"}, ...], "
+    "\"skills\": ["
+    "{\"category\": \"\", \"tags\": []}, ...]"
     "}"
 )
 
@@ -52,7 +58,12 @@ RESUME_CHUNK_PARSING_PROMPT = (
     "\"star\": {\"s\": \"\", \"t\": \"\", \"a\": \"\", \"r\": \"\"}}, ...], "
     "\"education\": ["
     "{\"school\": \"\", \"major\": \"\", \"degree\": \"\", "
-    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...]"
+    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...], "
+    "\"certifications\": ["
+    "{\"name\": \"\", \"issuer\": \"\", \"issue_date\": \"\", \"expiry_date\": \"\", "
+    "\"credential_id\": \"\", \"credential_url\": \"\", \"description\": \"\"}, ...], "
+    "\"skills\": ["
+    "{\"category\": \"\", \"tags\": []}, ...]"
     "}"
 )
 
@@ -79,6 +90,11 @@ RESUME_MERGE_PROMPT = (
     "\"star\": {\"s\": \"\", \"t\": \"\", \"a\": \"\", \"r\": \"\"}}, ...], "
     "\"education\": ["
     "{\"school\": \"\", \"major\": \"\", \"degree\": \"\", "
-    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...]"
+    "\"start_date\": \"\", \"end_date\": \"\", \"gpa\": \"\", \"courses\": []}, ...], "
+    "\"certifications\": ["
+    "{\"name\": \"\", \"issuer\": \"\", \"issue_date\": \"\", \"expiry_date\": \"\", "
+    "\"credential_id\": \"\", \"credential_url\": \"\", \"description\": \"\"}, ...], "
+    "\"skills\": ["
+    "{\"category\": \"\", \"tags\": []}, ...]"
     "}"
 )

@@ -35,9 +35,33 @@ export interface ParsedPersonalInfo {
   links?: string[];
 }
 
+export type ParsedPersonalInfoSelection = {
+  full_name: boolean;
+  email: boolean;
+  phone: boolean;
+  location: boolean;
+};
+
+export interface ParsedCertification {
+  name: string;
+  issuer?: string;
+  issue_date?: string;
+  expiry_date?: string;
+  credential_id?: string;
+  credential_url?: string;
+  description?: string;
+}
+
+export interface ParsedSkillGroup {
+  category: string;
+  tags: string[];
+}
+
 export interface ResumeParseResponse {
   items: ParsedExperienceItem[];
   personal_info?: ParsedPersonalInfo;
+  certifications?: ParsedCertification[];
+  skills?: ParsedSkillGroup[];
 }
 
 export const parserService = {

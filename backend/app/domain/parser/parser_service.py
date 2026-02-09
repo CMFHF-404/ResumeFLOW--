@@ -42,8 +42,14 @@ DEFAULT_WORK_TITLE = "未命名经历"
 DEFAULT_WORK_ORG = "未知机构"
 DEFAULT_EDU_TITLE = "未命名专业"
 DEFAULT_EDU_ORG = "未命名学校"
+DEFAULT_SKILL_CATEGORY = "未分类"
 PRESENT_MARKERS = {"present", "current", "now", "至今", "目前"}
 COURSE_SPLIT_PATTERN = re.compile(r"[,，;；/\n]")
+SKILL_TAG_SPLIT_PATTERN = re.compile(r"[,，;；/\n、|]+")
+CJK_CHAR_PATTERN = r"\u4e00-\u9fff\u3400-\u4dbf"
+CJK_PUNCT_PATTERN = r"\u3000-\u303f\uff00-\uffef·•"
+CJK_INLINE_PATTERN = f"{CJK_CHAR_PATTERN}{CJK_PUNCT_PATTERN}"
+CJK_PUNCT_ADJACENT_PATTERN = r"\(\)\[\]（）【】《》<>·•"
 WHITESPACE_PATTERN = re.compile(r"\s+")
 PARA_SPLIT_PATTERN = re.compile(r"\n\s*\n+")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？!?;；.])\s+")
@@ -166,6 +172,21 @@ def _normalize_text(value: Optional[str]) -> str:
     if not value:
         return ""
     compact = WHITESPACE_PATTERN.sub(" ", value).strip().lower()
+    compact = re.sub(
+        rf"(?<=[{CJK_INLINE_PATTERN}])\s+(?=[{CJK_INLINE_PATTERN}])",
+        "",
+        compact,
+    )
+    compact = re.sub(
+        rf"(?<=[{CJK_CHAR_PATTERN}])\s+(?=[{CJK_PUNCT_ADJACENT_PATTERN}])",
+        "",
+        compact,
+    )
+    compact = re.sub(
+        rf"(?<=[{CJK_PUNCT_ADJACENT_PATTERN}])\s+(?=[{CJK_CHAR_PATTERN}])",
+        "",
+        compact,
+    )
     return compact
 
 
@@ -339,15 +360,70 @@ def _ensure_list(value: Any) -> List[Any]:
 def _ensure_str(value: Any) -> str:
     if value is None:
         return ""
-    return str(value).strip()
+    return _clean_inline_text(str(value))
+
+
+def _clean_inline_text(value: str) -> str:
+    compact = WHITESPACE_PATTERN.sub(" ", value).strip()
+    compact = re.sub(
+        rf"(?<=[{CJK_INLINE_PATTERN}])\s+(?=[{CJK_INLINE_PATTERN}])",
+        "",
+        compact,
+    )
+    compact = re.sub(
+        rf"(?<=[{CJK_CHAR_PATTERN}])\s+(?=[{CJK_PUNCT_ADJACENT_PATTERN}])",
+        "",
+        compact,
+    )
+    compact = re.sub(
+        rf"(?<=[{CJK_PUNCT_ADJACENT_PATTERN}])\s+(?=[{CJK_CHAR_PATTERN}])",
+        "",
+        compact,
+    )
+    return compact
+
+
+def _clean_multiline_text(value: str) -> str:
+    lines = [line for line in value.splitlines()]
+    cleaned = [_clean_inline_text(line) for line in lines]
+    return "\n".join([line for line in cleaned if line])
+
+
+def _clean_resume_text(text: str) -> str:
+    if not text:
+        return text
+    lines = text.splitlines()
+    cleaned_lines = [
+        _clean_inline_text(line) if line.strip() else ""
+        for line in lines
+    ]
+    return "\n".join(cleaned_lines)
+
+
+def _ensure_optional_str(value: Any) -> Optional[str]:
+    text = _ensure_str(value)
+    return text or None
 
 
 def _normalize_text_list(value: Any) -> List[str]:
     return [
-        item.strip()
+        _clean_inline_text(item)
         for item in _ensure_list(value)
         if isinstance(item, str) and item.strip()
     ]
+
+
+def _normalize_skill_tags(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return _normalize_text_list(value)
+    if isinstance(value, str):
+        items = [
+            item.strip()
+            for item in SKILL_TAG_SPLIT_PATTERN.split(value)
+            if item.strip()
+        ]
+        return items
+    return []
 
 
 def _join_text_parts(parts: Iterable[str]) -> str:
@@ -385,18 +461,26 @@ def _normalize_courses(value: Any) -> Any:
     if isinstance(value, list):
         return _normalize_text_list(value)
     if isinstance(value, str):
-        items = [item.strip() for item in COURSE_SPLIT_PATTERN.split(value) if item.strip()]
-        return items if items else value.strip()
+        items = [
+            _clean_inline_text(item)
+            for item in COURSE_SPLIT_PATTERN.split(value)
+            if item.strip()
+        ]
+        return items if items else _clean_inline_text(value)
     return ""
 
 
 def _normalize_star_field(value: Any) -> str:
     if isinstance(value, list):
-        items = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        items = [
+            _clean_inline_text(item)
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ]
         return "\n".join(items)
     if value is None:
         return ""
-    return str(value).strip()
+    return _clean_multiline_text(str(value))
 
 
 def _resolve_action_text(current: str, highlights: Any) -> str:
@@ -652,8 +736,8 @@ def _normalize_personal_value(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
-        return value.strip()
-    return str(value).strip()
+        return _clean_inline_text(value)
+    return _clean_inline_text(str(value))
 
 
 def _normalize_personal_links(value: Any) -> List[str]:
@@ -669,6 +753,84 @@ def _normalize_personal_links(value: Any) -> List[str]:
     else:
         return []
     return [item.strip() for item in items if isinstance(item, str) and item.strip()]
+
+
+def normalize_personal_info(payload: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    personal_info = payload.get("personal_info")
+    if not isinstance(personal_info, dict):
+        return None
+    normalized: Dict[str, Any] = {}
+    for field in PERSONAL_INFO_FIELDS:
+        value = _normalize_personal_value(personal_info.get(field))
+        if value:
+            normalized[field] = value
+    links = _normalize_personal_links(personal_info.get("links"))
+    if links:
+        normalized["links"] = links
+    return normalized or None
+
+
+def _normalize_certification_entry(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    name = _ensure_str(entry.get("name"))
+    if not name:
+        return None
+    return {
+        "name": name,
+        "issuer": _ensure_optional_str(entry.get("issuer")),
+        "issue_date": _ensure_optional_str(entry.get("issue_date")),
+        "expiry_date": _ensure_optional_str(entry.get("expiry_date")),
+        "credential_id": _ensure_optional_str(entry.get("credential_id")),
+        "credential_url": _ensure_optional_str(entry.get("credential_url")),
+        "description": _ensure_optional_str(entry.get("description")),
+    }
+
+
+def normalize_certifications(payload: Any) -> List[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    raw_items = _extract_dict_entries(payload.get("certifications"))
+    normalized: List[Dict[str, Any]] = []
+    for entry in raw_items:
+        item = _normalize_certification_entry(entry)
+        if item:
+            normalized.append(item)
+    if not normalized:
+        return []
+    return _dedupe_entries(normalized, ("name", "issuer", "issue_date"))
+
+
+def _normalize_skill_category(value: Any) -> str:
+    return _ensure_str(value) or DEFAULT_SKILL_CATEGORY
+
+
+def normalize_skill_groups(payload: Any) -> List[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    raw_groups = _extract_dict_entries(payload.get("skills"))
+    if not raw_groups:
+        return []
+    grouped: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for entry in raw_groups:
+        category = _normalize_skill_category(entry.get("category"))
+        category_key = _normalize_text(category)
+        tags = _normalize_skill_tags(entry.get("tags"))
+        if not tags:
+            continue
+        if category_key not in grouped:
+            grouped[category_key] = {"category": category, "tags": []}
+            order.append(category_key)
+        existing_tags = grouped[category_key]["tags"]
+        seen = { _normalize_text(tag) for tag in existing_tags }
+        for tag in tags:
+            tag_key = _normalize_text(tag)
+            if not tag_key or tag_key in seen:
+                continue
+            existing_tags.append(tag)
+            seen.add(tag_key)
+    return [grouped[key] for key in order if grouped.get(key)]
 
 
 def _merge_personal_info(results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -748,6 +910,8 @@ def _merge_chunk_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "work_experiences": [],
         "project_experiences": [],
         "education": [],
+        "certifications": [],
+        "skills": [],
     }
     personal_info = _merge_personal_info(results)
     if personal_info:
@@ -762,6 +926,12 @@ def _merge_chunk_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         merged["education"].extend(
             _extract_dict_entries(result.get("education"))
         )
+        merged["certifications"].extend(
+            _extract_dict_entries(result.get("certifications"))
+        )
+        merged["skills"].extend(
+            _extract_dict_entries(result.get("skills"))
+        )
     merged["work_experiences"] = _dedupe_entries(
         merged["work_experiences"],
         ("title", "org", "start_date", "end_date"),
@@ -774,6 +944,8 @@ def _merge_chunk_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         merged["education"],
         ("school", "major", "degree", "start_date", "end_date"),
     )
+    merged["certifications"] = normalize_certifications(merged)
+    merged["skills"] = normalize_skill_groups(merged)
     return merged
 
 
@@ -879,21 +1051,22 @@ async def parse_resume(text: str, request_id: Optional[str] = None) -> Dict[str,
     trimmed = text.strip()
     if not trimmed:
         raise ValueError("简历内容为空，无法解析。")
-    if len(trimmed) > MAX_RESUME_TEXT_CHARS:
-        trimmed = trimmed[:MAX_RESUME_TEXT_CHARS]
+    cleaned = _clean_resume_text(trimmed)
+    if len(cleaned) > MAX_RESUME_TEXT_CHARS:
+        cleaned = cleaned[:MAX_RESUME_TEXT_CHARS]
     total_start = perf_counter()
-    if _should_use_chunking(trimmed):
-        result = await _parse_resume_chunked(trimmed, request_id)
+    if _should_use_chunking(cleaned):
+        result = await _parse_resume_chunked(cleaned, request_id)
         mode = "chunked"
     else:
-        result = await _parse_resume_single(trimmed, request_id)
+        result = await _parse_resume_single(cleaned, request_id)
         mode = "single"
     total_ms = (perf_counter() - total_start) * 1000
     _log_timing(
         "parse_resume_total",
         total_ms,
         request_id,
-        {"mode": mode, "input_length": len(trimmed)},
+        {"mode": mode, "input_length": len(cleaned)},
     )
     return result
 

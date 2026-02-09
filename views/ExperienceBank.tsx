@@ -33,7 +33,7 @@ import SkillsSection from './SkillsSection';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 import ExperienceBankPrint from './ExperienceBankPrint';
 import { buildExperienceBankExportTitle } from '../utils/exportFilename';
-import type { ParsedPersonalInfo } from '../services/parserService';
+import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 
 const resolveNextProfilePatch = (
@@ -43,7 +43,8 @@ const resolveNextProfilePatch = (
     email: string;
     phone: string;
     location: string;
-  }
+  },
+  selection?: ParsedPersonalInfoSelection
 ) => {
   if (!parsedPersonalInfo) {
     return null;
@@ -58,16 +59,22 @@ const resolveNextProfilePatch = (
     phone?: string;
     location?: string;
   } = {};
-  if (nextFullName && !currentProfile?.name?.trim()) {
+  const shouldApply = (key: keyof ParsedPersonalInfoSelection, currentValue?: string) => {
+    if (selection) {
+      return selection[key];
+    }
+    return !currentValue?.trim();
+  };
+  if (nextFullName && shouldApply('full_name', currentProfile?.name)) {
     patch.full_name = nextFullName;
   }
-  if (nextEmail && !currentProfile?.email?.trim()) {
+  if (nextEmail && shouldApply('email', currentProfile?.email)) {
     patch.email = nextEmail;
   }
-  if (nextPhone && !currentProfile?.phone?.trim()) {
+  if (nextPhone && shouldApply('phone', currentProfile?.phone)) {
     patch.phone = nextPhone;
   }
-  if (nextLocation && !currentProfile?.location?.trim()) {
+  if (nextLocation && shouldApply('location', currentProfile?.location)) {
     patch.location = nextLocation;
   }
   return Object.keys(patch).length ? patch : null;
@@ -316,7 +323,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
   }, [applyProfileSnapshot, email, isLoadingProfile, location, name, phone]);
 
-  const handleResumeImported = useCallback(async (parsedPersonalInfo?: ParsedPersonalInfo) => {
+  const handleResumeImported = useCallback(async (
+    parsedPersonalInfo?: ParsedPersonalInfo,
+    personalInfoSelection?: ParsedPersonalInfoSelection
+  ) => {
     const currentProfile = await resolveCurrentProfileSnapshot();
     if (!currentProfile) {
       setExperienceRefreshSignal((prev) => prev + 1);
@@ -325,7 +335,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     }
     const profilePatch = resolveNextProfilePatch(
       parsedPersonalInfo,
-      currentProfile
+      currentProfile,
+      personalInfoSelection
     );
     if (profilePatch) {
       try {
@@ -553,6 +564,12 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         isOpen={isResumeModalOpen}
         onClose={() => setIsResumeModalOpen(false)}
         onImported={handleResumeImported}
+        profileSnapshot={{
+          name,
+          email,
+          phone,
+          location,
+        }}
         toast={toastApi}
       />
 
