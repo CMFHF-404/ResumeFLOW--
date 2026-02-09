@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import uuid
@@ -20,7 +21,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ...constants import MAX_LIMIT
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ..ai.ai_service import call_llm_json
-from .prompts import RESUME_PARSING_PROMPT
+from .prompts import RESUME_CHUNK_PARSING_PROMPT, RESUME_MERGE_PROMPT, RESUME_PARSING_PROMPT
 from .schemas import DuplicateMatch, ParsedExperienceItem, ParsedExperienceVersion
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,10 @@ SUPPORTED_DOCX_TYPES = {
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 MIN_TEXT_LENGTH = 30
 MAX_RESUME_TEXT_CHARS = 12_000
+LONG_RESUME_TEXT_THRESHOLD = 6_000
+CHUNK_MAX_CHARS = 3_200
+CHUNK_MIN_CHARS = 800
+MAX_MERGE_PAYLOAD_CHARS = 10_000
 DUPLICATE_SIMILARITY_THRESHOLD = 0.86
 DEFAULT_WORK_TITLE = "未命名经历"
 DEFAULT_WORK_ORG = "未知机构"
@@ -40,6 +45,10 @@ DEFAULT_EDU_ORG = "未命名学校"
 PRESENT_MARKERS = {"present", "current", "now", "至今", "目前"}
 COURSE_SPLIT_PATTERN = re.compile(r"[,，;；/\n]")
 WHITESPACE_PATTERN = re.compile(r"\s+")
+PARA_SPLIT_PATTERN = re.compile(r"\n\s*\n+")
+SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？!?;；.])\s+")
+LINK_SPLIT_PATTERN = re.compile(r"[\s,;，；]+")
+PERSONAL_INFO_FIELDS = ("full_name", "email", "phone", "location")
 PROJECT_KEYWORDS = {
     "project",
     "projects",
@@ -140,6 +149,8 @@ LOG_WARN_THRESHOLDS_MS = {
     "parse_docx": 5_000,
     "extract_text_total": 12_000,
     "ai_call": 20_000,
+    "ai_chunk_call": 20_000,
+    "ai_merge_call": 20_000,
     "parse_resume_total": 25_000,
 }
 
@@ -156,6 +167,131 @@ def _normalize_text(value: Optional[str]) -> str:
         return ""
     compact = WHITESPACE_PATTERN.sub(" ", value).strip().lower()
     return compact
+
+
+def _split_into_paragraphs(text: str) -> List[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    parts = [
+        part.strip()
+        for part in PARA_SPLIT_PATTERN.split(stripped)
+        if part.strip()
+    ]
+    return parts if parts else [stripped]
+
+
+def _hard_split_text(text: str, max_chars: int) -> List[str]:
+    chunks: List[str] = []
+    for index in range(0, len(text), max_chars):
+        piece = text[index : index + max_chars].strip()
+        if piece:
+            chunks.append(piece)
+    return chunks
+
+
+def _chunk_units(units: Iterable[str], joiner: str) -> List[str]:
+    chunks: List[str] = []
+    current: List[str] = []
+    current_len = 0
+    joiner_len = len(joiner)
+    for unit in units:
+        cleaned = unit.strip()
+        if not cleaned:
+            continue
+        if len(cleaned) > CHUNK_MAX_CHARS:
+            if current:
+                chunks.append(joiner.join(current).strip())
+                current = []
+                current_len = 0
+            chunks.extend(_hard_split_text(cleaned, CHUNK_MAX_CHARS))
+            continue
+        projected = current_len + len(cleaned) + (joiner_len if current else 0)
+        if projected <= CHUNK_MAX_CHARS:
+            current.append(cleaned)
+            current_len = projected
+            continue
+        if current:
+            chunks.append(joiner.join(current).strip())
+        current = [cleaned]
+        current_len = len(cleaned)
+    if current:
+        chunks.append(joiner.join(current).strip())
+    return chunks
+
+
+def _split_long_paragraph(paragraph: str) -> List[str]:
+    if len(paragraph) <= CHUNK_MAX_CHARS:
+        return [paragraph]
+    lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
+    if len(lines) > 1:
+        line_chunks = _chunk_units(lines, "\n")
+        if line_chunks:
+            return line_chunks
+    sentences = [
+        item.strip()
+        for item in SENTENCE_SPLIT_PATTERN.split(paragraph)
+        if item.strip()
+    ]
+    if len(sentences) > 1:
+        return _chunk_units(sentences, " ")
+    return _hard_split_text(paragraph, CHUNK_MAX_CHARS)
+
+
+def _chunk_paragraphs(paragraphs: Iterable[str]) -> List[str]:
+    chunks: List[str] = []
+    current: List[str] = []
+    current_len = 0
+    for paragraph in paragraphs:
+        parts = _split_long_paragraph(paragraph)
+        for part in parts:
+            projected = current_len + len(part) + (1 if current else 0)
+            if projected <= CHUNK_MAX_CHARS:
+                current.append(part)
+                current_len = projected
+                continue
+            if current:
+                chunks.append("\n".join(current).strip())
+            current = [part]
+            current_len = len(part)
+    if current:
+        chunks.append("\n".join(current).strip())
+    return chunks
+
+
+def _merge_small_chunks(chunks: List[str]) -> List[str]:
+    if not chunks:
+        return []
+    merged: List[str] = []
+    buffer = ""
+    for chunk in chunks:
+        if not buffer:
+            buffer = chunk
+            continue
+        if (
+            len(buffer) < CHUNK_MIN_CHARS
+            and len(buffer) + len(chunk) + 1 <= CHUNK_MAX_CHARS
+        ):
+            buffer = f"{buffer}\n{chunk}".strip()
+            continue
+        merged.append(buffer)
+        buffer = chunk
+    if buffer:
+        merged.append(buffer)
+    return merged
+
+
+def _split_resume_text(text: str) -> List[str]:
+    paragraphs = _split_into_paragraphs(text)
+    if not paragraphs:
+        return [text] if text.strip() else []
+    chunks = _chunk_paragraphs(paragraphs)
+    chunks = [chunk for chunk in _merge_small_chunks(chunks) if chunk]
+    return chunks or [text]
+
+
+def _should_use_chunking(text: str) -> bool:
+    return len(text) > LONG_RESUME_TEXT_THRESHOLD
 
 
 def _build_signature(title: Optional[str], org: Optional[str]) -> str:
@@ -399,7 +535,11 @@ def _split_work_and_project_entries(
 def build_resume_items(payload: Dict[str, Any]) -> List[ParsedExperienceItem]:
     items: List[ParsedExperienceItem] = []
     raw_work_entries = _ensure_list(payload.get("work_experiences"))
-    project_payload = payload.get("project_experiences") if "project_experiences" in payload else None
+    project_payload = (
+        payload.get("project_experiences")
+        if "project_experiences" in payload
+        else None
+    )
     raw_project_entries = _ensure_list(project_payload)
     if "project_experiences" in payload:
         work_entries = [entry for entry in raw_work_entries if isinstance(entry, dict)]
@@ -467,6 +607,242 @@ def _log_timing(
     logger.info("[ResumeParse] %s", payload)
 
 
+def _build_resume_messages(prompt: str, content: str) -> List[Dict[str, str]]:
+    return [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": content},
+    ]
+
+
+async def _call_resume_llm(
+    messages: List[Dict[str, str]],
+    request_id: Optional[str],
+    step: str,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    call_start = perf_counter()
+    try:
+        result = await call_llm_json(messages)
+    except Exception as exc:
+        call_ms = (perf_counter() - call_start) * 1000
+        payload = {"status": "error", "error": type(exc).__name__}
+        if extra:
+            payload.update(extra)
+        _log_timing(step, call_ms, request_id, payload)
+        raise
+    call_ms = (perf_counter() - call_start) * 1000
+    payload = {"status": "ok"}
+    if extra:
+        payload.update(extra)
+    _log_timing(step, call_ms, request_id, payload)
+    return result
+
+
+def _normalize_parse_result(result: Any) -> Dict[str, Any]:
+    if not isinstance(result, dict):
+        raise ValueError("模型返回的结果格式不正确。")
+    return result
+
+
+def _extract_dict_entries(value: Any) -> List[Dict[str, Any]]:
+    return [item for item in _ensure_list(value) if isinstance(item, dict)]
+
+
+def _normalize_personal_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
+def _normalize_personal_links(value: Any) -> List[str]:
+    if not value:
+        return []
+    items: List[str] = []
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, str):
+                items.extend(LINK_SPLIT_PATTERN.split(item))
+    elif isinstance(value, str):
+        items.extend(LINK_SPLIT_PATTERN.split(value))
+    else:
+        return []
+    return [item.strip() for item in items if isinstance(item, str) and item.strip()]
+
+
+def _merge_personal_info(results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    merged: Dict[str, Any] = {}
+    for field in PERSONAL_INFO_FIELDS:
+        for result in results:
+            personal_info = result.get("personal_info")
+            if not isinstance(personal_info, dict):
+                continue
+            value = _normalize_personal_value(personal_info.get(field))
+            if value:
+                merged[field] = value
+                break
+    links: List[str] = []
+    seen = set()
+    for result in results:
+        personal_info = result.get("personal_info")
+        if not isinstance(personal_info, dict):
+            continue
+        for link in _normalize_personal_links(personal_info.get("links")):
+            if link not in seen:
+                seen.add(link)
+                links.append(link)
+    if links:
+        merged["links"] = links
+    return merged or None
+
+
+def _entry_signature(entry: Dict[str, Any], fields: Tuple[str, ...]) -> str:
+    parts = [
+        _normalize_text(_ensure_str(entry.get(field)))
+        for field in fields
+    ]
+    if not any(parts):
+        return ""
+    return "::".join(parts)
+
+
+def _entry_score(entry: Dict[str, Any]) -> int:
+    score = 0
+    for value in entry.values():
+        if isinstance(value, str):
+            score += len(value.strip())
+        elif isinstance(value, list):
+            score += sum(len(item.strip()) for item in value if isinstance(item, str))
+        elif isinstance(value, dict):
+            score += sum(
+                len(str(item).strip())
+                for item in value.values()
+                if isinstance(item, str)
+            )
+    return score
+
+
+def _dedupe_entries(
+    entries: List[Dict[str, Any]], fields: Tuple[str, ...]
+) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    index: Dict[str, int] = {}
+    for entry in entries:
+        signature = _entry_signature(entry, fields)
+        if not signature:
+            output.append(entry)
+            continue
+        existing_index = index.get(signature)
+        if existing_index is None:
+            index[signature] = len(output)
+            output.append(entry)
+            continue
+        if _entry_score(entry) > _entry_score(output[existing_index]):
+            output[existing_index] = entry
+    return output
+
+
+def _merge_chunk_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {
+        "work_experiences": [],
+        "project_experiences": [],
+        "education": [],
+    }
+    personal_info = _merge_personal_info(results)
+    if personal_info:
+        merged["personal_info"] = personal_info
+    for result in results:
+        merged["work_experiences"].extend(
+            _extract_dict_entries(result.get("work_experiences"))
+        )
+        merged["project_experiences"].extend(
+            _extract_dict_entries(result.get("project_experiences"))
+        )
+        merged["education"].extend(
+            _extract_dict_entries(result.get("education"))
+        )
+    merged["work_experiences"] = _dedupe_entries(
+        merged["work_experiences"],
+        ("title", "org", "start_date", "end_date"),
+    )
+    merged["project_experiences"] = _dedupe_entries(
+        merged["project_experiences"],
+        ("title", "org", "start_date", "end_date"),
+    )
+    merged["education"] = _dedupe_entries(
+        merged["education"],
+        ("school", "major", "degree", "start_date", "end_date"),
+    )
+    return merged
+
+
+async def _merge_with_llm(
+    draft: Dict[str, Any], request_id: Optional[str]
+) -> Dict[str, Any]:
+    payload = json.dumps(draft, ensure_ascii=False)
+    if len(payload) > MAX_MERGE_PAYLOAD_CHARS:
+        return draft
+    messages = _build_resume_messages(RESUME_MERGE_PROMPT, payload)
+    try:
+        result = await _call_resume_llm(
+            messages,
+            request_id,
+            "ai_merge_call",
+            {"input_length": len(payload)},
+        )
+    except Exception:
+        return draft
+    if not isinstance(result, dict):
+        return draft
+    return result
+
+
+async def _parse_resume_single(
+    text: str, request_id: Optional[str]
+) -> Dict[str, Any]:
+    trimmed = text
+    if len(trimmed) > MAX_RESUME_TEXT_CHARS:
+        trimmed = trimmed[:MAX_RESUME_TEXT_CHARS]
+    messages = _build_resume_messages(RESUME_PARSING_PROMPT, trimmed)
+    result = await _call_resume_llm(
+        messages,
+        request_id,
+        "ai_call",
+        {"input_length": len(trimmed)},
+    )
+    return _normalize_parse_result(result)
+
+
+async def _parse_resume_chunked(
+    text: str, request_id: Optional[str]
+) -> Dict[str, Any]:
+    chunks = _split_resume_text(text)
+    chunk_results: List[Dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        messages = _build_resume_messages(RESUME_CHUNK_PARSING_PROMPT, chunk)
+        try:
+            result = await _call_resume_llm(
+                messages,
+                request_id,
+                "ai_chunk_call",
+                {
+                    "chunk_index": index + 1,
+                    "chunk_total": len(chunks),
+                    "input_length": len(chunk),
+                },
+            )
+        except Exception:
+            continue
+        if isinstance(result, dict):
+            chunk_results.append(result)
+    if not chunk_results:
+        return await _parse_resume_single(text, request_id)
+    draft = _merge_chunk_results(chunk_results)
+    merged = await _merge_with_llm(draft, request_id)
+    return _normalize_parse_result(merged)
+
+
 async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> str:
     total_start = perf_counter()
     read_start = perf_counter()
@@ -505,32 +881,20 @@ async def parse_resume(text: str, request_id: Optional[str] = None) -> Dict[str,
         raise ValueError("简历内容为空，无法解析。")
     if len(trimmed) > MAX_RESUME_TEXT_CHARS:
         trimmed = trimmed[:MAX_RESUME_TEXT_CHARS]
-    messages = [
-        {"role": "system", "content": RESUME_PARSING_PROMPT},
-        {"role": "user", "content": trimmed},
-    ]
-    call_start = perf_counter()
-    try:
-        result = await call_llm_json(messages)
-    except Exception as exc:
-        call_ms = (perf_counter() - call_start) * 1000
-        _log_timing(
-            "ai_call",
-            call_ms,
-            request_id,
-            {"status": "error", "error": type(exc).__name__},
-        )
-        raise
-    call_ms = (perf_counter() - call_start) * 1000
+    total_start = perf_counter()
+    if _should_use_chunking(trimmed):
+        result = await _parse_resume_chunked(trimmed, request_id)
+        mode = "chunked"
+    else:
+        result = await _parse_resume_single(trimmed, request_id)
+        mode = "single"
+    total_ms = (perf_counter() - total_start) * 1000
     _log_timing(
-        "ai_call",
-        call_ms,
+        "parse_resume_total",
+        total_ms,
         request_id,
-        {"status": "ok", "input_length": len(trimmed)},
+        {"mode": mode, "input_length": len(trimmed)},
     )
-    _log_timing("parse_resume_total", call_ms, request_id)
-    if not isinstance(result, dict):
-        raise ValueError("模型返回的结果格式不正确。")
     return result
 
 

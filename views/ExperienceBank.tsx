@@ -33,7 +33,52 @@ import SkillsSection from './SkillsSection';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 import ExperienceBankPrint from './ExperienceBankPrint';
 import { buildExperienceBankExportTitle } from '../utils/exportFilename';
+import type { ParsedPersonalInfo } from '../services/parserService';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
+
+const resolveNextProfilePatch = (
+  parsedPersonalInfo?: ParsedPersonalInfo,
+  currentProfile?: {
+    name: string;
+    email: string;
+    phone: string;
+    location: string;
+  }
+) => {
+  if (!parsedPersonalInfo) {
+    return null;
+  }
+  const nextFullName = parsedPersonalInfo.full_name?.trim();
+  const nextEmail = parsedPersonalInfo.email?.trim();
+  const nextPhone = parsedPersonalInfo.phone?.trim();
+  const nextLocation = parsedPersonalInfo.location?.trim();
+  const patch: {
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+  } = {};
+  if (nextFullName && !currentProfile?.name?.trim()) {
+    patch.full_name = nextFullName;
+  }
+  if (nextEmail && !currentProfile?.email?.trim()) {
+    patch.email = nextEmail;
+  }
+  if (nextPhone && !currentProfile?.phone?.trim()) {
+    patch.phone = nextPhone;
+  }
+  if (nextLocation && !currentProfile?.location?.trim()) {
+    patch.location = nextLocation;
+  }
+  return Object.keys(patch).length ? patch : null;
+};
+
+const buildProfileSnapshot = (profile: Profile) => ({
+  name: profile.full_name || '',
+  email: profile.email || '',
+  phone: profile.phone || '',
+  location: profile.location || '',
+});
 
 type ExperienceBankExportSnapshot = {
   profile: Profile;
@@ -239,13 +284,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   };
 
   // Toast 状态管理
-  const { toasts, success, error: toastError, loading, updateToast, closeToast } = useToast();
+  const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
   const { printContent, isPrinting, startPrint } = usePrintJob();
 
   const toastApi = useMemo(
-    () => ({ success, error: toastError, loading, updateToast }),
-    [success, toastError, loading, updateToast]
+    () => ({ success, error: toastError, info, loading, updateToast }),
+    [success, toastError, info, loading, updateToast]
   );
 
   const education = useEducationManager(toastApi);
@@ -256,10 +301,46 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     document.documentElement.classList.toggle('dark');
   };
 
-  const handleResumeImported = useCallback(async () => {
+  const resolveCurrentProfileSnapshot = useCallback(async () => {
+    if (hasHydratedProfileRef.current && !isLoadingProfile) {
+      return { name, email, phone, location };
+    }
+    try {
+      const latestProfile = await profileService.getProfile({ force: true });
+      applyProfileSnapshot(latestProfile);
+      hasHydratedProfileRef.current = true;
+      return buildProfileSnapshot(latestProfile);
+    } catch (error) {
+      console.error('[ExperienceBank] 刷新个人资料失败:', error);
+      return null;
+    }
+  }, [applyProfileSnapshot, email, isLoadingProfile, location, name, phone]);
+
+  const handleResumeImported = useCallback(async (parsedPersonalInfo?: ParsedPersonalInfo) => {
+    const currentProfile = await resolveCurrentProfileSnapshot();
+    if (!currentProfile) {
+      setExperienceRefreshSignal((prev) => prev + 1);
+      await refreshEducation();
+      return;
+    }
+    const profilePatch = resolveNextProfilePatch(
+      parsedPersonalInfo,
+      currentProfile
+    );
+    if (profilePatch) {
+      try {
+        const updatedProfile = await profileService.updateProfile(profilePatch);
+        applyProfileSnapshot(updatedProfile);
+        if (onProfileUpdateRef.current) {
+          onProfileUpdateRef.current(updatedProfile);
+        }
+      } catch (error) {
+        console.error('[ExperienceBank] 个人信息自动回填失败:', error);
+      }
+    }
     setExperienceRefreshSignal((prev) => prev + 1);
     await refreshEducation();
-  }, [refreshEducation]);
+  }, [applyProfileSnapshot, refreshEducation, resolveCurrentProfileSnapshot]);
 
   const handleExportAll = useCallback(async () => {
     if (isPrinting) {
@@ -472,7 +553,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         isOpen={isResumeModalOpen}
         onClose={() => setIsResumeModalOpen(false)}
         onImported={handleResumeImported}
-        toast={{ success, error: toastError, loading, updateToast }}
+        toast={toastApi}
       />
 
       <PrintPortal isActive={Boolean(printContent)}>

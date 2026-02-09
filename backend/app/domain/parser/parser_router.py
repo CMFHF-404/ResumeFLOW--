@@ -1,5 +1,7 @@
 import logging
+import re
 from time import perf_counter
+from typing import Any, Dict, List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -19,6 +21,48 @@ from .schemas import ResumeParseResponse
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 logger = logging.getLogger(__name__)
+
+LINK_SPLIT_PATTERN = re.compile(r"[\s,;，；]+")
+PERSONAL_INFO_FIELDS = ("full_name", "email", "phone", "location")
+
+def _normalize_personal_links(value: Any) -> List[str]:
+    if not value:
+        return []
+    items: List[str] = []
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, str):
+                items.extend(LINK_SPLIT_PATTERN.split(item))
+    elif isinstance(value, str):
+        items.extend(LINK_SPLIT_PATTERN.split(value))
+    else:
+        return []
+    return [item.strip() for item in items if isinstance(item, str) and item.strip()]
+
+
+def _normalize_personal_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
+def _extract_personal_info(payload: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    personal_info = payload.get("personal_info")
+    if not isinstance(personal_info, dict):
+        return None
+    normalized: Dict[str, Any] = {}
+    for field in PERSONAL_INFO_FIELDS:
+        value = _normalize_personal_value(personal_info.get(field))
+        if value:
+            normalized[field] = value
+    links = _normalize_personal_links(personal_info.get("links"))
+    if links:
+        normalized["links"] = links
+    return normalized or None
 
 
 @router.post("/parse", response_model=ResumeParseResponse)
@@ -65,4 +109,5 @@ async def parse_resume_endpoint(
         build_ms,
         dedupe_ms,
     )
-    return ResumeParseResponse(items=enriched)
+    personal_info = _extract_personal_info(payload)
+    return ResumeParseResponse(items=enriched, personal_info=personal_info)

@@ -27,8 +27,17 @@ export interface ParsedExperienceItem {
   duplicate: DuplicateMatch;
 }
 
+export interface ParsedPersonalInfo {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  links?: string[];
+}
+
 export interface ResumeParseResponse {
   items: ParsedExperienceItem[];
+  personal_info?: ParsedPersonalInfo;
 }
 
 export const parserService = {

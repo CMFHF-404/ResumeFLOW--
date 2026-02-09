@@ -130,7 +130,7 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
         "temperature": 0.3,
     }
     url = f"{settings.ai_base_url}/chat/completions"
-    async with httpx.AsyncClient(timeout=90) as client:
+    async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
         response = await client.post(url, headers=_build_headers(), json=payload)
         try:
             response.raise_for_status()

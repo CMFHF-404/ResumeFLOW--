@@ -13,6 +13,7 @@ ENV_LOGTO_JWKS_TTL = "LOGTO_JWKS_TTL_SECONDS"
 ENV_AI_API_KEY = "AI_API_KEY"
 ENV_AI_BASE_URL = "AI_BASE_URL"
 ENV_AI_MODEL = "AI_MODEL"
+ENV_AI_TIMEOUT_SECONDS = "AI_TIMEOUT_SECONDS"
 ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
 ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
@@ -23,6 +24,7 @@ ENV_POSTHOG_PROJECT_ID = "POSTHOG_PROJECT_ID"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
 DEFAULT_AI_MODEL = "gemini-3-flash"
+DEFAULT_AI_TIMEOUT_SECONDS = 120
 DEFAULT_DEV_USER_ID = "dev-user-test-123"
 DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:5173",
@@ -72,6 +74,7 @@ class Settings:
     ai_api_key: Optional[str]
     ai_base_url: str
     ai_model: str
+    ai_timeout_seconds: int
     enable_dev_auth_bypass: bool
     dev_user_id: str
     cors_allow_origins: List[str]
@@ -98,6 +101,7 @@ def load_settings() -> Settings:
     ai_api_key = os.getenv(ENV_AI_API_KEY)
     ai_base_url = os.getenv(ENV_AI_BASE_URL, DEFAULT_AI_BASE_URL)
     ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
+    ai_timeout_seconds = int(os.getenv(ENV_AI_TIMEOUT_SECONDS, DEFAULT_AI_TIMEOUT_SECONDS))
     enable_dev_auth_bypass = _get_bool_env(ENV_ENABLE_DEV_AUTH_BYPASS, False)
     dev_user_id = os.getenv(ENV_DEV_USER_ID, DEFAULT_DEV_USER_ID)
     cors_allow_origins = _parse_csv_env(
@@ -118,6 +122,7 @@ def load_settings() -> Settings:
         ai_api_key=ai_api_key,
         ai_base_url=ai_base_url,
         ai_model=ai_model,
+        ai_timeout_seconds=ai_timeout_seconds,
         enable_dev_auth_bypass=enable_dev_auth_bypass,
         dev_user_id=dev_user_id,
         cors_allow_origins=cors_allow_origins,

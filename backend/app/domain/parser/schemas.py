@@ -33,5 +33,14 @@ class ParsedExperienceItem(BaseModel):
     duplicate: DuplicateMatch = Field(default_factory=DuplicateMatch)
 
 
+class ParsedPersonalInfo(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    links: List[str] = Field(default_factory=list)
+
+
 class ResumeParseResponse(BaseModel):
     items: List[ParsedExperienceItem] = Field(default_factory=list)
+    personal_info: Optional[ParsedPersonalInfo] = None

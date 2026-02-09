@@ -10,6 +10,7 @@ import {
 import { experienceService } from '../services/experienceService';
 import {
   ParsedExperienceItem,
+  ParsedPersonalInfo,
   ParsedExperienceVersion,
   parserService,
 } from '../services/parserService';
@@ -43,12 +44,19 @@ const STAGE_PROGRESS: Record<ParseStage, number> = {
   ready: 100,
   error: 0,
 };
-const PARSE_TIMEOUT_MS = 30_000;
+const PARSE_TIMEOUT_MS = 120_000;
 const TIMEOUT_ERROR_NAME = 'ResumeParseTimeout';
+const LONG_PARSE_NOTICE_DELAY_MS = 4000;
+const LONG_PARSE_NOTICE_DURATION_MS = 8000;
+const LONG_PARSE_NOTICE_MESSAGE = '检测到简历内容较长，本次解析可能需要更长时间，请耐心等待。';
+const PARSE_SUCCESS_MESSAGE = '简历解析完成';
+const REPEATED_PARSE_ERROR_HINT =
+  '如果简历文本过长或者含有图片（如模板）可能造成简历无法解析，请使用其他AI助手整理出干净文本再解析';
 
 type ToastHandlers = {
   success: (message: string, duration?: number) => void;
   error: (message: string, duration?: number) => void;
+  info: (message: string, duration?: number) => void;
   loading: (message: string) => string;
   updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error'; duration?: number }) => void;
 };
@@ -56,7 +64,7 @@ type ToastHandlers = {
 interface ResumeUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImported: () => Promise<void> | void;
+  onImported: (parsedPersonalInfo?: ParsedPersonalInfo) => Promise<void> | void;
   toast: ToastHandlers;
 }
 
@@ -120,6 +128,17 @@ const resolveParseErrorMessage = (error: unknown) => {
     return '解析超时，请稍后重试。';
   }
   return '解析失败，请检查文件内容或稍后重试。';
+};
+
+const buildParseErrorMessage = (error: unknown, errorCount: number) => {
+  const baseMessage = resolveParseErrorMessage(error);
+  if (errorCount < 2) {
+    return baseMessage;
+  }
+  if (baseMessage.includes(REPEATED_PARSE_ERROR_HINT)) {
+    return baseMessage;
+  }
+  return `${baseMessage} ${REPEATED_PARSE_ERROR_HINT}`;
 };
 
 const ProgressSteps: React.FC<{ stage: ParseStage }> = ({ stage }) => {
@@ -465,22 +484,47 @@ const useResumeItems = () => {
   };
 };
 
-const useResumeParsing = (applyParsedItems: (items: ParsedExperienceItem[]) => void, toast: ToastHandlers) => {
+const useResumeParsing = (
+  applyParsedItems: (items: ParsedExperienceItem[]) => void,
+  applyParsedPersonalInfo: (info?: ParsedPersonalInfo) => void,
+  toast: ToastHandlers
+) => {
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<ParseStage>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const longParseNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const parseErrorCountRef = useRef(0);
+
+  const clearLongParseNotice = useCallback(() => {
+    if (longParseNoticeTimerRef.current) {
+      clearTimeout(longParseNoticeTimerRef.current);
+      longParseNoticeTimerRef.current = null;
+    }
+  }, []);
 
   const resetParsing = useCallback(() => {
+    clearLongParseNotice();
+    parseErrorCountRef.current = 0;
     setFile(null);
     setStage('idle');
     setErrorMessage(null);
     setIsDragging(false);
-  }, []);
+  }, [clearLongParseNotice]);
+
+  const scheduleLongParseNotice = useCallback(() => {
+    clearLongParseNotice();
+    longParseNoticeTimerRef.current = setTimeout(() => {
+      toast.info(LONG_PARSE_NOTICE_MESSAGE, LONG_PARSE_NOTICE_DURATION_MS);
+      longParseNoticeTimerRef.current = null;
+    }, LONG_PARSE_NOTICE_DELAY_MS);
+  }, [clearLongParseNotice, toast]);
 
   const handleFileParse = useCallback(
     async (nextFile: File) => {
+      clearLongParseNotice();
       applyParsedItems([]);
+      applyParsedPersonalInfo(undefined);
       if (!isSupportedFile(nextFile)) {
         setErrorMessage('仅支持 PDF 或 DOCX 格式的简历。');
         setStage('error');
@@ -493,22 +537,28 @@ const useResumeParsing = (applyParsedItems: (items: ParsedExperienceItem[]) => v
       try {
         await sleep(STAGE_TRANSITION_DELAY_MS);
         setStage('parsing');
+        scheduleLongParseNotice();
         const response = await withTimeout(parserService.parseResume(nextFile), PARSE_TIMEOUT_MS);
         await sleep(STAGE_TRANSITION_DELAY_MS);
         setStage('analyzing');
         await sleep(STAGE_TRANSITION_DELAY_MS);
         applyParsedItems(response.items || []);
+        applyParsedPersonalInfo(response.personal_info);
         setStage('ready');
-        toast.success('简历解析完成');
+        toast.success(PARSE_SUCCESS_MESSAGE);
+        parseErrorCountRef.current = 0;
       } catch (error) {
         console.error('[ResumeUploadModal] Failed to parse resume:', error);
-        const message = resolveParseErrorMessage(error);
+        parseErrorCountRef.current += 1;
+        const message = buildParseErrorMessage(error, parseErrorCountRef.current);
         setErrorMessage(message);
         setStage('error');
         toast.error(message);
+      } finally {
+        clearLongParseNotice();
       }
     },
-    [applyParsedItems, toast]
+    [applyParsedItems, applyParsedPersonalInfo, clearLongParseNotice, scheduleLongParseNotice, toast]
   );
 
   const handleFileChange = useCallback(
@@ -603,6 +653,7 @@ const useResumeImport = (
 
 const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, onImported, toast }) => {
   const { items, selectedIds, selectedItems, applyParsedItems, resetSelection, toggleSelection, toggleSelectAll } = useResumeItems();
+  const [parsedPersonalInfo, setParsedPersonalInfo] = useState<ParsedPersonalInfo | undefined>(undefined);
   const {
     file,
     stage,
@@ -612,13 +663,14 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, 
     handleFileChange,
     handleDrop,
     resetParsing,
-  } = useResumeParsing(applyParsedItems, toast);
-  const { isImporting, handleImport } = useResumeImport(selectedItems, toast, onImported, onClose);
+  } = useResumeParsing(applyParsedItems, setParsedPersonalInfo, toast);
+  const { isImporting, handleImport } = useResumeImport(selectedItems, toast, () => onImported(parsedPersonalInfo), onClose);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const progress = STAGE_PROGRESS[stage];
   const resetAll = useCallback(() => {
     resetParsing();
     resetSelection();
+    setParsedPersonalInfo(undefined);
   }, [resetParsing, resetSelection]);
   const handleReupload = useCallback(() => {
     resetAll();
