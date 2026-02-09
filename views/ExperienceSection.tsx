@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { aiService } from '../services/aiService';
 import { experienceService, ExperienceCategory, ExperienceListItem } from '../services/experienceService';
-import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey, STAR_FIELD_LABELS } from './ExperienceCard';
+import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { mergeTags, sanitizeTagList } from './tagUtils';
 import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
@@ -46,14 +46,15 @@ type ExperienceSectionModel = {
   generatingTagIds: Set<string>;
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
-  isFieldPolishing: (cardId: string, field: StarFieldKey) => boolean;
+  isPolishing: (cardId: string) => boolean;
   onAdd: () => void;
   onToggle: (cardId: string) => void;
   onDeleteRequest: (cardId: string) => void;
   onSave: (cardId: string) => void;
   onCancel: (cardId: string) => void;
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
-  onPolish: (cardId: string, field: StarFieldKey) => void;
+  onPolishAll: (cardId: string) => void;
+  onUndo: (cardId: string, field: StarFieldKey) => boolean;
   onGenerateTags: (cardId: string) => void;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
@@ -119,21 +120,30 @@ const getStarFieldValue = (data: ExperienceCardData, field: StarFieldKey): strin
   return String(value);
 };
 
-const buildStarPolishPayload = (data: ExperienceCardData, field: StarFieldKey, fieldValue?: string) => {
+const buildStarFieldState = (data: ExperienceCardData): Record<StarFieldKey, string> => ({
+  s: getStarFieldValue(data, 's'),
+  t: getStarFieldValue(data, 't'),
+  a: getStarFieldValue(data, 'a'),
+  r: getStarFieldValue(data, 'r'),
+});
+
+const STAR_FIELD_KEYS: StarFieldKey[] = ['s', 't', 'a', 'r'];
+
+const buildStarPolishPayload = (data: ExperienceCardData) => {
   const starPayload: Record<StarFieldKey, string> = {
     s: stripRichTextToText(getStarFieldValue(data, 's')),
     t: stripRichTextToText(getStarFieldValue(data, 't')),
     a: stripRichTextToText(getStarFieldValue(data, 'a')),
     r: stripRichTextToText(getStarFieldValue(data, 'r')),
   };
-  starPayload[field] = fieldValue ?? starPayload[field];
+  const hasContent = STAR_FIELD_KEYS.some((key) => starPayload[key].trim());
   return {
     content: {
       company: data?.org || '',
       role: data?.title || '',
       ...starPayload,
     },
-    targetField: field,
+    hasContent,
   };
 };
 
@@ -158,7 +168,6 @@ const buildVersionPayload = (data: ExperienceCardData) => ({
   star: data.star || {},
 });
 
-const buildPolishKey = (cardId: string, field: StarFieldKey) => `${cardId}:${field}`;
 
 const applyOptimisticSave = (
   cardId: string,
@@ -384,6 +393,20 @@ const useCardEditors = (
     [setCardData, updateModifiedState]
   );
 
+  const updateCardStar = useCallback(
+    (cardId: string, star: Record<StarFieldKey, string>) => {
+      setCardData((prev) => {
+        const next = new Map(prev);
+        const current = { ...(next.get(cardId) || createEmptyCardData()) };
+        current.star = { ...(current.star || { s: '', t: '', a: '', r: '' }), ...star };
+        next.set(cardId, current);
+        updateModifiedState(cardId, current);
+        return next;
+      });
+    },
+    [setCardData, updateModifiedState]
+  );
+
   const resetCard = useCallback(
     (cardId: string) => {
       const original = originalCardData.get(cardId);
@@ -399,7 +422,7 @@ const useCardEditors = (
     [originalCardData, setCardData, setModifiedCards]
   );
 
-  return { updateCardField, resetCard };
+  return { updateCardField, updateCardStar, resetCard };
 };
 
 const useCardRemoval = (
@@ -764,57 +787,189 @@ type ExperienceAiParams = {
 
 type ExperiencePolishParams = ExperienceAiParams & {
   category: ExperienceSectionProps['category'];
+  updateCardStar: (cardId: string, star: Record<StarFieldKey, string>) => void;
 };
+
+type StarSnapshot = {
+  before: string;
+  after: string;
+};
+
+type StarSnapshotMap = Partial<Record<StarFieldKey, StarSnapshot>>;
 
 const POLISH_SOURCE = 'experience_bank';
 
-const usePolishActions = ({ cardData, toast, updateCardField, category }: ExperiencePolishParams) => {
-  const [polishingTargets, setPolishingTargets] = useState<Set<string>>(new Set());
+const normalizePolishField = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = normalizeAiRichText(value, { allowList: false });
+  return normalized.trim() ? normalized : undefined;
+};
 
-  const updatePolishingTarget = useCallback((cardId: string, field: StarFieldKey, polishing: boolean) => {
+const buildStarUpdates = (result: Record<string, unknown>) => {
+  const updates: Partial<Record<StarFieldKey, string>> = {};
+  STAR_FIELD_KEYS.forEach((key) => {
+    const normalized = normalizePolishField(result[key]);
+    if (typeof normalized === 'string') {
+      updates[key] = normalized;
+    }
+  });
+  return updates;
+};
+
+const mergeStarUpdates = (
+  current: Record<StarFieldKey, string>,
+  updates: Partial<Record<StarFieldKey, string>>
+) => ({
+  s: typeof updates.s === 'string' ? updates.s : current.s,
+  t: typeof updates.t === 'string' ? updates.t : current.t,
+  a: typeof updates.a === 'string' ? updates.a : current.a,
+  r: typeof updates.r === 'string' ? updates.r : current.r,
+});
+
+const buildStarSnapshots = (
+  before: Record<StarFieldKey, string>,
+  after: Record<StarFieldKey, string>
+) => {
+  const snapshots: StarSnapshotMap = {};
+  STAR_FIELD_KEYS.forEach((key) => {
+    if (before[key] !== after[key]) {
+      snapshots[key] = { before: before[key], after: after[key] };
+    }
+  });
+  return snapshots;
+};
+
+const hasStarSnapshots = (snapshots: StarSnapshotMap) =>
+  STAR_FIELD_KEYS.some((key) => Boolean(snapshots[key]));
+
+const hasStarChanges = (
+  before: Record<StarFieldKey, string>,
+  after: Record<StarFieldKey, string>
+) => STAR_FIELD_KEYS.some((key) => before[key] !== after[key]);
+
+const useStarSnapshotStore = (
+  cardData: Map<string, ExperienceCardData>,
+  updateCardField: (cardId: string, field: string, value: string | string[]) => void
+) => {
+  const snapshotRef = useRef<Map<string, StarSnapshotMap>>(new Map());
+
+  const storeStarSnapshots = useCallback((cardId: string, snapshots: StarSnapshotMap) => {
+    if (!hasStarSnapshots(snapshots)) {
+      snapshotRef.current.delete(cardId);
+      return;
+    }
+    snapshotRef.current.set(cardId, snapshots);
+  }, []);
+
+  const clearStarSnapshot = useCallback((cardId: string, field: StarFieldKey) => {
+    const snapshots = snapshotRef.current.get(cardId);
+    if (!snapshots || !snapshots[field]) {
+      return;
+    }
+    const nextSnapshots = { ...snapshots };
+    delete nextSnapshots[field];
+    if (hasStarSnapshots(nextSnapshots)) {
+      snapshotRef.current.set(cardId, nextSnapshots);
+    } else {
+      snapshotRef.current.delete(cardId);
+    }
+  }, []);
+
+  const handleUndo = useCallback(
+    (cardId: string, field: StarFieldKey) => {
+      const snapshots = snapshotRef.current.get(cardId);
+      const snapshot = snapshots?.[field];
+      if (!snapshot) {
+        return false;
+      }
+      const data = cardData.get(cardId);
+      if (!data) {
+        return false;
+      }
+      const currentValue = getStarFieldValue(data, field);
+      if (currentValue !== snapshot.after) {
+        return false;
+      }
+      updateCardField(cardId, `star.${field}`, snapshot.before);
+      const nextSnapshots = { ...snapshots };
+      delete nextSnapshots[field];
+      if (hasStarSnapshots(nextSnapshots)) {
+        snapshotRef.current.set(cardId, nextSnapshots);
+      } else {
+        snapshotRef.current.delete(cardId);
+      }
+      return true;
+    },
+    [cardData, updateCardField]
+  );
+
+  return { storeStarSnapshots, clearStarSnapshot, handleUndo };
+};
+
+const usePolishActions = ({
+  cardData,
+  toast,
+  updateCardField,
+  updateCardStar,
+  category,
+}: ExperiencePolishParams) => {
+  const [polishingTargets, setPolishingTargets] = useState<Set<string>>(new Set());
+  const cardDataRef = useRef(cardData);
+  const { storeStarSnapshots, clearStarSnapshot, handleUndo } = useStarSnapshotStore(
+    cardData,
+    updateCardField
+  );
+
+  useEffect(() => {
+    cardDataRef.current = cardData;
+  }, [cardData]);
+
+  const updatePolishingTarget = useCallback((cardId: string, polishing: boolean) => {
     setPolishingTargets((prev) => {
       const next = new Set(prev);
-      const key = buildPolishKey(cardId, field);
       if (polishing) {
-        next.add(key);
+        next.add(cardId);
       } else {
-        next.delete(key);
+        next.delete(cardId);
       }
       return next;
     });
   }, []);
 
-  const handlePolishField = useCallback(
-    async (cardId: string, field: StarFieldKey) => {
+  const handlePolishAll = useCallback(
+    async (cardId: string) => {
+      if (polishingTargets.has(cardId)) {
+        return;
+      }
       const data = cardData.get(cardId);
       if (!data) {
         return;
       }
-      const currentValue = getStarFieldValue(data, field).trim();
-      if (!currentValue) {
-        toast.error(`请先填写${STAR_FIELD_LABELS[field]}内容再润色`);
+      const { content, hasContent } = buildStarPolishPayload(data);
+      if (!hasContent) {
+        toast.error('请先填写 STAR 内容再润色');
         return;
       }
 
       const startTime = Date.now();
       let action: 'applied' | 'discarded' = 'discarded';
-      trackAiPolishStart({ source: POLISH_SOURCE, field, category });
-      updatePolishingTarget(cardId, field, true);
+      trackAiPolishStart({ source: POLISH_SOURCE, field: 'all', category });
+      updatePolishingTarget(cardId, true);
       try {
-        const response = await aiService.polishExperience(
-          buildStarPolishPayload(data, field, currentValue)
-        );
-        const polished = response?.[field];
-        if (typeof polished === 'string') {
-          const normalized = normalizeAiRichText(polished, { allowList: false });
-          if (normalized.trim()) {
-            updateCardField(cardId, `star.${field}`, normalized);
-            action = 'applied';
-          } else {
-            toast.error('未获取到有效润色结果，请稍后重试');
-          }
-        } else {
-          toast.error('未获取到有效润色结果，请稍后重试');
+        const response = await aiService.polishExperience({ content });
+        const latestData = cardDataRef.current.get(cardId);
+        if (!latestData) {
+          return;
+        }
+        const currentStar = buildStarFieldState(latestData);
+        const updates = buildStarUpdates(response ?? {});
+        const nextStar = mergeStarUpdates(currentStar, updates);
+        if (hasStarChanges(currentStar, nextStar)) {
+          updateCardStar(cardId, nextStar);
+          storeStarSnapshots(cardId, buildStarSnapshots(currentStar, nextStar));
+          action = 'applied';
         }
       } catch (error) {
         console.error('[ExperienceSection] AI 润色失败:', error);
@@ -822,23 +977,31 @@ const usePolishActions = ({ cardData, toast, updateCardField, category }: Experi
       } finally {
         trackAiPolishResult({
           source: POLISH_SOURCE,
-          field,
+          field: 'all',
           category,
           action,
           durationMs: Date.now() - startTime,
         });
-        updatePolishingTarget(cardId, field, false);
+        updatePolishingTarget(cardId, false);
       }
     },
-    [cardData, category, toast, updateCardField, updatePolishingTarget]
+    [
+      cardData,
+      category,
+      polishingTargets,
+      storeStarSnapshots,
+      toast,
+      updateCardStar,
+      updatePolishingTarget,
+    ]
   );
 
-  const isFieldPolishing = useCallback(
-    (cardId: string, field: StarFieldKey) => polishingTargets.has(buildPolishKey(cardId, field)),
+  const isPolishing = useCallback(
+    (cardId: string) => polishingTargets.has(cardId),
     [polishingTargets]
   );
 
-  return { handlePolishField, isFieldPolishing };
+  return { handlePolishAll, isPolishing, handleUndo, clearStarSnapshot };
 };
 
 const useTagActions = ({ cardData, toast, updateCardField }: ExperienceAiParams) => {
@@ -900,14 +1063,15 @@ type SectionModelInput = {
   generatingTagIds: Set<string>;
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
-  isFieldPolishing: (cardId: string, field: StarFieldKey) => boolean;
+  isPolishing: (cardId: string) => boolean;
   onAdd: () => void;
   onToggle: (cardId: string) => void;
   onDeleteRequest: (cardId: string) => void;
   onSave: (cardId: string) => void;
   onCancel: (cardId: string) => void;
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
-  onPolish: (cardId: string, field: StarFieldKey) => void;
+  onPolishAll: (cardId: string) => void;
+  onUndo: (cardId: string, field: StarFieldKey) => boolean;
   onGenerateTags: (cardId: string) => void;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
@@ -926,14 +1090,15 @@ const buildSectionModel = (input: SectionModelInput): ExperienceSectionModel => 
   generatingTagIds: input.generatingTagIds,
   deletingCardId: input.deletingCardId,
   setCardRef: input.setCardRef,
-  isFieldPolishing: input.isFieldPolishing,
+  isPolishing: input.isPolishing,
   onAdd: input.onAdd,
   onToggle: input.onToggle,
   onDeleteRequest: input.onDeleteRequest,
   onSave: input.onSave,
   onCancel: input.onCancel,
   onFieldChange: input.onFieldChange,
-  onPolish: input.onPolish,
+  onPolishAll: input.onPolishAll,
+  onUndo: input.onUndo,
   onGenerateTags: input.onGenerateTags,
   onDeleteConfirm: input.onDeleteConfirm,
   onDeleteCancel: input.onDeleteCancel,
@@ -951,7 +1116,11 @@ const useExperienceSectionModel = ({
   const { setCardRef, scrollToCard } = useCardRefs();
   const store = useCardDataStore();
   const { ensureCardState } = useCardInitializer(experiences, store.setCardData, store.setOriginalCardData);
-  const { updateCardField, resetCard } = useCardEditors(store.originalCardData, store.setCardData, store.setModifiedCards);
+  const { updateCardField, updateCardStar, resetCard } = useCardEditors(
+    store.originalCardData,
+    store.setCardData,
+    store.setModifiedCards
+  );
   const { removeCardState } = useCardRemoval(store.setCardData, store.setModifiedCards, store.setOriginalCardData);
   const expansion = useCardExpansionState(ensureCardState, scrollToCard);
   const { isCreating, handleAddNew } = useExperienceCreate({
@@ -974,9 +1143,33 @@ const useExperienceSectionModel = ({
     removeCardState,
     removeCardExpansion: expansion.removeCardExpansion,
   });
-  const polishActions = usePolishActions({ cardData: store.cardData, toast, updateCardField, category });
+  const {
+    handlePolishAll,
+    isPolishing,
+    handleUndo,
+    clearStarSnapshot,
+  } = usePolishActions({
+    cardData: store.cardData,
+    toast,
+    updateCardField,
+    updateCardStar,
+    category,
+  });
   const tagActions = useTagActions({ cardData: store.cardData, toast, updateCardField });
   const sortedExperiences = useSortedExperiences(experiences);
+
+  const handleFieldChange = useCallback(
+    (cardId: string, field: string, value: string | string[]) => {
+      if (field.startsWith('star.')) {
+        const starField = field.split('.')[1] as StarFieldKey;
+        if (STAR_FIELD_KEYS.includes(starField)) {
+          clearStarSnapshot(cardId, starField);
+        }
+      }
+      updateCardField(cardId, field, value);
+    },
+    [clearStarSnapshot, updateCardField]
+  );
 
   const handleCancel = useCallback((cardId: string) => {
     if (isTempId(cardId)) {
@@ -1015,14 +1208,15 @@ const useExperienceSectionModel = ({
     generatingTagIds: tagActions.generatingTagIds,
     deletingCardId: deleteActions.deletingCardId,
     setCardRef,
-    isFieldPolishing: polishActions.isFieldPolishing,
+    isPolishing,
     onAdd: handleAddNew,
     onToggle: expansion.toggleCard,
     onDeleteRequest: deleteActions.requestDelete,
     onSave: handleSaveCard,
     onCancel: handleCancel,
-    onFieldChange: updateCardField,
-    onPolish: polishActions.handlePolishField,
+    onFieldChange: handleFieldChange,
+    onPolishAll: handlePolishAll,
+    onUndo: handleUndo,
     onGenerateTags: tagActions.handleGenerateTags,
     onDeleteConfirm: deleteActions.executeDelete,
     onDeleteCancel: deleteActions.cancelDelete,
@@ -1100,13 +1294,14 @@ const ExperienceCardList: React.FC<{
           isSaving={model.savingCardId === cardId}
           showTags={showTags}
           isGeneratingTags={model.generatingTagIds.has(cardId)}
-          isFieldPolishing={(field) => model.isFieldPolishing(cardId, field)}
+          isPolishing={model.isPolishing(cardId)}
           onToggle={() => model.onToggle(cardId)}
           onDelete={() => model.onDeleteRequest(cardId)}
           onSave={() => model.onSave(cardId)}
           onCancel={() => model.onCancel(cardId)}
           onFieldChange={(field, value) => model.onFieldChange(cardId, field, value)}
-          onPolish={(field) => model.onPolish(cardId, field)}
+          onPolishAll={() => model.onPolishAll(cardId)}
+          onUndo={(field) => model.onUndo(cardId, field)}
           onGenerateTags={() => model.onGenerateTags(cardId)}
           themeColor={themeColor}
         />

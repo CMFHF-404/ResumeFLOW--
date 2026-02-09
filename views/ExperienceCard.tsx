@@ -53,12 +53,11 @@ const STAR_SECTIONS: Array<{
   label: string;
   color: string;
   ph: string;
-  polishLabel: string;
 }> = [
-    { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...', polishLabel: '情境' },
-    { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?', polishLabel: '任务' },
-    { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?', polishLabel: '行动' },
-    { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...', polishLabel: '结果' },
+    { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...' },
+    { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?' },
+    { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?' },
+    { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...' },
   ];
 
 type ExperienceCardProps = {
@@ -70,13 +69,14 @@ type ExperienceCardProps = {
   isSaving: boolean;
   showTags?: boolean;
   isGeneratingTags: boolean;
-  isFieldPolishing: (field: StarFieldKey) => boolean;
+  isPolishing: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onSave: () => void;
   onCancel: () => void;
   onFieldChange: (field: string, value: string | string[]) => void;
-  onPolish: (field: StarFieldKey) => void;
+  onPolishAll: () => void;
+  onUndo: (field: StarFieldKey) => boolean;
   onGenerateTags?: () => void;
   themeColor?: string;
 };
@@ -207,58 +207,44 @@ const StarSectionItem: React.FC<{
   isLast: boolean;
   value: string;
   onChange: (value: string) => void;
-  onPolish: () => void;
-  isPolishing: boolean;
+  onUndo: () => boolean;
   themeColor?: string;
-}> = ({ section, isLast, value, onChange, onPolish, isPolishing, themeColor }) => {
-  const polishTitle = isPolishing ? 'AI 润色中...' : `AI 润色${section.polishLabel}`;
-  return (
-    <div className="flex gap-4 relative group">
-      {!isLast && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
-      <div
-        className={`shrink-0 w-10 h-10 rounded-full bg-${section.color}-50 dark:bg-${section.color}-900/20 text-${section.color}-600 dark:text-${section.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}
-      >
-        {section.id.toUpperCase()}
-      </div>
-      <div className="flex-1 pt-1 pb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span
-            className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}
-          >
-            {section.label}
-          </span>
-          <button
-            type="button"
-            onClick={onPolish}
-            disabled={isPolishing}
-            title={polishTitle}
-            aria-label={polishTitle}
-            className="inline-flex items-center justify-center p-1 text-amber-500 hover:text-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles className={`w-4 h-4 ${isPolishing ? 'animate-pulse' : ''}`} />
-          </button>
-        </div>
-        <RichTextEditor
-          className={`w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm focus:ring-2 ${isPolishing ? 'focus:ring-amber-500/20 focus:border-amber-500' : getThemeClasses(themeColor).focus
-            } ${section.id === 'a' ? 'min-h-[160px]' : 'min-h-[48px]'}`}
-          value={value}
-          placeholder={section.ph}
-          onChange={onChange}
-          ariaLabel={`${section.label} 输入`}
-          enableList={false}
-        />
-      </div>
+}> = ({ section, isLast, value, onChange, onUndo, themeColor }) => (
+  <div className="flex gap-4 relative group">
+    {!isLast && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
+    <div
+      className={`shrink-0 w-10 h-10 rounded-full bg-${section.color}-50 dark:bg-${section.color}-900/20 text-${section.color}-600 dark:text-${section.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}
+    >
+      {section.id.toUpperCase()}
     </div>
-  );
-};
+    <div className="flex-1 pt-1 pb-4">
+      <div className="flex items-center justify-between mb-2">
+        <span
+          className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}
+        >
+          {section.label}
+        </span>
+      </div>
+      <RichTextEditor
+        className={`w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm focus:ring-2 ${getThemeClasses(themeColor).focus
+          } ${section.id === 'a' ? 'min-h-[160px]' : 'min-h-[48px]'}`}
+        value={value}
+        placeholder={section.ph}
+        onChange={onChange}
+        ariaLabel={`${section.label} 输入`}
+        enableList={false}
+        onUndo={onUndo}
+      />
+    </div>
+  </div>
+);
 
 const StarSectionList: React.FC<{
   data: ExperienceCardData;
   onFieldChange: (field: string, value: string | string[]) => void;
-  onPolish: (field: StarFieldKey) => void;
-  isFieldPolishing: (field: StarFieldKey) => boolean;
+  onUndo: (field: StarFieldKey) => boolean;
   themeColor?: string;
-}> = ({ data, onFieldChange, onPolish, isFieldPolishing, themeColor }) => (
+}> = ({ data, onFieldChange, onUndo, themeColor }) => (
   <div className="space-y-4">
     {STAR_SECTIONS.map((section, idx) => (
       <StarSectionItem
@@ -267,13 +253,14 @@ const StarSectionList: React.FC<{
         isLast={idx === STAR_SECTIONS.length - 1}
         value={data.star?.[section.id] || ''}
         onChange={(value) => onFieldChange(`star.${section.id}`, value)}
-        onPolish={() => onPolish(section.id)}
-        isPolishing={isFieldPolishing(section.id)}
+        onUndo={() => onUndo(section.id)}
         themeColor={themeColor}
       />
     ))}
   </div>
 );
+
+// StarPolishBar component removed as it is now integrated into the footer
 
 const ExperienceCardFooter: React.FC<{
   isModified: boolean;
@@ -282,51 +269,73 @@ const ExperienceCardFooter: React.FC<{
   onCancel: () => void;
   onSave: () => void;
   onToggle: () => void;
+  onPolishAll: () => void;
+  isPolishing: boolean;
   themeColor?: string;
-}> = ({ isModified, isSaving, onDelete, onCancel, onSave, onToggle, themeColor }) => (
-  <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
-    <div className="flex items-center gap-2">
+}> = ({ isModified, isSaving, onDelete, onCancel, onSave, onToggle, onPolishAll, isPolishing, themeColor }) => {
+  const polishTitle = isPolishing ? 'AI 润色中...' : 'AI 整体润色';
+  const polishButtonClass = `inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${themeColor ? `text-${themeColor}-600 hover:text-${themeColor}-700` : 'text-amber-600 hover:text-amber-700'
+    }`;
+
+  return (
+    <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+      {/* AI Polish Button */}
       <button
-        onClick={onDelete}
-        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
-        title="删除"
         type="button"
+        onClick={onPolishAll}
+        disabled={isPolishing}
+        title={polishTitle}
+        aria-label={polishTitle}
+        className={polishButtonClass}
       >
-        <Trash2 className="w-4 h-4" />
+        <Sparkles className={`w-4 h-4 ${isPolishing ? 'animate-pulse' : ''}`} />
+        {polishTitle}
       </button>
 
-      {isModified ? (
-        <>
-          <button
-            onClick={onCancel}
-            className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-            disabled={isSaving}
-            type="button"
-          >
-            取消
-          </button>
-          <button
-            onClick={onSave}
-            className={`flex items-center gap-2 text-sm font-medium px-6 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${getThemeClasses(themeColor).button}`}
-            disabled={isSaving}
-            type="button"
-          >
-            {isSaving ? '保存中...' : '保存'}
-          </button>
-        </>
-      ) : (
+      {/* Action Buttons */}
+      <div className="flex items-center gap-2">
         <button
-          onClick={onToggle}
-          className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          onClick={onDelete}
+          className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+          title="删除"
           type="button"
         >
-          折叠
-          <ChevronUp className="w-4 h-4" />
+          <Trash2 className="w-4 h-4" />
         </button>
-      )}
+
+        {isModified ? (
+          <>
+            <button
+              onClick={onCancel}
+              className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              disabled={isSaving}
+              type="button"
+            >
+              取消
+            </button>
+            <button
+              onClick={onSave}
+              className={`flex items-center gap-2 text-sm font-medium px-6 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${getThemeClasses(themeColor).button}`}
+              disabled={isSaving}
+              type="button"
+            >
+              {isSaving ? '保存中...' : '保存'}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={onToggle}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            type="button"
+          >
+            折叠
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ExpandedExperienceCard: React.FC<{
   data: ExperienceCardData;
@@ -334,7 +343,7 @@ const ExpandedExperienceCard: React.FC<{
   isCollapsing: boolean;
   showTags: boolean;
   isGeneratingTags: boolean;
-  isFieldPolishing: (field: StarFieldKey) => boolean;
+  isPolishing: boolean;
   isModified: boolean;
   isSaving: boolean;
   onToggle: () => void;
@@ -342,7 +351,8 @@ const ExpandedExperienceCard: React.FC<{
   onSave: () => void;
   onCancel: () => void;
   onFieldChange: (field: string, value: string | string[]) => void;
-  onPolish: (field: StarFieldKey) => void;
+  onPolishAll: () => void;
+  onUndo: (field: StarFieldKey) => boolean;
   onGenerateTags?: () => void;
   themeColor?: string;
 }> = ({
@@ -351,7 +361,7 @@ const ExpandedExperienceCard: React.FC<{
   isCollapsing,
   showTags,
   isGeneratingTags,
-  isFieldPolishing,
+  isPolishing,
   isModified,
   isSaving,
   onToggle,
@@ -359,7 +369,8 @@ const ExpandedExperienceCard: React.FC<{
   onSave,
   onCancel,
   onFieldChange,
-  onPolish,
+  onPolishAll,
+  onUndo,
   onGenerateTags,
   themeColor,
 }) => (
@@ -374,8 +385,7 @@ const ExpandedExperienceCard: React.FC<{
         <StarSectionList
           data={data}
           onFieldChange={onFieldChange}
-          onPolish={onPolish}
-          isFieldPolishing={isFieldPolishing}
+          onUndo={onUndo}
           themeColor={themeColor}
         />
 
@@ -400,6 +410,8 @@ const ExpandedExperienceCard: React.FC<{
         onCancel={onCancel}
         onSave={onSave}
         onToggle={onToggle}
+        onPolishAll={onPolishAll}
+        isPolishing={isPolishing}
         themeColor={themeColor}
       />
     </div>
@@ -416,13 +428,14 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
       isSaving,
       showTags = false,
       isGeneratingTags,
-      isFieldPolishing,
+      isPolishing,
       onToggle,
       onDelete,
       onSave,
       onCancel,
       onFieldChange,
-      onPolish,
+      onPolishAll,
+      onUndo,
       onGenerateTags,
       themeColor,
     },
@@ -449,7 +462,7 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             isCollapsing={isCollapsing}
             showTags={showTags}
             isGeneratingTags={isGeneratingTags}
-            isFieldPolishing={isFieldPolishing}
+            isPolishing={isPolishing}
             isModified={isModified}
             isSaving={isSaving}
             onToggle={onToggle}
@@ -457,7 +470,8 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             onSave={onSave}
             onCancel={onCancel}
             onFieldChange={onFieldChange}
-            onPolish={onPolish}
+            onPolishAll={onPolishAll}
+            onUndo={onUndo}
             onGenerateTags={onGenerateTags}
             themeColor={themeColor}
           />

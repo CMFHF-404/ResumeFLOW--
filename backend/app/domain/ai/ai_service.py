@@ -10,10 +10,6 @@ from ...config import load_settings
 from .prompts import (
     JD_ANALYSIS,
     STAR_POLISH,
-    STAR_POLISH_A,
-    STAR_POLISH_R,
-    STAR_POLISH_S,
-    STAR_POLISH_T,
     TAG_GENERATION,
 )
 
@@ -21,14 +17,6 @@ settings = load_settings()
 logger = logging.getLogger(__name__)
 
 MAX_ERROR_BODY_LOG_LENGTH = 2000
-
-STAR_FIELD_PROMPTS = {
-    "s": STAR_POLISH_S,
-    "t": STAR_POLISH_T,
-    "a": STAR_POLISH_A,
-    "r": STAR_POLISH_R,
-}
-
 
 def _strip_json_wrappers(text: str) -> str:
     cleaned = text.strip()
@@ -178,10 +166,7 @@ async def analyze_jd(
 
 
 def _resolve_star_prompt(target_field: Optional[str]) -> str:
-    if not target_field:
-        return STAR_POLISH
-    key = target_field.strip().lower()
-    return STAR_FIELD_PROMPTS.get(key, STAR_POLISH)
+    return STAR_POLISH
 
 
 async def polish_experience(

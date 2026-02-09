@@ -9,6 +9,7 @@ type RichTextEditorProps = {
     placeholder?: string;
     ariaLabel?: string;
     enableList?: boolean;
+    onUndo?: () => boolean;
 };
 
 type ToolbarState = {
@@ -628,6 +629,7 @@ const useRichTextHandlers = ({
     hideToolbar,
     setIsFocused,
     enableList,
+    onUndo,
 }: {
     editorRef: React.RefObject<HTMLDivElement>;
     onChange: (value: string) => void;
@@ -635,6 +637,7 @@ const useRichTextHandlers = ({
     hideToolbar: () => void;
     setIsFocused: (state: boolean) => void;
     enableList: boolean;
+    onUndo?: () => boolean;
 }) => {
     // 抽取保存内容逻辑，避免在blur时触发selection更新
     const saveContent = useCallback(() => {
@@ -790,6 +793,14 @@ const useRichTextHandlers = ({
     }, []);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+        const isUndo = (event.ctrlKey || event.metaKey)
+            && !event.shiftKey
+            && !event.altKey
+            && event.key.toLowerCase() === 'z';
+        if (isUndo && onUndo?.()) {
+            event.preventDefault();
+            return;
+        }
         const triggerKey = normalizeTriggerKey(event.key);
         const selection = window.getSelection();
         const isInList = isSelectionInsideList(selection);
@@ -828,7 +839,7 @@ const useRichTextHandlers = ({
             saveContent();
             updateSelectionState();
         }
-    }, [handleMarkdownInput, saveContent, updateSelectionState]);
+    }, [handleMarkdownInput, onUndo, saveContent, updateSelectionState]);
 
     const handleFocus = useCallback(() => setIsFocused(true), [setIsFocused]);
 
@@ -849,6 +860,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     placeholder,
     ariaLabel,
     enableList = true,
+    onUndo,
 }) => {
     const editorRef = useRef<HTMLDivElement | null>(null);
     const [isFocused, setIsFocused] = useState(false);
@@ -1026,6 +1038,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         hideToolbar,
         setIsFocused,
         enableList,
+        onUndo,
     });
 
     const isEmpty = !stripRichTextToText(value).trim();
