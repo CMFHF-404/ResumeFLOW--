@@ -10,6 +10,7 @@ export type JDAnalysisContext = {
   jdTextSignature: string;
   experienceSignature: string;
   itemSignatures: JDAnalysisItemSignatures;
+  experienceText?: string;
 };
 
 export type MatchScoreEntry = {

@@ -16,8 +16,13 @@ JD_ANALYSIS = (
     "'id' (must match input certification id), 'score' (0-100), and 'reason' (<=20 words)), "
     "and 'skillMatches' (array of objects with keys: "
     "'id' (must match input skill id), 'score' (0-100), and 'reason' (<=20 words)). "
+    "If Current Experience Content and Previous Experience Content are provided, "
+    "compare them to evaluate changes in experience fit and adjust scores up or down accordingly. "
+    "Only use experience changes for this comparison; other fields still affect overall fit but "
+    "should not be treated as change signals. "
+    "If previous experience content or previous result is missing, treat it as a new analysis. "
     "If Previous Result is provided, use it as reference but judge changes based on actual fit; "
-    "do not apply artificial limits."
+    "always output absolute scores and do not apply artificial limits."
 )
 
 STAR_POLISH = (

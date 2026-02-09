@@ -138,6 +138,10 @@ const buildSkillAnalyzePayload = (groups: SkillGroupView[]) => {
   );
 };
 
+const buildExperienceAnalyzePayload = (experiences: ResumeExperienceView[]) => ({
+  experiences: experiences.map(buildExperienceAnalyzeEntry),
+});
+
 const buildAnalyzePayload = (
   experiences: ResumeExperienceView[],
   certifications: CertificationView[],
@@ -150,6 +154,11 @@ const buildAnalyzePayload = (
 
 const sortById = <T extends { id: string }>(items: T[]) => {
   return [...items].sort((a, b) => a.id.localeCompare(b.id));
+};
+
+const buildExperienceTextSnapshot = (experiences: ResumeExperienceView[]) => {
+  const payload = buildExperienceAnalyzePayload(experiences);
+  return canonicalStringify({ experiences: sortById(payload.experiences) });
 };
 
 const buildAnalyzeSignature = (
@@ -708,6 +717,7 @@ export const useJDAnalysis = ({
         jdTextSignature: buildJDTextSignature(cached.jdText),
         experienceSignature: cached.experienceSignature,
         itemSignatures: validatedSignatures,
+        experienceText: cached.experienceText,
       });
       applyExperienceMatchScores(cached.result.experienceMatches);
       applyCertificationMatchScores(cached.result.certificationMatches);
@@ -800,6 +810,7 @@ export const useJDAnalysis = ({
     experienceSignature: string;
     jdTextSignature: string;
     jdText: string;
+    experienceText: string;
   };
 
   type AnalyzeSnapshot = {
@@ -810,6 +821,7 @@ export const useJDAnalysis = ({
     itemSignatures: JDAnalysisItemSignatures;
     experienceSignature: string;
     jdTextSignature: string;
+    experienceText: string;
   };
 
   const clearStaleExperienceIds = useCallback((targetIds: Set<string>) => {
@@ -830,12 +842,14 @@ export const useJDAnalysis = ({
       experienceSignature: nextExperienceSignature,
       jdTextSignature: nextJdTextSignature,
       jdText: nextJdText,
+      experienceText: nextExperienceText,
     }: AnalysisStatePayload) => {
       setAnalysisResult(result);
       setAnalysisContext({
         jdTextSignature: nextJdTextSignature,
         experienceSignature: nextExperienceSignature,
         itemSignatures,
+        experienceText: nextExperienceText,
       });
       if (resumeId) {
         saveJDAnalysisCache(resumeId, {
@@ -843,6 +857,7 @@ export const useJDAnalysis = ({
           experienceSignature: nextExperienceSignature,
           result,
           itemSignatures,
+          experienceText: nextExperienceText,
         });
       }
     },
@@ -873,6 +888,7 @@ export const useJDAnalysis = ({
         snapshot.skillGroups
       ),
       jdTextSignature: buildJDTextSignature(snapshot.jdText),
+      experienceText: buildExperienceTextSnapshot(snapshot.experiences),
     };
   }, [getAnalysisSnapshot]);
 
@@ -969,12 +985,20 @@ export const useJDAnalysis = ({
           startSnapshot.certifications,
           startSnapshot.skillGroups
         );
-        const prevResultPayload = buildPrevResultPayload(analysisResult);
-        const result = await aiService.analyzeJD(
-          startSnapshot.jdText,
-          canonicalStringify(payload),
-          prevResultPayload
-        );
+        const resumeText = canonicalStringify(payload);
+        const prevExperienceText =
+          mode === "partial" ? analysisContext?.experienceText : undefined;
+        const prevResultPayload =
+          mode === "partial" ? buildPrevResultPayload(analysisResult) : undefined;
+        const shouldUsePrev =
+          mode === "partial" && Boolean(prevExperienceText) && Boolean(prevResultPayload);
+        const result = await aiService.analyzeJD({
+          text: startSnapshot.jdText,
+          resumeText,
+          prevResult: shouldUsePrev ? prevResultPayload : undefined,
+          experienceText: startSnapshot.experienceText,
+          prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
+        });
         const latestSnapshot = buildAnalyzeSnapshot();
         const changedDuringAnalyze = recordPostAnalyzeDiff(
           startSnapshot.itemSignatures,
@@ -1001,6 +1025,7 @@ export const useJDAnalysis = ({
           experienceSignature: startSnapshot.experienceSignature,
           jdTextSignature: startSnapshot.jdTextSignature,
           jdText: startSnapshot.jdText,
+          experienceText: startSnapshot.experienceText,
         });
         updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
         if (mode === "full") {
@@ -1023,6 +1048,7 @@ export const useJDAnalysis = ({
       }
     },
     [
+      analysisContext,
       analysisResult,
       applyMatchScoresForResult,
       buildAnalyzeSnapshot,
@@ -1037,12 +1063,15 @@ export const useJDAnalysis = ({
     const hasPendingDiff = hasDiff(diffSnapshot);
     const hasJdTextChanged =
       analysisContext?.jdTextSignature !== jdTextSignature;
+    const hasPrevExperienceText =
+      analysisContext?.experienceText !== undefined;
 
     if (
       analysisResult &&
       analysisContext &&
       hasPendingDiff &&
-      !hasJdTextChanged
+      !hasJdTextChanged &&
+      hasPrevExperienceText
     ) {
       return runAnalyze({ mode: "partial", diff: diffSnapshot });
     }

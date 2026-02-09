@@ -10,7 +10,7 @@ const buildAnalysisFallback = (summary: string) => {
 
 export const analyzeJobDescription = async (jdText: string, resumeText: string): Promise<string> => {
   try {
-    const result = await aiService.analyzeJD(jdText, resumeText);
+    const result = await aiService.analyzeJD({ text: jdText, resumeText });
     return JSON.stringify(result);
   } catch (error) {
     console.error("AI Analysis Error:", error);

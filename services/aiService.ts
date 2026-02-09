@@ -35,6 +35,19 @@ export interface JDAnalysisResult {
     skillMatches?: MatchScoreEntry[];
 }
 
+export type AnalyzeJDParams = {
+    text: string;
+    resumeText?: string;
+    prevResult?: {
+        matchPercentage?: number;
+        experienceMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
+        certificationMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
+        skillMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
+    };
+    experienceText?: string;
+    prevExperienceText?: string;
+};
+
 export interface GenerateTagsResponse {
     tags: string[];
 }
@@ -57,20 +70,19 @@ export const aiService = {
         return response.data;
     },
 
-    async analyzeJD(
-        text: string,
-        resumeText?: string,
-        prevResult?: {
-            matchPercentage?: number;
-            experienceMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
-            certificationMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
-            skillMatches?: Array<Pick<MatchScoreEntry, 'id' | 'score'>>;
-        }
-    ) {
+    async analyzeJD({
+        text,
+        resumeText,
+        prevResult,
+        experienceText,
+        prevExperienceText,
+    }: AnalyzeJDParams) {
         const response = await apiClient.post<JDAnalysisResult>('/api/analyze-jd', {
             text,
             resume_text: resumeText,
             prev_result: prevResult,
+            experience_text: experienceText,
+            prev_experience_text: prevExperienceText,
         });
         return response.data;
     },

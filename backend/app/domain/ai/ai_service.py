@@ -141,13 +141,17 @@ async def analyze_jd(
     text: str,
     resume_text: Optional[str] = None,
     prev_result: Optional[Dict[str, Any]] = None,
+    experience_text: Optional[str] = None,
+    prev_experience_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     resume_payload = resume_text or "Resume content not provided."
+    experience_payload = experience_text or "Experience content not provided."
     previous_payload = (
         json.dumps(prev_result, ensure_ascii=False)
         if prev_result
         else "None"
     )
+    previous_experience_payload = prev_experience_text or "None"
     messages = [
         {"role": "system", "content": JD_ANALYSIS},
         {
@@ -157,6 +161,10 @@ async def analyze_jd(
                 f"{text}\n\n"
                 "Resume Content:\n"
                 f"{resume_payload}\n\n"
+                "Current Experience Content:\n"
+                f"{experience_payload}\n\n"
+                "Previous Experience Content:\n"
+                f"{previous_experience_payload}\n\n"
                 "Previous Result:\n"
                 f"{previous_payload}"
             ),

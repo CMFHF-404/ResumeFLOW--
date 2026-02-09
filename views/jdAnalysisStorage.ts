@@ -13,6 +13,7 @@ export type JDAnalysisCachePayload = {
     experienceSignature: string;
     result: JDAnalysisResult;
     itemSignatures?: JDAnalysisItemSignatures;
+    experienceText?: string;
 };
 
 const buildCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
@@ -42,7 +43,8 @@ const isJDAnalysisCachePayload = (value: unknown): value is JDAnalysisCachePaylo
     return typeof record.jdText === 'string'
         && typeof record.experienceSignature === 'string'
         && Boolean(record.result)
-        && (!record.itemSignatures || isJDAnalysisItemSignatures(record.itemSignatures));
+        && (!record.itemSignatures || isJDAnalysisItemSignatures(record.itemSignatures))
+        && (record.experienceText === undefined || typeof record.experienceText === 'string');
 };
 
 export const loadJDAnalysisCache = (resumeId: string): JDAnalysisCachePayload | null => {

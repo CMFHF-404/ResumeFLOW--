@@ -39,9 +39,6 @@ const resolveExperienceSuggestion = (
     if (item && staleExperienceIds.has(item.id)) {
         return STALE_EXPERIENCE_TIP;
     }
-    if (item?.matchReason) {
-        return item.matchReason;
-    }
     if (analysisResult?.summary) {
         return analysisResult.summary;
     }
