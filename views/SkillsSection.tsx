@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Wrench } from 'lucide-react';
+import { Plus, Wrench, ChevronDown } from 'lucide-react';
 import { skillsService, UserSkill } from '../services/skillsService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { runDedupedRefresh } from './experienceUtils';
@@ -321,10 +321,21 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
         }
     };
 
+    // Collapse State
+    const [isCollapsed, setIsCollapsed] = useState(false);
+
     return (
         <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h2
+                    className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer select-none"
+                    onClick={() => setIsCollapsed(!isCollapsed)}
+                >
+                    <div className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+                        <ChevronDown
+                            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                        />
+                    </div>
                     <Wrench className="w-5 h-5 text-rose-500" />
                     专业技能
                     <span className="text-sm font-normal text-gray-400 ml-2">Skills</span>
@@ -334,38 +345,42 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
                 </span>
             </div>
 
-            <button
-                onClick={handleCreateCategory}
-                disabled={isLoading}
-                className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-rose-600 hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-                <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-rose-600 transition-colors">
-                    <Plus className="w-5 h-5" />
-                </div>
-                <span className="font-medium">新增技能分类</span>
-            </button>
-
-            <div className="space-y-4">
-                {categoryOrder.map(category => {
-                    return (
-                        <div key={category} ref={el => { if (el) cardRefs.current.set(category, el); else cardRefs.current.delete(category); }}>
-                            <SkillCategoryCard
-                                data={categoryData.get(category) || { name: category, skills: groupedSkills[category]?.map(s => s.name) || [] }}
-                                isExpanded={expandedCategories.has(category)}
-                                isCollapsing={collapsingCategories.has(category)}
-                                isModified={modifiedCategories.has(category)}
-                                isSaving={savingCategories.has(category)}
-                                onToggle={() => toggleCard(category)}
-                                onDelete={() => setDeletingCategory(category)}
-                                onSave={() => handleSave(category)}
-                                onCancel={() => handleCancel(category)}
-                                onNameChange={(val) => updateCardData(category, { name: val })}
-                                onSkillsChange={(val) => updateCardData(category, { skills: val })}
-                            />
+            {!isCollapsed && (
+                <>
+                    <button
+                        onClick={handleCreateCategory}
+                        disabled={isLoading}
+                        className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-rose-600 hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-rose-600 transition-colors">
+                            <Plus className="w-5 h-5" />
                         </div>
-                    );
-                })}
-            </div>
+                        <span className="font-medium">新增技能分类</span>
+                    </button>
+
+                    <div className="space-y-4">
+                        {categoryOrder.map(category => {
+                            return (
+                                <div key={category} ref={el => { if (el) cardRefs.current.set(category, el); else cardRefs.current.delete(category); }}>
+                                    <SkillCategoryCard
+                                        data={categoryData.get(category) || { name: category, skills: groupedSkills[category]?.map(s => s.name) || [] }}
+                                        isExpanded={expandedCategories.has(category)}
+                                        isCollapsing={collapsingCategories.has(category)}
+                                        isModified={modifiedCategories.has(category)}
+                                        isSaving={savingCategories.has(category)}
+                                        onToggle={() => toggleCard(category)}
+                                        onDelete={() => setDeletingCategory(category)}
+                                        onSave={() => handleSave(category)}
+                                        onCancel={() => handleCancel(category)}
+                                        onNameChange={(val) => updateCardData(category, { name: val })}
+                                        onSkillsChange={(val) => updateCardData(category, { skills: val })}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
 
             <ConfirmDialog
                 isOpen={!!deletingCategory}

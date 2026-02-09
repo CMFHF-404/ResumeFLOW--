@@ -21,6 +21,7 @@ ENV_POSTHOG_API_KEY = "POSTHOG_API_KEY"
 ENV_POSTHOG_ENABLED = "POSTHOG_ENABLED"
 ENV_POSTHOG_HOST = "POSTHOG_HOST"
 ENV_POSTHOG_PROJECT_ID = "POSTHOG_PROJECT_ID"
+ENV_FEISHU_WEBHOOK_URL = "FEISHU_WEBHOOK_URL"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
 DEFAULT_AI_MODEL = "gemini-3-flash"
@@ -82,6 +83,7 @@ class Settings:
     posthog_enabled: bool
     posthog_host: str
     posthog_project_id: Optional[str]
+    feishu_webhook_url: Optional[str]
 
 
 _settings: Optional[Settings] = None
@@ -112,6 +114,7 @@ def load_settings() -> Settings:
     posthog_enabled = _get_bool_env(ENV_POSTHOG_ENABLED, DEFAULT_POSTHOG_ENABLED)
     posthog_host = os.getenv(ENV_POSTHOG_HOST, DEFAULT_POSTHOG_HOST)
     posthog_project_id = os.getenv(ENV_POSTHOG_PROJECT_ID)
+    feishu_webhook_url = os.getenv(ENV_FEISHU_WEBHOOK_URL)
 
     _settings = Settings(
         database_url=database_url,
@@ -130,5 +133,6 @@ def load_settings() -> Settings:
         posthog_enabled=posthog_enabled,
         posthog_host=posthog_host,
         posthog_project_id=posthog_project_id,
+        feishu_webhook_url=feishu_webhook_url,
     )
     return _settings

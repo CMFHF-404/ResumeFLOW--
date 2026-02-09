@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, Plus, Trash2, Wrench } from 'lucide-react';
+import { Edit3, Plus, Trash2, Wrench, ChevronDown } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import type {
     EducationEditDraft,
@@ -219,43 +219,69 @@ const EducationSection: React.FC<EducationSectionProps> = ({
     onSaveEducation,
     onRequestDeleteEducation,
     onToggleEducationSelection,
-}) => (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-        <EducationHeader onCreate={onBeginCreateEducation} />
-        <div className="space-y-2">
-            {educations.length === 0 ? (
-                <p className="text-xs text-gray-400">暂无教育经历</p>
-            ) : (
-                educations.map((edu) => (
-                    <EducationCard
-                        key={edu.id}
-                        education={edu}
-                        isSelected={selectedEduIds.has(edu.id)}
-                        isEditing={editingEducationId === edu.id && !!educationDraft}
-                        draft={educationDraft}
-                        isSaving={isSavingEducation}
-                        deletingIds={deletingEducationIds}
-                        onToggleSelection={onToggleEducationSelection}
-                        onEdit={onBeginEditEducation}
-                        onCancelEdit={onCancelEducationEdit}
-                        onSave={onSaveEducation}
-                        onDelete={onRequestDeleteEducation}
-                        onUpdateDraft={onUpdateEducationDraft}
-                        onUpdateDate={onUpdateEducationDate}
-                    />
-                ))
+}) => {
+    const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+            <EducationHeader
+                onCreate={onBeginCreateEducation}
+                isCollapsed={isCollapsed}
+                onToggle={() => setIsCollapsed(!isCollapsed)}
+            />
+            {!isCollapsed && (
+                <div className="space-y-2">
+                    {educations.length === 0 ? (
+                        <p className="text-xs text-gray-400">暂无教育经历</p>
+                    ) : (
+                        educations.map((edu) => (
+                            <EducationCard
+                                key={edu.id}
+                                education={edu}
+                                isSelected={selectedEduIds.has(edu.id)}
+                                isEditing={editingEducationId === edu.id && !!educationDraft}
+                                draft={educationDraft}
+                                isSaving={isSavingEducation}
+                                deletingIds={deletingEducationIds}
+                                onToggleSelection={onToggleEducationSelection}
+                                onEdit={onBeginEditEducation}
+                                onCancelEdit={onCancelEducationEdit}
+                                onSave={onSaveEducation}
+                                onDelete={onRequestDeleteEducation}
+                                onUpdateDraft={onUpdateEducationDraft}
+                                onUpdateDate={onUpdateEducationDate}
+                            />
+                        ))
+                    )}
+                </div>
             )}
         </div>
-    </div>
-);
-
-type EducationHeaderProps = {
-    onCreate: () => void;
+    );
 };
 
-const EducationHeader: React.FC<EducationHeaderProps> = ({ onCreate }) => (
+const EducationHeader: React.FC<{
+    onCreate: () => void;
+    isCollapsed: boolean;
+    onToggle: () => void;
+}> = ({ onCreate, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">教育背景</h3>
+        <div className="flex items-center gap-2">
+            <button
+                onClick={onToggle}
+                className="p-0.5 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                title={isCollapsed ? "展开" : "折叠"}
+            >
+                <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                />
+            </button>
+            <h3
+                className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase cursor-pointer select-none"
+                onClick={onToggle}
+            >
+                教育背景
+            </h3>
+        </div>
         <button
             onClick={onCreate}
             title={ADD_EDUCATION_LABEL}

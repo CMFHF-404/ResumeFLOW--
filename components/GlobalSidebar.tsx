@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, BarChart3 } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, BarChart3, MessageSquare } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { useAdmin } from '../hooks/useAdmin';
@@ -9,12 +9,17 @@ import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDispla
 interface GlobalSidebarProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
+  onOpenFeedback: () => void;
 }
 
 const DEFAULT_PROFILE_NAME = '即刻开始';
 const DEFAULT_AVATAR_PLACEHOLDER = '?';
 
-const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) => {
+const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
+  currentView,
+  setView,
+  onOpenFeedback,
+}) => {
   const { signOut } = useLogto();
   const { profile } = useProfile();
   const { isAdmin, loading: isAdminLoading } = useAdmin();
@@ -82,6 +87,13 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
 
       <div className="mt-auto flex flex-col gap-6 w-full items-center mb-2">
         <button
+          className="p-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all relative group"
+          onClick={onOpenFeedback}
+        >
+          <MessageSquare className="w-6 h-6" />
+          <div className="nav-tooltip">反馈</div>
+        </button>
+        <button
           className="p-3 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-950/30 transition-all relative group"
           onClick={handleSignOut}
         >
@@ -94,4 +106,3 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({ currentView, setView }) =
 };
 
 export default GlobalSidebar;
-

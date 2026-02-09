@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AuthGuard from './components/AuthGuard';
+import FeedbackModal from './components/FeedbackModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import Dashboard from './views/Dashboard';
@@ -46,6 +47,23 @@ const resolveStoredView = (value: string | null): ViewState | null => {
   return validViews.has(value as ViewState) ? (value as ViewState) : null;
 };
 
+const buildFeedbackContext = (view: ViewState) => {
+  if (typeof window === 'undefined') {
+    return {
+      view,
+      path: '',
+      url: '',
+      userAgent: '',
+    };
+  }
+  return {
+    view,
+    path: window.location.pathname,
+    url: window.location.href,
+    userAgent: window.navigator.userAgent,
+  };
+};
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(() => {
     const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
@@ -61,6 +79,7 @@ const App: React.FC = () => {
 
   // 标记是否需要在ExperienceBank中自动打开简历上传弹窗
   const [shouldOpenResumeUpload, setShouldOpenResumeUpload] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const authUserKey = useAuthUserKey();
   const authUserKeyRef = useRef<string | null>(null);
 
@@ -74,6 +93,7 @@ const App: React.FC = () => {
     setCachedResumesOwnerKey(null);
     setProfileCache(null);
     setShouldOpenResumeUpload(false);
+    setIsFeedbackOpen(false);
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
@@ -143,6 +163,13 @@ const App: React.FC = () => {
     console.log('[App] 更新经历库缓存');
     setProfileCache(data);
   }, []);
+  const handleOpenFeedback = useCallback(() => {
+    setIsFeedbackOpen(true);
+  }, []);
+  const handleCloseFeedback = useCallback(() => {
+    setIsFeedbackOpen(false);
+  }, []);
+  const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);
 
   const renderView = () => {
     switch (currentView) {
@@ -186,10 +213,19 @@ const App: React.FC = () => {
   return (
     <AuthGuard>
       <div key={viewScopeKey} className="flex w-full h-screen">
-        <GlobalSidebar currentView={currentView} setView={handleSetView} />
+        <GlobalSidebar
+          currentView={currentView}
+          setView={handleSetView}
+          onOpenFeedback={handleOpenFeedback}
+        />
         <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
           {renderView()}
         </ViewErrorBoundary>
+        <FeedbackModal
+          isOpen={isFeedbackOpen}
+          context={feedbackContext}
+          onClose={handleCloseFeedback}
+        />
       </div>
     </AuthGuard>
   );

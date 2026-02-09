@@ -7,6 +7,7 @@ from .config import load_settings
 from .domain.ai.ai_router import router as ai_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
+from .domain.feedback.feedback_router import router as feedback_router
 from .domain.parser.parser_router import router as parser_router
 from .domain.profile import profile_router
 from .domain.skills.skill_router import router as skills_router
@@ -60,6 +61,7 @@ app.include_router(skills_router)
 app.include_router(certifications_router)
 app.include_router(ai_router)
 app.include_router(parser_router)
+app.include_router(feedback_router)
 
 
 @app.get("/health")

@@ -183,6 +183,21 @@ WHERE table_schema = 'public'
 -- 应该包含的列: id, user_id, name, issuer, issue_date, expiry_date, credential_id, credential_url, description, created_at, updated_at
 
 -- ============================================================
+-- 13. 检查 feedback 表
+-- ============================================================
+SELECT 'feedback' AS table_name,
+       CASE 
+           WHEN COUNT(*) >= 7 THEN '✓ OK' 
+           ELSE '✗ 缺少列' 
+       END AS status,
+       STRING_AGG(column_name, ', ' ORDER BY ordinal_position) AS existing_columns
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'feedback';
+
+-- 应该包含的列: id, user_id, category, content, contact, context_json, created_at
+
+-- ============================================================
 -- 详细列检查：查看每个表的所有列
 -- ============================================================
 SELECT 
@@ -197,6 +212,6 @@ WHERE table_schema = 'public'
       'users', 'profiles', 'profile_links', 'resumes', 
       'master_experiences', 'experience_versions', 'resume_experiences',
       'skills', 'user_skills', 'experience_version_skills', 
-      'resume_skills', 'certifications'
+      'resume_skills', 'certifications', 'feedback'
   )
 ORDER BY table_name, ordinal_position;

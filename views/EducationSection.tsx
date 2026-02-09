@@ -1,5 +1,5 @@
 import React from 'react';
-import { GraduationCap, Plus } from 'lucide-react';
+import { GraduationCap, Plus, ChevronDown } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EducationCard from '../components/EducationCard';
 import type { EducationManager } from '../hooks/useEducationManager';
@@ -11,9 +11,19 @@ type EducationSectionProps = {
 const EducationSectionHeader: React.FC<{
     isLoading: boolean;
     count: number;
-}> = ({ isLoading, count }) => (
+    isCollapsed: boolean;
+    onToggle: () => void;
+}> = ({ isLoading, count, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+        <h2
+            className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer select-none"
+            onClick={onToggle}
+        >
+            <div className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+                <ChevronDown
+                    className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                />
+            </div>
             <GraduationCap className="w-5 h-5 text-sky-500" />
             教育经历
             <span className="text-sm font-normal text-gray-400 ml-2">Education</span>
@@ -87,20 +97,33 @@ const DeleteDialog: React.FC<{
     />
 );
 
-const EducationSection: React.FC<EducationSectionProps> = ({ model }) => (
-    <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
-        <EducationSectionHeader isLoading={model.isLoading} count={model.educations.length} />
-        <AddEducationButton
-            onClick={model.handleAddEdu}
-            disabled={model.isLoading || model.isCreating}
-        />
-        <EducationCardList model={model} />
-        <DeleteDialog
-            isOpen={Boolean(model.deletingEduId)}
-            onCancel={model.handleCancelDelete}
-            onConfirm={model.handleConfirmDelete}
-        />
-    </section>
-);
+const EducationSection: React.FC<EducationSectionProps> = ({ model }) => {
+    const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+    return (
+        <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+            <EducationSectionHeader
+                isLoading={model.isLoading}
+                count={model.educations.length}
+                isCollapsed={isCollapsed}
+                onToggle={() => setIsCollapsed(!isCollapsed)}
+            />
+            {!isCollapsed && (
+                <>
+                    <AddEducationButton
+                        onClick={model.handleAddEdu}
+                        disabled={model.isLoading || model.isCreating}
+                    />
+                    <EducationCardList model={model} />
+                </>
+            )}
+            <DeleteDialog
+                isOpen={Boolean(model.deletingEduId)}
+                onCancel={model.handleCancelDelete}
+                onConfirm={model.handleConfirmDelete}
+            />
+        </section>
+    );
+};
 
 export default EducationSection;

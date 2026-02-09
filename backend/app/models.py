@@ -145,4 +145,18 @@ class Certification(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
+class Feedback(SQLModel, table=True):
+    __tablename__ = "feedback"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    category: str
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    contact: Optional[str] = None
+    context_json: Dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 from .domain.resume.models import Resume, ResumeExperienceLink

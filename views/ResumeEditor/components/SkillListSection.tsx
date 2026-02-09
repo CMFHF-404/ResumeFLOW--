@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Edit3, Plus, Trash2, Wrench } from 'lucide-react';
+import { CheckCircle2, Edit3, Plus, Trash2, Wrench, ChevronDown } from 'lucide-react';
 import type { MatchTrend } from '../../../types/analysis';
 import type { SkillActions, SkillGroupView, SkillItemView } from '../../../types/resume';
 import {
@@ -82,11 +82,24 @@ const SkillTypeEditor: React.FC<{
 const SkillHeader: React.FC<{
     title: string;
     onCreateType: () => void;
-}> = ({ title, onCreateType }) => (
+    isCollapsed: boolean;
+    onToggle: () => void;
+}> = ({ title, onCreateType, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
+            <button
+                onClick={onToggle}
+                className="p-0.5 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+                <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                />
+            </button>
             <Wrench className="w-3.5 h-3.5 text-rose-500" />
-            <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <h4
+                className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none"
+                onClick={onToggle}
+            >
                 {title}
             </h4>
         </div>
@@ -132,89 +145,89 @@ const SkillTag: React.FC<{
     draftName,
     isSaving,
 }) => (
-    isEditing ? (
-        <div
-            className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none"
-        >
-            {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
-            <input
-                autoFocus
-                className="bg-transparent border-none text-xs text-white p-0 m-0 w-24 outline-none focus:ring-0 placeholder-rose-200"
-                placeholder={skill.name}
-                value={draftName}
-                onChange={(event) => onUpdateDraftName(event.target.value)}
-                onBlur={() => {
-                    if (!isSaving) {
-                        onSaveEdit();
-                    }
-                }}
-                onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                        event.preventDefault();
+        isEditing ? (
+            <div
+                className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none"
+            >
+                {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
+                <input
+                    autoFocus
+                    className="bg-transparent border-none text-xs text-white p-0 m-0 w-24 outline-none focus:ring-0 placeholder-rose-200"
+                    placeholder={skill.name}
+                    value={draftName}
+                    onChange={(event) => onUpdateDraftName(event.target.value)}
+                    onBlur={() => {
                         if (!isSaving) {
                             onSaveEdit();
                         }
-                    } else if (event.key === 'Escape') {
-                        event.preventDefault();
-                        onCancelEdit();
-                    }
-                }}
-                disabled={isSaving}
-            />
-            {typeof matchScore === 'number' && matchScore > 0 ? (
-                <MatchBadge score={matchScore} trend={matchTrend} />
-            ) : null}
-        </div>
-    ) : (
-        <label
-            className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
-                ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
-                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
-                }`}
-        >
-            <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => onToggleSelection(skill.id)}
-                className="hidden"
-            />
-            {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
-            <span>{skill.name}</span>
-            {typeof matchScore === 'number' && matchScore > 0 ? (
-                <MatchBadge score={matchScore} trend={matchTrend} />
-            ) : null}
-            <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                    type="button"
-                    className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
-                    onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onDelete(skill.id);
                     }}
-                    disabled={deletingIds.has(skill.id)}
-                    title="删除技能"
-                    aria-label="删除技能"
-                >
-                    <Trash2 className="w-3 h-3" />
-                </button>
-                <button
-                    type="button"
-                    className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
-                    onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onEdit(skill.id);
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            if (!isSaving) {
+                                onSaveEdit();
+                            }
+                        } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            onCancelEdit();
+                        }
                     }}
-                    title="编辑技能"
-                    aria-label="编辑技能"
-                >
-                    <Edit3 className="w-3 h-3" />
-                </button>
-            </span>
-        </label>
-    )
-);
+                    disabled={isSaving}
+                />
+                {typeof matchScore === 'number' && matchScore > 0 ? (
+                    <MatchBadge score={matchScore} trend={matchTrend} />
+                ) : null}
+            </div>
+        ) : (
+            <label
+                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
+                    ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
+                    }`}
+            >
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onToggleSelection(skill.id)}
+                    className="hidden"
+                />
+                {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
+                <span>{skill.name}</span>
+                {typeof matchScore === 'number' && matchScore > 0 ? (
+                    <MatchBadge score={matchScore} trend={matchTrend} />
+                ) : null}
+                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        type="button"
+                        className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onDelete(skill.id);
+                        }}
+                        disabled={deletingIds.has(skill.id)}
+                        title="删除技能"
+                        aria-label="删除技能"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                    <button
+                        type="button"
+                        className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onEdit(skill.id);
+                        }}
+                        title="编辑技能"
+                        aria-label="编辑技能"
+                    >
+                        <Edit3 className="w-3 h-3" />
+                    </button>
+                </span>
+            </label>
+        )
+    );
 
 const SkillGroupHeader: React.FC<{
     groupName: string;
@@ -310,7 +323,7 @@ const SkillGroupBody: React.FC<{
                 />
             ))}
             {skill.skillDraftContext?.mode === 'group'
-            && skill.skillDraftContext?.groupName === group.name ? (
+                && skill.skillDraftContext?.groupName === group.name ? (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
                     <input
                         autoFocus
@@ -376,6 +389,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
     onToggleSelection,
     onResetRenamingCategory,
 }) => {
+    const [isCollapsed, setIsCollapsed] = React.useState(false);
     const draftGroupName = resolveDraftGroupName(skill);
     const hasDraftGroup = draftGroupName
         ? groups.some((group) => group.name === draftGroupName)
@@ -385,21 +399,30 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
 
     return (
         <div className="space-y-4">
-            <SkillHeader title={title} onCreateType={skill.beginCreateSkillType} />
-            {shouldShowTypeEditor ? <SkillTypeEditor skill={skill} /> : null}
-            {groups.map((group) => (
-                <div key={group.name} data-rf-edit-target={`skill-group:${group.name}`}>
-                    <SkillGroupCard
-                        group={group}
-                        skill={skill}
-                        selectedIds={selectedIds}
-                        matchScores={matchScores}
-                        matchTrends={matchTrends}
-                        onToggleSelection={onToggleSelection}
-                        onResetRenamingCategory={onResetRenamingCategory}
-                    />
-                </div>
-            ))}
+            <SkillHeader
+                title={title}
+                onCreateType={skill.beginCreateSkillType}
+                isCollapsed={isCollapsed}
+                onToggle={() => setIsCollapsed(!isCollapsed)}
+            />
+            {!isCollapsed && (
+                <>
+                    {shouldShowTypeEditor ? <SkillTypeEditor skill={skill} /> : null}
+                    {groups.map((group) => (
+                        <div key={group.name} data-rf-edit-target={`skill-group:${group.name}`}>
+                            <SkillGroupCard
+                                group={group}
+                                skill={skill}
+                                selectedIds={selectedIds}
+                                matchScores={matchScores}
+                                matchTrends={matchTrends}
+                                onToggleSelection={onToggleSelection}
+                                onResetRenamingCategory={onResetRenamingCategory}
+                            />
+                        </div>
+                    ))}
+                </>
+            )}
         </div>
     );
 };

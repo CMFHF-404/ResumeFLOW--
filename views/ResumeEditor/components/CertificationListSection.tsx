@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpDown, Award, Edit3, Plus, Trash2 } from 'lucide-react';
+import { ArrowUpDown, Award, Edit3, Plus, Trash2, ChevronDown } from 'lucide-react';
 import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../../../components/MonthPicker';
 import type { MatchTrend } from '../../../types/analysis';
 import type { CertificationEditDraft, CertificationView } from '../../../types/resume';
@@ -43,11 +43,24 @@ const CertificationHeader: React.FC<{
     title: string;
     onCreate: () => void;
     onResetSort?: () => void;
-}> = ({ title, onCreate, onResetSort }) => (
+    isCollapsed: boolean;
+    onToggle: () => void;
+}> = ({ title, onCreate, onResetSort, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
+            <button
+                onClick={onToggle}
+                className="p-0.5 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+                <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                />
+            </button>
             <Award className="w-3.5 h-3.5 text-amber-500" />
-            <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <h4
+                className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none"
+                onClick={onToggle}
+            >
                 {title}
             </h4>
         </div>
@@ -299,19 +312,33 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
     isSaving,
     onResetSort,
 }) => {
+    const [isCollapsed, setIsCollapsed] = React.useState(false);
+
     if (!items.length) {
         return (
             <div className="space-y-3">
-                <CertificationHeader title={title} onCreate={onBeginCreate} onResetSort={onResetSort} />
-                <p className="text-xs text-gray-400">暂无证书</p>
+                <CertificationHeader
+                    title={title}
+                    onCreate={onBeginCreate}
+                    onResetSort={onResetSort}
+                    isCollapsed={isCollapsed}
+                    onToggle={() => setIsCollapsed(!isCollapsed)}
+                />
+                {!isCollapsed && <p className="text-xs text-gray-400">暂无证书</p>}
             </div>
         );
     }
 
     return (
         <div className="space-y-3">
-            <CertificationHeader title={title} onCreate={onBeginCreate} onResetSort={onResetSort} />
-            {items.map((cert) => (
+            <CertificationHeader
+                title={title}
+                onCreate={onBeginCreate}
+                onResetSort={onResetSort}
+                isCollapsed={isCollapsed}
+                onToggle={() => setIsCollapsed(!isCollapsed)}
+            />
+            {!isCollapsed && items.map((cert) => (
                 <div key={cert.id} data-rf-edit-target={`certification:${cert.id}`}>
                     <CertificationItem
                         cert={cert}

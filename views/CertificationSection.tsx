@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Award, Plus } from 'lucide-react';
+import { Award, Plus, ChevronDown } from 'lucide-react';
 import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
@@ -325,10 +325,21 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
         }
     };
 
+    // Collapse State
+    const [isCollapsed, setIsCollapsed] = useState(false);
+
     return (
         <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h2
+                    className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer select-none"
+                    onClick={() => setIsCollapsed(!isCollapsed)}
+                >
+                    <div className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+                        <ChevronDown
+                            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                        />
+                    </div>
                     <Award className="w-5 h-5 text-amber-500" />
                     证书资质
                     <span className="text-sm font-normal text-gray-400 ml-2">Certifications</span>
@@ -338,38 +349,42 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
                 </span>
             </div>
 
-            <button
-                onClick={handleAdd}
-                disabled={isLoading || isCreating}
-                className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-                <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-amber-600 transition-colors">
-                    <Plus className="w-5 h-5" />
-                </div>
-                <span className="font-medium">新增证书资质</span>
-            </button>
-
-            <div className="space-y-4">
-                {sortedCertifications.map(cert => {
-                    const id = cert.id;
-                    return (
-                        <div key={id} ref={el => { if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id); }}>
-                            <CertificationCard
-                                data={cardData.get(id) || buildCertificationCardData(cert)}
-                                isExpanded={expandedCards.has(id)}
-                                isCollapsing={collapsingCards.has(id)}
-                                isModified={modifiedCards.has(id)}
-                                isSaving={savingCards.has(id)}
-                                onToggle={() => toggleCard(id)}
-                                onDelete={() => setDeletingId(id)}
-                                onSave={() => handleSave(id)}
-                                onCancel={() => handleCancelEdit(id)}
-                                onFieldChange={(field, value) => updateCardField(id, field, value)}
-                            />
+            {!isCollapsed && (
+                <>
+                    <button
+                        onClick={handleAdd}
+                        disabled={isLoading || isCreating}
+                        className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-amber-600 transition-colors">
+                            <Plus className="w-5 h-5" />
                         </div>
-                    );
-                })}
-            </div>
+                        <span className="font-medium">新增证书资质</span>
+                    </button>
+
+                    <div className="space-y-4">
+                        {sortedCertifications.map(cert => {
+                            const id = cert.id;
+                            return (
+                                <div key={id} ref={el => { if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id); }}>
+                                    <CertificationCard
+                                        data={cardData.get(id) || buildCertificationCardData(cert)}
+                                        isExpanded={expandedCards.has(id)}
+                                        isCollapsing={collapsingCards.has(id)}
+                                        isModified={modifiedCards.has(id)}
+                                        isSaving={savingCards.has(id)}
+                                        onToggle={() => toggleCard(id)}
+                                        onDelete={() => setDeletingId(id)}
+                                        onSave={() => handleSave(id)}
+                                        onCancel={() => handleCancelEdit(id)}
+                                        onFieldChange={(field, value) => updateCardField(id, field, value)}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
 
             <ConfirmDialog
                 isOpen={!!deletingId}

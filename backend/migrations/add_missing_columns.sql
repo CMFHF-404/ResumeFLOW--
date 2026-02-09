@@ -286,16 +286,39 @@ CREATE TABLE IF NOT EXISTS certifications (
 );
 
 -- ============================================================
--- 14. 创建必要的索引
+-- 14. 确保 feedback 表结构
+-- ============================================================
+CREATE TABLE IF NOT EXISTS feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    content TEXT NOT NULL,
+    contact TEXT,
+    context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE feedback
+    ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    ADD COLUMN IF NOT EXISTS category TEXT,
+    ADD COLUMN IF NOT EXISTS content TEXT,
+    ADD COLUMN IF NOT EXISTS contact TEXT,
+    ADD COLUMN IF NOT EXISTS context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- ============================================================
+-- 15. 创建必要的索引
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_master_experiences_user_id ON master_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_experience_versions_master_id ON experience_versions(master_experience_id);
 CREATE INDEX IF NOT EXISTS idx_resume_experiences_resume_id ON resume_experiences(resume_id);
 CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
 
 -- ============================================================
--- 15. 验证结果
+-- 16. 验证结果
 -- ============================================================
 -- 查看所有表的列数
 SELECT 
@@ -307,7 +330,7 @@ WHERE table_schema = 'public'
       'users', 'profiles', 'profile_links', 'resumes', 
       'master_experiences', 'experience_versions', 'resume_experiences',
       'skills', 'user_skills', 'experience_version_skills', 
-      'resume_skills', 'certifications'
+      'resume_skills', 'certifications', 'feedback'
   )
 GROUP BY table_name
 ORDER BY table_name;
