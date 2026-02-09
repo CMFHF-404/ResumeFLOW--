@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, ArrowUpDown } from 'lucide-react';
+import { Plus, ArrowUpDown, ChevronDown } from 'lucide-react';
 import type { ExperienceSectionHeaderProps } from '../../../../types/resume';
 
 const ExperienceSectionHeader: React.FC<ExperienceSectionHeaderProps> = ({
@@ -9,11 +9,26 @@ const ExperienceSectionHeader: React.FC<ExperienceSectionHeaderProps> = ({
     actionLabel,
     isAdding,
     onResetSort,
+    isCollapsed,
+    onToggle,
 }) => (
     <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
+            {onToggle && (
+                <button
+                    onClick={onToggle}
+                    className="p-0.5 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                    <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                    />
+                </button>
+            )}
             {icon}
-            <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <h4
+                className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer"
+                onClick={onToggle}
+            >
                 {title}
             </h4>
         </div>

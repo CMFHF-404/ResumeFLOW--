@@ -45,6 +45,8 @@ export type ExperienceSectionHeaderProps = {
   actionLabel: string;
   isAdding: boolean;
   onResetSort?: () => void;
+  isCollapsed?: boolean;
+  onToggle?: () => void;
 };
 
 export type ExperienceListSectionProps = {

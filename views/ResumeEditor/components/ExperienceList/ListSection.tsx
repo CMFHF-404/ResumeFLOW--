@@ -28,6 +28,8 @@ const EXPERIENCE_THEME_STYLES: Record<
     },
 };
 
+import { useState } from 'react';
+
 const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     title,
     items,
@@ -45,6 +47,9 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     onResetSort,
 }) => {
     const themeStyles = EXPERIENCE_THEME_STYLES[theme];
+    const [isCollapsed, setIsCollapsed] = useState(false);
+
+    const toggleCollapse = () => setIsCollapsed(!isCollapsed);
 
     if (!items.length) {
         return (
@@ -56,8 +61,10 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     actionLabel={actionLabel}
                     isAdding={isAdding}
                     onResetSort={onResetSort}
+                    isCollapsed={isCollapsed}
+                    onToggle={toggleCollapse}
                 />
-                <p className="text-xs text-gray-400">暂无{title}</p>
+                {!isCollapsed && <p className="text-xs text-gray-400">暂无{title}</p>}
             </div>
         );
     }
@@ -71,8 +78,10 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                 actionLabel={actionLabel}
                 isAdding={isAdding}
                 onResetSort={onResetSort}
+                isCollapsed={isCollapsed}
+                onToggle={toggleCollapse}
             />
-            {items.map((item) => (
+            {!isCollapsed && items.map((item) => (
                 <ExperienceCard
                     key={item.id}
                     item={item}

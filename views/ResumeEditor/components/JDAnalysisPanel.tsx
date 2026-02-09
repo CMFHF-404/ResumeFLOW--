@@ -51,18 +51,16 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
             className={`${JD_PANEL_STICKY_CLASS} border-b border-border-light dark:border-border-dark bg-gray-50/50 dark:bg-gray-800/30 transition-all duration-300 ease-in-out flex flex-col ${JD_PANEL_BOTTOM_SPACING_CLASS} ${isCollapsed ? 'h-auto py-3' : 'h-auto py-4'}`}
         >
             <div className="px-4 flex items-center justify-between mb-2">
-                <h3
-                    className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer"
-                    onClick={onToggleCollapse}
-                    onKeyDown={handleToggleKeyDown}
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={!isCollapsed}
-                    aria-controls={JD_PANEL_CONTENT_ID}
-                >
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <Target className="w-4 h-4 text-primary" />
                     职位分析 (JD Analysis)
                 </h3>
+                <button
+                    onClick={onToggleCollapse}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                    {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                </button>
             </div>
             <div className="px-4" id={JD_PANEL_CONTENT_ID}>
                 {isCollapsed ? (
@@ -74,16 +72,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         待更新
                                     </span>
                                 ) : (
-                                    <div onClick={onToggleCollapse} className="cursor-pointer transition-opacity hover:opacity-80">
-                                        <MatchBadge
-                                            score={analysisResult?.matchPercentage ?? 0}
-                                            trend={analysisResult?.matchTrend}
-                                        >
-                                            <span className="text-emerald-600 dark:text-emerald-400">
-                                                <ChevronDown className="w-3 h-3" />
-                                            </span>
-                                        </MatchBadge>
-                                    </div>
+                                    <MatchBadge
+                                        score={analysisResult?.matchPercentage ?? 0}
+                                        trend={analysisResult?.matchTrend}
+                                    />
                                 )}
                                 <button
                                     onClick={onAnalyze}
@@ -137,16 +129,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                         {analysisResult ? (
                             <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-lg p-3">
                                 <div className="flex justify-between items-center mb-2">
-                                    <div onClick={onToggleCollapse} className="cursor-pointer transition-opacity hover:opacity-80">
-                                        <MatchBadge
-                                            score={analysisResult.matchPercentage ?? 0}
-                                            trend={analysisResult.matchTrend}
-                                        >
-                                            <span className="text-emerald-600 dark:text-emerald-400">
-                                                <ChevronUp className="w-3 h-3" />
-                                            </span>
-                                        </MatchBadge>
-                                    </div>
+                                    <MatchBadge
+                                        score={analysisResult.matchPercentage ?? 0}
+                                        trend={analysisResult.matchTrend}
+                                    />
                                     <span className="text-[11.5px] text-emerald-600/80">
                                         Missing: {(analysisResult.missingKeywords || []).join(', ')}
                                     </span>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronDown } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { aiService } from '../services/aiService';
+import { aiService, PolishExperienceResponse } from '../services/aiService';
 import { experienceService, ExperienceCategory, ExperienceListItem } from '../services/experienceService';
 import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
@@ -799,15 +799,15 @@ type StarSnapshotMap = Partial<Record<StarFieldKey, StarSnapshot>>;
 
 const POLISH_SOURCE = 'experience_bank';
 
-const normalizePolishField = (value: unknown) => {
-  if (typeof value !== 'string') {
+const normalizePolishField = (value: string | undefined) => {
+  if (!value) {
     return undefined;
   }
   const normalized = normalizeAiRichText(value, { allowList: false });
   return normalized.trim() ? normalized : undefined;
 };
 
-const buildStarUpdates = (result: Record<string, unknown>) => {
+const buildStarUpdates = (result: PolishExperienceResponse) => {
   const updates: Partial<Record<StarFieldKey, string>> = {};
   STAR_FIELD_KEYS.forEach((key) => {
     const normalized = normalizePolishField(result[key]);
@@ -1229,13 +1229,28 @@ const SectionHeader: React.FC<{
   subtitle: string;
   isLoading: boolean;
   count: number;
-}> = ({ icon, title, subtitle, isLoading, count }) => (
+  isCollapsed: boolean;
+  onToggle: () => void;
+}> = ({ icon, title, subtitle, isLoading, count, isCollapsed, onToggle }) => (
   <div className="flex items-center justify-between">
-    <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-      {icon}
-      {title}
-      <span className="text-sm font-normal text-gray-400 ml-2">{subtitle}</span>
-    </h2>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={onToggle}
+        className="p-1 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        <ChevronDown
+          className={`w-5 h-5 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+        />
+      </button>
+      <h2
+        className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer select-none"
+        onClick={onToggle}
+      >
+        {icon}
+        {title}
+        <span className="text-sm font-normal text-gray-400 ml-2">{subtitle}</span>
+      </h2>
+    </div>
     <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
       {isLoading ? 'Loading...' : `${count} items`}
     </span>
@@ -1341,7 +1356,9 @@ const ExperienceSectionView: React.FC<{
   showTags: boolean;
   model: ExperienceSectionModel;
   themeColor?: string;
-}> = ({ title, subtitle, icon, labels, addButtonLabel, deleteConfirmText, showTags, model, themeColor }) => (
+  isCollapsed: boolean;
+  onToggle: () => void;
+}> = ({ title, subtitle, icon, labels, addButtonLabel, deleteConfirmText, showTags, model, themeColor, isCollapsed, onToggle }) => (
   <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
     <SectionHeader
       icon={icon}
@@ -1349,14 +1366,20 @@ const ExperienceSectionView: React.FC<{
       subtitle={subtitle}
       isLoading={model.isLoading}
       count={model.experiences.length}
+      isCollapsed={isCollapsed}
+      onToggle={onToggle}
     />
-    <AddExperienceButton
-      onClick={model.onAdd}
-      label={addButtonLabel}
-      disabled={model.isCreating}
-      themeColor={themeColor}
-    />
-    <ExperienceCardList items={model.sortedExperiences} labels={labels} showTags={showTags} model={model} themeColor={themeColor} />
+    {!isCollapsed && (
+      <>
+        <AddExperienceButton
+          onClick={model.onAdd}
+          label={addButtonLabel}
+          disabled={model.isCreating}
+          themeColor={themeColor}
+        />
+        <ExperienceCardList items={model.sortedExperiences} labels={labels} showTags={showTags} model={model} themeColor={themeColor} />
+      </>
+    )}
     <DeleteDialog
       isOpen={Boolean(model.deletingCardId)}
       description={deleteConfirmText}
@@ -1368,6 +1391,8 @@ const ExperienceSectionView: React.FC<{
 
 const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
   const model = useExperienceSectionModel(props);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
     <ExperienceSectionView
       title={props.title}
@@ -1379,6 +1404,8 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
       showTags={props.showTags ?? false}
       model={model}
       themeColor={props.themeColor}
+      isCollapsed={isCollapsed}
+      onToggle={() => setIsCollapsed(!isCollapsed)}
     />
   );
 };

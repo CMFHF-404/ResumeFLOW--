@@ -104,16 +104,9 @@ const ExperienceCardFooter: React.FC<ExperienceCardFooterProps> = ({
                 {staleExperienceIds.has(item.id) ? <StaleBadge /> : null}
                 {item.matchScore !== undefined ? (
                     <div
-                        onClick={handleBadgeClick}
-                        className={hasReason ? "cursor-pointer transition-opacity hover:opacity-80" : ""}
+                        className={hasReason ? "transition-opacity hover:opacity-80" : ""}
                     >
-                        <MatchBadge score={item.matchScore} trend={item.matchTrend}>
-                            {hasReason && (
-                                <span className={`text-emerald-600 dark:text-emerald-400 transition-transform duration-200 ${isReasonOpen ? 'rotate-180' : ''}`}>
-                                    <ChevronDown className="w-3 h-3" />
-                                </span>
-                            )}
-                        </MatchBadge>
+                        <MatchBadge score={item.matchScore} trend={item.matchTrend} />
                     </div>
                 ) : null}
             </div>
@@ -132,11 +125,13 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
     staleExperienceIds,
 }) => {
     const hasReason = Boolean(item.matchReason?.trim());
-    const [isReasonOpen, setIsReasonOpen] = useState(false);
+    const [isReasonOpen, setIsReasonOpen] = useState(true);
 
     useEffect(() => {
         if (!hasReason) {
             setIsReasonOpen(false);
+        } else {
+            setIsReasonOpen(true);
         }
     }, [hasReason]);
 
