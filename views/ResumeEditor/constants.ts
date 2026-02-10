@@ -93,6 +93,15 @@ export const SMART_PAGE_TOAST_MESSAGES = {
     overflow: '内容过多，即使调整行间距与字号也无法保留页尾留白，请删减部分内容。',
     adjusting: '正在尝试自动适配一页...',
 } as const;
+export const JD_ANALYSIS_TOAST_MESSAGES = {
+    loading: '正在进行 JD 分析...',
+    success: 'JD 分析完成',
+    noChange: 'JD 分析完成，但未产生可用调整',
+    error: 'JD 分析失败，请稍后重试',
+    empty: '请先粘贴 JD 内容再分析',
+} as const;
+export const JD_ANALYSIS_TOAST_DURATION_MS = 2500;
+export const JD_ANALYSIS_TOAST_ERROR_DURATION_MS = 3000;
 
 export const DEFAULT_MATCH_BADGE_TONE: keyof typeof MATCH_BADGE_STYLES = 'emerald';
 export const STALE_EXPERIENCE_TIP = '该经历已更新，建议重新分析';

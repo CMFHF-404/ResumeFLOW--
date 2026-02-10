@@ -451,6 +451,11 @@ type UseJDAnalysisOptions = {
   authUserKey?: string | null;
 };
 
+type JDAnalyzeOutcome =
+  | { status: "success"; result: JDAnalysisResult }
+  | { status: "no_change" }
+  | { status: "error" };
+
 type UseJDAnalysisResult = {
   jdText: string;
   setJdText: Dispatch<SetStateAction<string>>;
@@ -467,7 +472,7 @@ type UseJDAnalysisResult = {
   setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
   skillMatchTrends: Map<string, MatchTrend>;
   setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
-  handleAnalyze: () => Promise<JDAnalysisResult | null>;
+  handleAnalyze: () => Promise<JDAnalyzeOutcome>;
   debugInfo?: any;
   isOutdated: boolean;
 };
@@ -1030,11 +1035,11 @@ export const useJDAnalysis = ({
   );
 
   const runAnalyze = useCallback(
-    async (options?: AnalyzeOptions): Promise<JDAnalysisResult | null> => {
+    async (options?: AnalyzeOptions): Promise<JDAnalyzeOutcome> => {
       const mode = options?.mode ?? "full";
       const diff = options?.diff ?? buildEmptyDiff();
       if (mode === "partial" && !hasDiff(diff)) {
-        return null;
+        return { status: "no_change" };
       }
       if (mode === "full") {
         pendingDiffRef.current = buildEmptyDiff();
@@ -1075,7 +1080,7 @@ export const useJDAnalysis = ({
           mode === "partial" ? subtractDiff(diff, changedDuringAnalyze) : diff;
         if (mode === "partial" && !hasDiff(stableDiff)) {
           updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
-          return null;
+          return { status: "no_change" };
         }
         const nextResult =
           mode === "partial"
@@ -1106,10 +1111,10 @@ export const useJDAnalysis = ({
             durationMs: Date.now() - startedAt,
           }, authUserKey);
         }
-        return stabilizedResult;
+        return { status: "success", result: stabilizedResult };
       } catch (error) {
         console.error("Failed to analyze JD", error);
-        return null;
+        return { status: "error" };
       } finally {
         setIsAnalyzing(false);
       }
