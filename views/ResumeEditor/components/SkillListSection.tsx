@@ -174,8 +174,8 @@ const SkillTag: React.FC<{
                     }}
                     disabled={isSaving}
                 />
-                {typeof matchScore === 'number' && matchScore > 0 ? (
-                    <MatchBadge score={matchScore} trend={matchTrend} />
+                {typeof matchScore === 'number' ? (
+                    <MatchBadge score={matchScore} trend={matchTrend} label="" />
                 ) : null}
             </div>
         ) : (
@@ -193,8 +193,8 @@ const SkillTag: React.FC<{
                 />
                 {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
                 <span>{skill.name}</span>
-                {typeof matchScore === 'number' && matchScore > 0 ? (
-                    <MatchBadge score={matchScore} trend={matchTrend} />
+                {typeof matchScore === 'number' ? (
+                    <MatchBadge score={matchScore} trend={matchTrend} label="" />
                 ) : null}
                 <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button

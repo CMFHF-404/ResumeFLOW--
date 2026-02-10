@@ -5,11 +5,14 @@ import type { MatchTrend } from '../../../types/analysis';
 
 type MatchBadgeProps = {
     score: number;
+    label?: string;
     tone?: keyof typeof MATCH_BADGE_STYLES;
     variant?: 'soft' | 'solid';
     className?: string;
     trend?: MatchTrend;
 };
+
+const DEFAULT_MATCH_BADGE_LABEL = '匹配度';
 
 const TREND_LABELS: Record<MatchTrend, string> = {
     up: '↑',
@@ -25,12 +28,16 @@ const TREND_CLASSES: Record<MatchTrend, string> = {
 
 export const MatchBadge: React.FC<MatchBadgeProps & { children?: React.ReactNode }> = ({
     score,
+    label,
     tone = DEFAULT_MATCH_BADGE_TONE,
     variant = 'soft',
     className = '',
     trend,
     children,
 }) => {
+    const resolvedLabel =
+        typeof label === 'string' ? label.trim() : DEFAULT_MATCH_BADGE_LABEL;
+    const labelPrefix = resolvedLabel ? `${resolvedLabel} ` : '';
     const shouldShowTrend = trend && trend !== 'same';
     const trendFallback = shouldShowTrend ? (
         <span className={`ml-1 ${TREND_CLASSES[trend]}`}>{TREND_LABELS[trend]}</span>
@@ -40,7 +47,7 @@ export const MatchBadge: React.FC<MatchBadgeProps & { children?: React.ReactNode
         <span
             className={`text-[11.5px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${MATCH_BADGE_STYLES[tone][variant]} ${className}`.trim()}
         >
-            匹配度 {score}%
+            {labelPrefix}{score}%
             {children ?? trendFallback}
         </span>
     );
