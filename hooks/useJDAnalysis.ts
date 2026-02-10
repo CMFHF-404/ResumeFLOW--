@@ -83,6 +83,12 @@ const subtractDiff = (source: JDItemDiff, toRemove: JDItemDiff): JDItemDiff => (
   skills: new Set([...source.skills].filter((id) => !toRemove.skills.has(id))),
 });
 
+const mergeDiffs = (...diffs: JDItemDiff[]) => {
+  const merged = buildEmptyDiff();
+  diffs.forEach((diff) => mergeDiffInto(merged, diff));
+  return merged;
+};
+
 const canonicalStringify = (obj: unknown): string => {
   const stringifyValue = (value: unknown): string | undefined => {
     if (value === undefined) {
@@ -398,6 +404,52 @@ const stabilizeAnalysisResult = (
       next.certificationMatches
     ),
     skillMatches: stabilizeMatchEntries(prev?.skillMatches, next.skillMatches),
+  };
+};
+
+const stripMatchTrends = (
+  matches: MatchScoreEntry[] | undefined,
+  targets: Set<string>
+) => {
+  if (!matches || matches.length === 0 || targets.size === 0) {
+    return matches;
+  }
+  let changed = false;
+  const next = matches.map((entry) => {
+    if (!targets.has(entry.id) || entry.trend === undefined) {
+      return entry;
+    }
+    changed = true;
+    return { ...entry, trend: undefined };
+  });
+  return changed ? next : matches;
+};
+
+const stripTrendsByDiff = (result: JDAnalysisResult, diff: JDItemDiff) => {
+  if (!hasDiff(diff)) {
+    return result;
+  }
+  const nextExperienceMatches = stripMatchTrends(
+    result.experienceMatches,
+    diff.experiences
+  );
+  const nextCertificationMatches = stripMatchTrends(
+    result.certificationMatches,
+    diff.certifications
+  );
+  const nextSkillMatches = stripMatchTrends(result.skillMatches, diff.skills);
+  if (
+    nextExperienceMatches === result.experienceMatches
+    && nextCertificationMatches === result.certificationMatches
+    && nextSkillMatches === result.skillMatches
+  ) {
+    return result;
+  }
+  return {
+    ...result,
+    experienceMatches: nextExperienceMatches,
+    certificationMatches: nextCertificationMatches,
+    skillMatches: nextSkillMatches,
   };
 };
 
@@ -1048,6 +1100,16 @@ export const useJDAnalysis = ({
     [clearStaleExperienceIds, markStaleMatches]
   );
 
+  const buildDiffFromContext = useCallback(
+    (context: JDAnalysisContext | null, signatures: JDAnalysisItemSignatures) => {
+      if (!context) {
+        return buildEmptyDiff();
+      }
+      return diffJDItemSignatures(context.itemSignatures, signatures);
+    },
+    []
+  );
+
   const runAnalyze = useCallback(
     async (options?: AnalyzeOptions): Promise<JDAnalyzeOutcome> => {
       const mode = options?.mode ?? "full";
@@ -1110,9 +1172,13 @@ export const useJDAnalysis = ({
           trendBaseResult,
           nextResult
         );
-        applyMatchScoresForResult(stabilizedResult, mode, stableDiff);
+        const finalResult =
+          mode === "partial"
+            ? stripTrendsByDiff(stabilizedResult, stableDiff)
+            : stabilizedResult;
+        applyMatchScoresForResult(finalResult, mode, stableDiff);
         updateAnalysisState({
-          result: stabilizedResult,
+          result: finalResult,
           itemSignatures: startSnapshot.itemSignatures,
           experienceSignature: startSnapshot.experienceSignature,
           jdTextSignature: startSnapshot.jdTextSignature,
@@ -1127,11 +1193,11 @@ export const useJDAnalysis = ({
         if (mode === "full") {
           trackJDAnalysisComplete({
             resumeId,
-            matchScore: stabilizedResult.matchPercentage,
+            matchScore: finalResult.matchPercentage,
             durationMs: Date.now() - startedAt,
           }, authUserKey);
         }
-        return { status: "success", result: stabilizedResult };
+        return { status: "success", result: finalResult };
       } catch (error) {
         console.error("Failed to analyze JD", error);
         return { status: "error" };
@@ -1152,22 +1218,32 @@ export const useJDAnalysis = ({
   );
 
   const handleAnalyze = useCallback(async () => {
-    const diffSnapshot = cloneDiff(pendingDiffRef.current);
+    const snapshot = buildAnalyzeSnapshot();
+    const contextDiff = buildDiffFromContext(
+      analysisContext,
+      snapshot.itemSignatures
+    );
+    const diffSnapshot = analysisContext
+      ? mergeDiffs(pendingDiffRef.current, contextDiff)
+      : cloneDiff(pendingDiffRef.current);
     const hasPendingDiff = hasDiff(diffSnapshot);
     const hasJdTextChanged =
-      analysisContext?.jdTextSignature !== jdTextSignature;
+      analysisContext?.jdTextSignature !== snapshot.jdTextSignature;
     const hasPrevExperienceText =
       analysisContext?.experienceText !== undefined;
-    const hasExperienceSignatureChanged =
-      analysisContext?.experienceSignature !== experienceSignature;
     const shouldSkipAnalyze =
       Boolean(analysisResult)
       && Boolean(analysisContext)
       && !hasPendingDiff
-      && !hasJdTextChanged
-      && !hasExperienceSignatureChanged;
+      && !hasJdTextChanged;
 
     if (shouldSkipAnalyze) {
+      if (needsReanalysis) {
+        setNeedsReanalysis(false);
+      }
+      if (analysisContext && hasDiff(pendingDiffRef.current)) {
+        pendingDiffRef.current = buildEmptyDiff();
+      }
       return { status: "no_change" };
     }
     if (
@@ -1183,8 +1259,9 @@ export const useJDAnalysis = ({
   }, [
     analysisContext,
     analysisResult,
-    experienceSignature,
-    jdTextSignature,
+    buildAnalyzeSnapshot,
+    buildDiffFromContext,
+    needsReanalysis,
     runAnalyze,
   ]);
 
