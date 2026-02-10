@@ -1,6 +1,5 @@
 import React from 'react';
 import { Database, User, Wand2 } from 'lucide-react';
-import type { JDAnalysisResult } from '../../../services/aiService';
 import type { ResumeExperienceView } from '../../../types/resume';
 import {
     EDITING_SUGGESTION_NAV_CLASS,
@@ -14,7 +13,6 @@ import ProfileTab from './ProfileTab';
 
 type EditingSuggestionProps = {
     editingItem?: ResumeExperienceView;
-    analysisResult: JDAnalysisResult | null;
     staleExperienceIds: Set<string>;
     jdText: string;
     isPolishing: boolean;
@@ -33,21 +31,19 @@ export type EditorSidebarProps = {
 
 const resolveExperienceSuggestion = (
     item: ResumeExperienceView | undefined,
-    analysisResult: JDAnalysisResult | null,
     staleExperienceIds: Set<string>
 ) => {
     if (item && staleExperienceIds.has(item.id)) {
         return STALE_EXPERIENCE_TIP;
     }
-    if (analysisResult?.summary) {
-        return analysisResult.summary;
+    if (item?.matchReason?.trim()) {
+        return item.matchReason;
     }
     return '暂无润色建议';
 };
 
 const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     editingItem,
-    analysisResult,
     staleExperienceIds,
     jdText,
     isPolishing,
@@ -56,7 +52,7 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     if (!editingItem) {
         return null;
     }
-    const suggestion = resolveExperienceSuggestion(editingItem, analysisResult, staleExperienceIds);
+    const suggestion = resolveExperienceSuggestion(editingItem, staleExperienceIds);
     return (
         <div className={EDITING_SUGGESTION_NAV_CLASS}>
             <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3">

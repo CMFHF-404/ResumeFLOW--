@@ -1415,7 +1415,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     }}
                     editingSuggestion={{
                         editingItem,
-                        analysisResult,
                         staleExperienceIds,
                         jdText,
                         isPolishing: experience.isPolishing,
