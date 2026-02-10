@@ -3,7 +3,7 @@ import {
   ANALYTICS_PROPERTIES,
   type AiPolishAction,
 } from '../constants/analyticsEvents';
-import { trackEvent, trackEventImmediate, trackPageView as emitPageView } from './analyticsClient';
+import { trackEvent, trackEventImmediate } from './analyticsClient';
 import {
   getAnalyticsCounters,
   incrementAnalyticsCounter,
@@ -88,7 +88,6 @@ type ExperienceBankExportedPayload = {
 
 export const trackPageView = (view: string) => {
   const path = typeof window === 'undefined' ? '' : window.location.pathname;
-  emitPageView(view, path);
   trackEvent(ANALYTICS_EVENTS.PAGE_VIEW, {
     [ANALYTICS_PROPERTIES.VIEW]: view,
     [ANALYTICS_PROPERTIES.PATH]: path,

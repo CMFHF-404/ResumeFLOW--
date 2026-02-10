@@ -13,6 +13,6 @@ interface ImportMeta {
 }
 
 interface Window {
-    _hmt?: Array<unknown>
-    __baiduAnalyticsStatus?: 'loading' | 'loaded' | 'failed'
+    dataLayer: unknown[]
+    gtag?: (...args: any[]) => void
 }

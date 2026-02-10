@@ -5,28 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ResumeFLOW</title>
-    <!-- Baidu Analytics -->
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3YS34NP7DE"></script>
     <script>
-        window._hmt = window._hmt || [];
-        (function () {
-            const BAIDU_ANALYTICS_ID = '4749a37bc48b4b25b001f31f4f55b3ed';
-            const BAIDU_ANALYTICS_STATUS_KEY = '__baiduAnalyticsStatus';
-            window[BAIDU_ANALYTICS_STATUS_KEY] = 'loading';
-            const hm = document.createElement('script');
-            hm.onload = () => {
-                window[BAIDU_ANALYTICS_STATUS_KEY] = 'loaded';
-            };
-            hm.onerror = () => {
-                window[BAIDU_ANALYTICS_STATUS_KEY] = 'failed';
-            };
-            hm.src = `https://hm.baidu.com/hm.js?${BAIDU_ANALYTICS_ID}`;
-            const s = document.getElementsByTagName('script')[0];
-            if (s?.parentNode) {
-                s.parentNode.insertBefore(hm, s);
-            } else {
-                document.head?.appendChild(hm);
-            }
-        })();
+        const GA_MEASUREMENT_ID = 'G-3YS34NP7DE';
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', GA_MEASUREMENT_ID, { send_page_view: false });
     </script>
     <link rel="icon" type="image/png" href="/favicon.png">
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
