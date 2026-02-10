@@ -20,7 +20,6 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             'react-vendor': ['react', 'react-dom'],
             'ui-vendor': ['lucide-react', 'react-datepicker'],
-            'analytics': ['posthog-js'],
           },
         },
       },

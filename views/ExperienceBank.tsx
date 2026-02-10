@@ -34,6 +34,7 @@ import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
 import ExperienceBankPrint from './ExperienceBankPrint';
 import { buildExperienceBankExportTitle } from '../utils/exportFilename';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
+import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 
 const resolveNextProfilePatch = (
@@ -363,6 +364,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       startPrint({
         title: buildExperienceBankExportTitle(),
         content: <ExperienceBankPrint {...snapshot} />,
+      });
+      trackExperienceBankExported({
+        workCount: snapshot.workItems.length,
+        projectCount: snapshot.projectItems.length,
+        educationCount: snapshot.educationItems.length,
+        certificationCount: snapshot.certifications.length,
+        skillCount: snapshot.skills.length,
       });
       updateToast(toastId, {
         message: '导出窗口已打开',

@@ -17,7 +17,6 @@
     "echarts": "^5.6.0",
     "echarts-for-react": "^3.0.6",
     "lucide-react": "^0.563.0",
-    "posthog-js": "^1.342.1",
     "react": "^19.2.4",
     "react-datepicker": "^9.1.0",
     "react-dom": "^19.2.4"

@@ -25,7 +25,7 @@ import {
 import { skillsService, type UserSkill } from '../services/skillsService';
 import type { MatchTrend } from '../types/analysis';
 import { normalizeAiRichText } from '../utils/richText';
-import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
+import { trackAiPolishResult, trackAiPolishStart, trackResumeCardChecked } from '../utils/analyticsTracker';
 import type {
     CertificationEditDraft,
     CertificationView,
@@ -1086,7 +1086,19 @@ const createExperienceDeleteHandlers = (
 
 const createExperienceSelectionHandlers = (domain: ExperienceDomain) => {
     const toggleExperienceSelection = (id: string) => {
-        domain.setSelectedIds((prev) => toggleInSet(prev, id));
+        domain.setSelectedIds((prev) => {
+            const wasSelected = prev.has(id);
+            const next = toggleInSet(prev, id);
+            if (!wasSelected) {
+                const item = domain.items.find((entry) => entry.id === id);
+                trackResumeCardChecked({
+                    cardType: 'experience',
+                    category: item?.category,
+                    checked: true,
+                });
+            }
+            return next;
+        });
     };
     return { toggleExperienceSelection };
 };
@@ -1313,7 +1325,14 @@ const createEducationDeleteHandlers = (
 
 const createEducationSelectionHandlers = (domain: EducationDomain): EducationSelectionHandlers => {
     const toggleEducationSelection = (id: string) => {
-        domain.setSelectedIds((prev) => toggleInSet(prev, id));
+        domain.setSelectedIds((prev) => {
+            const wasSelected = prev.has(id);
+            const next = toggleInSet(prev, id);
+            if (!wasSelected) {
+                trackResumeCardChecked({ cardType: 'education', checked: true });
+            }
+            return next;
+        });
     };
     return { toggleEducationSelection };
 };
@@ -1546,7 +1565,14 @@ const createCertificationDeleteHandlers = (
 
 const createCertificationSelectionHandlers = (domain: CertificationDomain): CertificationSelectionHandlers => {
     const toggleCertificationSelection = (id: string) => {
-        domain.setSelectedIds((prev) => toggleInSet(prev, id));
+        domain.setSelectedIds((prev) => {
+            const wasSelected = prev.has(id);
+            const next = toggleInSet(prev, id);
+            if (!wasSelected) {
+                trackResumeCardChecked({ cardType: 'certification', checked: true });
+            }
+            return next;
+        });
     };
     return { toggleCertificationSelection };
 };
@@ -1911,7 +1937,14 @@ const createSkillDeleteHandlers = (
 
 const createSkillSelectionHandlers = (domain: SkillDomain): SkillSelectionHandlers => {
     const toggleSkillSelection = (id: string) => {
-        domain.setSelectedIds((prev) => toggleInSet(prev, id));
+        domain.setSelectedIds((prev) => {
+            const wasSelected = prev.has(id);
+            const next = toggleInSet(prev, id);
+            if (!wasSelected) {
+                trackResumeCardChecked({ cardType: 'skill', checked: true });
+            }
+            return next;
+        });
     };
     return { toggleSkillSelection };
 };

@@ -7,7 +7,6 @@ import Dashboard from './views/Dashboard';
 import ExperienceBank from './views/ExperienceBank';
 import ResumeEditor from './views/ResumeEditor';
 import Callback from './views/Callback';
-import Analytics from './views/Analytics';
 import { ViewState, Resume } from './types';
 import { trackPageView } from './utils/analyticsTracker';
 import { resumeService } from './services/resumeService';
@@ -194,8 +193,6 @@ const App: React.FC = () => {
             onResumesUpdate={handleResumesUpdate}
           />
         );
-      case ViewState.ANALYTICS:
-        return <Analytics />;
       default:
         return (
           <Dashboard

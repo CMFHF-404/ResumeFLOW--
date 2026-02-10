@@ -21,6 +21,7 @@ import {
 } from '../services/parserService';
 import { stripRichTextToText } from '../utils/richText';
 import { convertDateToISO } from '../views/experienceUtils';
+import { trackExperienceBankImported } from '../utils/analyticsTracker';
 
 const SUPPORTED_EXTENSIONS = ['pdf', 'docx'];
 const STAGE_TRANSITION_DELAY_MS = 180;
@@ -1433,6 +1434,13 @@ const useResumeImport = (
       } else {
         toast.success(summary);
       }
+      trackExperienceBankImported({
+        experienceCount,
+        certificationCount,
+        skillCount,
+        personalInfoCount: personalInfoSelectedCount,
+        totalSelected,
+      });
       await onImported();
       onClose();
     } catch (error) {

@@ -11,7 +11,7 @@ from .domain.feedback.feedback_router import router as feedback_router
 from .domain.parser.parser_router import router as parser_router
 from .domain.profile import profile_router
 from .domain.skills.skill_router import router as skills_router
-from .routers import analytics, experience_versions, resumes
+from .routers import experience_versions, resumes
 
 from contextlib import asynccontextmanager
 from .database import ensure_experience_version_tags_column, verify_db_connection
@@ -56,7 +56,6 @@ app.include_router(profile_router.router)
 app.include_router(experience_router.router)
 app.include_router(experience_versions.router)
 app.include_router(resumes.router)
-app.include_router(analytics.router)
 app.include_router(skills_router)
 app.include_router(certifications_router)
 app.include_router(ai_router)

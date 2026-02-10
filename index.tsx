@@ -1,9 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { PostHogProvider } from 'posthog-js/react';
 import { LogtoProvider, LogtoConfig } from '@logto/react';
 import App from './App';
-import { buildPosthogConfig, isPosthogEnabled } from './utils/posthogConfig';
 
 const config: LogtoConfig = {
   endpoint: import.meta.env.VITE_LOGTO_ENDPOINT,
@@ -26,17 +24,6 @@ const appContent = (
   </LogtoProvider>
 );
 
-const posthogEnabled = isPosthogEnabled();
-const posthogConfig = posthogEnabled ? buildPosthogConfig() : null;
-
-const app = posthogEnabled && posthogConfig ? (
-  <PostHogProvider apiKey={posthogConfig.apiKey} options={posthogConfig.options}>
-    {appContent}
-  </PostHogProvider>
-) : (
-  appContent
-);
-
 root.render(
-  import.meta.env.PROD ? <React.StrictMode>{app}</React.StrictMode> : app
+  import.meta.env.PROD ? <React.StrictMode>{appContent}</React.StrictMode> : appContent
 );

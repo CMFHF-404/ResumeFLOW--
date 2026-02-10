@@ -455,6 +455,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         certifications,
         skillGroups,
         isLoadingExperiences,
+        authUserKey,
     });
     const {
         confirmDialog,
@@ -953,7 +954,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             fromPosition: context.fromPosition,
             toPosition,
             sectionId: context.sectionId,
-        });
+        }, authUserKey);
     };
     const handleDragStart = (e: React.DragEvent, itemKey: string) => {
         lastItemHoverKeyRef.current = null;
@@ -1219,8 +1220,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             title: buildResumeExportTitle(resumeName),
             content,
         });
-        trackResumeExported();
+        trackResumeExported(authUserKey);
     }, [
+        authUserKey,
         bulletSpacingValue,
         educations,
         fontSize,

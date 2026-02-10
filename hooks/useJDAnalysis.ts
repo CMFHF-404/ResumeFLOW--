@@ -448,6 +448,7 @@ type UseJDAnalysisOptions = {
   certifications: CertificationView[];
   skillGroups: SkillGroupView[];
   isLoadingExperiences: boolean;
+  authUserKey?: string | null;
 };
 
 type UseJDAnalysisResult = {
@@ -478,6 +479,7 @@ export const useJDAnalysis = ({
   certifications,
   skillGroups,
   isLoadingExperiences,
+  authUserKey,
 }: UseJDAnalysisOptions): UseJDAnalysisResult => {
   const [jdText, setJdText] = useState(DEFAULT_JD_TEXT);
   const [analysisResult, setAnalysisResult] = useState<JDAnalysisResult | null>(
@@ -1102,7 +1104,7 @@ export const useJDAnalysis = ({
             resumeId,
             matchScore: stabilizedResult.matchPercentage,
             durationMs: Date.now() - startedAt,
-          });
+          }, authUserKey);
         }
         return stabilizedResult;
       } catch (error) {
@@ -1120,6 +1122,7 @@ export const useJDAnalysis = ({
       recordPostAnalyzeDiff,
       updateAnalyzeDiffState,
       updateAnalysisState,
+      authUserKey,
     ]
   );
 
