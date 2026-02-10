@@ -13,6 +13,7 @@ interface ImportMeta {
 }
 
 interface Window {
-    dataLayer: unknown[]
-    gtag?: (...args: any[]) => void
+    umami?: {
+        track: (eventName?: string, eventData?: Record<string, any>) => void
+    }
 }

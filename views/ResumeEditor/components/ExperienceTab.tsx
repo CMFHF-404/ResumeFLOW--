@@ -216,6 +216,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 matchTrends={skillMatchTrends}
                 skill={skill}
                 onToggleSelection={selection.toggleSkillSelection}
+                onToggleGroupSelection={selection.toggleSkillGroupSelection}
                 onResetRenamingCategory={onResetRenamingCategory}
             />
         </div>

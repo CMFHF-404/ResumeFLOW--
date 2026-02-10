@@ -264,6 +264,7 @@ export type SelectionActions = {
   toggleExperienceSelection: (id: string) => void;
   toggleCertificationSelection: (id: string) => void;
   toggleSkillSelection: (id: string) => void;
+  toggleSkillGroupSelection: (groupName: string) => void;
 };
 
 export type ExperienceTabProps = {

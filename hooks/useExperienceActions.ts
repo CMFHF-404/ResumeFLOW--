@@ -329,6 +329,7 @@ type UseExperienceActionsResult = {
         toggleEducationSelection: (id: string) => void;
         toggleCertificationSelection: (id: string) => void;
         toggleSkillSelection: (id: string) => void;
+        toggleSkillGroupSelection: (groupName: string) => void;
     };
 };
 
@@ -1669,6 +1670,7 @@ type SkillDeleteHandlers = {
 
 type SkillSelectionHandlers = {
     toggleSkillSelection: (id: string) => void;
+    toggleSkillGroupSelection: (groupName: string) => void;
 };
 
 type SkillHandlers = SkillDraftHandlers
@@ -1973,7 +1975,10 @@ const createSkillDeleteHandlers = (
     };
 };
 
-const createSkillSelectionHandlers = (domain: SkillDomain): SkillSelectionHandlers => {
+const createSkillSelectionHandlers = (
+    domain: SkillDomain,
+    helperContext: SkillHelperContext
+): SkillSelectionHandlers => {
     const toggleSkillSelection = (id: string) => {
         domain.setSelectedIds((prev) => {
             const wasSelected = prev.has(id);
@@ -1984,7 +1989,29 @@ const createSkillSelectionHandlers = (domain: SkillDomain): SkillSelectionHandle
             return next;
         });
     };
-    return { toggleSkillSelection };
+
+    const toggleSkillGroupSelection = (groupName: string) => {
+        const skillIds = helperContext.getSkillIdsByCategory(groupName);
+        if (skillIds.length === 0) {
+            return;
+        }
+        domain.setSelectedIds((prev) => {
+            const next = new Set(prev);
+            const allSelected = skillIds.every((id) => prev.has(id));
+
+            if (allSelected) {
+                // Deselect all
+                skillIds.forEach((id) => next.delete(id));
+            } else {
+                // Select all
+                skillIds.forEach((id) => next.add(id));
+                trackResumeCardChecked({ cardType: 'skill', checked: true });
+            }
+            return next;
+        });
+    };
+
+    return { toggleSkillSelection, toggleSkillGroupSelection };
 };
 
 const createSkillHandlers = (
@@ -2008,7 +2035,7 @@ const createSkillHandlers = (
         helperContext,
         draftHandlers
     );
-    const selectionHandlers = createSkillSelectionHandlers(domain);
+    const selectionHandlers = createSkillSelectionHandlers(domain, helperContext);
 
     return {
         ...draftHandlers,
@@ -2217,6 +2244,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
             toggleEducationSelection: educationHandlers.toggleEducationSelection,
             toggleCertificationSelection: certificationHandlers.toggleCertificationSelection,
             toggleSkillSelection: skillHandlers.toggleSkillSelection,
+            toggleSkillGroupSelection: skillHandlers.toggleSkillGroupSelection,
         },
     };
 };

@@ -17,6 +17,7 @@ type SkillListSectionProps = {
     matchTrends: Map<string, MatchTrend>;
     skill: SkillActions;
     onToggleSelection: (id: string) => void;
+    onToggleGroupSelection: (groupName: string) => void;
     onResetRenamingCategory: () => void;
 };
 
@@ -233,65 +234,93 @@ const SkillGroupHeader: React.FC<{
     groupName: string;
     skill: SkillActions;
     onResetRenamingCategory: () => void;
-}> = ({ groupName, skill, onResetRenamingCategory }) => (
-    <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30 flex items-center justify-between">
-        {skill.renamingCategoryTarget === groupName ? (
-            <input
-                autoFocus
-                className="text-xs font-bold text-rose-700 dark:text-rose-400 bg-transparent border-b border-rose-300 outline-none w-32"
-                value={skill.renamingCategoryDraft}
-                onChange={(event) => skill.setRenamingCategoryDraft(event.target.value)}
-                onBlur={() => {
-                    skill.handleRenameCategory(groupName, skill.renamingCategoryDraft);
-                    onResetRenamingCategory();
-                }}
-                onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
+    isAllSelected: boolean;
+    isIndeterminate: boolean;
+    onToggleSelectAll: () => void;
+}> = ({
+    groupName,
+    skill,
+    onResetRenamingCategory,
+    isAllSelected,
+    isIndeterminate,
+    onToggleSelectAll
+}) => (
+        <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30 flex items-center justify-between">
+            {skill.renamingCategoryTarget === groupName ? (
+                <input
+                    autoFocus
+                    className="text-xs font-bold text-rose-700 dark:text-rose-400 bg-transparent border-b border-rose-300 outline-none w-32"
+                    value={skill.renamingCategoryDraft}
+                    onChange={(event) => skill.setRenamingCategoryDraft(event.target.value)}
+                    onBlur={() => {
                         skill.handleRenameCategory(groupName, skill.renamingCategoryDraft);
                         onResetRenamingCategory();
-                    } else if (event.key === 'Escape') {
-                        onResetRenamingCategory();
-                    }
-                }}
-            />
-        ) : (
-            <div className="flex items-center gap-2 group/title">
-                <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{groupName}</h5>
-                <button
-                    onClick={() => {
-                        skill.setRenamingCategoryTarget(groupName);
-                        skill.setRenamingCategoryDraft(groupName);
                     }}
-                    className="opacity-0 group-hover/title:opacity-100 p-0.5 text-rose-300 hover:text-rose-500 transition-all"
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                            skill.handleRenameCategory(groupName, skill.renamingCategoryDraft);
+                            onResetRenamingCategory();
+                        } else if (event.key === 'Escape') {
+                            onResetRenamingCategory();
+                        }
+                    }}
+                />
+            ) : (
+                <div className="flex items-center gap-2 group/title">
+                    <div
+                        className="flex items-center justify-center p-1 cursor-pointer text-gray-400 hover:text-rose-500 transition-colors"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleSelectAll();
+                        }}
+                        title={isAllSelected ? "取消全选" : "全选"}
+                    >
+                        <div className={`w-3.5 h-3.5 rounded-[3px] border transition-all flex items-center justify-center ${isAllSelected || isIndeterminate
+                            ? 'bg-rose-500 border-rose-500'
+                            : 'border-gray-300 hover:border-rose-400 dark:border-gray-600'
+                            }`}>
+                            {isAllSelected && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+                            {isIndeterminate && !isAllSelected && (
+                                <div className="w-2 h-0.5 bg-white rounded-full" />
+                            )}
+                        </div>
+                    </div>
+                    <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{groupName}</h5>
+                    <button
+                        onClick={() => {
+                            skill.setRenamingCategoryTarget(groupName);
+                            skill.setRenamingCategoryDraft(groupName);
+                        }}
+                        className="opacity-0 group-hover/title:opacity-100 p-0.5 text-rose-300 hover:text-rose-500 transition-all"
+                    >
+                        <Edit3 className="w-3 h-3" />
+                    </button>
+                </div>
+            )}
+            <div className="flex items-center gap-1">
+                <button
+                    type="button"
+                    onClick={() => skill.requestDeleteSkillCategory(groupName)}
+                    title={DELETE_SKILL_CATEGORY_LABEL}
+                    aria-label={DELETE_SKILL_CATEGORY_LABEL}
+                    className="p-0.5 text-rose-300 hover:text-red-500 transition-all rounded hover:bg-red-50"
+                    disabled={skill.deletingSkillCategories.has(groupName)}
                 >
-                    <Edit3 className="w-3 h-3" />
+                    <Trash2 className="w-3 h-3" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => skill.beginCreateSkillInGroup(groupName)}
+                    title={ADD_SKILL_TAG_LABEL}
+                    aria-label={ADD_SKILL_TAG_LABEL}
+                    className="hidden"
+                >
+                    <Plus className="w-3 h-3" />
+                    {ADD_SKILL_TAG_LABEL}
                 </button>
             </div>
-        )}
-        <div className="flex items-center gap-1">
-            <button
-                type="button"
-                onClick={() => skill.requestDeleteSkillCategory(groupName)}
-                title={DELETE_SKILL_CATEGORY_LABEL}
-                aria-label={DELETE_SKILL_CATEGORY_LABEL}
-                className="p-0.5 text-rose-300 hover:text-red-500 transition-all rounded hover:bg-red-50"
-                disabled={skill.deletingSkillCategories.has(groupName)}
-            >
-                <Trash2 className="w-3 h-3" />
-            </button>
-            <button
-                type="button"
-                onClick={() => skill.beginCreateSkillInGroup(groupName)}
-                title={ADD_SKILL_TAG_LABEL}
-                aria-label={ADD_SKILL_TAG_LABEL}
-                className="hidden"
-            >
-                <Plus className="w-3 h-3" />
-                {ADD_SKILL_TAG_LABEL}
-            </button>
         </div>
-    </div>
-);
+    );
 
 const SkillGroupBody: React.FC<{
     group: SkillGroupView;
@@ -360,24 +389,44 @@ const SkillGroupCard: React.FC<{
     matchScores: Map<string, number>;
     matchTrends: Map<string, MatchTrend>;
     onToggleSelection: (id: string) => void;
+    onToggleGroupSelection: (groupName: string) => void;
     onResetRenamingCategory: () => void;
-}> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection, onResetRenamingCategory }) => (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden">
-        <SkillGroupHeader
-            groupName={group.name}
-            skill={skill}
-            onResetRenamingCategory={onResetRenamingCategory}
-        />
-        <SkillGroupBody
-            group={group}
-            skill={skill}
-            selectedIds={selectedIds}
-            matchScores={matchScores}
-            matchTrends={matchTrends}
-            onToggleSelection={onToggleSelection}
-        />
-    </div>
-);
+}> = ({
+    group,
+    skill,
+    selectedIds,
+    matchScores,
+    matchTrends,
+    onToggleSelection,
+    onToggleGroupSelection,
+    onResetRenamingCategory
+}) => {
+        const selectedCount = group.skills.filter(s => selectedIds.has(s.id)).length;
+        const totalCount = group.skills.length;
+        const isAllSelected = totalCount > 0 && selectedCount === totalCount;
+        const isIndeterminate = selectedCount > 0 && selectedCount < totalCount;
+
+        return (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden">
+                <SkillGroupHeader
+                    groupName={group.name}
+                    skill={skill}
+                    onResetRenamingCategory={onResetRenamingCategory}
+                    isAllSelected={isAllSelected}
+                    isIndeterminate={isIndeterminate}
+                    onToggleSelectAll={() => onToggleGroupSelection(group.name)}
+                />
+                <SkillGroupBody
+                    group={group}
+                    skill={skill}
+                    selectedIds={selectedIds}
+                    matchScores={matchScores}
+                    matchTrends={matchTrends}
+                    onToggleSelection={onToggleSelection}
+                />
+            </div>
+        );
+    };
 
 const SkillListSection: React.FC<SkillListSectionProps> = ({
     title,
@@ -387,6 +436,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
     matchTrends,
     skill,
     onToggleSelection,
+    onToggleGroupSelection,
     onResetRenamingCategory,
 }) => {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
@@ -417,6 +467,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
                                 matchScores={matchScores}
                                 matchTrends={matchTrends}
                                 onToggleSelection={onToggleSelection}
+                                onToggleGroupSelection={onToggleGroupSelection}
                                 onResetRenamingCategory={onResetRenamingCategory}
                             />
                         </div>
