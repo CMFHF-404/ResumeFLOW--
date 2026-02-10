@@ -42,6 +42,23 @@ import type {
     StarFields,
 } from '../types/resume';
 
+type ToastApi = {
+    success: (message: string, duration?: number) => string;
+    error: (message: string, duration?: number) => string;
+    loading: (message: string) => string;
+    updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading'; duration?: number }) => void;
+};
+
+const JD_POLISH_TOAST_MESSAGES = {
+    loading: '正在基于 JD 润色...',
+    success: 'JD 润色完成',
+    noChange: 'JD 润色完成，但未产生可用调整',
+    error: 'JD 润色失败，请稍后重试',
+    emptyJd: '请先填写 JD 再润色',
+} as const;
+const JD_POLISH_TOAST_DURATION_MS = 2500;
+const JD_POLISH_TOAST_ERROR_DURATION_MS = 3000;
+
 const createDraftId = (prefix: string) => {
     const random = Math.random().toString(16).slice(2, 6);
     return `${prefix}-${Date.now()}-${random}`;
@@ -225,6 +242,7 @@ type MatchScoreDomain = {
 type UseExperienceActionsOptions = {
     resumeId: string | null;
     jdText: string;
+    toast: ToastApi;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
     experience: ExperienceDomain;
     education: EducationDomain;
@@ -896,6 +914,7 @@ type ExperienceSaveHandlers = {
 const createExperienceSaveHandlers = (
     resumeId: string | null,
     jdText: string,
+    toast: ToastApi,
     domain: ExperienceDomain,
     helpers: ExperienceHelpers,
     defaults: ExperienceDefaults,
@@ -966,12 +985,16 @@ const createExperienceSaveHandlers = (
         }
         const trimmedJD = jdText.trim();
         if (!trimmedJD) {
+            toast.error(JD_POLISH_TOAST_MESSAGES.emptyJd, JD_POLISH_TOAST_ERROR_DURATION_MS);
             return;
         }
         const startTime = Date.now();
         let action: 'applied' | 'discarded' = 'discarded';
+        let toastId: string | null = null;
+        let hasError = false;
         trackAiPolishStart({ source: 'resume_editor', field: 'all' });
         state.setIsPolishing(true);
+        toastId = toast.loading(JD_POLISH_TOAST_MESSAGES.loading);
         try {
             const draftSnapshot = state.editingDraft;
             const result = await aiService.polishExperience({
@@ -1008,7 +1031,22 @@ const createExperienceSaveHandlers = (
             });
         } catch (error) {
             console.error('[ResumeEditor] 基于 JD 润色失败:', error);
+            hasError = true;
         } finally {
+            const message = hasError
+                ? JD_POLISH_TOAST_MESSAGES.error
+                : action === 'applied'
+                    ? JD_POLISH_TOAST_MESSAGES.success
+                    : JD_POLISH_TOAST_MESSAGES.noChange;
+            const duration = hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS;
+            const type = hasError ? 'error' : 'success';
+            if (toastId) {
+                toast.updateToast(toastId, { message, type, duration });
+            } else if (hasError) {
+                toast.error(message, duration);
+            } else {
+                toast.success(message, duration);
+            }
             trackAiPolishResult({
                 source: 'resume_editor',
                 field: 'all',
@@ -2013,6 +2051,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
     const saveHandlers = createExperienceSaveHandlers(
         options.resumeId,
         options.jdText,
+        options.toast,
         options.experience,
         options.helpers,
         options.defaults,

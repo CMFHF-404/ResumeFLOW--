@@ -69,6 +69,9 @@ import {
     SMART_PAGE_BOTTOM_GAP_MM,
     SMART_PAGE_HEIGHT_TOLERANCE,
     SMART_PAGE_TOAST_MESSAGES,
+    JD_ANALYSIS_TOAST_MESSAGES,
+    JD_ANALYSIS_TOAST_DURATION_MS,
+    JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
 } from './constants';
 import { parseDragItemKey, type DragItemType } from './dragKeys';
 import {
@@ -316,6 +319,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         success: showToastSuccess,
         error: showToastError,
         info: showToastInfo,
+        loading: showToastLoading,
+        updateToast,
         closeToast,
     } = useToast();
     useEffect(() => {
@@ -469,6 +474,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } = useExperienceActions({
         resumeId,
         jdText,
+        toast: {
+            success: showToastSuccess,
+            error: showToastError,
+            loading: showToastLoading,
+            updateToast,
+        },
         applyResumeDetail,
         experience: {
             items: experienceItems,
@@ -653,8 +664,69 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         },
         []
     );
+    const runJdAnalyzeWithToast = useCallback(async () => {
+        if (isAnalyzing) {
+            return null;
+        }
+        if (!jdText.trim()) {
+            showToastError(JD_ANALYSIS_TOAST_MESSAGES.empty, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
+            return null;
+        }
+        const toastId = showToastLoading(JD_ANALYSIS_TOAST_MESSAGES.loading);
+        try {
+            const result = await handleAnalyze();
+            if (result.status === 'success') {
+                if (toastId) {
+                    updateToast(toastId, {
+                        message: JD_ANALYSIS_TOAST_MESSAGES.success,
+                        type: 'success',
+                        duration: JD_ANALYSIS_TOAST_DURATION_MS,
+                    });
+                } else {
+                    showToastSuccess(JD_ANALYSIS_TOAST_MESSAGES.success, JD_ANALYSIS_TOAST_DURATION_MS);
+                }
+                return result.result;
+            }
+            const isError = result.status === 'error';
+            const message = isError
+                ? JD_ANALYSIS_TOAST_MESSAGES.error
+                : JD_ANALYSIS_TOAST_MESSAGES.noChange;
+            const duration = isError
+                ? JD_ANALYSIS_TOAST_ERROR_DURATION_MS
+                : JD_ANALYSIS_TOAST_DURATION_MS;
+            const type = isError ? 'error' : 'success';
+            if (toastId) {
+                updateToast(toastId, { message, type, duration });
+            } else if (isError) {
+                showToastError(message, duration);
+            } else {
+                showToastSuccess(message, duration);
+            }
+            return null;
+        } catch (error) {
+            console.error('[ResumeEditor] JD 分析失败:', error);
+            if (toastId) {
+                updateToast(toastId, {
+                    message: JD_ANALYSIS_TOAST_MESSAGES.error,
+                    type: 'error',
+                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+                });
+            } else {
+                showToastError(JD_ANALYSIS_TOAST_MESSAGES.error, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
+            }
+            return null;
+        }
+    }, [
+        handleAnalyze,
+        isAnalyzing,
+        jdText,
+        showToastError,
+        showToastLoading,
+        showToastSuccess,
+        updateToast,
+    ]);
     const handleAnalyzeWithAutoName = useCallback(async () => {
-        const result = await handleAnalyze();
+        const result = await runJdAnalyzeWithToast();
         if (!result) {
             return;
         }
@@ -666,7 +738,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         await applyResumeNameUpdate(autoName, { silent: true });
-    }, [applyResumeNameUpdate, canAutoNameResume, handleAnalyze, jdText, resumeName]);
+    }, [applyResumeNameUpdate, canAutoNameResume, jdText, resumeName, runJdAnalyzeWithToast]);
     const isProfileReadOnly = !isEditingProfile || isSavingProfile;
     const toggleTheme = () => {
         setIsDarkMode(!isDarkMode);

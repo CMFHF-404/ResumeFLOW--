@@ -798,6 +798,15 @@ type StarSnapshot = {
 type StarSnapshotMap = Partial<Record<StarFieldKey, StarSnapshot>>;
 
 const POLISH_SOURCE = 'experience_bank';
+const POLISH_TOAST_MESSAGES = {
+  loading: '正在进行 AI 润色...',
+  success: 'AI 润色完成',
+  noChange: 'AI 润色完成，但未产生可用调整',
+  error: 'AI 润色失败，请稍后重试',
+  empty: '请先填写 STAR 内容再润色',
+} as const;
+const POLISH_TOAST_DURATION_MS = 2500;
+const POLISH_TOAST_ERROR_DURATION_MS = 3000;
 
 const normalizePolishField = (value: string | undefined) => {
   if (!value) {
@@ -949,14 +958,17 @@ const usePolishActions = ({
       }
       const { content, hasContent } = buildStarPolishPayload(data);
       if (!hasContent) {
-        toast.error('请先填写 STAR 内容再润色');
+        toast.error(POLISH_TOAST_MESSAGES.empty);
         return;
       }
 
       const startTime = Date.now();
       let action: 'applied' | 'discarded' = 'discarded';
+      let toastId: string | null = null;
+      let hasError = false;
       trackAiPolishStart({ source: POLISH_SOURCE, field: 'all', category });
       updatePolishingTarget(cardId, true);
+      toastId = toast.loading(POLISH_TOAST_MESSAGES.loading);
       try {
         const response = await aiService.polishExperience({ content });
         const latestData = cardDataRef.current.get(cardId);
@@ -973,8 +985,22 @@ const usePolishActions = ({
         }
       } catch (error) {
         console.error('[ExperienceSection] AI 润色失败:', error);
-        toast.error('AI 润色失败，请稍后重试');
+        hasError = true;
       } finally {
+        const message = hasError
+          ? POLISH_TOAST_MESSAGES.error
+          : action === 'applied'
+            ? POLISH_TOAST_MESSAGES.success
+            : POLISH_TOAST_MESSAGES.noChange;
+        const duration = hasError ? POLISH_TOAST_ERROR_DURATION_MS : POLISH_TOAST_DURATION_MS;
+        const type = hasError ? 'error' : 'success';
+        if (toastId) {
+          toast.updateToast(toastId, { message, type, duration });
+        } else if (hasError) {
+          toast.error(message, duration);
+        } else {
+          toast.success(message, duration);
+        }
         trackAiPolishResult({
           source: POLISH_SOURCE,
           field: 'all',
