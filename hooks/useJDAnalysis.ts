@@ -261,6 +261,20 @@ const resolveTrend = (
   return "same";
 };
 
+const shouldResetTrendBase = (
+  mode: MatchUpdateMode,
+  context: JDAnalysisContext | null,
+  currentJdSignature: string
+) => {
+  if (mode !== "full") {
+    return false;
+  }
+  if (!context) {
+    return true;
+  }
+  return context.jdTextSignature !== currentJdSignature;
+};
+
 const buildPrevResultPayload = (result: JDAnalysisResult | null) => {
   if (!result) {
     return undefined;
@@ -1086,8 +1100,14 @@ export const useJDAnalysis = ({
           mode === "partial"
             ? mergeAnalysisResult(analysisResult, result, stableDiff)
             : result;
+        const resetTrendBase = shouldResetTrendBase(
+          mode,
+          analysisContext,
+          startSnapshot.jdTextSignature
+        );
+        const trendBaseResult = resetTrendBase ? null : analysisResult;
         const stabilizedResult = stabilizeAnalysisResult(
-          analysisResult,
+          trendBaseResult,
           nextResult
         );
         applyMatchScoresForResult(stabilizedResult, mode, stableDiff);
@@ -1138,7 +1158,18 @@ export const useJDAnalysis = ({
       analysisContext?.jdTextSignature !== jdTextSignature;
     const hasPrevExperienceText =
       analysisContext?.experienceText !== undefined;
+    const hasExperienceSignatureChanged =
+      analysisContext?.experienceSignature !== experienceSignature;
+    const shouldSkipAnalyze =
+      Boolean(analysisResult)
+      && Boolean(analysisContext)
+      && !hasPendingDiff
+      && !hasJdTextChanged
+      && !hasExperienceSignatureChanged;
 
+    if (shouldSkipAnalyze) {
+      return { status: "no_change" };
+    }
     if (
       analysisResult &&
       analysisContext &&
@@ -1149,7 +1180,13 @@ export const useJDAnalysis = ({
       return runAnalyze({ mode: "partial", diff: diffSnapshot });
     }
     return runAnalyze({ mode: "full" });
-  }, [analysisContext, analysisResult, jdTextSignature, runAnalyze]);
+  }, [
+    analysisContext,
+    analysisResult,
+    experienceSignature,
+    jdTextSignature,
+    runAnalyze,
+  ]);
 
   return {
     jdText,
