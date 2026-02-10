@@ -16,6 +16,8 @@ JD_ANALYSIS = (
     "'id' (must match input certification id), 'score' (0-100), and 'reason' (<=20 words)), "
     "and 'skillMatches' (array of objects with keys: "
     "'id' (must match input skill id), 'score' (0-100), and 'reason' (<=20 words)). "
+    "For skillMatches, you MUST return one entry for every input skill id; "
+    "if a skill does not match, still return it with score 0 and an empty reason. "
     "If Current Experience Content and Previous Experience Content are provided, "
     "compare them to evaluate changes in experience fit and adjust scores up or down accordingly. "
     "Only use experience changes for this comparison; other fields still affect overall fit but "

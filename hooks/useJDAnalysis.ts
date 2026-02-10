@@ -34,6 +34,7 @@ import type {
 } from "../types/resume";
 
 const DEFAULT_JD_TEXT = "";
+const DEFAULT_SKILL_MATCH_SCORE = 0;
 
 type MatchUpdateMode = "full" | "partial";
 
@@ -218,6 +219,21 @@ const buildMatchScoreMap = (matches?: MatchScoreEntry[]) => {
     }
   });
   return map;
+};
+
+// 补齐 AI 漏掉的技能匹配分，确保每个技能都有可展示的结果。
+const fillMissingSkillScores = (
+  scoreMap: Map<string, number>,
+  groups: SkillGroupView[]
+) => {
+  groups.forEach((group) => {
+    group.skills.forEach((skill) => {
+      if (!scoreMap.has(skill.id)) {
+        scoreMap.set(skill.id, DEFAULT_SKILL_MATCH_SCORE);
+      }
+    });
+  });
+  return scoreMap;
 };
 
 const buildMatchReasonMap = (matches?: MatchScoreEntry[]) => {
@@ -700,7 +716,14 @@ export const useJDAnalysis = ({
 
   const applySkillMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
-      applyScoreMapUpdate(setSkillMatchScores, buildMatchScoreMap(matches), options);
+      if (options?.mode === "partial" && matches === undefined) {
+        return;
+      }
+      const matchScores = buildMatchScoreMap(matches);
+      if (matches !== undefined) {
+        fillMissingSkillScores(matchScores, skillGroupsRef.current);
+      }
+      applyScoreMapUpdate(setSkillMatchScores, matchScores, options);
     },
     [setSkillMatchScores]
   );
@@ -833,12 +856,13 @@ export const useJDAnalysis = ({
         itemSignatures: validatedSignatures,
         experienceText: cached.experienceText,
       });
+      const cachedSkillMatches = cached.result.skillMatches ?? [];
       applyExperienceMatchScores(cached.result.experienceMatches);
       applyExperienceMatchTrends(cached.result.experienceMatches);
       applyCertificationMatchScores(cached.result.certificationMatches);
       applyCertificationMatchTrends(cached.result.certificationMatches);
-      applySkillMatchScores(cached.result.skillMatches);
-      applySkillMatchTrends(cached.result.skillMatches);
+      applySkillMatchScores(cachedSkillMatches);
+      applySkillMatchTrends(cachedSkillMatches);
       setIsJDCollapsed(true);
       setStaleExperienceIds(new Set());
       setNeedsReanalysis(false);
@@ -1032,6 +1056,7 @@ export const useJDAnalysis = ({
 
   const applyMatchScoresForResult = useCallback(
     (result: JDAnalysisResult, mode: MatchUpdateMode, diff: JDItemDiff) => {
+      const skillMatches = result.skillMatches ?? [];
       if (mode === "partial") {
         applyExperienceMatchScores(result.experienceMatches, {
           mode: "partial",
@@ -1049,21 +1074,21 @@ export const useJDAnalysis = ({
           mode: "partial",
           targetIds: diff.certifications,
         });
-        applySkillMatchScores(result.skillMatches, {
+        applySkillMatchScores(skillMatches, {
           mode: "partial",
           targetIds: diff.skills,
         });
-        applySkillMatchTrends(result.skillMatches, {
+        applySkillMatchTrends(skillMatches, {
           mode: "partial",
           targetIds: diff.skills,
         });
       } else {
         applyExperienceMatchScores(result.experienceMatches);
         applyCertificationMatchScores(result.certificationMatches);
-        applySkillMatchScores(result.skillMatches);
+        applySkillMatchScores(skillMatches);
         applyExperienceMatchTrends(result.experienceMatches);
         applyCertificationMatchTrends(result.certificationMatches);
-        applySkillMatchTrends(result.skillMatches);
+        applySkillMatchTrends(skillMatches);
       }
     },
     [

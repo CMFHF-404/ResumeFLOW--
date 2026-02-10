@@ -18,6 +18,8 @@ settings = load_settings()
 logger = logging.getLogger(__name__)
 
 MAX_ERROR_BODY_LOG_LENGTH = 2000
+DEFAULT_MATCH_SCORE = 0
+RESUME_SKILLS_KEY = "skills"
 
 def _hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
@@ -67,6 +69,82 @@ def _parse_json_content(text: str) -> Dict[str, Any]:
         logger.error("Raw Text Summary: %s", _summarize_text(text))
         logger.error("Extracted Payload Summary: %s", _summarize_text(payload))
         raise ValueError(f"Invalid JSON returned by model: {exc}") from exc
+
+
+def _safe_parse_resume_payload(resume_text: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not resume_text:
+        return None
+    try:
+        data = json.loads(resume_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _extract_skill_ids(resume_text: Optional[str]) -> List[str]:
+    payload = _safe_parse_resume_payload(resume_text)
+    if not payload:
+        return []
+    skills = payload.get(RESUME_SKILLS_KEY)
+    if not isinstance(skills, list):
+        return []
+    ids: List[str] = []
+    for item in skills:
+        if isinstance(item, dict):
+            skill_id = item.get("id")
+            if isinstance(skill_id, str) and skill_id:
+                ids.append(skill_id)
+    return ids
+
+
+def _clamp_match_score(value: Any) -> Optional[int]:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not numeric == numeric:
+        return None
+    return max(0, min(100, int(round(numeric))))
+
+
+def _normalize_match_entries(raw: Any) -> List[Dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        match_id = item.get("id")
+        if not isinstance(match_id, str) or not match_id:
+            continue
+        score = _clamp_match_score(item.get("score"))
+        if score is None:
+            continue
+        entry: Dict[str, Any] = {"id": match_id, "score": score}
+        reason = item.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            entry["reason"] = reason
+        normalized.append(entry)
+    return normalized
+
+
+def _ensure_skill_matches(
+    result: Dict[str, Any],
+    skill_ids: List[str],
+) -> Dict[str, Any]:
+    if not skill_ids:
+        return result
+    known_ids = set(skill_ids)
+    normalized = _normalize_match_entries(result.get("skillMatches"))
+    normalized = [entry for entry in normalized if entry["id"] in known_ids]
+    existing = {entry["id"] for entry in normalized}
+    for skill_id in skill_ids:
+        if skill_id not in existing:
+            normalized.append({"id": skill_id, "score": DEFAULT_MATCH_SCORE})
+    result["skillMatches"] = normalized
+    return result
 
 
 def _extract_content(response_data: Dict[str, Any]) -> str:
@@ -182,7 +260,9 @@ async def analyze_jd(
             ),
         },
     ]
-    return await _call_llm(messages, json_mode=True)
+    result = await _call_llm(messages, json_mode=True)
+    skill_ids = _extract_skill_ids(resume_text)
+    return _ensure_skill_matches(result, skill_ids)
 
 
 def _resolve_star_prompt(target_field: Optional[str]) -> str:
