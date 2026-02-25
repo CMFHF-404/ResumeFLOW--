@@ -26,7 +26,7 @@ const DELETE_CONFIRM_TITLE = '删除简历';
 const DELETE_CONFIRM_LABEL = '删除';
 const DELETE_CANCEL_LABEL = '取消';
 const COPY_SUFFIX = ' (副本)';
-const VIEW_MODE_STORAGE_KEY = 'resumeFlow.dashboardViewMode';
+const VIEW_MODE_STORAGE_KEY = 'yuanzijianli.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
 const DEFAULT_MATCH_RATE = 0;
 const DELETE_TOAST_MESSAGES = {
@@ -547,7 +547,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
             <FileText className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">ResumeFLOW</span>
+            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">原子简历</span>
           </div>
           <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
           <div className="flex items-center gap-2">
@@ -580,7 +580,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     快速开始，从导入简历开始
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    暂无经历数据，导入您的简历快速构建经历库，让ResumeFLOW为您智能分析和优化
+                    暂无经历数据，导入您的简历快速构建经历库，让原子简历为您智能分析和优化
                   </p>
                 </div>
                 <button

@@ -9,7 +9,7 @@ type TrackEventOptions = {
 };
 
 const hasWindow = typeof window !== 'undefined';
-const DEBUG_STORAGE_KEY = 'resumeFlow.analytics.debug';
+const DEBUG_STORAGE_KEY = 'yuanzijianli.analytics.debug';
 const DEFAULT_EVENT_TIMEOUT_MS = 1200;
 
 const getUmamiTrack = (): UmamiTrackFn | null => {

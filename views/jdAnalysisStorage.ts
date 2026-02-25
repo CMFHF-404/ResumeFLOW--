@@ -1,6 +1,6 @@
 import type { JDAnalysisResult } from '../services/aiService';
 
-const JD_ANALYSIS_CACHE_PREFIX = 'resumeFlow.jdAnalysisCache';
+const JD_ANALYSIS_CACHE_PREFIX = 'yuanzijianli.jdAnalysisCache';
 
 export type JDAnalysisItemSignatures = {
     experiences: Record<string, string>;

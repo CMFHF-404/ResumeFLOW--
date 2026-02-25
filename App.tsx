@@ -15,8 +15,8 @@ import { experienceService } from './services/experienceService';
 import { clearActiveResumeId } from './views/resumeStorage';
 import { useAuthUserKey } from './hooks/useAuthUserKey';
 
-const VIEW_STORAGE_KEY = 'resumeFlow.currentView';
-const AUTH_USER_KEY_STORAGE_KEY = 'resumeFlow.authUserKey';
+const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
+const AUTH_USER_KEY_STORAGE_KEY = 'yuanzijianli.authUserKey';
 
 const readStoredAuthUserKey = () => {
   try {

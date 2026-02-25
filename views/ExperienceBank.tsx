@@ -392,7 +392,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
             <FileText className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">ResumeFLOW</span>
+            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">原子简历</span>
           </div>
           <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
           <div className="flex items-center gap-2">

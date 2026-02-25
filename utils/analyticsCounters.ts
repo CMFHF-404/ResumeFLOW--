@@ -6,7 +6,7 @@ export type AnalyticsCounters = {
 
 export type AnalyticsCounterKey = keyof AnalyticsCounters;
 
-const STORAGE_PREFIX = 'resumeFlow.analytics.counters';
+const STORAGE_PREFIX = 'yuanzijianli.analytics.counters';
 const DEFAULT_COUNTERS: AnalyticsCounters = {
   exportCount: 0,
   aiAnalysisCount: 0,

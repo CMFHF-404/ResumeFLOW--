@@ -1,4 +1,4 @@
-const RESUME_STORAGE_KEY = 'resumeFlow.activeResumeId';
+const RESUME_STORAGE_KEY = 'yuanzijianli.activeResumeId';
 
 export const getActiveResumeId = () => {
   return localStorage.getItem(RESUME_STORAGE_KEY);

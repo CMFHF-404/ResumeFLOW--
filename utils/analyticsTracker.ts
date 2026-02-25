@@ -11,7 +11,7 @@ import {
 } from './analyticsCounters';
 
 const FIRST_EXPERIENCE_ONCE_KEY = 'first_experience_created';
-const TRACK_ONCE_PREFIX = 'resumeFlow.analytics.once';
+const TRACK_ONCE_PREFIX = 'yuanzijianli.analytics.once';
 const SIGN_UP_EVENT_TIMEOUT_MS = 1200;
 
 const resolveOnceKey = (key: string) => `${TRACK_ONCE_PREFIX}.${key}`;
