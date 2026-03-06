@@ -88,6 +88,28 @@ export const LIST_SPACING_BY_DENSITY = {
     standard: 1,
     spacious: 1.5,
 } as const;
+
+// 简历预览布局间距（统一管理，避免魔法类名散落各处）
+
+/** 各密度模式下，每个模块（section）底部的外边距 Tailwind 类 */
+export const SECTION_SPACING_CLASS_BY_DENSITY = {
+    compact: 'mb-2',
+    standard: 'mb-5',
+    spacious: 'mb-8',
+} as const;
+
+/**
+ * 简历头部姓名区域的顶部额外内边距（相对页边距的补偿留白）。
+ * 设为 'pt-0' 表示不额外增加，可改为 'pt-2'/'pt-4' 等拉大与页眉的距离。
+ */
+export const HEADER_EXTRA_TOP_SPACING_CLASS = 'pt-0';
+
+/** 节标题（h2）与其下方内容之间的下外边距 Tailwind 类 */
+export const SECTION_TITLE_BOTTOM_SPACING = 'mb-3';
+
+/** 节标题（h2）自身与分割线之间的下内边距 Tailwind 类 */
+export const SECTION_TITLE_BOTTOM_PADDING = 'pb-1';
+
 export const SMART_PAGE_TOAST_MESSAGES = {
     success: '已自动调整为一页',
     overflow: '内容过多，即使调整行间距与字号也无法保留页尾留白，请删减部分内容。',

@@ -1,6 +1,11 @@
 import React from 'react';
 import { Edit3, GripVertical } from 'lucide-react';
-import { FONT_SIZE_DEFAULT } from '../constants';
+import {
+    FONT_SIZE_DEFAULT,
+    HEADER_EXTRA_TOP_SPACING_CLASS,
+    SECTION_TITLE_BOTTOM_PADDING,
+    SECTION_TITLE_BOTTOM_SPACING,
+} from '../constants';
 import type {
     CertificationView,
     EducationView,
@@ -239,7 +244,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     </div>
                 ) : null}
 
-                <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
+                <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
                     {title}
                 </h2>
                 <div
@@ -387,7 +392,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 >
                     <div
                         id="basic-info"
-                        className={`border-b-2 border-gray-900 pb-4 ${spacingClass} text-center scroll-mt-8`}
+                        className={`border-b-2 border-gray-900 pb-4 ${spacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} text-center scroll-mt-8`}
                     >
                         <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
                             {profile.name}
@@ -450,7 +455,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
+                                        <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
                                             教育背景
                                         </h2>
                                         <div
@@ -596,7 +601,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-3">
+                                        <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
                                             证书资质
                                         </h2>
                                         <div
@@ -732,7 +737,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className="text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 pb-1 mb-2">
+                                        <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
                                             专业技能
                                         </h2>
                                         <div

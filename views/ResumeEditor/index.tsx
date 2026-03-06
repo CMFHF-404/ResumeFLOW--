@@ -74,6 +74,7 @@ import {
     LIST_SPACING_BY_DENSITY,
     PREVIEW_PADDING_MM,
     PROFILE_SYNC_MODES,
+    SECTION_SPACING_CLASS_BY_DENSITY,
     SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
     SMART_PAGE_BOTTOM_GAP_MM,
     SMART_PAGE_HEIGHT_TOLERANCE,
@@ -511,7 +512,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const manualLayoutSnapshotRef = useRef<LayoutSnapshot>(
         buildLayoutSnapshot(lineHeight, fontSize, isSmartPageApplied)
     );
-    const latestResumeIdRef = useRef(resumeId);
+    // resumeId 在 useResumeData() 之后才声明，此处不能直接引用，初始化为 undefined。
+    // 在 useEffect 中同步更新，确保 ref 始终持有最新值。
+    const latestResumeIdRef = useRef<string | undefined>(undefined);
     const latestBossGreetingSignatureRef = useRef('');
     const latestBossGreetingAnalysisOutdatedRef = useRef(false);
     const autoAssembleRequestIdRef = useRef(0);
@@ -688,6 +691,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         compareByDateDesc,
         compareCertificationByDateDesc,
     });
+    // 将 resumeId 同步到 ref，供不可在 render 阶段读取的异步回调使用。
+    useEffect(() => {
+        latestResumeIdRef.current = resumeId;
+    }, [resumeId]);
     const {
         jdText,
         setJdText,
@@ -1677,12 +1684,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         [lineHeight]
     );
     const previewPaddingValue = `${PREVIEW_PADDING_MM}mm`;
-    // Spacing classes based on density
-    const spacingClass = {
-        compact: 'mb-2',
-        standard: 'mb-6',
-        spacious: 'mb-8'
-    }[density];
+    // 模块间距：由常量统一管理，在 constants.ts 中调整
+    const spacingClass = SECTION_SPACING_CLASS_BY_DENSITY[density];
     const listSpacingClass = 'space-y-[var(--rf-list-spacing)]';
     const workItems = useMemo(
         () => experienceItems.filter((item) => item.category === 'work'),
@@ -2027,7 +2030,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 setIsAutoAssembling(false);
             }
         }
-        }, [
+    }, [
         analysisResult,
         buildAutoAssemblySelection,
         handleAnalyzeWithAutoName,
