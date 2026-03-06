@@ -9,6 +9,7 @@ from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 
 from ...config import load_settings
 from .prompts import (
+    BOSS_GREETING_GENERATION,
     JD_ANALYSIS,
     STAR_POLISH,
     TAG_GENERATION,
@@ -145,6 +146,13 @@ def _ensure_skill_matches(
             normalized.append({"id": skill_id, "score": DEFAULT_MATCH_SCORE})
     result["skillMatches"] = normalized
     return result
+
+
+def _normalize_greeting_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    greeting = result.get("greeting")
+    if isinstance(greeting, str) and greeting.strip():
+        return {"greeting": greeting.strip()}
+    return {"greeting": ""}
 
 
 def _extract_content(response_data: Dict[str, Any]) -> str:
@@ -291,3 +299,26 @@ async def generate_tags(text: str) -> Dict[str, Any]:
         {"role": "user", "content": text},
     ]
     return await _call_llm(messages, json_mode=True)
+
+
+async def generate_boss_greeting(
+    jd_text: str,
+    analysis_summary: str,
+    job_title: Optional[str] = None,
+    company: Optional[str] = None,
+    resume_text: Optional[str] = None,
+) -> Dict[str, Any]:
+    resume_payload = _safe_parse_resume_payload(resume_text) or {}
+    payload = {
+        "jd_text": jd_text,
+        "analysis_summary": analysis_summary,
+        "job_title": job_title or "",
+        "company": company or "",
+        "resume_text": resume_payload,
+    }
+    messages = [
+        {"role": "system", "content": BOSS_GREETING_GENERATION},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+    result = await _call_llm(messages, json_mode=True)
+    return _normalize_greeting_result(result)

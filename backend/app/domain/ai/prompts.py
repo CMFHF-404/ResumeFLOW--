@@ -110,3 +110,17 @@ TAG_GENERATION = (
     "'tags' as an array of 3-8 short skill tags. Avoid duplicates. Use the same "
     "language as the input text and keep each tag concise (2-6 words)."
 )
+
+BOSS_GREETING_GENERATION = (
+    "You are a Chinese job application assistant. Generate exactly one concise Boss直聘-style "
+    "greeting message in Chinese based only on the provided facts. The input is a JSON object "
+    "containing jd_text, analysis_summary, job_title, company, and resume_text. "
+    "The resume_text is a JSON object with selected experiences, certifications, and skills. "
+    "The message must: 1) clearly state the candidate's target intent for the role; "
+    "2) mention 1-2 concrete matching strengths drawn from the selected resume content; "
+    "3) end with a polite invitation for further communication; "
+    "4) stay natural, direct, and suitable for first contact; "
+    "5) avoid exaggeration, fabricated metrics, or unsupported claims; "
+    "6) stay within 120 Chinese characters when possible. "
+    "Return JSON only with key 'greeting'."
+)

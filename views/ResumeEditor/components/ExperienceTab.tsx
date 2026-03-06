@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban } from 'lucide-react';
+import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Wand2 } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
 import type { ExperienceActions, ExperienceTabProps, StarFieldKey } from '../../../types/resume';
@@ -63,6 +63,8 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     selectedSkillIds,
     skillMatchScores,
     skillMatchTrends,
+    isAutoAssembling,
+    onAutoAssemble,
     onResetRenamingCategory,
     onPolishExperience,
     onResetWorkSort,
@@ -160,9 +162,20 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
 
     return (
         <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
-            <p className="text-xs text-gray-400 px-1 flex items-center gap-2">
-                <CheckCircle2 className="w-3 h-3" /> 勾选以添加到简历
-            </p>
+            <div className="px-1 flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-400 flex items-center gap-2">
+                    <CheckCircle2 className="w-3 h-3" /> 勾选以添加到简历
+                </p>
+                <button
+                    type="button"
+                    onClick={onAutoAssemble}
+                    disabled={isAutoAssembling}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
+                    {isAutoAssembling ? '组装中...' : '一键组装'}
+                </button>
+            </div>
             <ExperienceListSection
                 title="工作经历"
                 items={workItems}

@@ -14,6 +14,8 @@ import {
   saveJDAnalysisCache,
 } from "../views/jdAnalysisStorage";
 import {
+  buildExperienceAnalyzeEntry,
+  buildResumeAISnapshot,
   buildJDTextSignature,
   clampMatchScore,
   diffJDItemSignatures,
@@ -117,34 +119,6 @@ const canonicalStringify = (obj: unknown): string => {
   return stringifyValue(obj) ?? "null";
 };
 
-const buildExperienceAnalyzeEntry = (item: ResumeExperienceView) => ({
-  id: item.id,
-  title: item.title,
-  org: item.company,
-  start_date: item.startDate,
-  end_date: item.endDate,
-  star: item.star,
-});
-
-const buildCertificationAnalyzeEntry = (cert: CertificationView) => ({
-  id: cert.id,
-  name: cert.name,
-  issuer: cert.issuer,
-  issue_date: cert.date,
-});
-
-const buildSkillAnalyzeEntry = (group: SkillGroupView, skill: SkillItemView) => ({
-  id: skill.id,
-  name: skill.name,
-  category: group.name,
-});
-
-const buildSkillAnalyzePayload = (groups: SkillGroupView[]) => {
-  return groups.flatMap((group) =>
-    group.skills.map((skill) => buildSkillAnalyzeEntry(group, skill))
-  );
-};
-
 const buildExperienceAnalyzePayload = (experiences: ResumeExperienceView[]) => ({
   experiences: experiences.map(buildExperienceAnalyzeEntry),
 });
@@ -153,11 +127,7 @@ const buildAnalyzePayload = (
   experiences: ResumeExperienceView[],
   certifications: CertificationView[],
   skillGroups: SkillGroupView[]
-) => ({
-  experiences: experiences.map(buildExperienceAnalyzeEntry),
-  certifications: certifications.map(buildCertificationAnalyzeEntry),
-  skills: buildSkillAnalyzePayload(skillGroups),
-});
+) => buildResumeAISnapshot(experiences, certifications, skillGroups);
 
 const sortById = <T extends { id: string }>(items: T[]) => {
   return [...items].sort((a, b) => a.id.localeCompare(b.id));
@@ -200,13 +170,11 @@ const buildJDItemSignatures = (
   certifications: CertificationView[],
   skillGroups: SkillGroupView[]
 ): JDAnalysisItemSignatures => {
-  const experienceEntries = experiences.map(buildExperienceAnalyzeEntry);
-  const certificationEntries = certifications.map(buildCertificationAnalyzeEntry);
-  const skillEntries = buildSkillAnalyzePayload(skillGroups);
+  const snapshot = buildResumeAISnapshot(experiences, certifications, skillGroups);
   return {
-    experiences: buildSignatureMap(experienceEntries),
-    certifications: buildSignatureMap(certificationEntries),
-    skills: buildSignatureMap(skillEntries),
+    experiences: buildSignatureMap(snapshot.experiences),
+    certifications: buildSignatureMap(snapshot.certifications),
+    skills: buildSignatureMap(snapshot.skills),
   };
 };
 

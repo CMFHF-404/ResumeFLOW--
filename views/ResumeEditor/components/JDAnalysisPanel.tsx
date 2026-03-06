@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ChevronDown, ChevronUp, RefreshCw, Target, Wand2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, MessageSquare, RefreshCw, Target, Wand2 } from 'lucide-react';
 import type { JDAnalysisResult } from '../../../services/aiService';
 import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
 import { normalizeJobKeywords } from '../helpers';
@@ -16,9 +16,106 @@ type JDAnalysisPanelProps = {
     onToggleCollapse: () => void;
 
     onJdTextChange: (value: string) => void;
+    bossGreeting: string;
+    isBossGreetingVisible: boolean;
+    isBossGreetingOutdated: boolean;
+    isGeneratingBossGreeting: boolean;
+    onGenerateBossGreeting: () => void;
+    onCopyBossGreeting: () => void;
+    onCollapseBossGreeting: () => void;
     debugInfo?: any;
     showDebugInfo?: boolean;
     isOutdated?: boolean;
+};
+
+type BossGreetingSectionProps = {
+    analysisResult: JDAnalysisResult | null;
+    bossGreeting: string;
+    isBossGreetingVisible: boolean;
+    isBossGreetingOutdated: boolean;
+    isGeneratingBossGreeting: boolean;
+    onGenerateBossGreeting: () => void;
+    onCopyBossGreeting: () => void;
+    onCollapseBossGreeting: () => void;
+};
+
+const BossGreetingSection: React.FC<BossGreetingSectionProps> = ({
+    analysisResult,
+    bossGreeting,
+    isBossGreetingVisible,
+    isBossGreetingOutdated,
+    isGeneratingBossGreeting,
+    onGenerateBossGreeting,
+    onCopyBossGreeting,
+    onCollapseBossGreeting,
+}) => {
+    const hasSummary = Boolean(analysisResult?.summary?.trim());
+    const buttonLabel = isGeneratingBossGreeting
+        ? '生成中...'
+        : bossGreeting && isBossGreetingOutdated
+            ? '重新生成 BOSS 招呼语'
+            : '生成 BOSS 招呼语';
+
+    if (!hasSummary) {
+        return null;
+    }
+
+    return (
+        <div className="space-y-2">
+            <button
+                type="button"
+                onClick={onGenerateBossGreeting}
+                disabled={isGeneratingBossGreeting}
+                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                <MessageSquare className={`w-3.5 h-3.5 ${isGeneratingBossGreeting ? 'animate-pulse' : ''}`} />
+                {buttonLabel}
+            </button>
+            {isBossGreetingVisible ? (
+                <div className="rounded-lg border border-emerald-200 bg-white/90 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-gray-900/70">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                BOSS 招呼语
+                            </span>
+                            {isBossGreetingOutdated && bossGreeting ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                    已过期
+                                </span>
+                            ) : null}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onCollapseBossGreeting}
+                            className="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+                        >
+                            收起
+                        </button>
+                    </div>
+                    <div className="space-y-3">
+                        {isGeneratingBossGreeting && !bossGreeting ? (
+                            <p className="text-[11.5px] leading-relaxed text-gray-500 dark:text-gray-400">
+                                正在根据 JD 分析与已选经历生成招呼语...
+                            </p>
+                        ) : (
+                            <p className="text-[11.5px] leading-relaxed text-gray-700 dark:text-gray-200">
+                                {bossGreeting || '暂无可用招呼语'}
+                            </p>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onCopyBossGreeting}
+                            disabled={!bossGreeting.trim()}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                        >
+                            <Copy className="w-3 h-3" />
+                            一键复制
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    );
 };
 
 const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
@@ -30,6 +127,13 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     onToggleCollapse,
 
     onJdTextChange,
+    bossGreeting,
+    isBossGreetingVisible,
+    isBossGreetingOutdated,
+    isGeneratingBossGreeting,
+    onGenerateBossGreeting,
+    onCopyBossGreeting,
+    onCollapseBossGreeting,
     debugInfo,
     showDebugInfo = false,
     isOutdated = false,
@@ -103,9 +207,21 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             </div>
                         </div>
                         {analysisResult?.summary ? (
-                            <p className="text-[11.5px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
-                                {analysisResult.summary}
-                            </p>
+                            <div className="space-y-2">
+                                <p className="text-[11.5px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                                    {analysisResult.summary}
+                                </p>
+                                <BossGreetingSection
+                                    analysisResult={analysisResult}
+                                    bossGreeting={bossGreeting}
+                                    isBossGreetingVisible={isBossGreetingVisible}
+                                    isBossGreetingOutdated={isBossGreetingOutdated}
+                                    isGeneratingBossGreeting={isGeneratingBossGreeting}
+                                    onGenerateBossGreeting={onGenerateBossGreeting}
+                                    onCopyBossGreeting={onCopyBossGreeting}
+                                    onCollapseBossGreeting={onCollapseBossGreeting}
+                                />
+                            </div>
                         ) : null}
                     </div>
                 ) : (
@@ -137,9 +253,21 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         Missing: {(analysisResult.missingKeywords || []).join(', ')}
                                     </span>
                                 </div>
-                                <p className="text-[11.5px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
-                                    {analysisResult.summary}
-                                </p>
+                                <div className="space-y-2">
+                                    <p className="text-[11.5px] text-emerald-800 dark:text-emerald-300/80 leading-relaxed">
+                                        {analysisResult.summary}
+                                    </p>
+                                    <BossGreetingSection
+                                        analysisResult={analysisResult}
+                                        bossGreeting={bossGreeting}
+                                        isBossGreetingVisible={isBossGreetingVisible}
+                                        isBossGreetingOutdated={isBossGreetingOutdated}
+                                        isGeneratingBossGreeting={isGeneratingBossGreeting}
+                                        onGenerateBossGreeting={onGenerateBossGreeting}
+                                        onCopyBossGreeting={onCopyBossGreeting}
+                                        onCollapseBossGreeting={onCollapseBossGreeting}
+                                    />
+                                </div>
                             </div>
                         ) : null}
                     </div>

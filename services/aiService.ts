@@ -52,6 +52,18 @@ export interface GenerateTagsResponse {
     tags: string[];
 }
 
+export interface GenerateBossGreetingParams {
+    jdText: string;
+    analysisSummary: string;
+    jobTitle?: string;
+    company?: string;
+    resumeText: string;
+}
+
+export interface GenerateBossGreetingResponse {
+    greeting: string;
+}
+
 export const aiService = {
     async polishExperience(data: PolishExperiencePayload) {
         const { rawText, ...rest } = data.content;
@@ -91,6 +103,20 @@ export const aiService = {
         const response = await apiClient.post<GenerateTagsResponse>('/api/generate-tags', {
             text,
         });
+        return response.data;
+    },
+
+    async generateBossGreeting(data: GenerateBossGreetingParams) {
+        const response = await apiClient.post<GenerateBossGreetingResponse>(
+            '/api/generate-boss-greeting',
+            {
+                jd_text: data.jdText,
+                analysis_summary: data.analysisSummary,
+                job_title: data.jobTitle,
+                company: data.company,
+                resume_text: data.resumeText,
+            }
+        );
         return response.data;
     },
 };

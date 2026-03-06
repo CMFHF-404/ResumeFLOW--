@@ -292,6 +292,8 @@ export type ExperienceTabProps = {
   selectedSkillIds: Set<string>;
   skillMatchScores: Map<string, number>;
   skillMatchTrends: Map<string, MatchTrend>;
+  isAutoAssembling: boolean;
+  onAutoAssemble: () => void;
   onResetRenamingCategory: () => void;
   onPolishExperience: (id: string) => void;
   onResetWorkSort?: () => void;

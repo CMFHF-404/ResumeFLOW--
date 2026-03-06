@@ -8,7 +8,7 @@ import { usePrintJob } from '../../hooks/usePrintJob';
 import { useResumeData } from '../../hooks/useResumeData';
 import { profileService } from '../../services/profileService';
 import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
-import type { JDAnalysisResult } from '../../services/aiService';
+import { aiService, type JDAnalysisResult } from '../../services/aiService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type {
@@ -22,7 +22,12 @@ import type {
 } from '../../types/resume';
 import type { Resume as DashboardResume } from '../../types';
 import { buildExperienceDate } from '../../utils/dateUtils';
-import { buildStarFields, mergeStarFieldsWithSource } from '../../utils/resumeHelpers';
+import {
+    buildResumeAISnapshot,
+    buildStarFields,
+    clampMatchScore,
+    mergeStarFieldsWithSource,
+} from '../../utils/resumeHelpers';
 import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
@@ -37,6 +42,10 @@ import { DEFAULT_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
     A4_HEIGHT_MM,
+    AUTO_ASSEMBLY_MATCH_THRESHOLD,
+    AUTO_ASSEMBLY_MAX_EXPERIENCES,
+    AUTO_ASSEMBLY_TOAST_MESSAGES,
+    BOSS_GREETING_TOAST_MESSAGES,
     CERTIFICATION_DRAFT_PREFIX,
     CONFIRM_DELETE_CERTIFICATION_TEXT,
     CONFIRM_DELETE_CERTIFICATION_TITLE,
@@ -148,6 +157,174 @@ type ModuleReorderContext = {
 };
 
 type SmartPageResult = { lineHeight: number; fontSize: number } | null;
+type SmartPageExecutionResult =
+    | { status: 'fit'; lineHeight: number; fontSize: number }
+    | { status: 'overflow' }
+    | { status: 'skipped'; reason: 'busy' | 'unavailable' };
+
+type OrderedScoreItem = {
+    id: string;
+    score: number;
+    index: number;
+};
+
+type AutoAssemblySelection = {
+    hasMatchedExperience: boolean;
+    experienceIds: string[];
+    certificationIds: string[];
+    skillIds: string[];
+    experienceRemovalQueue: string[];
+    certificationRemovalQueue: string[];
+    skillRemovalQueue: string[];
+};
+
+type BossGreetingSignatureParams = {
+    jdText: string;
+    summary: string;
+    jobTitle?: string;
+    company?: string;
+    resumeText: string;
+};
+
+type ManualSelectionSnapshot = {
+    experienceIds: string[];
+    certificationIds: string[];
+    skillIds: string[];
+};
+
+type LayoutSnapshot = {
+    lineHeight: number;
+    fontSize: number;
+    isSmartPageApplied: boolean;
+};
+
+type AutoAssemblyStateSnapshot = {
+    selection: ManualSelectionSnapshot;
+    layout: LayoutSnapshot;
+};
+
+
+const toMatchScoreMap = (entries?: Array<{ id: string; score: number }>) => {
+    const map = new Map<string, number>();
+    (entries || []).forEach((entry) => {
+        const score = clampMatchScore(entry.score);
+        if (score !== undefined) {
+            map.set(entry.id, score);
+        }
+    });
+    return map;
+};
+
+const compareByScoreAsc = (a: OrderedScoreItem, b: OrderedScoreItem) => {
+    if (a.score !== b.score) {
+        return a.score - b.score;
+    }
+    return a.index - b.index;
+};
+
+const compareByScoreDesc = (a: OrderedScoreItem, b: OrderedScoreItem) => {
+    if (a.score !== b.score) {
+        return b.score - a.score;
+    }
+    return a.index - b.index;
+};
+
+const buildOrderedScoreItems = <T extends { id: string }>(
+    items: T[],
+    scoreMap: Map<string, number>
+) => items.map((item, index) => ({
+    id: item.id,
+    score: scoreMap.get(item.id) ?? 0,
+    index,
+}));
+
+const pickTopIds = (
+    items: OrderedScoreItem[],
+    limit: number
+) => items
+    .slice()
+    .sort(compareByScoreDesc)
+    .slice(0, limit)
+    .map((item) => item.id);
+
+const pickThresholdIds = (
+    items: OrderedScoreItem[],
+    threshold: number
+) => items
+    .filter((item) => item.score > threshold)
+    .map((item) => item.id);
+
+const buildRemovalQueue = (
+    selectedIds: Set<string>,
+    orderedItems: OrderedScoreItem[]
+) => orderedItems
+    .filter((item) => selectedIds.has(item.id))
+    .slice()
+    .sort(compareByScoreAsc)
+    .map((item) => item.id);
+
+const buildBossGreetingSignature = ({
+    jdText,
+    summary,
+    jobTitle,
+    company,
+    resumeText,
+}: BossGreetingSignatureParams) => JSON.stringify({
+    jdText: jdText.trim(),
+    summary,
+    jobTitle: jobTitle ?? '',
+    company: company ?? '',
+    resumeText,
+});
+
+const buildSelectionSnapshot = (
+    selectedExpIds: Set<string>,
+    selectedCertIds: Set<string>,
+    selectedSkillIds: Set<string>
+): ManualSelectionSnapshot => ({
+    experienceIds: [...selectedExpIds],
+    certificationIds: [...selectedCertIds],
+    skillIds: [...selectedSkillIds],
+});
+
+const buildLayoutSnapshot = (
+    lineHeight: number,
+    fontSize: number,
+    isSmartPageApplied: boolean
+): LayoutSnapshot => ({
+    lineHeight,
+    fontSize,
+    isSmartPageApplied,
+});
+
+const toggleSelectionSnapshotIds = (ids: string[], targetId: string) => (
+    ids.includes(targetId) ? ids.filter((id) => id !== targetId) : [...ids, targetId]
+);
+
+const toggleGroupedSelectionSnapshotIds = (ids: string[], targetIds: string[]) => {
+    const next = new Set(ids);
+    const shouldSelect = targetIds.some((id) => !next.has(id));
+    targetIds.forEach((id) => {
+        if (shouldSelect) {
+            next.add(id);
+            return;
+        }
+        next.delete(id);
+    });
+    return [...next];
+};
+
+const sortSnapshotEntriesById = <T extends { id: string }>(items: T[]) => (
+    [...items].sort((a, b) => a.id.localeCompare(b.id))
+);
+
+const buildStableResumeSnapshotText = (snapshot: ReturnType<typeof buildResumeAISnapshot>) => JSON.stringify({
+    experiences: sortSnapshotEntriesById(snapshot.experiences),
+    certifications: sortSnapshotEntriesById(snapshot.certifications),
+    skills: sortSnapshotEntriesById(snapshot.skills),
+});
+
+const hasPositiveMatchScore = (item: OrderedScoreItem) => item.score > 0;
 
 const mapDragTypeToModuleType = (dragType: DragItemType): ModuleReorderContext['moduleType'] => {
     return dragType === 'skillGroup' ? 'skill_group' : dragType;
@@ -311,10 +488,40 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     // 2. Experience State
     const [experienceItems, setExperienceItems] = useState<ResumeExperienceView[]>([]);
     const [selectedExpIds, setSelectedExpIds] = useState<Set<string>>(new Set());
+    const [isAutoAssembling, setIsAutoAssembling] = useState(false);
+    const [bossGreeting, setBossGreeting] = useState('');
+    const [bossGreetingSignature, setBossGreetingSignature] = useState('');
+    const [isBossGreetingVisible, setIsBossGreetingVisible] = useState(false);
+    const [isGeneratingBossGreeting, setIsGeneratingBossGreeting] = useState(false);
     // 3. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
     const previousDensityRef = useRef<'compact' | 'standard' | 'spacious'>(density);
+    const manualSelectionVersionRef = useRef(0);
+    const manualLayoutVersionRef = useRef(0);
+    const isProgrammaticSelectionUpdateRef = useRef(false);
+    const manualSelectionSnapshotRef = useRef<ManualSelectionSnapshot>({
+        experienceIds: [],
+        certificationIds: [],
+        skillIds: [],
+    });
+    const latestLayoutSnapshotRef = useRef<LayoutSnapshot>(
+        buildLayoutSnapshot(lineHeight, fontSize, isSmartPageApplied)
+    );
+    const manualLayoutSnapshotRef = useRef<LayoutSnapshot>(
+        buildLayoutSnapshot(lineHeight, fontSize, isSmartPageApplied)
+    );
+    const latestResumeIdRef = useRef(resumeId);
+    const latestBossGreetingSignatureRef = useRef('');
+    const latestBossGreetingAnalysisOutdatedRef = useRef(false);
+    const autoAssembleRequestIdRef = useRef(0);
+    const bossGreetingRequestIdRef = useRef(0);
+    const activeAutoAssembleToastIdRef = useRef<string | null>(null);
+    const activeBossGreetingToastIdRef = useRef<string | null>(null);
+    const bossGreetingUiStateRef = useRef({
+        text: '',
+        isVisible: false,
+    });
     const {
         toasts,
         success: showToastSuccess,
@@ -333,6 +540,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             previousDensityRef.current = density;
         }
     }, [density]);
+    useEffect(() => {
+        latestLayoutSnapshotRef.current = buildLayoutSnapshot(
+            lineHeight,
+            fontSize,
+            isSmartPageApplied
+        );
+        if (!isAutoAssembling && !smartPageAdjustingRef.current) {
+            manualLayoutSnapshotRef.current = latestLayoutSnapshotRef.current;
+        }
+    }, [fontSize, isAutoAssembling, isSmartPageApplied, lineHeight]);
     // Drag & Drop State
     const [draggedItemKey, setDraggedItemKey] = useState<string | null>(null);
     // Section Order State (for draggable resume sections)
@@ -516,6 +733,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             error: showToastError,
             loading: showToastLoading,
             updateToast,
+            closeToast,
         },
         applyResumeDetail,
         experience: {
@@ -616,6 +834,78 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             certification: CERTIFICATION_DRAFT_PREFIX,
         },
     });
+    const markManualSelectionChanged = useCallback(() => {
+        manualSelectionVersionRef.current += 1;
+    }, []);
+    const commitLayoutSnapshot = useCallback((
+        snapshot: LayoutSnapshot,
+        options?: { incrementVersion?: boolean }
+    ) => {
+        if (options?.incrementVersion) {
+            manualLayoutVersionRef.current += 1;
+        }
+        manualLayoutSnapshotRef.current = snapshot;
+    }, []);
+    const updateManualSelectionSnapshot = useCallback(
+        (updater: (snapshot: ManualSelectionSnapshot) => ManualSelectionSnapshot) => {
+            manualSelectionSnapshotRef.current = updater(
+                buildSelectionSnapshot(selectedExpIds, selectedCertIds, selectedSkillIds)
+            );
+        },
+        [selectedCertIds, selectedExpIds, selectedSkillIds]
+    );
+    useEffect(() => {
+        if (isProgrammaticSelectionUpdateRef.current) {
+            return;
+        }
+        manualSelectionSnapshotRef.current = buildSelectionSnapshot(
+            selectedExpIds,
+            selectedCertIds,
+            selectedSkillIds
+        );
+    }, [selectedCertIds, selectedExpIds, selectedSkillIds]);
+    const trackedSelection = useMemo(() => ({
+        toggleExperienceSelection: (id: string) => {
+            markManualSelectionChanged();
+            updateManualSelectionSnapshot((snapshot) => ({
+                ...snapshot,
+                experienceIds: toggleSelectionSnapshotIds(snapshot.experienceIds, id),
+            }));
+            selection.toggleExperienceSelection(id);
+        },
+        toggleEducationSelection: (id: string) => {
+            markManualSelectionChanged();
+            selection.toggleEducationSelection(id);
+        },
+        toggleCertificationSelection: (id: string) => {
+            markManualSelectionChanged();
+            updateManualSelectionSnapshot((snapshot) => ({
+                ...snapshot,
+                certificationIds: toggleSelectionSnapshotIds(snapshot.certificationIds, id),
+            }));
+            selection.toggleCertificationSelection(id);
+        },
+        toggleSkillSelection: (id: string) => {
+            markManualSelectionChanged();
+            updateManualSelectionSnapshot((snapshot) => ({
+                ...snapshot,
+                skillIds: toggleSelectionSnapshotIds(snapshot.skillIds, id),
+            }));
+            selection.toggleSkillSelection(id);
+        },
+        toggleSkillGroupSelection: (groupName: string) => {
+            markManualSelectionChanged();
+            const group = skillGroups.find((item) => item.name === groupName);
+            updateManualSelectionSnapshot((snapshot) => ({
+                ...snapshot,
+                skillIds: toggleGroupedSelectionSnapshotIds(
+                    snapshot.skillIds,
+                    group?.skills.map((skill) => skill.id) ?? []
+                ),
+            }));
+            selection.toggleSkillGroupSelection(groupName);
+        },
+    }), [markManualSelectionChanged, selection, skillGroups, updateManualSelectionSnapshot]);
     const updateDashboardCache = useCallback(
         (updated: ResumeRecord) => {
             if (!onResumesUpdate || cachedResumes.length === 0 || !isCacheOwnerMatched) {
@@ -781,16 +1071,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const handleAnalyzeWithAutoName = useCallback(async () => {
         const result = await runJdAnalyzeWithToast();
         if (!result) {
-            return;
+            return null;
         }
         if (!canAutoNameResume(resumeName)) {
-            return;
+            return result;
         }
         const autoName = resolveAutoResumeName(result, jdText);
         if (!autoName) {
-            return;
+            return result;
         }
         await applyResumeNameUpdate(autoName, { silent: true });
+        return result;
     }, [applyResumeNameUpdate, canAutoNameResume, jdText, resumeName, runJdAnalyzeWithToast]);
     const isProfileReadOnly = !isEditingProfile || isSavingProfile;
     const toggleTheme = () => {
@@ -850,11 +1141,41 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         return a4HeightRef.current;
     };
-    const waitForPreviewUpdate = () => new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
+    const waitForPreviewUpdate = (frames = 1) => new Promise<void>((resolve) => {
+        const tick = (remaining: number) => {
+            requestAnimationFrame(() => {
+                if (remaining <= 1) {
+                    resolve();
+                    return;
+                }
+                tick(remaining - 1);
+            });
+        };
+        tick(frames);
     });
+    const waitForSmartPageIdle = () => new Promise<void>((resolve) => {
+        const tick = () => {
+            if (!smartPageAdjustingRef.current) {
+                resolve();
+                return;
+            }
+            requestAnimationFrame(tick);
+        };
+        tick();
+    });
+    const restoreDefaultLayout = (isApplied = false) => {
+        setLineHeight(LINE_HEIGHT_DEFAULT);
+        setFontSize(FONT_SIZE_DEFAULT);
+        setIsSmartPageApplied(isApplied);
+    };
+    const applyLayoutSnapshot = async (snapshot: LayoutSnapshot) => {
+        setLineHeight(snapshot.lineHeight);
+        setFontSize(snapshot.fontSize);
+        setIsSmartPageApplied(snapshot.isSmartPageApplied);
+        await waitForPreviewUpdate(2);
+    };
     const measureContentHeight = async () => {
-        await waitForPreviewUpdate();
+        await waitForPreviewUpdate(2);
         const container = previewContentRef.current;
         if (!container) {
             return 0;
@@ -904,65 +1225,84 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         return null;
     };
 
-    const handleAdjustToSinglePage = async () => {
+    const executeSmartPageAdjustment = async (
+        options?: { announce?: boolean }
+    ): Promise<SmartPageExecutionResult> => {
         if (smartPageAdjustingRef.current) {
-            return;
+            return { status: 'skipped', reason: 'busy' };
         }
         smartPageAdjustingRef.current = true;
         try {
             if (!previewRef.current || !previewContentRef.current) {
-                return;
+                return { status: 'skipped', reason: 'unavailable' };
             }
             const a4Height = resolveA4Height();
             if (!a4Height) {
-                return;
+                return { status: 'skipped', reason: 'unavailable' };
             }
             const availableHeight = resolveSmartPageAvailableHeight(a4Height);
-            showToastInfo(SMART_PAGE_TOAST_MESSAGES.adjusting, SMART_PAGE_ADJUSTING_TOAST_DURATION_MS);
+            if (options?.announce) {
+                showToastInfo(
+                    SMART_PAGE_TOAST_MESSAGES.adjusting,
+                    SMART_PAGE_ADJUSTING_TOAST_DURATION_MS
+                );
+            }
 
-            // 阶段0：重置到默认值并测量
             const initialHeight = await applyLayoutParamsAndMeasure(LINE_HEIGHT_DEFAULT, FONT_SIZE_DEFAULT);
             if (isWithinAvailableHeight(initialHeight, availableHeight)) {
-                showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 setIsSmartPageApplied(true);
                 trackSmartOnePageTriggered({
                     lineHeight: LINE_HEIGHT_DEFAULT,
                     fontSize: FONT_SIZE_DEFAULT,
                 });
-                return;
+                return { status: 'fit', lineHeight: LINE_HEIGHT_DEFAULT, fontSize: FONT_SIZE_DEFAULT };
             }
 
-            // 阶段1：优先调整行高（保持默认字号）
             const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight, FONT_SIZE_DEFAULT);
             if (lineHeightAdjusted) {
-                showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 setIsSmartPageApplied(true);
                 trackSmartOnePageTriggered(lineHeightAdjusted);
-                return;
+                return { status: 'fit', ...lineHeightAdjusted };
             }
 
-            // 阶段2：行高已到极限，开始调整字号
             const fontSizeAdjusted = await tryAdjustFontSize(availableHeight);
             if (fontSizeAdjusted) {
-                showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
                 setIsSmartPageApplied(true);
                 trackSmartOnePageTriggered(fontSizeAdjusted);
-                return;
+                return { status: 'fit', ...fontSizeAdjusted };
             }
 
-            showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
             setIsSmartPageApplied(true);
+            return { status: 'overflow' };
         } finally {
             smartPageAdjustingRef.current = false;
+        }
+    };
+    const handleAdjustToSinglePage = async () => {
+        const result = await executeSmartPageAdjustment({ announce: true });
+        if (result.status === 'fit') {
+            commitLayoutSnapshot(
+                buildLayoutSnapshot(result.lineHeight, result.fontSize, true),
+                { incrementVersion: true }
+            );
+            showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
+            return;
+        }
+        if (result.status === 'overflow') {
+            await waitForPreviewUpdate(2);
+            commitLayoutSnapshot(latestLayoutSnapshotRef.current, { incrementVersion: true });
+            showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
         }
     };
     const adjustToSinglePage = () => {
         void handleAdjustToSinglePage();
     };
     const handleRestoreDefault = () => {
-        setLineHeight(LINE_HEIGHT_DEFAULT);
-        setFontSize(FONT_SIZE_DEFAULT);
-        setIsSmartPageApplied(false);
+        commitLayoutSnapshot(
+            buildLayoutSnapshot(LINE_HEIGHT_DEFAULT, FONT_SIZE_DEFAULT, false),
+            { incrementVersion: true }
+        );
+        restoreDefaultLayout(false);
     };
     const restoreDefault = () => {
         handleRestoreDefault();
@@ -1040,12 +1380,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resumeConfigSnapshot,
     ]);
     const handlePolishExperienceFromCard = useCallback(async (id: string) => {
-        const hasPolished = await experience.handlePolishExperienceById(id);
-        if (!hasPolished) {
-            return;
-        }
-        setSidebarTab('experience');
-    }, [experience, setSidebarTab]);
+        await experience.handlePolishExperienceById(id);
+    }, [experience]);
 
     const resolveIndexPosition = <T,>(
         items: T[],
@@ -1373,6 +1709,512 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }))
             .filter((group) => group.skills.length > 0);
     }, [skillGroups, selectedSkillIds]);
+    const selectedCertifications = useMemo(
+        () => sortedCertifications.filter((item) => selectedCertIds.has(item.id)),
+        [selectedCertIds, sortedCertifications]
+    );
+    const selectedResumeSnapshot = useMemo(
+        () => buildResumeAISnapshot(
+            [...selectedWorkItems, ...selectedProjectItems],
+            selectedCertifications,
+            selectedSkillGroups
+        ),
+        [selectedCertifications, selectedProjectItems, selectedSkillGroups, selectedWorkItems]
+    );
+    const selectedResumeSnapshotText = useMemo(
+        () => buildStableResumeSnapshotText(selectedResumeSnapshot),
+        [selectedResumeSnapshot]
+    );
+    const bossGreetingCurrentSignature = useMemo(
+        () => buildBossGreetingSignature({
+            jdText,
+            summary: analysisResult?.summary ?? '',
+            jobTitle: analysisResult?.jobTitle,
+            company: analysisResult?.company,
+            resumeText: selectedResumeSnapshotText,
+        }),
+        [analysisResult?.company, analysisResult?.jobTitle, analysisResult?.summary, jdText, selectedResumeSnapshotText]
+    );
+    const isBossGreetingOutdated = Boolean(
+        bossGreeting && bossGreetingSignature !== bossGreetingCurrentSignature
+    );
+    latestResumeIdRef.current = resumeId;
+    latestBossGreetingSignatureRef.current = bossGreetingCurrentSignature;
+    latestBossGreetingAnalysisOutdatedRef.current = isOutdated;
+    bossGreetingUiStateRef.current = {
+        text: bossGreeting,
+        isVisible: isBossGreetingVisible,
+    };
+
+    const applyAssemblySelection = useCallback(async (
+        selection: Pick<AutoAssemblySelection, 'experienceIds' | 'certificationIds' | 'skillIds'>
+    ) => {
+        isProgrammaticSelectionUpdateRef.current = true;
+        try {
+            setSelectedExpIds(new Set(selection.experienceIds));
+            setSelectedCertIds(new Set(selection.certificationIds));
+            setSelectedSkillIds(new Set(selection.skillIds));
+            await waitForPreviewUpdate(2);
+        } finally {
+            isProgrammaticSelectionUpdateRef.current = false;
+        }
+    }, []);
+
+    const buildAutoAssemblySelection = useCallback((result: JDAnalysisResult): AutoAssemblySelection => {
+        const experienceItemsByScore = buildOrderedScoreItems(
+            [...workItems, ...projectItems],
+            toMatchScoreMap(result.experienceMatches)
+        );
+        const certificationItemsByScore = buildOrderedScoreItems(
+            sortedCertifications,
+            toMatchScoreMap(result.certificationMatches)
+        );
+        const skillItemsByScore = buildOrderedScoreItems(
+            skillGroups.flatMap((group) => group.skills),
+            toMatchScoreMap(result.skillMatches)
+        );
+        const matchedExperienceItems = experienceItemsByScore.filter(hasPositiveMatchScore);
+        const experienceIds = pickTopIds(
+            matchedExperienceItems,
+            AUTO_ASSEMBLY_MAX_EXPERIENCES
+        );
+        const certificationIds = pickThresholdIds(
+            certificationItemsByScore,
+            AUTO_ASSEMBLY_MATCH_THRESHOLD
+        );
+        const skillIds = pickThresholdIds(skillItemsByScore, AUTO_ASSEMBLY_MATCH_THRESHOLD);
+        return {
+            hasMatchedExperience: matchedExperienceItems.length > 0,
+            experienceIds,
+            certificationIds,
+            skillIds,
+            experienceRemovalQueue: buildRemovalQueue(new Set(experienceIds), experienceItemsByScore),
+            certificationRemovalQueue: buildRemovalQueue(new Set(certificationIds), certificationItemsByScore),
+            skillRemovalQueue: buildRemovalQueue(new Set(skillIds), skillItemsByScore),
+        };
+    }, [projectItems, skillGroups, sortedCertifications, workItems]);
+
+    const runAutoAssemblySelection = useCallback(async (
+        selection: AutoAssemblySelection,
+        requestedResumeId: string | null,
+        requestedSelectionVersion: number,
+        requestedLayoutVersion: number,
+        initialStateSnapshot: AutoAssemblyStateSnapshot
+    ): Promise<SmartPageExecutionResult> => {
+        const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
+        const isSelectionVersionCurrent = () => (
+            manualSelectionVersionRef.current === requestedSelectionVersion
+        );
+        const isLayoutVersionCurrent = () => (
+            manualLayoutVersionRef.current === requestedLayoutVersion
+        );
+        const isAssemblyStateCurrent = () => (
+            isResumeRequestCurrent()
+            && isSelectionVersionCurrent()
+            && isLayoutVersionCurrent()
+        );
+        const currentSelection = {
+            experienceIds: [...selection.experienceIds],
+            certificationIds: [...selection.certificationIds],
+            skillIds: [...selection.skillIds],
+        };
+        const restoreInitialState = async () => {
+            if (!isResumeRequestCurrent()) {
+                return;
+            }
+            await applyAssemblySelection(initialStateSnapshot.selection);
+            await applyLayoutSnapshot(initialStateSnapshot.layout);
+        };
+        const restoreInitialSelection = async () => {
+            if (!isResumeRequestCurrent()) {
+                return;
+            }
+            await applyAssemblySelection(initialStateSnapshot.selection);
+        };
+        const restoreLatestManualState = async () => {
+            if (!isResumeRequestCurrent()) {
+                return;
+            }
+            await applyAssemblySelection(manualSelectionSnapshotRef.current);
+            await applyLayoutSnapshot(manualLayoutSnapshotRef.current);
+        };
+        const restoreStateAfterBusySkip = async () => {
+            await waitForSmartPageIdle();
+            if (!isResumeRequestCurrent()) {
+                return;
+            }
+            if (!isSelectionVersionCurrent()) {
+                await restoreLatestManualState();
+                return;
+            }
+            await restoreInitialSelection();
+        };
+        const applySelectionAndMeasure = async (
+            nextSelection: Pick<AutoAssemblySelection, 'experienceIds' | 'certificationIds' | 'skillIds'>
+        ): Promise<SmartPageExecutionResult> => {
+            if (!isResumeRequestCurrent()) {
+                return { status: 'skipped', reason: 'busy' };
+            }
+            if (!isAssemblyStateCurrent()) {
+                await restoreLatestManualState();
+                return { status: 'skipped', reason: 'busy' };
+            }
+            if (smartPageAdjustingRef.current) {
+                await restoreStateAfterBusySkip();
+                return { status: 'skipped', reason: 'busy' };
+            }
+            await applyAssemblySelection(nextSelection);
+            const result = await executeSmartPageAdjustment();
+            if (!isAssemblyStateCurrent()) {
+                await restoreLatestManualState();
+                return { status: 'skipped', reason: 'busy' };
+            }
+            if (result.status === 'skipped') {
+                if (result.reason === 'busy') {
+                    await restoreStateAfterBusySkip();
+                    return result;
+                }
+                await restoreInitialState();
+            }
+            return result;
+        };
+        const removeNext = async (
+            ids: string[],
+            target: 'experienceIds' | 'certificationIds' | 'skillIds'
+        ) => {
+            const minRemaining = target === 'experienceIds' ? 1 : 0;
+            for (const id of ids) {
+                if (!isResumeRequestCurrent()) {
+                    return { status: 'skipped', reason: 'busy' } as const;
+                }
+                if (!isAssemblyStateCurrent()) {
+                    await restoreLatestManualState();
+                    return { status: 'skipped', reason: 'busy' } as const;
+                }
+                if (currentSelection[target].length <= minRemaining) {
+                    return null;
+                }
+                currentSelection[target] = currentSelection[target].filter((itemId) => itemId !== id);
+                const result = await applySelectionAndMeasure(currentSelection);
+                if (result.status === 'fit' || result.status === 'skipped') {
+                    return result;
+                }
+            }
+            return null;
+        };
+
+        const initialResult = await applySelectionAndMeasure(currentSelection);
+        if (initialResult.status === 'fit' || initialResult.status === 'skipped') {
+            return initialResult;
+        }
+        const skillResult = await removeNext(selection.skillRemovalQueue, 'skillIds');
+        if (skillResult) {
+            return skillResult;
+        }
+        const certificationResult = await removeNext(
+            selection.certificationRemovalQueue,
+            'certificationIds'
+        );
+        if (certificationResult) {
+            return certificationResult;
+        }
+        const experienceResult = await removeNext(selection.experienceRemovalQueue, 'experienceIds');
+        return experienceResult ?? { status: 'overflow' };
+    }, [applyAssemblySelection, applyLayoutSnapshot, waitForSmartPageIdle]);
+
+    const handleAutoAssemble = useCallback(async () => {
+        if (isAutoAssembling) {
+            return;
+        }
+        if (!jdText.trim()) {
+            showToastError(AUTO_ASSEMBLY_TOAST_MESSAGES.emptyJd);
+            return;
+        }
+        const requestedResumeId = resumeId;
+        const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
+        const requestId = autoAssembleRequestIdRef.current + 1;
+        autoAssembleRequestIdRef.current = requestId;
+        const isAutoAssembleRequestCurrent = () => autoAssembleRequestIdRef.current === requestId;
+        const toastId = showToastLoading(AUTO_ASSEMBLY_TOAST_MESSAGES.loading);
+        activeAutoAssembleToastIdRef.current = toastId;
+        const releaseActiveAutoAssembleToast = () => {
+            if (activeAutoAssembleToastIdRef.current === toastId) {
+                activeAutoAssembleToastIdRef.current = null;
+            }
+        };
+        setIsAutoAssembling(true);
+        try {
+            const requestedSelectionVersion = manualSelectionVersionRef.current;
+            const requestedLayoutVersion = manualLayoutVersionRef.current;
+            const effectiveResult = (!analysisResult || isOutdated)
+                ? await handleAnalyzeWithAutoName()
+                : analysisResult;
+            if (!isResumeRequestCurrent() || !isAutoAssembleRequestCurrent()) {
+                closeToast(toastId);
+                releaseActiveAutoAssembleToast();
+                return;
+            }
+            if (!effectiveResult) {
+                updateToast(toastId, {
+                    message: AUTO_ASSEMBLY_TOAST_MESSAGES.analyzeFailed,
+                    type: 'error',
+                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+                });
+                releaseActiveAutoAssembleToast();
+                return;
+            }
+            const selection = buildAutoAssemblySelection(effectiveResult);
+            if (!selection.hasMatchedExperience) {
+                updateToast(toastId, {
+                    message: AUTO_ASSEMBLY_TOAST_MESSAGES.noExperienceMatch,
+                    type: 'error',
+                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+                });
+                releaseActiveAutoAssembleToast();
+                return;
+            }
+            const smartPageResult = await runAutoAssemblySelection(
+                selection,
+                requestedResumeId,
+                requestedSelectionVersion,
+                requestedLayoutVersion,
+                {
+                    selection: buildSelectionSnapshot(
+                        selectedExpIds,
+                        selectedCertIds,
+                        selectedSkillIds
+                    ),
+                    layout: {
+                        lineHeight,
+                        fontSize,
+                        isSmartPageApplied,
+                    },
+                }
+            );
+            if (!isResumeRequestCurrent() || !isAutoAssembleRequestCurrent()) {
+                closeToast(toastId);
+                releaseActiveAutoAssembleToast();
+                return;
+            }
+            if (smartPageResult.status !== 'skipped') {
+                await waitForPreviewUpdate(2);
+                commitLayoutSnapshot(latestLayoutSnapshotRef.current);
+            }
+            updateToast(toastId, {
+                message: smartPageResult.status === 'fit'
+                    ? AUTO_ASSEMBLY_TOAST_MESSAGES.success
+                    : smartPageResult.status === 'skipped'
+                        ? AUTO_ASSEMBLY_TOAST_MESSAGES.skipped
+                        : AUTO_ASSEMBLY_TOAST_MESSAGES.partialOverflow,
+                type: smartPageResult.status === 'fit' ? 'success' : 'error',
+                duration: JD_ANALYSIS_TOAST_DURATION_MS,
+            });
+            releaseActiveAutoAssembleToast();
+        } catch (error) {
+            if (!isResumeRequestCurrent() || !isAutoAssembleRequestCurrent()) {
+                closeToast(toastId);
+                return;
+            }
+            console.error('[ResumeEditor] 一键组装失败:', error);
+            updateToast(toastId, {
+                message: AUTO_ASSEMBLY_TOAST_MESSAGES.error,
+                type: 'error',
+                duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+            });
+            releaseActiveAutoAssembleToast();
+        } finally {
+            if (isAutoAssembleRequestCurrent()) {
+                setIsAutoAssembling(false);
+            }
+        }
+        }, [
+        analysisResult,
+        buildAutoAssemblySelection,
+        handleAnalyzeWithAutoName,
+        isAutoAssembling,
+        isOutdated,
+        jdText,
+        runAutoAssemblySelection,
+        showToastError,
+        showToastLoading,
+        updateToast,
+        waitForPreviewUpdate,
+        commitLayoutSnapshot,
+        closeToast,
+        fontSize,
+        isSmartPageApplied,
+        lineHeight,
+        resumeId,
+        selectedCertIds,
+        selectedExpIds,
+        selectedSkillIds,
+    ]);
+
+    const handleGenerateBossGreeting = useCallback(async () => {
+        const canReuseBossGreeting = Boolean(
+            bossGreeting
+            && !isBossGreetingOutdated
+            && !isOutdated
+        );
+        if (isGeneratingBossGreeting) {
+            return;
+        }
+        if (canReuseBossGreeting) {
+            setIsBossGreetingVisible((prev) => !prev);
+            return;
+        }
+        if (!jdText.trim()) {
+            showToastError(BOSS_GREETING_TOAST_MESSAGES.empty);
+            return;
+        }
+        const requestedResumeId = resumeId;
+        const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
+        const requestId = bossGreetingRequestIdRef.current + 1;
+        bossGreetingRequestIdRef.current = requestId;
+        const isBossGreetingRequestCurrent = () => bossGreetingRequestIdRef.current === requestId;
+        setIsGeneratingBossGreeting(true);
+        const toastId = showToastLoading(BOSS_GREETING_TOAST_MESSAGES.loading);
+        activeBossGreetingToastIdRef.current = toastId;
+        const releaseActiveBossGreetingToast = () => {
+            if (activeBossGreetingToastIdRef.current === toastId) {
+                activeBossGreetingToastIdRef.current = null;
+            }
+        };
+        try {
+            const effectiveResult = (!analysisResult || isOutdated)
+                ? await handleAnalyzeWithAutoName()
+                : analysisResult;
+            if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
+                closeToast(toastId);
+                releaseActiveBossGreetingToast();
+                return;
+            }
+            if (!effectiveResult?.summary?.trim()) {
+                updateToast(toastId, {
+                    message: BOSS_GREETING_TOAST_MESSAGES.empty,
+                    type: 'error',
+                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+                });
+                releaseActiveBossGreetingToast();
+                return;
+            }
+            const requestedBossGreetingSignature = buildBossGreetingSignature({
+                jdText,
+                summary: effectiveResult.summary,
+                jobTitle: effectiveResult.jobTitle,
+                company: effectiveResult.company,
+                resumeText: selectedResumeSnapshotText,
+            });
+            setIsBossGreetingVisible(true);
+            const response = await aiService.generateBossGreeting({
+                jdText,
+                analysisSummary: effectiveResult.summary,
+                jobTitle: effectiveResult.jobTitle,
+                company: effectiveResult.company,
+                resumeText: selectedResumeSnapshotText,
+            });
+            const nextGreeting = response.greeting.trim();
+            if (!nextGreeting) {
+                throw new Error('empty_greeting');
+            }
+            if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
+                closeToast(toastId);
+                releaseActiveBossGreetingToast();
+                return;
+            }
+            if (
+                latestResumeIdRef.current !== requestedResumeId
+                || latestBossGreetingAnalysisOutdatedRef.current
+                || latestBossGreetingSignatureRef.current !== requestedBossGreetingSignature
+            ) {
+                const shouldKeepVisible = (
+                    bossGreetingUiStateRef.current.isVisible
+                    && Boolean(bossGreetingUiStateRef.current.text.trim())
+                );
+                setIsBossGreetingVisible(shouldKeepVisible);
+                closeToast(toastId);
+                releaseActiveBossGreetingToast();
+                return;
+            }
+            setBossGreeting(nextGreeting);
+            setBossGreetingSignature(requestedBossGreetingSignature);
+            updateToast(toastId, {
+                message: BOSS_GREETING_TOAST_MESSAGES.success,
+                type: 'success',
+                duration: JD_ANALYSIS_TOAST_DURATION_MS,
+            });
+            releaseActiveBossGreetingToast();
+        } catch (error) {
+            if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
+                closeToast(toastId);
+                releaseActiveBossGreetingToast();
+                return;
+            }
+            console.error('[ResumeEditor] 生成 BOSS 招呼语失败:', error);
+            updateToast(toastId, {
+                message: BOSS_GREETING_TOAST_MESSAGES.error,
+                type: 'error',
+                duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+            });
+            releaseActiveBossGreetingToast();
+        } finally {
+            if (isBossGreetingRequestCurrent()) {
+                setIsGeneratingBossGreeting(false);
+            }
+        }
+    }, [
+        analysisResult,
+        bossGreeting,
+        isBossGreetingOutdated,
+        isGeneratingBossGreeting,
+        isOutdated,
+        handleAnalyzeWithAutoName,
+        jdText,
+        resumeId,
+        selectedResumeSnapshotText,
+        showToastError,
+        showToastLoading,
+        updateToast,
+        closeToast,
+    ]);
+
+    const handleCollapseBossGreeting = useCallback(() => {
+        setIsBossGreetingVisible(false);
+    }, []);
+
+    const handleCopyBossGreeting = useCallback(async () => {
+        if (!bossGreeting.trim()) {
+            return;
+        }
+        try {
+            if (!navigator.clipboard) {
+                throw new Error('clipboard_unavailable');
+            }
+            await navigator.clipboard.writeText(bossGreeting);
+            showToastSuccess(BOSS_GREETING_TOAST_MESSAGES.copySuccess);
+        } catch (error) {
+            console.error('[ResumeEditor] 复制 BOSS 招呼语失败:', error);
+            showToastError(BOSS_GREETING_TOAST_MESSAGES.copyError);
+        }
+    }, [bossGreeting, showToastError, showToastSuccess]);
+
+    useEffect(() => {
+        autoAssembleRequestIdRef.current += 1;
+        bossGreetingRequestIdRef.current += 1;
+        if (activeAutoAssembleToastIdRef.current) {
+            closeToast(activeAutoAssembleToastIdRef.current);
+            activeAutoAssembleToastIdRef.current = null;
+        }
+        if (activeBossGreetingToastIdRef.current) {
+            closeToast(activeBossGreetingToastIdRef.current);
+            activeBossGreetingToastIdRef.current = null;
+        }
+        setIsAutoAssembling(false);
+        setIsGeneratingBossGreeting(false);
+        setBossGreeting('');
+        setBossGreetingSignature('');
+        setIsBossGreetingVisible(false);
+    }, [closeToast, resumeId]);
 
     const handleExportPdf = useCallback(() => {
         if (isPrinting) {
@@ -1496,6 +2338,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         onAnalyze: handleAnalyzeWithAutoName,
                         onToggleCollapse: handleToggleJdCollapse,
                         onJdTextChange: setJdText,
+                        bossGreeting,
+                        isBossGreetingVisible,
+                        isBossGreetingOutdated,
+                        isGeneratingBossGreeting,
+                        onGenerateBossGreeting: handleGenerateBossGreeting,
+                        onCopyBossGreeting: handleCopyBossGreeting,
+                        onCollapseBossGreeting: handleCollapseBossGreeting,
                         debugInfo,
                         showDebugInfo,
                         isOutdated,
@@ -1524,13 +2373,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         onUpdateEducationDate: education.updateEducationDate,
                         onSaveEducation: education.handleSaveEducation,
                         onRequestDeleteEducation: education.requestDeleteEducation,
-                        onToggleEducationSelection: selection.toggleEducationSelection,
+                        onToggleEducationSelection: trackedSelection.toggleEducationSelection,
                     }}
                     experienceTabProps={{
                         experience,
                         certification,
                         skill,
-                        selection,
+                        selection: trackedSelection,
                         workItems,
                         projectItems,
                         selectedExpIds,
@@ -1543,6 +2392,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         selectedSkillIds,
                         skillMatchScores,
                         skillMatchTrends,
+                        isAutoAssembling,
+                        onAutoAssemble: handleAutoAssemble,
                         onResetRenamingCategory: resetRenamingCategory,
                         onPolishExperience: handlePolishExperienceFromCard,
                         onResetWorkSort: () => handleResetSort('work'),
@@ -1614,6 +2465,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
 };
 export default ResumeEditor;
+
+
+
+
+
+
+
+
+
 
 
 

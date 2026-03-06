@@ -93,12 +93,32 @@ export const SMART_PAGE_TOAST_MESSAGES = {
     overflow: '内容过多，即使调整行间距与字号也无法保留页尾留白，请删减部分内容。',
     adjusting: '正在尝试自动适配一页...',
 } as const;
+export const AUTO_ASSEMBLY_MAX_EXPERIENCES = 3;
+export const AUTO_ASSEMBLY_MATCH_THRESHOLD = 80;
+export const AUTO_ASSEMBLY_TOAST_MESSAGES = {
+    loading: '正在一键组装简历...',
+    success: '已完成一键组装，并自动适配为一页',
+    partialOverflow: '已完成一键组装，但内容仍超出一页，请继续手动删减',
+    emptyJd: '请先粘贴 JD 内容，再执行一键组装',
+    analyzeFailed: 'JD 分析失败，无法执行一键组装',
+    noExperienceMatch: 'JD 分析未匹配到合适经历，请手动勾选后再调整',
+    skipped: '当前无法完成一键组装，请稍后重试',
+    error: '一键组装失败，请稍后重试',
+} as const;
 export const JD_ANALYSIS_TOAST_MESSAGES = {
     loading: '正在进行 JD 分析...',
     success: 'JD 分析完成',
     noChange: 'JD 分析完成，但未产生可用调整',
     error: 'JD 分析失败，请稍后重试',
     empty: '请先粘贴 JD 内容再分析',
+} as const;
+export const BOSS_GREETING_TOAST_MESSAGES = {
+    loading: '正在生成 BOSS 招呼语...',
+    success: 'BOSS 招呼语已生成',
+    empty: '请先完成 JD 分析后再生成招呼语',
+    error: '生成 BOSS 招呼语失败，请稍后重试',
+    copySuccess: '招呼语已复制',
+    copyError: '复制失败，请手动复制',
 } as const;
 export const JD_ANALYSIS_TOAST_DURATION_MS = 2500;
 export const JD_ANALYSIS_TOAST_ERROR_DURATION_MS = 3000;

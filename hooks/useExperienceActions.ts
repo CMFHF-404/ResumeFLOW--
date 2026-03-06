@@ -49,6 +49,7 @@ type ToastApi = {
     error: (message: string, duration?: number) => string;
     loading: (message: string) => string;
     updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading'; duration?: number }) => void;
+    closeToast: (id: string) => void;
 };
 
 const JD_POLISH_TOAST_MESSAGES = {
@@ -954,11 +955,16 @@ type ExperiencePolishOutcome = {
     nextDraft?: ExperienceEditDraft;
 };
 
+type ExperiencePolishOptions = {
+    suppressAppliedSuccessToast?: boolean;
+};
+
 const runExperiencePolish = async (
     draft: ExperienceEditDraft,
     jdText: string,
     toast: ToastApi,
-    helpers: ExperienceHelpers
+    helpers: ExperienceHelpers,
+    options?: ExperiencePolishOptions
 ): Promise<ExperiencePolishOutcome> => {
     const trimmedJD = jdText.trim();
     if (!trimmedJD) {
@@ -1006,16 +1012,23 @@ const runExperiencePolish = async (
         hasError = true;
         return { status: 'error' };
     } finally {
+        const shouldSkipAppliedSuccessToast = action === 'applied' && options?.suppressAppliedSuccessToast;
         const message = hasError
             ? JD_POLISH_TOAST_MESSAGES.error
             : action === 'applied'
                 ? JD_POLISH_TOAST_MESSAGES.success
                 : JD_POLISH_TOAST_MESSAGES.noChange;
-        toast.updateToast(toastId, {
-            message,
-            type: hasError ? 'error' : 'success',
-            duration: hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS,
-        });
+        const nextType = hasError ? 'error' : 'success';
+        const nextDuration = hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS;
+        if (shouldSkipAppliedSuccessToast) {
+            toast.closeToast(toastId);
+        } else {
+            toast.updateToast(toastId, {
+                message,
+                type: nextType,
+                duration: nextDuration,
+            });
+        }
         trackAiPolishResult({
             source: 'resume_editor',
             field: 'all',
@@ -1122,7 +1135,9 @@ const createExperienceSaveHandlers = (
         const requestedCollectionVersion = state.collectionVersionRef.current;
         state.setIsPolishing(true);
         try {
-            const outcome = await runExperiencePolish(draft, jdText, toast, helpers);
+            const outcome = await runExperiencePolish(draft, jdText, toast, helpers, {
+                suppressAppliedSuccessToast: true,
+            });
             if (outcome.status !== 'applied' || !outcome.nextDraft) {
                 return false;
             }
@@ -1132,10 +1147,22 @@ const createExperienceSaveHandlers = (
             if (requestedEditSession !== state.editSessionRef.current) {
                 return false;
             }
-            advanceExperienceEditSession(state.editSessionRef);
-            state.setEditingExpId(id);
-            state.setEditingDraft(outcome.nextDraft);
-            state.setSyncToMaster(false);
+            try {
+                await saveExperienceOverride(
+                    resumeId,
+                    id,
+                    outcome.nextDraft,
+                    domain,
+                    helpers,
+                    applyResumeDetail,
+                    updateHelpers
+                );
+            } catch (error) {
+                console.error('[ResumeEditor] 保存润色后的经历失败:', error);
+                toast.error(JD_POLISH_TOAST_MESSAGES.error, JD_POLISH_TOAST_ERROR_DURATION_MS);
+                return false;
+            }
+            toast.success(JD_POLISH_TOAST_MESSAGES.success, JD_POLISH_TOAST_DURATION_MS);
             return true;
         } finally {
             state.setIsPolishing(false);

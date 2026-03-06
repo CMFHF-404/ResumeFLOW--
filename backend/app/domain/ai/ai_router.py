@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ...dependencies import get_current_user
-from .ai_service import analyze_jd, generate_tags, polish_experience
+from .ai_service import analyze_jd, generate_boss_greeting, generate_tags, polish_experience
 
 router = APIRouter(prefix="/api", tags=["ai"])
 
@@ -25,6 +25,14 @@ class PolishTextRequest(BaseModel):
 
 class GenerateTagsRequest(BaseModel):
     text: str
+
+
+class GenerateBossGreetingRequest(BaseModel):
+    jd_text: str
+    analysis_summary: str
+    job_title: Optional[str] = None
+    company: Optional[str] = None
+    resume_text: Optional[str] = None
 
 
 @router.post("/analyze-jd", response_model=Dict[str, Any])
@@ -55,3 +63,17 @@ async def generate_tags_endpoint(
     current_user=Depends(get_current_user),
 ):
     return await generate_tags(payload.text)
+
+
+@router.post("/generate-boss-greeting", response_model=Dict[str, Any])
+async def generate_boss_greeting_endpoint(
+    payload: GenerateBossGreetingRequest,
+    current_user=Depends(get_current_user),
+):
+    return await generate_boss_greeting(
+        payload.jd_text,
+        payload.analysis_summary,
+        payload.job_title,
+        payload.company,
+        payload.resume_text,
+    )

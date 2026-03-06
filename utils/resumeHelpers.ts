@@ -6,7 +6,13 @@ import {
   stripRichTextToText,
 } from "./richText";
 import type { JDAnalysisItemSignatures } from "../types/analysis";
-import type { ResumeExperienceView, StarFields } from "../types/resume";
+import type {
+  CertificationView,
+  ResumeExperienceView,
+  SkillGroupView,
+  SkillItemView,
+  StarFields,
+} from "../types/resume";
 
 const EMPTY_TEXT_SIGNATURE = "";
 const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView["category"]> = [
@@ -14,6 +20,34 @@ const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView["category"]> = [
   "project",
 ];
 const STAR_FIELD_KEYS: Array<keyof StarFields> = ["s", "t", "a", "r"];
+
+export type ResumeAIExperienceEntry = {
+  id: string;
+  title: string;
+  org: string;
+  start_date?: string;
+  end_date?: string;
+  star: StarFields;
+};
+
+export type ResumeAICertificationEntry = {
+  id: string;
+  name: string;
+  issuer?: string;
+  issue_date: string;
+};
+
+export type ResumeAISkillEntry = {
+  id: string;
+  name: string;
+  category: string;
+};
+
+export type ResumeAISnapshot = {
+  experiences: ResumeAIExperienceEntry[];
+  certifications: ResumeAICertificationEntry[];
+  skills: ResumeAISkillEntry[];
+};
 
 export const normalizeStarValue = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -36,6 +70,52 @@ export const buildStarFields = (star?: Record<string, any>): StarFields => ({
   t: normalizeStarValue(star?.t),
   a: normalizeStarValue(star?.a),
   r: normalizeStarValue(star?.r),
+});
+
+export const buildExperienceAnalyzeEntry = (
+  item: ResumeExperienceView
+): ResumeAIExperienceEntry => ({
+  id: item.id,
+  title: item.title,
+  org: item.company,
+  start_date: item.startDate,
+  end_date: item.endDate,
+  star: item.star,
+});
+
+export const buildCertificationAnalyzeEntry = (
+  cert: CertificationView
+): ResumeAICertificationEntry => ({
+  id: cert.id,
+  name: cert.name,
+  issuer: cert.issuer,
+  issue_date: cert.date,
+});
+
+export const buildSkillAnalyzeEntry = (
+  group: SkillGroupView,
+  skill: SkillItemView
+): ResumeAISkillEntry => ({
+  id: skill.id,
+  name: skill.name,
+  category: group.name,
+});
+
+export const buildSkillAnalyzePayload = (
+  groups: SkillGroupView[]
+): ResumeAISkillEntry[] =>
+  groups.flatMap((group) =>
+    group.skills.map((skill) => buildSkillAnalyzeEntry(group, skill))
+  );
+
+export const buildResumeAISnapshot = (
+  experiences: ResumeExperienceView[],
+  certifications: CertificationView[],
+  skillGroups: SkillGroupView[]
+): ResumeAISnapshot => ({
+  experiences: experiences.map(buildExperienceAnalyzeEntry),
+  certifications: certifications.map(buildCertificationAnalyzeEntry),
+  skills: buildSkillAnalyzePayload(skillGroups),
 });
 
 const resolveStarFieldWithSource = (draftValue: string, sourceValue: string) => {
