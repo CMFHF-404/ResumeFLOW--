@@ -107,6 +107,12 @@ export type ResumeEditorConfig = {
   layout?: {
     sectionOrder?: string[];
     density?: "compact" | "standard" | "spacious";
+    topPaddingPx?: number;
+    sectionSpacingKey?: 4 | 5 | 6 | 8;
+    itemSpacingEm?: number;
+    lineHeight?: number;
+    fontSize?: number;
+    isSmartPageApplied?: boolean;
     isSummaryVisible?: boolean;
     orders?: ResumeLayoutOrders;
   };
@@ -306,3 +312,4 @@ export type DatePayloadFallback = {
   end_date?: string;
   is_current?: boolean;
 };
+

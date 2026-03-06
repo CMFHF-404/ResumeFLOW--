@@ -78,8 +78,8 @@ export const LINE_HEIGHT_MIN = 1.35;
 export const LINE_HEIGHT_STEP = 0.05;
 
 // 字号配置（支持智能一页动态调整）
-export const FONT_SIZE_DEFAULT = 14; // px - 黄金舒适区
-export const FONT_SIZE_MIN = 12; // px - 极限安全区，低于12px打印时汉字会糊
+export const FONT_SIZE_DEFAULT = 16; // px - 默认基线
+export const FONT_SIZE_MIN = 13; // px - 智能一页极限
 export const FONT_SIZE_STEP = 0.5; // px
 
 // 列表间距（给 CSS 变量使用；单位在构建变量时确定）
@@ -93,10 +93,24 @@ export const LIST_SPACING_BY_DENSITY = {
 
 /** 各密度模式下，每个模块（section）底部的外边距 Tailwind 类 */
 export const SECTION_SPACING_CLASS_BY_DENSITY = {
-    compact: 'mb-2',
-    standard: 'mb-5',
+    compact: 'mb-4',
+    standard: 'mb-6',
     spacious: 'mb-8',
 } as const;
+
+export const SMART_PAGE_TOP_PADDING_MIN_PX = 15;
+export const SMART_PAGE_TOP_PADDING_STEP_PX = 5;
+
+export const SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY = {
+    6: 'mb-6',
+    5: 'mb-5',
+    4: 'mb-4',
+} as const;
+
+export const SMART_PAGE_SECTION_SPACING_STEPS = [6, 5, 4] as const;
+export const SMART_PAGE_ITEM_SPACING_DEFAULT = 1;
+export const SMART_PAGE_ITEM_SPACING_MIN = 0.5;
+export const SMART_PAGE_ITEM_SPACING_STEP = 0.25;
 
 /**
  * 简历头部姓名区域的顶部额外内边距（相对页边距的补偿留白）。

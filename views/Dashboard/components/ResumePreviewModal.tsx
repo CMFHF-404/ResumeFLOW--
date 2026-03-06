@@ -37,6 +37,7 @@ import {
     LINE_HEIGHT_DEFAULT,
     LIST_SPACING_BY_DENSITY,
     PREVIEW_PADDING_MM,
+    SECTION_SPACING_CLASS_BY_DENSITY,
 } from '../../ResumeEditor/constants';
 
 export type ResumePreviewModalProps = {
@@ -67,7 +68,8 @@ type PreviewSnapshot = {
 const DEFAULT_TITLE = '简历预览';
 const LOADING_TEXT = '正在加载简历预览...';
 const ERROR_TEXT = '加载简历预览失败，请稍后重试';
-const DEFAULT_SPACING_CLASS = 'mb-6';
+const DEFAULT_SPACING_CLASS = SECTION_SPACING_CLASS_BY_DENSITY.standard;
+const DEFAULT_TOP_PADDING_PX = PREVIEW_PADDING_MM * (96 / 25.4);
 
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
     const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
@@ -136,12 +138,7 @@ const buildSelectedSkillGroups = (groups: SkillGroupView[], selectedIds: Set<str
 };
 
 const resolveSpacingClass = (density?: PreviewState['density']) => {
-    const map: Record<PreviewState['density'], string> = {
-        compact: 'mb-2',
-        standard: 'mb-6',
-        spacious: 'mb-8',
-    };
-    return map[density ?? 'standard'] ?? DEFAULT_SPACING_CLASS;
+    return SECTION_SPACING_CLASS_BY_DENSITY[density ?? 'standard'] ?? DEFAULT_SPACING_CLASS;
 };
 
 const buildPreviewTitle = (resumeName?: string) => {
@@ -372,9 +369,9 @@ const buildResumePreviewProps = (
     fontSize: FONT_SIZE_DEFAULT,
     listSpacingValue,
     bulletSpacingValue: DEFAULT_BULLET_SPACING_VALUE,
-    previewPaddingValue: `${PREVIEW_PADDING_MM}mm`,
+    topPaddingPx: DEFAULT_TOP_PADDING_PX,
     profile: previewState.profile,
-    spacingClass,
+    sectionSpacingClass: spacingClass,
     listSpacingClass: 'space-y-[var(--rf-list-spacing)]',
     sectionOrder: previewState.sectionOrder,
     selectedWorkItems: previewState.selectedWorkItems,
@@ -440,3 +437,4 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
 };
 
 export default ResumePreviewModal;
+

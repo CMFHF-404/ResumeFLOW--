@@ -3,6 +3,7 @@ import { Edit3, GripVertical } from 'lucide-react';
 import {
     FONT_SIZE_DEFAULT,
     HEADER_EXTRA_TOP_SPACING_CLASS,
+    PREVIEW_PADDING_MM,
     SECTION_TITLE_BOTTOM_PADDING,
     SECTION_TITLE_BOTTOM_SPACING,
 } from '../constants';
@@ -30,6 +31,8 @@ const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
+const DEFAULT_TOP_PADDING_PX = PREVIEW_PADDING_MM * (96 / 25.4);
+const HEADER_TOP_LIFT_MAX_PX = 12;
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -117,9 +120,9 @@ export type ResumePreviewProps = {
     fontSize: number;
     listSpacingValue: string;
     bulletSpacingValue: string;
-    previewPaddingValue: string;
+    topPaddingPx: number;
     profile: ResumeEditorProfile;
-    spacingClass: string;
+    sectionSpacingClass: string;
     listSpacingClass: string;
     sectionOrder: string[];
     selectedWorkItems: ResumeExperienceView[];
@@ -153,9 +156,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     fontSize,
     listSpacingValue,
     bulletSpacingValue,
-    previewPaddingValue,
+    topPaddingPx,
     profile,
-    spacingClass,
+    sectionSpacingClass,
     listSpacingClass,
     sectionOrder,
     selectedWorkItems,
@@ -185,6 +188,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT),
         [fontSize]
     );
+    const headerTopLiftPx = React.useMemo(() => {
+        const reducedGap = Math.max(0, DEFAULT_TOP_PADDING_PX - topPaddingPx);
+        return Math.min(HEADER_TOP_LIFT_MAX_PX, reducedGap);
+    }, [topPaddingPx]);
 
     const isReadOnly = Boolean(readOnly);
 
@@ -216,7 +223,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 key={sectionId}
                 id={sectionId}
                 data-rf-section-id={sectionId}
-                className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                 draggable={!isReadOnly}
                 onDragStart={
                     isReadOnly ? undefined : (event) => onSectionDragStart(event, sectionId)
@@ -351,7 +358,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 style={{
                     lineHeight,
                     fontSize: `${fontSize}px`,
-                    padding: previewPaddingValue,
+                    paddingTop: `${topPaddingPx}px`,
+                    paddingRight: `${PREVIEW_PADDING_MM}mm`,
+                    paddingBottom: `${PREVIEW_PADDING_MM}mm`,
+                    paddingLeft: `${PREVIEW_PADDING_MM}mm`,
                     '--rf-line-height': String(lineHeight),
                     '--rf-list-spacing': listSpacingValue,
                     '--rf-bullet-spacing': bulletSpacingValue,
@@ -392,7 +402,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 >
                     <div
                         id="basic-info"
-                        className={`border-b-2 border-gray-900 pb-4 ${spacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} text-center scroll-mt-8`}
+                        className={`border-b-2 border-gray-900 pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} text-center scroll-mt-8`}
+                        style={headerTopLiftPx > 0 ? { marginTop: `-${headerTopLiftPx}px` } : undefined}
                     >
                         <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
                             {profile.name}
@@ -426,7 +437,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="education"
                                     id="education"
                                     data-rf-section-id="education"
-                                    className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     draggable={!isReadOnly}
                                     onDragStart={
                                         isReadOnly ? undefined : (event) => onSectionDragStart(event, 'education')
@@ -571,7 +582,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 <div
                                     key="certifications"
                                     id="certifications"
-                                    className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     data-rf-section-id="certifications"
                                     draggable={!isReadOnly}
                                     onDragStart={
@@ -708,7 +719,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="skills"
                                     id="skills"
                                     data-rf-section-id="skills"
-                                    className={`${spacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     draggable={!isReadOnly}
                                     onDragStart={
                                         isReadOnly ? undefined : (event) => onSectionDragStart(event, 'skills')

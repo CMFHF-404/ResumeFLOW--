@@ -15,6 +15,7 @@ import type {
     CertificationView,
     EducationView,
     ProfileSyncMode,
+    ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeLayoutOrders,
     ResumeExperienceView,
@@ -76,6 +77,13 @@ import {
     PROFILE_SYNC_MODES,
     SECTION_SPACING_CLASS_BY_DENSITY,
     SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
+    SMART_PAGE_ITEM_SPACING_DEFAULT,
+    SMART_PAGE_ITEM_SPACING_MIN,
+    SMART_PAGE_ITEM_SPACING_STEP,
+    SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY,
+    SMART_PAGE_SECTION_SPACING_STEPS,
+    SMART_PAGE_TOP_PADDING_MIN_PX,
+    SMART_PAGE_TOP_PADDING_STEP_PX,
     SMART_PAGE_BOTTOM_GAP_MM,
     SMART_PAGE_HEIGHT_TOLERANCE,
     SMART_PAGE_TOAST_MESSAGES,
@@ -131,7 +139,6 @@ const buildLineHeightSteps = (start: number, min: number, step: number) => {
 };
 
 const LINE_HEIGHT_STEPS = buildLineHeightSteps(LINE_HEIGHT_DEFAULT, LINE_HEIGHT_MIN, LINE_HEIGHT_STEP);
-const REDUCED_LINE_HEIGHT_STEPS = LINE_HEIGHT_STEPS.slice(1);
 
 // 字号调整步骤（用于智能一页算法）
 const buildFontSizeSteps = (start: number, min: number, step: number) => {
@@ -146,7 +153,79 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 };
 
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
-const REDUCED_FONT_SIZE_STEPS = FONT_SIZE_STEPS.slice(1);
+const CSS_PX_PER_MM = 96 / 25.4;
+
+type SectionSpacingKey = 4 | 5 | 6 | 8;
+
+type SmartPageLayout = {
+    topPaddingPx: number;
+    sectionSpacingKey: SectionSpacingKey;
+    itemSpacingEm: number;
+    lineHeight: number;
+    fontSize: number;
+};
+
+type SmartPageBaseLayout = Pick<SmartPageLayout, 'topPaddingPx' | 'sectionSpacingKey' | 'itemSpacingEm'>;
+
+const buildTopPaddingSteps = (start: number, min: number, step: number) => {
+    const steps: number[] = [];
+    for (let value = start; value >= min; value -= step) {
+        steps.push(Number(value.toFixed(2)));
+    }
+    if (steps[steps.length - 1] !== min) {
+        steps.push(min);
+    }
+    return steps;
+};
+
+const buildItemSpacingSteps = (start: number, min: number, step: number) => {
+    const steps: number[] = [];
+    for (let value = start; value >= min; value -= step) {
+        steps.push(Number(value.toFixed(2)));
+    }
+    if (steps[steps.length - 1] !== min) {
+        steps.push(min);
+    }
+    return steps;
+};
+
+const buildReductionStepsFromCurrent = (start: number, min: number, step: number) => {
+    if (start <= min) {
+        return [Number(start.toFixed(2))];
+    }
+    return buildItemSpacingSteps(start, min, step);
+};
+
+const resolveDefaultTopPaddingPx = (a4Height?: number) => {
+    const pxPerMm = a4Height ? a4Height / A4_HEIGHT_MM : CSS_PX_PER_MM;
+    return Number((pxPerMm * PREVIEW_PADDING_MM).toFixed(2));
+};
+
+const resolveDefaultSectionSpacingKey = (
+    density: 'compact' | 'standard' | 'spacious'
+): SectionSpacingKey => {
+    if (density === 'compact') {
+        return 4;
+    }
+    if (density === 'spacious') {
+        return 8;
+    }
+    return 6;
+};
+
+const resolveDefaultItemSpacingEm = (density: 'compact' | 'standard' | 'spacious') => {
+    if (density === 'standard') {
+        return SMART_PAGE_ITEM_SPACING_DEFAULT;
+    }
+    return LIST_SPACING_BY_DENSITY[density];
+};
+
+const resolveSectionSpacingClass = (spacingKey: SectionSpacingKey) => {
+    if (spacingKey === 8) {
+        return SECTION_SPACING_CLASS_BY_DENSITY.spacious;
+    }
+    return SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[spacingKey];
+};
 
 type ModuleReorderContext = {
     moduleType: 'experience' | 'education' | 'certification' | 'skill_group' | 'section';
@@ -157,9 +236,9 @@ type ModuleReorderContext = {
     category?: 'work' | 'project';
 };
 
-type SmartPageResult = { lineHeight: number; fontSize: number } | null;
+type SmartPageResult = SmartPageLayout | null;
 type SmartPageExecutionResult =
-    | { status: 'fit'; lineHeight: number; fontSize: number }
+    | ({ status: 'fit' } & SmartPageLayout)
     | { status: 'overflow' }
     | { status: 'skipped'; reason: 'busy' | 'unavailable' };
 
@@ -193,9 +272,7 @@ type ManualSelectionSnapshot = {
     skillIds: string[];
 };
 
-type LayoutSnapshot = {
-    lineHeight: number;
-    fontSize: number;
+type LayoutSnapshot = SmartPageLayout & {
     isSmartPageApplied: boolean;
 };
 
@@ -204,6 +281,32 @@ type AutoAssemblyStateSnapshot = {
     layout: LayoutSnapshot;
 };
 
+const buildDefaultSmartPageLayout = (
+    density: 'compact' | 'standard' | 'spacious',
+    a4Height?: number
+): SmartPageLayout => ({
+    topPaddingPx: resolveDefaultTopPaddingPx(a4Height),
+    sectionSpacingKey: resolveDefaultSectionSpacingKey(density),
+    itemSpacingEm: resolveDefaultItemSpacingEm(density),
+    lineHeight: LINE_HEIGHT_DEFAULT,
+    fontSize: FONT_SIZE_DEFAULT,
+});
+
+const resolveLayoutSnapshotFromConfig = (
+    layout?: ResumeEditorConfig['layout'],
+    a4Height?: number
+): LayoutSnapshot => {
+    const resolvedDensity = layout?.density ?? 'standard';
+    const defaultLayout = buildDefaultSmartPageLayout(resolvedDensity, a4Height);
+    return {
+        topPaddingPx: layout?.topPaddingPx ?? defaultLayout.topPaddingPx,
+        sectionSpacingKey: layout?.sectionSpacingKey ?? defaultLayout.sectionSpacingKey,
+        itemSpacingEm: layout?.itemSpacingEm ?? defaultLayout.itemSpacingEm,
+        lineHeight: layout?.lineHeight ?? defaultLayout.lineHeight,
+        fontSize: layout?.fontSize ?? defaultLayout.fontSize,
+        isSmartPageApplied: layout?.isSmartPageApplied ?? false,
+    };
+};
 
 const toMatchScoreMap = (entries?: Array<{ id: string; score: number }>) => {
     const map = new Map<string, number>();
@@ -289,12 +392,10 @@ const buildSelectionSnapshot = (
 });
 
 const buildLayoutSnapshot = (
-    lineHeight: number,
-    fontSize: number,
+    layout: SmartPageLayout,
     isSmartPageApplied: boolean
 ): LayoutSnapshot => ({
-    lineHeight,
-    fontSize,
+    ...layout,
     isSmartPageApplied,
 });
 
@@ -401,11 +502,11 @@ const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText: 
     return buildAutoResumeName(jobTitle, company);
 };
 
-const resolveSmartPageAvailableHeight = (a4Height: number) => {
+const resolveSmartPageAvailableHeight = (a4Height: number, topPaddingPx: number) => {
     const pxPerMm = a4Height / A4_HEIGHT_MM;
-    const paddingPx = pxPerMm * PREVIEW_PADDING_MM;
-    const requiredBottomGapPx = Math.max(paddingPx, pxPerMm * SMART_PAGE_BOTTOM_GAP_MM);
-    return Math.max(0, a4Height - paddingPx - requiredBottomGapPx);
+    const bottomPaddingPx = pxPerMm * PREVIEW_PADDING_MM;
+    const requiredBottomGapPx = Math.max(bottomPaddingPx, pxPerMm * SMART_PAGE_BOTTOM_GAP_MM);
+    return Math.max(0, a4Height - topPaddingPx - requiredBottomGapPx);
 };
 
 const isWithinAvailableHeight = (contentHeight: number, availableHeight: number) =>
@@ -454,8 +555,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
     const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
+    const [topPaddingPx, setTopPaddingPx] = useState(resolveDefaultTopPaddingPx());
+    const [sectionSpacingKey, setSectionSpacingKey] = useState<SectionSpacingKey>(
+        resolveDefaultSectionSpacingKey('standard')
+    );
+    const [itemSpacingEm, setItemSpacingEm] = useState(resolveDefaultItemSpacingEm('standard'));
     const [isDragging, setIsDragging] = useState(false);
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
+    const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
     const [isCreatingResume, setIsCreatingResume] = useState(false);
     const [resumeName, setResumeName] = useState(DEFAULT_RESUME_TITLE);
     // 1. Profile State
@@ -507,10 +614,28 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         skillIds: [],
     });
     const latestLayoutSnapshotRef = useRef<LayoutSnapshot>(
-        buildLayoutSnapshot(lineHeight, fontSize, isSmartPageApplied)
+        buildLayoutSnapshot(
+            {
+                topPaddingPx,
+                sectionSpacingKey,
+                itemSpacingEm,
+                lineHeight,
+                fontSize,
+            },
+            isSmartPageApplied
+        )
     );
     const manualLayoutSnapshotRef = useRef<LayoutSnapshot>(
-        buildLayoutSnapshot(lineHeight, fontSize, isSmartPageApplied)
+        buildLayoutSnapshot(
+            {
+                topPaddingPx,
+                sectionSpacingKey,
+                itemSpacingEm,
+                lineHeight,
+                fontSize,
+            },
+            isSmartPageApplied
+        )
     );
     // resumeId 在 useResumeData() 之后才声明，此处不能直接引用，初始化为 undefined。
     // 在 useEffect 中同步更新，确保 ref 始终持有最新值。
@@ -544,15 +669,35 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [density]);
     useEffect(() => {
+        if (smartPageAdjustingRef.current || isSmartPageApplied) {
+            return;
+        }
+        setSectionSpacingKey(resolveDefaultSectionSpacingKey(density));
+        setItemSpacingEm(resolveDefaultItemSpacingEm(density));
+    }, [density, isSmartPageApplied]);
+    useEffect(() => {
         latestLayoutSnapshotRef.current = buildLayoutSnapshot(
-            lineHeight,
-            fontSize,
+            {
+                topPaddingPx,
+                sectionSpacingKey,
+                itemSpacingEm,
+                lineHeight,
+                fontSize,
+            },
             isSmartPageApplied
         );
         if (!isAutoAssembling && !smartPageAdjustingRef.current) {
             manualLayoutSnapshotRef.current = latestLayoutSnapshotRef.current;
         }
-    }, [fontSize, isAutoAssembling, isSmartPageApplied, lineHeight]);
+    }, [
+        fontSize,
+        isAutoAssembling,
+        isSmartPageApplied,
+        itemSpacingEm,
+        lineHeight,
+        sectionSpacingKey,
+        topPaddingPx,
+    ]);
     // Drag & Drop State
     const [draggedItemKey, setDraggedItemKey] = useState<string | null>(null);
     // Section Order State (for draggable resume sections)
@@ -595,19 +740,31 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 selectedSkillIds,
                 sectionOrder,
                 density,
+                topPaddingPx,
+                sectionSpacingKey,
+                itemSpacingEm,
+                lineHeight,
+                fontSize,
+                isSmartPageApplied,
                 isSummaryVisible,
                 layoutOrders
             ),
         [
             density,
+            fontSize,
+            isSmartPageApplied,
             isSummaryVisible,
+            lineHeight,
+            itemSpacingEm,
             layoutOrders,
             profile,
             profileSyncMode,
             sectionOrder,
+            sectionSpacingKey,
             selectedCertIds,
             selectedEduIds,
             selectedExpIds,
+            topPaddingPx,
             selectedSkillIds,
         ]
     );
@@ -624,24 +781,45 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedSkillIds,
             sectionOrder,
             density,
+            topPaddingPx,
+            sectionSpacingKey,
+            itemSpacingEm,
+            lineHeight,
+            fontSize,
+            isSmartPageApplied,
             isSummaryVisible,
             layoutOrders
         );
     }, [
         density,
+        fontSize,
         isEditingProfile,
+        isSmartPageApplied,
         isSummaryVisible,
+        itemSpacingEm,
         layoutOrders,
+        lineHeight,
         originalProfile,
         originalProfileSyncMode,
         profile,
         profileSyncMode,
         sectionOrder,
+        sectionSpacingKey,
         selectedCertIds,
         selectedEduIds,
         selectedExpIds,
         selectedSkillIds,
+        topPaddingPx,
     ]);
+    const applyLayoutConfig = useCallback((config: ResumeEditorConfig) => {
+        const nextLayout = resolveLayoutSnapshotFromConfig(config.layout);
+        setTopPaddingPx(nextLayout.topPaddingPx);
+        setSectionSpacingKey(nextLayout.sectionSpacingKey);
+        setItemSpacingEm(nextLayout.itemSpacingEm);
+        setLineHeight(nextLayout.lineHeight);
+        setFontSize(nextLayout.fontSize);
+        setIsSmartPageApplied(nextLayout.isSmartPageApplied);
+    }, []);
     const {
         resumeId,
         resumeDetail,
@@ -661,12 +839,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } = useResumeData({
         configSnapshot: resumeConfigSnapshot,
         autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
+        isAutoSavePaused,
         setProfile,
         setProfileSyncMode,
         setProfileSocialLinks,
         setSectionOrder,
         setDensity,
         setIsSummaryVisible,
+        applyLayoutConfig,
         setExperienceItems,
         setSelectedExpIds,
         setEducations,
@@ -1170,12 +1350,23 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         };
         tick();
     });
+    const resolveDefaultLayoutParams = (
+        a4Height?: number,
+        densityOverride: 'compact' | 'standard' | 'spacious' = density
+    ): SmartPageLayout => buildDefaultSmartPageLayout(densityOverride, a4Height);
     const restoreDefaultLayout = (isApplied = false) => {
-        setLineHeight(LINE_HEIGHT_DEFAULT);
-        setFontSize(FONT_SIZE_DEFAULT);
+        const defaultLayout = resolveDefaultLayoutParams(resolveA4Height() ?? undefined);
+        setTopPaddingPx(defaultLayout.topPaddingPx);
+        setSectionSpacingKey(defaultLayout.sectionSpacingKey);
+        setItemSpacingEm(defaultLayout.itemSpacingEm);
+        setLineHeight(defaultLayout.lineHeight);
+        setFontSize(defaultLayout.fontSize);
         setIsSmartPageApplied(isApplied);
     };
     const applyLayoutSnapshot = async (snapshot: LayoutSnapshot) => {
+        setTopPaddingPx(snapshot.topPaddingPx);
+        setSectionSpacingKey(snapshot.sectionSpacingKey);
+        setItemSpacingEm(snapshot.itemSpacingEm);
         setLineHeight(snapshot.lineHeight);
         setFontSize(snapshot.fontSize);
         setIsSmartPageApplied(snapshot.isSmartPageApplied);
@@ -1189,47 +1380,82 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         return resolveMeasuredContentHeight(container);
     };
-    const applyLayoutParamsAndMeasure = async (nextLineHeight: number, nextFontSize: number) => {
-        setLineHeight(nextLineHeight);
-        setFontSize(nextFontSize);
+    const applyLayoutParamsAndMeasure = async (nextLayout: SmartPageLayout) => {
+        setTopPaddingPx(nextLayout.topPaddingPx);
+        setSectionSpacingKey(nextLayout.sectionSpacingKey);
+        setItemSpacingEm(nextLayout.itemSpacingEm);
+        setLineHeight(nextLayout.lineHeight);
+        setFontSize(nextLayout.fontSize);
         return measureContentHeight();
     };
 
-    const tryAdjustLineHeight = async (
-        availableHeight: number,
-        currentFontSize: number
+    const tryMeasureLayout = async (
+        a4Height: number,
+        nextLayout: SmartPageLayout
     ): Promise<SmartPageResult> => {
-        for (const nextLineHeight of REDUCED_LINE_HEIGHT_STEPS) {
-            const height = await applyLayoutParamsAndMeasure(nextLineHeight, currentFontSize);
-            if (isWithinAvailableHeight(height, availableHeight)) {
-                return { lineHeight: nextLineHeight, fontSize: currentFontSize };
-            }
+        const height = await applyLayoutParamsAndMeasure(nextLayout);
+        const availableHeight = resolveSmartPageAvailableHeight(a4Height, nextLayout.topPaddingPx);
+        if (isWithinAvailableHeight(height, availableHeight)) {
+            return nextLayout;
         }
         return null;
     };
 
-    const tryAdjustFontSize = async (
-        availableHeight: number
+    const findFirstFittingLineHeight = async (
+        a4Height: number,
+        baseLayout: SmartPageBaseLayout,
+        currentFontSize: number
     ): Promise<SmartPageResult> => {
-        for (const nextFontSize of REDUCED_FONT_SIZE_STEPS) {
-            // 每次调整字号后，先尝试默认行高
-            const height = await applyLayoutParamsAndMeasure(
-                LINE_HEIGHT_DEFAULT,
-                nextFontSize
-            );
-            if (isWithinAvailableHeight(height, availableHeight)) {
-                return { lineHeight: LINE_HEIGHT_DEFAULT, fontSize: nextFontSize };
-            }
-            // 如果默认行高不够，再尝试调整行高
-            const lineHeightAdjusted = await tryAdjustLineHeight(
-                availableHeight,
-                nextFontSize
-            );
-            if (lineHeightAdjusted) {
-                return lineHeightAdjusted;
+        let low = 0;
+        let high = LINE_HEIGHT_STEPS.length - 1;
+        let candidateLayout: SmartPageResult = null;
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            const fitLayout = await tryMeasureLayout(a4Height, {
+                ...baseLayout,
+                lineHeight: LINE_HEIGHT_STEPS[mid],
+                fontSize: currentFontSize,
+            });
+            if (fitLayout) {
+                candidateLayout = fitLayout;
+                high = mid - 1;
+            } else {
+                low = mid + 1;
             }
         }
-        return null;
+        return candidateLayout;
+    };
+
+    const tryFitAtFontSize = async (
+        a4Height: number,
+        baseLayout: SmartPageBaseLayout,
+        currentFontSize: number
+    ): Promise<SmartPageResult> => {
+        return findFirstFittingLineHeight(a4Height, baseLayout, currentFontSize);
+    };
+
+    const tryFitAtBestFontSize = async (
+        a4Height: number,
+        baseLayout: SmartPageBaseLayout
+    ): Promise<SmartPageResult> => {
+        let low = 0;
+        let high = FONT_SIZE_STEPS.length - 1;
+        let candidateLayout: SmartPageResult = null;
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            const fitLayout = await tryFitAtFontSize(
+                a4Height,
+                baseLayout,
+                FONT_SIZE_STEPS[mid]
+            );
+            if (fitLayout) {
+                candidateLayout = fitLayout;
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+        return candidateLayout;
     };
 
     const executeSmartPageAdjustment = async (
@@ -1239,6 +1465,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return { status: 'skipped', reason: 'busy' };
         }
         smartPageAdjustingRef.current = true;
+        setIsAutoSavePaused(true);
         try {
             if (!previewRef.current || !previewContentRef.current) {
                 return { status: 'skipped', reason: 'unavailable' };
@@ -1247,7 +1474,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             if (!a4Height) {
                 return { status: 'skipped', reason: 'unavailable' };
             }
-            const availableHeight = resolveSmartPageAvailableHeight(a4Height);
             if (options?.announce) {
                 showToastInfo(
                     SMART_PAGE_TOAST_MESSAGES.adjusting,
@@ -1255,41 +1481,174 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 );
             }
 
-            const initialHeight = await applyLayoutParamsAndMeasure(LINE_HEIGHT_DEFAULT, FONT_SIZE_DEFAULT);
-            if (isWithinAvailableHeight(initialHeight, availableHeight)) {
+            const finalizeFit = async (layout: SmartPageLayout): Promise<SmartPageExecutionResult> => {
+                await applyLayoutParamsAndMeasure(layout);
                 setIsSmartPageApplied(true);
                 trackSmartOnePageTriggered({
-                    lineHeight: LINE_HEIGHT_DEFAULT,
-                    fontSize: FONT_SIZE_DEFAULT,
+                    lineHeight: layout.lineHeight,
+                    fontSize: layout.fontSize,
                 });
-                return { status: 'fit', lineHeight: LINE_HEIGHT_DEFAULT, fontSize: FONT_SIZE_DEFAULT };
+                return { status: 'fit', ...layout };
+            };
+
+            const defaultLayout = resolveDefaultLayoutParams(a4Height);
+            const initialFit = await tryMeasureLayout(a4Height, defaultLayout);
+            if (initialFit) {
+                return finalizeFit(initialFit);
+            }
+            const topPaddingSteps = buildTopPaddingSteps(
+                defaultLayout.topPaddingPx,
+                SMART_PAGE_TOP_PADDING_MIN_PX,
+                SMART_PAGE_TOP_PADDING_STEP_PX
+            );
+            const sectionSpacingSteps = [
+                defaultLayout.sectionSpacingKey,
+                ...SMART_PAGE_SECTION_SPACING_STEPS.filter(
+                    (step) => step < defaultLayout.sectionSpacingKey
+                ),
+            ];
+            const itemSpacingSteps = buildReductionStepsFromCurrent(
+                defaultLayout.itemSpacingEm,
+                SMART_PAGE_ITEM_SPACING_MIN,
+                SMART_PAGE_ITEM_SPACING_STEP
+            );
+            const fitCache = new Map<string, SmartPageResult>();
+            const itemIndexCache = new Map<string, number | null>();
+            const sectionIndexCache = new Map<number, number | null>();
+            const resolveBaseLayoutKey = (baseLayout: SmartPageBaseLayout) => (
+                `${baseLayout.topPaddingPx}|${baseLayout.sectionSpacingKey}|${baseLayout.itemSpacingEm}`
+            );
+            const resolveFitForBaseLayout = async (
+                baseLayout: SmartPageBaseLayout
+            ): Promise<SmartPageResult> => {
+                const cacheKey = resolveBaseLayoutKey(baseLayout);
+                if (fitCache.has(cacheKey)) {
+                    return fitCache.get(cacheKey) ?? null;
+                }
+                const fitLayout = await tryFitAtBestFontSize(a4Height, baseLayout);
+                fitCache.set(cacheKey, fitLayout);
+                return fitLayout;
+            };
+            const findFirstFittingItemIndex = async (
+                topPaddingPx: number,
+                sectionSpacingKey: SectionSpacingKey
+            ) => {
+                const cacheKey = `${topPaddingPx}|${sectionSpacingKey}`;
+                if (itemIndexCache.has(cacheKey)) {
+                    return itemIndexCache.get(cacheKey) ?? null;
+                }
+                let low = 0;
+                let high = itemSpacingSteps.length - 1;
+                let candidateIndex: number | null = null;
+                while (low <= high) {
+                    const mid = Math.floor((low + high) / 2);
+                    const fitLayout = await resolveFitForBaseLayout({
+                        topPaddingPx,
+                        sectionSpacingKey,
+                        itemSpacingEm: itemSpacingSteps[mid],
+                    });
+                    if (fitLayout) {
+                        candidateIndex = mid;
+                        high = mid - 1;
+                    } else {
+                        low = mid + 1;
+                    }
+                }
+                itemIndexCache.set(cacheKey, candidateIndex);
+                return candidateIndex;
+            };
+            const findFirstFittingSectionIndex = async (topPaddingPx: number) => {
+                if (sectionIndexCache.has(topPaddingPx)) {
+                    return sectionIndexCache.get(topPaddingPx) ?? null;
+                }
+                let low = 0;
+                let high = sectionSpacingSteps.length - 1;
+                let candidateIndex: number | null = null;
+                while (low <= high) {
+                    const mid = Math.floor((low + high) / 2);
+                    const itemIndex = await findFirstFittingItemIndex(
+                        topPaddingPx,
+                        sectionSpacingSteps[mid]
+                    );
+                    if (itemIndex !== null) {
+                        candidateIndex = mid;
+                        high = mid - 1;
+                    } else {
+                        low = mid + 1;
+                    }
+                }
+                sectionIndexCache.set(topPaddingPx, candidateIndex);
+                return candidateIndex;
+            };
+            const maximallyCompressedBaseLayout: SmartPageBaseLayout = {
+                topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
+                sectionSpacingKey: sectionSpacingSteps[sectionSpacingSteps.length - 1],
+                itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
+            };
+            const maximallyCompressedFit = await resolveFitForBaseLayout(
+                maximallyCompressedBaseLayout
+            );
+            if (!maximallyCompressedFit) {
+                setIsSmartPageApplied(true);
+                return { status: 'overflow' };
             }
 
-            const lineHeightAdjusted = await tryAdjustLineHeight(availableHeight, FONT_SIZE_DEFAULT);
-            if (lineHeightAdjusted) {
-                setIsSmartPageApplied(true);
-                trackSmartOnePageTriggered(lineHeightAdjusted);
-                return { status: 'fit', ...lineHeightAdjusted };
+            let topPaddingLow = 0;
+            let topPaddingHigh = topPaddingSteps.length - 1;
+            let candidateTopPaddingIndex: number | null = null;
+            while (topPaddingLow <= topPaddingHigh) {
+                const mid = Math.floor((topPaddingLow + topPaddingHigh) / 2);
+                const sectionIndex = await findFirstFittingSectionIndex(topPaddingSteps[mid]);
+                if (sectionIndex !== null) {
+                    candidateTopPaddingIndex = mid;
+                    topPaddingHigh = mid - 1;
+                } else {
+                    topPaddingLow = mid + 1;
+                }
             }
-
-            const fontSizeAdjusted = await tryAdjustFontSize(availableHeight);
-            if (fontSizeAdjusted) {
-                setIsSmartPageApplied(true);
-                trackSmartOnePageTriggered(fontSizeAdjusted);
-                return { status: 'fit', ...fontSizeAdjusted };
+            if (candidateTopPaddingIndex !== null) {
+                const topPaddingPx = topPaddingSteps[candidateTopPaddingIndex];
+                const sectionIndex = await findFirstFittingSectionIndex(topPaddingPx);
+                if (sectionIndex !== null) {
+                    const sectionSpacingKey = sectionSpacingSteps[sectionIndex];
+                    const itemIndex = await findFirstFittingItemIndex(
+                        topPaddingPx,
+                        sectionSpacingKey
+                    );
+                    if (itemIndex !== null) {
+                        const fitLayout = await resolveFitForBaseLayout({
+                            topPaddingPx,
+                            sectionSpacingKey,
+                            itemSpacingEm: itemSpacingSteps[itemIndex],
+                        });
+                        if (fitLayout) {
+                            return finalizeFit(fitLayout);
+                        }
+                    }
+                }
             }
 
             setIsSmartPageApplied(true);
             return { status: 'overflow' };
         } finally {
             smartPageAdjustingRef.current = false;
+            setIsAutoSavePaused(false);
         }
     };
     const handleAdjustToSinglePage = async () => {
         const result = await executeSmartPageAdjustment({ announce: true });
         if (result.status === 'fit') {
             commitLayoutSnapshot(
-                buildLayoutSnapshot(result.lineHeight, result.fontSize, true),
+                buildLayoutSnapshot(
+                    {
+                        topPaddingPx: result.topPaddingPx,
+                        sectionSpacingKey: result.sectionSpacingKey,
+                        itemSpacingEm: result.itemSpacingEm,
+                        lineHeight: result.lineHeight,
+                        fontSize: result.fontSize,
+                    },
+                    true
+                ),
                 { incrementVersion: true }
             );
             showToastSuccess(SMART_PAGE_TOAST_MESSAGES.success);
@@ -1306,7 +1665,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     };
     const handleRestoreDefault = () => {
         commitLayoutSnapshot(
-            buildLayoutSnapshot(LINE_HEIGHT_DEFAULT, FONT_SIZE_DEFAULT, false),
+            buildLayoutSnapshot(
+                resolveDefaultLayoutParams(resolveA4Height() ?? undefined),
+                false
+            ),
             { incrementVersion: true }
         );
         restoreDefaultLayout(false);
@@ -1677,15 +2039,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const listSpacingValue = useMemo(() => {
-        return buildSpacingValue(LIST_SPACING_BY_DENSITY[density], lineHeight);
-    }, [density, lineHeight]);
+        return buildSpacingValue(itemSpacingEm, lineHeight);
+    }, [itemSpacingEm, lineHeight]);
     const bulletSpacingValue = useMemo(
         () => buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, lineHeight),
         [lineHeight]
     );
-    const previewPaddingValue = `${PREVIEW_PADDING_MM}mm`;
-    // 模块间距：由常量统一管理，在 constants.ts 中调整
-    const spacingClass = SECTION_SPACING_CLASS_BY_DENSITY[density];
+    const sectionSpacingClass = useMemo(
+        () => resolveSectionSpacingClass(sectionSpacingKey),
+        [sectionSpacingKey]
+    );
     const listSpacingClass = 'space-y-[var(--rf-list-spacing)]';
     const workItems = useMemo(
         () => experienceItems.filter((item) => item.category === 'work'),
@@ -1987,11 +2350,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         selectedCertIds,
                         selectedSkillIds
                     ),
-                    layout: {
-                        lineHeight,
-                        fontSize,
-                        isSmartPageApplied,
-                    },
+                    layout: buildLayoutSnapshot(
+                        {
+                            topPaddingPx,
+                            sectionSpacingKey,
+                            itemSpacingEm,
+                            lineHeight,
+                            fontSize,
+                        },
+                        isSmartPageApplied
+                    ),
                 }
             );
             if (!isResumeRequestCurrent() || !isAutoAssembleRequestCurrent()) {
@@ -2046,8 +2414,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         closeToast,
         fontSize,
         isSmartPageApplied,
+        itemSpacingEm,
         lineHeight,
         resumeId,
+        sectionSpacingKey,
+        topPaddingPx,
         selectedCertIds,
         selectedExpIds,
         selectedSkillIds,
@@ -2232,9 +2603,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     fontSize={fontSize}
                     listSpacingValue={listSpacingValue}
                     bulletSpacingValue={bulletSpacingValue}
-                    previewPaddingValue={previewPaddingValue}
+                    topPaddingPx={topPaddingPx}
                     profile={profile}
-                    spacingClass={spacingClass}
+                    sectionSpacingClass={sectionSpacingClass}
                     listSpacingClass={listSpacingClass}
                     sectionOrder={sectionOrder}
                     selectedWorkItems={selectedWorkItems}
@@ -2276,8 +2647,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         lineHeight,
         listSpacingClass,
         listSpacingValue,
-        previewPaddingValue,
         profile,
+        topPaddingPx,
         resumeName,
         sectionOrder,
         selectedCertIds,
@@ -2286,7 +2657,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedSkillGroups,
         selectedWorkItems,
         sortedCertifications,
-        spacingClass,
+        sectionSpacingClass,
         startPrint,
     ]);
     const handleEditExperience = (id: string) => {
@@ -2418,9 +2789,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     fontSize={fontSize}
                     listSpacingValue={listSpacingValue}
                     bulletSpacingValue={bulletSpacingValue}
-                    previewPaddingValue={previewPaddingValue}
+                    topPaddingPx={topPaddingPx}
                     profile={profile}
-                    spacingClass={spacingClass}
+                    sectionSpacingClass={sectionSpacingClass}
                     listSpacingClass={listSpacingClass}
                     sectionOrder={sectionOrder}
                     selectedWorkItems={selectedWorkItems}
@@ -2468,19 +2839,5 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
 };
 export default ResumeEditor;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

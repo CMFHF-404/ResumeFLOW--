@@ -50,12 +50,14 @@ type ReloadedResumeContext = {
 type UseResumeDataOptions = {
     configSnapshot: ResumeEditorConfig;
     autoSaveDelayMs: number;
+    isAutoSavePaused?: boolean;
     setProfile: Dispatch<SetStateAction<ResumeEditorProfile>>;
     setProfileSyncMode: Dispatch<SetStateAction<ProfileSyncMode>>;
     setProfileSocialLinks: Dispatch<SetStateAction<Record<string, any>>>;
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
     setDensity: Dispatch<SetStateAction<'compact' | 'standard' | 'spacious'>>;
     setIsSummaryVisible: Dispatch<SetStateAction<boolean>>;
+    applyLayoutConfig: (config: ResumeEditorConfig) => void;
     setExperienceItems: Dispatch<SetStateAction<ResumeExperienceView[]>>;
     setSelectedExpIds: Dispatch<SetStateAction<Set<string>>>;
     setEducations: Dispatch<SetStateAction<EducationView[]>>;
@@ -208,6 +210,7 @@ const createApplyResumeConfig = (
     setSectionOrder: UseResumeDataOptions['setSectionOrder'],
     setDensity: UseResumeDataOptions['setDensity'],
     setIsSummaryVisible: UseResumeDataOptions['setIsSummaryVisible'],
+    applyLayoutConfig: UseResumeDataOptions['applyLayoutConfig'],
     normalizeSectionOrder: UseResumeDataOptions['normalizeSectionOrder'],
     resolveProfileSyncMode: UseResumeDataOptions['resolveProfileSyncMode'],
     resolveProfileSnapshot: UseResumeDataOptions['resolveProfileSnapshot']
@@ -218,12 +221,18 @@ const createApplyResumeConfig = (
         if (profileData) {
             setProfileSocialLinks({ ...(profileData.social_links || {}) });
         }
+        const resolvedDensity = config.layout?.density ?? 'standard';
         setProfile(resolveProfileSnapshot(config, profileData || undefined));
         setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
         setIsSummaryVisible(config.layout?.isSummaryVisible ?? false);
-        if (config.layout?.density) {
-            setDensity(config.layout.density);
-        }
+        setDensity(resolvedDensity);
+        applyLayoutConfig({
+            ...config,
+            layout: {
+                ...config.layout,
+                density: resolvedDensity,
+            },
+        });
     };
 };
 
@@ -368,6 +377,7 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
         setSectionOrder,
         setDensity,
         setIsSummaryVisible,
+        applyLayoutConfig,
         normalizeSectionOrder,
         resolveProfileSyncMode,
         resolveProfileSnapshot,
@@ -380,6 +390,7 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
             setSectionOrder,
             setDensity,
             setIsSummaryVisible,
+            applyLayoutConfig,
             normalizeSectionOrder,
             resolveProfileSyncMode,
             resolveProfileSnapshot
@@ -390,6 +401,7 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
             resolveProfileSyncMode,
             setDensity,
             setIsSummaryVisible,
+            applyLayoutConfig,
             setProfile,
             setProfileSocialLinks,
             setProfileSyncMode,
@@ -678,6 +690,7 @@ const useResumeAutoSave = (
     resumeId: string | null,
     configSnapshot: ResumeEditorConfig,
     autoSaveDelayMs: number,
+    isAutoSavePaused: boolean,
     saveState: ResumeState['saveState'],
     setSaveState: ResumeState['setSaveState'],
     setLastSavedAt: ResumeState['setLastSavedAt'],
@@ -708,7 +721,7 @@ const useResumeAutoSave = (
         ) {
             suppressedAutoSaveSignatureRef.current = null;
         }
-        if (!hasHydratedConfigRef.current) {
+        if (!hasHydratedConfigRef.current || isAutoSavePaused) {
             return;
         }
         if (lastSavedConfigRef.current === null) {
@@ -725,6 +738,7 @@ const useResumeAutoSave = (
         lastSavedConfigRef,
         setSaveState,
         hasHydratedConfigRef,
+        isAutoSavePaused,
         suppressedAutoSaveSignatureRef,
     ]);
 
@@ -771,6 +785,7 @@ const useResumeAutoSave = (
         setSaveState,
         lastSavedConfigRef,
         hasHydratedConfigRef,
+        isAutoSavePaused,
         configSignature,
         shouldWaitForDebouncedConfigRef,
         suppressedAutoSaveSignatureRef,
@@ -853,6 +868,7 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         state.resumeId,
         options.configSnapshot,
         options.autoSaveDelayMs,
+        options.isAutoSavePaused ?? false,
         state.saveState,
         state.setSaveState,
         state.setLastSavedAt,
@@ -894,3 +910,4 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         clearSuppressedAutoSave,
     };
 };
+
