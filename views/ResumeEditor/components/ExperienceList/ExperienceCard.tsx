@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, Edit3, Trash2 } from 'lucide-react';
+import { ChevronDown, Edit3, Sparkles, Trash2 } from 'lucide-react';
 import type { ExperienceCardProps } from '../../../../types/resume';
 import { MatchBadge, StaleBadge } from '../Badges';
 
@@ -9,16 +9,20 @@ type ExperienceItem = ExperienceCardProps['item'];
 type ExperienceCardActionsProps = {
     itemId: string;
     deleting: boolean;
+    isPolishing: boolean;
     onDelete: (id: string) => void;
     onEdit: (id: string) => void;
+    onPolish: (id: string) => void;
     themeStyles: ThemeStyles;
 };
 
 const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
     itemId,
     deleting,
+    isPolishing,
     onDelete,
     onEdit,
+    onPolish,
     themeStyles,
 }) => {
     const handleDelete = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -29,6 +33,11 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
     const handleEdit = (event: React.MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
         onEdit(itemId);
+    };
+
+    const handlePolish = (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        onPolish(itemId);
     };
 
     return (
@@ -49,6 +58,15 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
                 aria-label="编辑"
             >
                 <Edit3 className="w-3.5 h-3.5" />
+            </button>
+            <button
+                className={`p-1 text-gray-300 rounded ${themeStyles.editHoverData}`}
+                onClick={handlePolish}
+                disabled={isPolishing}
+                title="基于 JD 润色（默认仅保存到当前简历）"
+                aria-label="基于 JD 润色（默认仅保存到当前简历）"
+            >
+                <Sparkles className="w-3.5 h-3.5" />
             </button>
         </div>
     );
@@ -121,8 +139,10 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
     onToggleSelection,
     onDelete,
     onEdit,
+    onPolish,
     deletingIds,
     staleExperienceIds,
+    isPolishing,
 }) => {
     const hasReason = Boolean(item.matchReason?.trim());
     const [isReasonOpen, setIsReasonOpen] = useState(true);
@@ -172,8 +192,10 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                         <ExperienceCardActions
                             itemId={item.id}
                             deleting={deletingIds.has(item.id)}
+                            isPolishing={isPolishing}
                             onDelete={onDelete}
                             onEdit={onEdit}
+                            onPolish={onPolish}
                             themeStyles={themeStyles}
                         />
                     </div>

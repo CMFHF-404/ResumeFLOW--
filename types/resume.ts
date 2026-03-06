@@ -59,10 +59,12 @@ export type ExperienceListSectionProps = {
   onToggleSelection: (id: string) => void;
   onAddItem: () => void;
   onEditItem: (id: string) => void;
+  onPolishItem: (id: string) => void;
   onDeleteItem: (id: string) => void;
   deletingIds: Set<string>;
   staleExperienceIds: Set<string>;
   isAdding: boolean;
+  isPolishing: boolean;
   onResetSort?: () => void;
 };
 
@@ -73,8 +75,10 @@ export type ExperienceCardProps = {
   onToggleSelection: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onPolish: (id: string) => void;
   deletingIds: Set<string>;
   staleExperienceIds: Set<string>;
+  isPolishing: boolean;
   dragItemKey?: string;
   onDragStart?: (event: DragEvent, itemKey: string) => void;
   onDragEnd?: () => void;
@@ -214,6 +218,7 @@ export type ExperienceActions = {
   setSyncToMaster: Dispatch<SetStateAction<boolean>>;
   isSavingExperience: boolean;
   isAddingExperience: boolean;
+  isPolishing: boolean;
   deletingExperienceIds: Set<string>;
   handleAddExperience: (category: ResumeExperienceView["category"]) => Promise<void>;
   startEditingExperience: (id: string) => void;
@@ -222,6 +227,8 @@ export type ExperienceActions = {
   updateEditingMeta: (field: "company" | "title", value: string) => void;
   updateEditingDate: (field: "startDate" | "endDate", value: string) => void;
   handleSaveExperience: () => Promise<void>;
+  handlePolishWithJD: () => Promise<void>;
+  handlePolishExperienceById: (id: string) => Promise<boolean>;
   requestDeleteExperience: (id: string) => void;
 };
 
@@ -286,6 +293,7 @@ export type ExperienceTabProps = {
   skillMatchScores: Map<string, number>;
   skillMatchTrends: Map<string, MatchTrend>;
   onResetRenamingCategory: () => void;
+  onPolishExperience: (id: string) => void;
   onResetWorkSort?: () => void;
   onResetProjectSort?: () => void;
   onResetCertificationSort?: () => void;

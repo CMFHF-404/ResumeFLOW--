@@ -40,10 +40,12 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     onToggleSelection,
     onAddItem,
     onEditItem,
+    onPolishItem,
     onDeleteItem,
     deletingIds,
     staleExperienceIds,
     isAdding,
+    isPolishing,
     onResetSort,
 }) => {
     const themeStyles = EXPERIENCE_THEME_STYLES[theme];
@@ -90,8 +92,10 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     onToggleSelection={onToggleSelection}
                     onDelete={onDeleteItem}
                     onEdit={onEditItem}
+                    onPolish={onPolishItem}
                     deletingIds={deletingIds}
                     staleExperienceIds={staleExperienceIds}
+                    isPolishing={isPolishing}
                 />
             ))}
         </div>

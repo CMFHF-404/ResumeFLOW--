@@ -64,6 +64,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     skillMatchScores,
     skillMatchTrends,
     onResetRenamingCategory,
+    onPolishExperience,
     onResetWorkSort,
     onResetProjectSort,
     onResetCertificationSort,
@@ -82,6 +83,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         recordListScroll();
         experience.startEditingExperience(id);
     }, [experience.startEditingExperience, recordListScroll]);
+
+    const handlePolishExperienceFromList = useCallback((id: string) => {
+        recordListScroll();
+        onPolishExperience(id);
+    }, [onPolishExperience, recordListScroll]);
 
     const scrollTarget = useMemo(() => {
         if (experience.editingExpId) {
@@ -167,10 +173,12 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 onToggleSelection={selection.toggleExperienceSelection}
                 onAddItem={() => experience.handleAddExperience('work')}
                 onEditItem={handleEditExperienceFromList}
+                onPolishItem={handlePolishExperienceFromList}
                 onDeleteItem={experience.requestDeleteExperience}
                 deletingIds={experience.deletingExperienceIds}
                 staleExperienceIds={staleExperienceIds}
                 isAdding={experience.isAddingExperience}
+                isPolishing={experience.isPolishing}
                 onResetSort={onResetWorkSort}
             />
             <ExperienceListSection
@@ -183,10 +191,12 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 onToggleSelection={selection.toggleExperienceSelection}
                 onAddItem={() => experience.handleAddExperience('project')}
                 onEditItem={handleEditExperienceFromList}
+                onPolishItem={handlePolishExperienceFromList}
                 onDeleteItem={experience.requestDeleteExperience}
                 deletingIds={experience.deletingExperienceIds}
                 staleExperienceIds={staleExperienceIds}
                 isAdding={experience.isAddingExperience}
+                isPolishing={experience.isPolishing}
                 onResetSort={onResetProjectSort}
             />
             <CertificationListSection

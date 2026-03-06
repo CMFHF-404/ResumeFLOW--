@@ -278,6 +278,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
     const [isDragging, setIsDragging] = useState(false);
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
+    const [isCreatingResume, setIsCreatingResume] = useState(false);
     const [resumeName, setResumeName] = useState(DEFAULT_RESUME_TITLE);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
@@ -390,6 +391,37 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedSkillIds,
         ]
     );
+    const buildCommittedResumeConfigSnapshot = useCallback(() => {
+        // 创建新简历前只持久化已确认的 profile 状态，避免把编辑中的草稿静默写回旧简历。
+        const nextProfile = isEditingProfile ? originalProfile : profile;
+        const nextProfileSyncMode = isEditingProfile ? originalProfileSyncMode : profileSyncMode;
+        return buildResumeConfigSnapshot(
+            nextProfile,
+            nextProfileSyncMode,
+            selectedExpIds,
+            selectedEduIds,
+            selectedCertIds,
+            selectedSkillIds,
+            sectionOrder,
+            density,
+            isSummaryVisible,
+            layoutOrders
+        );
+    }, [
+        density,
+        isEditingProfile,
+        isSummaryVisible,
+        layoutOrders,
+        originalProfile,
+        originalProfileSyncMode,
+        profile,
+        profileSyncMode,
+        sectionOrder,
+        selectedCertIds,
+        selectedEduIds,
+        selectedExpIds,
+        selectedSkillIds,
+    ]);
     const {
         resumeId,
         resumeDetail,
@@ -397,10 +429,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         experienceSourceMap,
         setResumeExperienceMap,
         setExperienceSourceMap,
+        isLoadingResume,
         isLoadingExperiences,
         saveState,
         lastSavedAt,
         applyResumeDetail,
+        flushResumeConfig,
+        reloadResumeContext,
+        suppressAutoSaveForConfig,
+        clearSuppressedAutoSave,
     } = useResumeData({
         configSnapshot: resumeConfigSnapshot,
         autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
@@ -597,6 +634,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         },
         [cachedResumes, isCacheOwnerMatched, onResumesUpdate]
     );
+    const prependDashboardCache = useCallback((created: ResumeRecord) => {
+        if (!onResumesUpdate || !isCacheOwnerMatched) {
+            return;
+        }
+        const createdResume: DashboardResume = {
+            id: created.id,
+            name: created.title,
+            targetRole: created.target_role || '通用',
+            matchRate: 0,
+            lastModified: formatRelativeTime(created.updated_at),
+            status: 'draft',
+            type: 'general',
+        };
+        const next = [createdResume, ...cachedResumes.filter((item) => item.id !== created.id)];
+        onResumesUpdate(next);
+    }, [cachedResumes, isCacheOwnerMatched, onResumesUpdate]);
     useEffect(() => {
         if (!resumeDetail?.resume) {
             return;
@@ -917,6 +970,82 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const handleResumeNameChange = (name: string) => {
         void applyResumeNameUpdate(name);
     };
+    const resetEditorTransientState = useCallback((
+        nextProfile: ResumeEditorProfile,
+        nextProfileSyncMode: ProfileSyncMode
+    ) => {
+        handleCancelDelete();
+        setOriginalProfile({ ...nextProfile });
+        setOriginalProfileSyncMode(nextProfileSyncMode);
+        setIsEditingProfile(false);
+        experience.cancelEditingExperience();
+        education.cancelEducationEdit();
+        certification.cancelCertificationEdit();
+        skill.cancelSkillEdit();
+        skill.setRenamingCategoryTarget(null);
+        skill.setRenamingCategoryDraft('');
+    }, [
+        certification.cancelCertificationEdit,
+        education.cancelEducationEdit,
+        experience.cancelEditingExperience,
+        handleCancelDelete,
+        setIsEditingProfile,
+        setOriginalProfile,
+        setOriginalProfileSyncMode,
+        skill.cancelSkillEdit,
+        skill.setRenamingCategoryDraft,
+        skill.setRenamingCategoryTarget,
+    ]);
+    const handleCreateResume = useCallback(async () => {
+        if (isCreatingResume) {
+            return;
+        }
+        let hasSwitchedResume = false;
+        setIsCreatingResume(true);
+        try {
+            suppressAutoSaveForConfig(resumeConfigSnapshot);
+            await flushResumeConfig(buildCommittedResumeConfigSnapshot());
+            const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
+            prependDashboardCache(created);
+            const reloadedContext = await reloadResumeContext(created.id);
+            if (!reloadedContext) {
+                throw new Error('resume_reload_failed');
+            }
+            resetEditorTransientState(
+                reloadedContext.profile,
+                reloadedContext.profileSyncMode
+            );
+            hasSwitchedResume = true;
+            showToastSuccess('新简历已创建');
+        } catch (error) {
+            console.error('[ResumeEditor] 创建新简历失败:', error);
+            showToastError('创建新简历失败，请稍后重试');
+        } finally {
+            if (!hasSwitchedResume) {
+                clearSuppressedAutoSave();
+            }
+            setIsCreatingResume(false);
+        }
+    }, [
+        buildCommittedResumeConfigSnapshot,
+        clearSuppressedAutoSave,
+        flushResumeConfig,
+        isCreatingResume,
+        prependDashboardCache,
+        reloadResumeContext,
+        resetEditorTransientState,
+        showToastError,
+        showToastSuccess,
+        suppressAutoSaveForConfig,
+        resumeConfigSnapshot,
+    ]);
+    const handlePolishExperienceFromCard = useCallback(async (id: string) => {
+        const hasPolished = await experience.handlePolishExperienceById(id);
+        if (!hasPolished) {
+            return;
+        }
+        setSidebarTab('experience');
+    }, [experience, setSidebarTab]);
 
     const resolveIndexPosition = <T,>(
         items: T[],
@@ -1334,8 +1463,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     };
     const showDebugInfo =
         import.meta.env.DEV && localStorage.getItem('jdDebug') === '1';
+    const isEditorBusy = isLoadingResume || isCreatingResume;
     return (
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark">
+        <div
+            className="relative flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark"
+            aria-busy={isEditorBusy}
+        >
             <EditorToolbar
                 isDarkMode={isDarkMode}
                 saveState={saveState}
@@ -1344,6 +1477,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 isSmartPageApplied={isSmartPageApplied}
                 onAdjustToSinglePage={adjustToSinglePage}
                 onRestoreDefault={restoreDefault}
+                isCreatingResume={isCreatingResume}
+                onCreateResume={handleCreateResume}
                 resumeName={resumeName}
                 onResumeNameChange={handleResumeNameChange}
                 onExportPdf={handleExportPdf}
@@ -1409,6 +1544,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         skillMatchScores,
                         skillMatchTrends,
                         onResetRenamingCategory: resetRenamingCategory,
+                        onPolishExperience: handlePolishExperienceFromCard,
                         onResetWorkSort: () => handleResetSort('work'),
                         onResetProjectSort: () => handleResetSort('project'),
                         onResetCertificationSort: handleResetCertificationSort,
@@ -1456,6 +1592,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onEditSkill={handleEditSkill}
                 />
             </div>
+            {isEditorBusy ? (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-[1px]">
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-200 shadow-sm">
+                        {isCreatingResume ? '正在创建并切换简历...' : '正在加载简历...'}
+                    </div>
+                </div>
+            ) : null}
             <ToastContainer toasts={toasts} onClose={closeToast} />
             <PrintPortal isActive={Boolean(printContent)}>
                 {printContent}

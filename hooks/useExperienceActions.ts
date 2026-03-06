@@ -1,7 +1,9 @@
 import {
     useCallback,
+    useRef,
     useState,
     type Dispatch,
+    type MutableRefObject,
     type SetStateAction,
 } from 'react';
 import { aiService } from '../services/aiService';
@@ -276,6 +278,7 @@ type UseExperienceActionsResult = {
         updateEditingDate: (field: 'startDate' | 'endDate', value: string) => void;
         handleSaveExperience: () => Promise<void>;
         handlePolishWithJD: () => Promise<void>;
+        handlePolishExperienceById: (id: string) => Promise<boolean>;
         requestDeleteExperience: (id: string) => void;
     };
     education: {
@@ -348,6 +351,8 @@ type ExperienceState = {
     setIsPolishing: Dispatch<SetStateAction<boolean>>;
     deletingExperienceIds: Set<string>;
     setDeletingExperienceIds: Dispatch<SetStateAction<Set<string>>>;
+    editSessionRef: MutableRefObject<number>;
+    collectionVersionRef: MutableRefObject<number>;
 };
 
 type EducationState = {
@@ -399,6 +404,8 @@ const useExperienceState = (): ExperienceState => {
     const [isAddingExperience, setIsAddingExperience] = useState(false);
     const [isPolishing, setIsPolishing] = useState(false);
     const [deletingExperienceIds, setDeletingExperienceIds] = useState<Set<string>>(new Set());
+    const editSessionRef = useRef(0);
+    const collectionVersionRef = useRef(0);
 
     return {
         editingExpId,
@@ -415,7 +422,19 @@ const useExperienceState = (): ExperienceState => {
         setIsPolishing,
         deletingExperienceIds,
         setDeletingExperienceIds,
+        editSessionRef,
+        collectionVersionRef,
     };
+};
+
+const advanceExperienceEditSession = (editSessionRef: MutableRefObject<number>) => {
+    editSessionRef.current += 1;
+    return editSessionRef.current;
+};
+
+const advanceExperienceCollectionVersion = (collectionVersionRef: MutableRefObject<number>) => {
+    collectionVersionRef.current += 1;
+    return collectionVersionRef.current;
 };
 
 const useEducationState = (): EducationState => {
@@ -511,17 +530,20 @@ const createExperienceDraftLifecycleHandlers = (
             helpers.sortByCategory([...prev, draftView], helpers.compareByDateDesc)
         );
         domain.setSelectedIds((prev) => addToSet(prev, draftId));
+        advanceExperienceEditSession(state.editSessionRef);
         state.setEditingExpId(draftId);
         state.setEditingDraft(helpers.buildExperienceEditDraft(draftView));
         state.setSyncToMaster(true);
     };
 
     const removeDraftExperience = (draftId: string) => {
+        advanceExperienceCollectionVersion(state.collectionVersionRef);
         domain.setItems((prev) => prev.filter((item) => item.id !== draftId));
         domain.setSelectedIds((prev) => removeFromSet(prev, draftId));
     };
 
     const replaceDraftExperience = (draftId: string, detail: ExperienceDetail) => {
+        advanceExperienceCollectionVersion(state.collectionVersionRef);
         const newItem: ExperienceListItem = {
             master: detail.master,
             latest_version: detail.latest_version,
@@ -550,6 +572,31 @@ const createExperienceDraftLifecycleHandlers = (
     };
 };
 
+const resolveEditingExperienceDraft = (
+    domain: ExperienceDomain,
+    helpers: ExperienceHelpers,
+    id: string
+) => {
+    const item = domain.items.find((entry) => entry.id === id);
+    if (!item) {
+        return null;
+    }
+    const draft = helpers.buildExperienceEditDraft(item);
+    const resumeItem = domain.resumeMap.get(id);
+    const hasStarOverride = Boolean(
+        resumeItem?.overrides_json
+        && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
+    );
+    const sourceStar = domain.sourceMap.get(id)?.latest_version?.star;
+    const resolvedStar = resolveStarPayload(
+        draft,
+        sourceStar,
+        helpers.mergeStarFieldsWithSource,
+        { hasStarOverride }
+    );
+    return resolvedStar === draft.star ? draft : { ...draft, star: resolvedStar };
+};
+
 const createExperienceEditHandlers = (
     domain: ExperienceDomain,
     helpers: ExperienceHelpers,
@@ -557,25 +604,13 @@ const createExperienceEditHandlers = (
     draftHandlers: ExperienceDraftHandlers
 ): ExperienceEditHandlers => {
     const startEditingExperience = (id: string) => {
-        const item = domain.items.find((entry) => entry.id === id);
-        if (!item) {
+        const draft = resolveEditingExperienceDraft(domain, helpers, id);
+        if (!draft) {
             return;
         }
-        const draft = helpers.buildExperienceEditDraft(item);
-        const resumeItem = domain.resumeMap.get(id);
-        const hasStarOverride = Boolean(
-            resumeItem?.overrides_json
-            && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
-        );
-        const sourceStar = domain.sourceMap.get(id)?.latest_version?.star;
-        const resolvedStar = resolveStarPayload(
-            draft,
-            sourceStar,
-            helpers.mergeStarFieldsWithSource,
-            { hasStarOverride }
-        );
+        advanceExperienceEditSession(state.editSessionRef);
         state.setEditingExpId(id);
-        state.setEditingDraft(resolvedStar === draft.star ? draft : { ...draft, star: resolvedStar });
+        state.setEditingDraft(draft);
         state.setSyncToMaster(true);
     };
 
@@ -583,6 +618,7 @@ const createExperienceEditHandlers = (
         if (state.editingDraft?.isDraft && state.editingDraft.masterId) {
             draftHandlers.removeDraftExperience(state.editingDraft.masterId);
         }
+        advanceExperienceEditSession(state.editSessionRef);
         state.setEditingExpId(null);
         state.setEditingDraft(null);
     };
@@ -910,6 +946,83 @@ const saveExperienceOverride = async (
 type ExperienceSaveHandlers = {
     handleSaveExperience: () => Promise<void>;
     handlePolishWithJD: () => Promise<void>;
+    handlePolishExperienceById: (id: string) => Promise<boolean>;
+};
+
+type ExperiencePolishOutcome = {
+    status: 'applied' | 'discarded' | 'error' | 'empty_jd';
+    nextDraft?: ExperienceEditDraft;
+};
+
+const runExperiencePolish = async (
+    draft: ExperienceEditDraft,
+    jdText: string,
+    toast: ToastApi,
+    helpers: ExperienceHelpers
+): Promise<ExperiencePolishOutcome> => {
+    const trimmedJD = jdText.trim();
+    if (!trimmedJD) {
+        toast.error(JD_POLISH_TOAST_MESSAGES.emptyJd, JD_POLISH_TOAST_ERROR_DURATION_MS);
+        return { status: 'empty_jd' };
+    }
+    const startTime = Date.now();
+    let action: 'applied' | 'discarded' = 'discarded';
+    let hasError = false;
+    const toastId = toast.loading(JD_POLISH_TOAST_MESSAGES.loading);
+    trackAiPolishStart({ source: 'resume_editor', field: 'all' });
+    try {
+        const result = await aiService.polishExperience({
+            content: {
+                company: draft.company,
+                role: draft.title,
+                s: draft.star.s,
+                t: draft.star.t,
+                a: draft.star.a,
+                r: draft.star.r,
+            },
+            jdText: trimmedJD,
+        });
+        const normalizedResult: Partial<StarFields> = {
+            s: typeof result.s === 'string' ? normalizeAiRichText(result.s, { allowList: false }) : undefined,
+            t: typeof result.t === 'string' ? normalizeAiRichText(result.t, { allowList: false }) : undefined,
+            a: typeof result.a === 'string' ? normalizeAiRichText(result.a, { allowList: false }) : undefined,
+            r: typeof result.r === 'string' ? normalizeAiRichText(result.r, { allowList: false }) : undefined,
+        };
+        const nextStar = helpers.mergeStarFields(draft.star, normalizedResult);
+        action = hasStarFieldsChange(draft.star, nextStar) ? 'applied' : 'discarded';
+        if (action === 'applied') {
+            return {
+                status: 'applied',
+                nextDraft: {
+                    ...draft,
+                    star: nextStar,
+                    starTouched: true,
+                },
+            };
+        }
+        return { status: 'discarded' };
+    } catch (error) {
+        console.error('[ResumeEditor] 基于 JD 润色失败:', error);
+        hasError = true;
+        return { status: 'error' };
+    } finally {
+        const message = hasError
+            ? JD_POLISH_TOAST_MESSAGES.error
+            : action === 'applied'
+                ? JD_POLISH_TOAST_MESSAGES.success
+                : JD_POLISH_TOAST_MESSAGES.noChange;
+        toast.updateToast(toastId, {
+            message,
+            type: hasError ? 'error' : 'success',
+            duration: hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS,
+        });
+        trackAiPolishResult({
+            source: 'resume_editor',
+            field: 'all',
+            action,
+            durationMs: Date.now() - startTime,
+        });
+    }
 };
 
 const createExperienceSaveHandlers = (
@@ -971,6 +1084,7 @@ const createExperienceSaveHandlers = (
                     updateHelpers
                 );
             }
+            advanceExperienceEditSession(state.editSessionRef);
             state.setEditingExpId(null);
             state.setEditingDraft(null);
         } catch (error) {
@@ -984,76 +1098,46 @@ const createExperienceSaveHandlers = (
         if (!state.editingDraft || state.isPolishing) {
             return;
         }
-        const trimmedJD = jdText.trim();
-        if (!trimmedJD) {
-            toast.error(JD_POLISH_TOAST_MESSAGES.emptyJd, JD_POLISH_TOAST_ERROR_DURATION_MS);
-            return;
-        }
-        const startTime = Date.now();
-        let action: 'applied' | 'discarded' = 'discarded';
-        let toastId: string | null = null;
-        let hasError = false;
-        trackAiPolishStart({ source: 'resume_editor', field: 'all' });
         state.setIsPolishing(true);
-        toastId = toast.loading(JD_POLISH_TOAST_MESSAGES.loading);
         try {
-            const draftSnapshot = state.editingDraft;
-            const result = await aiService.polishExperience({
-                content: {
-                    company: draftSnapshot.company,
-                    role: draftSnapshot.title,
-                    s: draftSnapshot.star.s,
-                    t: draftSnapshot.star.t,
-                    a: draftSnapshot.star.a,
-                    r: draftSnapshot.star.r,
-                },
-                jdText: trimmedJD,
-            });
-            const normalizedResult: Partial<StarFields> = {
-                s: typeof result.s === 'string' ? normalizeAiRichText(result.s, { allowList: false }) : undefined,
-                t: typeof result.t === 'string' ? normalizeAiRichText(result.t, { allowList: false }) : undefined,
-                a: typeof result.a === 'string' ? normalizeAiRichText(result.a, { allowList: false }) : undefined,
-                r: typeof result.r === 'string' ? normalizeAiRichText(result.r, { allowList: false }) : undefined,
-            };
-            const nextStar = helpers.mergeStarFields(draftSnapshot.star, normalizedResult);
-            action = hasStarFieldsChange(draftSnapshot.star, nextStar) ? 'applied' : 'discarded';
-            state.setEditingDraft((prev) => {
-                if (!prev) {
-                    return prev;
-                }
-                if (action !== 'applied') {
-                    return prev;
-                }
-                return {
-                    ...prev,
-                    star: nextStar,
-                    starTouched: true,
-                };
-            });
-        } catch (error) {
-            console.error('[ResumeEditor] 基于 JD 润色失败:', error);
-            hasError = true;
-        } finally {
-            const message = hasError
-                ? JD_POLISH_TOAST_MESSAGES.error
-                : action === 'applied'
-                    ? JD_POLISH_TOAST_MESSAGES.success
-                    : JD_POLISH_TOAST_MESSAGES.noChange;
-            const duration = hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS;
-            const type = hasError ? 'error' : 'success';
-            if (toastId) {
-                toast.updateToast(toastId, { message, type, duration });
-            } else if (hasError) {
-                toast.error(message, duration);
-            } else {
-                toast.success(message, duration);
+            const outcome = await runExperiencePolish(state.editingDraft, jdText, toast, helpers);
+            if (outcome.status !== 'applied' || !outcome.nextDraft) {
+                return;
             }
-            trackAiPolishResult({
-                source: 'resume_editor',
-                field: 'all',
-                action,
-                durationMs: Date.now() - startTime,
-            });
+            state.setEditingDraft((prev) => (prev ? outcome.nextDraft ?? prev : prev));
+        } finally {
+            state.setIsPolishing(false);
+        }
+    };
+
+    const handlePolishExperienceById = async (id: string) => {
+        if (state.isPolishing) {
+            return false;
+        }
+        const draft = resolveEditingExperienceDraft(domain, helpers, id);
+        if (!draft) {
+            return false;
+        }
+        const requestedEditSession = state.editSessionRef.current;
+        const requestedCollectionVersion = state.collectionVersionRef.current;
+        state.setIsPolishing(true);
+        try {
+            const outcome = await runExperiencePolish(draft, jdText, toast, helpers);
+            if (outcome.status !== 'applied' || !outcome.nextDraft) {
+                return false;
+            }
+            if (requestedCollectionVersion !== state.collectionVersionRef.current) {
+                return false;
+            }
+            if (requestedEditSession !== state.editSessionRef.current) {
+                return false;
+            }
+            advanceExperienceEditSession(state.editSessionRef);
+            state.setEditingExpId(id);
+            state.setEditingDraft(outcome.nextDraft);
+            state.setSyncToMaster(false);
+            return true;
+        } finally {
             state.setIsPolishing(false);
         }
     };
@@ -1061,6 +1145,7 @@ const createExperienceSaveHandlers = (
     return {
         handleSaveExperience,
         handlePolishWithJD,
+        handlePolishExperienceById,
     };
 };
 
@@ -1104,6 +1189,7 @@ const createExperienceDeleteHandlers = (
         try {
             await runWithFlag(id, state.deletingExperienceIds, state.setDeletingExperienceIds, async () => {
                 await experienceService.delete(id);
+                advanceExperienceCollectionVersion(state.collectionVersionRef);
                 domain.setItems((prev) => prev.filter((item) => item.id !== id));
                 domain.setSourceMap((prev) => deleteMapEntry(prev, id));
                 domain.setResumeMap((prev) => deleteMapEntry(prev, id));
@@ -2191,6 +2277,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
             updateEditingDate: editHandlers.updateEditingDate,
             handleSaveExperience: saveHandlers.handleSaveExperience,
             handlePolishWithJD: saveHandlers.handlePolishWithJD,
+            handlePolishExperienceById: saveHandlers.handlePolishExperienceById,
             requestDeleteExperience: deleteHandlers.requestDeleteExperience,
         },
         education: {

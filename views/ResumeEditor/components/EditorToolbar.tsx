@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText } from 'lucide-react';
+import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus } from 'lucide-react';
 
 type EditorToolbarProps = {
     isDarkMode: boolean;
@@ -9,6 +9,8 @@ type EditorToolbarProps = {
     isSmartPageApplied: boolean;
     onAdjustToSinglePage: () => void;
     onRestoreDefault: () => void;
+    isCreatingResume: boolean;
+    onCreateResume: () => void;
     resumeName: string;
     onResumeNameChange: (name: string) => void;
     onExportPdf: () => void;
@@ -44,6 +46,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     isSmartPageApplied,
     onAdjustToSinglePage,
     onRestoreDefault,
+    isCreatingResume,
+    onCreateResume,
     resumeName,
     onResumeNameChange,
     onExportPdf,
@@ -99,7 +103,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                 </div>
                 <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-500">简历工厂 / Resume Factory</span>
+                    <span className="text-sm font-medium text-gray-500">简历工厂</span>
                 </div>
                 <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
                 <div className="flex items-center gap-2">
@@ -137,6 +141,15 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                 </div>
             </div>
             <div className="flex items-center gap-4">
+                <button
+                    className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors disabled:opacity-60"
+                    onClick={onCreateResume}
+                    type="button"
+                    disabled={isCreatingResume}
+                >
+                    <Plus className="w-4 h-4" />
+                    {isCreatingResume ? '新增中...' : '新增简历'}
+                </button>
                 <button
                     onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
                     className={smartPageButtonClass}

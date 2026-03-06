@@ -42,6 +42,10 @@ type SelectionResolver = (ids?: string[]) => Set<string>;
 type SectionOrderNormalizer = (order?: string[]) => string[];
 type ProfileSyncResolver = (config?: ResumeEditorConfig, profile?: Profile | null) => ProfileSyncMode;
 type ProfileSnapshotResolver = (config?: ResumeEditorConfig, profile?: Profile | null) => ResumeEditorProfile;
+type ReloadedResumeContext = {
+    profile: ResumeEditorProfile;
+    profileSyncMode: ProfileSyncMode;
+};
 
 type UseResumeDataOptions = {
     configSnapshot: ResumeEditorConfig;
@@ -92,6 +96,10 @@ type UseResumeDataResult = {
     saveState: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
     lastSavedAt: string | null;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
+    flushResumeConfig: (configOverride?: ResumeEditorConfig) => Promise<void>;
+    reloadResumeContext: (resumeId?: string | null) => Promise<ReloadedResumeContext | null>;
+    suppressAutoSaveForConfig: (config: ResumeEditorConfig) => void;
+    clearSuppressedAutoSave: () => void;
 };
 
 type ResumeState = {
@@ -111,8 +119,12 @@ type ResumeState = {
     setSaveState: Dispatch<SetStateAction<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>>;
     lastSavedAt: string | null;
     setLastSavedAt: Dispatch<SetStateAction<string | null>>;
+    latestSaveStateRef: MutableRefObject<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>;
+    latestLastSavedAtRef: MutableRefObject<string | null>;
     lastSavedConfigRef: MutableRefObject<string | null>;
     hasHydratedConfigRef: MutableRefObject<boolean>;
+    shouldWaitForDebouncedConfigRef: MutableRefObject<boolean>;
+    suppressedAutoSaveSignatureRef: MutableRefObject<string | null>;
 };
 
 const resolveCachedResume = async (cachedId: string): Promise<CachedResumeResolveResult> => {
@@ -159,6 +171,15 @@ const resolveActiveResumeContext = async (): Promise<ActiveResumeContext> => {
     const resumes = await resumeService.list();
     const id = await ensureActiveResumeId(resumes);
     return { id, detail: null };
+};
+
+const resolveRequestedResumeContext = async (
+    requestedId?: string | null
+): Promise<ActiveResumeContext> => {
+    if (requestedId) {
+        return { id: requestedId, detail: null };
+    }
+    return resolveActiveResumeContext();
 };
 
 const fetchExperiences = async () => {
@@ -499,25 +520,38 @@ const useResumeContextLoader = (
     applyExperienceState: (detail: ResumeDetail | null, items: ExperienceListItem[], config: ResumeEditorConfig) => void,
     applyEducationState: (items: ExperienceListItem[], config: ResumeEditorConfig) => void,
     applyCertificationState: (items: CertificationRecord[], config: ResumeEditorConfig) => void,
-    applySkillState: (items: UserSkill[], config: ResumeEditorConfig) => void
+    applySkillState: (items: UserSkill[], config: ResumeEditorConfig) => void,
+    resolveProfileSyncMode: ProfileSyncResolver,
+    resolveProfileSnapshot: ProfileSnapshotResolver
 ) => {
     const {
         setIsLoadingResume,
         setIsLoadingExperiences,
         setResumeId,
+        setSaveState,
+        setLastSavedAt,
+        latestSaveStateRef,
+        latestLastSavedAtRef,
         hasHydratedConfigRef,
+        lastSavedConfigRef,
+        shouldWaitForDebouncedConfigRef,
     } = state;
-    useEffect(() => {
-        let cancelled = false;
-        const loadResumeContext = async () => {
+    const reloadResumeContext = useCallback(
+        async (requestedId?: string | null) => {
+            const previousHydrated = hasHydratedConfigRef.current;
+            const previousSaveState = latestSaveStateRef.current;
+            const previousLastSavedAt = latestLastSavedAtRef.current;
             setIsLoadingResume(true);
             setIsLoadingExperiences(true);
+            hasHydratedConfigRef.current = false;
+            shouldWaitForDebouncedConfigRef.current = true;
+            setSaveState('idle');
+            setLastSavedAt(null);
             try {
-                const { id: activeId, detail: cachedDetail } = await resolveActiveResumeContext();
-                if (!activeId || cancelled) {
+                const { id: activeId, detail: cachedDetail } = await resolveRequestedResumeContext(requestedId);
+                if (!activeId) {
                     return;
                 }
-                setResumeId(activeId);
                 const [
                     detail,
                     profileData,
@@ -533,31 +567,65 @@ const useResumeContextLoader = (
                     fetchCertifications(),
                     fetchSkills(),
                 ]);
-                if (cancelled) {
-                    return;
-                }
                 const config = (detail?.resume?.config || {}) as ResumeEditorConfig;
+                const resolvedProfileSyncMode = resolveProfileSyncMode(config, profileData || undefined);
+                const resolvedProfile = resolveProfileSnapshot(config, profileData || undefined);
                 applyResumeConfig(config, profileData);
                 applyExperienceState(detail, experiences, config);
                 applyEducationState(educationExperiences, config);
                 applyCertificationState(certifications, config);
                 applySkillState(skills, config);
+                updateLastSavedRef(lastSavedConfigRef, JSON.stringify(config));
+                setActiveResumeId(activeId);
+                setResumeId(activeId);
+                setSaveState('saved');
                 hasHydratedConfigRef.current = true;
+                return {
+                    profile: resolvedProfile,
+                    profileSyncMode: resolvedProfileSyncMode,
+                };
             } catch (error) {
                 console.error('[ResumeEditor] 加载简历上下文失败:', error);
-            } finally {
-                if (!cancelled) {
-                    setIsLoadingResume(false);
-                    setIsLoadingExperiences(false);
+                if (previousHydrated) {
+                    hasHydratedConfigRef.current = true;
+                    shouldWaitForDebouncedConfigRef.current = false;
+                    setSaveState(previousSaveState);
+                    setLastSavedAt(previousLastSavedAt);
+                } else {
+                    setSaveState('error');
                 }
+                return null;
+            } finally {
+                setIsLoadingResume(false);
+                setIsLoadingExperiences(false);
             }
-        };
-        loadResumeContext();
-        return () => {
-            cancelled = true;
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 只在组件挂载时加载一次简历上下文，避免依赖项变化导致的死循环
+        },
+        [
+            applyCertificationState,
+            applyEducationState,
+            applyExperienceState,
+            applyResumeConfig,
+            applySkillState,
+            hasHydratedConfigRef,
+            lastSavedConfigRef,
+            latestLastSavedAtRef,
+            latestSaveStateRef,
+            resolveProfileSnapshot,
+            resolveProfileSyncMode,
+            setIsLoadingExperiences,
+            setIsLoadingResume,
+            setLastSavedAt,
+            setResumeId,
+            setSaveState,
+            shouldWaitForDebouncedConfigRef,
+        ]
+    );
+
+    useEffect(() => {
+        void reloadResumeContext();
+    }, [reloadResumeContext]);
+
+    return reloadResumeContext;
 };
 
 const useResumeState = (): ResumeState => {
@@ -573,8 +641,12 @@ const useResumeState = (): ResumeState => {
     const [isLoadingResume, setIsLoadingResume] = useState(true);
     const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
     const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+    const latestSaveStateRef = useRef<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+    const latestLastSavedAtRef = useRef<string | null>(null);
     const lastSavedConfigRef = useRef<string | null>(null);
     const hasHydratedConfigRef = useRef(false);
+    const shouldWaitForDebouncedConfigRef = useRef(true);
+    const suppressedAutoSaveSignatureRef = useRef<string | null>(null);
 
     return {
         resumeId,
@@ -593,8 +665,12 @@ const useResumeState = (): ResumeState => {
         setSaveState,
         lastSavedAt,
         setLastSavedAt,
+        latestSaveStateRef,
+        latestLastSavedAtRef,
         lastSavedConfigRef,
         hasHydratedConfigRef,
+        shouldWaitForDebouncedConfigRef,
+        suppressedAutoSaveSignatureRef,
     };
 };
 
@@ -606,7 +682,9 @@ const useResumeAutoSave = (
     setSaveState: ResumeState['setSaveState'],
     setLastSavedAt: ResumeState['setLastSavedAt'],
     lastSavedConfigRef: MutableRefObject<string | null>,
-    hasHydratedConfigRef: MutableRefObject<boolean>
+    hasHydratedConfigRef: MutableRefObject<boolean>,
+    shouldWaitForDebouncedConfigRef: MutableRefObject<boolean>,
+    suppressedAutoSaveSignatureRef: MutableRefObject<string | null>
 ) => {
     const debouncedConfig = useDebounce(configSnapshot, autoSaveDelayMs);
     const debouncedConfigSignature = useMemo(
@@ -617,8 +695,19 @@ const useResumeAutoSave = (
         () => JSON.stringify(configSnapshot),
         [configSnapshot]
     );
+    const saveSessionRef = useRef(0);
 
     useEffect(() => {
+        saveSessionRef.current += 1;
+    }, [resumeId]);
+
+    useEffect(() => {
+        if (
+            suppressedAutoSaveSignatureRef.current
+            && configSignature !== suppressedAutoSaveSignatureRef.current
+        ) {
+            suppressedAutoSaveSignatureRef.current = null;
+        }
         if (!hasHydratedConfigRef.current) {
             return;
         }
@@ -630,24 +719,47 @@ const useResumeAutoSave = (
         } else if (configSignature === lastSavedConfigRef.current && saveState !== 'saving') {
             setSaveState('saved');
         }
-    }, [configSignature, saveState, lastSavedConfigRef, setSaveState, hasHydratedConfigRef]);
+    }, [
+        configSignature,
+        saveState,
+        lastSavedConfigRef,
+        setSaveState,
+        hasHydratedConfigRef,
+        suppressedAutoSaveSignatureRef,
+    ]);
 
     useEffect(() => {
         if (!resumeId || !hasHydratedConfigRef.current) {
             return;
         }
+        if (shouldWaitForDebouncedConfigRef.current) {
+            if (debouncedConfigSignature !== configSignature) {
+                return;
+            }
+            shouldWaitForDebouncedConfigRef.current = false;
+        }
+        if (debouncedConfigSignature === suppressedAutoSaveSignatureRef.current) {
+            return;
+        }
         if (debouncedConfigSignature === lastSavedConfigRef.current) {
             return;
         }
+        const sessionId = saveSessionRef.current;
         setSaveState('saving');
         resumeService
             .update(resumeId, { config: debouncedConfig })
             .then(() => {
+                if (sessionId !== saveSessionRef.current) {
+                    return;
+                }
                 updateLastSavedRef(lastSavedConfigRef, debouncedConfigSignature);
                 setSaveState('saved');
                 setLastSavedAt(new Date().toLocaleTimeString());
             })
             .catch((error) => {
+                if (sessionId !== saveSessionRef.current) {
+                    return;
+                }
                 console.error('[ResumeEditor] 自动保存失败:', error);
                 setSaveState('error');
             });
@@ -659,18 +771,67 @@ const useResumeAutoSave = (
         setSaveState,
         lastSavedConfigRef,
         hasHydratedConfigRef,
+        configSignature,
+        shouldWaitForDebouncedConfigRef,
+        suppressedAutoSaveSignatureRef,
+    ]);
+};
+
+const useResumeConfigFlusher = (
+    resumeId: string | null,
+    configSnapshot: ResumeEditorConfig,
+    setSaveState: ResumeState['setSaveState'],
+    setLastSavedAt: ResumeState['setLastSavedAt'],
+    lastSavedConfigRef: MutableRefObject<string | null>,
+    hasHydratedConfigRef: MutableRefObject<boolean>
+) => {
+    return useCallback(async (configOverride?: ResumeEditorConfig) => {
+        if (!resumeId || !hasHydratedConfigRef.current) {
+            return;
+        }
+        const nextConfig = configOverride ?? configSnapshot;
+        const configSignature = JSON.stringify(nextConfig);
+        if (configSignature === lastSavedConfigRef.current) {
+            return;
+        }
+        setSaveState('saving');
+        try {
+            await resumeService.update(resumeId, { config: nextConfig });
+            updateLastSavedRef(lastSavedConfigRef, configSignature);
+            setSaveState('saved');
+            setLastSavedAt(new Date().toLocaleTimeString());
+        } catch (error) {
+            console.error('[ResumeEditor] 手动保存当前简历失败:', error);
+            setSaveState('error');
+            throw error;
+        }
+    }, [
+        configSnapshot,
+        hasHydratedConfigRef,
+        lastSavedConfigRef,
+        resumeId,
+        setLastSavedAt,
+        setSaveState,
     ]);
 };
 
 
 export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResult => {
     const state = useResumeState();
+    useEffect(() => {
+        state.latestSaveStateRef.current = state.saveState;
+        state.latestLastSavedAtRef.current = state.lastSavedAt;
+    }, [state.lastSavedAt, state.latestLastSavedAtRef, state.latestSaveStateRef, state.saveState]);
     const applyResumeDetail = useCallback(
         (detail: ResumeDetail | null) => {
             state.setResumeDetail(detail);
             state.setResumeExperienceMap(options.buildResumeExperienceMap(detail));
         },
-        [options.buildResumeExperienceMap, state]
+        [
+            options.buildResumeExperienceMap,
+            state.setResumeDetail,
+            state.setResumeExperienceMap,
+        ]
     );
 
     const applyResumeConfig = useResumeConfigApplier(options);
@@ -678,13 +839,15 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     const applyEducationState = useEducationStateApplier(options);
     const applyCertificationState = useCertificationStateApplier(options);
     const applySkillState = useSkillStateApplier(options);
-    useResumeContextLoader(
+    const reloadResumeContext = useResumeContextLoader(
         state,
         applyResumeConfig,
         applyExperienceState,
         applyEducationState,
         applyCertificationState,
-        applySkillState
+        applySkillState,
+        options.resolveProfileSyncMode,
+        options.resolveProfileSnapshot
     );
     useResumeAutoSave(
         state.resumeId,
@@ -694,8 +857,24 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         state.setSaveState,
         state.setLastSavedAt,
         state.lastSavedConfigRef,
+        state.hasHydratedConfigRef,
+        state.shouldWaitForDebouncedConfigRef,
+        state.suppressedAutoSaveSignatureRef
+    );
+    const flushResumeConfig = useResumeConfigFlusher(
+        state.resumeId,
+        options.configSnapshot,
+        state.setSaveState,
+        state.setLastSavedAt,
+        state.lastSavedConfigRef,
         state.hasHydratedConfigRef
     );
+    const suppressAutoSaveForConfig = useCallback((config: ResumeEditorConfig) => {
+        state.suppressedAutoSaveSignatureRef.current = JSON.stringify(config);
+    }, [state.suppressedAutoSaveSignatureRef]);
+    const clearSuppressedAutoSave = useCallback(() => {
+        state.suppressedAutoSaveSignatureRef.current = null;
+    }, [state.suppressedAutoSaveSignatureRef]);
 
     return {
         resumeId: state.resumeId,
@@ -709,5 +888,9 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         saveState: state.saveState,
         lastSavedAt: state.lastSavedAt,
         applyResumeDetail,
+        flushResumeConfig,
+        reloadResumeContext,
+        suppressAutoSaveForConfig,
+        clearSuppressedAutoSave,
     };
 };
