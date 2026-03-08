@@ -11,6 +11,7 @@ from ...config import load_settings
 from .prompts import (
     BOSS_GREETING_GENERATION,
     JD_ANALYSIS,
+    JD_ANALYSIS_IMAGE,
     STAR_POLISH,
     TAG_GENERATION,
 )
@@ -209,7 +210,7 @@ def _log_http_success(response: httpx.Response, model: str, message_count: int) 
     )
 
 
-async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> Dict[str, Any]:
+async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> Dict[str, Any]:
     payload = {
         "model": settings.ai_model,
         "messages": messages,
@@ -231,7 +232,7 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
     return {"content": content}
 
 
-async def call_llm_json(messages: List[Dict[str, str]]) -> Dict[str, Any]:
+async def call_llm_json(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     return await _call_llm(messages, json_mode=True)
 
 
@@ -267,6 +268,79 @@ async def analyze_jd(
                 f"{previous_payload}"
             ),
         },
+    ]
+    result = await _call_llm(messages, json_mode=True)
+    skill_ids = _extract_skill_ids(resume_text)
+    return _ensure_skill_matches(result, skill_ids)
+
+
+def _build_image_jd_user_message(
+    image_b64: str,
+    mime_type: str,
+    resume_payload: str,
+    experience_payload: str,
+    previous_payload: str,
+    previous_experience_payload: str,
+    jd_text: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    构建包含图像 part 的 multimodal user message。
+    图像以 base64 data URL 内嵌，模型可直接读取图像中的 JD 内容。
+    """
+    text_context = (
+        f"Supplementary JD Text:\n{jd_text or 'None'}\n\n"
+        f"Resume Content:\n{resume_payload}\n\n"
+        f"Current Experience Content:\n{experience_payload}\n\n"
+        f"Previous Experience Content:\n{previous_experience_payload}\n\n"
+        f"Previous Result:\n{previous_payload}"
+    )
+    return {
+        "role": "user",
+        "content": [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{image_b64}"
+                },
+            },
+            {"type": "text", "text": text_context},
+        ],
+    }
+
+
+async def analyze_jd_with_image(
+    image_b64: str,
+    mime_type: str,
+    resume_text: Optional[str] = None,
+    prev_result: Optional[Dict[str, Any]] = None,
+    experience_text: Optional[str] = None,
+    jd_text: Optional[str] = None,
+    prev_experience_text: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Vision 路径：将 JD 图像以 base64 内嵌到 multimodal message，
+    由模型一次完成 OCR + 分析，无需额外 OCR 服务。
+    """
+    resume_payload = resume_text or "Resume content not provided."
+    experience_payload = experience_text or "Experience content not provided."
+    previous_payload = (
+        json.dumps(prev_result, ensure_ascii=False)
+        if prev_result
+        else "None"
+    )
+    previous_experience_payload = prev_experience_text or "None"
+    user_message = _build_image_jd_user_message(
+        image_b64,
+        mime_type,
+        resume_payload,
+        experience_payload,
+        previous_payload,
+        previous_experience_payload,
+        jd_text,
+    )
+    messages: List[Dict[str, Any]] = [
+        {"role": "system", "content": JD_ANALYSIS_IMAGE},
+        user_message,
     ]
     result = await _call_llm(messages, json_mode=True)
     skill_ids = _extract_skill_ids(resume_text)
@@ -322,3 +396,4 @@ async def generate_boss_greeting(
     ]
     result = await _call_llm(messages, json_mode=True)
     return _normalize_greeting_result(result)
+

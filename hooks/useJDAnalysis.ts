@@ -151,6 +151,49 @@ const buildAnalyzeSignature = (
   });
 };
 
+type JDAttachmentDescriptor = Pick<File, "name" | "size" | "lastModified" | "type">;
+
+const buildAttachmentSignature = (file: JDAttachmentDescriptor | null) => {
+  if (!file) {
+    return null;
+  }
+  return canonicalStringify({
+    name: file.name,
+    size: file.size,
+    lastModified: file.lastModified,
+    type: file.type,
+  });
+};
+
+const buildPersistedJDInputSignature = (
+  jdText: string,
+  inputMode?: "text" | "attachment",
+  attachmentName?: string
+) => {
+  const textSignature = buildJDTextSignature(jdText);
+  if (inputMode === "attachment") {
+    return canonicalStringify({
+      inputMode,
+      textSignature,
+      attachmentSignature: attachmentName ?? "__missing_attachment__",
+    });
+  }
+  return canonicalStringify({
+    inputMode: "text",
+    textSignature,
+    attachmentSignature: null,
+  });
+};
+
+const buildJDInputSignature = (
+  jdText: string,
+  file: JDAttachmentDescriptor | null
+) => canonicalStringify({
+  inputMode: file ? "attachment" : "text",
+  textSignature: buildJDTextSignature(jdText),
+  attachmentSignature: buildAttachmentSignature(file),
+});
+
 const buildSignatureMap = <T extends { id: string }>(items: T[]) => {
   const map: Record<string, string> = {};
   items.forEach((item) => {
@@ -254,7 +297,7 @@ const resolveTrend = (
 const shouldResetTrendBase = (
   mode: MatchUpdateMode,
   context: JDAnalysisContext | null,
-  currentJdSignature: string
+  currentJdInputSignature: string
 ) => {
   if (mode !== "full") {
     return false;
@@ -262,7 +305,7 @@ const shouldResetTrendBase = (
   if (!context) {
     return true;
   }
-  return context.jdTextSignature !== currentJdSignature;
+  return context.jdInputSignature !== currentJdInputSignature;
 };
 
 const buildPrevResultPayload = (result: JDAnalysisResult | null) => {
@@ -504,11 +547,15 @@ type UseJDAnalysisOptions = {
 type JDAnalyzeOutcome =
   | { status: "success"; result: JDAnalysisResult }
   | { status: "no_change" }
+  | { status: "missing_attachment" }
   | { status: "error" };
 
 type UseJDAnalysisResult = {
   jdText: string;
   setJdText: Dispatch<SetStateAction<string>>;
+  /** 当前已选的 JD 附件（图像或 PDF/DOCX），null 表示文本输入模式 */
+  jdFile: File | null;
+  setJdFile: Dispatch<SetStateAction<File | null>>;
   analysisResult: JDAnalysisResult | null;
   isAnalyzing: boolean;
   isJDCollapsed: boolean;
@@ -537,6 +584,12 @@ export const useJDAnalysis = ({
   authUserKey,
 }: UseJDAnalysisOptions): UseJDAnalysisResult => {
   const [jdText, setJdText] = useState(DEFAULT_JD_TEXT);
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const jdFileRef = useRef<File | null>(null);
+  const [restoredAttachmentContext, setRestoredAttachmentContext] = useState<{
+    jdText: string;
+    jdInputSignature: string;
+  } | null>(null);
   const [analysisResult, setAnalysisResult] = useState<JDAnalysisResult | null>(
     null
   );
@@ -569,6 +622,11 @@ export const useJDAnalysis = ({
   const jdTextRef = useRef(jdText);
 
   useEffect(() => {
+    jdFileRef.current = jdFile;
+  }, [jdFile]);
+
+
+  useEffect(() => {
     experienceItemsRef.current = experienceItems;
   }, [experienceItems]);
 
@@ -588,19 +646,29 @@ export const useJDAnalysis = ({
     () => buildAnalyzeSignature(experienceItems, certifications, skillGroups),
     [certifications, experienceItems, skillGroups]
   );
-  const jdTextSignature = useMemo(
-    () => buildJDTextSignature(jdText),
-    [jdText]
+  const liveJdInputSignature = useMemo(
+    () => buildJDInputSignature(jdText, jdFile),
+    [jdFile, jdText]
   );
+  const jdInputSignature = useMemo(() => {
+    if (
+      !jdFile &&
+      restoredAttachmentContext &&
+      restoredAttachmentContext.jdText === jdText
+    ) {
+      return restoredAttachmentContext.jdInputSignature;
+    }
+    return liveJdInputSignature;
+  }, [jdFile, jdText, liveJdInputSignature, restoredAttachmentContext]);
 
   const isOutdated = useMemo(() => {
     if (!analysisResult || !analysisContext) {
       return true;
     }
     return (
-      analysisContext.jdTextSignature !== jdTextSignature || needsReanalysis
+      analysisContext.jdInputSignature !== jdInputSignature || needsReanalysis
     );
-  }, [analysisContext, analysisResult, jdTextSignature, needsReanalysis]);
+  }, [analysisContext, analysisResult, jdInputSignature, needsReanalysis]);
 
   const applyExperienceMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
@@ -753,7 +821,11 @@ export const useJDAnalysis = ({
   );
 
   const resetJDAnalysisState = useCallback(
-    (options?: { resetJdText?: boolean; clearCache?: boolean }) => {
+    (options?: {
+      resetJdText?: boolean;
+      resetJdFile?: boolean;
+      clearCache?: boolean;
+    }) => {
       setAnalysisResult(null);
       setAnalysisContext(null);
       setIsJDCollapsed(false);
@@ -769,6 +841,10 @@ export const useJDAnalysis = ({
       applySkillMatchTrends();
       if (options?.resetJdText) {
         setJdText(DEFAULT_JD_TEXT);
+      }
+      if (options?.resetJdFile) {
+        setJdFile(null);
+        setRestoredAttachmentContext(null);
       }
       if (options?.clearCache && resumeId) {
         clearJDAnalysisCache(resumeId);
@@ -789,17 +865,21 @@ export const useJDAnalysis = ({
     if (!analysisContext || !resumeId) {
       return;
     }
-    if (analysisContext.jdTextSignature !== jdTextSignature) {
+    if (analysisContext.jdInputSignature !== jdInputSignature) {
       resetJDAnalysisState({ clearCache: true });
     }
-  }, [analysisContext, jdTextSignature, resetJDAnalysisState, resumeId]);
+  }, [analysisContext, jdInputSignature, resetJDAnalysisState, resumeId]);
 
   useEffect(() => {
     if (!resumeId) {
       return;
     }
     hasLoadedJdCacheRef.current = false;
-    resetJDAnalysisState({ resetJdText: true, clearCache: false });
+    resetJDAnalysisState({
+      resetJdText: true,
+      resetJdFile: true,
+      clearCache: false,
+    });
   }, [resetJDAnalysisState, resumeId]);
 
   useEffect(() => {
@@ -816,14 +896,29 @@ export const useJDAnalysis = ({
         certifications: cachedSignatures.certifications || {},
         skills: cachedSignatures.skills || {},
       };
+      const cachedJdInputSignature =
+        cached.jdInputSignature
+        ?? buildPersistedJDInputSignature(
+          cached.jdText,
+          cached.inputMode,
+          cached.attachmentName
+        );
       setJdText(cached.jdText);
       setAnalysisResult(cached.result);
       setAnalysisContext({
-        jdTextSignature: buildJDTextSignature(cached.jdText),
+        jdInputSignature: cachedJdInputSignature,
         experienceSignature: cached.experienceSignature,
         itemSignatures: validatedSignatures,
         experienceText: cached.experienceText,
       });
+      setRestoredAttachmentContext(
+        cached.inputMode === "attachment"
+          ? {
+            jdText: cached.jdText,
+            jdInputSignature: cachedJdInputSignature,
+          }
+          : null
+      );
       const cachedSkillMatches = cached.result.skillMatches ?? [];
       applyExperienceMatchScores(cached.result.experienceMatches);
       applyExperienceMatchTrends(cached.result.experienceMatches);
@@ -848,6 +943,16 @@ export const useJDAnalysis = ({
     isLoadingExperiences,
     resumeId,
   ]);
+
+  useEffect(() => {
+    if (!restoredAttachmentContext) {
+      return;
+    }
+    if (!jdFile) {
+      return;
+    }
+    setRestoredAttachmentContext(null);
+  }, [jdFile, restoredAttachmentContext]);
 
   useEffect(() => {
     if (!analysisContext || !resumeId) {
@@ -920,9 +1025,11 @@ export const useJDAnalysis = ({
     result: JDAnalysisResult;
     itemSignatures: JDAnalysisItemSignatures;
     experienceSignature: string;
-    jdTextSignature: string;
+    jdInputSignature: string;
     jdText: string;
     experienceText: string;
+    inputMode: "text" | "attachment";
+    attachmentName?: string;
   };
 
   type AnalyzeSnapshot = {
@@ -930,10 +1037,13 @@ export const useJDAnalysis = ({
     certifications: CertificationView[];
     skillGroups: SkillGroupView[];
     jdText: string;
+    jdFile: File | null;
     itemSignatures: JDAnalysisItemSignatures;
     experienceSignature: string;
-    jdTextSignature: string;
+    jdInputSignature: string;
     experienceText: string;
+    inputMode: "text" | "attachment";
+    attachmentName?: string;
   };
 
   const clearStaleExperienceIds = useCallback((targetIds: Set<string>) => {
@@ -952,13 +1062,15 @@ export const useJDAnalysis = ({
       result,
       itemSignatures,
       experienceSignature: nextExperienceSignature,
-      jdTextSignature: nextJdTextSignature,
+      jdInputSignature: nextJdInputSignature,
       jdText: nextJdText,
       experienceText: nextExperienceText,
+      inputMode,
+      attachmentName,
     }: AnalysisStatePayload) => {
       setAnalysisResult(result);
       setAnalysisContext({
-        jdTextSignature: nextJdTextSignature,
+        jdInputSignature: nextJdInputSignature,
         experienceSignature: nextExperienceSignature,
         itemSignatures,
         experienceText: nextExperienceText,
@@ -966,10 +1078,13 @@ export const useJDAnalysis = ({
       if (resumeId) {
         saveJDAnalysisCache(resumeId, {
           jdText: nextJdText,
+          jdInputSignature: nextJdInputSignature,
           experienceSignature: nextExperienceSignature,
           result,
           itemSignatures,
           experienceText: nextExperienceText,
+          inputMode,
+          attachmentName,
         });
       }
     },
@@ -982,11 +1097,13 @@ export const useJDAnalysis = ({
       certifications: certificationsRef.current,
       skillGroups: skillGroupsRef.current,
       jdText: jdTextRef.current,
+      jdFile: jdFileRef.current,
     };
   }, []);
 
   const buildAnalyzeSnapshot = useCallback((): AnalyzeSnapshot => {
     const snapshot = getAnalysisSnapshot();
+    const inputMode = snapshot.jdFile ? "attachment" : "text";
     return {
       ...snapshot,
       itemSignatures: buildJDItemSignatures(
@@ -999,8 +1116,10 @@ export const useJDAnalysis = ({
         snapshot.certifications,
         snapshot.skillGroups
       ),
-      jdTextSignature: buildJDTextSignature(snapshot.jdText),
+      jdInputSignature: buildJDInputSignature(snapshot.jdText, snapshot.jdFile),
       experienceText: buildExperienceTextSnapshot(snapshot.experiences),
+      inputMode,
+      attachmentName: snapshot.jdFile?.name,
     };
   }, [getAnalysisSnapshot]);
 
@@ -1133,13 +1252,24 @@ export const useJDAnalysis = ({
           mode === "partial" ? buildPrevResultPayload(analysisResult) : undefined;
         const shouldUsePrev =
           mode === "partial" && Boolean(prevExperienceText) && Boolean(prevResultPayload);
-        const result = await aiService.analyzeJD({
-          text: startSnapshot.jdText,
-          resumeText,
-          prevResult: shouldUsePrev ? prevResultPayload : undefined,
-          experienceText: startSnapshot.experienceText,
-          prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-        });
+        // 附件优先：有文件时使用附件路径（vision 或文档文本提取）
+        const currentFile = startSnapshot.jdFile;
+        const result = currentFile
+          ? await aiService.analyzeJDWithAttachment({
+            file: currentFile,
+            jdText: startSnapshot.jdText,
+            resumeText,
+            experienceText: startSnapshot.experienceText,
+            prevResult: shouldUsePrev ? prevResultPayload : undefined,
+            prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
+          })
+          : await aiService.analyzeJD({
+            text: startSnapshot.jdText,
+            resumeText,
+            prevResult: shouldUsePrev ? prevResultPayload : undefined,
+            experienceText: startSnapshot.experienceText,
+            prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
+          });
         const latestSnapshot = buildAnalyzeSnapshot();
         const changedDuringAnalyze = recordPostAnalyzeDiff(
           startSnapshot.itemSignatures,
@@ -1158,7 +1288,7 @@ export const useJDAnalysis = ({
         const resetTrendBase = shouldResetTrendBase(
           mode,
           analysisContext,
-          startSnapshot.jdTextSignature
+          startSnapshot.jdInputSignature
         );
         const trendBaseResult = resetTrendBase ? null : analysisResult;
         const stabilizedResult = stabilizeAnalysisResult(
@@ -1174,9 +1304,11 @@ export const useJDAnalysis = ({
           result: finalResult,
           itemSignatures: startSnapshot.itemSignatures,
           experienceSignature: startSnapshot.experienceSignature,
-          jdTextSignature: startSnapshot.jdTextSignature,
+          jdInputSignature: startSnapshot.jdInputSignature,
           jdText: startSnapshot.jdText,
           experienceText: startSnapshot.experienceText,
+          inputMode: startSnapshot.inputMode,
+          attachmentName: startSnapshot.attachmentName,
         });
         updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
         if (mode === "full") {
@@ -1210,7 +1342,7 @@ export const useJDAnalysis = ({
     ]
   );
 
-  const handleAnalyze = useCallback(async () => {
+  const handleAnalyze = useCallback(async (): Promise<JDAnalyzeOutcome> => {
     const snapshot = buildAnalyzeSnapshot();
     const contextDiff = buildDiffFromContext(
       analysisContext,
@@ -1220,15 +1352,15 @@ export const useJDAnalysis = ({
       ? mergeDiffs(pendingDiffRef.current, contextDiff)
       : cloneDiff(pendingDiffRef.current);
     const hasPendingDiff = hasDiff(diffSnapshot);
-    const hasJdTextChanged =
-      analysisContext?.jdTextSignature !== snapshot.jdTextSignature;
+    const hasJdInputChanged =
+      analysisContext?.jdInputSignature !== snapshot.jdInputSignature;
     const hasPrevExperienceText =
       analysisContext?.experienceText !== undefined;
     const shouldSkipAnalyze =
       Boolean(analysisResult)
       && Boolean(analysisContext)
       && !hasPendingDiff
-      && !hasJdTextChanged;
+      && !hasJdInputChanged;
 
     if (shouldSkipAnalyze) {
       if (needsReanalysis) {
@@ -1240,10 +1372,16 @@ export const useJDAnalysis = ({
       return { status: "no_change" };
     }
     if (
+      !snapshot.jdFile &&
+      restoredAttachmentContext
+    ) {
+      return { status: "missing_attachment" };
+    }
+    if (
       analysisResult &&
       analysisContext &&
       hasPendingDiff &&
-      !hasJdTextChanged &&
+      !hasJdInputChanged &&
       hasPrevExperienceText
     ) {
       return runAnalyze({ mode: "partial", diff: diffSnapshot });
@@ -1255,12 +1393,15 @@ export const useJDAnalysis = ({
     buildAnalyzeSnapshot,
     buildDiffFromContext,
     needsReanalysis,
+    restoredAttachmentContext,
     runAnalyze,
   ]);
 
   return {
     jdText,
     setJdText,
+    jdFile,
+    setJdFile,
     analysisResult,
     isAnalyzing,
     isJDCollapsed,
@@ -1279,3 +1420,8 @@ export const useJDAnalysis = ({
     isOutdated,
   };
 };
+
+
+
+
+

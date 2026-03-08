@@ -4,6 +4,7 @@ import type { JDAnalysisResult } from '../../../services/aiService';
 import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
 import { normalizeJobKeywords } from '../helpers';
 import { MatchBadge } from './Badges';
+import JDAttachmentUploader from './JDAttachmentUploader';
 
 const JD_PANEL_CONTENT_ID = 'jd-analysis-panel-content';
 
@@ -16,6 +17,10 @@ type JDAnalysisPanelProps = {
     onToggleCollapse: () => void;
 
     onJdTextChange: (value: string) => void;
+    /** 当前已选的 JD 附件，null 为文字模式 */
+    jdFile: File | null;
+    /** 附件选取 / 清除回调 */
+    onFileChange: (file: File | null) => void;
     bossGreeting: string;
     isBossGreetingVisible: boolean;
     isBossGreetingOutdated: boolean;
@@ -125,8 +130,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     isCollapsed,
     onAnalyze,
     onToggleCollapse,
-
     onJdTextChange,
+    jdFile,
+    onFileChange,
     bossGreeting,
     isBossGreetingVisible,
     isBossGreetingOutdated,
@@ -226,16 +232,24 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                     </div>
                 ) : (
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                        {/* 附件上传入口 */}
+                        <JDAttachmentUploader
+                            file={jdFile}
+                            onFileChange={onFileChange}
+                            disabled={isAnalyzing}
+                        />
                         <div className="relative group">
                             <textarea
                                 className="w-full h-24 p-3 text-sm bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
-                                placeholder="在此粘贴职位要求 (Job Description)..."
+                                placeholder={jdFile
+                                    ? '可选：补充手动输入的 JD 文字说明...'
+                                    : '在此粘贴职位要求 (Job Description)...'}
                                 value={jdText}
                                 onChange={(e) => onJdTextChange(e.target.value)}
                             />
                             <button
                                 onClick={onAnalyze}
-                                disabled={isAnalyzing}
+                                disabled={isAnalyzing || (!jdFile && !jdText.trim())}
                                 className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[11.5px] font-bold px-2 disabled:opacity-60"
                             >
                                 <Wand2 className="w-3 h-3" />

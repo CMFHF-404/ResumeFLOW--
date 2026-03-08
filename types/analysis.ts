@@ -7,7 +7,7 @@ export type JDAnalysisItemSignatures = {
 export type MatchTrend = "up" | "same" | "down";
 
 export type JDAnalysisContext = {
-  jdTextSignature: string;
+  jdInputSignature: string;
   experienceSignature: string;
   itemSignatures: JDAnalysisItemSignatures;
   experienceText?: string;

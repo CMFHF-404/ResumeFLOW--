@@ -502,6 +502,28 @@ const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText: 
     return buildAutoResumeName(jobTitle, company);
 };
 
+const buildJDPolishContext = (
+    jdText: string,
+    analysisResult: JDAnalysisResult | null,
+    isOutdated: boolean
+) => {
+    const trimmedJdText = jdText.trim();
+    if (trimmedJdText) {
+        return trimmedJdText;
+    }
+    if (!analysisResult || isOutdated) {
+        return '';
+    }
+    const contextLines = [
+        analysisResult.jobTitle?.trim() ? `目标岗位：${analysisResult.jobTitle.trim()}` : '',
+        analysisResult.company?.trim() ? `目标公司：${analysisResult.company.trim()}` : '',
+        analysisResult.summary?.trim() ? `岗位摘要：${analysisResult.summary.trim()}` : '',
+        analysisResult.jobKeywords?.length ? `岗位关键词：${analysisResult.jobKeywords.join('、')}` : '',
+        analysisResult.missingKeywords?.length ? `重点补强：${analysisResult.missingKeywords.join('、')}` : '',
+    ].filter(Boolean);
+    return contextLines.join('\n');
+};
+
 const resolveSmartPageAvailableHeight = (a4Height: number, topPaddingPx: number) => {
     const pxPerMm = a4Height / A4_HEIGHT_MM;
     const bottomPaddingPx = pxPerMm * PREVIEW_PADDING_MM;
@@ -878,6 +900,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const {
         jdText,
         setJdText,
+        jdFile,
+        setJdFile,
         analysisResult,
         isAnalyzing,
         isJDCollapsed,
@@ -903,6 +927,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isLoadingExperiences,
         authUserKey,
     });
+    const jdPolishContext = useMemo(
+        () => buildJDPolishContext(jdText, analysisResult, isOutdated),
+        [analysisResult, isOutdated, jdText]
+    );
     const {
         confirmDialog,
         handleConfirmDelete,
@@ -914,7 +942,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selection,
     } = useExperienceActions({
         resumeId,
-        jdText,
+        jdText: jdPolishContext,
         toast: {
             success: showToastSuccess,
             error: showToastError,
@@ -1198,7 +1226,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         if (isAnalyzing) {
             return null;
         }
-        if (!jdText.trim()) {
+        if (!jdFile && !jdText.trim()) {
             showToastError(JD_ANALYSIS_TOAST_MESSAGES.empty, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
             return null;
         }
@@ -1217,10 +1245,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 }
                 return result.result;
             }
-            const isError = result.status === 'error';
-            const message = isError
-                ? JD_ANALYSIS_TOAST_MESSAGES.error
-                : JD_ANALYSIS_TOAST_MESSAGES.noChange;
+            const isError = result.status === 'error' || result.status === 'missing_attachment';
+            const message = result.status === 'missing_attachment'
+                ? JD_ANALYSIS_TOAST_MESSAGES.missingAttachment
+                : isError
+                    ? JD_ANALYSIS_TOAST_MESSAGES.error
+                    : JD_ANALYSIS_TOAST_MESSAGES.noChange;
             const duration = isError
                 ? JD_ANALYSIS_TOAST_ERROR_DURATION_MS
                 : JD_ANALYSIS_TOAST_DURATION_MS;
@@ -1249,6 +1279,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [
         handleAnalyze,
         isAnalyzing,
+        jdFile,
         jdText,
         showToastError,
         showToastLoading,
@@ -2292,7 +2323,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         if (isAutoAssembling) {
             return;
         }
-        if (!jdText.trim()) {
+        if (!analysisResult && !jdFile && !jdText.trim()) {
             showToastError(AUTO_ASSEMBLY_TOAST_MESSAGES.emptyJd);
             return;
         }
@@ -2321,11 +2352,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return;
             }
             if (!effectiveResult) {
-                updateToast(toastId, {
-                    message: AUTO_ASSEMBLY_TOAST_MESSAGES.analyzeFailed,
-                    type: 'error',
-                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
-                });
+                closeToast(toastId);
                 releaseActiveAutoAssembleToast();
                 return;
             }
@@ -2404,6 +2431,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         handleAnalyzeWithAutoName,
         isAutoAssembling,
         isOutdated,
+        jdFile,
         jdText,
         runAutoAssemblySelection,
         showToastError,
@@ -2437,7 +2465,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             setIsBossGreetingVisible((prev) => !prev);
             return;
         }
-        if (!jdText.trim()) {
+        if (!analysisResult && !jdFile && !jdText.trim()) {
             showToastError(BOSS_GREETING_TOAST_MESSAGES.empty);
             return;
         }
@@ -2463,7 +2491,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 releaseActiveBossGreetingToast();
                 return;
             }
-            if (!effectiveResult?.summary?.trim()) {
+            if (!effectiveResult) {
+                closeToast(toastId);
+                releaseActiveBossGreetingToast();
+                return;
+            }
+            if (!effectiveResult.summary?.trim()) {
                 updateToast(toastId, {
                     message: BOSS_GREETING_TOAST_MESSAGES.empty,
                     type: 'error',
@@ -2542,6 +2575,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isBossGreetingOutdated,
         isGeneratingBossGreeting,
         isOutdated,
+        jdFile,
         handleAnalyzeWithAutoName,
         jdText,
         resumeId,
@@ -2712,6 +2746,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         onAnalyze: handleAnalyzeWithAutoName,
                         onToggleCollapse: handleToggleJdCollapse,
                         onJdTextChange: setJdText,
+                        jdFile,
+                        onFileChange: setJdFile,
                         bossGreeting,
                         isBossGreetingVisible,
                         isBossGreetingOutdated,
@@ -2777,7 +2813,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     editingSuggestion={{
                         editingItem,
                         staleExperienceIds,
-                        jdText,
+                        jdText: jdPolishContext,
                         isPolishing: experience.isPolishing,
                         onPolish: experience.handlePolishWithJD,
                     }}
@@ -2839,5 +2875,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
 };
 export default ResumeEditor;
+
+
+
+
+
+
+
 
 

@@ -1,0 +1,1102 @@
+diff --git a/backend/app/domain/ai/ai_router.py b/backend/app/domain/ai/ai_router.py
+index c4c658d..2b97506 100644
+--- a/backend/app/domain/ai/ai_router.py
++++ b/backend/app/domain/ai/ai_router.py
+@@ -1,10 +1,18 @@
+ from typing import Any, Dict, Optional
+ 
+-from fastapi import APIRouter, Depends
++from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+ from pydantic import BaseModel
++from starlette.status import HTTP_400_BAD_REQUEST
+ 
+ from ...dependencies import get_current_user
+-from .ai_service import analyze_jd, generate_boss_greeting, generate_tags, polish_experience
++from .ai_service import (
++    analyze_jd,
++    analyze_jd_with_image,
++    generate_boss_greeting,
++    generate_tags,
++    polish_experience,
++)
++from . import jd_attachment_service
+ 
+ router = APIRouter(prefix="/api", tags=["ai"])
+ 
+@@ -77,3 +85,65 @@ async def generate_boss_greeting_endpoint(
+         payload.company,
+         payload.resume_text,
+     )
++
++
++@router.post("/analyze-jd-attachment", response_model=Dict[str, Any])
++async def analyze_jd_attachment_endpoint(
++    file: UploadFile = File(...),
++    jd_text: Optional[str] = Form(None),
++    resume_text: Optional[str] = Form(None),
++    experience_text: Optional[str] = Form(None),
++    prev_result: Optional[str] = Form(None),
++    prev_experience_text: Optional[str] = Form(None),
++    current_user=Depends(get_current_user),
++):
++    """
++    附件 JD 分析端点。
++    - 图像（jpg/png/webp）→ vision 路径，模型直接解读图像
++    - PDF/DOCX → 文本提取后走现有分析路径
++    """
++    try:
++        attachment = await jd_attachment_service.extract_jd_from_attachment(file)
++    except ValueError as exc:
++        raise HTTPException(
++            status_code=HTTP_400_BAD_REQUEST, detail=str(exc)
++        ) from exc
++
++    prev_result_dict: Optional[Dict[str, Any]] = None
++    if prev_result:
++        import json as _json
++        try:
++            prev_result_dict = _json.loads(prev_result)
++        except Exception:
++            prev_result_dict = None
++
++    supplemental_jd_text = (jd_text or "").strip()
++
++    if attachment.is_image:
++        return await analyze_jd_with_image(
++            image_b64=attachment.image_b64,
++            mime_type=attachment.mime_type,
++            resume_text=resume_text,
++            prev_result=prev_result_dict,
++            experience_text=experience_text,
++            prev_experience_text=prev_experience_text,
++            jd_text=supplemental_jd_text or None,
++        )
++
++    # 文本路径：将文档提取的文字与手动输入拼接
++    extracted_jd_text = (attachment.text or "").strip()
++    combined_jd_text = extracted_jd_text
++    if supplemental_jd_text:
++        combined_jd_text = (
++            f"{extracted_jd_text}\n\n补充 JD 说明：\n{supplemental_jd_text}"
++            if extracted_jd_text
++            else supplemental_jd_text
++        )
++    return await analyze_jd(
++        text=combined_jd_text,
++        resume_text=resume_text,
++        prev_result=prev_result_dict,
++        experience_text=experience_text,
++        prev_experience_text=prev_experience_text,
++    )
++
+diff --git a/backend/app/domain/ai/ai_service.py b/backend/app/domain/ai/ai_service.py
+index 62f622f..4133181 100644
+--- a/backend/app/domain/ai/ai_service.py
++++ b/backend/app/domain/ai/ai_service.py
+@@ -11,6 +11,7 @@ from ...config import load_settings
+ from .prompts import (
+     BOSS_GREETING_GENERATION,
+     JD_ANALYSIS,
++    JD_ANALYSIS_IMAGE,
+     STAR_POLISH,
+     TAG_GENERATION,
+ )
+@@ -209,7 +210,7 @@ def _log_http_success(response: httpx.Response, model: str, message_count: int)
+     )
+ 
+ 
+-async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> Dict[str, Any]:
++async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> Dict[str, Any]:
+     payload = {
+         "model": settings.ai_model,
+         "messages": messages,
+@@ -231,7 +232,7 @@ async def _call_llm(messages: List[Dict[str, str]], json_mode: bool = True) -> D
+     return {"content": content}
+ 
+ 
+-async def call_llm_json(messages: List[Dict[str, str]]) -> Dict[str, Any]:
++async def call_llm_json(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+     return await _call_llm(messages, json_mode=True)
+ 
+ 
+@@ -273,6 +274,79 @@ async def analyze_jd(
+     return _ensure_skill_matches(result, skill_ids)
+ 
+ 
++def _build_image_jd_user_message(
++    image_b64: str,
++    mime_type: str,
++    resume_payload: str,
++    experience_payload: str,
++    previous_payload: str,
++    previous_experience_payload: str,
++    jd_text: Optional[str] = None,
++) -> Dict[str, Any]:
++    """
++    构建包含图像 part 的 multimodal user message。
++    图像以 base64 data URL 内嵌，模型可直接读取图像中的 JD 内容。
++    """
++    text_context = (
++        f"Supplementary JD Text:\n{jd_text or 'None'}\n\n"
++        f"Resume Content:\n{resume_payload}\n\n"
++        f"Current Experience Content:\n{experience_payload}\n\n"
++        f"Previous Experience Content:\n{previous_experience_payload}\n\n"
++        f"Previous Result:\n{previous_payload}"
++    )
++    return {
++        "role": "user",
++        "content": [
++            {
++                "type": "image_url",
++                "image_url": {
++                    "url": f"data:{mime_type};base64,{image_b64}"
++                },
++            },
++            {"type": "text", "text": text_context},
++        ],
++    }
++
++
++async def analyze_jd_with_image(
++    image_b64: str,
++    mime_type: str,
++    resume_text: Optional[str] = None,
++    prev_result: Optional[Dict[str, Any]] = None,
++    experience_text: Optional[str] = None,
++    jd_text: Optional[str] = None,
++    prev_experience_text: Optional[str] = None,
++) -> Dict[str, Any]:
++    """
++    Vision 路径：将 JD 图像以 base64 内嵌到 multimodal message，
++    由模型一次完成 OCR + 分析，无需额外 OCR 服务。
++    """
++    resume_payload = resume_text or "Resume content not provided."
++    experience_payload = experience_text or "Experience content not provided."
++    previous_payload = (
++        json.dumps(prev_result, ensure_ascii=False)
++        if prev_result
++        else "None"
++    )
++    previous_experience_payload = prev_experience_text or "None"
++    user_message = _build_image_jd_user_message(
++        image_b64,
++        mime_type,
++        resume_payload,
++        experience_payload,
++        previous_payload,
++        previous_experience_payload,
++        jd_text,
++    )
++    messages: List[Dict[str, Any]] = [
++        {"role": "system", "content": JD_ANALYSIS_IMAGE},
++        user_message,
++    ]
++    result = await _call_llm(messages, json_mode=True)
++    skill_ids = _extract_skill_ids(resume_text)
++    return _ensure_skill_matches(result, skill_ids)
++
++
+ def _resolve_star_prompt(target_field: Optional[str]) -> str:
+     return STAR_POLISH
+ 
+@@ -322,3 +396,4 @@ async def generate_boss_greeting(
+     ]
+     result = await _call_llm(messages, json_mode=True)
+     return _normalize_greeting_result(result)
++
+diff --git a/backend/app/domain/ai/prompts.py b/backend/app/domain/ai/prompts.py
+index 97a8868..280e5c8 100644
+--- a/backend/app/domain/ai/prompts.py
++++ b/backend/app/domain/ai/prompts.py
+@@ -124,3 +124,36 @@ BOSS_GREETING_GENERATION = (
+     "6) stay within 120 Chinese characters when possible. "
+     "Return JSON only with key 'greeting'."
+ )
++
++JD_ANALYSIS_IMAGE = (
++    "You are an expert ATS analyzer. The user will provide an image containing a Job Description "
++    "and structured Resume content in JSON format. "
++    "First, read the job description directly from the image — treat the image as the authoritative "
++    "source of the JD text. If additional text is provided alongside the image, use it as "
++    "supplementary context only. "
++    "The resume content JSON has keys: "
++    "'experiences' (array of items with id, title, org, start_date, end_date, star), "
++    "'certifications' (array of items with id, name, issuer, issue_date), "
++    "and 'skills' (array of items with id, name, category). "
++    "Return JSON only with keys: "
++    "'matchPercentage' (0-100), 'missingKeywords' (array of 3-6 short strings), "
++    "'jobKeywords' (array of 3-8 short strings), "
++    "'jobTitle' (short string extracted from JD image, empty string if unknown), "
++    "'company' (short string extracted from JD image, empty string if unknown), "
++    "'summary' (1 sentence in Chinese, <=100 Chinese characters), "
++    "'experienceMatches' (array of objects with keys: "
++    "'id' (must match input experience id), 'score' (0-100), and "
++    "'reason' (Chinese, a single fluent sentence, total <=80 characters. "
++    "Be objective and do not force positives or negatives; only mention what is supported by the input. "
++    "If both strengths and shortcomings are present, mention strengths first and then shortcomings; "
++    "the shortcomings segment must be <=30 characters. "
++    "Do not start with labels like '亮点/不足' and avoid pure praise)), "
++    "'certificationMatches' (array of objects with keys: "
++    "'id' (must match input certification id), 'score' (0-100), and 'reason' (<=20 words)), "
++    "and 'skillMatches' (array of objects with keys: "
++    "'id' (must match input skill id), 'score' (0-100), and 'reason' (<=20 words)). "
++    "For skillMatches, you MUST return one entry for every input skill id; "
++    "if a skill does not match, still return it with score 0 and an empty reason. "
++    "If Previous Result is provided, use it as reference but judge changes based on actual fit; "
++    "always output absolute scores and do not apply artificial limits."
++)
+diff --git a/hooks/useJDAnalysis.ts b/hooks/useJDAnalysis.ts
+index f4be958..4836488 100644
+--- a/hooks/useJDAnalysis.ts
++++ b/hooks/useJDAnalysis.ts
+@@ -151,6 +151,49 @@ const buildAnalyzeSignature = (
+   });
+ };
+ 
++type JDAttachmentDescriptor = Pick<File, "name" | "size" | "lastModified" | "type">;
++
++const buildAttachmentSignature = (file: JDAttachmentDescriptor | null) => {
++  if (!file) {
++    return null;
++  }
++  return canonicalStringify({
++    name: file.name,
++    size: file.size,
++    lastModified: file.lastModified,
++    type: file.type,
++  });
++};
++
++const buildPersistedJDInputSignature = (
++  jdText: string,
++  inputMode?: "text" | "attachment",
++  attachmentName?: string
++) => {
++  const textSignature = buildJDTextSignature(jdText);
++  if (inputMode === "attachment") {
++    return canonicalStringify({
++      inputMode,
++      textSignature,
++      attachmentSignature: attachmentName ?? "__missing_attachment__",
++    });
++  }
++  return canonicalStringify({
++    inputMode: "text",
++    textSignature,
++    attachmentSignature: null,
++  });
++};
++
++const buildJDInputSignature = (
++  jdText: string,
++  file: JDAttachmentDescriptor | null
++) => canonicalStringify({
++  inputMode: file ? "attachment" : "text",
++  textSignature: buildJDTextSignature(jdText),
++  attachmentSignature: buildAttachmentSignature(file),
++});
++
+ const buildSignatureMap = <T extends { id: string }>(items: T[]) => {
+   const map: Record<string, string> = {};
+   items.forEach((item) => {
+@@ -254,7 +297,7 @@ const resolveTrend = (
+ const shouldResetTrendBase = (
+   mode: MatchUpdateMode,
+   context: JDAnalysisContext | null,
+-  currentJdSignature: string
++  currentJdInputSignature: string
+ ) => {
+   if (mode !== "full") {
+     return false;
+@@ -262,7 +305,7 @@ const shouldResetTrendBase = (
+   if (!context) {
+     return true;
+   }
+-  return context.jdTextSignature !== currentJdSignature;
++  return context.jdInputSignature !== currentJdInputSignature;
+ };
+ 
+ const buildPrevResultPayload = (result: JDAnalysisResult | null) => {
+@@ -504,11 +547,15 @@ type UseJDAnalysisOptions = {
+ type JDAnalyzeOutcome =
+   | { status: "success"; result: JDAnalysisResult }
+   | { status: "no_change" }
++  | { status: "missing_attachment" }
+   | { status: "error" };
+ 
+ type UseJDAnalysisResult = {
+   jdText: string;
+   setJdText: Dispatch<SetStateAction<string>>;
++  /** 当前已选的 JD 附件（图像或 PDF/DOCX），null 表示文本输入模式 */
++  jdFile: File | null;
++  setJdFile: Dispatch<SetStateAction<File | null>>;
+   analysisResult: JDAnalysisResult | null;
+   isAnalyzing: boolean;
+   isJDCollapsed: boolean;
+@@ -537,6 +584,12 @@ export const useJDAnalysis = ({
+   authUserKey,
+ }: UseJDAnalysisOptions): UseJDAnalysisResult => {
+   const [jdText, setJdText] = useState(DEFAULT_JD_TEXT);
++  const [jdFile, setJdFile] = useState<File | null>(null);
++  const jdFileRef = useRef<File | null>(null);
++  const [restoredAttachmentContext, setRestoredAttachmentContext] = useState<{
++    jdText: string;
++    jdInputSignature: string;
++  } | null>(null);
+   const [analysisResult, setAnalysisResult] = useState<JDAnalysisResult | null>(
+     null
+   );
+@@ -568,6 +621,11 @@ export const useJDAnalysis = ({
+   const skillGroupsRef = useRef(skillGroups);
+   const jdTextRef = useRef(jdText);
+ 
++  useEffect(() => {
++    jdFileRef.current = jdFile;
++  }, [jdFile]);
++
++
+   useEffect(() => {
+     experienceItemsRef.current = experienceItems;
+   }, [experienceItems]);
+@@ -588,19 +646,29 @@ export const useJDAnalysis = ({
+     () => buildAnalyzeSignature(experienceItems, certifications, skillGroups),
+     [certifications, experienceItems, skillGroups]
+   );
+-  const jdTextSignature = useMemo(
+-    () => buildJDTextSignature(jdText),
+-    [jdText]
++  const liveJdInputSignature = useMemo(
++    () => buildJDInputSignature(jdText, jdFile),
++    [jdFile, jdText]
+   );
++  const jdInputSignature = useMemo(() => {
++    if (
++      !jdFile &&
++      restoredAttachmentContext &&
++      restoredAttachmentContext.jdText === jdText
++    ) {
++      return restoredAttachmentContext.jdInputSignature;
++    }
++    return liveJdInputSignature;
++  }, [jdFile, jdText, liveJdInputSignature, restoredAttachmentContext]);
+ 
+   const isOutdated = useMemo(() => {
+     if (!analysisResult || !analysisContext) {
+       return true;
+     }
+     return (
+-      analysisContext.jdTextSignature !== jdTextSignature || needsReanalysis
++      analysisContext.jdInputSignature !== jdInputSignature || needsReanalysis
+     );
+-  }, [analysisContext, analysisResult, jdTextSignature, needsReanalysis]);
++  }, [analysisContext, analysisResult, jdInputSignature, needsReanalysis]);
+ 
+   const applyExperienceMatchScores = useCallback(
+     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
+@@ -753,7 +821,11 @@ export const useJDAnalysis = ({
+   );
+ 
+   const resetJDAnalysisState = useCallback(
+-    (options?: { resetJdText?: boolean; clearCache?: boolean }) => {
++    (options?: {
++      resetJdText?: boolean;
++      resetJdFile?: boolean;
++      clearCache?: boolean;
++    }) => {
+       setAnalysisResult(null);
+       setAnalysisContext(null);
+       setIsJDCollapsed(false);
+@@ -770,6 +842,10 @@ export const useJDAnalysis = ({
+       if (options?.resetJdText) {
+         setJdText(DEFAULT_JD_TEXT);
+       }
++      if (options?.resetJdFile) {
++        setJdFile(null);
++        setRestoredAttachmentContext(null);
++      }
+       if (options?.clearCache && resumeId) {
+         clearJDAnalysisCache(resumeId);
+       }
+@@ -789,17 +865,21 @@ export const useJDAnalysis = ({
+     if (!analysisContext || !resumeId) {
+       return;
+     }
+-    if (analysisContext.jdTextSignature !== jdTextSignature) {
++    if (analysisContext.jdInputSignature !== jdInputSignature) {
+       resetJDAnalysisState({ clearCache: true });
+     }
+-  }, [analysisContext, jdTextSignature, resetJDAnalysisState, resumeId]);
++  }, [analysisContext, jdInputSignature, resetJDAnalysisState, resumeId]);
+ 
+   useEffect(() => {
+     if (!resumeId) {
+       return;
+     }
+     hasLoadedJdCacheRef.current = false;
+-    resetJDAnalysisState({ resetJdText: true, clearCache: false });
++    resetJDAnalysisState({
++      resetJdText: true,
++      resetJdFile: true,
++      clearCache: false,
++    });
+   }, [resetJDAnalysisState, resumeId]);
+ 
+   useEffect(() => {
+@@ -816,14 +896,29 @@ export const useJDAnalysis = ({
+         certifications: cachedSignatures.certifications || {},
+         skills: cachedSignatures.skills || {},
+       };
++      const cachedJdInputSignature =
++        cached.jdInputSignature
++        ?? buildPersistedJDInputSignature(
++          cached.jdText,
++          cached.inputMode,
++          cached.attachmentName
++        );
+       setJdText(cached.jdText);
+       setAnalysisResult(cached.result);
+       setAnalysisContext({
+-        jdTextSignature: buildJDTextSignature(cached.jdText),
++        jdInputSignature: cachedJdInputSignature,
+         experienceSignature: cached.experienceSignature,
+         itemSignatures: validatedSignatures,
+         experienceText: cached.experienceText,
+       });
++      setRestoredAttachmentContext(
++        cached.inputMode === "attachment"
++          ? {
++            jdText: cached.jdText,
++            jdInputSignature: cachedJdInputSignature,
++          }
++          : null
++      );
+       const cachedSkillMatches = cached.result.skillMatches ?? [];
+       applyExperienceMatchScores(cached.result.experienceMatches);
+       applyExperienceMatchTrends(cached.result.experienceMatches);
+@@ -849,6 +944,16 @@ export const useJDAnalysis = ({
+     resumeId,
+   ]);
+ 
++  useEffect(() => {
++    if (!restoredAttachmentContext) {
++      return;
++    }
++    if (!jdFile) {
++      return;
++    }
++    setRestoredAttachmentContext(null);
++  }, [jdFile, restoredAttachmentContext]);
++
+   useEffect(() => {
+     if (!analysisContext || !resumeId) {
+       return;
+@@ -920,9 +1025,11 @@ export const useJDAnalysis = ({
+     result: JDAnalysisResult;
+     itemSignatures: JDAnalysisItemSignatures;
+     experienceSignature: string;
+-    jdTextSignature: string;
++    jdInputSignature: string;
+     jdText: string;
+     experienceText: string;
++    inputMode: "text" | "attachment";
++    attachmentName?: string;
+   };
+ 
+   type AnalyzeSnapshot = {
+@@ -930,10 +1037,13 @@ export const useJDAnalysis = ({
+     certifications: CertificationView[];
+     skillGroups: SkillGroupView[];
+     jdText: string;
++    jdFile: File | null;
+     itemSignatures: JDAnalysisItemSignatures;
+     experienceSignature: string;
+-    jdTextSignature: string;
++    jdInputSignature: string;
+     experienceText: string;
++    inputMode: "text" | "attachment";
++    attachmentName?: string;
+   };
+ 
+   const clearStaleExperienceIds = useCallback((targetIds: Set<string>) => {
+@@ -952,13 +1062,15 @@ export const useJDAnalysis = ({
+       result,
+       itemSignatures,
+       experienceSignature: nextExperienceSignature,
+-      jdTextSignature: nextJdTextSignature,
++      jdInputSignature: nextJdInputSignature,
+       jdText: nextJdText,
+       experienceText: nextExperienceText,
++      inputMode,
++      attachmentName,
+     }: AnalysisStatePayload) => {
+       setAnalysisResult(result);
+       setAnalysisContext({
+-        jdTextSignature: nextJdTextSignature,
++        jdInputSignature: nextJdInputSignature,
+         experienceSignature: nextExperienceSignature,
+         itemSignatures,
+         experienceText: nextExperienceText,
+@@ -966,10 +1078,13 @@ export const useJDAnalysis = ({
+       if (resumeId) {
+         saveJDAnalysisCache(resumeId, {
+           jdText: nextJdText,
++          jdInputSignature: nextJdInputSignature,
+           experienceSignature: nextExperienceSignature,
+           result,
+           itemSignatures,
+           experienceText: nextExperienceText,
++          inputMode,
++          attachmentName,
+         });
+       }
+     },
+@@ -982,11 +1097,13 @@ export const useJDAnalysis = ({
+       certifications: certificationsRef.current,
+       skillGroups: skillGroupsRef.current,
+       jdText: jdTextRef.current,
++      jdFile: jdFileRef.current,
+     };
+   }, []);
+ 
+   const buildAnalyzeSnapshot = useCallback((): AnalyzeSnapshot => {
+     const snapshot = getAnalysisSnapshot();
++    const inputMode = snapshot.jdFile ? "attachment" : "text";
+     return {
+       ...snapshot,
+       itemSignatures: buildJDItemSignatures(
+@@ -999,8 +1116,10 @@ export const useJDAnalysis = ({
+         snapshot.certifications,
+         snapshot.skillGroups
+       ),
+-      jdTextSignature: buildJDTextSignature(snapshot.jdText),
++      jdInputSignature: buildJDInputSignature(snapshot.jdText, snapshot.jdFile),
+       experienceText: buildExperienceTextSnapshot(snapshot.experiences),
++      inputMode,
++      attachmentName: snapshot.jdFile?.name,
+     };
+   }, [getAnalysisSnapshot]);
+ 
+@@ -1133,13 +1252,24 @@ export const useJDAnalysis = ({
+           mode === "partial" ? buildPrevResultPayload(analysisResult) : undefined;
+         const shouldUsePrev =
+           mode === "partial" && Boolean(prevExperienceText) && Boolean(prevResultPayload);
+-        const result = await aiService.analyzeJD({
+-          text: startSnapshot.jdText,
+-          resumeText,
+-          prevResult: shouldUsePrev ? prevResultPayload : undefined,
+-          experienceText: startSnapshot.experienceText,
+-          prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
+-        });
++        // 附件优先：有文件时使用附件路径（vision 或文档文本提取）
++        const currentFile = startSnapshot.jdFile;
++        const result = currentFile
++          ? await aiService.analyzeJDWithAttachment({
++            file: currentFile,
++            jdText: startSnapshot.jdText,
++            resumeText,
++            experienceText: startSnapshot.experienceText,
++            prevResult: shouldUsePrev ? prevResultPayload : undefined,
++            prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
++          })
++          : await aiService.analyzeJD({
++            text: startSnapshot.jdText,
++            resumeText,
++            prevResult: shouldUsePrev ? prevResultPayload : undefined,
++            experienceText: startSnapshot.experienceText,
++            prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
++          });
+         const latestSnapshot = buildAnalyzeSnapshot();
+         const changedDuringAnalyze = recordPostAnalyzeDiff(
+           startSnapshot.itemSignatures,
+@@ -1158,7 +1288,7 @@ export const useJDAnalysis = ({
+         const resetTrendBase = shouldResetTrendBase(
+           mode,
+           analysisContext,
+-          startSnapshot.jdTextSignature
++          startSnapshot.jdInputSignature
+         );
+         const trendBaseResult = resetTrendBase ? null : analysisResult;
+         const stabilizedResult = stabilizeAnalysisResult(
+@@ -1174,9 +1304,11 @@ export const useJDAnalysis = ({
+           result: finalResult,
+           itemSignatures: startSnapshot.itemSignatures,
+           experienceSignature: startSnapshot.experienceSignature,
+-          jdTextSignature: startSnapshot.jdTextSignature,
++          jdInputSignature: startSnapshot.jdInputSignature,
+           jdText: startSnapshot.jdText,
+           experienceText: startSnapshot.experienceText,
++          inputMode: startSnapshot.inputMode,
++          attachmentName: startSnapshot.attachmentName,
+         });
+         updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
+         if (mode === "full") {
+@@ -1210,7 +1342,7 @@ export const useJDAnalysis = ({
+     ]
+   );
+ 
+-  const handleAnalyze = useCallback(async () => {
++  const handleAnalyze = useCallback(async (): Promise<JDAnalyzeOutcome> => {
+     const snapshot = buildAnalyzeSnapshot();
+     const contextDiff = buildDiffFromContext(
+       analysisContext,
+@@ -1220,15 +1352,15 @@ export const useJDAnalysis = ({
+       ? mergeDiffs(pendingDiffRef.current, contextDiff)
+       : cloneDiff(pendingDiffRef.current);
+     const hasPendingDiff = hasDiff(diffSnapshot);
+-    const hasJdTextChanged =
+-      analysisContext?.jdTextSignature !== snapshot.jdTextSignature;
++    const hasJdInputChanged =
++      analysisContext?.jdInputSignature !== snapshot.jdInputSignature;
+     const hasPrevExperienceText =
+       analysisContext?.experienceText !== undefined;
+     const shouldSkipAnalyze =
+       Boolean(analysisResult)
+       && Boolean(analysisContext)
+       && !hasPendingDiff
+-      && !hasJdTextChanged;
++      && !hasJdInputChanged;
+ 
+     if (shouldSkipAnalyze) {
+       if (needsReanalysis) {
+@@ -1239,11 +1371,17 @@ export const useJDAnalysis = ({
+       }
+       return { status: "no_change" };
+     }
++    if (
++      !snapshot.jdFile &&
++      restoredAttachmentContext
++    ) {
++      return { status: "missing_attachment" };
++    }
+     if (
+       analysisResult &&
+       analysisContext &&
+       hasPendingDiff &&
+-      !hasJdTextChanged &&
++      !hasJdInputChanged &&
+       hasPrevExperienceText
+     ) {
+       return runAnalyze({ mode: "partial", diff: diffSnapshot });
+@@ -1255,12 +1393,15 @@ export const useJDAnalysis = ({
+     buildAnalyzeSnapshot,
+     buildDiffFromContext,
+     needsReanalysis,
++    restoredAttachmentContext,
+     runAnalyze,
+   ]);
+ 
+   return {
+     jdText,
+     setJdText,
++    jdFile,
++    setJdFile,
+     analysisResult,
+     isAnalyzing,
+     isJDCollapsed,
+@@ -1279,3 +1420,8 @@ export const useJDAnalysis = ({
+     isOutdated,
+   };
+ };
++
++
++
++
++
+diff --git a/services/aiService.ts b/services/aiService.ts
+index 12604f5..4957475 100644
+--- a/services/aiService.ts
++++ b/services/aiService.ts
+@@ -48,6 +48,21 @@ export type AnalyzeJDParams = {
+     prevExperienceText?: string;
+ };
+ 
++export type AnalyzeJDWithAttachmentParams = {
++    /** 待分析的 JD 附件文件（图像或 PDF/DOCX） */
++    file: File;
++    /** 用户手动补充的 JD 文本 */
++    jdText?: string;
++    /** 简历数据 JSON 序列化字符串 */
++    resumeText?: string;
++    /** 经历内容快照，用于增量分析 */
++    experienceText?: string;
++    /** 上一次分析结果（JSON 序列化），供模型参考 */
++    prevResult?: object;
++    /** 上一次经历内容快照，用于增量分析 */
++    prevExperienceText?: string;
++};
++
+ export interface GenerateTagsResponse {
+     tags: string[];
+ }
+@@ -119,4 +134,42 @@ export const aiService = {
+         );
+         return response.data;
+     },
++
++    /**
++     * 附件 JD 分析：将文件（图像/PDF/DOCX）以 FormData 上传，
++     * 后端根据文件类型自动选择 vision 或文本提取路径。
++     */
++    async analyzeJDWithAttachment({
++        file,
++        jdText,
++        resumeText,
++        experienceText,
++        prevResult,
++        prevExperienceText,
++    }: AnalyzeJDWithAttachmentParams): Promise<JDAnalysisResult> {
++        const formData = new FormData();
++        formData.append('file', file);
++        if (jdText) {
++            formData.append('jd_text', jdText);
++        }
++        if (resumeText) {
++            formData.append('resume_text', resumeText);
++        }
++        if (experienceText) {
++            formData.append('experience_text', experienceText);
++        }
++        if (prevResult) {
++            formData.append('prev_result', JSON.stringify(prevResult));
++        }
++        if (prevExperienceText) {
++            formData.append('prev_experience_text', prevExperienceText);
++        }
++        const response = await apiClient.post<JDAnalysisResult>(
++            '/api/analyze-jd-attachment',
++            formData,
++            { headers: { 'Content-Type': null } }
++        );
++        return response.data;
++    },
+ };
++
+diff --git a/types/analysis.ts b/types/analysis.ts
+index f2eed29..7bac485 100644
+--- a/types/analysis.ts
++++ b/types/analysis.ts
+@@ -7,7 +7,7 @@ export type JDAnalysisItemSignatures = {
+ export type MatchTrend = "up" | "same" | "down";
+ 
+ export type JDAnalysisContext = {
+-  jdTextSignature: string;
++  jdInputSignature: string;
+   experienceSignature: string;
+   itemSignatures: JDAnalysisItemSignatures;
+   experienceText?: string;
+diff --git a/views/ResumeEditor/components/JDAnalysisPanel.tsx b/views/ResumeEditor/components/JDAnalysisPanel.tsx
+index db6d856..2bb40ed 100644
+--- a/views/ResumeEditor/components/JDAnalysisPanel.tsx
++++ b/views/ResumeEditor/components/JDAnalysisPanel.tsx
+@@ -4,6 +4,7 @@ import type { JDAnalysisResult } from '../../../services/aiService';
+ import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
+ import { normalizeJobKeywords } from '../helpers';
+ import { MatchBadge } from './Badges';
++import JDAttachmentUploader from './JDAttachmentUploader';
+ 
+ const JD_PANEL_CONTENT_ID = 'jd-analysis-panel-content';
+ 
+@@ -16,6 +17,10 @@ type JDAnalysisPanelProps = {
+     onToggleCollapse: () => void;
+ 
+     onJdTextChange: (value: string) => void;
++    /** 当前已选的 JD 附件，null 为文字模式 */
++    jdFile: File | null;
++    /** 附件选取 / 清除回调 */
++    onFileChange: (file: File | null) => void;
+     bossGreeting: string;
+     isBossGreetingVisible: boolean;
+     isBossGreetingOutdated: boolean;
+@@ -125,8 +130,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
+     isCollapsed,
+     onAnalyze,
+     onToggleCollapse,
+-
+     onJdTextChange,
++    jdFile,
++    onFileChange,
+     bossGreeting,
+     isBossGreetingVisible,
+     isBossGreetingOutdated,
+@@ -226,16 +232,24 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
+                     </div>
+                 ) : (
+                     <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
++                        {/* 附件上传入口 */}
++                        <JDAttachmentUploader
++                            file={jdFile}
++                            onFileChange={onFileChange}
++                            disabled={isAnalyzing}
++                        />
+                         <div className="relative group">
+                             <textarea
+                                 className="w-full h-24 p-3 text-sm bg-white dark:bg-gray-900 border border-border-light dark:border-border-dark rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 shadow-sm"
+-                                placeholder="在此粘贴职位要求 (Job Description)..."
++                                placeholder={jdFile
++                                    ? '可选：补充手动输入的 JD 文字说明...'
++                                    : '在此粘贴职位要求 (Job Description)...'}
+                                 value={jdText}
+                                 onChange={(e) => onJdTextChange(e.target.value)}
+                             />
+                             <button
+                                 onClick={onAnalyze}
+-                                disabled={isAnalyzing}
++                                disabled={isAnalyzing || (!jdFile && !jdText.trim())}
+                                 className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[11.5px] font-bold px-2 disabled:opacity-60"
+                             >
+                                 <Wand2 className="w-3 h-3" />
+diff --git a/views/ResumeEditor/constants.ts b/views/ResumeEditor/constants.ts
+index cb0950b..404924f 100644
+--- a/views/ResumeEditor/constants.ts
++++ b/views/ResumeEditor/constants.ts
+@@ -135,7 +135,7 @@ export const AUTO_ASSEMBLY_TOAST_MESSAGES = {
+     loading: '正在一键组装简历...',
+     success: '已完成一键组装，并自动适配为一页',
+     partialOverflow: '已完成一键组装，但内容仍超出一页，请继续手动删减',
+-    emptyJd: '请先粘贴 JD 内容，再执行一键组装',
++    emptyJd: '请先填写 JD 内容或上传附件，再执行一键组装',
+     analyzeFailed: 'JD 分析失败，无法执行一键组装',
+     noExperienceMatch: 'JD 分析未匹配到合适经历，请手动勾选后再调整',
+     skipped: '当前无法完成一键组装，请稍后重试',
+@@ -146,7 +146,8 @@ export const JD_ANALYSIS_TOAST_MESSAGES = {
+     success: 'JD 分析完成',
+     noChange: 'JD 分析完成，但未产生可用调整',
+     error: 'JD 分析失败，请稍后重试',
+-    empty: '请先粘贴 JD 内容再分析',
++    empty: '请先填写 JD 内容或上传附件再分析',
++    missingAttachment: '该分析依赖已丢失的 JD 附件，请重新上传后再分析',
+ } as const;
+ export const BOSS_GREETING_TOAST_MESSAGES = {
+     loading: '正在生成 BOSS 招呼语...',
+@@ -175,3 +176,5 @@ export const DEFAULT_PROFILE: ResumeEditorProfile = {
+     linkedin: '',
+     summary: '',
+ };
++
++
+diff --git a/views/ResumeEditor/index.tsx b/views/ResumeEditor/index.tsx
+index 5e05215..57b11cb 100644
+--- a/views/ResumeEditor/index.tsx
++++ b/views/ResumeEditor/index.tsx
+@@ -502,6 +502,28 @@ const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText:
+     return buildAutoResumeName(jobTitle, company);
+ };
+ 
++const buildJDPolishContext = (
++    jdText: string,
++    analysisResult: JDAnalysisResult | null,
++    isOutdated: boolean
++) => {
++    const trimmedJdText = jdText.trim();
++    if (trimmedJdText) {
++        return trimmedJdText;
++    }
++    if (!analysisResult || isOutdated) {
++        return '';
++    }
++    const contextLines = [
++        analysisResult.jobTitle?.trim() ? `目标岗位：${analysisResult.jobTitle.trim()}` : '',
++        analysisResult.company?.trim() ? `目标公司：${analysisResult.company.trim()}` : '',
++        analysisResult.summary?.trim() ? `岗位摘要：${analysisResult.summary.trim()}` : '',
++        analysisResult.jobKeywords?.length ? `岗位关键词：${analysisResult.jobKeywords.join('、')}` : '',
++        analysisResult.missingKeywords?.length ? `重点补强：${analysisResult.missingKeywords.join('、')}` : '',
++    ].filter(Boolean);
++    return contextLines.join('\n');
++};
++
+ const resolveSmartPageAvailableHeight = (a4Height: number, topPaddingPx: number) => {
+     const pxPerMm = a4Height / A4_HEIGHT_MM;
+     const bottomPaddingPx = pxPerMm * PREVIEW_PADDING_MM;
+@@ -878,6 +900,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+     const {
+         jdText,
+         setJdText,
++        jdFile,
++        setJdFile,
+         analysisResult,
+         isAnalyzing,
+         isJDCollapsed,
+@@ -903,6 +927,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+         isLoadingExperiences,
+         authUserKey,
+     });
++    const jdPolishContext = useMemo(
++        () => buildJDPolishContext(jdText, analysisResult, isOutdated),
++        [analysisResult, isOutdated, jdText]
++    );
+     const {
+         confirmDialog,
+         handleConfirmDelete,
+@@ -914,7 +942,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+         selection,
+     } = useExperienceActions({
+         resumeId,
+-        jdText,
++        jdText: jdPolishContext,
+         toast: {
+             success: showToastSuccess,
+             error: showToastError,
+@@ -1198,7 +1226,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+         if (isAnalyzing) {
+             return null;
+         }
+-        if (!jdText.trim()) {
++        if (!jdFile && !jdText.trim()) {
+             showToastError(JD_ANALYSIS_TOAST_MESSAGES.empty, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
+             return null;
+         }
+@@ -1217,10 +1245,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+                 }
+                 return result.result;
+             }
+-            const isError = result.status === 'error';
+-            const message = isError
+-                ? JD_ANALYSIS_TOAST_MESSAGES.error
+-                : JD_ANALYSIS_TOAST_MESSAGES.noChange;
++            const isError = result.status === 'error' || result.status === 'missing_attachment';
++            const message = result.status === 'missing_attachment'
++                ? JD_ANALYSIS_TOAST_MESSAGES.missingAttachment
++                : isError
++                    ? JD_ANALYSIS_TOAST_MESSAGES.error
++                    : JD_ANALYSIS_TOAST_MESSAGES.noChange;
+             const duration = isError
+                 ? JD_ANALYSIS_TOAST_ERROR_DURATION_MS
+                 : JD_ANALYSIS_TOAST_DURATION_MS;
+@@ -1249,6 +1279,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+     }, [
+         handleAnalyze,
+         isAnalyzing,
++        jdFile,
+         jdText,
+         showToastError,
+         showToastLoading,
+@@ -2292,7 +2323,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+         if (isAutoAssembling) {
+             return;
+         }
+-        if (!jdText.trim()) {
++        if (!analysisResult && !jdFile && !jdText.trim()) {
+             showToastError(AUTO_ASSEMBLY_TOAST_MESSAGES.emptyJd);
+             return;
+         }
+@@ -2321,11 +2352,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+                 return;
+             }
+             if (!effectiveResult) {
+-                updateToast(toastId, {
+-                    message: AUTO_ASSEMBLY_TOAST_MESSAGES.analyzeFailed,
+-                    type: 'error',
+-                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+-                });
++                closeToast(toastId);
+                 releaseActiveAutoAssembleToast();
+                 return;
+             }
+@@ -2404,6 +2431,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+         handleAnalyzeWithAutoName,
+         isAutoAssembling,
+         isOutdated,
++        jdFile,
+         jdText,
+         runAutoAssemblySelection,
+         showToastError,
+@@ -2437,7 +2465,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+             setIsBossGreetingVisible((prev) => !prev);
+             return;
+         }
+-        if (!jdText.trim()) {
++        if (!analysisResult && !jdFile && !jdText.trim()) {
+             showToastError(BOSS_GREETING_TOAST_MESSAGES.empty);
+             return;
+         }
+@@ -2463,7 +2491,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+                 releaseActiveBossGreetingToast();
+                 return;
+             }
+-            if (!effectiveResult?.summary?.trim()) {
++            if (!effectiveResult) {
++                closeToast(toastId);
++                releaseActiveBossGreetingToast();
++                return;
++            }
++            if (!effectiveResult.summary?.trim()) {
+                 updateToast(toastId, {
+                     message: BOSS_GREETING_TOAST_MESSAGES.empty,
+                     type: 'error',
+@@ -2542,6 +2575,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+         isBossGreetingOutdated,
+         isGeneratingBossGreeting,
+         isOutdated,
++        jdFile,
+         handleAnalyzeWithAutoName,
+         jdText,
+         resumeId,
+@@ -2712,6 +2746,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+                         onAnalyze: handleAnalyzeWithAutoName,
+                         onToggleCollapse: handleToggleJdCollapse,
+                         onJdTextChange: setJdText,
++                        jdFile,
++                        onFileChange: setJdFile,
+                         bossGreeting,
+                         isBossGreetingVisible,
+                         isBossGreetingOutdated,
+@@ -2777,7 +2813,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+                     editingSuggestion={{
+                         editingItem,
+                         staleExperienceIds,
+-                        jdText,
++                        jdText: jdPolishContext,
+                         isPolishing: experience.isPolishing,
+                         onPolish: experience.handlePolishWithJD,
+                     }}
+@@ -2841,3 +2877,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
+ export default ResumeEditor;
+ 
+ 
++
++
++
++
++
++
++
+diff --git a/views/jdAnalysisStorage.ts b/views/jdAnalysisStorage.ts
+index f5df07f..4507dd2 100644
+--- a/views/jdAnalysisStorage.ts
++++ b/views/jdAnalysisStorage.ts
+@@ -8,12 +8,20 @@ export type JDAnalysisItemSignatures = {
+     skills: Record<string, string>;
+ };
+ 
++/** JD 输入方式：text = 手动粘贴文本，attachment = 上传附件 */
++export type JDInputMode = 'text' | 'attachment';
++
+ export type JDAnalysisCachePayload = {
+     jdText: string;
++    jdInputSignature?: string;
+     experienceSignature: string;
+     result: JDAnalysisResult;
+     itemSignatures?: JDAnalysisItemSignatures;
+     experienceText?: string;
++    /** 本次分析的输入方式 */
++    inputMode?: JDInputMode;
++    /** 附件模式下的文件名，用于 UI 展示 */
++    attachmentName?: string;
+ };
+ 
+ const buildCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
+@@ -41,10 +49,13 @@ const isJDAnalysisCachePayload = (value: unknown): value is JDAnalysisCachePaylo
+     }
+     const record = value as JDAnalysisCachePayload;
+     return typeof record.jdText === 'string'
++        && (record.jdInputSignature === undefined || typeof record.jdInputSignature === 'string')
+         && typeof record.experienceSignature === 'string'
+         && Boolean(record.result)
+         && (!record.itemSignatures || isJDAnalysisItemSignatures(record.itemSignatures))
+-        && (record.experienceText === undefined || typeof record.experienceText === 'string');
++        && (record.experienceText === undefined || typeof record.experienceText === 'string')
++        && (record.inputMode === undefined || record.inputMode === 'text' || record.inputMode === 'attachment')
++        && (record.attachmentName === undefined || typeof record.attachmentName === 'string');
+ };
+ 
+ export const loadJDAnalysisCache = (resumeId: string): JDAnalysisCachePayload | null => {

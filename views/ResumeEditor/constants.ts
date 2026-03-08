@@ -135,7 +135,7 @@ export const AUTO_ASSEMBLY_TOAST_MESSAGES = {
     loading: '正在一键组装简历...',
     success: '已完成一键组装，并自动适配为一页',
     partialOverflow: '已完成一键组装，但内容仍超出一页，请继续手动删减',
-    emptyJd: '请先粘贴 JD 内容，再执行一键组装',
+    emptyJd: '请先填写 JD 内容或上传附件，再执行一键组装',
     analyzeFailed: 'JD 分析失败，无法执行一键组装',
     noExperienceMatch: 'JD 分析未匹配到合适经历，请手动勾选后再调整',
     skipped: '当前无法完成一键组装，请稍后重试',
@@ -146,7 +146,8 @@ export const JD_ANALYSIS_TOAST_MESSAGES = {
     success: 'JD 分析完成',
     noChange: 'JD 分析完成，但未产生可用调整',
     error: 'JD 分析失败，请稍后重试',
-    empty: '请先粘贴 JD 内容再分析',
+    empty: '请先填写 JD 内容或上传附件再分析',
+    missingAttachment: '该分析依赖已丢失的 JD 附件，请重新上传后再分析',
 } as const;
 export const BOSS_GREETING_TOAST_MESSAGES = {
     loading: '正在生成 BOSS 招呼语...',
@@ -175,3 +176,5 @@ export const DEFAULT_PROFILE: ResumeEditorProfile = {
     linkedin: '',
     summary: '',
 };
+
+

@@ -48,6 +48,21 @@ export type AnalyzeJDParams = {
     prevExperienceText?: string;
 };
 
+export type AnalyzeJDWithAttachmentParams = {
+    /** 待分析的 JD 附件文件（图像或 PDF/DOCX） */
+    file: File;
+    /** 用户手动补充的 JD 文本 */
+    jdText?: string;
+    /** 简历数据 JSON 序列化字符串 */
+    resumeText?: string;
+    /** 经历内容快照，用于增量分析 */
+    experienceText?: string;
+    /** 上一次分析结果（JSON 序列化），供模型参考 */
+    prevResult?: object;
+    /** 上一次经历内容快照，用于增量分析 */
+    prevExperienceText?: string;
+};
+
 export interface GenerateTagsResponse {
     tags: string[];
 }
@@ -119,4 +134,42 @@ export const aiService = {
         );
         return response.data;
     },
+
+    /**
+     * 附件 JD 分析：将文件（图像/PDF/DOCX）以 FormData 上传，
+     * 后端根据文件类型自动选择 vision 或文本提取路径。
+     */
+    async analyzeJDWithAttachment({
+        file,
+        jdText,
+        resumeText,
+        experienceText,
+        prevResult,
+        prevExperienceText,
+    }: AnalyzeJDWithAttachmentParams): Promise<JDAnalysisResult> {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (jdText) {
+            formData.append('jd_text', jdText);
+        }
+        if (resumeText) {
+            formData.append('resume_text', resumeText);
+        }
+        if (experienceText) {
+            formData.append('experience_text', experienceText);
+        }
+        if (prevResult) {
+            formData.append('prev_result', JSON.stringify(prevResult));
+        }
+        if (prevExperienceText) {
+            formData.append('prev_experience_text', prevExperienceText);
+        }
+        const response = await apiClient.post<JDAnalysisResult>(
+            '/api/analyze-jd-attachment',
+            formData,
+            { headers: { 'Content-Type': null } }
+        );
+        return response.data;
+    },
 };
+

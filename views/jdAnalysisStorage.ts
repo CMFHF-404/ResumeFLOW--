@@ -8,12 +8,20 @@ export type JDAnalysisItemSignatures = {
     skills: Record<string, string>;
 };
 
+/** JD 输入方式：text = 手动粘贴文本，attachment = 上传附件 */
+export type JDInputMode = 'text' | 'attachment';
+
 export type JDAnalysisCachePayload = {
     jdText: string;
+    jdInputSignature?: string;
     experienceSignature: string;
     result: JDAnalysisResult;
     itemSignatures?: JDAnalysisItemSignatures;
     experienceText?: string;
+    /** 本次分析的输入方式 */
+    inputMode?: JDInputMode;
+    /** 附件模式下的文件名，用于 UI 展示 */
+    attachmentName?: string;
 };
 
 const buildCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
@@ -41,10 +49,13 @@ const isJDAnalysisCachePayload = (value: unknown): value is JDAnalysisCachePaylo
     }
     const record = value as JDAnalysisCachePayload;
     return typeof record.jdText === 'string'
+        && (record.jdInputSignature === undefined || typeof record.jdInputSignature === 'string')
         && typeof record.experienceSignature === 'string'
         && Boolean(record.result)
         && (!record.itemSignatures || isJDAnalysisItemSignatures(record.itemSignatures))
-        && (record.experienceText === undefined || typeof record.experienceText === 'string');
+        && (record.experienceText === undefined || typeof record.experienceText === 'string')
+        && (record.inputMode === undefined || record.inputMode === 'text' || record.inputMode === 'attachment')
+        && (record.attachmentName === undefined || typeof record.attachmentName === 'string');
 };
 
 export const loadJDAnalysisCache = (resumeId: string): JDAnalysisCachePayload | null => {
