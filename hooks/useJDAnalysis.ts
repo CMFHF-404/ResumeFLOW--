@@ -570,6 +570,7 @@ type UseJDAnalysisResult = {
   skillMatchTrends: Map<string, MatchTrend>;
   setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
   handleAnalyze: () => Promise<JDAnalyzeOutcome>;
+  hasMissingAttachmentContext: boolean;
   debugInfo?: any;
   isOutdated: boolean;
 };
@@ -669,6 +670,7 @@ export const useJDAnalysis = ({
       analysisContext.jdInputSignature !== jdInputSignature || needsReanalysis
     );
   }, [analysisContext, analysisResult, jdInputSignature, needsReanalysis]);
+  const hasMissingAttachmentContext = Boolean(restoredAttachmentContext && !jdFile);
 
   const applyExperienceMatchScores = useCallback(
     (matches?: MatchScoreEntry[], options?: MatchApplyOptions) => {
@@ -866,9 +868,18 @@ export const useJDAnalysis = ({
       return;
     }
     if (analysisContext.jdInputSignature !== jdInputSignature) {
+      if (restoredAttachmentContext) {
+        setRestoredAttachmentContext(null);
+      }
       resetJDAnalysisState({ clearCache: true });
     }
-  }, [analysisContext, jdInputSignature, resetJDAnalysisState, resumeId]);
+  }, [
+    analysisContext,
+    jdInputSignature,
+    resetJDAnalysisState,
+    restoredAttachmentContext,
+    resumeId,
+  ]);
 
   useEffect(() => {
     if (!resumeId) {
@@ -1416,6 +1427,7 @@ export const useJDAnalysis = ({
     skillMatchTrends,
     setSkillMatchTrends,
     handleAnalyze,
+    hasMissingAttachmentContext,
     debugInfo,
     isOutdated,
   };

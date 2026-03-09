@@ -21,6 +21,8 @@ type JDAnalysisPanelProps = {
     jdFile: File | null;
     /** 附件选取 / 清除回调 */
     onFileChange: (file: File | null) => void;
+    /** 当前分析是否依赖一个已丢失的附件 */
+    hasMissingAttachmentContext: boolean;
     bossGreeting: string;
     isBossGreetingVisible: boolean;
     isBossGreetingOutdated: boolean;
@@ -133,6 +135,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     onJdTextChange,
     jdFile,
     onFileChange,
+    hasMissingAttachmentContext,
     bossGreeting,
     isBossGreetingVisible,
     isBossGreetingOutdated,
@@ -249,7 +252,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             />
                             <button
                                 onClick={onAnalyze}
-                                disabled={isAnalyzing || (!jdFile && !jdText.trim())}
+                                disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
                                 className="absolute bottom-2 right-2 p-1.5 bg-primary text-white rounded-md shadow hover:bg-primary-dark transition-colors flex items-center gap-1 text-[11.5px] font-bold px-2 disabled:opacity-60"
                             >
                                 <Wand2 className="w-3 h-3" />

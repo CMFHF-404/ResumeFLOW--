@@ -916,6 +916,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setSkillMatchScores,
         setSkillMatchTrends,
         handleAnalyze,
+        hasMissingAttachmentContext,
         debugInfo,
         isOutdated,
     } = useJDAnalysis({
@@ -1226,7 +1227,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         if (isAnalyzing) {
             return null;
         }
-        if (!jdFile && !jdText.trim()) {
+        if (!hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
             showToastError(JD_ANALYSIS_TOAST_MESSAGES.empty, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
             return null;
         }
@@ -2124,13 +2125,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
     const bossGreetingCurrentSignature = useMemo(
         () => buildBossGreetingSignature({
-            jdText,
+            jdText: jdPolishContext,
             summary: analysisResult?.summary ?? '',
             jobTitle: analysisResult?.jobTitle,
             company: analysisResult?.company,
             resumeText: selectedResumeSnapshotText,
         }),
-        [analysisResult?.company, analysisResult?.jobTitle, analysisResult?.summary, jdText, selectedResumeSnapshotText]
+        [analysisResult?.company, analysisResult?.jobTitle, analysisResult?.summary, jdPolishContext, selectedResumeSnapshotText]
     );
     const isBossGreetingOutdated = Boolean(
         bossGreeting && bossGreetingSignature !== bossGreetingCurrentSignature
@@ -2323,7 +2324,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         if (isAutoAssembling) {
             return;
         }
-        if (!analysisResult && !jdFile && !jdText.trim()) {
+        if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
             showToastError(AUTO_ASSEMBLY_TOAST_MESSAGES.emptyJd);
             return;
         }
@@ -2465,7 +2466,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             setIsBossGreetingVisible((prev) => !prev);
             return;
         }
-        if (!analysisResult && !jdFile && !jdText.trim()) {
+        if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
             showToastError(BOSS_GREETING_TOAST_MESSAGES.empty);
             return;
         }
@@ -2506,7 +2507,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return;
             }
             const requestedBossGreetingSignature = buildBossGreetingSignature({
-                jdText,
+                jdText: jdPolishContext,
                 summary: effectiveResult.summary,
                 jobTitle: effectiveResult.jobTitle,
                 company: effectiveResult.company,
@@ -2514,7 +2515,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             });
             setIsBossGreetingVisible(true);
             const response = await aiService.generateBossGreeting({
-                jdText,
+                jdText: jdPolishContext,
                 analysisSummary: effectiveResult.summary,
                 jobTitle: effectiveResult.jobTitle,
                 company: effectiveResult.company,
@@ -2577,7 +2578,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isOutdated,
         jdFile,
         handleAnalyzeWithAutoName,
-        jdText,
+        jdPolishContext,
         resumeId,
         selectedResumeSnapshotText,
         showToastError,
@@ -2748,6 +2749,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         onJdTextChange: setJdText,
                         jdFile,
                         onFileChange: setJdFile,
+                        hasMissingAttachmentContext,
                         bossGreeting,
                         isBossGreetingVisible,
                         isBossGreetingOutdated,
