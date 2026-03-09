@@ -105,11 +105,13 @@ export const SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY = {
     6: 'mb-6',
     5: 'mb-5',
     4: 'mb-4',
+    3: 'mb-3',
+    2: 'mb-2',
 } as const;
 
-export const SMART_PAGE_SECTION_SPACING_STEPS = [6, 5, 4] as const;
+export const SMART_PAGE_SECTION_SPACING_STEPS = [6, 5, 4, 3, 2] as const;
 export const SMART_PAGE_ITEM_SPACING_DEFAULT = 1;
-export const SMART_PAGE_ITEM_SPACING_MIN = 0.5;
+export const SMART_PAGE_ITEM_SPACING_MIN = 0.25;
 export const SMART_PAGE_ITEM_SPACING_STEP = 0.25;
 
 /**
@@ -176,5 +178,3 @@ export const DEFAULT_PROFILE: ResumeEditorProfile = {
     linkedin: '',
     summary: '',
 };
-
-

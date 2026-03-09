@@ -365,6 +365,7 @@ const buildResumePreviewProps = (
     readOnly: true,
     previewRef,
     previewContentRef,
+    previewScope: 'dashboard-modal',
     lineHeight: LINE_HEIGHT_DEFAULT,
     fontSize: FONT_SIZE_DEFAULT,
     listSpacingValue,

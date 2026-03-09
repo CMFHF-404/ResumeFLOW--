@@ -31,8 +31,6 @@ const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
-const DEFAULT_TOP_PADDING_PX = PREVIEW_PADDING_MM * (96 / 25.4);
-const HEADER_TOP_LIFT_MAX_PX = 12;
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -46,20 +44,32 @@ const TAILWIND_TEXT_SIZES_PX = {
     '3xl': 30,
 } as const;
 
-const buildPreviewTypographyCss = (scale: number) => {
+const buildPreviewTypographyCss = (scale: number, previewScope: string) => {
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
     const px = (value: number) => `${(value * safeScale).toFixed(3)}px`;
 
     return `
-        .a4-preview .text-xs { font-size: ${px(TAILWIND_TEXT_SIZES_PX.xs)}; }
-        .a4-preview .text-sm { font-size: ${px(TAILWIND_TEXT_SIZES_PX.sm)}; }
-        .a4-preview .text-base { font-size: ${px(TAILWIND_TEXT_SIZES_PX.base)}; }
-        .a4-preview .text-lg { font-size: ${px(TAILWIND_TEXT_SIZES_PX.lg)}; }
-        .a4-preview .text-xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX.xl)}; }
-        .a4-preview .text-2xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['2xl'])}; }
-        .a4-preview .text-3xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['3xl'])}; }
-        .a4-preview .text-\\[11px\\] { font-size: ${px(11)}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-xs { font-size: ${px(TAILWIND_TEXT_SIZES_PX.xs)}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-sm { font-size: ${px(TAILWIND_TEXT_SIZES_PX.sm)}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-base { font-size: ${px(TAILWIND_TEXT_SIZES_PX.base)}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-lg { font-size: ${px(TAILWIND_TEXT_SIZES_PX.lg)}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX.xl)}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-2xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['2xl'])}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-3xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['3xl'])}; }
+        .a4-preview[data-rf-preview-scope="${previewScope}"] .text-\\[11px\\] { font-size: ${px(11)}; }
     `;
+};
+
+const resolveSectionSpacingPx = (spacingClass: string) => {
+    const spacingMap: Record<string, number> = {
+        'mb-2': 8,
+        'mb-3': 12,
+        'mb-4': 16,
+        'mb-5': 20,
+        'mb-6': 24,
+        'mb-8': 32,
+    };
+    return spacingMap[spacingClass] ?? 24;
 };
 
 const buildContextText = (star?: StarFields) => {
@@ -116,6 +126,7 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
 export type ResumePreviewProps = {
     previewRef: React.RefObject<HTMLDivElement>;
     previewContentRef: React.RefObject<HTMLDivElement>;
+    previewScope: string;
     lineHeight: number;
     fontSize: number;
     listSpacingValue: string;
@@ -152,6 +163,7 @@ export type ResumePreviewProps = {
 const ResumePreview: React.FC<ResumePreviewProps> = ({
     previewRef,
     previewContentRef,
+    previewScope,
     lineHeight,
     fontSize,
     listSpacingValue,
@@ -185,13 +197,47 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditSkill,
 }) => {
     const previewTypographyCss = React.useMemo(
-        () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT),
-        [fontSize]
+        () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
+        [fontSize, previewScope]
     );
-    const headerTopLiftPx = React.useMemo(() => {
-        const reducedGap = Math.max(0, DEFAULT_TOP_PADDING_PX - topPaddingPx);
-        return Math.min(HEADER_TOP_LIFT_MAX_PX, reducedGap);
-    }, [topPaddingPx]);
+    const sectionSpacingPx = React.useMemo(
+        () => resolveSectionSpacingPx(sectionSpacingClass),
+        [sectionSpacingClass]
+    );
+    const sectionInsetPx = React.useMemo(
+        () => Math.max(2, Math.round(sectionSpacingPx / 3)),
+        [sectionSpacingPx]
+    );
+    const sectionTitleGapPx = React.useMemo(
+        () => Math.max(4, Math.round(sectionSpacingPx / 2)),
+        [sectionSpacingPx]
+    );
+    const headerBottomPaddingPx = React.useMemo(
+        () => Math.max(8, Math.round(sectionSpacingPx * 0.67)),
+        [sectionSpacingPx]
+    );
+    const sectionWrapperStyle = React.useMemo(
+        () => ({ marginBottom: `${sectionSpacingPx}px` }),
+        [sectionSpacingPx]
+    );
+    const sectionSurfaceStyle = React.useMemo(
+        () => ({
+            margin: `${-sectionInsetPx}px`,
+            padding: `${sectionInsetPx}px`,
+        }),
+        [sectionInsetPx]
+    );
+    const sectionTitleStyle = React.useMemo(
+        () => ({ marginBottom: `${sectionTitleGapPx}px` }),
+        [sectionTitleGapPx]
+    );
+    const headerStyle = React.useMemo(
+        () => ({
+            marginBottom: `${sectionSpacingPx}px`,
+            paddingBottom: `${headerBottomPaddingPx}px`,
+        }),
+        [headerBottomPaddingPx, sectionSpacingPx]
+    );
 
     const isReadOnly = Boolean(readOnly);
 
@@ -224,6 +270,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 id={sectionId}
                 data-rf-section-id={sectionId}
                 className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                style={sectionWrapperStyle}
                 draggable={!isReadOnly}
                 onDragStart={
                     isReadOnly ? undefined : (event) => onSectionDragStart(event, sectionId)
@@ -251,7 +298,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     </div>
                 ) : null}
 
-                <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
+                <h2
+                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                    style={sectionTitleStyle}
+                >
                     {title}
                 </h2>
                 <div
@@ -327,7 +377,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     </div>
                                 ) : null}
 
-                                <div className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}>
+                                <div
+                                    className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                    style={sectionSurfaceStyle}
+                                >
                                     <div className="flex justify-between items-baseline mb-1">
                                         <h3 className="text-sm font-bold text-gray-900">
                                             {item.company}
@@ -355,6 +408,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             <div
                 ref={previewRef}
                 className="a4-preview text-gray-900 relative"
+                data-rf-preview-scope={previewScope}
                 style={{
                     lineHeight,
                     fontSize: `${fontSize}px`,
@@ -403,7 +457,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     <div
                         id="basic-info"
                         className={`border-b-2 border-gray-900 pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} text-center scroll-mt-8`}
-                        style={headerTopLiftPx > 0 ? { marginTop: `-${headerTopLiftPx}px` } : undefined}
+                        style={headerStyle}
                     >
                         <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
                             {profile.name}
@@ -438,6 +492,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     id="education"
                                     data-rf-section-id="education"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    style={sectionWrapperStyle}
                                     draggable={!isReadOnly}
                                     onDragStart={
                                         isReadOnly ? undefined : (event) => onSectionDragStart(event, 'education')
@@ -465,8 +520,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </div>
                                     ) : null}
 
-                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
+                                    <div
+                                        className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                        style={sectionSurfaceStyle}
+                                    >
+                                        <h2
+                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                    style={sectionTitleStyle}
+                >
                                             教育背景
                                         </h2>
                                         <div
@@ -548,6 +609,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                                            style={sectionSurfaceStyle}
                                                         >
                                                             <div className="flex justify-between items-baseline mb-0.5">
                                                                 <h3 className="text-sm font-bold text-gray-900">
@@ -583,6 +645,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="certifications"
                                     id="certifications"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    style={sectionWrapperStyle}
                                     data-rf-section-id="certifications"
                                     draggable={!isReadOnly}
                                     onDragStart={
@@ -611,8 +674,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </div>
                                     ) : null}
 
-                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
+                                    <div
+                                        className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                        style={sectionSurfaceStyle}
+                                    >
+                                        <h2
+                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                    style={sectionTitleStyle}
+                >
                                             证书资质
                                         </h2>
                                         <div
@@ -689,6 +758,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                                            style={sectionSurfaceStyle}
                                                         >
                                                             <div className="flex justify-between items-baseline">
                                                                 <div>
@@ -720,6 +790,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     id="skills"
                                     data-rf-section-id="skills"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                                    style={sectionWrapperStyle}
                                     draggable={!isReadOnly}
                                     onDragStart={
                                         isReadOnly ? undefined : (event) => onSectionDragStart(event, 'skills')
@@ -747,8 +818,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </div>
                                     ) : null}
 
-                                    <div className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}>
-                                        <h2 className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}>
+                                    <div
+                                        className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                        style={sectionSurfaceStyle}
+                                    >
+                                        <h2
+                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                    style={sectionTitleStyle}
+                >
                                             专业技能
                                         </h2>
                                         <div
@@ -829,6 +906,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                                            style={sectionSurfaceStyle}
                                                         >
                                                             <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
                                                                 <span className="font-bold text-gray-900">{group.name}:</span>

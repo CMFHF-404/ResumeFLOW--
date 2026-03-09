@@ -44,8 +44,12 @@ const subscribePrintMediaExit = (onExit: () => void): PrintFallbackCleanup => {
     return () => mediaQuery.removeEventListener('change', handleChange as EventListener);
   }
 
-  mediaQuery.addListener(handleChange as (event: MediaQueryList) => void);
-  return () => mediaQuery.removeListener(handleChange as (event: MediaQueryList) => void);
+  const legacyMediaQuery = mediaQuery as MediaQueryList & {
+    addListener?: (listener: (event: MediaQueryList) => void) => void;
+    removeListener?: (listener: (event: MediaQueryList) => void) => void;
+  };
+  legacyMediaQuery.addListener?.(handleChange as (event: MediaQueryList) => void);
+  return () => legacyMediaQuery.removeListener?.(handleChange as (event: MediaQueryList) => void);
 };
 
 const waitForNextFrame = () => new Promise<void>((resolve) => {
@@ -174,3 +178,4 @@ export const usePrintJob = () => {
     startPrint,
   };
 };
+

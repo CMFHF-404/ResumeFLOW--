@@ -155,7 +155,7 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const CSS_PX_PER_MM = 96 / 25.4;
 
-type SectionSpacingKey = 4 | 5 | 6 | 8;
+type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8;
 
 type SmartPageLayout = {
     topPaddingPx: number;
@@ -165,7 +165,10 @@ type SmartPageLayout = {
     fontSize: number;
 };
 
-type SmartPageBaseLayout = Pick<SmartPageLayout, 'topPaddingPx' | 'sectionSpacingKey' | 'itemSpacingEm'>;
+type SmartPageBaseLayout = Pick<
+    SmartPageLayout,
+    'topPaddingPx' | 'sectionSpacingKey' | 'itemSpacingEm'
+>;
 
 const buildTopPaddingSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
@@ -239,7 +242,7 @@ type ModuleReorderContext = {
 type SmartPageResult = SmartPageLayout | null;
 type SmartPageExecutionResult =
     | ({ status: 'fit' } & SmartPageLayout)
-    | { status: 'overflow' }
+    | ({ status: 'overflow' } & SmartPageLayout)
     | { status: 'skipped'; reason: 'busy' | 'unavailable' };
 
 type OrderedScoreItem = {
@@ -582,6 +585,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resolveDefaultSectionSpacingKey('standard')
     );
     const [itemSpacingEm, setItemSpacingEm] = useState(resolveDefaultItemSpacingEm('standard'));
+    const [measureLayout, setMeasureLayout] = useState<SmartPageLayout>(() =>
+        buildDefaultSmartPageLayout('standard')
+    );
     const [isDragging, setIsDragging] = useState(false);
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
     const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
@@ -733,6 +739,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const reorderContextRef = useRef<ModuleReorderContext | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
+    const measurePreviewRef = useRef<HTMLDivElement | null>(null);
+    const measurePreviewContentRef = useRef<HTMLDivElement | null>(null);
     const printPreviewRef = useRef<HTMLDivElement | null>(null);
     const printPreviewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
@@ -1395,29 +1403,28 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setFontSize(defaultLayout.fontSize);
         setIsSmartPageApplied(isApplied);
     };
-    const applyLayoutSnapshot = async (snapshot: LayoutSnapshot) => {
-        setTopPaddingPx(snapshot.topPaddingPx);
-        setSectionSpacingKey(snapshot.sectionSpacingKey);
-        setItemSpacingEm(snapshot.itemSpacingEm);
-        setLineHeight(snapshot.lineHeight);
-        setFontSize(snapshot.fontSize);
-        setIsSmartPageApplied(snapshot.isSmartPageApplied);
-        await waitForPreviewUpdate(2);
-    };
-    const measureContentHeight = async () => {
-        await waitForPreviewUpdate(2);
-        const container = previewContentRef.current;
-        if (!container) {
-            return 0;
-        }
-        return resolveMeasuredContentHeight(container);
-    };
-    const applyLayoutParamsAndMeasure = async (nextLayout: SmartPageLayout) => {
+    const applyVisibleLayout = (nextLayout: SmartPageLayout) => {
         setTopPaddingPx(nextLayout.topPaddingPx);
         setSectionSpacingKey(nextLayout.sectionSpacingKey);
         setItemSpacingEm(nextLayout.itemSpacingEm);
         setLineHeight(nextLayout.lineHeight);
         setFontSize(nextLayout.fontSize);
+    };
+    const applyLayoutSnapshot = async (snapshot: LayoutSnapshot) => {
+        applyVisibleLayout(snapshot);
+        setIsSmartPageApplied(snapshot.isSmartPageApplied);
+        await waitForPreviewUpdate(2);
+    };
+    const measureContentHeight = () => {
+        const container = measurePreviewContentRef.current;
+        if (!container) {
+            return 0;
+        }
+        return resolveMeasuredContentHeight(container);
+    };
+    const applyMeasureLayoutAndMeasure = async (nextLayout: SmartPageLayout) => {
+        setMeasureLayout(nextLayout);
+        await waitForPreviewUpdate(2);
         return measureContentHeight();
     };
 
@@ -1425,7 +1432,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         a4Height: number,
         nextLayout: SmartPageLayout
     ): Promise<SmartPageResult> => {
-        const height = await applyLayoutParamsAndMeasure(nextLayout);
+        const height = await applyMeasureLayoutAndMeasure(nextLayout);
         const availableHeight = resolveSmartPageAvailableHeight(a4Height, nextLayout.topPaddingPx);
         if (isWithinAvailableHeight(height, availableHeight)) {
             return nextLayout;
@@ -1499,7 +1506,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         smartPageAdjustingRef.current = true;
         setIsAutoSavePaused(true);
         try {
-            if (!previewRef.current || !previewContentRef.current) {
+            if (!measurePreviewRef.current || !measurePreviewContentRef.current) {
                 return { status: 'skipped', reason: 'unavailable' };
             }
             const a4Height = resolveA4Height();
@@ -1514,13 +1521,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
 
             const finalizeFit = async (layout: SmartPageLayout): Promise<SmartPageExecutionResult> => {
-                await applyLayoutParamsAndMeasure(layout);
+                applyVisibleLayout(layout);
                 setIsSmartPageApplied(true);
+                await waitForPreviewUpdate(2);
                 trackSmartOnePageTriggered({
                     lineHeight: layout.lineHeight,
                     fontSize: layout.fontSize,
                 });
                 return { status: 'fit', ...layout };
+            };
+            const finalizeOverflow = async (layout: SmartPageLayout): Promise<SmartPageExecutionResult> => {
+                applyVisibleLayout(layout);
+                setIsSmartPageApplied(true);
+                await waitForPreviewUpdate(2);
+                return { status: 'overflow', ...layout };
             };
 
             const defaultLayout = resolveDefaultLayoutParams(a4Height);
@@ -1528,6 +1542,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             if (initialFit) {
                 return finalizeFit(initialFit);
             }
+
             const topPaddingSteps = buildTopPaddingSteps(
                 defaultLayout.topPaddingPx,
                 SMART_PAGE_TOP_PADDING_MIN_PX,
@@ -1621,8 +1636,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 maximallyCompressedBaseLayout
             );
             if (!maximallyCompressedFit) {
-                setIsSmartPageApplied(true);
-                return { status: 'overflow' };
+                return finalizeOverflow({
+                    ...maximallyCompressedBaseLayout,
+                    lineHeight: LINE_HEIGHT_STEPS[LINE_HEIGHT_STEPS.length - 1],
+                    fontSize: FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1],
+                });
             }
 
             let topPaddingLow = 0;
@@ -1660,8 +1678,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 }
             }
 
-            setIsSmartPageApplied(true);
-            return { status: 'overflow' };
+            return finalizeOverflow({
+                ...maximallyCompressedBaseLayout,
+                lineHeight: LINE_HEIGHT_STEPS[LINE_HEIGHT_STEPS.length - 1],
+                fontSize: FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1],
+            });
         } finally {
             smartPageAdjustingRef.current = false;
             setIsAutoSavePaused(false);
@@ -1687,8 +1708,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         if (result.status === 'overflow') {
-            await waitForPreviewUpdate(2);
-            commitLayoutSnapshot(latestLayoutSnapshotRef.current, { incrementVersion: true });
+            commitLayoutSnapshot(
+                buildLayoutSnapshot(
+                    {
+                        topPaddingPx: result.topPaddingPx,
+                        sectionSpacingKey: result.sectionSpacingKey,
+                        itemSpacingEm: result.itemSpacingEm,
+                        lineHeight: result.lineHeight,
+                        fontSize: result.fontSize,
+                    },
+                    true
+                ),
+                { incrementVersion: true }
+            );
             showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
         }
     };
@@ -2081,6 +2113,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => resolveSectionSpacingClass(sectionSpacingKey),
         [sectionSpacingKey]
     );
+    const measureListSpacingValue = useMemo(
+        () => buildSpacingValue(measureLayout.itemSpacingEm, measureLayout.lineHeight),
+        [measureLayout.itemSpacingEm, measureLayout.lineHeight]
+    );
+    const measureBulletSpacingValue = useMemo(
+        () => buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, measureLayout.lineHeight),
+        [measureLayout.lineHeight]
+    );
+    const measureSectionSpacingClass = useMemo(
+        () => resolveSectionSpacingClass(measureLayout.sectionSpacingKey),
+        [measureLayout.sectionSpacingKey]
+    );
     const listSpacingClass = 'space-y-[var(--rf-list-spacing)]';
     const workItems = useMemo(
         () => experienceItems.filter((item) => item.category === 'work'),
@@ -2301,10 +2345,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return null;
         };
 
+        let lastOverflowResult: Extract<SmartPageExecutionResult, { status: 'overflow' }> | null = null;
         const initialResult = await applySelectionAndMeasure(currentSelection);
         if (initialResult.status === 'fit' || initialResult.status === 'skipped') {
             return initialResult;
         }
+        lastOverflowResult = initialResult;
         const skillResult = await removeNext(selection.skillRemovalQueue, 'skillIds');
         if (skillResult) {
             return skillResult;
@@ -2317,7 +2363,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return certificationResult;
         }
         const experienceResult = await removeNext(selection.experienceRemovalQueue, 'experienceIds');
-        return experienceResult ?? { status: 'overflow' };
+        if (experienceResult) {
+            return experienceResult;
+        }
+        return lastOverflowResult ?? {
+            status: 'overflow',
+            topPaddingPx,
+            sectionSpacingKey,
+            itemSpacingEm,
+            lineHeight,
+            fontSize,
+        };
     }, [applyAssemblySelection, applyLayoutSnapshot, waitForSmartPageIdle]);
 
     const handleAutoAssemble = useCallback(async () => {
@@ -2634,6 +2690,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 <ResumePreview
                     previewRef={printPreviewRef}
                     previewContentRef={printPreviewContentRef}
+                    previewScope="print"
                     lineHeight={lineHeight}
                     fontSize={fontSize}
                     listSpacingValue={listSpacingValue}
@@ -2823,6 +2880,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 <ResumePreview
                     previewRef={previewRef}
                     previewContentRef={previewContentRef}
+                    previewScope="editor"
                     lineHeight={lineHeight}
                     fontSize={fontSize}
                     listSpacingValue={listSpacingValue}
@@ -2855,6 +2913,44 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onEditSkill={handleEditSkill}
                 />
             </div>
+                <div className="fixed left-[-200vw] top-0 w-screen md:w-[calc(100vw-600px)] pointer-events-none opacity-0" aria-hidden="true">
+                    <ResumePreview
+                        previewRef={measurePreviewRef}
+                        previewContentRef={measurePreviewContentRef}
+                        previewScope="measure"
+                        lineHeight={measureLayout.lineHeight}
+                        fontSize={measureLayout.fontSize}
+                        listSpacingValue={measureListSpacingValue}
+                        bulletSpacingValue={measureBulletSpacingValue}
+                        topPaddingPx={measureLayout.topPaddingPx}
+                        profile={profile}
+                        sectionSpacingClass={measureSectionSpacingClass}
+                        listSpacingClass={listSpacingClass}
+                        sectionOrder={sectionOrder}
+                        selectedWorkItems={selectedWorkItems}
+                        selectedProjectItems={selectedProjectItems}
+                        educations={educations}
+                        selectedEduIds={selectedEduIds}
+                        sortedCertifications={sortedCertifications}
+                        selectedCertIds={selectedCertIds}
+                        selectedSkillGroups={selectedSkillGroups}
+                        readOnly
+                        isDragging={false}
+                        draggedItemKey={null}
+                        draggedSectionId={null}
+                        onSectionDragStart={() => { }}
+                        onSectionDragHover={() => { }}
+                        onSectionDrop={() => { }}
+                        onItemDragStart={() => { }}
+                        onItemDragHover={() => { }}
+                        onItemDrop={() => { }}
+                        onDragEnd={() => { }}
+                        onNavigateTab={setSidebarTab}
+                        onEditExperience={() => { }}
+                        onEditCertification={() => { }}
+                        onEditSkill={() => { }}
+                    />
+                </div>
             {isEditorBusy ? (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-[1px]">
                     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-200 shadow-sm">
@@ -2877,12 +2973,4 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
 };
 export default ResumeEditor;
-
-
-
-
-
-
-
-
 

@@ -425,7 +425,7 @@ export const buildResumeConfigSnapshot = (
     sectionOrder: string[],
     density: 'compact' | 'standard' | 'spacious',
     topPaddingPx: number,
-    sectionSpacingKey: 4 | 5 | 6 | 8,
+    sectionSpacingKey: 2 | 3 | 4 | 5 | 6 | 8,
     itemSpacingEm: number,
     lineHeight: number,
     fontSize: number,
@@ -494,4 +494,3 @@ export const compareCertificationByDateDesc = (a: CertificationView, b: Certific
     const valB = parseYearMonthValue(b.date) ?? -1;
     return valB - valA;
 };
-
