@@ -205,7 +205,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         [sectionSpacingClass]
     );
     const sectionInsetPx = React.useMemo(
-        () => Math.max(2, Math.round(sectionSpacingPx / 3)),
+        () => Math.max(2, Math.round(sectionSpacingPx / 4)),
+        [sectionSpacingPx]
+    );
+    const itemInsetPx = React.useMemo(
+        () => Math.max(0, Math.round(sectionSpacingPx / 8)),
         [sectionSpacingPx]
     );
     const sectionTitleGapPx = React.useMemo(
@@ -226,6 +230,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             padding: `${sectionInsetPx}px`,
         }),
         [sectionInsetPx]
+    );
+    const itemSurfaceStyle = React.useMemo(
+        () => ({
+            margin: `${-itemInsetPx}px`,
+            padding: `${itemInsetPx}px`,
+        }),
+        [itemInsetPx]
     );
     const sectionTitleStyle = React.useMemo(
         () => ({ marginBottom: `${sectionTitleGapPx}px` }),
@@ -379,7 +390,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
                                 <div
                                     className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                    style={sectionSurfaceStyle}
+                                    style={itemSurfaceStyle}
                                 >
                                     <div className="flex justify-between items-baseline mb-1">
                                         <h3 className="text-sm font-bold text-gray-900">
@@ -609,7 +620,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                                            style={sectionSurfaceStyle}
+                                                            style={itemSurfaceStyle}
                                                         >
                                                             <div className="flex justify-between items-baseline mb-0.5">
                                                                 <h3 className="text-sm font-bold text-gray-900">
@@ -758,7 +769,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                                            style={sectionSurfaceStyle}
+                                                            style={itemSurfaceStyle}
                                                         >
                                                             <div className="flex justify-between items-baseline">
                                                                 <div>
@@ -906,7 +917,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         ) : null}
                                                         <div
                                                             className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                                            style={sectionSurfaceStyle}
+                                                            style={itemSurfaceStyle}
                                                         >
                                                             <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
                                                                 <span className="font-bold text-gray-900">{group.name}:</span>
