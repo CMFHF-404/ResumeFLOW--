@@ -141,6 +141,7 @@ JD_ANALYSIS_IMAGE = (
     "'jobTitle' (short string extracted from JD image, empty string if unknown), "
     "'company' (short string extracted from JD image, empty string if unknown), "
     "'summary' (1 sentence in Chinese, <=100 Chinese characters), "
+    "'extractedJdText' (clean text transcribed from the JD image in its original language, do not translate or summarize, preserve sections and line breaks), "
     "'experienceMatches' (array of objects with keys: "
     "'id' (must match input experience id), 'score' (0-100), and "
     "'reason' (Chinese, a single fluent sentence, total <=80 characters. "

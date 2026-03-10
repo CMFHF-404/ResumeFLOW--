@@ -120,7 +120,7 @@ async def analyze_jd_attachment_endpoint(
     supplemental_jd_text = (jd_text or "").strip()
 
     if attachment.is_image:
-        return await analyze_jd_with_image(
+        result = await analyze_jd_with_image(
             image_b64=attachment.image_b64,
             mime_type=attachment.mime_type,
             resume_text=resume_text,
@@ -129,6 +129,10 @@ async def analyze_jd_attachment_endpoint(
             prev_experience_text=prev_experience_text,
             jd_text=supplemental_jd_text or None,
         )
+        extracted_jd_text = result.pop("extractedJdText", None)
+        if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
+            result["extracted_jd_text"] = extracted_jd_text.strip()
+        return result
 
     # 文本路径：将文档提取的文字与手动输入拼接
     extracted_jd_text = (attachment.text or "").strip()
@@ -139,11 +143,14 @@ async def analyze_jd_attachment_endpoint(
             if extracted_jd_text
             else supplemental_jd_text
         )
-    return await analyze_jd(
+    result = await analyze_jd(
         text=combined_jd_text,
         resume_text=resume_text,
         prev_result=prev_result_dict,
         experience_text=experience_text,
         prev_experience_text=prev_experience_text,
     )
+    if extracted_jd_text:
+        result["extracted_jd_text"] = extracted_jd_text
+    return result
 
