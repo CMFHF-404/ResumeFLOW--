@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLogto } from '@logto/react';
 import { profileService, type Profile } from '../services/profileService';
 
 const LOAD_PROFILE_ERROR_MESSAGE = '加载用户资料失败';
@@ -11,6 +12,7 @@ type UseProfileResult = {
 };
 
 export const useProfile = (): UseProfileResult => {
+  const { isAuthenticated } = useLogto();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +32,14 @@ export const useProfile = (): UseProfileResult => {
   };
 
   const refresh = useCallback(async (options?: { force?: boolean }) => {
+    if (!isAuthenticated) {
+      applyState(() => {
+        setProfile(null);
+        setError(null);
+      });
+      return null;
+    }
+
     applyState(() => {
       setIsLoading(true);
       setError(null);
@@ -51,15 +61,19 @@ export const useProfile = (): UseProfileResult => {
         setIsLoading(false);
       });
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      hasRequestedRef.current = false;
+      return;
+    }
     if (hasRequestedRef.current) {
       return;
     }
     hasRequestedRef.current = true;
     void refresh();
-  }, [refresh]);
+  }, [isAuthenticated, refresh]);
 
   return {
     profile,
