@@ -152,6 +152,19 @@ def _ensure_skill_matches(
     return result
 
 
+def _normalize_jd_analysis_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(result)
+    extracted_jd_text = normalized.get("extractedJdText")
+    if not isinstance(extracted_jd_text, str):
+        extracted_jd_text = normalized.get("extracted_jd_text")
+    if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
+        normalized["extractedJdText"] = extracted_jd_text.strip()
+    else:
+        normalized.pop("extractedJdText", None)
+        normalized.pop("extracted_jd_text", None)
+    return normalized
+
+
 def _normalize_greeting_result(result: Dict[str, Any]) -> Dict[str, Any]:
     greeting = result.get("greeting")
     if isinstance(greeting, str) and greeting.strip():
@@ -299,7 +312,8 @@ async def analyze_jd(
     ]
     result = await _call_llm(messages, json_mode=True)
     skill_ids = _extract_skill_ids(resume_text)
-    return _ensure_skill_matches(result, skill_ids)
+    normalized_result = _normalize_jd_analysis_result(result)
+    return _ensure_skill_matches(normalized_result, skill_ids)
 
 
 def _build_image_jd_user_message(
@@ -372,7 +386,8 @@ async def analyze_jd_with_image(
     ]
     result = await _call_llm(messages, json_mode=True)
     skill_ids = _extract_skill_ids(resume_text)
-    return _ensure_skill_matches(result, skill_ids)
+    normalized_result = _normalize_jd_analysis_result(result)
+    return _ensure_skill_matches(normalized_result, skill_ids)
 
 
 def _resolve_star_prompt(target_field: Optional[str]) -> str:

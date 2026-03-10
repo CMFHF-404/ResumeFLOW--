@@ -30,6 +30,7 @@ export interface JDAnalysisResult {
     jobTitle?: string;
     company?: string;
     summary: string;
+    extractedJdText?: string;
     experienceMatches?: MatchScoreEntry[];
     certificationMatches?: MatchScoreEntry[];
     skillMatches?: MatchScoreEntry[];
@@ -79,6 +80,22 @@ export interface GenerateBossGreetingResponse {
     greeting: string;
 }
 
+type RawJDAnalysisResult = JDAnalysisResult & {
+    extracted_jd_text?: unknown;
+};
+
+const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
+    const extractedJdText = typeof result.extractedJdText === 'string'
+        ? result.extractedJdText
+        : typeof result.extracted_jd_text === 'string'
+            ? result.extracted_jd_text
+            : undefined;
+    return {
+        ...result,
+        ...(extractedJdText ? { extractedJdText } : {}),
+    };
+};
+
 export const aiService = {
     async polishExperience(data: PolishExperiencePayload) {
         const { rawText, ...rest } = data.content;
@@ -104,14 +121,14 @@ export const aiService = {
         experienceText,
         prevExperienceText,
     }: AnalyzeJDParams) {
-        const response = await apiClient.post<JDAnalysisResult>('/api/analyze-jd', {
+        const response = await apiClient.post<RawJDAnalysisResult>('/api/analyze-jd', {
             text,
             resume_text: resumeText,
             prev_result: prevResult,
             experience_text: experienceText,
             prev_experience_text: prevExperienceText,
         });
-        return response.data;
+        return normalizeJDAnalysisResult(response.data);
     },
 
     async generateTags(text: string) {
@@ -164,12 +181,11 @@ export const aiService = {
         if (prevExperienceText) {
             formData.append('prev_experience_text', prevExperienceText);
         }
-        const response = await apiClient.post<JDAnalysisResult>(
+        const response = await apiClient.post<RawJDAnalysisResult>(
             '/api/analyze-jd-attachment',
             formData,
             { headers: { 'Content-Type': null } }
         );
-        return response.data;
+        return normalizeJDAnalysisResult(response.data);
     },
 };
-

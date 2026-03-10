@@ -2509,8 +2509,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedSkillIds,
     ]);
 
-    const handleGenerateBossGreeting = useCallback(async () => {
-        const canReuseBossGreeting = Boolean(
+    const generateBossGreeting = useCallback(async (options?: { forceRefresh?: boolean }) => {
+        const forceRefresh = options?.forceRefresh ?? false;
+        const canReuseBossGreeting = !forceRefresh && Boolean(
             bossGreeting
             && !isBossGreetingOutdated
             && !isOutdated
@@ -2641,7 +2642,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastLoading,
         updateToast,
         closeToast,
+        jdText,
+        hasMissingAttachmentContext,
     ]);
+
+    const handleGenerateBossGreeting = useCallback(() => {
+        void generateBossGreeting();
+    }, [generateBossGreeting]);
+
+    const handleRefreshBossGreeting = useCallback(() => {
+        void generateBossGreeting({ forceRefresh: true });
+    }, [generateBossGreeting]);
 
     const handleCollapseBossGreeting = useCallback(() => {
         setIsBossGreetingVisible(false);
@@ -2812,6 +2823,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         isBossGreetingOutdated,
                         isGeneratingBossGreeting,
                         onGenerateBossGreeting: handleGenerateBossGreeting,
+                        onRefreshBossGreeting: handleRefreshBossGreeting,
                         onCopyBossGreeting: handleCopyBossGreeting,
                         onCollapseBossGreeting: handleCollapseBossGreeting,
                         debugInfo,

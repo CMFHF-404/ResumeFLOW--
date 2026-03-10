@@ -22,6 +22,8 @@ export type JDAnalysisCachePayload = {
     inputMode?: JDInputMode;
     /** 附件模式下的文件名，用于 UI 展示 */
     attachmentName?: string;
+    /** 附件成功转成文本后保留的原始提取正文 */
+    attachmentExtractedText?: string;
 };
 
 const buildCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
@@ -55,7 +57,8 @@ const isJDAnalysisCachePayload = (value: unknown): value is JDAnalysisCachePaylo
         && (!record.itemSignatures || isJDAnalysisItemSignatures(record.itemSignatures))
         && (record.experienceText === undefined || typeof record.experienceText === 'string')
         && (record.inputMode === undefined || record.inputMode === 'text' || record.inputMode === 'attachment')
-        && (record.attachmentName === undefined || typeof record.attachmentName === 'string');
+        && (record.attachmentName === undefined || typeof record.attachmentName === 'string')
+        && (record.attachmentExtractedText === undefined || typeof record.attachmentExtractedText === 'string');
 };
 
 export const loadJDAnalysisCache = (resumeId: string): JDAnalysisCachePayload | null => {
