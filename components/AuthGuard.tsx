@@ -1,6 +1,7 @@
 import { useLogto } from '@logto/react';
 import { useEffect, ReactNode, useMemo, useRef, useState } from 'react';
 import { clearAccessTokenProvider, setAccessTokenProvider } from '../services/authTokenProvider';
+import { subscribeLoginRequired } from '../services/authRedirect';
 
 interface AuthGuardProps {
     children: ReactNode;
@@ -25,11 +26,15 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     }, [isAuthenticated]);
 
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
-            const redirectUri = import.meta.env.VITE_LOGTO_REDIRECT_URI;
-            console.log('Logging in with redirect URI:', redirectUri);
-            signIn(redirectUri);
-        }
+        const unsubscribe = subscribeLoginRequired(({ reason, redirectUri }) => {
+            if (isLoading || isAuthenticated) {
+                return;
+            }
+            console.log('[AuthGuard] Login required:', reason || 'unknown');
+            signIn(redirectUri || import.meta.env.VITE_LOGTO_REDIRECT_URI);
+        });
+
+        return unsubscribe;
     }, [isAuthenticated, isLoading, signIn]);
 
     useEffect(() => {
@@ -82,10 +87,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
                 </div>
             </div>
         );
-    }
-
-    if (!isAuthenticated) {
-        return null;
     }
 
     return <>{children}</>;
