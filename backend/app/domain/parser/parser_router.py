@@ -15,6 +15,8 @@ from .parser_service import (
     fetch_existing_experiences,
     normalize_certifications,
     normalize_personal_info,
+    _resolve_file_kind,
+    _resolve_file_mime,
     normalize_skill_groups,
     parse_resume,
 )
@@ -39,8 +41,14 @@ async def parse_resume_endpoint(
         file.content_type or "",
     )
     try:
-        text = await extract_text(file, request_id)
-        payload = await parse_resume(text, request_id)
+        file_data = await extract_text(file, request_id)
+        file_kind = _resolve_file_kind(file)
+        payload = await parse_resume(
+            file_data=file_data,
+            filename=file.filename or "resume",
+            file_mime_type=_resolve_file_mime(file, file_kind),
+            request_id=request_id,
+        )
     except ValueError as exc:
         total_ms = (perf_counter() - total_start) * 1000
         logger.warning(
