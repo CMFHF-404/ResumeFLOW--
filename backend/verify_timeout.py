@@ -7,17 +7,22 @@ sys.path.append(str(Path(__file__).parent))
 
 from app.config import load_settings, DEFAULT_AI_TIMEOUT_SECONDS
 
+
 def verify_timeout():
     print("Verifying AI Timeout Configuration...")
-    
+
     # 1. Check default value
     settings = load_settings()
     print(f"Current AI Timeout: {settings.ai_timeout_seconds} seconds")
-    
-    if settings.ai_timeout_seconds == 120:
-        print("SUCCESS: Default timeout is correctly set to 120 seconds.")
+
+    if settings.ai_timeout_seconds == DEFAULT_AI_TIMEOUT_SECONDS:
+        print(
+            f"SUCCESS: Default timeout is correctly set to {DEFAULT_AI_TIMEOUT_SECONDS} seconds."
+        )
     else:
-        print(f"FAILURE: Expected 120 seconds, got {settings.ai_timeout_seconds} seconds.")
+        print(
+            f"FAILURE: Expected {DEFAULT_AI_TIMEOUT_SECONDS} seconds, got {settings.ai_timeout_seconds} seconds."
+        )
         sys.exit(1)
 
     # 2. Check override via environment variable
@@ -28,9 +33,10 @@ def verify_timeout():
     # we are running this in a fresh process.
     # However, since load_settings caches, we might not see the change if we call it again in the same process
     # without clearing the cache.
-    
+
     # Let's just check the default for now as that's the main requirement.
     # If we wanted to test env var override, we'd need to clear the cache or run a separate process.
+
 
 if __name__ == "__main__":
     verify_timeout()

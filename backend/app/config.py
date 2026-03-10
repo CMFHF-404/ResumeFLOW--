@@ -21,7 +21,7 @@ ENV_FEISHU_WEBHOOK_URL = "FEISHU_WEBHOOK_URL"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
 DEFAULT_AI_MODEL = "gemini-3-flash"
-DEFAULT_AI_TIMEOUT_SECONDS = 120
+DEFAULT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_DEV_USER_ID = "dev-user-test-123"
 DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:5173",
@@ -118,3 +118,4 @@ def load_settings() -> Settings:
         feishu_webhook_url=feishu_webhook_url,
     )
     return _settings
+

@@ -18,6 +18,9 @@ const ACCEPTED_DOC_TYPES = new Set([
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 const ACCEPTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.pdf', '.docx']);
+const MAX_IMAGE_DIMENSION = 1600;
+const IMAGE_OUTPUT_TYPE = 'image/jpeg';
+const IMAGE_OUTPUT_QUALITY = 0.82;
 
 const resolveFileExtension = (filename: string): string =>
     '.' + filename.split('.').pop()?.toLowerCase();
@@ -33,6 +36,87 @@ const isAcceptedFile = (file: File): boolean => {
 const isImageFile = (file: File): boolean =>
     ACCEPTED_IMAGE_TYPES.has(file.type) ||
     ['.jpg', '.jpeg', '.png', '.webp'].includes(resolveFileExtension(file.name));
+
+const replaceImageExtension = (filename: string, nextExtension: string) => {
+    const index = filename.lastIndexOf('.');
+    if (index < 0) {
+        return `${filename}${nextExtension}`;
+    }
+    return `${filename.slice(0, index)}${nextExtension}`;
+};
+
+const canvasToBlob = (
+    canvas: HTMLCanvasElement,
+    type: string,
+    quality?: number
+): Promise<Blob> => new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+        if (!blob) {
+            reject(new Error('Failed to create compressed image blob.'));
+            return;
+        }
+        resolve(blob);
+    }, type, quality);
+});
+
+const loadImageElement = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(image);
+    };
+
+    image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Failed to load image.'));
+    };
+
+    image.src = objectUrl;
+});
+
+const normalizeImageForJDAnalysis = async (file: File): Promise<File> => {
+    if (!isImageFile(file)) {
+        return file;
+    }
+
+    try {
+        const image = await loadImageElement(file);
+        const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+        const scale = longestSide > MAX_IMAGE_DIMENSION
+            ? MAX_IMAGE_DIMENSION / longestSide
+            : 1;
+        const targetWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+        const targetHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const context = canvas.getContext('2d');
+        if (!context) {
+            return file;
+        }
+
+        // JPEG 输出前先铺白底，避免透明 PNG/WebP 出现黑底。
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, targetWidth, targetHeight);
+        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+        const blob = await canvasToBlob(canvas, IMAGE_OUTPUT_TYPE, IMAGE_OUTPUT_QUALITY);
+        if (blob.size >= file.size) {
+            return file;
+        }
+
+        return new File([blob], replaceImageExtension(file.name, '.jpg'), {
+            type: IMAGE_OUTPUT_TYPE,
+            lastModified: file.lastModified,
+        });
+    } catch (error) {
+        console.warn('[JDAttachmentUploader] Failed to normalize image attachment.', error);
+        return file;
+    }
+};
 
 // ── 类型定义 ──────────────────────────────────────────────────────
 
@@ -69,8 +153,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ file, previewUrl, onClear, di
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gray-100 dark:bg-gray-800">
                     {isImage
                         ? <ImageIcon className="h-4 w-4 text-gray-400" />
-                        : <FileText className="h-4 w-4 text-gray-400" />
-                    }
+                        : <FileText className="h-4 w-4 text-gray-400" />}
                 </div>
             )}
             <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-300">
@@ -94,7 +177,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ file, previewUrl, onClear, di
 type DropZoneProps = {
     isDragOver: boolean;
     disabled?: boolean;
-    inputRef: React.RefObject<HTMLInputElement>;
     onDragOver: (e: React.DragEvent) => void;
     onDragLeave: () => void;
     onDrop: (e: React.DragEvent) => void;
@@ -104,7 +186,6 @@ type DropZoneProps = {
 const DropZone: React.FC<DropZoneProps> = ({
     isDragOver,
     disabled,
-    inputRef,
     onDragOver,
     onDragLeave,
     onDrop,
@@ -116,7 +197,9 @@ const DropZone: React.FC<DropZoneProps> = ({
         aria-label="上传 JD 附件"
         onClick={onClick}
         onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') onClick();
+            if (e.key === 'Enter' || e.key === ' ') {
+                onClick();
+            }
         }}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
@@ -142,6 +225,7 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
     disabled,
 }) => {
     const inputRef = useRef<HTMLInputElement>(null);
+    const fileSelectionVersionRef = useRef(0);
     const [isDragOver, setIsDragOver] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -181,15 +265,23 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
             URL.revokeObjectURL(nextPreviewUrl);
         };
     }, [file]);
-    /** 选取文件后的统一处理：校验类型 */
-    const handleFileSelect = useCallback((selected: File) => {
+
+    /** 选取文件后的统一处理：校验类型，并对图片做轻量压缩。 */
+    const handleFileSelect = useCallback(async (selected: File) => {
         if (!isAcceptedFile(selected)) {
             return;
         }
-        onFileChange(selected);
+        const requestVersion = fileSelectionVersionRef.current + 1;
+        fileSelectionVersionRef.current = requestVersion;
+        const normalizedFile = await normalizeImageForJDAnalysis(selected);
+        if (fileSelectionVersionRef.current !== requestVersion) {
+            return;
+        }
+        onFileChange(normalizedFile);
     }, [onFileChange]);
 
     const handleClear = useCallback(() => {
+        fileSelectionVersionRef.current += 1;
         if (inputRef.current) {
             inputRef.current.value = '';
         }
@@ -198,7 +290,9 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
-        if (!disabled) setIsDragOver(true);
+        if (!disabled) {
+            setIsDragOver(true);
+        }
     }, [disabled]);
 
     const handleDragLeave = useCallback(() => {
@@ -208,18 +302,26 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragOver(false);
-        if (disabled) return;
+        if (disabled) {
+            return;
+        }
         const dropped = e.dataTransfer.files[0];
-        if (dropped) handleFileSelect(dropped);
+        if (dropped) {
+            void handleFileSelect(dropped);
+        }
     }, [disabled, handleFileSelect]);
 
     const handleClick = useCallback(() => {
-        if (!disabled) inputRef.current?.click();
+        if (!disabled) {
+            inputRef.current?.click();
+        }
     }, [disabled]);
 
     const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const selected = e.target.files?.[0];
-        if (selected) handleFileSelect(selected);
+        if (selected) {
+            void handleFileSelect(selected);
+        }
     }, [handleFileSelect]);
 
     return (
@@ -235,14 +337,15 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
                 <DropZone
                     isDragOver={isDragOver}
                     disabled={disabled}
-                    inputRef={inputRef}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     onClick={handleClick}
                 />
             )}
-            {/* input 挂在 DropZone 内部但事件需在此监听 */}
+            <p className="text-[11px] leading-5 text-gray-400 dark:text-gray-500">
+                图片附件会在上传前自动压缩，减少 JD 分析超时的概率。
+            </p>
             <input
                 ref={inputRef}
                 type="file"
@@ -256,4 +359,5 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
 };
 
 export default JDAttachmentUploader;
+
 

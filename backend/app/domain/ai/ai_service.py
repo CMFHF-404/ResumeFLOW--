@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException
-from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
+from starlette.status import HTTP_503_SERVICE_UNAVAILABLE, HTTP_504_GATEWAY_TIMEOUT
 
 from ...config import load_settings
 from .prompts import (
@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 MAX_ERROR_BODY_LOG_LENGTH = 2000
 DEFAULT_MATCH_SCORE = 0
 RESUME_SKILLS_KEY = "skills"
+AI_CONNECT_TIMEOUT_SECONDS = 10.0
+AI_POOL_TIMEOUT_SECONDS = 10.0
+
 
 def _hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
@@ -210,6 +213,15 @@ def _log_http_success(response: httpx.Response, model: str, message_count: int) 
     )
 
 
+
+def _build_ai_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=AI_CONNECT_TIMEOUT_SECONDS,
+        write=float(settings.ai_timeout_seconds),
+        read=float(settings.ai_timeout_seconds),
+        pool=AI_POOL_TIMEOUT_SECONDS,
+    )
+
 async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> Dict[str, Any]:
     payload = {
         "model": settings.ai_model,
@@ -217,15 +229,31 @@ async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> D
         "temperature": 0.3,
     }
     url = f"{settings.ai_base_url}/chat/completions"
-    async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
-        response = await client.post(url, headers=_build_headers(), json=payload)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError:
-            _log_http_error(response)
-            raise
-        data = response.json()
-        _log_http_success(response, payload["model"], len(messages))
+    try:
+        async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
+            response = await client.post(url, headers=_build_headers(), json=payload)
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                _log_http_error(response)
+                raise
+            data = response.json()
+            _log_http_success(response, payload["model"], len(messages))
+    except httpx.TimeoutException as exc:
+        logger.error(
+            "AI request timed out: url=%s model=%s messages=%s read_timeout=%ss",
+            url,
+            payload["model"],
+            len(messages),
+            settings.ai_timeout_seconds,
+        )
+        raise HTTPException(
+            status_code=HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "AI analysis timed out. The request took too long to finish; "
+                "please try again later."
+            ),
+        ) from exc
     content = _extract_content(data)
     if json_mode:
         return _parse_json_content(content)
