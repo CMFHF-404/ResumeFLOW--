@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import io
+import base64
 import json
 import logging
 import re
@@ -11,9 +11,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from docx import Document
 from fastapi import UploadFile
-from pypdf import PdfReader
 from sqlalchemy import desc
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -31,7 +29,6 @@ SUPPORTED_DOCX_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
-MIN_TEXT_LENGTH = 30
 MAX_RESUME_TEXT_CHARS = 12_000
 LONG_RESUME_TEXT_THRESHOLD = 6_000
 CHUNK_MAX_CHARS = 3_200
@@ -151,14 +148,11 @@ PROJECT_ROLE_HINTS = {
 PROJECT_MIN_SCORE = 1
 LOG_WARN_THRESHOLDS_MS = {
     "read_file": 3_000,
-    "parse_pdf": 8_000,
-    "parse_docx": 5_000,
-    "extract_text_total": 12_000,
+    "encode_file": 8_000,
     "ai_call": 20_000,
-    "ai_chunk_call": 20_000,
-    "ai_merge_call": 20_000,
     "parse_resume_total": 25_000,
 }
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -654,23 +648,26 @@ def _resolve_file_kind(file: UploadFile) -> str:
     raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
 
 
-def _extract_pdf_text(data: bytes) -> str:
-    reader = PdfReader(io.BytesIO(data))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n".join(pages)
+def _encode_upload_data(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")
 
 
-def _extract_docx_text(data: bytes) -> str:
-    doc = Document(io.BytesIO(data))
-    paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-    return "\n".join(paragraphs)
+def _ensure_attachment_size_limit(data: bytes) -> None:
+    if len(data) <= MAX_ATTACHMENT_BYTES:
+        return
+    max_mb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
+    raise ValueError(
+        f"文件过大，无法直接解析。请上传不超过 {max_mb:.0f}MB 的 PDF 或 DOCX 文件。"
+    )
 
 
-def _validate_text_content(text: str) -> str:
-    cleaned = text.strip()
-    if len(cleaned) < MIN_TEXT_LENGTH:
-        raise ValueError("文件内容过短或无法解析，请确认简历内容完整。")
-    return cleaned
+def _resolve_file_mime(file: UploadFile, kind: str) -> str:
+    content_type = (file.content_type or "").lower().strip()
+    if content_type:
+        return content_type
+    if kind == "pdf":
+        return "application/pdf"
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def _log_timing(
@@ -691,15 +688,43 @@ def _log_timing(
     logger.info("[ResumeParse] %s", payload)
 
 
-def _build_resume_messages(prompt: str, content: str) -> List[Dict[str, str]]:
+def _build_resume_messages(prompt: str, content: str) -> List[Dict[str, Any]]:
     return [
         {"role": "system", "content": prompt},
         {"role": "user", "content": content},
     ]
 
 
+def _build_resume_attachment_messages(
+    prompt: str,
+    filename: str,
+    mime_type: str,
+    encoded_file: str,
+) -> List[Dict[str, Any]]:
+    data_url = f"data:{mime_type};base64,{encoded_file}"
+    return [
+        {"role": "system", "content": prompt},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "请直接解析附件简历，并严格按 JSON schema 返回。"
+                        f"文件名：{filename or 'resume'}"
+                    ),
+                },
+                {
+                    "type": "file_url",
+                    "file_url": {"url": data_url},
+                },
+            ],
+        },
+    ]
+
+
 async def _call_resume_llm(
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     request_id: Optional[str],
     step: str,
     extra: Optional[Dict[str, Any]] = None,
@@ -1015,7 +1040,7 @@ async def _parse_resume_chunked(
     return _normalize_parse_result(merged)
 
 
-async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> str:
+async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> bytes:
     total_start = perf_counter()
     read_start = perf_counter()
     data = await file.read()
@@ -1032,43 +1057,56 @@ async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> st
     )
     if not data:
         raise ValueError("文件为空，无法解析。")
-    kind = _resolve_file_kind(file)
-    parse_start = perf_counter()
-    if kind == "pdf":
-        text = _extract_pdf_text(data)
-        parse_step = "parse_pdf"
-    else:
-        text = _extract_docx_text(data)
-        parse_step = "parse_docx"
-    parse_ms = (perf_counter() - parse_start) * 1000
-    _log_timing(parse_step, parse_ms, request_id, {"text_length": len(text)})
+    _resolve_file_kind(file)
     total_ms = (perf_counter() - total_start) * 1000
     _log_timing("extract_text_total", total_ms, request_id)
-    return _validate_text_content(text)
+    return data
 
 
-async def parse_resume(text: str, request_id: Optional[str] = None) -> Dict[str, Any]:
-    trimmed = text.strip()
-    if not trimmed:
-        raise ValueError("简历内容为空，无法解析。")
-    cleaned = _clean_resume_text(trimmed)
-    if len(cleaned) > MAX_RESUME_TEXT_CHARS:
-        cleaned = cleaned[:MAX_RESUME_TEXT_CHARS]
+async def parse_resume(
+    file_data: bytes,
+    filename: str,
+    file_mime_type: str,
+    request_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    if not file_data:
+        raise ValueError("文件为空，无法解析。")
+    _ensure_attachment_size_limit(file_data)
+
+    encode_start = perf_counter()
+    encoded_file = _encode_upload_data(file_data)
+    encode_ms = (perf_counter() - encode_start) * 1000
+    _log_timing(
+        "encode_file",
+        encode_ms,
+        request_id,
+        {"encoded_length": len(encoded_file)},
+    )
+
+    messages = _build_resume_attachment_messages(
+        RESUME_PARSING_PROMPT,
+        filename,
+        file_mime_type,
+        encoded_file,
+    )
     total_start = perf_counter()
-    if _should_use_chunking(cleaned):
-        result = await _parse_resume_chunked(cleaned, request_id)
-        mode = "chunked"
-    else:
-        result = await _parse_resume_single(cleaned, request_id)
-        mode = "single"
+    result = await _call_resume_llm(
+        messages,
+        request_id,
+        "ai_call",
+        {
+            "filename": filename,
+            "content_type": file_mime_type,
+        },
+    )
     total_ms = (perf_counter() - total_start) * 1000
     _log_timing(
         "parse_resume_total",
         total_ms,
         request_id,
-        {"mode": mode, "input_length": len(cleaned)},
+        {"mode": "attachment"},
     )
-    return result
+    return _normalize_parse_result(result)
 
 
 async def fetch_existing_experiences(
