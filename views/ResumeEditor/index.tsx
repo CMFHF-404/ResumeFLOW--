@@ -3,7 +3,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import PrintPortal from '../../components/PrintPortal';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
-import { useJDAnalysis } from '../../hooks/useJDAnalysis';
+import { useJDAnalysis, type JDAnalyzeProgressNode } from '../../hooks/useJDAnalysis';
 import { usePrintJob } from '../../hooks/usePrintJob';
 import { useResumeData } from '../../hooks/useResumeData';
 import { profileService } from '../../services/profileService';
@@ -88,6 +88,7 @@ import {
     SMART_PAGE_HEIGHT_TOLERANCE,
     SMART_PAGE_TOAST_MESSAGES,
     JD_ANALYSIS_TOAST_MESSAGES,
+    JD_ANALYSIS_PROGRESS_NODE_TITLES,
     JD_ANALYSIS_TOAST_DURATION_MS,
     JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
 } from './constants';
@@ -1241,7 +1242,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         const toastId = showToastLoading(JD_ANALYSIS_TOAST_MESSAGES.loading);
         try {
-            const result = await handleAnalyze();
+            const result = await handleAnalyze({
+                onProgress: (node: JDAnalyzeProgressNode) => {
+                    if (!toastId) {
+                        return;
+                    }
+                    const title = JD_ANALYSIS_PROGRESS_NODE_TITLES[node];
+                    if (!title) {
+                        return;
+                    }
+                    updateToast(toastId, {
+                        message: title,
+                        type: 'loading',
+                        duration: 0,
+                    });
+                },
+            });
             if (result.status === 'success') {
                 if (toastId) {
                     updateToast(toastId, {
