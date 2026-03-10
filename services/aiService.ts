@@ -1,4 +1,5 @@
 import apiClient, { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
+import { dispatchLoginRequired } from './authRedirect';
 import type { MatchScoreEntry, MatchTrend } from '../types/analysis';
 
 export interface PolishExperiencePayload {
@@ -132,9 +133,11 @@ const streamAnalyzeRequest = async (
 ): Promise<JDAnalysisResult> => {
     const headers = new Headers();
     const authHeader = await getAuthorizationHeader();
-    if (authHeader) {
-        headers.set('Authorization', authHeader);
+    if (!authHeader) {
+        dispatchLoginRequired('write-operation');
+        throw new Error('Authentication required for write operation');
     }
+    headers.set('Authorization', authHeader);
     if (options.contentType !== null) {
         headers.set('Content-Type', options.contentType ?? 'application/json');
     }
