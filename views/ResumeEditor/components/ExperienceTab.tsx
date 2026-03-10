@@ -4,6 +4,7 @@ import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
 import type { ExperienceActions, ExperienceTabProps, StarFieldKey } from '../../../types/resume';
 import { ADD_PROJECT_EXPERIENCE_LABEL, ADD_WORK_EXPERIENCE_LABEL } from '../constants';
+import MatchScoreFilter from './MatchScoreFilter';
 import CertificationListSection from './CertificationListSection';
 import ExperienceListSection from './ExperienceList/ListSection';
 import SkillListSection from './SkillListSection';
@@ -188,35 +189,21 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 <p className="text-xs text-gray-400 flex items-center gap-2">
                     <CheckCircle2 className="w-3 h-3" /> 勾选以添加到简历
                 </p>
-                <button
-                    type="button"
-                    onClick={onAutoAssemble}
-                    disabled={isAutoAssembling}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
-                    {isAutoAssembling ? '组装中...' : '一键组装'}
-                </button>
-            </div>
-            <div className="px-1 flex items-center justify-between gap-3">
-                <label className="text-xs text-gray-500 dark:text-gray-400" htmlFor="experience-match-score-filter">
-                    匹配度筛选（≥）
-                </label>
-                <input
-                    id="experience-match-score-filter"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={matchScoreFilter}
-                    onChange={(event) => {
-                        const nextValue = Number(event.target.value);
-                        if (Number.isNaN(nextValue)) {
-                            return;
-                        }
-                        setMatchScoreFilter(clampMatchScoreFilter(nextValue));
-                    }}
-                    className="w-20 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                />
+                <div className="flex items-center gap-2">
+                    <MatchScoreFilter 
+                        value={matchScoreFilter}
+                        onChange={setMatchScoreFilter}
+                    />
+                    <button
+                        type="button"
+                        onClick={onAutoAssemble}
+                        disabled={isAutoAssembling}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
+                        {isAutoAssembling ? '组装中...' : '一键组装'}
+                    </button>
+                </div>
             </div>
             <ExperienceListSection
                 title="工作经历"
