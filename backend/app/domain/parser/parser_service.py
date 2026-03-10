@@ -152,6 +152,7 @@ LOG_WARN_THRESHOLDS_MS = {
     "ai_call": 20_000,
     "parse_resume_total": 25_000,
 }
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -651,6 +652,15 @@ def _encode_upload_data(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
+def _ensure_attachment_size_limit(data: bytes) -> None:
+    if len(data) <= MAX_ATTACHMENT_BYTES:
+        return
+    max_mb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
+    raise ValueError(
+        f"文件过大，无法直接解析。请上传不超过 {max_mb:.0f}MB 的 PDF 或 DOCX 文件。"
+    )
+
+
 def _resolve_file_mime(file: UploadFile, kind: str) -> str:
     content_type = (file.content_type or "").lower().strip()
     if content_type:
@@ -1061,6 +1071,7 @@ async def parse_resume(
 ) -> Dict[str, Any]:
     if not file_data:
         raise ValueError("文件为空，无法解析。")
+    _ensure_attachment_size_limit(file_data)
 
     encode_start = perf_counter()
     encoded_file = _encode_upload_data(file_data)
