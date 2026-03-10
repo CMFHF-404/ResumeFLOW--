@@ -13,6 +13,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     const [hasAuthenticatedOnce, setHasAuthenticatedOnce] = useState(false);
     const logtoResource = useMemo(() => import.meta.env.VITE_LOGTO_RESOURCE, []);
     const getAccessTokenRef = useRef(getAccessToken ?? null);
+    const isSigningInRef = useRef(false);
     const hasTokenGetter = !!getAccessToken;
 
     useEffect(() => {
@@ -27,15 +28,28 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
     useEffect(() => {
         const unsubscribe = subscribeLoginRequired(({ reason, redirectUri }) => {
-            if (isLoading || isAuthenticated) {
+            const shouldForceReauth = reason === 'unauthorized-write';
+
+            if (isLoading || isSigningInRef.current) {
+                return;
+            }
+
+            if (isAuthenticated && !shouldForceReauth) {
                 return;
             }
             console.log('[AuthGuard] Login required:', reason || 'unknown');
+            isSigningInRef.current = true;
             signIn(redirectUri || import.meta.env.VITE_LOGTO_REDIRECT_URI);
         });
 
         return unsubscribe;
     }, [isAuthenticated, isLoading, signIn]);
+
+    useEffect(() => {
+        if (!isLoading) {
+            isSigningInRef.current = false;
+        }
+    }, [isLoading]);
 
     useEffect(() => {
         if (!isAuthenticated || !hasTokenGetter) {
