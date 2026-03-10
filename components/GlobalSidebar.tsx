@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, MessageSquare } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
@@ -19,7 +19,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   setView,
   onOpenFeedback,
 }) => {
-  const { signOut } = useLogto();
+  const { signOut, signIn, isAuthenticated } = useLogto();
   const { profile } = useProfile();
   const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
   const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
@@ -36,6 +36,10 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     // 注销并跳转回首页(登录页)
     // 注意: 需要在 Logto 控制台将 http://localhost:5173 添加到 "Post Sign-out Redirect URI"
     await signOut(window.location.origin);
+  };
+
+  const handleSignIn = async () => {
+    await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
   };
 
   return (
@@ -81,13 +85,23 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           <MessageSquare className="w-6 h-6" />
           <div className="nav-tooltip">反馈</div>
         </button>
-        <button
-          className="p-3 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-950/30 transition-all relative group"
-          onClick={handleSignOut}
-        >
-          <LogOut className="w-6 h-6" />
-          <div className="nav-tooltip">登出</div>
-        </button>
+        {isAuthenticated ? (
+          <button
+            className="p-3 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-950/30 transition-all relative group"
+            onClick={handleSignOut}
+          >
+            <LogOut className="w-6 h-6" />
+            <div className="nav-tooltip">登出</div>
+          </button>
+        ) : (
+          <button
+            className="p-3 rounded-xl text-slate-400 hover:text-emerald-300 hover:bg-emerald-950/30 transition-all relative group"
+            onClick={handleSignIn}
+          >
+            <LogIn className="w-6 h-6" />
+            <div className="nav-tooltip">登录</div>
+          </button>
+        )}
       </div>
     </nav>
   );

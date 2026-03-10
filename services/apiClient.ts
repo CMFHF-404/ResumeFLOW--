@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { requestAccessToken } from './authTokenProvider';
+import { dispatchLoginRequired } from './authRedirect';
 
 const LOGTO_STORAGE_PREFIX = 'logto';
 const LOGTO_ACCESS_TOKEN_ITEM = 'accessToken';
@@ -109,6 +110,14 @@ const resolveApiBaseUrl = (): string => {
     return envBaseUrl || '';
 };
 
+const isWriteMethod = (method?: string) => {
+    if (!method) {
+        return false;
+    }
+    const normalizedMethod = method.toUpperCase();
+    return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod);
+};
+
 const apiClient = axios.create({
     baseURL: resolveApiBaseUrl(),
     headers: {
@@ -129,6 +138,13 @@ apiClient.interceptors.request.use(
         const token = await resolveAccessToken(resource);
         console.log(`[API Client] Resource: ${resource}, Token found: ${!!token}`);
 
+        const shouldRequireLogin = isWriteMethod(config.method);
+
+        if (!token && shouldRequireLogin) {
+            dispatchLoginRequired('write-operation');
+            return Promise.reject(new Error('Authentication required for write operation'));
+        }
+
         if (token) {
             // 使用 Axios headers API 设置 Authorization header
             config.headers.set('Authorization', `Bearer ${token}`);
@@ -146,9 +162,10 @@ apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Token过期或无效,清除本地存储并重定向到登录
             console.error('Authentication failed, redirecting to login...');
-            // 可以在这里触发重新登录
+            if (isWriteMethod(error.config?.method)) {
+                dispatchLoginRequired('unauthorized-write');
+            }
         }
         return Promise.reject(error);
     }
