@@ -143,6 +143,14 @@ export const AUTO_ASSEMBLY_TOAST_MESSAGES = {
     skipped: '当前无法完成一键组装，请稍后重试',
     error: '一键组装失败，请稍后重试',
 } as const;
+export const JD_ANALYSIS_PROGRESS_NODE_TITLES = {
+    prepare_context: "准备分析上下文...",
+    request_ai: "AI 正在思考中...",
+    merge_result: "整理 AI 输出...",
+    apply_score: "计算匹配分...",
+    persist_result: "输出最终结果...",
+} as const;
+
 export const JD_ANALYSIS_TOAST_MESSAGES = {
     loading: '正在进行 JD 分析...',
     success: 'JD 分析完成',

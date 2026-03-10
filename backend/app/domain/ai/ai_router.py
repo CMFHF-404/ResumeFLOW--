@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.status import HTTP_400_BAD_REQUEST
 
@@ -15,6 +16,14 @@ from .ai_service import (
 from . import jd_attachment_service
 
 router = APIRouter(prefix="/api", tags=["ai"])
+
+
+
+
+def _ndjson_line(payload: Dict[str, Any]) -> str:
+    import json as _json
+
+    return _json.dumps(payload, ensure_ascii=False) + "\n"
 
 
 class AnalyzeJDRequest(BaseModel):
@@ -55,6 +64,102 @@ async def analyze_jd_endpoint(
         payload.experience_text,
         payload.prev_experience_text,
     )
+
+
+@router.post("/analyze-jd/stream")
+async def analyze_jd_stream_endpoint(
+    payload: AnalyzeJDRequest,
+    current_user=Depends(get_current_user),
+):
+    async def event_stream():
+        try:
+            yield _ndjson_line({"type": "progress", "node": "prepare_context", "title": "准备分析上下文"})
+            yield _ndjson_line({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
+            result = await analyze_jd(
+                payload.text,
+                payload.resume_text,
+                payload.prev_result,
+                payload.experience_text,
+                payload.prev_experience_text,
+            )
+            yield _ndjson_line({"type": "progress", "node": "merge_result", "title": "合并分析结果"})
+            yield _ndjson_line({"type": "progress", "node": "apply_score", "title": "生成匹配分与建议"})
+            yield _ndjson_line({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
+            yield _ndjson_line({"type": "final", "result": result})
+        except Exception as exc:
+            yield _ndjson_line({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+@router.post("/analyze-jd-attachment/stream")
+async def analyze_jd_attachment_stream_endpoint(
+    file: UploadFile = File(...),
+    jd_text: Optional[str] = Form(None),
+    resume_text: Optional[str] = Form(None),
+    experience_text: Optional[str] = Form(None),
+    prev_result: Optional[str] = Form(None),
+    prev_experience_text: Optional[str] = Form(None),
+    current_user=Depends(get_current_user),
+):
+    async def event_stream():
+        try:
+            yield _ndjson_line({"type": "progress", "node": "prepare_context", "title": "解析 JD 附件"})
+            attachment = await jd_attachment_service.extract_jd_from_attachment(file)
+
+            prev_result_dict: Optional[Dict[str, Any]] = None
+            if prev_result:
+                import json as _json
+                try:
+                    prev_result_dict = _json.loads(prev_result)
+                except Exception:
+                    prev_result_dict = None
+
+            supplemental_jd_text = (jd_text or "").strip()
+            yield _ndjson_line({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
+
+            if attachment.is_image:
+                result = await analyze_jd_with_image(
+                    image_b64=attachment.image_b64,
+                    mime_type=attachment.mime_type,
+                    resume_text=resume_text,
+                    prev_result=prev_result_dict,
+                    experience_text=experience_text,
+                    prev_experience_text=prev_experience_text,
+                    jd_text=supplemental_jd_text or None,
+                )
+                extracted_jd_text = result.pop("extractedJdText", None)
+                if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
+                    result["extracted_jd_text"] = extracted_jd_text.strip()
+            else:
+                extracted_jd_text = (attachment.text or "").strip()
+                combined_jd_text = extracted_jd_text
+                if supplemental_jd_text:
+                    combined_jd_text = (
+                        f"{extracted_jd_text}\n\n补充 JD 说明：\n{supplemental_jd_text}"
+                        if extracted_jd_text
+                        else supplemental_jd_text
+                    )
+                result = await analyze_jd(
+                    text=combined_jd_text,
+                    resume_text=resume_text,
+                    prev_result=prev_result_dict,
+                    experience_text=experience_text,
+                    prev_experience_text=prev_experience_text,
+                )
+                if extracted_jd_text:
+                    result["extracted_jd_text"] = extracted_jd_text
+
+            yield _ndjson_line({"type": "progress", "node": "merge_result", "title": "合并分析结果"})
+            yield _ndjson_line({"type": "progress", "node": "apply_score", "title": "生成匹配分与建议"})
+            yield _ndjson_line({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
+            yield _ndjson_line({"type": "final", "result": result})
+        except ValueError as exc:
+            yield _ndjson_line({"type": "error", "message": str(exc)})
+        except Exception as exc:
+            yield _ndjson_line({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 @router.post("/polish-text", response_model=Dict[str, Any])
