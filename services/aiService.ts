@@ -1,4 +1,5 @@
-import apiClient from './apiClient';
+import apiClient, { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
+import { dispatchLoginRequired } from './authRedirect';
 import type { MatchScoreEntry, MatchTrend } from '../types/analysis';
 
 export interface PolishExperiencePayload {
@@ -84,6 +85,118 @@ type RawJDAnalysisResult = JDAnalysisResult & {
     extracted_jd_text?: unknown;
 };
 
+
+export type JDAnalyzeProgressNode =
+    | 'prepare_context'
+    | 'request_ai'
+    | 'merge_result'
+    | 'apply_score'
+    | 'persist_result';
+
+type AnalyzeProgressEvent = {
+    type: 'progress';
+    node: JDAnalyzeProgressNode;
+    title?: string;
+};
+
+type AnalyzeFinalEvent = {
+    type: 'final';
+    result: RawJDAnalysisResult;
+};
+
+type AnalyzeErrorEvent = {
+    type: 'error';
+    message?: string;
+};
+
+type AnalyzeStreamEvent = AnalyzeProgressEvent | AnalyzeFinalEvent | AnalyzeErrorEvent;
+
+const parseNdjsonLines = (chunk: string) => chunk.split('\n').map((line) => line.trim()).filter(Boolean);
+
+const resolveApiUrl = (path: string) => {
+    const base = getApiBaseUrl();
+    if (!base) {
+        return path;
+    }
+    const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${normalizedBase}${normalizedPath}`;
+};
+
+const streamAnalyzeRequest = async (
+    path: string,
+    body: BodyInit,
+    options: {
+        onProgress?: (event: AnalyzeProgressEvent) => void;
+        contentType?: string | null;
+    } = {}
+): Promise<JDAnalysisResult> => {
+    const headers = new Headers();
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) {
+        dispatchLoginRequired('write-operation');
+        throw new Error('Authentication required for write operation');
+    }
+    headers.set('Authorization', authHeader);
+    if (options.contentType !== null) {
+        headers.set('Content-Type', options.contentType ?? 'application/json');
+    }
+
+    const response = await fetch(resolveApiUrl(path), {
+        method: 'POST',
+        headers,
+        body,
+    });
+
+    if (!response.ok) {
+        throw new Error(`AI stream request failed: ${response.status}`);
+    }
+    if (!response.body) {
+        throw new Error('AI stream response body is empty');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: JDAnalysisResult | null = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = parseNdjsonLines(buffer);
+        const hasTrailingNewline = buffer.endsWith('\n');
+        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
+
+        lines.forEach((line) => {
+            let parsed: AnalyzeStreamEvent;
+            try {
+                parsed = JSON.parse(line) as AnalyzeStreamEvent;
+            } catch (error) {
+                console.warn('Failed to parse stream line', error);
+                return;
+            }
+            if (parsed.type === 'progress') {
+                options.onProgress?.(parsed);
+                return;
+            }
+            if (parsed.type === 'error') {
+                throw new Error(parsed.message || 'AI stream error');
+            }
+            if (parsed.type === 'final') {
+                finalResult = normalizeJDAnalysisResult(parsed.result);
+            }
+        });
+    }
+
+    if (!finalResult) {
+        throw new Error('AI stream did not return final result');
+    }
+    return finalResult;
+};
+
 const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
     const extractedJdText = typeof result.extractedJdText === 'string'
         ? result.extractedJdText
@@ -120,15 +233,18 @@ export const aiService = {
         prevResult,
         experienceText,
         prevExperienceText,
-    }: AnalyzeJDParams) {
-        const response = await apiClient.post<RawJDAnalysisResult>('/api/analyze-jd', {
+    }: AnalyzeJDParams, onProgress?: (event: AnalyzeProgressEvent) => void) {
+        const payload = {
             text,
             resume_text: resumeText,
             prev_result: prevResult,
             experience_text: experienceText,
             prev_experience_text: prevExperienceText,
+        };
+        return streamAnalyzeRequest('/api/analyze-jd/stream', JSON.stringify(payload), {
+            onProgress,
+            contentType: 'application/json',
         });
-        return normalizeJDAnalysisResult(response.data);
     },
 
     async generateTags(text: string) {
@@ -163,7 +279,7 @@ export const aiService = {
         experienceText,
         prevResult,
         prevExperienceText,
-    }: AnalyzeJDWithAttachmentParams): Promise<JDAnalysisResult> {
+    }: AnalyzeJDWithAttachmentParams, onProgress?: (event: AnalyzeProgressEvent) => void): Promise<JDAnalysisResult> {
         const formData = new FormData();
         formData.append('file', file);
         if (jdText) {
@@ -181,11 +297,9 @@ export const aiService = {
         if (prevExperienceText) {
             formData.append('prev_experience_text', prevExperienceText);
         }
-        const response = await apiClient.post<RawJDAnalysisResult>(
-            '/api/analyze-jd-attachment',
-            formData,
-            { headers: { 'Content-Type': null } }
-        );
-        return normalizeJDAnalysisResult(response.data);
+        return streamAnalyzeRequest('/api/analyze-jd-attachment/stream', formData, {
+            onProgress,
+            contentType: null,
+        });
     },
 };

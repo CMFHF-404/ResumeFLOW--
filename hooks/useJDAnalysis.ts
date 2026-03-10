@@ -7,7 +7,11 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { aiService, JDAnalysisResult } from "../services/aiService";
+import {
+  aiService,
+  JDAnalysisResult,
+  type JDAnalyzeProgressNode as AIJDAnalyzeProgressNode,
+} from "../services/aiService";
 import {
   clearJDAnalysisCache,
   loadJDAnalysisCache,
@@ -577,6 +581,14 @@ type JDAnalyzeOutcome =
   | { status: "missing_attachment" }
   | { status: "error" };
 
+export type JDAnalyzeProgressNode = AIJDAnalyzeProgressNode;
+
+type JDAnalyzeProgressHandler = (node: JDAnalyzeProgressNode) => void;
+
+type HandleAnalyzeOptions = {
+  onProgress?: JDAnalyzeProgressHandler;
+};
+
 type UseJDAnalysisResult = {
   jdText: string;
   setJdText: Dispatch<SetStateAction<string>>;
@@ -596,7 +608,7 @@ type UseJDAnalysisResult = {
   setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
   skillMatchTrends: Map<string, MatchTrend>;
   setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
-  handleAnalyze: () => Promise<JDAnalyzeOutcome>;
+  handleAnalyze: (options?: HandleAnalyzeOptions) => Promise<JDAnalyzeOutcome>;
   hasMissingAttachmentContext: boolean;
   debugInfo?: any;
   isOutdated: boolean;
@@ -1272,7 +1284,10 @@ export const useJDAnalysis = ({
   );
 
   const runAnalyze = useCallback(
-    async (options?: AnalyzeOptions): Promise<JDAnalyzeOutcome> => {
+    async (
+      options?: AnalyzeOptions & { onProgress?: JDAnalyzeProgressHandler }
+    ): Promise<JDAnalyzeOutcome> => {
+      const reportProgress = options?.onProgress;
       const mode = options?.mode ?? "full";
       const diff = options?.diff ?? buildEmptyDiff();
       if (mode === "partial" && !hasDiff(diff)) {
@@ -1288,6 +1303,7 @@ export const useJDAnalysis = ({
       }
       setIsAnalyzing(true);
       try {
+        reportProgress?.("prepare_context");
         const startSnapshot = buildAnalyzeSnapshot();
         const payload = buildAnalyzePayload(
           startSnapshot.experiences,
@@ -1301,6 +1317,7 @@ export const useJDAnalysis = ({
           mode === "partial" ? buildPrevResultPayload(analysisResult) : undefined;
         const shouldUsePrev =
           mode === "partial" && Boolean(prevExperienceText) && Boolean(prevResultPayload);
+        reportProgress?.("request_ai");
         // 附件优先：有文件时使用附件路径（vision 或文档文本提取）
         const currentFile = startSnapshot.jdFile;
         const { supplementalText: attachmentSupplementalJdText } =
@@ -1316,14 +1333,14 @@ export const useJDAnalysis = ({
             experienceText: startSnapshot.experienceText,
             prevResult: shouldUsePrev ? prevResultPayload : undefined,
             prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-          })
+          }, (event) => reportProgress?.(event.node))
           : await aiService.analyzeJD({
             text: startSnapshot.jdText,
             resumeText,
             prevResult: shouldUsePrev ? prevResultPayload : undefined,
             experienceText: startSnapshot.experienceText,
             prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-          });
+          }, (event) => reportProgress?.(event.node));
         const extractedAttachmentText = currentFile
           ? result.extractedJdText?.trim() ?? ""
           : "";
@@ -1341,6 +1358,7 @@ export const useJDAnalysis = ({
           updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
           return { status: "no_change" };
         }
+        reportProgress?.("merge_result");
         const nextResult =
           mode === "partial"
             ? mergeAnalysisResult(analysisResult, result, stableDiff)
@@ -1359,6 +1377,7 @@ export const useJDAnalysis = ({
           mode === "partial"
             ? stripTrendsByDiff(stabilizedResult, stableDiff)
             : stabilizedResult;
+        reportProgress?.("apply_score");
         applyMatchScoresForResult(finalResult, mode, stableDiff);
         const supplementalJdText = currentFile
           ? attachmentSupplementalJdText.trim()
@@ -1389,6 +1408,7 @@ export const useJDAnalysis = ({
           setJdFile(null);
           setRestoredAttachmentContext(null);
         }
+        reportProgress?.("persist_result");
         updateAnalysisState({
           result: finalResult,
           itemSignatures: startSnapshot.itemSignatures,
@@ -1432,7 +1452,7 @@ export const useJDAnalysis = ({
     ]
   );
 
-  const handleAnalyze = useCallback(async (): Promise<JDAnalyzeOutcome> => {
+  const handleAnalyze = useCallback(async (options?: HandleAnalyzeOptions): Promise<JDAnalyzeOutcome> => {
     const snapshot = buildAnalyzeSnapshot();
     const contextDiff = buildDiffFromContext(
       analysisContext,
@@ -1474,9 +1494,9 @@ export const useJDAnalysis = ({
       !hasJdInputChanged &&
       hasPrevExperienceText
     ) {
-      return runAnalyze({ mode: "partial", diff: diffSnapshot });
+      return runAnalyze({ mode: "partial", diff: diffSnapshot, onProgress: options?.onProgress });
     }
-    return runAnalyze({ mode: "full" });
+    return runAnalyze({ mode: "full", onProgress: options?.onProgress });
   }, [
     analysisContext,
     analysisResult,
@@ -1511,7 +1531,6 @@ export const useJDAnalysis = ({
     isOutdated,
   };
 };
-
 
 
 
