@@ -119,7 +119,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             return workItems;
         }
 
-        return workItems.filter((item) => item.matchScore !== undefined && item.matchScore >= matchScoreFilter);
+        return workItems.filter((item) => item.matchScore === undefined || item.matchScore >= matchScoreFilter);
     }, [workItems, matchScoreFilter]);
 
     const filteredProjectItems = useMemo(() => {
@@ -128,7 +128,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             return projectItems;
         }
 
-        return projectItems.filter((item) => item.matchScore !== undefined && item.matchScore >= matchScoreFilter);
+        return projectItems.filter((item) => item.matchScore === undefined || item.matchScore >= matchScoreFilter);
     }, [projectItems, matchScoreFilter]);
 
     useEffect(() => {
