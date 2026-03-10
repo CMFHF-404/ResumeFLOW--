@@ -102,7 +102,7 @@ const resolveAccessToken = async (resource?: string): Promise<string | null> => 
     return getLogtoAccessToken(resource);
 };
 
-const resolveApiBaseUrl = (): string => {
+export const getApiBaseUrl = (): string => {
     const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
     if (import.meta.env.DEV) {
         return '/api';
@@ -118,8 +118,18 @@ const isWriteMethod = (method?: string) => {
     return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod);
 };
 
+
+export const getAuthorizationHeader = async (): Promise<string | null> => {
+    const resource = getLogtoResource();
+    const token = await resolveAccessToken(resource);
+    if (!token) {
+        return null;
+    }
+    return `Bearer ${token}`;
+};
+
 const apiClient = axios.create({
-    baseURL: resolveApiBaseUrl(),
+    baseURL: getApiBaseUrl(),
     headers: {
         'Content-Type': 'application/json',
     },
