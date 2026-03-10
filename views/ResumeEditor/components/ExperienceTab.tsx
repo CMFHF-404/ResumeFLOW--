@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Wand2 } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
@@ -15,6 +15,9 @@ const SCROLL_TARGET_PREFIX = {
     certification: 'certification',
     skillGroup: 'skill-group',
 } as const;
+const DEFAULT_MATCH_SCORE_FILTER = 70;
+
+const clampMatchScoreFilter = (value: number) => Math.min(100, Math.max(0, value));
 
 const escapeSelectorValue = (value: string) => {
     if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -71,6 +74,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetProjectSort,
     onResetCertificationSort,
 }) => {
+    const [matchScoreFilter, setMatchScoreFilter] = useState(DEFAULT_MATCH_SCORE_FILTER);
     const listScrollSnapshotRef = useRef<number | null>(null);
     const shouldRestoreScrollRef = useRef(false);
     const prevEditingExpIdRef = useRef<string | null>(experience.editingExpId);
@@ -108,6 +112,24 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         skill.editingSkillId,
         skillGroups,
     ]);
+
+    const filteredWorkItems = useMemo(() => {
+        const hasJDAnalysis = workItems.some((item) => item.matchScore !== undefined);
+        if (!hasJDAnalysis) {
+            return workItems;
+        }
+
+        return workItems.filter((item) => item.matchScore === undefined || item.matchScore >= matchScoreFilter);
+    }, [workItems, matchScoreFilter]);
+
+    const filteredProjectItems = useMemo(() => {
+        const hasJDAnalysis = projectItems.some((item) => item.matchScore !== undefined);
+        if (!hasJDAnalysis) {
+            return projectItems;
+        }
+
+        return projectItems.filter((item) => item.matchScore === undefined || item.matchScore >= matchScoreFilter);
+    }, [projectItems, matchScoreFilter]);
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -176,9 +198,29 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                     {isAutoAssembling ? '组装中...' : '一键组装'}
                 </button>
             </div>
+            <div className="px-1 flex items-center justify-between gap-3">
+                <label className="text-xs text-gray-500 dark:text-gray-400" htmlFor="experience-match-score-filter">
+                    匹配度筛选（≥）
+                </label>
+                <input
+                    id="experience-match-score-filter"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={matchScoreFilter}
+                    onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) {
+                            return;
+                        }
+                        setMatchScoreFilter(clampMatchScoreFilter(nextValue));
+                    }}
+                    className="w-20 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                />
+            </div>
             <ExperienceListSection
                 title="工作经历"
-                items={workItems}
+                items={filteredWorkItems}
                 selectedIds={selectedExpIds}
                 icon={<Briefcase className="w-3.5 h-3.5 text-primary" />}
                 theme="primary"
@@ -196,7 +238,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             />
             <ExperienceListSection
                 title="项目经历"
-                items={projectItems}
+                items={filteredProjectItems}
                 selectedIds={selectedExpIds}
                 icon={<FolderKanban className="w-3.5 h-3.5 text-indigo-500" />}
                 theme="project"
