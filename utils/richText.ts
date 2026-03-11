@@ -45,6 +45,54 @@ const EDGE_WHITESPACE_PATTERN = /^[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]+|[\s\
 const normalizeMarkdownToken = (value: string) =>
     value.replace(/[\u00a0\u3000]/g, ' ').replace(EDGE_WHITESPACE_PATTERN, '');
 
+const convertMarkdownLinksToHtml = (input: string) => {
+    let output = '';
+    let index = 0;
+
+    while (index < input.length) {
+        const openBracket = input.indexOf('[', index);
+        if (openBracket < 0) {
+            output += input.slice(index);
+            break;
+        }
+        const closeBracket = input.indexOf(']', openBracket + 1);
+        if (closeBracket < 0 || input[closeBracket + 1] !== '(') {
+            output += input.slice(index, openBracket + 1);
+            index = openBracket + 1;
+            continue;
+        }
+
+        let cursor = closeBracket + 2;
+        let depth = 1;
+        while (cursor < input.length && depth > 0) {
+            const ch = input[cursor];
+            if (ch === '(') {
+                depth += 1;
+            } else if (ch === ')') {
+                depth -= 1;
+            }
+            cursor += 1;
+        }
+        if (depth !== 0) {
+            output += input.slice(index, openBracket + 1);
+            index = openBracket + 1;
+            continue;
+        }
+
+        const text = input.slice(openBracket + 1, closeBracket);
+        const href = input.slice(closeBracket + 2, cursor - 1).trim();
+        output += input.slice(index, openBracket);
+        if (!text || !href) {
+            output += input.slice(openBracket, cursor);
+        } else {
+            output += `<a href="${href}">${normalizeMarkdownToken(text)}</a>`;
+        }
+        index = cursor;
+    }
+
+    return output;
+};
+
 const maybeConvertLegacyMarkdown = (input: string) => {
     if (!input || /<[^>]+>/.test(input)) {
         return input;
@@ -52,10 +100,7 @@ const maybeConvertLegacyMarkdown = (input: string) => {
     if (!/(\*\*|__|\]\(|\*[^*\r\n]+\*)/g.test(input)) {
         return input;
     }
-    return input
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, href) => {
-            return `<a href="${href}">${normalizeMarkdownToken(text)}</a>`;
-        })
+    return convertMarkdownLinksToHtml(input)
         .replace(/\*\*([^*]+)\*\*/g, (_match, text) => `<b>${normalizeMarkdownToken(text)}</b>`)
         .replace(/__([^_]+)__/g, (_match, text) => `<u>${normalizeMarkdownToken(text)}</u>`)
         // 仅匹配同一行内的 *italic*，避免把 `* item1\n* item2` 误判为斜体。
