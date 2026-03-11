@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  LoaderCircle,
   UploadCloud,
   X,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import {
   ParsedExperienceVersion,
   ParsedCertification,
   ParsedSkillGroup,
+  type ResumeParseProgressNode,
   parserService,
 } from '../services/parserService';
 import { stripRichTextToText } from '../utils/richText';
@@ -44,6 +46,13 @@ const STAGE_LABELS = {
 };
 
 type ParseStage = 'idle' | 'uploading' | 'parsing' | 'analyzing' | 'ready' | 'error';
+type ThinkingNodeStatus = 'streaming' | 'done' | 'error';
+
+type ThinkingNode = {
+  id: string;
+  text: string;
+  status: ThinkingNodeStatus;
+};
 
 const STAGE_PROGRESS: Record<ParseStage, number> = {
   idle: 0,
@@ -61,6 +70,8 @@ const LONG_PARSE_NOTICE_MESSAGE = '检测到简历内容较长，本次解析可
 const PARSE_SUCCESS_MESSAGE = '简历解析完成';
 const REPEATED_PARSE_ERROR_HINT =
   '如果简历文本过长或者含有图片（如模板）可能造成简历无法解析，请使用其他AI助手整理出干净文本再解析';
+const THINKING_NODE_BREAK_REGEX = /[\n\r]|[。！？.!?；;]\s*$/;
+const THINKING_TITLE_REGEX = /\*\*([^*\n]+?)(?:\*\*|$)/;
 
 type ToastHandlers = {
   success: (message: string, duration?: number) => void;
@@ -115,6 +126,75 @@ const formatDateRange = (start?: string, end?: string, isCurrent?: boolean) => {
     return `${startLabel} - 至今`;
   }
   return `${startLabel} - ${end || '至今'}`;
+};
+
+const buildEmptyThinkingNodes = (): ThinkingNode[] => [];
+
+const getStageForTraceNode = (node: ResumeParseProgressNode): ParseStage => {
+  if (node === 'receive_file') {
+    return 'uploading';
+  }
+  if (node === 'dedupe_result' || node === 'finalize') {
+    return 'analyzing';
+  }
+  return 'parsing';
+};
+
+const appendThinkingDelta = (nodes: ThinkingNode[], rawSummary: string): ThinkingNode[] => {
+  const summary = rawSummary.replace(/\r/g, '');
+  const summaryPreview = summary.trim();
+  if (!summaryPreview) {
+    return nodes;
+  }
+  const next = [...nodes];
+  const lastNode = next[next.length - 1];
+  if (!lastNode || lastNode.status !== 'streaming') {
+    next.push({
+      id: `thinking-${Date.now()}-${next.length}`,
+      text: summary.trimStart(),
+      status: THINKING_NODE_BREAK_REGEX.test(summaryPreview) ? 'done' : 'streaming',
+    });
+    return next;
+  }
+
+  const mergedText = `${lastNode.text}${summary}`;
+  next[next.length - 1] = {
+    ...lastNode,
+    text: mergedText,
+    status:
+      THINKING_NODE_BREAK_REGEX.test(summaryPreview) || mergedText.trim().length >= 140
+        ? 'done'
+        : 'streaming',
+  };
+  return next;
+};
+
+const completeThinkingNodes = (nodes: ThinkingNode[]): ThinkingNode[] =>
+  nodes.map((item) => ({ ...item, status: item.status === 'error' ? 'error' : 'done' }));
+
+const failThinkingNodes = (nodes: ThinkingNode[]): ThinkingNode[] => {
+  if (!nodes.length) {
+    return nodes;
+  }
+  return nodes.map((item, index) =>
+    index === nodes.length - 1 ? { ...item, status: 'error' } : item
+  );
+};
+
+const extractThinkingHeadline = (text: string) => {
+  const normalized = text.replace(/\r/g, '\n').trim();
+  if (!normalized) {
+    return '';
+  }
+  const markdownTitle = normalized.match(THINKING_TITLE_REGEX)?.[1]?.trim();
+  if (markdownTitle) {
+    return markdownTitle;
+  }
+  const firstLine = normalized
+    .split('\n')
+    .map((line) => line.replace(/\*/g, '').trim())
+    .find(Boolean);
+  return firstLine || '';
 };
 
 const CJK_CHAR_PATTERN = '\\u4e00-\\u9fff\\u3400-\\u4dbf';
@@ -376,10 +456,17 @@ const createTimeoutError = () => {
   return error;
 };
 
-const withTimeout = async <T,>(task: Promise<T>, timeoutMs: number): Promise<T> => {
+const withTimeout = async <T,>(
+  task: Promise<T>,
+  timeoutMs: number,
+  onTimeout?: () => void
+): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(() => reject(createTimeoutError()), timeoutMs);
+    timeoutId = setTimeout(() => {
+      onTimeout?.();
+      reject(createTimeoutError());
+    }, timeoutMs);
   });
 
   try {
@@ -867,11 +954,76 @@ const FileStatusCard: React.FC<{
   </div>
 );
 
+const ThinkingTraceCard: React.FC<{
+  stage: ParseStage;
+  nodes: ThinkingNode[];
+}> = ({ stage, nodes }) => {
+  const latestNode = useMemo(() => {
+    const candidates = [...nodes].reverse();
+    return candidates.find((item) => extractThinkingHeadline(item.text)) || candidates[0] || null;
+  }, [nodes]);
+  const latestHeadline = latestNode ? extractThinkingHeadline(latestNode.text) : '';
+  const displayText = latestHeadline
+    || (stage === 'error'
+      ? '思考流已中断'
+      : stage === 'ready'
+        ? '解析已完成'
+        : '等待模型思考...');
+  const animationKey = latestNode ? `${latestNode.id}-${latestHeadline}` : `idle-${stage}`;
+  const isWorking = stage === 'uploading' || stage === 'parsing' || stage === 'analyzing';
+  const isError = stage === 'error' || latestNode?.status === 'error';
+  const iconClassName = isError
+    ? 'text-red-500'
+    : isWorking
+      ? 'text-emerald-500'
+      : 'text-emerald-600';
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-emerald-100/80 bg-gradient-to-r from-emerald-50/95 via-white to-teal-50/80 px-4 py-3 shadow-[0_12px_30px_rgba(16,185,129,0.08)]">
+      <style>{`
+        @keyframes thinkingRollIn {
+          0% {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+      <div className="flex min-h-[44px] items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/85 shadow-sm ${iconClassName}`}>
+          {isError ? (
+            <AlertTriangle className="h-4.5 w-4.5" />
+          ) : isWorking ? (
+            <LoaderCircle className="h-4.5 w-4.5 animate-spin" />
+          ) : (
+            <CheckCircle2 className="h-4.5 w-4.5" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div
+            key={animationKey}
+            className={`min-w-0 ${isError ? 'text-red-600' : 'text-gray-900'}`}
+            style={{ animation: 'thinkingRollIn 360ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+          >
+            <p className="truncate text-sm font-semibold">
+              {displayText}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const UploadPanel: React.FC<{
   file: File | null;
   stage: ParseStage;
   progress: number;
   errorMessage: string | null;
+  thinkingNodes: ThinkingNode[];
   isDragging: boolean;
   inputRef: React.RefObject<HTMLInputElement>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -883,6 +1035,7 @@ const UploadPanel: React.FC<{
   stage,
   progress,
   errorMessage,
+  thinkingNodes,
   isDragging,
   inputRef,
   onFileChange,
@@ -905,6 +1058,7 @@ const UploadPanel: React.FC<{
           重新上传
         </button>
       </div>
+      <ThinkingTraceCard stage={stage} nodes={thinkingNodes} />
     </div>
   );
 
@@ -1237,6 +1391,7 @@ const useResumeParsing = (
   const [stage, setStage] = useState<ParseStage>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [thinkingNodes, setThinkingNodes] = useState<ThinkingNode[]>(buildEmptyThinkingNodes);
   const longParseNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parseErrorCountRef = useRef(0);
 
@@ -1254,6 +1409,7 @@ const useResumeParsing = (
     setStage('idle');
     setErrorMessage(null);
     setIsDragging(false);
+    setThinkingNodes(buildEmptyThinkingNodes());
   }, [clearLongParseNotice]);
 
   const scheduleLongParseNotice = useCallback(() => {
@@ -1288,12 +1444,34 @@ const useResumeParsing = (
       setErrorMessage(null);
       setStage('uploading');
       setFile(nextFile);
+      setThinkingNodes(buildEmptyThinkingNodes());
 
       try {
+        const abortController = new AbortController();
         await sleep(STAGE_TRANSITION_DELAY_MS);
         setStage('parsing');
         scheduleLongParseNotice();
-        const response = await withTimeout(parserService.parseResume(nextFile), PARSE_TIMEOUT_MS);
+        const response = await withTimeout(
+          parserService.parseResume(
+            nextFile,
+            (event) => {
+              if (event.type === 'progress') {
+                setStage(getStageForTraceNode(event.node));
+                return;
+              }
+              if (event.type === 'thought_reset') {
+                setThinkingNodes(buildEmptyThinkingNodes());
+                return;
+              }
+              if (event.type === 'thought') {
+                setThinkingNodes((prev) => appendThinkingDelta(prev, event.summary));
+              }
+            },
+            abortController.signal
+          ),
+          PARSE_TIMEOUT_MS,
+          () => abortController.abort()
+        );
         await sleep(STAGE_TRANSITION_DELAY_MS);
         setStage('analyzing');
         await sleep(STAGE_TRANSITION_DELAY_MS);
@@ -1302,6 +1480,7 @@ const useResumeParsing = (
         applyParsedCertifications(response.certifications || []);
         const existingSkills = await fetchExistingSkills();
         applyParsedSkills(response.skills || [], existingSkills);
+        setThinkingNodes((prev) => completeThinkingNodes(prev));
         setStage('ready');
         toast.success(PARSE_SUCCESS_MESSAGE);
         parseErrorCountRef.current = 0;
@@ -1310,6 +1489,7 @@ const useResumeParsing = (
         parseErrorCountRef.current += 1;
         const message = buildParseErrorMessage(error, parseErrorCountRef.current);
         setErrorMessage(message);
+        setThinkingNodes((prev) => failThinkingNodes(prev));
         setStage('error');
         toast.error(message);
       } finally {
@@ -1355,6 +1535,7 @@ const useResumeParsing = (
     stage,
     errorMessage,
     isDragging,
+    thinkingNodes,
     setIsDragging,
     handleFileChange,
     handleDrop,
@@ -1536,6 +1717,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
     stage,
     errorMessage,
     isDragging,
+    thinkingNodes,
     setIsDragging,
     handleFileChange,
     handleDrop,
@@ -1620,6 +1802,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
               stage={stage}
               progress={progress}
               errorMessage={errorMessage}
+              thinkingNodes={thinkingNodes}
               isDragging={isDragging}
               inputRef={fileInputRef}
               onFileChange={handleFileChangeWithReset}
