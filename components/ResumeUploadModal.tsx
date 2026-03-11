@@ -478,6 +478,13 @@ const withTimeout = async <T,>(
   }
 };
 
+const isAbortLikeError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.name === 'AbortError' || /aborted|abort/i.test(error.message);
+};
+
 const resolveParseErrorMessage = (error: unknown) => {
   if (error instanceof Error && error.name === TIMEOUT_ERROR_NAME) {
     return '解析超时，请稍后重试。';
@@ -916,6 +923,9 @@ const UploadDropzone: React.FC<{
       type="file"
       accept=".pdf,.docx"
       className="absolute inset-0 opacity-0 cursor-pointer"
+      onClick={(event) => {
+        event.currentTarget.value = '';
+      }}
       onChange={onFileChange}
       ref={inputRef}
     />
@@ -1394,6 +1404,8 @@ const useResumeParsing = (
   const [thinkingNodes, setThinkingNodes] = useState<ThinkingNode[]>(buildEmptyThinkingNodes);
   const longParseNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parseErrorCountRef = useRef(0);
+  const activeParseControllerRef = useRef<AbortController | null>(null);
+  const parseRunIdRef = useRef(0);
 
   const clearLongParseNotice = useCallback(() => {
     if (longParseNoticeTimerRef.current) {
@@ -1402,7 +1414,17 @@ const useResumeParsing = (
     }
   }, []);
 
+  const cancelActiveParse = useCallback(() => {
+    const currentController = activeParseControllerRef.current;
+    if (!currentController) {
+      return;
+    }
+    activeParseControllerRef.current = null;
+    currentController.abort();
+  }, []);
+
   const resetParsing = useCallback(() => {
+    cancelActiveParse();
     clearLongParseNotice();
     parseErrorCountRef.current = 0;
     setFile(null);
@@ -1410,7 +1432,7 @@ const useResumeParsing = (
     setErrorMessage(null);
     setIsDragging(false);
     setThinkingNodes(buildEmptyThinkingNodes());
-  }, [clearLongParseNotice]);
+  }, [cancelActiveParse, clearLongParseNotice]);
 
   const scheduleLongParseNotice = useCallback(() => {
     clearLongParseNotice();
@@ -1431,6 +1453,7 @@ const useResumeParsing = (
 
   const handleFileParse = useCallback(
     async (nextFile: File) => {
+      cancelActiveParse();
       clearLongParseNotice();
       applyParsedItems([]);
       applyParsedPersonalInfo(undefined);
@@ -1445,16 +1468,29 @@ const useResumeParsing = (
       setStage('uploading');
       setFile(nextFile);
       setThinkingNodes(buildEmptyThinkingNodes());
+      const currentRunId = parseRunIdRef.current + 1;
+      parseRunIdRef.current = currentRunId;
+      const abortController = new AbortController();
+      let didTimeout = false;
+      const isCurrentParseRun = () =>
+        parseRunIdRef.current === currentRunId
+        && activeParseControllerRef.current === abortController;
 
       try {
-        const abortController = new AbortController();
+        activeParseControllerRef.current = abortController;
         await sleep(STAGE_TRANSITION_DELAY_MS);
+        if (!isCurrentParseRun()) {
+          return;
+        }
         setStage('parsing');
         scheduleLongParseNotice();
         const response = await withTimeout(
           parserService.parseResume(
             nextFile,
             (event) => {
+              if (!isCurrentParseRun()) {
+                return;
+              }
               if (event.type === 'progress') {
                 setStage(getStageForTraceNode(event.node));
                 return;
@@ -1470,30 +1506,58 @@ const useResumeParsing = (
             abortController.signal
           ),
           PARSE_TIMEOUT_MS,
-          () => abortController.abort()
+          () => {
+            didTimeout = true;
+            abortController.abort();
+          }
         );
+        if (!isCurrentParseRun()) {
+          return;
+        }
         await sleep(STAGE_TRANSITION_DELAY_MS);
+        if (!isCurrentParseRun()) {
+          return;
+        }
         setStage('analyzing');
         await sleep(STAGE_TRANSITION_DELAY_MS);
+        if (!isCurrentParseRun()) {
+          return;
+        }
         applyParsedItems(response.items || []);
         applyParsedPersonalInfo(response.personal_info);
         applyParsedCertifications(response.certifications || []);
         const existingSkills = await fetchExistingSkills();
+        if (!isCurrentParseRun()) {
+          return;
+        }
         applyParsedSkills(response.skills || [], existingSkills);
         setThinkingNodes((prev) => completeThinkingNodes(prev));
         setStage('ready');
         toast.success(PARSE_SUCCESS_MESSAGE);
         parseErrorCountRef.current = 0;
       } catch (error) {
+        if (parseRunIdRef.current !== currentRunId) {
+          return;
+        }
+        if (isAbortLikeError(error) && !didTimeout) {
+          return;
+        }
+        const resolvedError =
+          didTimeout && isAbortLikeError(error) ? createTimeoutError() : error;
         console.error('[ResumeUploadModal] Failed to parse resume:', error);
         parseErrorCountRef.current += 1;
-        const message = buildParseErrorMessage(error, parseErrorCountRef.current);
+        const message = buildParseErrorMessage(resolvedError, parseErrorCountRef.current);
         setErrorMessage(message);
         setThinkingNodes((prev) => failThinkingNodes(prev));
         setStage('error');
         toast.error(message);
       } finally {
-        clearLongParseNotice();
+        if (activeParseControllerRef.current === abortController) {
+          activeParseControllerRef.current = null;
+        }
+        if (parseRunIdRef.current === currentRunId) {
+          clearLongParseNotice();
+        }
       }
     },
     [
@@ -1501,6 +1565,7 @@ const useResumeParsing = (
       applyParsedPersonalInfo,
       applyParsedCertifications,
       applyParsedSkills,
+      cancelActiveParse,
       clearLongParseNotice,
       fetchExistingSkills,
       scheduleLongParseNotice,
@@ -1511,6 +1576,7 @@ const useResumeParsing = (
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const nextFile = event.target.files?.[0];
+      event.target.value = '';
       if (nextFile) {
         handleFileParse(nextFile);
       }

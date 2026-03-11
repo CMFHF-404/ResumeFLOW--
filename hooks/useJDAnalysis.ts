@@ -10,6 +10,7 @@ import {
 import {
   aiService,
   JDAnalysisResult,
+  type AnalyzeStreamEvent,
   type JDAnalyzeProgressNode as AIJDAnalyzeProgressNode,
 } from "../services/aiService";
 import {
@@ -584,9 +585,11 @@ type JDAnalyzeOutcome =
 export type JDAnalyzeProgressNode = AIJDAnalyzeProgressNode;
 
 type JDAnalyzeProgressHandler = (node: JDAnalyzeProgressNode) => void;
+type JDAnalyzeStreamHandler = (event: AnalyzeStreamEvent) => void;
 
 type HandleAnalyzeOptions = {
   onProgress?: JDAnalyzeProgressHandler;
+  onEvent?: JDAnalyzeStreamHandler;
 };
 
 type UseJDAnalysisResult = {
@@ -1285,9 +1288,13 @@ export const useJDAnalysis = ({
 
   const runAnalyze = useCallback(
     async (
-      options?: AnalyzeOptions & { onProgress?: JDAnalyzeProgressHandler }
+      options?: AnalyzeOptions & {
+        onProgress?: JDAnalyzeProgressHandler;
+        onEvent?: JDAnalyzeStreamHandler;
+      }
     ): Promise<JDAnalyzeOutcome> => {
       const reportProgress = options?.onProgress;
+      const reportEvent = options?.onEvent;
       const mode = options?.mode ?? "full";
       const diff = options?.diff ?? buildEmptyDiff();
       if (mode === "partial" && !hasDiff(diff)) {
@@ -1333,14 +1340,24 @@ export const useJDAnalysis = ({
             experienceText: startSnapshot.experienceText,
             prevResult: shouldUsePrev ? prevResultPayload : undefined,
             prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-          }, (event) => reportProgress?.(event.node))
+          }, (event) => {
+            if (event.type === "progress") {
+              reportProgress?.(event.node);
+            }
+            reportEvent?.(event);
+          })
           : await aiService.analyzeJD({
             text: startSnapshot.jdText,
             resumeText,
             prevResult: shouldUsePrev ? prevResultPayload : undefined,
             experienceText: startSnapshot.experienceText,
             prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-          }, (event) => reportProgress?.(event.node));
+          }, (event) => {
+            if (event.type === "progress") {
+              reportProgress?.(event.node);
+            }
+            reportEvent?.(event);
+          });
         const extractedAttachmentText = currentFile
           ? result.extractedJdText?.trim() ?? ""
           : "";
@@ -1494,9 +1511,18 @@ export const useJDAnalysis = ({
       !hasJdInputChanged &&
       hasPrevExperienceText
     ) {
-      return runAnalyze({ mode: "partial", diff: diffSnapshot, onProgress: options?.onProgress });
+      return runAnalyze({
+        mode: "partial",
+        diff: diffSnapshot,
+        onProgress: options?.onProgress,
+        onEvent: options?.onEvent,
+      });
     }
-    return runAnalyze({ mode: "full", onProgress: options?.onProgress });
+    return runAnalyze({
+      mode: "full",
+      onProgress: options?.onProgress,
+      onEvent: options?.onEvent,
+    });
   }, [
     analysisContext,
     analysisResult,

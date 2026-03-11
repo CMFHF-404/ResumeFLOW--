@@ -6,6 +6,7 @@ import { experienceService, ExperienceCategory, ExperienceListItem } from '../se
 import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { mergeTags, sanitizeTagList } from './tagUtils';
+import { extractThoughtHeadline } from '../utils/aiThought';
 import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
 import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
 
@@ -970,7 +971,16 @@ const usePolishActions = ({
       updatePolishingTarget(cardId, true);
       toastId = toast.loading(POLISH_TOAST_MESSAGES.loading);
       try {
-        const response = await aiService.polishExperience({ content });
+        const response = await aiService.polishExperienceStream({ content }, (event) => {
+          if (!toastId || event.type !== 'thought') {
+            return;
+          }
+          const title = extractThoughtHeadline(event.summary);
+          if (!title) {
+            return;
+          }
+          toast.updateToast(toastId, { message: title, type: 'loading', duration: 0 });
+        });
         const latestData = cardDataRef.current.get(cardId);
         if (!latestData) {
           return;
