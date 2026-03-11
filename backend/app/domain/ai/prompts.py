@@ -42,6 +42,8 @@ STAR_POLISH = (
     "Limit bold highlights: S/T/R at most 2 per sentence, A at most 1 per bullet. "
     "Each A bullet should include one bold highlight if possible (prefer JD keywords, "
     "otherwise bold the core action verb). "
+    "Preserve all existing hyperlinks (Markdown link / HTML <a>), and keep them reachable; do not drop, "
+    "break, or rewrite link targets unless the user explicitly changed them. "
     "Use only the provided facts; do not invent anything. You may reclassify content across S/T/A/R "
     "when the target category is clearly more appropriate. If classification is uncertain, keep the "
     "original field's intent and avoid moving content. Never drop facts; if you move content, ensure it "
