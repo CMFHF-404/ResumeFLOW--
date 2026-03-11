@@ -1,7 +1,8 @@
 import hashlib
+import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException
@@ -24,6 +25,10 @@ DEFAULT_MATCH_SCORE = 0
 RESUME_SKILLS_KEY = "skills"
 AI_CONNECT_TIMEOUT_SECONDS = 10.0
 AI_POOL_TIMEOUT_SECONDS = 10.0
+GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
+GEMINI_POOL_TIMEOUT_SECONDS = 10.0
+
+ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 
 
 def _hash_text(text: str) -> str:
@@ -195,6 +200,26 @@ def _build_headers() -> Dict[str, str]:
         "Content-Type": "application/json",
     }
 
+
+def _build_gemini_headers() -> Dict[str, str]:
+    api_key = settings.gemini_api_key
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY 未配置，无法返回 Gemini 实时思考节点。")
+    return {
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+
+def _build_gemini_stream_url(model: str) -> str:
+    base_url = (settings.gemini_base_url or "").rstrip("/")
+    if not base_url:
+        raise ValueError("GEMINI_BASE_URL 未配置，无法调用 Gemini Thinking。")
+    normalized = base_url.lower()
+    if not normalized.endswith("/v1beta") and not normalized.endswith("/v1"):
+        base_url = f"{base_url}/v1beta"
+    return f"{base_url}/models/{model}:streamGenerateContent?alt=sse"
+
 def _safe_response_text(response: httpx.Response) -> str:
     try:
         text = response.text
@@ -234,6 +259,155 @@ def _build_ai_timeout() -> httpx.Timeout:
         read=float(settings.ai_timeout_seconds),
         pool=AI_POOL_TIMEOUT_SECONDS,
     )
+
+
+def _build_gemini_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=GEMINI_CONNECT_TIMEOUT_SECONDS,
+        write=float(settings.ai_timeout_seconds),
+        read=float(settings.ai_timeout_seconds),
+        pool=GEMINI_POOL_TIMEOUT_SECONDS,
+    )
+
+
+async def _emit_thought(
+    thought_callback: ThoughtCallback,
+    payload: Dict[str, Any],
+) -> None:
+    if not thought_callback:
+        return
+    result = thought_callback(payload)
+    if inspect.isawaitable(result):
+        await result
+
+
+async def _iter_sse_json_payloads(response: httpx.Response):
+    def build_payload(lines: List[str]) -> str:
+        data_lines: List[str] = []
+        for item in lines:
+            if not item.startswith("data:"):
+                continue
+            value = item[5:]
+            if value.startswith(" "):
+                value = value[1:]
+            data_lines.append(value)
+        return "\n".join(data_lines)
+
+    event_lines: List[str] = []
+    async for raw_line in response.aiter_lines():
+        line = raw_line.rstrip("\r")
+        if not line.strip():
+            if not event_lines:
+                continue
+            payload = build_payload(event_lines)
+            event_lines = []
+            if not payload:
+                continue
+            if payload == "[DONE]":
+                break
+            try:
+                yield json.loads(payload)
+            except json.JSONDecodeError:
+                logger.warning("[AI Stream] invalid Gemini SSE payload: %s", payload[:500])
+            continue
+        event_lines.append(line)
+
+    if event_lines:
+        payload = build_payload(event_lines)
+        if payload and payload != "[DONE]":
+            try:
+                yield json.loads(payload)
+            except json.JSONDecodeError:
+                logger.warning("[AI Stream] invalid Gemini SSE trailing payload: %s", payload[:500])
+
+
+async def _stream_gemini_json_response(
+    *,
+    system_prompt: str,
+    user_parts: List[Dict[str, Any]],
+    error_message: str,
+    request_label: str,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    request_body = {
+        "systemInstruction": {
+            "parts": [{"text": system_prompt}],
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": user_parts,
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "thinkingConfig": {
+                "includeThoughts": True,
+            },
+        },
+    }
+    model = settings.gemini_model
+    url = _build_gemini_stream_url(model)
+    answer_parts: List[str] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+            async with client.stream(
+                "POST",
+                url,
+                headers=_build_gemini_headers(),
+                json=request_body,
+            ) as response:
+                response.raise_for_status()
+                content_type = (response.headers.get("content-type") or "").lower()
+                if "text/event-stream" not in content_type:
+                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
+                    logger.error(
+                        "[AI Stream] unexpected Gemini content-type label=%s content_type=%s body=%s",
+                        request_label,
+                        content_type,
+                        body_preview,
+                    )
+                    raise ValueError(
+                        "Gemini 中转站返回了非流式响应，请检查 GEMINI_BASE_URL 是否需要包含 /v1beta。"
+                    )
+                async for payload in _iter_sse_json_payloads(response):
+                    candidates = payload.get("candidates") or []
+                    if not candidates:
+                        continue
+                    parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
+                    for part in parts:
+                        text = part.get("text")
+                        if not isinstance(text, str) or not text:
+                            continue
+                        if part.get("thought") is True:
+                            await _emit_thought(
+                                thought_callback,
+                                {"type": "thought", "summary": text},
+                            )
+                            continue
+                        answer_parts.append(text)
+    except httpx.HTTPStatusError as exc:
+        try:
+            await exc.response.aread()
+            error_text = exc.response.text[:1000]
+        except Exception:
+            error_text = "Failed to read response body."
+        logger.error(
+            "[AI Stream] Gemini request failed label=%s status=%s body=%s",
+            request_label,
+            exc.response.status_code,
+            error_text,
+        )
+        raise ValueError(error_message) from exc
+    except httpx.TimeoutException as exc:
+        raise ValueError(error_message) from exc
+
+    answer_text = "".join(answer_parts).strip()
+    if not answer_text:
+        raise ValueError("Gemini 未返回可解析的结构化结果。")
+    return _parse_json_content(answer_text)
 
 async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> Dict[str, Any]:
     payload = {
@@ -316,6 +490,87 @@ async def analyze_jd(
     return _ensure_skill_matches(normalized_result, skill_ids)
 
 
+def _build_jd_analysis_user_parts(
+    text: str,
+    resume_payload: str,
+    experience_payload: str,
+    previous_payload: str,
+    previous_experience_payload: str,
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "text": (
+                "Job Description:\n"
+                f"{text}\n\n"
+                "Resume Content:\n"
+                f"{resume_payload}\n\n"
+                "Current Experience Content:\n"
+                f"{experience_payload}\n\n"
+                "Previous Experience Content:\n"
+                f"{previous_experience_payload}\n\n"
+                "Previous Result:\n"
+                f"{previous_payload}"
+            )
+        }
+    ]
+
+
+async def analyze_jd_with_thoughts(
+    text: str,
+    resume_text: Optional[str] = None,
+    prev_result: Optional[Dict[str, Any]] = None,
+    experience_text: Optional[str] = None,
+    prev_experience_text: Optional[str] = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not settings.gemini_api_key:
+        return await analyze_jd(
+            text,
+            resume_text,
+            prev_result,
+            experience_text,
+            prev_experience_text,
+        )
+
+    resume_payload = resume_text or "Resume content not provided."
+    experience_payload = experience_text or "Experience content not provided."
+    previous_payload = (
+        json.dumps(prev_result, ensure_ascii=False)
+        if prev_result
+        else "None"
+    )
+    previous_experience_payload = prev_experience_text or "None"
+    try:
+        result = await _stream_gemini_json_response(
+            system_prompt=JD_ANALYSIS,
+            user_parts=_build_jd_analysis_user_parts(
+                text,
+                resume_payload,
+                experience_payload,
+                previous_payload,
+                previous_experience_payload,
+            ),
+            error_message="JD 分析失败，请稍后重试。",
+            request_label="jd_text_analysis",
+            thought_callback=thought_callback,
+        )
+    except Exception:
+        logger.warning(
+            "[AI Stream] Gemini thought streaming failed for jd_text_analysis, falling back to standard analysis.",
+            exc_info=True,
+        )
+        return await analyze_jd(
+            text,
+            resume_text,
+            prev_result,
+            experience_text,
+            prev_experience_text,
+        )
+    skill_ids = _extract_skill_ids(resume_text)
+    normalized_result = _normalize_jd_analysis_result(result)
+    return _ensure_skill_matches(normalized_result, skill_ids)
+
+
 def _build_image_jd_user_message(
     image_b64: str,
     mime_type: str,
@@ -390,6 +645,98 @@ async def analyze_jd_with_image(
     return _ensure_skill_matches(normalized_result, skill_ids)
 
 
+def _build_image_jd_user_parts(
+    image_b64: str,
+    mime_type: str,
+    resume_payload: str,
+    experience_payload: str,
+    previous_payload: str,
+    previous_experience_payload: str,
+    jd_text: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "inlineData": {
+                "mimeType": mime_type,
+                "data": image_b64,
+            }
+        },
+        {
+            "text": (
+                f"Supplementary JD Text:\n{jd_text or 'None'}\n\n"
+                f"Resume Content:\n{resume_payload}\n\n"
+                f"Current Experience Content:\n{experience_payload}\n\n"
+                f"Previous Experience Content:\n{previous_experience_payload}\n\n"
+                f"Previous Result:\n{previous_payload}"
+            )
+        },
+    ]
+
+
+async def analyze_jd_with_image_thoughts(
+    image_b64: str,
+    mime_type: str,
+    resume_text: Optional[str] = None,
+    prev_result: Optional[Dict[str, Any]] = None,
+    experience_text: Optional[str] = None,
+    jd_text: Optional[str] = None,
+    prev_experience_text: Optional[str] = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not settings.gemini_api_key:
+        return await analyze_jd_with_image(
+            image_b64=image_b64,
+            mime_type=mime_type,
+            resume_text=resume_text,
+            prev_result=prev_result,
+            experience_text=experience_text,
+            jd_text=jd_text,
+            prev_experience_text=prev_experience_text,
+        )
+
+    resume_payload = resume_text or "Resume content not provided."
+    experience_payload = experience_text or "Experience content not provided."
+    previous_payload = (
+        json.dumps(prev_result, ensure_ascii=False)
+        if prev_result
+        else "None"
+    )
+    previous_experience_payload = prev_experience_text or "None"
+    try:
+        result = await _stream_gemini_json_response(
+            system_prompt=JD_ANALYSIS_IMAGE,
+            user_parts=_build_image_jd_user_parts(
+                image_b64,
+                mime_type,
+                resume_payload,
+                experience_payload,
+                previous_payload,
+                previous_experience_payload,
+                jd_text,
+            ),
+            error_message="JD 附件分析失败，请稍后重试。",
+            request_label="jd_image_analysis",
+            thought_callback=thought_callback,
+        )
+    except Exception:
+        logger.warning(
+            "[AI Stream] Gemini thought streaming failed for jd_image_analysis, falling back to standard image analysis.",
+            exc_info=True,
+        )
+        return await analyze_jd_with_image(
+            image_b64=image_b64,
+            mime_type=mime_type,
+            resume_text=resume_text,
+            prev_result=prev_result,
+            experience_text=experience_text,
+            jd_text=jd_text,
+            prev_experience_text=prev_experience_text,
+        )
+    skill_ids = _extract_skill_ids(resume_text)
+    normalized_result = _normalize_jd_analysis_result(result)
+    return _ensure_skill_matches(normalized_result, skill_ids)
+
+
 def _resolve_star_prompt(target_field: Optional[str]) -> str:
     return STAR_POLISH
 
@@ -408,6 +755,37 @@ async def polish_experience(
         {"role": "user", "content": json.dumps(content_payload, ensure_ascii=False)},
     ]
     return await _call_llm(messages, json_mode=True)
+
+
+async def polish_experience_with_thoughts(
+    content: Dict[str, Any],
+    target_field: Optional[str] = None,
+    jd_text: Optional[str] = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not settings.gemini_api_key:
+        return await polish_experience(content, target_field, jd_text)
+
+    prompt = _resolve_star_prompt(target_field)
+    content_payload = {**content}
+    if jd_text:
+        content_payload["jd_text"] = jd_text
+    try:
+        return await _stream_gemini_json_response(
+            system_prompt=prompt,
+            user_parts=[
+                {"text": json.dumps(content_payload, ensure_ascii=False)},
+            ],
+            error_message="JD 润色失败，请稍后重试。",
+            request_label="star_polish",
+            thought_callback=thought_callback,
+        )
+    except Exception:
+        logger.warning(
+            "[AI Stream] Gemini thought streaming failed for star_polish, falling back to standard polish.",
+            exc_info=True,
+        )
+        return await polish_experience(content, target_field, jd_text)
 
 
 async def generate_tags(text: str) -> Dict[str, Any]:

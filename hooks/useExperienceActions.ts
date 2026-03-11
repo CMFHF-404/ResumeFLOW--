@@ -27,6 +27,7 @@ import {
 import { skillsService, type UserSkill } from '../services/skillsService';
 import type { MatchTrend } from '../types/analysis';
 import { normalizeAiRichText } from '../utils/richText';
+import { extractThoughtHeadline } from '../utils/aiThought';
 import { trackAiPolishResult, trackAiPolishStart, trackResumeCardChecked } from '../utils/analyticsTracker';
 import type {
     CertificationEditDraft,
@@ -977,7 +978,7 @@ const runExperiencePolish = async (
     const toastId = toast.loading(JD_POLISH_TOAST_MESSAGES.loading);
     trackAiPolishStart({ source: 'resume_editor', field: 'all' });
     try {
-        const result = await aiService.polishExperience({
+        const result = await aiService.polishExperienceStream({
             content: {
                 company: draft.company,
                 role: draft.title,
@@ -987,6 +988,19 @@ const runExperiencePolish = async (
                 r: draft.star.r,
             },
             jdText: trimmedJD,
+        }, (event) => {
+            if (event.type !== 'thought') {
+                return;
+            }
+            const title = extractThoughtHeadline(event.summary);
+            if (!title) {
+                return;
+            }
+            toast.updateToast(toastId, {
+                message: title,
+                type: 'loading',
+                duration: 0,
+            });
         });
         const normalizedResult: Partial<StarFields> = {
             s: typeof result.s === 'string' ? normalizeAiRichText(result.s, { allowList: false }) : undefined,

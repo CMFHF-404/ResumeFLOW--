@@ -93,7 +93,12 @@ export type JDAnalyzeProgressNode =
     | 'apply_score'
     | 'persist_result';
 
-type AnalyzeProgressEvent = {
+export type AIThoughtEvent = {
+    type: 'thought';
+    summary: string;
+};
+
+export type AnalyzeProgressEvent = {
     type: 'progress';
     node: JDAnalyzeProgressNode;
     title?: string;
@@ -109,7 +114,38 @@ type AnalyzeErrorEvent = {
     message?: string;
 };
 
-type AnalyzeStreamEvent = AnalyzeProgressEvent | AnalyzeFinalEvent | AnalyzeErrorEvent;
+export type AnalyzeStreamEvent =
+    | AnalyzeProgressEvent
+    | AIThoughtEvent
+    | AnalyzeFinalEvent
+    | AnalyzeErrorEvent;
+
+export type PolishProgressNode =
+    | 'prepare_context'
+    | 'request_ai'
+    | 'persist_result';
+
+export type PolishProgressEvent = {
+    type: 'progress';
+    node: PolishProgressNode;
+    title?: string;
+};
+
+type PolishFinalEvent = {
+    type: 'final';
+    result: PolishExperienceResponse;
+};
+
+type PolishErrorEvent = {
+    type: 'error';
+    message?: string;
+};
+
+export type PolishStreamEvent =
+    | PolishProgressEvent
+    | AIThoughtEvent
+    | PolishFinalEvent
+    | PolishErrorEvent;
 
 const parseNdjsonLines = (chunk: string) => chunk.split('\n').map((line) => line.trim()).filter(Boolean);
 
@@ -123,10 +159,21 @@ const resolveApiUrl = (path: string) => {
     return `${normalizedBase}${normalizedPath}`;
 };
 
+const ensureStreamResponseOk = (response: Response) => {
+    if (response.ok) {
+        return;
+    }
+    if (response.status === 401) {
+        dispatchLoginRequired('unauthorized-write');
+    }
+    throw new Error(`AI stream request failed: ${response.status}`);
+};
+
 const streamAnalyzeRequest = async (
     path: string,
     body: BodyInit,
     options: {
+        onEvent?: (event: AnalyzeStreamEvent) => void;
         onProgress?: (event: AnalyzeProgressEvent) => void;
         contentType?: string | null;
     } = {}
@@ -148,9 +195,7 @@ const streamAnalyzeRequest = async (
         body,
     });
 
-    if (!response.ok) {
-        throw new Error(`AI stream request failed: ${response.status}`);
-    }
+    ensureStreamResponseOk(response);
     if (!response.body) {
         throw new Error('AI stream response body is empty');
     }
@@ -178,8 +223,12 @@ const streamAnalyzeRequest = async (
                 console.warn('Failed to parse stream line', error);
                 return;
             }
+            options.onEvent?.(parsed);
             if (parsed.type === 'progress') {
                 options.onProgress?.(parsed);
+                return;
+            }
+            if (parsed.type === 'thought') {
                 return;
             }
             if (parsed.type === 'error') {
@@ -187,6 +236,71 @@ const streamAnalyzeRequest = async (
             }
             if (parsed.type === 'final') {
                 finalResult = normalizeJDAnalysisResult(parsed.result);
+            }
+        });
+    }
+
+    if (!finalResult) {
+        throw new Error('AI stream did not return final result');
+    }
+    return finalResult;
+};
+
+const streamPolishRequest = async (
+    payload: Record<string, unknown>,
+    options: {
+        onEvent?: (event: PolishStreamEvent) => void;
+    } = {}
+): Promise<PolishExperienceResponse> => {
+    const headers = new Headers();
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) {
+        dispatchLoginRequired('write-operation');
+        throw new Error('Authentication required for write operation');
+    }
+    headers.set('Authorization', authHeader);
+    headers.set('Content-Type', 'application/json');
+
+    const response = await fetch(resolveApiUrl('/api/polish-text/stream'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    });
+
+    ensureStreamResponseOk(response);
+    if (!response.body) {
+        throw new Error('AI stream response body is empty');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: PolishExperienceResponse | null = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = parseNdjsonLines(buffer);
+        const hasTrailingNewline = buffer.endsWith('\n');
+        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
+
+        lines.forEach((line) => {
+            let parsed: PolishStreamEvent;
+            try {
+                parsed = JSON.parse(line) as PolishStreamEvent;
+            } catch (error) {
+                console.warn('Failed to parse stream line', error);
+                return;
+            }
+            options.onEvent?.(parsed);
+            if (parsed.type === 'error') {
+                throw new Error(parsed.message || 'AI stream error');
+            }
+            if (parsed.type === 'final') {
+                finalResult = parsed.result;
             }
         });
     }
@@ -227,13 +341,29 @@ export const aiService = {
         return response.data;
     },
 
+    async polishExperienceStream(
+        data: PolishExperiencePayload,
+        onEvent?: (event: PolishStreamEvent) => void
+    ) {
+        const { rawText, ...rest } = data.content;
+        const payload = {
+            content: {
+                ...rest,
+                ...(rawText ? { raw_text: rawText } : {}),
+            },
+            ...(data.targetField ? { target_field: data.targetField } : {}),
+            ...(data.jdText ? { jd_text: data.jdText } : {}),
+        };
+        return streamPolishRequest(payload, { onEvent });
+    },
+
     async analyzeJD({
         text,
         resumeText,
         prevResult,
         experienceText,
         prevExperienceText,
-    }: AnalyzeJDParams, onProgress?: (event: AnalyzeProgressEvent) => void) {
+    }: AnalyzeJDParams, onEvent?: (event: AnalyzeStreamEvent) => void) {
         const payload = {
             text,
             resume_text: resumeText,
@@ -242,7 +372,7 @@ export const aiService = {
             prev_experience_text: prevExperienceText,
         };
         return streamAnalyzeRequest('/api/analyze-jd/stream', JSON.stringify(payload), {
-            onProgress,
+            onEvent,
             contentType: 'application/json',
         });
     },
@@ -279,7 +409,7 @@ export const aiService = {
         experienceText,
         prevResult,
         prevExperienceText,
-    }: AnalyzeJDWithAttachmentParams, onProgress?: (event: AnalyzeProgressEvent) => void): Promise<JDAnalysisResult> {
+    }: AnalyzeJDWithAttachmentParams, onEvent?: (event: AnalyzeStreamEvent) => void): Promise<JDAnalysisResult> {
         const formData = new FormData();
         formData.append('file', file);
         if (jdText) {
@@ -298,7 +428,7 @@ export const aiService = {
             formData.append('prev_experience_text', prevExperienceText);
         }
         return streamAnalyzeRequest('/api/analyze-jd-attachment/stream', formData, {
-            onProgress,
+            onEvent,
             contentType: null,
         });
     },

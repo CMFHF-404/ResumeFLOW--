@@ -3,7 +3,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import PrintPortal from '../../components/PrintPortal';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
-import { useJDAnalysis, type JDAnalyzeProgressNode } from '../../hooks/useJDAnalysis';
+import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { usePrintJob } from '../../hooks/usePrintJob';
 import { useResumeData } from '../../hooks/useResumeData';
 import { profileService } from '../../services/profileService';
@@ -33,6 +33,7 @@ import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
+import { extractThoughtHeadline } from '../../utils/aiThought';
 import {
     trackLayoutModeChange,
     trackModuleReordered,
@@ -1242,12 +1243,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         const toastId = showToastLoading(JD_ANALYSIS_TOAST_MESSAGES.loading);
         try {
+            let hasThoughtTitle = false;
             const result = await handleAnalyze({
-                onProgress: (node: JDAnalyzeProgressNode) => {
+                onEvent: (event) => {
                     if (!toastId) {
                         return;
                     }
-                    const title = JD_ANALYSIS_PROGRESS_NODE_TITLES[node];
+                    if (event.type === 'thought') {
+                        const title = extractThoughtHeadline(event.summary);
+                        if (!title) {
+                            return;
+                        }
+                        hasThoughtTitle = true;
+                        updateToast(toastId, {
+                            message: title,
+                            type: 'loading',
+                            duration: 0,
+                        });
+                        return;
+                    }
+                    if (event.type !== 'progress' || hasThoughtTitle) {
+                        return;
+                    }
+                    const title = JD_ANALYSIS_PROGRESS_NODE_TITLES[event.node];
                     if (!title) {
                         return;
                     }
