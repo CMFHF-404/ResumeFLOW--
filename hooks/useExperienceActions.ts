@@ -334,7 +334,7 @@ type UseExperienceActionsResult = {
         toggleEducationSelection: (id: string) => void;
         toggleCertificationSelection: (id: string) => void;
         toggleSkillSelection: (id: string) => void;
-        toggleSkillGroupSelection: (groupName: string) => void;
+        toggleSkillGroupSelection: (groupName: string, skillIds?: string[]) => void;
     };
 };
 
@@ -1797,7 +1797,7 @@ type SkillDeleteHandlers = {
 
 type SkillSelectionHandlers = {
     toggleSkillSelection: (id: string) => void;
-    toggleSkillGroupSelection: (groupName: string) => void;
+    toggleSkillGroupSelection: (groupName: string, skillIds?: string[]) => void;
 };
 
 type SkillHandlers = SkillDraftHandlers
@@ -2117,21 +2117,21 @@ const createSkillSelectionHandlers = (
         });
     };
 
-    const toggleSkillGroupSelection = (groupName: string) => {
-        const skillIds = helperContext.getSkillIdsByCategory(groupName);
-        if (skillIds.length === 0) {
+    const toggleSkillGroupSelection = (groupName: string, skillIds?: string[]) => {
+        const targetSkillIds = skillIds ?? helperContext.getSkillIdsByCategory(groupName);
+        if (targetSkillIds.length === 0) {
             return;
         }
         domain.setSelectedIds((prev) => {
             const next = new Set(prev);
-            const allSelected = skillIds.every((id) => prev.has(id));
+            const allSelected = targetSkillIds.every((id) => prev.has(id));
 
             if (allSelected) {
                 // Deselect all
-                skillIds.forEach((id) => next.delete(id));
+                targetSkillIds.forEach((id) => next.delete(id));
             } else {
                 // Select all
-                skillIds.forEach((id) => next.add(id));
+                targetSkillIds.forEach((id) => next.add(id));
                 trackResumeCardChecked({ cardType: 'skill', checked: true });
             }
             return next;
