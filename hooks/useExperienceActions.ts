@@ -401,7 +401,7 @@ type SkillState = {
 const useExperienceState = (): ExperienceState => {
     const [editingExpId, setEditingExpId] = useState<string | null>(null);
     const [editingDraft, setEditingDraft] = useState<ExperienceEditDraft | null>(null);
-    const [syncToMaster, setSyncToMaster] = useState(true);
+    const [syncToMaster, setSyncToMaster] = useState(false);
     const [isSavingExperience, setIsSavingExperience] = useState(false);
     const [isAddingExperience, setIsAddingExperience] = useState(false);
     const [isPolishing, setIsPolishing] = useState(false);
@@ -613,7 +613,7 @@ const createExperienceEditHandlers = (
         advanceExperienceEditSession(state.editSessionRef);
         state.setEditingExpId(id);
         state.setEditingDraft(draft);
-        state.setSyncToMaster(true);
+        state.setSyncToMaster(false);
     };
 
     const cancelEditingExperience = () => {
