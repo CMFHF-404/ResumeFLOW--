@@ -415,7 +415,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     };
 
     return (
-        <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto relative flex justify-center p-8 scroll-smooth">
+        <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto relative flex justify-center p-3 scroll-smooth md:p-8">
             <div
                 ref={previewRef}
                 className="a4-preview text-gray-900 relative"

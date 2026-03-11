@@ -29,3 +29,14 @@ export const formatRelativeTime = (dateStr: string): string => {
     }
     return `${Math.floor(diffDays / 30)}个月前`;
 };
+
+export const formatDateLabel = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    if (!Number.isFinite(date.getTime())) {
+        return dateStr;
+    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}.${month}.${day}`;
+};

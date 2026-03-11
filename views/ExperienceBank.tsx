@@ -2,8 +2,6 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   UploadCloud,
   Download,
-  Moon,
-  Sun,
   Briefcase,
   FolderKanban,
   Wrench,
@@ -130,7 +128,6 @@ interface ExperienceBankProps {
 }
 
 const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfileUpdate, shouldOpenResumeUpload = false }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
@@ -304,11 +301,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const education = useEducationManager(toastApi);
   const { refreshEducation } = education;
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
-  };
-
   const resolveCurrentProfileSnapshot = useCallback(async () => {
     if (hasHydratedProfileRef.current && !isLoadingProfile) {
       return { name, email, phone, location };
@@ -388,20 +380,21 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
-      <header className="h-16 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark flex items-center justify-between px-8 shrink-0 z-20">
-        <div className="flex items-center gap-4">
+      <header className="hidden bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:block md:px-8">
+        <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-3 md:gap-4">
           <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
             <FileText className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">原子简历</span>
+            <span className="font-bold text-lg tracking-tight text-gray-900 dark:text-white md:text-xl">原子简历</span>
           </div>
-          <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
+          <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-500">经历库 / Experience Bank</span>
+            <span className="text-xs font-medium text-gray-500 sm:text-sm">经历库 / Experience Bank</span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
           <button
-            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
+            className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
             onClick={() => setIsResumeModalOpen(true)}
             type="button"
           >
@@ -409,7 +402,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             导入简历
           </button>
           <button
-            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
             onClick={handleExportAll}
             disabled={isPrinting}
             type="button"
@@ -417,15 +410,31 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             <Download className="w-4 h-4" />
             导出全部
           </button>
-          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2"></div>
-          <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors" onClick={toggleTheme}>
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
+        </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-8 scroll-smooth">
+      <main className="flex-1 overflow-y-auto p-4 scroll-smooth md:p-8">
         <div className="max-w-5xl mx-auto space-y-12 pb-20">
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800"
+              onClick={() => setIsResumeModalOpen(true)}
+              type="button"
+            >
+              <UploadCloud className="h-4 w-4" />
+              导入简历
+            </button>
+            <button
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800"
+              onClick={handleExportAll}
+              disabled={isPrinting}
+              type="button"
+            >
+              <Download className="h-4 w-4" />
+              导出全部
+            </button>
+          </div>
 
           {/* Personal Info Section */}
           <section className="space-y-6">

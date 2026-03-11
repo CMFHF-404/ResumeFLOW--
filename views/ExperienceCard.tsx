@@ -105,21 +105,22 @@ const CollapsedExperienceCard: React.FC<{
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-1">
-            <h3 className="font-bold text-gray-900 dark:text-white truncate">{data.org}</h3>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
-            <span className="text-gray-700 dark:text-gray-300 font-medium">{data.title}</span>
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+          <h3 className="mb-2 truncate font-bold text-gray-900 dark:text-white">
+            {data.org}
+          </h3>
+          <p className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+            {data.title}
+          </p>
+          <p className="mb-2 text-sm font-mono text-gray-500 dark:text-gray-400">
+            {data.start_date} - {data.end_date || '至今'}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {data.star?.s
               ? `${stripRichTextToText(data.star.s).substring(0, 60)}...`
               : labels.summaryPlaceholder}
           </p>
         </div>
-        <div className="text-right shrink-0 flex items-center gap-2">
-          <span className="block text-sm font-mono text-gray-500">
-            {data.start_date} - {data.end_date || '至今'}
-          </span>
+        <div className="shrink-0 flex items-center gap-2">
           <button
             onClick={handleDelete}
             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"

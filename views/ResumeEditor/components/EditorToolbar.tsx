@@ -95,18 +95,19 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     );
 
     return (
-        <header className="h-16 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark flex items-center justify-between px-6 shrink-0 z-20">
-            <div className="flex items-center gap-4">
+        <header className="bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:px-6">
+            <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-3 md:gap-4">
                 <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
                     <FileText className="w-8 h-8" />
-                    <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">原子简历</span>
+                    <span className="font-bold text-lg tracking-tight text-gray-900 dark:text-white md:text-xl">原子简历</span>
                 </div>
-                <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
-                <div className="flex items-center gap-2">
+                <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
+                <div className="hidden items-center gap-2 md:flex">
                     <span className="text-sm font-medium text-gray-500">简历工厂</span>
                 </div>
-                <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
-                <div className="flex items-center gap-2">
+                <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
+                <div className="flex min-w-0 items-center gap-2">
                     {isEditing ? (
                         <>
                             <input
@@ -116,7 +117,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                                 onKeyDown={handleKeyDown}
                                 onBlur={handleSave}
                                 autoFocus
-                                className="text-sm font-medium text-gray-900 dark:text-white bg-white dark:bg-gray-800 border border-primary rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                                className="w-full rounded border border-primary bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary dark:bg-gray-800 dark:text-white sm:w-auto"
                             />
                             <button
                                 onClick={handleSave}
@@ -128,7 +129,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         </>
                     ) : (
                         <>
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">{resumeName}</span>
+                            <span className="max-w-full truncate text-sm font-medium text-gray-900 dark:text-white">{resumeName}</span>
                             <button
                                 onClick={handleStartEdit}
                                 className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
@@ -139,10 +140,10 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         </>
                     )}
                 </div>
-            </div>
-            <div className="flex items-center gap-4">
+                </div>
+                <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
                 <button
-                    className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors disabled:opacity-60"
+                    className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                     onClick={onCreateResume}
                     type="button"
                     disabled={isCreatingResume}
@@ -157,25 +158,26 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                     <LayoutTemplate className="w-4 h-4" />
                     {isSmartPageApplied ? '恢复默认' : '智能一页'}
                 </button>
-                <div className="flex items-center gap-2 text-xs">
+                <div className="order-last flex w-full items-center gap-2 text-xs md:order-none md:w-auto">
                     <span className="text-gray-400">自动保存</span>
                     <span className={`font-semibold ${saveStatusClass}`}>{saveStatusText}</span>
                 </div>
-                <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
+                <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
                 <button
-                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
+                    className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                     onClick={onToggleTheme}
                 >
                     {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                 </button>
                 <button
-                    className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                    className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-dark md:ml-0"
                     onClick={onExportPdf}
                     type="button"
                 >
                     <Download className="w-4 h-4" />
                     导出 PDF
                 </button>
+            </div>
             </div>
         </header>
     );
