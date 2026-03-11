@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import io
+import inspect
 import json
 import logging
 import re
@@ -9,13 +11,20 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple
+from zipfile import BadZipFile
 
+from docx import Document
+from docx.opc.exceptions import PackageNotFoundError
 from fastapi import UploadFile
+import httpx
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 from sqlalchemy import desc
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from ...config import load_settings
 from ...constants import MAX_LIMIT
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ..ai.ai_service import call_llm_json
@@ -23,12 +32,14 @@ from .prompts import RESUME_CHUNK_PARSING_PROMPT, RESUME_MERGE_PROMPT, RESUME_PA
 from .schemas import DuplicateMatch, ParsedExperienceItem, ParsedExperienceVersion
 
 logger = logging.getLogger(__name__)
+settings = load_settings()
 
 SUPPORTED_PDF_TYPES = {"application/pdf"}
 SUPPORTED_DOCX_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
+MIN_TEXT_LENGTH = 30
 MAX_RESUME_TEXT_CHARS = 12_000
 LONG_RESUME_TEXT_THRESHOLD = 6_000
 CHUNK_MAX_CHARS = 3_200
@@ -148,11 +159,17 @@ PROJECT_ROLE_HINTS = {
 PROJECT_MIN_SCORE = 1
 LOG_WARN_THRESHOLDS_MS = {
     "read_file": 3_000,
+    "parse_pdf": 8_000,
+    "parse_docx": 5_000,
     "encode_file": 8_000,
     "ai_call": 20_000,
     "parse_resume_total": 25_000,
 }
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+ParseProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
+ThoughtCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
+GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
+GEMINI_POOL_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -670,6 +687,16 @@ def _resolve_file_mime(file: UploadFile, kind: str) -> str:
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
+def _resolve_file_kind_from_metadata(filename: str, content_type: str) -> str:
+    extension = Path(filename or "").suffix.lower()
+    normalized_type = (content_type or "").lower().strip()
+    if normalized_type in SUPPORTED_PDF_TYPES or extension == ".pdf":
+        return "pdf"
+    if normalized_type in SUPPORTED_DOCX_TYPES or extension == ".docx":
+        return "docx"
+    raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
+
+
 def _log_timing(
     step: str,
     duration_ms: float,
@@ -723,6 +750,207 @@ def _build_resume_attachment_messages(
     ]
 
 
+async def _emit_progress(
+    progress_callback: ParseProgressCallback,
+    payload: Dict[str, Any],
+) -> None:
+    if not progress_callback:
+        return
+    result = progress_callback(payload)
+    if inspect.isawaitable(result):
+        await result
+
+
+async def _emit_thought(
+    thought_callback: ThoughtCallback,
+    payload: Dict[str, Any],
+) -> None:
+    if not thought_callback:
+        return
+    result = thought_callback(payload)
+    if inspect.isawaitable(result):
+        await result
+
+
+def _build_gemini_headers() -> Dict[str, str]:
+    api_key = settings.gemini_api_key
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY 未配置，无法返回 Gemini 实时思考节点。")
+    return {
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+
+def _build_gemini_stream_url(model: str) -> str:
+    base_url = (settings.gemini_base_url or "").rstrip("/")
+    if not base_url:
+        raise ValueError("GEMINI_BASE_URL 未配置，无法调用 Gemini Thinking。")
+    normalized = base_url.lower()
+    if not normalized.endswith("/v1beta") and not normalized.endswith("/v1"):
+        base_url = f"{base_url}/v1beta"
+    return f"{base_url}/models/{model}:streamGenerateContent?alt=sse"
+
+
+def _build_gemini_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=GEMINI_CONNECT_TIMEOUT_SECONDS,
+        write=float(settings.ai_timeout_seconds),
+        read=float(settings.ai_timeout_seconds),
+        pool=GEMINI_POOL_TIMEOUT_SECONDS,
+    )
+
+
+def _build_resume_thinking_request(cleaned_text: str) -> Dict[str, Any]:
+    return {
+        "systemInstruction": {
+            "parts": [{"text": RESUME_PARSING_PROMPT}],
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": (
+                            "请解析以下简历正文，并严格输出 JSON。"
+                            "不要补充正文中不存在的信息。\n\n"
+                            f"{cleaned_text}"
+                        )
+                    }
+                ],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "thinkingConfig": {
+                "includeThoughts": True,
+            },
+        },
+    }
+
+
+async def _iter_sse_json_payloads(response: httpx.Response):
+    def build_payload(lines: List[str]) -> str:
+        data_lines: List[str] = []
+        for item in lines:
+            if not item.startswith("data:"):
+                continue
+            value = item[5:]
+            if value.startswith(" "):
+                value = value[1:]
+            data_lines.append(value)
+        return "\n".join(data_lines)
+
+    event_lines: List[str] = []
+    async for raw_line in response.aiter_lines():
+        line = raw_line.rstrip("\r")
+        if not line.strip():
+            if not event_lines:
+                continue
+            payload = build_payload(event_lines)
+            event_lines = []
+            if not payload:
+                continue
+            if payload == "[DONE]":
+                break
+            try:
+                yield json.loads(payload)
+            except json.JSONDecodeError:
+                logger.warning("[ResumeParse] invalid Gemini SSE payload: %s", payload[:500])
+            continue
+        event_lines.append(line)
+
+    if event_lines:
+        payload = build_payload(event_lines)
+        if payload and payload != "[DONE]":
+            try:
+                yield json.loads(payload)
+            except json.JSONDecodeError:
+                logger.warning("[ResumeParse] invalid Gemini SSE trailing payload: %s", payload[:500])
+
+
+async def _stream_resume_thinking_parse(
+    cleaned_text: str,
+    request_id: Optional[str],
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    request_body = _build_resume_thinking_request(cleaned_text)
+    model = settings.gemini_model
+    url = _build_gemini_stream_url(model)
+    answer_parts: List[str] = []
+    call_start = perf_counter()
+
+    try:
+        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+            async with client.stream(
+                "POST",
+                url,
+                headers=_build_gemini_headers(),
+                json=request_body,
+            ) as response:
+                response.raise_for_status()
+                content_type = (response.headers.get("content-type") or "").lower()
+                if "text/event-stream" not in content_type:
+                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
+                    logger.error(
+                        "[ResumeParse] Gemini proxy returned unexpected content-type request_id=%s content_type=%s body=%s",
+                        request_id,
+                        content_type,
+                        body_preview,
+                    )
+                    raise ValueError(
+                        "Gemini 中转站返回了非流式响应，请检查 GEMINI_BASE_URL 是否需要包含 /v1beta。"
+                    )
+                async for payload in _iter_sse_json_payloads(response):
+                    candidates = payload.get("candidates") or []
+                    if not candidates:
+                        continue
+                    parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
+                    for part in parts:
+                        text = part.get("text")
+                        if not isinstance(text, str) or not text:
+                            continue
+                        if part.get("thought") is True:
+                            await _emit_thought(
+                                thought_callback,
+                                {"type": "thought", "summary": text},
+                            )
+                            continue
+                        answer_parts.append(text)
+    except httpx.HTTPStatusError as exc:
+        try:
+            await exc.response.aread()
+            error_text = exc.response.text[:1000]
+        except Exception:
+            error_text = "Failed to read response body."
+        logger.error(
+            "[ResumeParse] Gemini thinking request failed request_id=%s status=%s body=%s",
+            request_id,
+            exc.response.status_code,
+            error_text,
+        )
+        raise ValueError("Gemini Thinking 解析失败，请稍后重试。") from exc
+    except httpx.TimeoutException as exc:
+        raise ValueError("Gemini Thinking 解析超时，请稍后重试。") from exc
+
+    call_ms = (perf_counter() - call_start) * 1000
+    _log_timing(
+        "ai_call",
+        call_ms,
+        request_id,
+        {
+            "mode": "gemini_thinking",
+            "input_length": len(cleaned_text),
+        },
+    )
+
+    answer_text = "".join(answer_parts).strip()
+    if not answer_text:
+        raise ValueError("Gemini 未返回可解析的结构化结果。")
+    return _normalize_parse_result(_parse_structured_response_text(answer_text))
+
+
 async def _call_resume_llm(
     messages: List[Dict[str, Any]],
     request_id: Optional[str],
@@ -745,6 +973,26 @@ async def _call_resume_llm(
         payload.update(extra)
     _log_timing(step, call_ms, request_id, payload)
     return result
+
+
+def _parse_structured_response_text(text: str) -> Dict[str, Any]:
+    cleaned = text.strip()
+    if not cleaned:
+        raise ValueError("模型返回内容为空。")
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start < 0 or end <= start:
+            raise ValueError("模型返回的结构化内容不是合法 JSON。")
+        try:
+            parsed = json.loads(cleaned[start : end + 1])
+        except json.JSONDecodeError as exc:
+            raise ValueError("模型返回的结构化内容不是合法 JSON。") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("模型返回的结构化内容格式不正确。")
+    return parsed
 
 
 def _normalize_parse_result(result: Any) -> Dict[str, Any]:
@@ -1063,15 +1311,187 @@ async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> by
     return data
 
 
+def _extract_pdf_text(data: bytes) -> str:
+    reader = PdfReader(io.BytesIO(data))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    return "\n".join(pages)
+
+
+def _extract_docx_text(data: bytes) -> str:
+    doc = Document(io.BytesIO(data))
+    parts = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+
+    def append_table_text(table) -> None:
+        for row in table.rows:
+            cells = []
+            for cell in row.cells:
+                cell_parts = [para.text.strip() for para in cell.paragraphs if para.text.strip()]
+                for nested_table in cell.tables:
+                    append_table_text(nested_table)
+                if cell_parts:
+                    cells.append("\n".join(cell_parts))
+            if cells:
+                parts.append(" | ".join(cells))
+
+    for table in doc.tables:
+        append_table_text(table)
+
+    return "\n".join(parts)
+
+
+def extract_resume_text(
+    file_data: bytes,
+    filename: str,
+    file_mime_type: str,
+    request_id: Optional[str] = None,
+) -> str:
+    if not file_data:
+        raise ValueError("文件为空，无法解析。")
+    _ensure_attachment_size_limit(file_data)
+    kind = _resolve_file_kind_from_metadata(filename, file_mime_type)
+    parse_start = perf_counter()
+    try:
+        if kind == "pdf":
+            text = _extract_pdf_text(file_data)
+            parse_step = "parse_pdf"
+        else:
+            text = _extract_docx_text(file_data)
+            parse_step = "parse_docx"
+    except (PdfReadError, BadZipFile, PackageNotFoundError, ValueError) as exc:
+        logger.warning(
+            "[ResumeParse] failed to extract resume text request_id=%s filename=%s kind=%s error=%s",
+            request_id,
+            filename,
+            kind,
+            str(exc),
+        )
+        raise ValueError("文件无法读取，请确认文件未损坏、未加密且内容可解析。") from exc
+    parse_ms = (perf_counter() - parse_start) * 1000
+    _log_timing(parse_step, parse_ms, request_id, {"text_length": len(text)})
+    return text
+
+
+def _prepare_resume_text(text: str, request_id: Optional[str] = None) -> Optional[str]:
+    cleaned = _clean_resume_text(text)
+    if len(cleaned.strip()) >= MIN_TEXT_LENGTH:
+        return cleaned
+    logger.info(
+        "[ResumeParse] extracted text too short, fallback to attachment request_id=%s text_length=%s",
+        request_id,
+        len(cleaned.strip()),
+    )
+    return None
+
+
+async def _parse_resume_from_attachment(
+    *,
+    encoded_file: str,
+    filename: str,
+    file_mime_type: str,
+    request_id: Optional[str],
+    progress_callback: ParseProgressCallback = None,
+) -> Dict[str, Any]:
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "request_ai", "title": "调用 AI 解析附件"},
+    )
+    total_start = perf_counter()
+    messages = _build_resume_attachment_messages(
+        RESUME_PARSING_PROMPT,
+        filename,
+        file_mime_type,
+        encoded_file,
+    )
+    result = await _call_resume_llm(
+        messages,
+        request_id,
+        "ai_call",
+        {
+            "filename": filename,
+            "content_type": file_mime_type,
+            "mode": "attachment",
+        },
+    )
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "merge_result", "title": "整理解析结果"},
+    )
+    total_ms = (perf_counter() - total_start) * 1000
+    _log_timing(
+        "parse_resume_total",
+        total_ms,
+        request_id,
+        {"mode": "attachment"},
+    )
+    return _normalize_parse_result(result)
+
+
+async def _parse_resume_from_text(
+    *,
+    cleaned_text: str,
+    request_id: Optional[str],
+    progress_callback: ParseProgressCallback = None,
+) -> Dict[str, Any]:
+    use_chunking = _should_use_chunking(cleaned_text)
+    await _emit_progress(
+        progress_callback,
+        {
+            "type": "progress",
+            "node": "segment_resume",
+            "title": "切分简历结构" if use_chunking else "构建解析上下文",
+        },
+    )
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "request_ai", "title": "调用 AI 结构化解析"},
+    )
+
+    total_start = perf_counter()
+    if use_chunking:
+        result = await _parse_resume_chunked(cleaned_text, request_id)
+        mode = "chunked"
+    else:
+        result = await _parse_resume_single(cleaned_text, request_id)
+        mode = "single"
+
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "merge_result", "title": "整理解析结果"},
+    )
+    total_ms = (perf_counter() - total_start) * 1000
+    _log_timing(
+        "parse_resume_total",
+        total_ms,
+        request_id,
+        {"mode": mode, "input_length": len(cleaned_text)},
+    )
+    return _normalize_parse_result(result)
+
+
 async def parse_resume(
     file_data: bytes,
     filename: str,
     file_mime_type: str,
     request_id: Optional[str] = None,
+    progress_callback: ParseProgressCallback = None,
 ) -> Dict[str, Any]:
     if not file_data:
         raise ValueError("文件为空，无法解析。")
     _ensure_attachment_size_limit(file_data)
+
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "extract_text", "title": "提取简历正文"},
+    )
+    cleaned = _prepare_resume_text(
+        extract_resume_text(
+            file_data=file_data,
+            filename=filename,
+            file_mime_type=file_mime_type,
+            request_id=request_id,
+        ),
+        request_id,
+    )
 
     encode_start = perf_counter()
     encoded_file = _encode_upload_data(file_data)
@@ -1083,30 +1503,105 @@ async def parse_resume(
         {"encoded_length": len(encoded_file)},
     )
 
-    messages = _build_resume_attachment_messages(
-        RESUME_PARSING_PROMPT,
-        filename,
-        file_mime_type,
-        encoded_file,
+    if not cleaned:
+        return await _parse_resume_from_attachment(
+            encoded_file=encoded_file,
+            filename=filename,
+            file_mime_type=file_mime_type,
+            request_id=request_id,
+            progress_callback=progress_callback,
+        )
+
+    return await _parse_resume_from_text(
+        cleaned_text=cleaned,
+        request_id=request_id,
+        progress_callback=progress_callback,
     )
-    total_start = perf_counter()
-    result = await _call_resume_llm(
-        messages,
+
+
+async def parse_resume_with_thoughts(
+    file_data: bytes,
+    filename: str,
+    file_mime_type: str,
+    request_id: Optional[str] = None,
+    progress_callback: ParseProgressCallback = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not file_data:
+        raise ValueError("文件为空，无法解析。")
+    _ensure_attachment_size_limit(file_data)
+
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "extract_text", "title": "提取简历正文"},
+    )
+    cleaned = _prepare_resume_text(
+        extract_resume_text(
+            file_data=file_data,
+            filename=filename,
+            file_mime_type=file_mime_type,
+            request_id=request_id,
+        ),
         request_id,
-        "ai_call",
-        {
-            "filename": filename,
-            "content_type": file_mime_type,
-        },
     )
-    total_ms = (perf_counter() - total_start) * 1000
+
+    encode_start = perf_counter()
+    encoded_file = _encode_upload_data(file_data)
+    encode_ms = (perf_counter() - encode_start) * 1000
     _log_timing(
-        "parse_resume_total",
-        total_ms,
+        "encode_file",
+        encode_ms,
         request_id,
-        {"mode": "attachment"},
+        {"encoded_length": len(encoded_file)},
     )
-    return _normalize_parse_result(result)
+
+    if not cleaned:
+        return await _parse_resume_from_attachment(
+            encoded_file=encoded_file,
+            filename=filename,
+            file_mime_type=file_mime_type,
+            request_id=request_id,
+            progress_callback=progress_callback,
+        )
+
+    if not settings.gemini_api_key:
+        logger.warning(
+            "[ResumeParse] GEMINI_API_KEY missing, fallback to standard parser request_id=%s",
+            request_id,
+        )
+        return await _parse_resume_from_text(
+            cleaned_text=cleaned,
+            request_id=request_id,
+            progress_callback=progress_callback,
+        )
+
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "request_ai", "title": "调用 Gemini Thinking 解析"},
+    )
+    try:
+        result = await _stream_resume_thinking_parse(
+            cleaned_text=cleaned,
+            request_id=request_id,
+            thought_callback=thought_callback,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[ResumeParse] Gemini Thinking unavailable, fallback to standard parser request_id=%s error=%s",
+            request_id,
+            str(exc),
+        )
+        await _emit_thought(thought_callback, {"type": "thought_reset"})
+        return await _parse_resume_from_text(
+            cleaned_text=cleaned,
+            request_id=request_id,
+            progress_callback=progress_callback,
+        )
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "merge_result", "title": "整理结构化结果"},
+    )
+    return result
 
 
 async def fetch_existing_experiences(
