@@ -579,7 +579,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     authUserKey = null,
     onResumesUpdate,
 }) => {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isDarkMode, setIsDarkMode] = useState(() =>
+        typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+    );
     const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
     const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
     const [topPaddingPx, setTopPaddingPx] = useState(resolveDefaultTopPaddingPx());
@@ -1161,6 +1163,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             name: created.title,
             targetRole: created.target_role || '通用',
             matchRate: 0,
+            createdAt: formatDateLabel(created.created_at),
             lastModified: formatRelativeTime(created.updated_at),
             status: 'draft',
             type: 'general',
@@ -1346,10 +1349,24 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         await applyResumeNameUpdate(autoName, { silent: true });
         return result;
     }, [applyResumeNameUpdate, canAutoNameResume, jdText, resumeName, runJdAnalyzeWithToast]);
+    useEffect(() => {
+        if (typeof document === 'undefined') {
+            return;
+        }
+        const root = document.documentElement;
+        const syncThemeState = () => {
+            setIsDarkMode(root.classList.contains('dark'));
+        };
+        syncThemeState();
+        const observer = new MutationObserver(syncThemeState);
+        observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+        return () => observer.disconnect();
+    }, []);
     const isProfileReadOnly = !isEditingProfile || isSavingProfile;
     const toggleTheme = () => {
-        setIsDarkMode(!isDarkMode);
-        document.documentElement.classList.toggle('dark');
+        const nextIsDark = !document.documentElement.classList.contains('dark');
+        document.documentElement.classList.toggle('dark', nextIsDark);
+        setIsDarkMode(nextIsDark);
     };
     const beginProfileEdit = () => {
         setOriginalProfile({ ...profile });
@@ -2853,7 +2870,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onResumeNameChange={handleResumeNameChange}
                 onExportPdf={handleExportPdf}
             />
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
                 <EditorSidebar
                     sidebarTab={sidebarTab}
                     onSelectTab={setSidebarTab}

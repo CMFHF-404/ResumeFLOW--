@@ -5,7 +5,7 @@ import { resumeService } from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
-import { formatRelativeTime } from '../utils/timeUtils';
+import { formatDateLabel, formatRelativeTime } from '../utils/timeUtils';
 import { clampMatchScore } from '../utils/resumeHelpers';
 import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -146,6 +146,7 @@ const areResumeListsEqual = (prev: Resume[], next: Resume[]) => {
       && item.name === other.name
       && item.targetRole === other.targetRole
       && item.matchRate === other.matchRate
+      && item.createdAt === other.createdAt
       && item.lastModified === other.lastModified
       && item.status === other.status
       && item.type === other.type;
@@ -156,12 +157,14 @@ const mapResumeToDashboard = (resume: {
   id: string;
   title: string;
   target_role?: string;
+  created_at: string;
   updated_at: string;
 }): Resume => ({
   id: resume.id,
   name: resume.title,
   targetRole: resume.target_role || '通用',
   matchRate: resolveResumeMatchRate(resume.id),
+  createdAt: formatDateLabel(resume.created_at),
   lastModified: formatRelativeTime(resume.updated_at),
   status: 'draft',
   type: 'general',
@@ -178,7 +181,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   authUserKey = null,
   onResumesUpdate,
 }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
   const isCacheOwnerMatched = Boolean(
     cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
@@ -234,6 +240,34 @@ const Dashboard: React.FC<DashboardProps> = ({
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
   }, [viewMode]);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+    };
+    setIsMobile(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const root = document.documentElement;
+    const syncThemeState = () => {
+      setIsDarkMode(root.classList.contains('dark'));
+    };
+    syncThemeState();
+    const observer = new MutationObserver(syncThemeState);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   const lastSyncedResumesRef = useRef<Resume[] | null>(null);
   useEffect(() => {
     const handler = onResumesUpdateRef.current;
@@ -280,9 +314,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [isCacheOwnerMatched, loadKey, loadResumes]);
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
+    const nextIsDark = !document.documentElement.classList.contains('dark');
+    document.documentElement.classList.toggle('dark', nextIsDark);
+    setIsDarkMode(nextIsDark);
   };
+
+  const effectiveViewMode = isMobile ? 'list' : viewMode;
 
   const openResume = (id: string) => {
     setActiveResumeId(id);
@@ -543,18 +580,19 @@ const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
       {/* Header */}
-      <header className="h-16 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark flex items-center justify-between px-8 shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="hidden border-b border-border-light bg-surface-light px-4 py-3 shrink-0 dark:border-border-dark dark:bg-surface-dark md:block md:px-8">
+        <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-3 md:gap-4">
           <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
             <FileText className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-white">原子简历</span>
+            <span className="font-bold text-lg tracking-tight text-gray-900 dark:text-white md:text-xl">原子简历</span>
           </div>
-          <div className="h-6 w-px bg-border-light dark:bg-border-dark"></div>
+          <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-500">仪表盘 / Dashboard</span>
+            <span className="text-xs font-medium text-gray-500 sm:text-sm">仪表盘 / Dashboard</span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4 md:justify-end">
           <button
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
             onClick={toggleTheme}
@@ -565,11 +603,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             <Bell className="w-4 h-4" />
           </div>
         </div>
+        </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-7xl mx-auto space-y-10">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="max-w-7xl mx-auto space-y-6 md:space-y-10">
           {/* 推广卡片：当没有简历时显示 */}
           {resumes.length === 0 && (
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-800 p-6 shadow-sm">
@@ -593,17 +632,27 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
           )}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">欢迎回来，{welcomeName}</h1>
-              <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-                你已创建了 <span className="font-bold text-gray-900 dark:text-white">{resumes.length}</span> 份简历。
-              </p>
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end md:gap-4">
+            <div className="flex items-start justify-between gap-4 md:block">
+              <div>
+                <h1 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">欢迎回来，{welcomeName}</h1>
+                <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                  你已创建了 <span className="font-bold text-gray-900 dark:text-white">{resumes.length}</span> 份简历。
+                </p>
+              </div>
+              <button
+                onClick={handleCreateResume}
+                disabled={isCreatingResume}
+                className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-all disabled:opacity-60 md:hidden"
+              >
+                <Plus className="h-4 w-4" />
+                {isCreatingResume ? '创建中...' : '创建新简历'}
+              </button>
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
+              <div className="hidden md:flex items-center bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
                 <button
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-primary dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
@@ -620,7 +669,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <button
                 onClick={handleCreateResume}
                 disabled={isCreatingResume}
-                className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:shadow-primary/20 disabled:transform-none"
+                className="hidden items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:shadow-primary/20 disabled:transform-none md:flex"
               >
                 <Plus className="w-5 h-5" />
                 {isCreatingResume ? '创建中...' : '创建新简历'}
@@ -628,7 +677,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {viewMode === 'grid' ? (
+          {effectiveViewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {resumes.map(resume => (
                 <div key={resume.id} onClick={() => openResume(resume.id)} className="group bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col relative cursor-pointer">
@@ -694,8 +743,8 @@ const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
           ) : (
-            <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm min-h-[500px]">
-              <div className="overflow-x-auto">
+            <>
+              <div className="hidden min-h-[500px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-surface-dark md:block">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -746,7 +795,45 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </tbody>
                 </table>
               </div>
-            </div>
+              <div className="space-y-3 md:hidden">
+                {resumes.map((resume) => (
+                  <div
+                    key={resume.id}
+                    className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:hover:bg-gray-800/40"
+                    onClick={() => openResume(resume.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-base font-bold text-gray-900 dark:text-white">
+                          {resume.name}
+                        </h3>
+                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                          <div>
+                            <div className="text-gray-400">匹配度</div>
+                            <div className="mt-1 font-semibold text-gray-900 dark:text-white">
+                              {resume.matchRate > 0 ? `${resume.matchRate}%` : '草稿'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400">创建时间</div>
+                            <div className="mt-1 font-semibold text-gray-900 dark:text-white">
+                              {resume.createdAt}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        className="dropdown-trigger rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white"
+                        onClick={(e) => handleDropdownClick(e, resume.id)}
+                        type="button"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </main>

@@ -209,7 +209,7 @@ const App: React.FC = () => {
 
   return (
     <AuthGuard>
-      <div key={viewScopeKey} className="flex w-full h-screen">
+      <div key={viewScopeKey} className="flex min-h-screen w-full flex-col md:h-screen md:flex-row">
         <GlobalSidebar
           currentView={currentView}
           setView={handleSetView}

@@ -9,6 +9,7 @@ export interface Resume {
   name: string;
   targetRole: string;
   matchRate: number;
+  createdAt: string;
   lastModified: string;
   status: 'draft' | 'final';
   type: 'internship' | 'fulltime' | 'general';

@@ -96,19 +96,19 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
 
     return (
         <aside
-            className={`${SIDEBAR_WIDTH_CLASS} flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark shrink-0 z-10 hidden md:flex`}
+            className={`${SIDEBAR_WIDTH_CLASS} flex w-full min-h-0 max-h-[46vh] shrink-0 flex-col overflow-hidden border-b border-border-light bg-surface-light z-10 dark:border-border-dark dark:bg-surface-dark md:max-h-none md:border-b-0 md:border-r`}
         >
             <JDAnalysisPanel {...jdPanelProps} />
             <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
                 <div className="flex">
                     <button
-                        className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-medium transition-colors sm:text-sm ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                         onClick={() => onSelectTab('experience')}
                     >
                         <Database className="w-4 h-4" /> 经历库
                     </button>
                     <button
-                        className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-medium transition-colors sm:text-sm ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                         onClick={() => {
                             onSelectTab('profile');
                             onProfileTabSelected();
@@ -121,7 +121,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
             </div>
             <div
                 ref={scrollContainerRef}
-                className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/30 dark:bg-black/20"
+                className="flex-1 space-y-4 overflow-y-auto bg-gray-50/30 p-4 dark:bg-black/20 md:p-5"
             >
                 {sidebarTab === 'profile' ? (
                     <ProfileTab {...profileTabProps} />

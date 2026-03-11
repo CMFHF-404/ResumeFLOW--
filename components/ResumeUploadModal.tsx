@@ -876,22 +876,37 @@ const SkillPreviewSection: React.FC<{
   );
 };
 
-const ModalHeader: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+const ModalHeader: React.FC<{
+  onClose: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
+}> = ({ onClose, actionLabel, onAction }) => (
   <div className="flex items-start justify-between gap-4">
-    <div>
+    <div className="min-w-0">
       <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Resume Intake</p>
       <h3 className="text-2xl font-bold text-gray-900 dark:text-white">导入简历经验池</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
         上传 PDF/DOCX，自动拆解 STAR 并智能查重。AI 深度分析约需 40-60 秒，请耐心等待。
       </p>
     </div>
-    <button
-      type="button"
-      onClick={onClose}
-      className="rounded-full p-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition"
-    >
-      <X className="w-5 h-5" />
-    </button>
+    <div className="flex shrink-0 items-center gap-2">
+      {actionLabel && onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          className="rounded-lg px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+        >
+          {actionLabel}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-full p-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
   </div>
 );
 
@@ -1040,6 +1055,9 @@ const UploadPanel: React.FC<{
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragState: (next: boolean) => void;
   onReupload: () => void;
+  showStatusCard?: boolean;
+  showReupload?: boolean;
+  showThinkingTrace?: boolean;
 }> = ({
   file,
   stage,
@@ -1052,6 +1070,9 @@ const UploadPanel: React.FC<{
   onDrop,
   onDragState,
   onReupload,
+  showStatusCard = true,
+  showReupload = true,
+  showThinkingTrace = true,
 }) => (
     <div className="space-y-4">
       <UploadDropzone
@@ -1061,14 +1082,23 @@ const UploadPanel: React.FC<{
         onDrop={onDrop}
         onDragState={onDragState}
       />
-      <FileStatusCard file={file} stage={stage} progress={progress} errorMessage={errorMessage} />
-      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>默认已勾选非重复条目</span>
-        <button type="button" onClick={onReupload} className="hover:text-emerald-600 transition">
-          重新上传
-        </button>
-      </div>
-      <ThinkingTraceCard stage={stage} nodes={thinkingNodes} />
+      {showStatusCard ? (
+        <FileStatusCard file={file} stage={stage} progress={progress} errorMessage={errorMessage} />
+      ) : errorMessage ? (
+        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4" />
+          <span>{errorMessage}</span>
+        </div>
+      ) : null}
+      {showReupload ? (
+        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <span>默认已勾选非重复条目</span>
+          <button type="button" onClick={onReupload} className="hover:text-emerald-600 transition">
+            重新上传
+          </button>
+        </div>
+      ) : null}
+      {showThinkingTrace ? <ThinkingTraceCard stage={stage} nodes={thinkingNodes} /> : null}
     </div>
   );
 
@@ -1753,6 +1783,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
     toggleSelectAll: toggleAllSkills,
   } = useParsedSkills();
   const [parsedPersonalInfo, setParsedPersonalInfo] = useState<ParsedPersonalInfo | undefined>(undefined);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [personalInfoSelection, setPersonalInfoSelection] = useState<ParsedPersonalInfoSelection>(
     buildEmptyPersonalInfoSelection()
   );
@@ -1778,6 +1809,19 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
     }
     setPersonalInfoSelection(buildPersonalInfoSelection(parsedPersonalInfo, profileSnapshot));
   }, [parsedPersonalInfo, profileSnapshot]);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+    };
+    setIsMobile(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
   const {
     file,
     stage,
@@ -1820,6 +1864,12 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
     setPersonalInfoSelection(buildEmptyPersonalInfoSelection());
     hasTouchedPersonalInfoSelectionRef.current = false;
   }, [resetParsing, resetSelection, resetCertifications, resetSkills]);
+  const handleResetToUpload = useCallback(() => {
+    resetAll();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [resetAll]);
   const handleReupload = useCallback(() => {
     resetAll();
     if (fileInputRef.current) {
@@ -1852,6 +1902,10 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
       resetAll();
     }
   }, [isOpen, resetAll]);
+  const isReady = stage === 'ready';
+  const shouldShowMobilePreview = isMobile && isReady;
+  const shouldShowDesktopSplitLayout = !isMobile;
+  const shouldShowFooter = !isMobile || isReady;
   if (!isOpen) {
     return null;
   }
@@ -1861,46 +1915,94 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
       <div className="relative w-full max-w-5xl rounded-3xl border border-white/20 bg-gradient-to-br from-white/95 via-white/85 to-emerald-50/80 dark:from-gray-900 dark:via-gray-900/95 dark:to-emerald-900/20 shadow-2xl">
         <div className="absolute inset-x-0 -top-20 h-40 rounded-full bg-emerald-400/20 blur-3xl" />
         <div className="relative p-6">
-          <ModalHeader onClose={onClose} />
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.1fr_1.9fr] gap-6">
-            <UploadPanel
-              file={file}
-              stage={stage}
-              progress={progress}
-              errorMessage={errorMessage}
-              thinkingNodes={thinkingNodes}
-              isDragging={isDragging}
-              inputRef={fileInputRef}
-              onFileChange={handleFileChangeWithReset}
-              onDrop={handleDropWithReset}
-              onDragState={setIsDragging}
-              onReupload={handleReupload}
-            />
-            <PreviewPanel
-              personalInfo={parsedPersonalInfo}
-              personalInfoSelection={personalInfoSelection}
-              onTogglePersonalInfo={togglePersonalInfoSelection}
-              items={items}
-              selectedExperienceIds={selectedIds}
-              onToggleExperience={toggleSelection}
-              onToggleExperienceGroup={toggleSelectionBatch}
-              certifications={parsedCertifications}
-              selectedCertificationIds={selectedCertificationIds}
-              onToggleCertification={toggleCertification}
-              onToggleAllCertifications={toggleAllCertifications}
-              skillGroups={parsedSkillGroups}
-              selectedSkillIds={selectedSkillIds}
-              duplicateSkillIds={duplicateSkillIds}
-              onToggleSkill={toggleSkill}
-              onToggleAllSkills={toggleAllSkills}
-            />
-          </div>
-          <ModalFooter
-            selectedCount={selectedTotalCount}
+          <ModalHeader
             onClose={onClose}
-            onImport={handleImport}
-            isImporting={isImporting}
+            actionLabel={shouldShowMobilePreview ? '重新上传' : undefined}
+            onAction={shouldShowMobilePreview ? handleResetToUpload : undefined}
           />
+          {shouldShowDesktopSplitLayout ? (
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1.9fr]">
+              <UploadPanel
+                file={file}
+                stage={stage}
+                progress={progress}
+                errorMessage={errorMessage}
+                thinkingNodes={thinkingNodes}
+                isDragging={isDragging}
+                inputRef={fileInputRef}
+                onFileChange={handleFileChangeWithReset}
+                onDrop={handleDropWithReset}
+                onDragState={setIsDragging}
+                onReupload={handleReupload}
+              />
+              <PreviewPanel
+                personalInfo={parsedPersonalInfo}
+                personalInfoSelection={personalInfoSelection}
+                onTogglePersonalInfo={togglePersonalInfoSelection}
+                items={items}
+                selectedExperienceIds={selectedIds}
+                onToggleExperience={toggleSelection}
+                onToggleExperienceGroup={toggleSelectionBatch}
+                certifications={parsedCertifications}
+                selectedCertificationIds={selectedCertificationIds}
+                onToggleCertification={toggleCertification}
+                onToggleAllCertifications={toggleAllCertifications}
+                skillGroups={parsedSkillGroups}
+                selectedSkillIds={selectedSkillIds}
+                duplicateSkillIds={duplicateSkillIds}
+                onToggleSkill={toggleSkill}
+                onToggleAllSkills={toggleAllSkills}
+              />
+            </div>
+          ) : (
+            <div className="mt-6">
+              {shouldShowMobilePreview ? (
+                <PreviewPanel
+                  personalInfo={parsedPersonalInfo}
+                  personalInfoSelection={personalInfoSelection}
+                  onTogglePersonalInfo={togglePersonalInfoSelection}
+                  items={items}
+                  selectedExperienceIds={selectedIds}
+                  onToggleExperience={toggleSelection}
+                  onToggleExperienceGroup={toggleSelectionBatch}
+                  certifications={parsedCertifications}
+                  selectedCertificationIds={selectedCertificationIds}
+                  onToggleCertification={toggleCertification}
+                  onToggleAllCertifications={toggleAllCertifications}
+                  skillGroups={parsedSkillGroups}
+                  selectedSkillIds={selectedSkillIds}
+                  duplicateSkillIds={duplicateSkillIds}
+                  onToggleSkill={toggleSkill}
+                  onToggleAllSkills={toggleAllSkills}
+                />
+              ) : (
+                <UploadPanel
+                  file={file}
+                  stage={stage}
+                  progress={progress}
+                  errorMessage={errorMessage}
+                  thinkingNodes={thinkingNodes}
+                  isDragging={isDragging}
+                  inputRef={fileInputRef}
+                  onFileChange={handleFileChangeWithReset}
+                  onDrop={handleDropWithReset}
+                  onDragState={setIsDragging}
+                  onReupload={handleReupload}
+                  showStatusCard={false}
+                  showReupload={false}
+                  showThinkingTrace={stage !== 'idle'}
+                />
+              )}
+            </div>
+          )}
+          {shouldShowFooter ? (
+            <ModalFooter
+              selectedCount={selectedTotalCount}
+              onClose={onClose}
+              onImport={handleImport}
+              isImporting={isImporting}
+            />
+          ) : null}
         </div>
       </div>
     </div>
