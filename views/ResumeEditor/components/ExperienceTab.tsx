@@ -132,6 +132,65 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         return projectItems.filter((item) => item.matchScore === undefined || item.matchScore >= matchScoreFilter);
     }, [projectItems, matchScoreFilter]);
 
+    const filteredCertifications = useMemo(() => {
+        if (certificationMatchScores.size === 0) {
+            return sortedCertifications;
+        }
+        return sortedCertifications.filter((cert) => {
+            const score = certificationMatchScores.get(cert.id);
+            return (
+                cert.id === certification.editingCertificationId
+                || score === undefined
+                || score >= matchScoreFilter
+            );
+        });
+    }, [
+        sortedCertifications,
+        certificationMatchScores,
+        matchScoreFilter,
+        certification.editingCertificationId,
+    ]);
+
+    const filteredSkillGroups = useMemo(() => {
+        if (skillMatchScores.size === 0) {
+            return skillGroups;
+        }
+        const activeDraftGroupName = skill.skillDraftContext?.mode === 'group'
+            ? skill.skillDraftContext.groupName ?? null
+            : null;
+        return skillGroups
+            .map((group) => {
+                const filteredSkills = group.skills.filter((item) => {
+                    const score = skillMatchScores.get(item.id);
+                    return (
+                        item.id === skill.editingSkillId
+                        || score === undefined
+                        || score >= matchScoreFilter
+                    );
+                });
+                const shouldKeepGroup = (
+                    group.name === skill.renamingCategoryTarget
+                    || group.name === activeDraftGroupName
+                );
+                return {
+                    group: {
+                        ...group,
+                        skills: filteredSkills,
+                    },
+                    shouldKeepGroup,
+                };
+            })
+            .filter(({ group, shouldKeepGroup }) => shouldKeepGroup || group.skills.length > 0)
+            .map(({ group }) => group);
+    }, [
+        skillGroups,
+        skillMatchScores,
+        matchScoreFilter,
+        skill.editingSkillId,
+        skill.renamingCategoryTarget,
+        skill.skillDraftContext,
+    ]);
+
     useEffect(() => {
         if (typeof window === 'undefined') {
             return;
@@ -243,7 +302,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             />
             <CertificationListSection
                 title="证书资质"
-                items={sortedCertifications}
+                items={filteredCertifications}
                 selectedIds={selectedCertIds}
                 matchScores={certificationMatchScores}
                 matchTrends={certificationMatchTrends}
@@ -262,7 +321,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             />
             <SkillListSection
                 title="专业技能"
-                groups={skillGroups}
+                groups={filteredSkillGroups}
                 selectedIds={selectedSkillIds}
                 matchScores={skillMatchScores}
                 matchTrends={skillMatchTrends}

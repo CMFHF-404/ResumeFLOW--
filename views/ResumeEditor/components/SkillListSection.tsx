@@ -17,7 +17,7 @@ type SkillListSectionProps = {
     matchTrends: Map<string, MatchTrend>;
     skill: SkillActions;
     onToggleSelection: (id: string) => void;
-    onToggleGroupSelection: (groupName: string) => void;
+    onToggleGroupSelection: (groupName: string, skillIds?: string[]) => void;
     onResetRenamingCategory: () => void;
 };
 
@@ -389,7 +389,7 @@ const SkillGroupCard: React.FC<{
     matchScores: Map<string, number>;
     matchTrends: Map<string, MatchTrend>;
     onToggleSelection: (id: string) => void;
-    onToggleGroupSelection: (groupName: string) => void;
+    onToggleGroupSelection: (groupName: string, skillIds?: string[]) => void;
     onResetRenamingCategory: () => void;
 }> = ({
     group,
@@ -405,6 +405,7 @@ const SkillGroupCard: React.FC<{
         const totalCount = group.skills.length;
         const isAllSelected = totalCount > 0 && selectedCount === totalCount;
         const isIndeterminate = selectedCount > 0 && selectedCount < totalCount;
+        const visibleSkillIds = group.skills.map((item) => item.id);
 
         return (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm hover:shadow-md transition-all overflow-hidden">
@@ -414,7 +415,7 @@ const SkillGroupCard: React.FC<{
                     onResetRenamingCategory={onResetRenamingCategory}
                     isAllSelected={isAllSelected}
                     isIndeterminate={isIndeterminate}
-                    onToggleSelectAll={() => onToggleGroupSelection(group.name)}
+                    onToggleSelectAll={() => onToggleGroupSelection(group.name, visibleSkillIds)}
                 />
                 <SkillGroupBody
                     group={group}

@@ -1119,17 +1119,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }));
             selection.toggleSkillSelection(id);
         },
-        toggleSkillGroupSelection: (groupName: string) => {
+        toggleSkillGroupSelection: (groupName: string, skillIds?: string[]) => {
             markManualSelectionChanged();
-            const group = skillGroups.find((item) => item.name === groupName);
+            const targetSkillIds = skillIds
+                ?? skillGroups.find((item) => item.name === groupName)?.skills.map((item) => item.id)
+                ?? [];
             updateManualSelectionSnapshot((snapshot) => ({
                 ...snapshot,
                 skillIds: toggleGroupedSelectionSnapshotIds(
                     snapshot.skillIds,
-                    group?.skills.map((skill) => skill.id) ?? []
+                    targetSkillIds
                 ),
             }));
-            selection.toggleSkillGroupSelection(groupName);
+            selection.toggleSkillGroupSelection(groupName, targetSkillIds);
         },
     }), [markManualSelectionChanged, selection, skillGroups, updateManualSelectionSnapshot]);
     const updateDashboardCache = useCallback(
@@ -2814,6 +2816,21 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const handleToggleJdCollapse = () => {
         setIsJDCollapsed((prev) => !prev);
     };
+    const handleJdTextChange = useCallback(
+        (value: string) => {
+            const nextJdText = value.trim();
+            const currentAutoName = resolveAutoResumeName(analysisResult, jdText);
+            setJdText(value);
+            if (
+                nextJdText === ''
+                && currentAutoName
+                && normalizeResumeTitle(resumeName) === currentAutoName
+            ) {
+                void applyResumeNameUpdate(DEFAULT_RESUME_TITLE, { silent: true });
+            }
+        },
+        [analysisResult, applyResumeNameUpdate, jdText, resumeName, setJdText]
+    );
     const showDebugInfo =
         import.meta.env.DEV && localStorage.getItem('jdDebug') === '1';
     const isEditorBusy = isLoadingResume || isCreatingResume;
@@ -2848,7 +2865,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         isCollapsed: isJDCollapsed,
                         onAnalyze: handleAnalyzeWithAutoName,
                         onToggleCollapse: handleToggleJdCollapse,
-                        onJdTextChange: setJdText,
+                        onJdTextChange: handleJdTextChange,
                         jdFile,
                         onFileChange: setJdFile,
                         hasMissingAttachmentContext,
