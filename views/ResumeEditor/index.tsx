@@ -1893,6 +1893,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             setIsMobileEditorDrawerVisible(true);
         });
     }, []);
+    const dismissMobileEditorDrawerImmediately = useCallback(() => {
+        if (mobileEditorDrawerTimerRef.current !== null) {
+            window.clearTimeout(mobileEditorDrawerTimerRef.current);
+            mobileEditorDrawerTimerRef.current = null;
+        }
+        setIsMobileEditorDrawerVisible(false);
+        setIsMobileEditorDrawerOpen(false);
+    }, []);
     const closeMobileEditorDrawer = useCallback(() => {
         setIsMobileEditorDrawerVisible(false);
         if (mobileEditorDrawerTimerRef.current !== null) {
@@ -2909,6 +2917,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             document.body.style.overflow = overflow;
         };
     }, [isMobileEditorDrawerOpen]);
+    useEffect(() => {
+        if (!isMobileEditorDrawerOpen || typeof window === 'undefined') {
+            return;
+        }
+        const handleResize = () => {
+            if (window.innerWidth >= 768) {
+                dismissMobileEditorDrawerImmediately();
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+        };
+    }, [dismissMobileEditorDrawerImmediately, isMobileEditorDrawerOpen]);
     useEffect(() => {
         return () => {
             if (mobileEditorDrawerTimerRef.current !== null) {
