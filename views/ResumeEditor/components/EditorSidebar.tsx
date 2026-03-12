@@ -3,7 +3,6 @@ import { Database, User, Wand2 } from 'lucide-react';
 import type { ResumeExperienceView } from '../../../types/resume';
 import {
     EDITING_SUGGESTION_NAV_CLASS,
-    SIDEBAR_WIDTH_CLASS,
     STALE_EXPERIENCE_TIP,
 } from '../constants';
 import { MatchBadge, StaleBadge } from './Badges';
@@ -99,7 +98,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
     const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
     const asideClassName = layoutMode === 'drawer'
         ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-light dark:bg-surface-dark'
-        : `${SIDEBAR_WIDTH_CLASS} flex w-full min-h-0 max-h-[46vh] shrink-0 flex-col overflow-hidden border-b border-border-light bg-surface-light z-10 dark:border-border-dark dark:bg-surface-dark md:max-h-none md:border-b-0 md:border-r`;
+        : 'flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden border-b border-border-light bg-surface-light z-10 dark:border-border-dark dark:bg-surface-dark md:border-b-0 md:border-r';
 
     return (
         <aside

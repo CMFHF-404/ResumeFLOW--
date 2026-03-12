@@ -78,6 +78,7 @@ import {
     PREVIEW_PADDING_MM,
     PROFILE_SYNC_MODES,
     SECTION_SPACING_CLASS_BY_DENSITY,
+    SIDEBAR_WIDTH_CLASS,
     SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
     SMART_PAGE_ITEM_SPACING_DEFAULT,
     SMART_PAGE_ITEM_SPACING_MIN,
@@ -2987,7 +2988,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 />
             </div>
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
-                <div className="hidden md:block">
+                <div className={`hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden ${SIDEBAR_WIDTH_CLASS}`}>
                     <EditorSidebar
                         sidebarTab={sidebarTab}
                         onSelectTab={setSidebarTab}
