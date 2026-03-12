@@ -31,6 +31,8 @@ const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
+const PREVIEW_SCALE_EPSILON = 0.001;
+const PREVIEW_SIZE_EPSILON = 0.5;
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -196,10 +198,17 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditCertification,
     onEditSkill,
 }) => {
+    const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal';
+    const previewViewportRef = React.useRef<HTMLDivElement | null>(null);
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
         [fontSize, previewScope]
     );
+    const [scaledPreviewMetrics, setScaledPreviewMetrics] = React.useState({
+        scale: 1,
+        widthPx: 0,
+        heightPx: 0,
+    });
     const sectionSpacingPx = React.useMemo(
         () => resolveSectionSpacingPx(sectionSpacingClass),
         [sectionSpacingClass]
@@ -265,6 +274,125 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const sectionHoverBgClass = '';
     const sectionDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
     const itemDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
+
+    const syncScaledPreviewMetrics = React.useCallback(() => {
+        if (!isScaledEditorPreview) {
+            return;
+        }
+
+        const viewport = previewViewportRef.current;
+        const previewElement = previewRef.current;
+        if (!viewport || !previewElement) {
+            return;
+        }
+
+        const intrinsicWidth = previewElement.offsetWidth;
+        const intrinsicHeight = previewElement.offsetHeight;
+        const availableWidth = viewport.clientWidth;
+        if (!intrinsicWidth || !intrinsicHeight || !availableWidth) {
+            return;
+        }
+
+        const scale = Math.min(1, availableWidth / intrinsicWidth);
+        const nextMetrics = {
+            scale,
+            widthPx: intrinsicWidth * scale,
+            heightPx: intrinsicHeight * scale,
+        };
+
+        setScaledPreviewMetrics((currentMetrics) => {
+            if (
+                Math.abs(currentMetrics.scale - nextMetrics.scale) < PREVIEW_SCALE_EPSILON
+                && Math.abs(currentMetrics.widthPx - nextMetrics.widthPx) < PREVIEW_SIZE_EPSILON
+                && Math.abs(currentMetrics.heightPx - nextMetrics.heightPx) < PREVIEW_SIZE_EPSILON
+            ) {
+                return currentMetrics;
+            }
+            return nextMetrics;
+        });
+    }, [isScaledEditorPreview, previewRef]);
+
+    React.useLayoutEffect(() => {
+        if (!isScaledEditorPreview) {
+            return;
+        }
+
+        syncScaledPreviewMetrics();
+
+        const handleResize = () => {
+            syncScaledPreviewMetrics();
+        };
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', handleResize);
+            return () => {
+                window.removeEventListener('resize', handleResize);
+            };
+        }
+
+        const resizeObserver = new ResizeObserver(() => {
+            syncScaledPreviewMetrics();
+        });
+
+        if (previewViewportRef.current) {
+            resizeObserver.observe(previewViewportRef.current);
+        }
+        if (previewRef.current) {
+            resizeObserver.observe(previewRef.current);
+        }
+
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', handleResize);
+        };
+    }, [isScaledEditorPreview, previewRef, syncScaledPreviewMetrics]);
+
+    const scaledPreviewWrapperStyle = React.useMemo(() => {
+        if (!isScaledEditorPreview) {
+            return undefined;
+        }
+
+        return {
+            width: `${scaledPreviewMetrics.widthPx}px`,
+            minHeight: `${scaledPreviewMetrics.heightPx}px`,
+        } as React.CSSProperties;
+    }, [isScaledEditorPreview, scaledPreviewMetrics.heightPx, scaledPreviewMetrics.widthPx]);
+
+    const previewStyle = React.useMemo(() => {
+        const baseStyle = {
+            lineHeight,
+            fontSize: `${fontSize}px`,
+            paddingTop: `${topPaddingPx}px`,
+            paddingRight: `${PREVIEW_PADDING_MM}mm`,
+            paddingBottom: `${PREVIEW_PADDING_MM}mm`,
+            paddingLeft: `${PREVIEW_PADDING_MM}mm`,
+            '--rf-line-height': String(lineHeight),
+            '--rf-list-spacing': listSpacingValue,
+            '--rf-bullet-spacing': bulletSpacingValue,
+        } as React.CSSProperties;
+
+        if (!isScaledEditorPreview) {
+            return baseStyle;
+        }
+
+        return {
+            ...baseStyle,
+            position: 'absolute',
+            inset: 0,
+            transform: `scale(${scaledPreviewMetrics.scale})`,
+            transformOrigin: 'top left',
+        } as React.CSSProperties;
+    }, [
+        bulletSpacingValue,
+        fontSize,
+        isScaledEditorPreview,
+        lineHeight,
+        listSpacingValue,
+        scaledPreviewMetrics.scale,
+        topPaddingPx,
+    ]);
 
     const renderExperienceSection = (
         sectionId: 'work' | 'project',
@@ -415,23 +543,21 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     };
 
     return (
-        <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto relative flex justify-center p-3 scroll-smooth md:p-8">
+        <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8">
             <div
-                ref={previewRef}
-                className="a4-preview text-gray-900 relative"
-                data-rf-preview-scope={previewScope}
-                style={{
-                    lineHeight,
-                    fontSize: `${fontSize}px`,
-                    paddingTop: `${topPaddingPx}px`,
-                    paddingRight: `${PREVIEW_PADDING_MM}mm`,
-                    paddingBottom: `${PREVIEW_PADDING_MM}mm`,
-                    paddingLeft: `${PREVIEW_PADDING_MM}mm`,
-                    '--rf-line-height': String(lineHeight),
-                    '--rf-list-spacing': listSpacingValue,
-                    '--rf-bullet-spacing': bulletSpacingValue,
-                } as React.CSSProperties}
+                ref={isScaledEditorPreview ? previewViewportRef : null}
+                className="flex w-full justify-center"
             >
+                <div
+                    className={isScaledEditorPreview ? 'relative shrink-0' : 'relative'}
+                    style={scaledPreviewWrapperStyle}
+                >
+                    <div
+                        ref={previewRef}
+                        className="a4-preview text-gray-900 relative"
+                        data-rf-preview-scope={previewScope}
+                        style={previewStyle}
+                    >
                 <div
                     ref={previewContentRef}
                     onDragOver={
@@ -935,6 +1061,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
                         return null;
                     })}
+                </div>
+                    </div>
                 </div>
             </div>
             <style>{previewTypographyCss}</style>

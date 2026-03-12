@@ -27,6 +27,8 @@ export type EditorSidebarProps = {
     profileTabProps: React.ComponentProps<typeof ProfileTab>;
     experienceTabProps: React.ComponentProps<typeof ExperienceTab>;
     editingSuggestion: EditingSuggestionProps;
+    layoutMode?: 'inline' | 'drawer';
+    showJDPanel?: boolean;
 };
 
 const resolveExperienceSuggestion = (
@@ -91,14 +93,19 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
     profileTabProps,
     experienceTabProps,
     editingSuggestion,
+    layoutMode = 'inline',
+    showJDPanel = true,
 }) => {
     const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+    const asideClassName = layoutMode === 'drawer'
+        ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-light dark:bg-surface-dark'
+        : `${SIDEBAR_WIDTH_CLASS} flex w-full min-h-0 max-h-[46vh] shrink-0 flex-col overflow-hidden border-b border-border-light bg-surface-light z-10 dark:border-border-dark dark:bg-surface-dark md:max-h-none md:border-b-0 md:border-r`;
 
     return (
         <aside
-            className={`${SIDEBAR_WIDTH_CLASS} flex w-full min-h-0 max-h-[46vh] shrink-0 flex-col overflow-hidden border-b border-border-light bg-surface-light z-10 dark:border-border-dark dark:bg-surface-dark md:max-h-none md:border-b-0 md:border-r`}
+            className={asideClassName}
         >
-            <JDAnalysisPanel {...jdPanelProps} />
+            {showJDPanel ? <JDAnalysisPanel {...jdPanelProps} /> : null}
             <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
                 <div className="flex">
                     <button
