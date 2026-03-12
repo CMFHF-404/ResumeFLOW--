@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, CopyPlus, Download, Edit2, RefreshCw, Wand2, X } from 'lucide-react';
+import { Check, CopyPlus, Download, Edit2, LayoutTemplate, RefreshCw, Wand2, X } from 'lucide-react';
 import type { JDAnalysisResult } from '../../../services/aiService';
 import { StaleBadge } from './Badges';
 
@@ -15,6 +15,9 @@ type MobileEditorHeaderProps = {
     isAutoAssembling: boolean;
     onCreateResume: () => void;
     isCreatingResume: boolean;
+    isSmartPageApplied: boolean;
+    onAdjustToSinglePage: () => void;
+    onRestoreDefault: () => void;
 };
 
 const SUMMARY_CLAMP_STYLE: React.CSSProperties = {
@@ -36,6 +39,9 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     isAutoAssembling,
     onCreateResume,
     isCreatingResume,
+    isSmartPageApplied,
+    onAdjustToSinglePage,
+    onRestoreDefault,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [draftName, setDraftName] = useState(resumeName);
@@ -207,6 +213,20 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 {summaryText}
                             </p>
                         </div>
+
+                        <button
+                            type="button"
+                            onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
+                            className={[
+                                'flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors',
+                                isSmartPageApplied
+                                    ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                                    : 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400',
+                            ].join(' ')}
+                        >
+                            <LayoutTemplate className="h-4 w-4" />
+                            {isSmartPageApplied ? '恢复默认版式' : '智能调整为一页'}
+                        </button>
                     </div>
                 </div>
             </div>
