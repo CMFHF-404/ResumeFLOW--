@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { Check, Sparkles, X } from 'lucide-react';
 import { buildTagSuggestions, buildTagsFromInput, mergeTags, normalizeTagKey } from './tagUtils';
 
 const TAG_INPUT_PLACEHOLDER = '输入技能标签，回车添加';
@@ -76,13 +76,28 @@ const TagChipList: React.FC<{
 const TagInputField: React.FC<{
     tags: string[];
     draft: string;
+    hasDraft: boolean;
     placeholder: string;
     onDraftChange: (value: string) => void;
     onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
     onRemove: (tag: string) => void;
+    onSubmitDraft: () => void;
+    onClearDraft: () => void;
     onAiFill?: () => void;
     isAiLoading?: boolean;
-}> = ({ tags, draft, placeholder, onDraftChange, onKeyDown, onRemove, onAiFill, isAiLoading }) => (
+}> = ({
+    tags,
+    draft,
+    hasDraft,
+    placeholder,
+    onDraftChange,
+    onKeyDown,
+    onRemove,
+    onSubmitDraft,
+    onClearDraft,
+    onAiFill,
+    isAiLoading,
+}) => (
     <div className="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-colors bg-gray-50/50 dark:bg-gray-800/20">
         <TagChipList tags={tags} onRemove={onRemove} />
         <input
@@ -92,6 +107,28 @@ const TagInputField: React.FC<{
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={onKeyDown}
         />
+        {hasDraft && (
+            <div className="inline-flex items-center gap-1 md:hidden">
+                <button
+                    type="button"
+                    onClick={onClearDraft}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-white"
+                    aria-label="取消添加技能"
+                    title="取消"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+                <button
+                    type="button"
+                    onClick={onSubmitDraft}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-rose-500 text-white transition-colors hover:bg-rose-600"
+                    aria-label="确认添加技能"
+                    title="确认"
+                >
+                    <Check className="h-4 w-4" />
+                </button>
+            </div>
+        )}
         {onAiFill && (
             <button
                 type="button"
@@ -116,6 +153,7 @@ const TagInput: React.FC<TagInputProps> = ({
     placeholder = TAG_INPUT_PLACEHOLDER
 }) => {
     const [draft, setDraft] = useState('');
+    const hasDraft = draft.trim().length > 0;
     const suggestionList = useMemo(
         () => buildTagSuggestions(value, suggestions, draft),
         [value, suggestions, draft]
@@ -156,15 +194,22 @@ const TagInput: React.FC<TagInputProps> = ({
         [onChange, value]
     );
 
+    const handleClearDraft = useCallback(() => {
+        setDraft('');
+    }, []);
+
     return (
         <div className="space-y-2">
             <TagInputField
                 tags={value}
                 draft={draft}
+                hasDraft={hasDraft}
                 placeholder={placeholder}
                 onDraftChange={setDraft}
                 onKeyDown={handleKeyDown}
                 onRemove={handleRemove}
+                onSubmitDraft={handleAddFromInput}
+                onClearDraft={handleClearDraft}
                 onAiFill={onAiFill}
                 isAiLoading={isAiLoading}
             />
