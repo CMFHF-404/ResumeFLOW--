@@ -136,20 +136,20 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                             >
                                 <Edit2 className="w-3.5 h-3.5" />
                             </button>
+                            <button
+                                onClick={onCreateResume}
+                                className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                title={isCreatingResume ? '新增中...' : '新增简历'}
+                                type="button"
+                                disabled={isCreatingResume}
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                            </button>
                         </>
                     )}
                 </div>
             </div>
             <div className="flex items-center gap-4">
-                <button
-                    className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors disabled:opacity-60"
-                    onClick={onCreateResume}
-                    type="button"
-                    disabled={isCreatingResume}
-                >
-                    <Plus className="w-4 h-4" />
-                    {isCreatingResume ? '新增中...' : '新增简历'}
-                </button>
                 <button
                     onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
                     className={smartPageButtonClass}
