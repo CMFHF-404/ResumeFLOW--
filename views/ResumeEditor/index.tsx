@@ -2963,6 +2963,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             </div>
             <div className="md:hidden">
                 <MobileEditorHeader
+                    resumeId={resumeId}
                     resumeName={resumeName}
                     onResumeNameChange={handleResumeNameChange}
                     analysisResult={analysisResult}
@@ -2985,6 +2986,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onRefreshBossGreeting={handleRefreshBossGreeting}
                     onCopyBossGreeting={handleCopyBossGreeting}
                     onCollapseBossGreeting={handleCollapseBossGreeting}
+                    jdText={jdText}
+                    onJdTextChange={handleJdTextChange}
+                    jdFile={jdFile}
+                    onFileChange={setJdFile}
+                    hasMissingAttachmentContext={hasMissingAttachmentContext}
+                    isJDCollapsed={isJDCollapsed}
+                    onJDCollapseChange={setIsJDCollapsed}
                 />
             </div>
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
