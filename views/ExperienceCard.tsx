@@ -103,24 +103,23 @@ const CollapsedExperienceCard: React.FC<{
       tabIndex={0}
       onKeyDown={(event) => event.key === 'Enter' && onToggle()}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <h3 className="mb-2 truncate font-bold text-gray-900 dark:text-white">
-            {data.org}
-          </h3>
-          <p className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
-            {data.title}
-          </p>
-          <p className="mb-2 text-sm font-mono text-gray-500 dark:text-gray-400">
-            {data.start_date} - {data.end_date || '至今'}
-          </p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+      <div className="hidden items-start justify-between gap-4 md:flex">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex min-w-0 items-center gap-3">
+            <h3 className="min-w-0 flex-1 truncate font-bold text-gray-900 dark:text-white">{data.org}</h3>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span className="min-w-0 flex-1 truncate font-medium text-gray-700 dark:text-gray-300">{data.title}</span>
+          </div>
+          <p className="truncate text-sm text-gray-500 dark:text-gray-400">
             {data.star?.s
               ? `${stripRichTextToText(data.star.s).substring(0, 60)}...`
               : labels.summaryPlaceholder}
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 text-right">
+          <span className="block text-sm font-mono text-gray-500 dark:text-gray-400">
+            {data.start_date} - {data.end_date || '至今'}
+          </span>
           <button
             onClick={handleDelete}
             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
@@ -131,6 +130,38 @@ const CollapsedExperienceCard: React.FC<{
           </button>
           <ChevronDown className="w-5 h-5 text-gray-400" />
         </div>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 md:hidden">
+        <div className="min-w-0">
+          <h3 className="truncate font-bold text-gray-900 dark:text-white">
+            {data.org}
+          </h3>
+        </div>
+        <div className="flex shrink-0 items-start gap-2">
+          <button
+            onClick={handleDelete}
+            className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+            title="删除"
+            type="button"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <ChevronDown className="w-5 h-5 text-gray-400" />
+        </div>
+        <div className="col-span-full flex items-start justify-between gap-4 pt-1">
+          <p className="min-w-0 truncate text-sm font-medium text-gray-700 dark:text-gray-300">
+            {data.title}
+          </p>
+          <p className="shrink-0 whitespace-nowrap text-right text-sm font-mono text-gray-500 dark:text-gray-400">
+            {data.start_date} - {data.end_date || '至今'}
+          </p>
+        </div>
+        <p className="col-span-full pt-1 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+          {data.star?.s
+            ? `${stripRichTextToText(data.star.s).substring(0, 60)}...`
+            : labels.summaryPlaceholder}
+        </p>
       </div>
     </div>
   );
@@ -211,15 +242,15 @@ const StarSectionItem: React.FC<{
   onUndo: () => boolean;
   themeColor?: string;
 }> = ({ section, isLast, value, onChange, onUndo, themeColor }) => (
-  <div className="flex gap-4 relative group">
-    {!isLast && <div className="absolute left-[19px] top-10 bottom-0 w-[2px] bg-gray-100 dark:bg-gray-800"></div>}
+  <div className="relative flex gap-0 pb-3 md:gap-4 md:pb-0">
+    {!isLast && <div className="absolute left-[19px] top-10 bottom-0 hidden w-[2px] bg-gray-100 dark:bg-gray-800 md:block"></div>}
     <div
-      className={`shrink-0 w-10 h-10 rounded-full bg-${section.color}-50 dark:bg-${section.color}-900/20 text-${section.color}-600 dark:text-${section.color}-400 flex items-center justify-center ring-4 ring-white dark:ring-surface-dark z-10 font-bold`}
+      className={`hidden shrink-0 h-10 w-10 items-center justify-center rounded-full bg-${section.color}-50 text-${section.color}-600 ring-4 ring-white dark:bg-${section.color}-900/20 dark:text-${section.color}-400 dark:ring-surface-dark md:flex`}
     >
       {section.id.toUpperCase()}
     </div>
-    <div className="flex-1 pt-1 pb-4">
-      <div className="flex items-center justify-between mb-2">
+    <div className="min-w-0 flex-1 pb-0 pt-0 md:pb-4 md:pt-1">
+      <div className="mb-2 flex items-center justify-between">
         <span
           className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}
         >
