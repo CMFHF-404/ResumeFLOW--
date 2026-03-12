@@ -38,6 +38,17 @@ const requestSkills = async (): Promise<UserSkill[]> => {
     return response.data;
 };
 
+const getCachedSkills = (options?: { allowStale?: boolean }) => {
+    const now = Date.now();
+    if (!cachedSkills) {
+        return null;
+    }
+    if (!options?.allowStale && !isSkillsCacheFresh(now)) {
+        return null;
+    }
+    return cachedSkills;
+};
+
 const clearSkillsCache = () => {
     skillsCacheRevision += 1;
     cachedSkills = null;
@@ -45,13 +56,26 @@ const clearSkillsCache = () => {
     inFlightSkillsRequest = null;
 };
 
+const ensureSkillsCacheOwner = async () => {
+    const cacheOwnerKey = await getAuthCacheKey();
+    if (skillsCacheOwnerKey !== cacheOwnerKey) {
+        clearSkillsCache();
+        skillsCacheOwnerKey = cacheOwnerKey;
+    }
+};
+
 export const skillsService = {
+    peekList(options?: { allowStale?: boolean }) {
+        return getCachedSkills(options);
+    },
+
+    async peekListForCurrentUser(options?: { allowStale?: boolean }) {
+        await ensureSkillsCacheOwner();
+        return getCachedSkills(options);
+    },
+
     async list(options?: { force?: boolean }) {
-        const cacheOwnerKey = await getAuthCacheKey();
-        if (skillsCacheOwnerKey !== cacheOwnerKey) {
-            clearSkillsCache();
-            skillsCacheOwnerKey = cacheOwnerKey;
-        }
+        await ensureSkillsCacheOwner();
         const shouldUseCache = !options?.force;
         const now = Date.now();
         if (shouldUseCache && isSkillsCacheFresh(now) && cachedSkills) {

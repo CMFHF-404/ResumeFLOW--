@@ -51,6 +51,17 @@ const requestCertifications = async (): Promise<Certification[]> => {
     return response.data;
 };
 
+const getCachedCertifications = (options?: { allowStale?: boolean }) => {
+    const now = Date.now();
+    if (!cachedCertifications) {
+        return null;
+    }
+    if (!options?.allowStale && !isCertificationsCacheFresh(now)) {
+        return null;
+    }
+    return cachedCertifications;
+};
+
 const clearCertificationsCache = () => {
     certificationsCacheRevision += 1;
     cachedCertifications = null;
@@ -58,13 +69,26 @@ const clearCertificationsCache = () => {
     inFlightCertificationsRequest = null;
 };
 
+const ensureCertificationsCacheOwner = async () => {
+    const cacheOwnerKey = await getAuthCacheKey();
+    if (certificationsCacheOwnerKey !== cacheOwnerKey) {
+        clearCertificationsCache();
+        certificationsCacheOwnerKey = cacheOwnerKey;
+    }
+};
+
 export const certificationsService = {
+    peekList(options?: { allowStale?: boolean }) {
+        return getCachedCertifications(options);
+    },
+
+    async peekListForCurrentUser(options?: { allowStale?: boolean }) {
+        await ensureCertificationsCacheOwner();
+        return getCachedCertifications(options);
+    },
+
     async list(options?: { force?: boolean }) {
-        const cacheOwnerKey = await getAuthCacheKey();
-        if (certificationsCacheOwnerKey !== cacheOwnerKey) {
-            clearCertificationsCache();
-            certificationsCacheOwnerKey = cacheOwnerKey;
-        }
+        await ensureCertificationsCacheOwner();
         const shouldUseCache = !options?.force;
         const now = Date.now();
         if (shouldUseCache && isCertificationsCacheFresh(now) && cachedCertifications) {

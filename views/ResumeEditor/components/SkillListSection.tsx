@@ -12,6 +12,7 @@ import { MatchBadge } from './Badges';
 type SkillListSectionProps = {
     title: string;
     groups: SkillGroupView[];
+    emptyMessage?: React.ReactNode;
     selectedIds: Set<string>;
     matchScores: Map<string, number>;
     matchTrends: Map<string, MatchTrend>;
@@ -432,6 +433,7 @@ const SkillGroupCard: React.FC<{
 const SkillListSection: React.FC<SkillListSectionProps> = ({
     title,
     groups,
+    emptyMessage,
     selectedIds,
     matchScores,
     matchTrends,
@@ -459,6 +461,11 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
             {!isCollapsed && (
                 <>
                     {shouldShowTypeEditor ? <SkillTypeEditor skill={skill} /> : null}
+                    {!shouldShowTypeEditor && groups.length === 0 ? (
+                        <p className="text-xs text-gray-400">
+                            {emptyMessage ?? '暂无技能'}
+                        </p>
+                    ) : null}
                     {groups.map((group) => (
                         <div key={group.name} data-rf-edit-target={`skill-group:${group.name}`}>
                             <SkillGroupCard

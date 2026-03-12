@@ -9,6 +9,7 @@ import { MatchBadge } from './Badges';
 type CertificationListSectionProps = {
     title: string;
     items: CertificationView[];
+    emptyMessage?: React.ReactNode;
     selectedIds: Set<string>;
     matchScores: Map<string, number>;
     matchTrends: Map<string, MatchTrend>;
@@ -296,6 +297,7 @@ const CertificationDisplayCard: React.FC<{
 const CertificationListSection: React.FC<CertificationListSectionProps> = ({
     title,
     items,
+    emptyMessage,
     selectedIds,
     matchScores,
     matchTrends,
@@ -324,7 +326,11 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
                     isCollapsed={isCollapsed}
                     onToggle={() => setIsCollapsed(!isCollapsed)}
                 />
-                {!isCollapsed && <p className="text-xs text-gray-400">暂无证书</p>}
+                {!isCollapsed && (
+                    <p className="text-xs text-gray-400">
+                        {emptyMessage ?? '暂无证书'}
+                    </p>
+                )}
             </div>
         );
     }

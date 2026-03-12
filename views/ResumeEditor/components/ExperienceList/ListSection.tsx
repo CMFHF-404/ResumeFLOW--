@@ -34,6 +34,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     title,
     items,
     selectedIds,
+    emptyMessage,
     icon,
     theme,
     actionLabel,
@@ -66,7 +67,11 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     isCollapsed={isCollapsed}
                     onToggle={toggleCollapse}
                 />
-                {!isCollapsed && <p className="text-xs text-gray-400">暂无{title}</p>}
+                {!isCollapsed && (
+                    <p className="text-xs text-gray-400">
+                        {emptyMessage ?? `暂无${title}`}
+                    </p>
+                )}
             </div>
         );
     }

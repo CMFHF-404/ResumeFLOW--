@@ -196,6 +196,53 @@ const fetchEducationExperiences = async () => experienceService.list('education'
 const fetchCertifications = async () => certificationsService.list();
 const fetchSkills = async () => skillsService.list();
 
+const readCachedExperiences = async () => {
+    const cachedAll = await experienceService.peekListForCurrentUser(undefined, { allowStale: true });
+    if (cachedAll !== null) {
+        return cachedAll;
+    }
+    const [cachedWork, cachedProject] = await Promise.all([
+        experienceService.peekListForCurrentUser('work', { allowStale: true }),
+        experienceService.peekListForCurrentUser('project', { allowStale: true }),
+    ]);
+    if (cachedWork === null || cachedProject === null) {
+        return null;
+    }
+    return [
+        ...cachedWork,
+        ...cachedProject,
+    ];
+};
+
+const readCachedEducationExperiences = async () => (
+    experienceService.peekListForCurrentUser('education', { allowStale: true })
+);
+
+const readCachedCertifications = async () => (
+    certificationsService.peekListForCurrentUser({ allowStale: true })
+);
+
+const readCachedSkills = async () => (
+    skillsService.peekListForCurrentUser({ allowStale: true })
+);
+
+const loadWithFallback = async <T,>(
+    label: string,
+    loader: () => Promise<T>,
+    fallback: () => Promise<T | null> | T | null
+): Promise<T> => {
+    try {
+        return await loader();
+    } catch (error) {
+        const cached = await fallback();
+        if (cached !== null) {
+            console.error(`[ResumeEditor] 加载${label}失败，使用缓存兜底:`, error);
+            return cached;
+        }
+        throw error;
+    }
+};
+
 const updateLastSavedRef = (
     signatureRef: MutableRefObject<string | null>,
     signature: string
@@ -572,12 +619,12 @@ const useResumeContextLoader = (
                     certifications,
                     skills,
                 ] = await Promise.all([
-                    cachedDetail ?? resumeService.get(activeId).catch(() => null),
+                    cachedDetail ?? resumeService.get(activeId),
                     profileService.getProfile().catch(() => null),
-                    fetchExperiences(),
-                    fetchEducationExperiences(),
-                    fetchCertifications(),
-                    fetchSkills(),
+                    loadWithFallback('经历列表', fetchExperiences, readCachedExperiences),
+                    loadWithFallback('教育经历列表', fetchEducationExperiences, readCachedEducationExperiences),
+                    loadWithFallback('证书列表', fetchCertifications, readCachedCertifications),
+                    loadWithFallback('技能列表', fetchSkills, readCachedSkills),
                 ]);
                 const config = (detail?.resume?.config || {}) as ResumeEditorConfig;
                 const resolvedProfileSyncMode = resolveProfileSyncMode(config, profileData || undefined);
