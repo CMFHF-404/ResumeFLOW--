@@ -3173,6 +3173,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             </div>
                             <EditorSidebar
                                 layoutMode="drawer"
+                                showJDPanel={false}
                                 sidebarTab={sidebarTab}
                                 onSelectTab={setSidebarTab}
                                 onProfileTabSelected={experience.cancelEditingExperience}
