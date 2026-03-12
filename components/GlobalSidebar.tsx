@@ -113,6 +113,11 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     onOpenFeedback();
   };
 
+  const handleSetView = (view: ViewState) => {
+    setIsAvatarMenuOpen(false);
+    setView(view);
+  };
+
   const renderAvatarMenu = (isDesktop = false) => (
     <div
       className={`absolute z-[60] min-w-[176px] overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/40 backdrop-blur ${
@@ -190,7 +195,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
             <button
               className={mobileTabButtonClass(ViewState.DASHBOARD)}
-              onClick={() => setView(ViewState.DASHBOARD)}
+              onClick={() => handleSetView(ViewState.DASHBOARD)}
               type="button"
             >
               <FolderOpen className="h-5 w-5 shrink-0" />
@@ -198,7 +203,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             </button>
             <button
               className={mobileTabButtonClass(ViewState.EXPERIENCE_BANK)}
-              onClick={() => setView(ViewState.EXPERIENCE_BANK)}
+              onClick={() => handleSetView(ViewState.EXPERIENCE_BANK)}
               type="button"
             >
               <Database className="h-5 w-5 shrink-0" />
@@ -206,7 +211,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             </button>
             <button
               className={mobileTabButtonClass(ViewState.EDITOR)}
-              onClick={() => setView(ViewState.EDITOR)}
+              onClick={() => handleSetView(ViewState.EDITOR)}
               type="button"
             >
               <Wand2 className="h-5 w-5 shrink-0" />
@@ -236,7 +241,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
       <div className="hidden grid-cols-3 gap-2 px-3 pb-3 md:flex md:w-full md:flex-col md:items-center md:gap-6 md:px-0 md:pb-0">
         <button
           className={getButtonClass(ViewState.DASHBOARD)}
-          onClick={() => setView(ViewState.DASHBOARD)}
+          onClick={() => handleSetView(ViewState.DASHBOARD)}
           type="button"
         >
           <FolderOpen className="w-6 h-6" />
@@ -246,7 +251,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
         <button
           className={getButtonClass(ViewState.EXPERIENCE_BANK)}
-          onClick={() => setView(ViewState.EXPERIENCE_BANK)}
+          onClick={() => handleSetView(ViewState.EXPERIENCE_BANK)}
           type="button"
         >
           <Database className="w-6 h-6" />
@@ -256,7 +261,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
         <button
           className={getButtonClass(ViewState.EDITOR)}
-          onClick={() => setView(ViewState.EDITOR)}
+          onClick={() => handleSetView(ViewState.EDITOR)}
           type="button"
         >
           <Wand2 className="w-6 h-6" />
