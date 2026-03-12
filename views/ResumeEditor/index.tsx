@@ -2976,6 +2976,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isSmartPageApplied={isSmartPageApplied}
                     onAdjustToSinglePage={adjustToSinglePage}
                     onRestoreDefault={restoreDefault}
+                    bossGreeting={bossGreeting}
+                    isBossGreetingVisible={isBossGreetingVisible}
+                    isBossGreetingOutdated={isBossGreetingOutdated}
+                    isGeneratingBossGreeting={isGeneratingBossGreeting}
+                    onGenerateBossGreeting={handleGenerateBossGreeting}
+                    onRefreshBossGreeting={handleRefreshBossGreeting}
+                    onCopyBossGreeting={handleCopyBossGreeting}
+                    onCollapseBossGreeting={handleCollapseBossGreeting}
                 />
             </div>
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
