@@ -53,6 +53,7 @@ export type ExperienceListSectionProps = {
   title: string;
   items: ResumeExperienceView[];
   selectedIds: Set<string>;
+  emptyMessage?: ReactNode;
   icon?: ReactNode;
   theme: "primary" | "project";
   actionLabel: string;

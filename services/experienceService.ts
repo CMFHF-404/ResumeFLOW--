@@ -107,13 +107,16 @@ const filterArchivedExperiences = (items: ExperienceListItem[]): ExperienceListI
     return items.filter((item) => !item.master.is_archived);
 };
 
-const getCachedExperienceList = (category?: ExperienceCategory): ExperienceListItem[] | null => {
+const getCachedExperienceList = (
+    category?: ExperienceCategory,
+    options?: { allowStale?: boolean }
+): ExperienceListItem[] | null => {
     const cacheKey = buildExperienceListCacheKey(category);
     const cached = experienceListCache.get(cacheKey);
     if (!cached) {
         return null;
     }
-    if (!isExperienceListCacheFresh(cached, Date.now())) {
+    if (!options?.allowStale && !isExperienceListCacheFresh(cached, Date.now())) {
         return null;
     }
     return filterArchivedExperiences(cached.data);
@@ -128,8 +131,16 @@ const ensureExperienceCacheOwner = async () => {
 };
 
 export const experienceService = {
-    peekList(category?: ExperienceCategory) {
-        return getCachedExperienceList(category);
+    peekList(category?: ExperienceCategory, options?: { allowStale?: boolean }) {
+        return getCachedExperienceList(category, options);
+    },
+
+    async peekListForCurrentUser(
+        category?: ExperienceCategory,
+        options?: { allowStale?: boolean }
+    ) {
+        await ensureExperienceCacheOwner();
+        return getCachedExperienceList(category, options);
     },
 
     async list(category?: ExperienceCategory, options?: ExperienceListOptions) {
