@@ -169,8 +169,8 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
 
                 <div className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
                     <div className="space-y-3">
-                        <div className="flex flex-wrap items-start justify-between gap-3 px-1">
-                            <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2 px-1">
+                            <div className="min-w-0 shrink-0">
                                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
                                     匹配度
                                 </div>
@@ -193,7 +193,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                     )}
                                 </div>
                             </div>
-                            <div className="flex w-full flex-wrap items-center justify-end gap-2 pt-1 sm:w-auto sm:flex-nowrap">
+                            <div className="flex items-center justify-end gap-1.5 sm:gap-2">
                                 <button
                                     type="button"
                                     onClick={onCreateResume}
