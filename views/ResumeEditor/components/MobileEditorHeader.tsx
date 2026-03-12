@@ -1,5 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { Check, CopyPlus, Download, Edit2, LayoutTemplate, RefreshCw, Wand2, X } from 'lucide-react';
+import {
+    Check,
+    Copy,
+    CopyPlus,
+    Download,
+    Edit2,
+    LayoutTemplate,
+    MessageSquare,
+    RefreshCw,
+    Wand2,
+    X,
+} from 'lucide-react';
 import type { JDAnalysisResult } from '../../../services/aiService';
 import { StaleBadge } from './Badges';
 
@@ -18,6 +29,14 @@ type MobileEditorHeaderProps = {
     isSmartPageApplied: boolean;
     onAdjustToSinglePage: () => void;
     onRestoreDefault: () => void;
+    bossGreeting: string;
+    isBossGreetingVisible: boolean;
+    isBossGreetingOutdated: boolean;
+    isGeneratingBossGreeting: boolean;
+    onGenerateBossGreeting: () => void;
+    onRefreshBossGreeting: () => void;
+    onCopyBossGreeting: () => void;
+    onCollapseBossGreeting: () => void;
 };
 
 const SUMMARY_CLAMP_STYLE: React.CSSProperties = {
@@ -42,10 +61,19 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     isSmartPageApplied,
     onAdjustToSinglePage,
     onRestoreDefault,
+    bossGreeting,
+    isBossGreetingVisible,
+    isBossGreetingOutdated,
+    isGeneratingBossGreeting,
+    onGenerateBossGreeting,
+    onRefreshBossGreeting,
+    onCopyBossGreeting,
+    onCollapseBossGreeting,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [draftName, setDraftName] = useState(resumeName);
 
+    const hasSummary = Boolean(analysisResult?.summary?.trim());
     const summaryText = useMemo(() => {
         const value = analysisResult?.summary?.trim();
         if (value) {
@@ -53,6 +81,11 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         }
         return '在底部抽屉补充 JD 后，这里会展示匹配评价与简历建议。';
     }, [analysisResult?.summary]);
+    const bossGreetingButtonLabel = isGeneratingBossGreeting
+        ? '生成中...'
+        : bossGreeting && isBossGreetingOutdated
+            ? '重新生成 BOSS 招呼语'
+            : '生成 BOSS 招呼语';
 
     const handleStartEdit = () => {
         setDraftName(resumeName);
@@ -136,7 +169,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
 
                 <div className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
                     <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-3 px-1">
+                        <div className="flex flex-wrap items-start justify-between gap-3 px-1">
                             <div className="min-w-0 flex-1">
                                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
                                     匹配度
@@ -160,25 +193,30 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                     )}
                                 </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-2 pt-1">
+                            <div className="flex w-full flex-wrap items-center justify-end gap-2 pt-1 sm:w-auto sm:flex-nowrap">
                                 <button
                                     type="button"
                                     onClick={onCreateResume}
                                     disabled={isCreatingResume}
-                                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                                     aria-label={isCreatingResume ? '创建副本中' : '创建副本'}
                                     title={isCreatingResume ? '创建副本中...' : '创建副本'}
                                 >
                                     <CopyPlus className="h-4 w-4" />
+                                    副本
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={onAutoAssemble}
-                                    disabled={isAutoAssembling}
-                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-primary/20 bg-primary/8 px-3 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/12 disabled:opacity-60"
+                                    onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
+                                    className={[
+                                        'inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border px-3 text-[11px] font-semibold transition-colors disabled:opacity-60',
+                                        isSmartPageApplied
+                                            ? 'border-gray-200 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700'
+                                            : 'border-primary/20 bg-primary/8 text-primary hover:bg-primary/12',
+                                    ].join(' ')}
                                 >
-                                    <Wand2 className={`h-4 w-4 ${isAutoAssembling ? 'animate-pulse' : ''}`} />
-                                    {isAutoAssembling ? '组装中' : '组装'}
+                                    <LayoutTemplate className="h-4 w-4" />
+                                    {isSmartPageApplied ? '还原' : '排版'}
                                 </button>
                                 <button
                                     type="button"
@@ -192,40 +230,108 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                         </div>
 
                         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 dark:border-emerald-800/30 dark:bg-emerald-900/10">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                                    评价
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={onAnalyze}
-                                    disabled={isAnalyzing}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
-                                    aria-label="刷新 JD 分析"
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                                        评价
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={onAnalyze}
+                                        disabled={isAnalyzing}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                                        aria-label="刷新 JD 分析"
+                                    >
+                                        <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
+                                <p
+                                    className="text-[12.5px] leading-5 text-emerald-800 dark:text-emerald-300/80"
+                                    style={isBossGreetingVisible ? undefined : SUMMARY_CLAMP_STYLE}
                                 >
-                                    <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                </button>
+                                    {summaryText}
+                                </p>
+                                {hasSummary ? (
+                                    <div className="space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={onGenerateBossGreeting}
+                                            disabled={isGeneratingBossGreeting}
+                                            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <MessageSquare className={`h-3.5 w-3.5 ${isGeneratingBossGreeting ? 'animate-pulse' : ''}`} />
+                                            {bossGreetingButtonLabel}
+                                        </button>
+                                        {isBossGreetingVisible ? (
+                                            <div className="rounded-lg border border-emerald-200 bg-white/90 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-gray-900/70">
+                                                <div className="mb-2 flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                                            BOSS 招呼语
+                                                        </span>
+                                                        {isBossGreetingOutdated && bossGreeting ? (
+                                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                                                已过期
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={onRefreshBossGreeting}
+                                                            disabled={isGeneratingBossGreeting}
+                                                            aria-label="刷新 BOSS 招呼语"
+                                                            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-emerald-300"
+                                                        >
+                                                            <RefreshCw className={`h-3.5 w-3.5 ${isGeneratingBossGreeting ? 'animate-spin' : ''}`} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={onCollapseBossGreeting}
+                                                            className="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+                                                        >
+                                                            收起
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    {isGeneratingBossGreeting && !bossGreeting ? (
+                                                        <p className="text-[11.5px] leading-relaxed text-gray-500 dark:text-gray-400">
+                                                            正在根据 JD 分析与已选经历生成招呼语...
+                                                        </p>
+                                                    ) : (
+                                                        <p className="text-[11.5px] leading-relaxed text-gray-700 dark:text-gray-200">
+                                                            {bossGreeting || '暂无可用招呼语'}
+                                                        </p>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={onCopyBossGreeting}
+                                                        disabled={!bossGreeting.trim()}
+                                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                                                    >
+                                                        <Copy className="h-3 w-3" />
+                                                        一键复制
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
-                            <p
-                                className="text-[12.5px] leading-5 text-emerald-800 dark:text-emerald-300/80"
-                                style={SUMMARY_CLAMP_STYLE}
-                            >
-                                {summaryText}
-                            </p>
                         </div>
 
                         <button
                             type="button"
-                            onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
+                            onClick={onAutoAssemble}
+                            disabled={isAutoAssembling}
                             className={[
                                 'flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors',
-                                isSmartPageApplied
-                                    ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                                    : 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400',
+                                'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400',
                             ].join(' ')}
                         >
-                            <LayoutTemplate className="h-4 w-4" />
-                            {isSmartPageApplied ? '恢复默认版式' : '智能调整为一页'}
+                            <Wand2 className={`h-4 w-4 ${isAutoAssembling ? 'animate-pulse' : ''}`} />
+                            {isAutoAssembling ? '组装中' : '一键组装'}
                         </button>
                     </div>
                 </div>
