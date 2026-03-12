@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Database } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PrintPortal from '../../components/PrintPortal';
 import { ToastContainer, useToast } from '../../components/Toast';
@@ -127,6 +128,7 @@ import {
 } from './helpers';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
+import MobileEditorHeader from './components/MobileEditorHeader';
 import ResumePreview from './components/ResumePreview';
 
 const buildLineHeightSteps = (start: number, min: number, step: number) => {
@@ -156,6 +158,7 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const CSS_PX_PER_MM = 96 / 25.4;
+const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
 
 type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8;
 
@@ -396,13 +399,13 @@ const buildSelectionSnapshot = (
     skillIds: [...selectedSkillIds],
 });
 
-const buildLayoutSnapshot = (
-    layout: SmartPageLayout,
-    isSmartPageApplied: boolean
-): LayoutSnapshot => ({
-    ...layout,
-    isSmartPageApplied,
-});
+    const buildLayoutSnapshot = (
+        layout: SmartPageLayout,
+        isSmartPageApplied: boolean
+    ): LayoutSnapshot => ({
+        ...layout,
+        isSmartPageApplied,
+    });
 
 const toggleSelectionSnapshotIds = (ids: string[], targetId: string) => (
     ids.includes(targetId) ? ids.filter((id) => id !== targetId) : [...ids, targetId]
@@ -419,6 +422,15 @@ const toggleGroupedSelectionSnapshotIds = (ids: string[], targetIds: string[]) =
         next.delete(id);
     });
     return [...next];
+};
+
+const waitForNextFrame = (callback: () => void) => {
+    if (typeof window === 'undefined') {
+        callback();
+        return () => undefined;
+    }
+    const frameId = window.requestAnimationFrame(() => callback());
+    return () => window.cancelAnimationFrame(frameId);
 };
 
 const sortSnapshotEntriesById = <T extends { id: string }>(items: T[]) => (
@@ -635,6 +647,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isGeneratingBossGreeting, setIsGeneratingBossGreeting] = useState(false);
     // 3. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
+    const [isMobileEditorDrawerOpen, setIsMobileEditorDrawerOpen] = useState(false);
+    const [isMobileEditorDrawerVisible, setIsMobileEditorDrawerVisible] = useState(false);
+    const mobileEditorDrawerTimerRef = useRef<number | null>(null);
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
     const previousDensityRef = useRef<'compact' | 'standard' | 'spacious'>(density);
     const manualSelectionVersionRef = useRef(0);
@@ -1868,6 +1883,26 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         suppressAutoSaveForConfig,
         resumeConfigSnapshot,
     ]);
+    const openMobileEditorDrawer = useCallback(() => {
+        if (mobileEditorDrawerTimerRef.current !== null) {
+            window.clearTimeout(mobileEditorDrawerTimerRef.current);
+            mobileEditorDrawerTimerRef.current = null;
+        }
+        setIsMobileEditorDrawerOpen(true);
+        waitForNextFrame(() => {
+            setIsMobileEditorDrawerVisible(true);
+        });
+    }, []);
+    const closeMobileEditorDrawer = useCallback(() => {
+        setIsMobileEditorDrawerVisible(false);
+        if (mobileEditorDrawerTimerRef.current !== null) {
+            window.clearTimeout(mobileEditorDrawerTimerRef.current);
+        }
+        mobileEditorDrawerTimerRef.current = window.setTimeout(() => {
+            setIsMobileEditorDrawerOpen(false);
+            mobileEditorDrawerTimerRef.current = null;
+        }, MOBILE_EDITOR_DRAWER_ANIMATION_MS);
+    }, []);
     const handlePolishExperienceFromCard = useCallback(async (id: string) => {
         await experience.handlePolishExperienceById(id);
     }, [experience]);
@@ -2821,16 +2856,25 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     ]);
     const handleEditExperience = (id: string) => {
         setSidebarTab('experience');
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            openMobileEditorDrawer();
+        }
         experience.startEditingExperience(id);
     };
     const handleEditCertification = (id: string) => {
         experience.cancelEditingExperience();
         setSidebarTab('experience');
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            openMobileEditorDrawer();
+        }
         certification.beginEditCertification(id);
     };
     const handleEditSkill = (id: string) => {
         experience.cancelEditingExperience();
         setSidebarTab('experience');
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            openMobileEditorDrawer();
+        }
         skill.beginEditSkill(id);
     };
     const handleToggleJdCollapse = () => {
@@ -2854,160 +2898,162 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const showDebugInfo =
         import.meta.env.DEV && localStorage.getItem('jdDebug') === '1';
     const isEditorBusy = isLoadingResume || isCreatingResume;
+
+    useEffect(() => {
+        if (!isMobileEditorDrawerOpen) {
+            return;
+        }
+        const { overflow } = document.body.style;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = overflow;
+        };
+    }, [isMobileEditorDrawerOpen]);
+    useEffect(() => {
+        return () => {
+            if (mobileEditorDrawerTimerRef.current !== null) {
+                window.clearTimeout(mobileEditorDrawerTimerRef.current);
+            }
+        };
+    }, []);
+
     return (
         <div
             className="relative flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark"
             aria-busy={isEditorBusy}
         >
-            <EditorToolbar
-                isDarkMode={isDarkMode}
-                saveState={saveState}
-                lastSavedAt={lastSavedAt}
-                onToggleTheme={toggleTheme}
-                isSmartPageApplied={isSmartPageApplied}
-                onAdjustToSinglePage={adjustToSinglePage}
-                onRestoreDefault={restoreDefault}
-                isCreatingResume={isCreatingResume}
-                onCreateResume={handleCreateResume}
-                resumeName={resumeName}
-                onResumeNameChange={handleResumeNameChange}
-                onExportPdf={handleExportPdf}
-            />
-            <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
-                <EditorSidebar
-                    sidebarTab={sidebarTab}
-                    onSelectTab={setSidebarTab}
-                    onProfileTabSelected={experience.cancelEditingExperience}
-                    jdPanelProps={{
-                        jdText,
-                        analysisResult,
-                        isAnalyzing,
-                        isCollapsed: isJDCollapsed,
-                        onAnalyze: handleAnalyzeWithAutoName,
-                        onToggleCollapse: handleToggleJdCollapse,
-                        onJdTextChange: handleJdTextChange,
-                        jdFile,
-                        onFileChange: setJdFile,
-                        hasMissingAttachmentContext,
-                        bossGreeting,
-                        isBossGreetingVisible,
-                        isBossGreetingOutdated,
-                        isGeneratingBossGreeting,
-                        onGenerateBossGreeting: handleGenerateBossGreeting,
-                        onRefreshBossGreeting: handleRefreshBossGreeting,
-                        onCopyBossGreeting: handleCopyBossGreeting,
-                        onCollapseBossGreeting: handleCollapseBossGreeting,
-                        debugInfo,
-                        showDebugInfo,
-                        isOutdated,
-                    }}
-                    profileTabProps={{
-                        profile,
-                        setProfile,
-                        profileSyncMode,
-                        setProfileSyncMode,
-                        isEditingProfile,
-                        isSavingProfile,
-                        isProfileReadOnly,
-                        onBeginEdit: beginProfileEdit,
-                        onCancelEdit: cancelProfileEdit,
-                        onSave: handleSaveProfile,
-                        educations,
-                        selectedEduIds,
-                        editingEducationId: education.editingEducationId,
-                        educationDraft: education.educationDraft,
-                        isSavingEducation: education.isSavingEducation,
-                        deletingEducationIds: education.deletingEducationIds,
-                        onBeginCreateEducation: education.beginCreateEducation,
-                        onBeginEditEducation: education.beginEditEducation,
-                        onCancelEducationEdit: education.cancelEducationEdit,
-                        onUpdateEducationDraft: education.updateEducationDraft,
-                        onUpdateEducationDate: education.updateEducationDate,
-                        onSaveEducation: education.handleSaveEducation,
-                        onRequestDeleteEducation: education.requestDeleteEducation,
-                        onToggleEducationSelection: trackedSelection.toggleEducationSelection,
-                    }}
-                    experienceTabProps={{
-                        experience,
-                        certification,
-                        skill,
-                        selection: trackedSelection,
-                        workItems,
-                        projectItems,
-                        selectedExpIds,
-                        staleExperienceIds,
-                        sortedCertifications,
-                        selectedCertIds,
-                        certificationMatchScores,
-                        certificationMatchTrends,
-                        skillGroups,
-                        selectedSkillIds,
-                        skillMatchScores,
-                        skillMatchTrends,
-                        isAutoAssembling,
-                        onAutoAssemble: handleAutoAssemble,
-                        onResetRenamingCategory: resetRenamingCategory,
-                        onPolishExperience: handlePolishExperienceFromCard,
-                        onResetWorkSort: () => handleResetSort('work'),
-                        onResetProjectSort: () => handleResetSort('project'),
-                        onResetCertificationSort: handleResetCertificationSort,
-                    }}
-                    editingSuggestion={{
-                        editingItem,
-                        staleExperienceIds,
-                        jdText: jdPolishContext,
-                        isPolishing: experience.isPolishing,
-                        onPolish: experience.handlePolishWithJD,
-                    }}
-                />
-                <ResumePreview
-                    previewRef={previewRef}
-                    previewContentRef={previewContentRef}
-                    previewScope="editor"
-                    lineHeight={lineHeight}
-                    fontSize={fontSize}
-                    listSpacingValue={listSpacingValue}
-                    bulletSpacingValue={bulletSpacingValue}
-                    topPaddingPx={topPaddingPx}
-                    profile={profile}
-                    sectionSpacingClass={sectionSpacingClass}
-                    listSpacingClass={listSpacingClass}
-                    sectionOrder={sectionOrder}
-                    selectedWorkItems={selectedWorkItems}
-                    selectedProjectItems={selectedProjectItems}
-                    educations={educations}
-                    selectedEduIds={selectedEduIds}
-                    sortedCertifications={sortedCertifications}
-                    selectedCertIds={selectedCertIds}
-                    selectedSkillGroups={selectedSkillGroups}
-                    isDragging={isDragging}
-                    draggedItemKey={draggedItemKey}
-                    draggedSectionId={draggedSectionId}
-                    onSectionDragStart={handleSectionDragStart}
-                    onSectionDragHover={handleSectionDragHover}
-                    onSectionDrop={handleSectionDrop}
-                    onItemDragStart={handleDragStart}
-                    onItemDragHover={handleItemDragHover}
-                    onItemDrop={handleItemDrop}
-                    onDragEnd={clearDragState}
-                    onNavigateTab={setSidebarTab}
-                    onEditExperience={handleEditExperience}
-                    onEditCertification={handleEditCertification}
-                    onEditSkill={handleEditSkill}
+            <div className="hidden md:block">
+                <EditorToolbar
+                    isDarkMode={isDarkMode}
+                    saveState={saveState}
+                    lastSavedAt={lastSavedAt}
+                    onToggleTheme={toggleTheme}
+                    isSmartPageApplied={isSmartPageApplied}
+                    onAdjustToSinglePage={adjustToSinglePage}
+                    onRestoreDefault={restoreDefault}
+                    isCreatingResume={isCreatingResume}
+                    onCreateResume={handleCreateResume}
+                    resumeName={resumeName}
+                    onResumeNameChange={handleResumeNameChange}
+                    onExportPdf={handleExportPdf}
                 />
             </div>
-                <div className="fixed left-[-200vw] top-0 w-screen md:w-[calc(100vw-600px)] pointer-events-none opacity-0" aria-hidden="true">
+            <div className="md:hidden">
+                <MobileEditorHeader
+                    resumeName={resumeName}
+                    onResumeNameChange={handleResumeNameChange}
+                    analysisResult={analysisResult}
+                    isOutdated={isOutdated}
+                    isAnalyzing={isAnalyzing}
+                    onAnalyze={handleAnalyzeWithAutoName}
+                    onExportPdf={handleExportPdf}
+                    onAutoAssemble={handleAutoAssemble}
+                    isAutoAssembling={isAutoAssembling}
+                    onCreateResume={handleCreateResume}
+                    isCreatingResume={isCreatingResume}
+                />
+            </div>
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
+                <div className="hidden md:block">
+                    <EditorSidebar
+                        sidebarTab={sidebarTab}
+                        onSelectTab={setSidebarTab}
+                        onProfileTabSelected={experience.cancelEditingExperience}
+                        jdPanelProps={{
+                            jdText,
+                            analysisResult,
+                            isAnalyzing,
+                            isCollapsed: isJDCollapsed,
+                            onAnalyze: handleAnalyzeWithAutoName,
+                            onToggleCollapse: handleToggleJdCollapse,
+                            onJdTextChange: handleJdTextChange,
+                            jdFile,
+                            onFileChange: setJdFile,
+                            hasMissingAttachmentContext,
+                            bossGreeting,
+                            isBossGreetingVisible,
+                            isBossGreetingOutdated,
+                            isGeneratingBossGreeting,
+                            onGenerateBossGreeting: handleGenerateBossGreeting,
+                            onRefreshBossGreeting: handleRefreshBossGreeting,
+                            onCopyBossGreeting: handleCopyBossGreeting,
+                            onCollapseBossGreeting: handleCollapseBossGreeting,
+                            debugInfo,
+                            showDebugInfo,
+                            isOutdated,
+                        }}
+                        profileTabProps={{
+                            profile,
+                            setProfile,
+                            profileSyncMode,
+                            setProfileSyncMode,
+                            isEditingProfile,
+                            isSavingProfile,
+                            isProfileReadOnly,
+                            onBeginEdit: beginProfileEdit,
+                            onCancelEdit: cancelProfileEdit,
+                            onSave: handleSaveProfile,
+                            educations,
+                            selectedEduIds,
+                            editingEducationId: education.editingEducationId,
+                            educationDraft: education.educationDraft,
+                            isSavingEducation: education.isSavingEducation,
+                            deletingEducationIds: education.deletingEducationIds,
+                            onBeginCreateEducation: education.beginCreateEducation,
+                            onBeginEditEducation: education.beginEditEducation,
+                            onCancelEducationEdit: education.cancelEducationEdit,
+                            onUpdateEducationDraft: education.updateEducationDraft,
+                            onUpdateEducationDate: education.updateEducationDate,
+                            onSaveEducation: education.handleSaveEducation,
+                            onRequestDeleteEducation: education.requestDeleteEducation,
+                            onToggleEducationSelection: trackedSelection.toggleEducationSelection,
+                        }}
+                        experienceTabProps={{
+                            experience,
+                            certification,
+                            skill,
+                            selection: trackedSelection,
+                            workItems,
+                            projectItems,
+                            selectedExpIds,
+                            staleExperienceIds,
+                            sortedCertifications,
+                            selectedCertIds,
+                            certificationMatchScores,
+                            certificationMatchTrends,
+                            skillGroups,
+                            selectedSkillIds,
+                            skillMatchScores,
+                            skillMatchTrends,
+                            isAutoAssembling,
+                            onAutoAssemble: handleAutoAssemble,
+                            onResetRenamingCategory: resetRenamingCategory,
+                            onPolishExperience: handlePolishExperienceFromCard,
+                            onResetWorkSort: () => handleResetSort('work'),
+                            onResetProjectSort: () => handleResetSort('project'),
+                            onResetCertificationSort: handleResetCertificationSort,
+                        }}
+                        editingSuggestion={{
+                            editingItem,
+                            staleExperienceIds,
+                            jdText: jdPolishContext,
+                            isPolishing: experience.isPolishing,
+                            onPolish: experience.handlePolishWithJD,
+                        }}
+                    />
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-20 md:pb-0">
                     <ResumePreview
-                        previewRef={measurePreviewRef}
-                        previewContentRef={measurePreviewContentRef}
-                        previewScope="measure"
-                        lineHeight={measureLayout.lineHeight}
-                        fontSize={measureLayout.fontSize}
-                        listSpacingValue={measureListSpacingValue}
-                        bulletSpacingValue={measureBulletSpacingValue}
-                        topPaddingPx={measureLayout.topPaddingPx}
+                        previewRef={previewRef}
+                        previewContentRef={previewContentRef}
+                        previewScope="editor"
+                        lineHeight={lineHeight}
+                        fontSize={fontSize}
+                        listSpacingValue={listSpacingValue}
+                        bulletSpacingValue={bulletSpacingValue}
+                        topPaddingPx={topPaddingPx}
                         profile={profile}
-                        sectionSpacingClass={measureSectionSpacingClass}
+                        sectionSpacingClass={sectionSpacingClass}
                         listSpacingClass={listSpacingClass}
                         sectionOrder={sectionOrder}
                         selectedWorkItems={selectedWorkItems}
@@ -3017,23 +3063,180 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         sortedCertifications={sortedCertifications}
                         selectedCertIds={selectedCertIds}
                         selectedSkillGroups={selectedSkillGroups}
-                        readOnly
-                        isDragging={false}
-                        draggedItemKey={null}
-                        draggedSectionId={null}
-                        onSectionDragStart={() => { }}
-                        onSectionDragHover={() => { }}
-                        onSectionDrop={() => { }}
-                        onItemDragStart={() => { }}
-                        onItemDragHover={() => { }}
-                        onItemDrop={() => { }}
-                        onDragEnd={() => { }}
+                        isDragging={isDragging}
+                        draggedItemKey={draggedItemKey}
+                        draggedSectionId={draggedSectionId}
+                        onSectionDragStart={handleSectionDragStart}
+                        onSectionDragHover={handleSectionDragHover}
+                        onSectionDrop={handleSectionDrop}
+                        onItemDragStart={handleDragStart}
+                        onItemDragHover={handleItemDragHover}
+                        onItemDrop={handleItemDrop}
+                        onDragEnd={clearDragState}
                         onNavigateTab={setSidebarTab}
-                        onEditExperience={() => { }}
-                        onEditCertification={() => { }}
-                        onEditSkill={() => { }}
+                        onEditExperience={handleEditExperience}
+                        onEditCertification={handleEditCertification}
+                        onEditSkill={handleEditSkill}
                     />
                 </div>
+            </div>
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 md:hidden">
+                <div className="pointer-events-auto rounded-t-[28px] border border-b-0 border-border-light bg-surface-light/96 px-4 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2 shadow-[0_-18px_40px_rgba(15,23,42,0.14)] backdrop-blur dark:border-border-dark dark:bg-surface-dark/96">
+                    <button
+                        type="button"
+                        onClick={openMobileEditorDrawer}
+                        className="mx-auto flex w-full max-w-[240px] flex-col items-center rounded-t-[20px] px-6 pb-1 pt-0.5 text-center"
+                    >
+                        <span className="mb-2 h-1.5 w-14 rounded-full bg-gray-300 dark:bg-gray-700" />
+                        <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                            <Database className="h-4 w-4 text-primary" />
+                            经历库
+                        </span>
+                    </button>
+                </div>
+            </div>
+            <div className="fixed left-[-200vw] top-0 w-screen md:w-[calc(100vw-600px)] pointer-events-none opacity-0" aria-hidden="true">
+                <ResumePreview
+                    previewRef={measurePreviewRef}
+                    previewContentRef={measurePreviewContentRef}
+                    previewScope="measure"
+                    lineHeight={measureLayout.lineHeight}
+                    fontSize={measureLayout.fontSize}
+                    listSpacingValue={measureListSpacingValue}
+                    bulletSpacingValue={measureBulletSpacingValue}
+                    topPaddingPx={measureLayout.topPaddingPx}
+                    profile={profile}
+                    sectionSpacingClass={measureSectionSpacingClass}
+                    listSpacingClass={listSpacingClass}
+                    sectionOrder={sectionOrder}
+                    selectedWorkItems={selectedWorkItems}
+                    selectedProjectItems={selectedProjectItems}
+                    educations={educations}
+                    selectedEduIds={selectedEduIds}
+                    sortedCertifications={sortedCertifications}
+                    selectedCertIds={selectedCertIds}
+                    selectedSkillGroups={selectedSkillGroups}
+                    readOnly
+                    isDragging={false}
+                    draggedItemKey={null}
+                    draggedSectionId={null}
+                    onSectionDragStart={() => { }}
+                    onSectionDragHover={() => { }}
+                    onSectionDrop={() => { }}
+                    onItemDragStart={() => { }}
+                    onItemDragHover={() => { }}
+                    onItemDrop={() => { }}
+                    onDragEnd={() => { }}
+                    onNavigateTab={setSidebarTab}
+                    onEditExperience={() => { }}
+                    onEditCertification={() => { }}
+                    onEditSkill={() => { }}
+                />
+            </div>
+            {isMobileEditorDrawerOpen ? (
+                <div className={`fixed inset-0 z-30 transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${isMobileEditorDrawerVisible ? 'bg-black/35 opacity-100 backdrop-blur-[1px]' : 'bg-black/0 opacity-0'}`}>
+                    <button
+                        type="button"
+                        aria-label="关闭经历库抽屉遮罩"
+                        className="absolute inset-0 h-full w-full cursor-default"
+                        onClick={closeMobileEditorDrawer}
+                    />
+                    <div className={`absolute inset-x-0 bottom-0 h-[82vh] rounded-t-[28px] border border-border-light bg-surface-light shadow-[0_-24px_60px_rgba(15,23,42,0.22)] will-change-transform transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-border-dark dark:bg-surface-dark ${isMobileEditorDrawerVisible ? 'translate-y-0' : 'translate-y-full'}`}>
+                        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-t-[28px]">
+                            <div className="shrink-0 px-4 pb-2 pt-2">
+                                <div className="mx-auto h-1.5 w-14 rounded-full bg-gray-300 dark:bg-gray-700" />
+                            </div>
+                            <EditorSidebar
+                                layoutMode="drawer"
+                                sidebarTab={sidebarTab}
+                                onSelectTab={setSidebarTab}
+                                onProfileTabSelected={experience.cancelEditingExperience}
+                                jdPanelProps={{
+                                    jdText,
+                                    analysisResult,
+                                    isAnalyzing,
+                                    isCollapsed: isJDCollapsed,
+                                    onAnalyze: handleAnalyzeWithAutoName,
+                                    onToggleCollapse: handleToggleJdCollapse,
+                                    onJdTextChange: handleJdTextChange,
+                                    jdFile,
+                                    onFileChange: setJdFile,
+                                    hasMissingAttachmentContext,
+                                    bossGreeting,
+                                    isBossGreetingVisible,
+                                    isBossGreetingOutdated,
+                                    isGeneratingBossGreeting,
+                                    onGenerateBossGreeting: handleGenerateBossGreeting,
+                                    onRefreshBossGreeting: handleRefreshBossGreeting,
+                                    onCopyBossGreeting: handleCopyBossGreeting,
+                                    onCollapseBossGreeting: handleCollapseBossGreeting,
+                                    debugInfo,
+                                    showDebugInfo,
+                                    isOutdated,
+                                }}
+                                profileTabProps={{
+                                    profile,
+                                    setProfile,
+                                    profileSyncMode,
+                                    setProfileSyncMode,
+                                    isEditingProfile,
+                                    isSavingProfile,
+                                    isProfileReadOnly,
+                                    onBeginEdit: beginProfileEdit,
+                                    onCancelEdit: cancelProfileEdit,
+                                    onSave: handleSaveProfile,
+                                    educations,
+                                    selectedEduIds,
+                                    editingEducationId: education.editingEducationId,
+                                    educationDraft: education.educationDraft,
+                                    isSavingEducation: education.isSavingEducation,
+                                    deletingEducationIds: education.deletingEducationIds,
+                                    onBeginCreateEducation: education.beginCreateEducation,
+                                    onBeginEditEducation: education.beginEditEducation,
+                                    onCancelEducationEdit: education.cancelEducationEdit,
+                                    onUpdateEducationDraft: education.updateEducationDraft,
+                                    onUpdateEducationDate: education.updateEducationDate,
+                                    onSaveEducation: education.handleSaveEducation,
+                                    onRequestDeleteEducation: education.requestDeleteEducation,
+                                    onToggleEducationSelection: trackedSelection.toggleEducationSelection,
+                                }}
+                                experienceTabProps={{
+                                    experience,
+                                    certification,
+                                    skill,
+                                    selection: trackedSelection,
+                                    workItems,
+                                    projectItems,
+                                    selectedExpIds,
+                                    staleExperienceIds,
+                                    sortedCertifications,
+                                    selectedCertIds,
+                                    certificationMatchScores,
+                                    certificationMatchTrends,
+                                    skillGroups,
+                                    selectedSkillIds,
+                                    skillMatchScores,
+                                    skillMatchTrends,
+                                    isAutoAssembling,
+                                    onAutoAssemble: handleAutoAssemble,
+                                    onResetRenamingCategory: resetRenamingCategory,
+                                    onPolishExperience: handlePolishExperienceFromCard,
+                                    onResetWorkSort: () => handleResetSort('work'),
+                                    onResetProjectSort: () => handleResetSort('project'),
+                                    onResetCertificationSort: handleResetCertificationSort,
+                                }}
+                                editingSuggestion={{
+                                    editingItem,
+                                    staleExperienceIds,
+                                    jdText: jdPolishContext,
+                                    isPolishing: experience.isPolishing,
+                                    onPolish: experience.handlePolishWithJD,
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             {isEditorBusy ? (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-[1px]">
                     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-200 shadow-sm">
