@@ -1814,7 +1814,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         try {
             suppressAutoSaveForConfig(resumeConfigSnapshot);
             await flushResumeConfig(buildCommittedResumeConfigSnapshot());
-            const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
+            const created = resumeId
+                ? await resumeService.duplicate(resumeId)
+                : await resumeService.create({ title: DEFAULT_RESUME_TITLE });
             prependDashboardCache(created);
             const reloadedContext = await reloadResumeContext(created.id);
             if (!reloadedContext) {
@@ -1843,6 +1845,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         prependDashboardCache,
         reloadResumeContext,
         resetEditorTransientState,
+        resumeId,
         showToastError,
         showToastSuccess,
         suppressAutoSaveForConfig,
@@ -3036,4 +3039,3 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
 };
 export default ResumeEditor;
-
