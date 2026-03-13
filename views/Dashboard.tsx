@@ -780,7 +780,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                           <div>
                             <div className="text-gray-400">匹配度</div>
-                            <div className="mt-1 font-semibold text-gray-900 dark:text-white">
+                            <div className={`mt-1 font-semibold ${resume.matchRate > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
                               {resume.matchRate > 0 ? `${resume.matchRate}%` : '草稿'}
                             </div>
                           </div>
