@@ -26,7 +26,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   );
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = React.useState(false);
   const mobileAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
-  const desktopAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
   const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
   const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
 
@@ -44,6 +43,8 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     }
     return `${baseClass} bg-slate-950/40 text-slate-300 hover:bg-slate-800 hover:text-white`;
   };
+  const desktopUtilityButtonClass =
+    "group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 text-slate-300 transition-all hover:bg-slate-800 hover:text-white md:p-3";
 
   const handleSignOut = async () => {
     // 注销并跳转回首页(登录页)
@@ -83,9 +84,8 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     const handlePointerDown = (event: PointerEvent) => {
       const targetNode = event.target as Node;
       const isInsideMobileMenu = mobileAvatarMenuRef.current?.contains(targetNode);
-      const isInsideDesktopMenu = desktopAvatarMenuRef.current?.contains(targetNode);
 
-      if (!isInsideMobileMenu && !isInsideDesktopMenu) {
+      if (!isInsideMobileMenu) {
         setIsAvatarMenuOpen(false);
       }
     };
@@ -118,11 +118,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     setView(view);
   };
 
-  const renderAvatarMenu = (isDesktop = false) => (
+  const renderMobileAvatarMenu = () => (
     <div
-      className={`absolute z-[60] min-w-[176px] overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/40 backdrop-blur ${
-        isDesktop ? 'left-full top-1/2 ml-3 -translate-y-1/2' : 'left-0 top-full mt-3'
-      }`}
+      className="absolute left-0 top-full z-[60] mt-3 min-w-[176px] overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/40 backdrop-blur"
       role="menu"
       aria-label="头像工具栏"
     >
@@ -189,7 +187,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             >
               {avatarInitial}
             </button>
-            {isAvatarMenuOpen ? renderAvatarMenu() : null}
+            {isAvatarMenuOpen ? renderMobileAvatarMenu() : null}
           </div>
 
           <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
@@ -221,53 +219,89 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </div>
       </div>
 
-      <div className="hidden items-center justify-between px-4 py-4 md:flex md:flex-col md:justify-start md:gap-8 md:px-0 md:py-6">
-        <div ref={desktopAvatarMenuRef} className="relative">
-          <button
+      <div className="hidden h-full w-full flex-col items-center px-0 py-6 md:flex">
+        <div className="relative">
+          <div
             className="group relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold shadow-lg ring-2 ring-slate-800 transition-all hover:ring-slate-700"
-            onClick={handleAvatarClick}
-            type="button"
-            aria-label="打开头像工具栏"
-            aria-expanded={isAvatarMenuOpen}
-            aria-haspopup="menu"
+            aria-label="当前用户头像"
+            title={displayName}
           >
             {avatarInitial}
             <div className="nav-tooltip hidden md:block">{displayName}</div>
-          </button>
-          {isAvatarMenuOpen ? renderAvatarMenu(true) : null}
+          </div>
         </div>
-      </div>
 
-      <div className="hidden grid-cols-3 gap-2 px-3 pb-3 md:flex md:w-full md:flex-col md:items-center md:gap-6 md:px-0 md:pb-0">
-        <button
-          className={getButtonClass(ViewState.DASHBOARD)}
-          onClick={() => handleSetView(ViewState.DASHBOARD)}
-          type="button"
-        >
-          <FolderOpen className="w-6 h-6" />
-          <span className="text-xs font-medium md:hidden">我的简历</span>
-          <div className="nav-tooltip hidden md:block">我的简历</div>
-        </button>
+        <div className="mt-8 flex w-full flex-1 flex-col items-center gap-6">
+          <button
+            className={getButtonClass(ViewState.DASHBOARD)}
+            onClick={() => handleSetView(ViewState.DASHBOARD)}
+            type="button"
+          >
+            <FolderOpen className="w-6 h-6" />
+            <span className="text-xs font-medium md:hidden">我的简历</span>
+            <div className="nav-tooltip hidden md:block">我的简历</div>
+          </button>
 
-        <button
-          className={getButtonClass(ViewState.EXPERIENCE_BANK)}
-          onClick={() => handleSetView(ViewState.EXPERIENCE_BANK)}
-          type="button"
-        >
-          <Database className="w-6 h-6" />
-          <span className="text-xs font-medium md:hidden">经历库</span>
-          <div className="nav-tooltip hidden md:block">经历库</div>
-        </button>
+          <button
+            className={getButtonClass(ViewState.EXPERIENCE_BANK)}
+            onClick={() => handleSetView(ViewState.EXPERIENCE_BANK)}
+            type="button"
+          >
+            <Database className="w-6 h-6" />
+            <span className="text-xs font-medium md:hidden">经历库</span>
+            <div className="nav-tooltip hidden md:block">经历库</div>
+          </button>
 
-        <button
-          className={getButtonClass(ViewState.EDITOR)}
-          onClick={() => handleSetView(ViewState.EDITOR)}
-          type="button"
-        >
-          <Wand2 className="w-6 h-6" />
-          <span className="text-xs font-medium md:hidden">简历工厂</span>
-          <div className="nav-tooltip hidden md:block">简历工厂</div>
-        </button>
+          <button
+            className={getButtonClass(ViewState.EDITOR)}
+            onClick={() => handleSetView(ViewState.EDITOR)}
+            type="button"
+          >
+            <Wand2 className="w-6 h-6" />
+            <span className="text-xs font-medium md:hidden">简历工厂</span>
+            <div className="nav-tooltip hidden md:block">简历工厂</div>
+          </button>
+        </div>
+
+        <div className="mt-auto flex w-full flex-col items-center gap-4 pb-2">
+          <button
+            className={desktopUtilityButtonClass}
+            onClick={handleToggleTheme}
+            type="button"
+          >
+            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            <div className="nav-tooltip hidden md:block">{isDarkMode ? '切换浅色' : '切换深色'}</div>
+          </button>
+
+          <button
+            className={desktopUtilityButtonClass}
+            onClick={handleOpenFeedback}
+            type="button"
+          >
+            <MessageSquare className="h-5 w-5" />
+            <div className="nav-tooltip hidden md:block">反馈</div>
+          </button>
+
+          {isAuthenticated ? (
+            <button
+              className={`${desktopUtilityButtonClass} text-red-300 hover:bg-red-950/40 hover:text-red-200`}
+              onClick={handleSignOut}
+              type="button"
+            >
+              <LogOut className="h-5 w-5" />
+              <div className="nav-tooltip hidden md:block">登出</div>
+            </button>
+          ) : (
+            <button
+              className={`${desktopUtilityButtonClass} text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200`}
+              onClick={handleSignIn}
+              type="button"
+            >
+              <LogIn className="h-5 w-5" />
+              <div className="nav-tooltip hidden md:block">登录</div>
+            </button>
+          )}
+        </div>
       </div>
     </nav>
   );
