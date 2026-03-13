@@ -246,6 +246,14 @@ type ModuleReorderContext = {
     category?: 'work' | 'project';
 };
 
+type ReorderStateSnapshot = {
+    experienceItems: ResumeExperienceView[];
+    educations: EducationView[];
+    certifications: CertificationView[];
+    skillGroups: SkillGroupView[];
+    sectionOrder: string[];
+};
+
 type SmartPageResult = SmartPageLayout | null;
 type SmartPageExecutionResult =
     | ({ status: 'fit' } & SmartPageLayout)
@@ -769,6 +777,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const lastItemHoverKeyRef = useRef<string | null>(null);
     const lastSectionHoverKeyRef = useRef<string | null>(null);
     const reorderContextRef = useRef<ModuleReorderContext | null>(null);
+    const reorderStateSnapshotRef = useRef<ReorderStateSnapshot | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
     const measurePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -2138,13 +2147,27 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             sectionId: context.sectionId,
         }, authUserKey);
     };
-    const handleDragStart = (e: React.DragEvent, itemKey: string) => {
+    const captureReorderStateSnapshot = () => {
+        reorderStateSnapshotRef.current = {
+            experienceItems: [...experienceItems],
+            educations: [...educations],
+            certifications: [...certifications],
+            skillGroups: [...skillGroups],
+            sectionOrder: [...sectionOrder],
+        };
+    };
+    const startItemReorder = (itemKey: string) => {
+        captureReorderStateSnapshot();
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
         setDraggedSectionId(null);
         setDraggedItemKey(itemKey);
         reorderContextRef.current = buildItemReorderContext(itemKey);
         setIsDragging(true);
+    };
+
+    const handleDragStart = (e: React.DragEvent, itemKey: string) => {
+        startItemReorder(itemKey);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', itemKey);
     };
@@ -2155,6 +2178,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
         reorderContextRef.current = null;
+        reorderStateSnapshotRef.current = null;
+    };
+    const finishDragInteraction = () => {
+        finalizeReorderTracking();
+        clearDragState();
+    };
+    const cancelTouchDragInteraction = () => {
+        const snapshot = reorderStateSnapshotRef.current;
+        if (snapshot) {
+            setExperienceItems(snapshot.experienceItems);
+            setEducations(snapshot.educations);
+            setCertifications(snapshot.certifications);
+            setSkillGroups(snapshot.skillGroups);
+            setSectionOrder(snapshot.sectionOrder);
+        }
+        clearDragState();
     };
 
     const handleItemDragHover = (targetItemKey: string, position: DropPosition) => {
@@ -2225,8 +2264,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     const handleItemDrop = (e: React.DragEvent) => {
         e.preventDefault();
-        finalizeReorderTracking();
-        clearDragState();
+        finishDragInteraction();
     };
 
     const resetExperienceSortForCategory = (
@@ -2268,7 +2306,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         });
     };
     // Section drag handlers
-    const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
+    const startSectionReorder = (sectionId: string) => {
+        captureReorderStateSnapshot();
         lastItemHoverKeyRef.current = null;
         lastSectionHoverKeyRef.current = null;
         setDraggedItemKey(null);
@@ -2284,6 +2323,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
             : null;
         setIsDragging(true);
+    };
+
+    const handleSectionDragStart = (e: React.DragEvent, sectionId: string) => {
+        startSectionReorder(sectionId);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', sectionId);
     };
@@ -2310,8 +2353,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     const handleSectionDrop = (e: React.DragEvent) => {
         e.preventDefault();
-        finalizeReorderTracking();
-        clearDragState();
+        finishDragInteraction();
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const listSpacingValue = useMemo(() => {
@@ -2937,9 +2979,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onSectionDragStart={() => { }}
                     onSectionDragHover={() => { }}
                     onSectionDrop={() => { }}
+                    onTouchSectionDragStart={() => { }}
                     onItemDragStart={() => { }}
                     onItemDragHover={() => { }}
                     onItemDrop={() => { }}
+                    onTouchItemDragStart={() => { }}
+                    onTouchDragEnd={() => { }}
+                    onTouchDragCancel={() => { }}
                     onDragEnd={() => { }}
                     onNavigateTab={() => { }}
                     onEditExperience={() => { }}
@@ -3226,9 +3272,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         onSectionDragStart={handleSectionDragStart}
                         onSectionDragHover={handleSectionDragHover}
                         onSectionDrop={handleSectionDrop}
+                        onTouchSectionDragStart={startSectionReorder}
                         onItemDragStart={handleDragStart}
                         onItemDragHover={handleItemDragHover}
                         onItemDrop={handleItemDrop}
+                        onTouchItemDragStart={startItemReorder}
+                        onTouchDragEnd={finishDragInteraction}
+                        onTouchDragCancel={cancelTouchDragInteraction}
                         onDragEnd={clearDragState}
                         onNavigateTab={setSidebarTab}
                         onEditExperience={handleEditExperience}
@@ -3280,9 +3330,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onSectionDragStart={() => { }}
                     onSectionDragHover={() => { }}
                     onSectionDrop={() => { }}
+                    onTouchSectionDragStart={() => { }}
                     onItemDragStart={() => { }}
                     onItemDragHover={() => { }}
                     onItemDrop={() => { }}
+                    onTouchItemDragStart={() => { }}
+                    onTouchDragEnd={() => { }}
+                    onTouchDragCancel={() => { }}
                     onDragEnd={() => { }}
                     onNavigateTab={setSidebarTab}
                     onEditExperience={() => { }}

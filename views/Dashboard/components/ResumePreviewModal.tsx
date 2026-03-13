@@ -351,6 +351,10 @@ const noopDragHover: ResumePreviewProps['onSectionDragHover'] = () => undefined;
 const noopItemDragHover: ResumePreviewProps['onItemDragHover'] = () => undefined;
 const noopDragDrop: ResumePreviewProps['onSectionDrop'] = () => undefined;
 const noopItemDrop: ResumePreviewProps['onItemDrop'] = () => undefined;
+const noopTouchSectionDragStart: ResumePreviewProps['onTouchSectionDragStart'] = () => undefined;
+const noopTouchItemDragStart: ResumePreviewProps['onTouchItemDragStart'] = () => undefined;
+const noopTouchDragEnd: ResumePreviewProps['onTouchDragEnd'] = () => undefined;
+const noopTouchDragCancel: ResumePreviewProps['onTouchDragCancel'] = () => undefined;
 const noopDragEnd = () => undefined;
 const noopNavigate: ResumePreviewProps['onNavigateTab'] = () => undefined;
 const noopEdit: ResumePreviewProps['onEditExperience'] = () => undefined;
@@ -388,9 +392,13 @@ const buildResumePreviewProps = (
     onSectionDragStart: noopSectionDragStart,
     onSectionDragHover: noopDragHover,
     onSectionDrop: noopDragDrop,
+    onTouchSectionDragStart: noopTouchSectionDragStart,
     onItemDragStart: noopItemDragStart,
     onItemDragHover: noopItemDragHover,
     onItemDrop: noopItemDrop,
+    onTouchItemDragStart: noopTouchItemDragStart,
+    onTouchDragEnd: noopTouchDragEnd,
+    onTouchDragCancel: noopTouchDragCancel,
     onDragEnd: noopDragEnd,
     onNavigateTab: noopNavigate,
     onEditExperience: noopEdit,

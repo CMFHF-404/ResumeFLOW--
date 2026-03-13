@@ -24,15 +24,37 @@ type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
 type DragHoverHandler = (targetId: string, position: DropPosition) => void;
 type DragDropHandler = (event: React.DragEvent) => void;
+type TouchDragStartHandler = (id: string) => void;
+type TouchDragMode = 'section' | 'item';
+type TouchDragSession = {
+    touchId: number;
+    mode: TouchDragMode;
+    sourceId: string;
+    container: HTMLElement | null;
+    startX: number;
+    startY: number;
+    activated: boolean;
+    timerId: number | null;
+};
+type TouchFeedbackState = {
+    mode: TouchDragMode;
+    sourceId: string;
+    phase: 'pressing' | 'dragging';
+} | null;
 
 const STAR_CONTEXT_SEPARATOR = ' ';
 const normalizeStarText = (value?: string) => value?.trim() ?? '';
 const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
+const DATA_ITEM_CONTAINER_ATTR = 'data-rf-item-container';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
 const PREVIEW_SCALE_EPSILON = 0.001;
 const PREVIEW_SIZE_EPSILON = 0.5;
+const TOUCH_LONG_PRESS_DELAY_MS = 260;
+const TOUCH_DRAG_CANCEL_DISTANCE_PX = 14;
+const TOUCH_AUTOSCROLL_EDGE_PX = 88;
+const TOUCH_AUTOSCROLL_MAX_STEP_PX = 18;
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -152,9 +174,13 @@ export type ResumePreviewProps = {
     onSectionDragStart: SectionDragHandler;
     onSectionDragHover: DragHoverHandler;
     onSectionDrop: DragDropHandler;
+    onTouchSectionDragStart: TouchDragStartHandler;
     onItemDragStart: ItemDragHandler;
     onItemDragHover: DragHoverHandler;
     onItemDrop: DragDropHandler;
+    onTouchItemDragStart: TouchDragStartHandler;
+    onTouchDragEnd: () => void;
+    onTouchDragCancel: () => void;
     onDragEnd: () => void;
     onNavigateTab: (tab: 'profile' | 'experience') => void;
     onEditExperience: (id: string) => void;
@@ -189,9 +215,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onSectionDragStart,
     onSectionDragHover,
     onSectionDrop,
+    onTouchSectionDragStart,
     onItemDragStart,
     onItemDragHover,
     onItemDrop,
+    onTouchItemDragStart,
+    onTouchDragEnd,
+    onTouchDragCancel,
     onDragEnd,
     onNavigateTab,
     onEditExperience,
@@ -199,7 +229,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditSkill,
 }) => {
     const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal';
+    const previewScrollRef = React.useRef<HTMLElement | null>(null);
     const previewViewportRef = React.useRef<HTMLDivElement | null>(null);
+    const touchSessionRef = React.useRef<TouchDragSession | null>(null);
+    const [touchFeedback, setTouchFeedback] = React.useState<TouchFeedbackState>(null);
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
         [fontSize, previewScope]
@@ -271,9 +304,315 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         ? 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0'
         : 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity';
     const itemHoverBgClass = isDragging || isReadOnly ? '' : 'group-hover/item:bg-primary/5';
-    const sectionHoverBgClass = '';
     const sectionDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
     const itemDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
+    const touchSelectionClass = isReadOnly ? '' : 'select-none';
+    const interactionTransitionClass = 'transform-gpu transition-[background-color,box-shadow,transform,ring-color] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]';
+    const touchHandleStyle = React.useMemo(
+        () => ({
+            WebkitTouchCallout: isReadOnly ? undefined : 'none',
+            WebkitUserSelect: isReadOnly ? undefined : 'none',
+            userSelect: isReadOnly ? undefined : 'none',
+            touchAction: isReadOnly ? undefined : (isDragging ? 'none' : 'pan-y'),
+        } as React.CSSProperties),
+        [isDragging, isReadOnly]
+    );
+    const getTouchFeedbackState = React.useCallback((mode: TouchDragMode, sourceId: string) => {
+        if (!touchFeedback || touchFeedback.mode !== mode || touchFeedback.sourceId !== sourceId) {
+            return null;
+        }
+        return touchFeedback.phase;
+    }, [touchFeedback]);
+    const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
+        const feedbackPhase = getTouchFeedbackState('section', sectionId);
+        const baseClass = `-m-2 rounded p-2 ${interactionTransitionClass}`;
+        if (feedbackPhase === 'dragging') {
+            return `${baseClass} bg-primary/10 ring-1 ring-primary/35 shadow-[0_14px_32px_rgba(16,185,129,0.14)] -translate-y-0.5`;
+        }
+        if (feedbackPhase === 'pressing') {
+            return `${baseClass} bg-primary/6 ring-1 ring-primary/20 shadow-[0_10px_22px_rgba(16,185,129,0.10)]`;
+        }
+        return baseClass;
+    }, [getTouchFeedbackState, interactionTransitionClass]);
+    const getItemSurfaceClass = React.useCallback((itemKey: string) => {
+        const feedbackPhase = getTouchFeedbackState('item', itemKey);
+        const baseClass = `${itemHoverBgClass} -m-2 rounded p-2 ${touchSelectionClass} ${interactionTransitionClass}`;
+        if (feedbackPhase === 'dragging') {
+            return `${baseClass} bg-white ring-1 ring-primary/35 shadow-[0_18px_38px_rgba(15,23,42,0.16)] -translate-y-1`;
+        }
+        if (feedbackPhase === 'pressing') {
+            return `${baseClass} bg-white/95 ring-1 ring-primary/20 shadow-[0_10px_24px_rgba(15,23,42,0.10)] -translate-y-0.5`;
+        }
+        return baseClass;
+    }, [getTouchFeedbackState, interactionTransitionClass, itemHoverBgClass, touchSelectionClass]);
+
+    const cancelTouchSession = React.useCallback(() => {
+        const session = touchSessionRef.current;
+        if (!session) {
+            return;
+        }
+        if (session.timerId !== null && typeof window !== 'undefined') {
+            window.clearTimeout(session.timerId);
+        }
+        touchSessionRef.current = null;
+        setTouchFeedback(null);
+    }, []);
+
+    const finishTouchSession = React.useCallback((shouldCommit: boolean) => {
+        const session = touchSessionRef.current;
+        if (!session) {
+            return;
+        }
+        if (session.timerId !== null && typeof window !== 'undefined') {
+            window.clearTimeout(session.timerId);
+        }
+        const wasActivated = session.activated;
+        touchSessionRef.current = null;
+        setTouchFeedback(null);
+        if (shouldCommit && wasActivated) {
+            onTouchDragEnd();
+            return;
+        }
+        if (wasActivated) {
+            onTouchDragCancel();
+        }
+    }, [onTouchDragCancel, onTouchDragEnd]);
+
+    const autoScrollPreview = React.useCallback((clientY: number) => {
+        const container = previewScrollRef.current;
+        if (!container) {
+            return;
+        }
+        const rect = container.getBoundingClientRect();
+        if (!rect.height) {
+            return;
+        }
+
+        let delta = 0;
+        if (clientY < rect.top + TOUCH_AUTOSCROLL_EDGE_PX) {
+            const ratio = (rect.top + TOUCH_AUTOSCROLL_EDGE_PX - clientY) / TOUCH_AUTOSCROLL_EDGE_PX;
+            delta = -Math.max(6, Math.round(TOUCH_AUTOSCROLL_MAX_STEP_PX * Math.min(1, ratio)));
+        } else if (clientY > rect.bottom - TOUCH_AUTOSCROLL_EDGE_PX) {
+            const ratio = (clientY - (rect.bottom - TOUCH_AUTOSCROLL_EDGE_PX)) / TOUCH_AUTOSCROLL_EDGE_PX;
+            delta = Math.max(6, Math.round(TOUCH_AUTOSCROLL_MAX_STEP_PX * Math.min(1, ratio)));
+        }
+
+        if (delta !== 0) {
+            container.scrollTop += delta;
+        }
+    }, []);
+
+    const updateTouchDragHover = React.useCallback((clientX: number, clientY: number) => {
+        const session = touchSessionRef.current;
+        if (!session || !session.activated || typeof document === 'undefined') {
+            return;
+        }
+
+        autoScrollPreview(clientY);
+        const currentTarget = document.elementFromPoint(clientX, clientY);
+
+        if (session.mode === 'section') {
+            const container = previewContentRef.current;
+            if (!container) {
+                return;
+            }
+            const target = resolveDragTarget(
+                container,
+                clientY,
+                DATA_SECTION_ID_ATTR,
+                session.sourceId,
+                currentTarget
+            );
+            if (target) {
+                onSectionDragHover(target.id, target.position);
+            }
+            return;
+        }
+
+        if (!session.container) {
+            return;
+        }
+
+        const target = resolveDragTarget(
+            session.container,
+            clientY,
+            DATA_ITEM_ID_ATTR,
+            session.sourceId,
+            currentTarget
+        );
+        if (target) {
+            onItemDragHover(target.id, target.position);
+        }
+    }, [autoScrollPreview, onItemDragHover, onSectionDragHover, previewContentRef]);
+
+    const startTouchLongPress = React.useCallback((
+        event: React.TouchEvent<HTMLElement>,
+        mode: TouchDragMode,
+        sourceId: string,
+        container: HTMLElement | null
+    ) => {
+        if (isReadOnly || event.touches.length !== 1 || typeof window === 'undefined') {
+            return;
+        }
+
+        if (touchSessionRef.current?.activated) {
+            onTouchDragEnd();
+        }
+        cancelTouchSession();
+        const touch = event.changedTouches[0];
+        if (!touch) {
+            return;
+        }
+
+        const nextSession: TouchDragSession = {
+            touchId: touch.identifier,
+            mode,
+            sourceId,
+            container,
+            startX: touch.clientX,
+            startY: touch.clientY,
+            activated: false,
+            timerId: null,
+        };
+        setTouchFeedback({
+            mode,
+            sourceId,
+            phase: 'pressing',
+        });
+
+        nextSession.timerId = window.setTimeout(() => {
+            const current = touchSessionRef.current;
+            if (
+                !current
+                || current.touchId !== nextSession.touchId
+                || current.mode !== mode
+                || current.sourceId !== sourceId
+            ) {
+                return;
+            }
+
+            current.activated = true;
+            setTouchFeedback({
+                mode,
+                sourceId,
+                phase: 'dragging',
+            });
+            if (mode === 'section') {
+                onTouchSectionDragStart(sourceId);
+                return;
+            }
+            onTouchItemDragStart(sourceId);
+        }, TOUCH_LONG_PRESS_DELAY_MS);
+
+        touchSessionRef.current = nextSession;
+    }, [cancelTouchSession, isReadOnly, onTouchDragEnd, onTouchItemDragStart, onTouchSectionDragStart]);
+
+    const handleSectionTitleTouchStart = React.useCallback((
+        event: React.TouchEvent<HTMLElement>,
+        sectionId: string
+    ) => {
+        startTouchLongPress(event, 'section', sectionId, previewContentRef.current);
+    }, [previewContentRef, startTouchLongPress]);
+
+    const handleItemCardTouchStart = React.useCallback((
+        event: React.TouchEvent<HTMLElement>,
+        itemKey: string
+    ) => {
+        const container = event.currentTarget.closest(`[${DATA_ITEM_CONTAINER_ATTR}]`);
+        startTouchLongPress(
+            event,
+            'item',
+            itemKey,
+            container instanceof HTMLElement ? container : null
+        );
+    }, [startTouchLongPress]);
+
+    const stopTouchStartPropagation = React.useCallback((event: React.TouchEvent<HTMLElement>) => {
+        event.stopPropagation();
+    }, []);
+
+    React.useEffect(() => {
+        if (typeof document === 'undefined') {
+            return undefined;
+        }
+
+        const resolveTrackedTouch = (touchList: TouchList, touchId: number) => {
+            for (let index = 0; index < touchList.length; index += 1) {
+                const touch = touchList.item(index);
+                if (touch?.identifier === touchId) {
+                    return touch;
+                }
+            }
+            return null;
+        };
+
+        const handleTouchMove = (event: TouchEvent) => {
+            const session = touchSessionRef.current;
+            if (!session) {
+                return;
+            }
+            const touch = resolveTrackedTouch(event.touches, session.touchId);
+            if (!touch) {
+                return;
+            }
+
+            if (!session.activated) {
+                const distance = Math.hypot(touch.clientX - session.startX, touch.clientY - session.startY);
+                if (distance > TOUCH_DRAG_CANCEL_DISTANCE_PX) {
+                    finishTouchSession(false);
+                }
+                return;
+            }
+
+            event.preventDefault();
+            updateTouchDragHover(touch.clientX, touch.clientY);
+        };
+
+        const handleTouchFinish = (event: TouchEvent) => {
+            const session = touchSessionRef.current;
+            if (!session) {
+                return;
+            }
+            const touch = resolveTrackedTouch(event.changedTouches, session.touchId);
+            if (!touch) {
+                return;
+            }
+
+            if (session.activated) {
+                event.preventDefault();
+            }
+            finishTouchSession(session.activated);
+        };
+
+        const handleTouchCancel = (event: TouchEvent) => {
+            const session = touchSessionRef.current;
+            if (!session) {
+                return;
+            }
+            const touch = resolveTrackedTouch(event.changedTouches, session.touchId);
+            if (!touch) {
+                return;
+            }
+
+            finishTouchSession(false);
+        };
+
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchFinish, { passive: false });
+        document.addEventListener('touchcancel', handleTouchCancel, { passive: false });
+
+        return () => {
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchFinish);
+            document.removeEventListener('touchcancel', handleTouchCancel);
+        };
+    }, [finishTouchSession, updateTouchDragHover]);
+
+    React.useEffect(() => {
+        return () => {
+            cancelTouchSession();
+        };
+    }, [cancelTouchSession]);
 
     const syncScaledPreviewMetrics = React.useCallback(() => {
         if (!isScaledEditorPreview) {
@@ -437,113 +776,130 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     </div>
                 ) : null}
 
-                <h2
-                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                    style={sectionTitleStyle}
-                >
-                    {title}
-                </h2>
                 <div
-                    className={listSpacingClass}
-                    onDragOver={
-                        isReadOnly
-                            ? undefined
-                            : (event) => {
-                                if (!draggedItemKey || draggedSectionId) {
-                                    return;
-                                }
-                                event.preventDefault();
-                                event.stopPropagation();
-                                const container = event.currentTarget as HTMLElement;
-                                const target = resolveDragTarget(
-                                    container,
-                                    event.clientY,
-                                    DATA_ITEM_ID_ATTR,
-                                    draggedItemKey,
-                                    event.target
-                                );
-                                if (!target) {
-                                    return;
-                                }
-                                onItemDragHover(target.id, target.position);
-                            }
-                    }
-                    onDrop={
-                        isReadOnly
-                            ? undefined
-                            : (event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                onItemDrop(event);
-                            }
-                    }
+                    className={getSectionSurfaceClass(sectionId)}
+                    style={sectionSurfaceStyle}
                 >
-                    {items.map((item) => {
-                        const itemKey = buildDragItemKey('experience', item.id);
-                        return (
-                            <div
-                                key={item.id}
-                                data-rf-item-id={itemKey}
-                                className={`relative group/item ${itemDragClass}`}
-                                draggable={!isReadOnly}
-                                onDragStart={
-                                    isReadOnly
-                                        ? undefined
-                                        : (event) => {
-                                            event.stopPropagation();
-                                            onItemDragStart(event, itemKey);
-                                        }
+                    <h2
+                        className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                        style={{ ...sectionTitleStyle, ...touchHandleStyle }}
+                        onTouchStart={
+                            isReadOnly ? undefined : (event) => handleSectionTitleTouchStart(event, sectionId)
+                        }
+                    >
+                        {title}
+                    </h2>
+                    <div
+                        className={listSpacingClass}
+                        data-rf-item-container={sectionId}
+                        onDragOver={
+                            isReadOnly
+                                ? undefined
+                                : (event) => {
+                                    if (!draggedItemKey || draggedSectionId) {
+                                        return;
+                                    }
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    const container = event.currentTarget as HTMLElement;
+                                    const target = resolveDragTarget(
+                                        container,
+                                        event.clientY,
+                                        DATA_ITEM_ID_ATTR,
+                                        draggedItemKey,
+                                        event.target
+                                    );
+                                    if (!target) {
+                                        return;
+                                    }
+                                    onItemDragHover(target.id, target.position);
                                 }
-                                onDragEnd={
-                                    isReadOnly
-                                        ? undefined
-                                        : (event) => {
-                                            event.stopPropagation();
-                                            onDragEnd();
-                                        }
+                        }
+                        onDrop={
+                            isReadOnly
+                                ? undefined
+                                : (event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onItemDrop(event);
                                 }
-                            >
-                                {!isReadOnly ? (
-                                    <div className={itemControlClass}>
-                                        <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                        <Edit3
-                                            className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onEditExperience(item.id);
-                                            }}
-                                        />
-                                    </div>
-                                ) : null}
-
+                        }
+                    >
+                        {items.map((item) => {
+                            const itemKey = buildDragItemKey('experience', item.id);
+                            return (
                                 <div
-                                    className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                    style={itemSurfaceStyle}
+                                    key={item.id}
+                                    data-rf-item-id={itemKey}
+                                    className={`relative group/item ${itemDragClass}`}
+                                    draggable={!isReadOnly}
+                                    onDragStart={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onItemDragStart(event, itemKey);
+                                            }
+                                    }
+                                    onDragEnd={
+                                        isReadOnly
+                                            ? undefined
+                                            : (event) => {
+                                                event.stopPropagation();
+                                                onDragEnd();
+                                            }
+                                    }
                                 >
-                                    <div className="flex justify-between items-baseline mb-1">
-                                        <h3 className="text-sm font-bold text-gray-900">
-                                            {item.company}
-                                        </h3>
-                                        <span className="text-xs font-medium text-gray-900">
-                                            {item.date}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs font-semibold text-gray-800 mb-1.5">
-                                        {item.title}
-                                    </p>
+                                    {!isReadOnly ? (
+                                        <div className={itemControlClass}>
+                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
+                                            <Edit3
+                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                onTouchStart={stopTouchStartPropagation}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    onEditExperience(item.id);
+                                                }}
+                                            />
+                                        </div>
+                                    ) : null}
 
-                                    {renderStarBlocks(item.star, item.id)}
+                                    <div
+                                        className={getItemSurfaceClass(itemKey)}
+                                        style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                        onTouchStart={
+                                            isReadOnly ? undefined : (event) => handleItemCardTouchStart(event, itemKey)
+                                        }
+                                    >
+                                        <div className="flex justify-between items-baseline mb-1">
+                                            <h3 className="text-sm font-bold text-gray-900">
+                                                {item.company}
+                                            </h3>
+                                            <span className="text-xs font-medium text-gray-900">
+                                                {item.date}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-semibold text-gray-800 mb-1.5">
+                                            {item.title}
+                                        </p>
+
+                                        {renderStarBlocks(item.star, item.id)}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         );
     };
 
     return (
-        <main className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8">
+        <main
+            ref={previewScrollRef}
+            className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8"
+            style={{ touchAction: isDragging ? 'none' : 'pan-y' }}
+        >
             <div
                 ref={isScaledEditorPreview ? previewViewportRef : null}
                 className="flex w-full justify-center"
@@ -658,17 +1014,23 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
-                                        className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                        className={getSectionSurfaceClass('education')}
                                         style={sectionSurfaceStyle}
                                     >
                                         <h2
-                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                    style={sectionTitleStyle}
-                >
+                                            className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                                            style={{ ...sectionTitleStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => handleSectionTitleTouchStart(event, 'education')
+                                            }
+                                        >
                                             教育背景
                                         </h2>
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
+                                            data-rf-item-container="education"
                                             onDragOver={
                                                 isReadOnly
                                                     ? undefined
@@ -737,6 +1099,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
                                                                 <Edit3
                                                                     className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                    onTouchStart={stopTouchStartPropagation}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         onNavigateTab('profile');
@@ -745,8 +1108,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             </div>
                                                         ) : null}
                                                         <div
-                                                            className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                                            style={itemSurfaceStyle}
+                                                            className={getItemSurfaceClass(itemKey)}
+                                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                                            onTouchStart={
+                                                                isReadOnly
+                                                                    ? undefined
+                                                                    : (event) => handleItemCardTouchStart(event, itemKey)
+                                                            }
                                                         >
                                                             <div className="flex justify-between items-baseline mb-0.5">
                                                                 <h3 className="text-sm font-bold text-gray-900">
@@ -812,17 +1180,23 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
-                                        className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                        className={getSectionSurfaceClass('certifications')}
                                         style={sectionSurfaceStyle}
                                     >
                                         <h2
-                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                    style={sectionTitleStyle}
-                >
+                                            className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                                            style={{ ...sectionTitleStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => handleSectionTitleTouchStart(event, 'certifications')
+                                            }
+                                        >
                                             证书资质
                                         </h2>
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
+                                            data-rf-item-container="certifications"
                                             onDragOver={
                                                 isReadOnly
                                                     ? undefined
@@ -886,6 +1260,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
                                                                 <Edit3
                                                                     className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                    onTouchStart={stopTouchStartPropagation}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         onEditCertification(cert.id);
@@ -894,8 +1269,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             </div>
                                                         ) : null}
                                                         <div
-                                                            className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                                            style={itemSurfaceStyle}
+                                                            className={getItemSurfaceClass(itemKey)}
+                                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                                            onTouchStart={
+                                                                isReadOnly
+                                                                    ? undefined
+                                                                    : (event) => handleItemCardTouchStart(event, itemKey)
+                                                            }
                                                         >
                                                             <div className="flex justify-between items-baseline">
                                                                 <div>
@@ -956,17 +1336,23 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
-                                        className={`${sectionHoverBgClass} -m-2 p-2 rounded transition-colors`}
+                                        className={getSectionSurfaceClass('skills')}
                                         style={sectionSurfaceStyle}
                                     >
                                         <h2
-                    className={`text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                    style={sectionTitleStyle}
-                >
+                                            className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                                            style={{ ...sectionTitleStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => handleSectionTitleTouchStart(event, 'skills')
+                                            }
+                                        >
                                             专业技能
                                         </h2>
                                         <div
                                             className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"
+                                            data-rf-item-container="skills"
                                             onDragOver={
                                                 isReadOnly
                                                     ? undefined
@@ -1031,6 +1417,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
                                                                 <Edit3
                                                                     className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                                    onTouchStart={stopTouchStartPropagation}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         if (!editableSkill) {
@@ -1042,8 +1429,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             </div>
                                                         ) : null}
                                                         <div
-                                                            className={`${itemHoverBgClass} -m-2 p-2 rounded transition-colors`}
-                                                            style={itemSurfaceStyle}
+                                                            className={getItemSurfaceClass(itemKey)}
+                                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                                            onTouchStart={
+                                                                isReadOnly
+                                                                    ? undefined
+                                                                    : (event) => handleItemCardTouchStart(event, itemKey)
+                                                            }
                                                         >
                                                             <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
                                                                 <span className="font-bold text-gray-900">{group.name}:</span>
