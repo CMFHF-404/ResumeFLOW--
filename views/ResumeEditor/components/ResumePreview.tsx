@@ -69,6 +69,8 @@ const TOUCH_DRAG_CANCEL_DISTANCE_PX = 14;
 const TOUCH_AUTOSCROLL_EDGE_PX = 88;
 const TOUCH_AUTOSCROLL_MAX_STEP_PX = 18;
 const TOUCH_DRAG_PREVIEW_LIFT_PX = 10;
+const EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO = 1.4;
+const DESKTOP_EDITOR_MEDIA_QUERY = '(min-width: 768px)';
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -110,6 +112,23 @@ const detectTouchOnlyInteractionEnvironment = () => {
         || window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches;
 
     return hasCoarsePointer && !hasFineHoverPointer;
+};
+
+const detectDesktopEditorViewport = () => {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    return window.matchMedia(DESKTOP_EDITOR_MEDIA_QUERY).matches;
+};
+
+const resolveElementVerticalPadding = (element: HTMLElement) => {
+    const computedStyle = window.getComputedStyle(element);
+    const paddingTop = Number.parseFloat(computedStyle.paddingTop);
+    const paddingBottom = Number.parseFloat(computedStyle.paddingBottom);
+
+    return (Number.isFinite(paddingTop) ? paddingTop : 0)
+        + (Number.isFinite(paddingBottom) ? paddingBottom : 0);
 };
 
 const resolveSectionSpacingPx = (spacingClass: string) => {
@@ -898,6 +917,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return;
         }
 
+        const scrollContainer = previewScrollRef.current;
         const viewport = previewViewportRef.current;
         const previewElement = previewRef.current;
         if (!viewport || !previewElement) {
@@ -911,7 +931,20 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return;
         }
 
-        const scale = Math.min(1, availableWidth / intrinsicWidth);
+        const widthFitScale = availableWidth / intrinsicWidth;
+        let scale = widthFitScale;
+
+        const isDesktopEditorPreview = previewScope === 'editor' && detectDesktopEditorViewport();
+        if (isDesktopEditorPreview && scrollContainer) {
+            const availableHeight = scrollContainer.clientHeight - resolveElementVerticalPadding(scrollContainer);
+
+            if (availableHeight > 0 && intrinsicHeight > 0) {
+                const heightFitScale = (availableHeight * EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO) / intrinsicHeight;
+                scale = Math.min(scale, heightFitScale);
+            }
+        }
+
+        scale = Math.min(1, scale);
         const nextMetrics = {
             scale,
             widthPx: intrinsicWidth * scale,
@@ -928,7 +961,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             }
             return nextMetrics;
         });
-    }, [isScaledEditorPreview, previewRef]);
+    }, [isScaledEditorPreview, previewRef, previewScope]);
 
     React.useLayoutEffect(() => {
         if (!isScaledEditorPreview) {
@@ -952,6 +985,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             syncScaledPreviewMetrics();
         });
 
+        if (previewScrollRef.current) {
+            resizeObserver.observe(previewScrollRef.current);
+        }
         if (previewViewportRef.current) {
             resizeObserver.observe(previewViewportRef.current);
         }
