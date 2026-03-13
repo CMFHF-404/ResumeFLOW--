@@ -11,6 +11,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
+import { trackResumeDuplicated } from '../utils/analyticsTracker';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -357,6 +358,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const duplicateResume = async (id: string, sourceName: string) => {
     const toastId = showToastLoading(COPY_TOAST_MESSAGES.loading);
+    const startedAt = Date.now();
     try {
       setIsCopyingResume(true);
       const duplicated = await resumeService.duplicate(id, { title: `${sourceName}${COPY_SUFFIX}` });
@@ -364,9 +366,22 @@ const Dashboard: React.FC<DashboardProps> = ({
       setResumes((prev) => {
         return [nextResume, ...prev];
       });
+      trackResumeDuplicated({
+        source: 'dashboard',
+        action: 'success',
+        sourceResumeId: id,
+        duplicatedResumeId: duplicated.id,
+        durationMs: Date.now() - startedAt,
+      });
       updateToast(toastId, { message: COPY_TOAST_MESSAGES.success, type: 'success', duration: 2000 });
     } catch (error) {
       console.error('[Dashboard] 创建副本失败:', error);
+      trackResumeDuplicated({
+        source: 'dashboard',
+        action: 'error',
+        sourceResumeId: id,
+        durationMs: Date.now() - startedAt,
+      });
       updateToast(toastId, { message: COPY_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
     } finally {
       setIsCopyingResume(false);

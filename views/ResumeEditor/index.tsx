@@ -36,9 +36,14 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { extractThoughtHeadline } from '../../utils/aiThought';
 import {
+    trackBossGreetingResult,
+    trackBossGreetingStart,
     trackLayoutModeChange,
     trackModuleReordered,
+    trackResumeDuplicated,
     trackResumeExported,
+    trackSmartAssemblyResult,
+    trackSmartAssemblyStart,
     trackSmartOnePageTriggered,
 } from '../../utils/analyticsTracker';
 import { mapResumesToDashboard } from '../../utils/dashboardResumeMapper';
@@ -1857,6 +1862,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     ]);
     const runCreateResumeFlow = useCallback(async (): Promise<CreateResumeFlowResult> => {
         let nextResume: ResumeRecord;
+        let duplicateStartedAt: number | null = null;
         if (!resumeId) {
             try {
                 nextResume = await resumeService.create({ title: UNTITLED_RESUME_TITLE });
@@ -1869,6 +1875,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 };
             }
         } else {
+            duplicateStartedAt = Date.now();
             await flushResumeConfig(buildCommittedResumeConfigSnapshot());
 
             let duplicated: ResumeRecord;
@@ -1876,6 +1883,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 duplicated = await resumeService.duplicate(resumeId);
             } catch (error) {
                 console.error('[ResumeEditor] 创建副本失败:', error);
+                trackResumeDuplicated({
+                    source: 'editor',
+                    action: 'error',
+                    sourceResumeId: resumeId,
+                    durationMs: Date.now() - duplicateStartedAt,
+                });
                 return {
                     status: 'failed',
                     stage: 'duplicate',
@@ -1889,6 +1902,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             } catch (error) {
                 console.error('[ResumeEditor] 新副本重命名失败:', error);
                 await refreshDashboardResumesFromServer();
+                trackResumeDuplicated({
+                    source: 'editor',
+                    action: 'partial',
+                    sourceResumeId: resumeId,
+                    duplicatedResumeId: duplicated.id,
+                    durationMs: Date.now() - duplicateStartedAt,
+                });
                 return {
                     status: 'partial',
                     stage: 'rename',
@@ -1901,6 +1921,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const reloadResult = await reloadResumeContext(nextResume.id);
         if (reloadResult.status !== 'success') {
             await refreshDashboardResumesFromServer();
+            if (resumeId && duplicateStartedAt !== null) {
+                trackResumeDuplicated({
+                    source: 'editor',
+                    action: 'partial',
+                    sourceResumeId: resumeId,
+                    duplicatedResumeId: nextResume.id,
+                    durationMs: Date.now() - duplicateStartedAt,
+                });
+            }
             return {
                 status: 'partial',
                 stage: 'load',
@@ -1917,12 +1946,31 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
         const syncResult = await refreshDashboardResumesFromServer();
         if (syncResult.status === 'failed') {
+            if (resumeId && duplicateStartedAt !== null) {
+                trackResumeDuplicated({
+                    source: 'editor',
+                    action: 'warning',
+                    sourceResumeId: resumeId,
+                    duplicatedResumeId: nextResume.id,
+                    durationMs: Date.now() - duplicateStartedAt,
+                });
+            }
             return {
                 status: 'warning',
                 stage: 'sync',
                 resumeId: nextResume.id,
                 error: syncResult.error,
             };
+        }
+
+        if (resumeId && duplicateStartedAt !== null) {
+            trackResumeDuplicated({
+                source: 'editor',
+                action: 'success',
+                sourceResumeId: resumeId,
+                duplicatedResumeId: nextResume.id,
+                durationMs: Date.now() - duplicateStartedAt,
+            });
         }
 
         return {
@@ -2635,9 +2683,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
+            trackSmartAssemblyResult({
+                resumeId,
+                action: 'empty_jd',
+            });
             showToastError(AUTO_ASSEMBLY_TOAST_MESSAGES.emptyJd);
             return;
         }
+        const startedAt = Date.now();
+        trackSmartAssemblyStart({ resumeId });
         const requestedResumeId = resumeId;
         const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
         const requestId = autoAssembleRequestIdRef.current + 1;
@@ -2663,12 +2717,32 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return;
             }
             if (!effectiveResult) {
+                trackSmartAssemblyResult({
+                    resumeId,
+                    action: 'analysis_unavailable',
+                    durationMs: Date.now() - startedAt,
+                });
                 closeToast(toastId);
                 releaseActiveAutoAssembleToast();
                 return;
             }
             const selection = buildAutoAssemblySelection(effectiveResult);
+            const selectionMetrics = {
+                experienceCount: selection.experienceIds.length,
+                certificationCount: selection.certificationIds.length,
+                skillCount: selection.skillIds.length,
+                totalSelected:
+                    selection.experienceIds.length
+                    + selection.certificationIds.length
+                    + selection.skillIds.length,
+            };
             if (!selection.hasMatchedExperience) {
+                trackSmartAssemblyResult({
+                    resumeId,
+                    action: 'no_match',
+                    durationMs: Date.now() - startedAt,
+                    ...selectionMetrics,
+                });
                 updateToast(toastId, {
                     message: AUTO_ASSEMBLY_TOAST_MESSAGES.noExperienceMatch,
                     type: 'error',
@@ -2705,6 +2779,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 releaseActiveAutoAssembleToast();
                 return;
             }
+            trackSmartAssemblyResult({
+                resumeId,
+                action: smartPageResult.status === 'fit'
+                    ? 'success'
+                    : smartPageResult.status === 'skipped'
+                        ? 'skipped'
+                        : 'partial_overflow',
+                durationMs: Date.now() - startedAt,
+                ...selectionMetrics,
+            });
             if (smartPageResult.status !== 'skipped') {
                 await waitForPreviewUpdate(2);
                 commitLayoutSnapshot(latestLayoutSnapshotRef.current);
@@ -2725,6 +2809,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return;
             }
             console.error('[ResumeEditor] 一键组装失败:', error);
+            trackSmartAssemblyResult({
+                resumeId,
+                action: 'error',
+                durationMs: Date.now() - startedAt,
+            });
             updateToast(toastId, {
                 message: AUTO_ASSEMBLY_TOAST_MESSAGES.error,
                 type: 'error',
@@ -2765,6 +2854,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     const generateBossGreeting = useCallback(async (options?: { forceRefresh?: boolean }) => {
         const forceRefresh = options?.forceRefresh ?? false;
+        const bossGreetingSource = forceRefresh ? 'refresh' : 'generate' as const;
         const canReuseBossGreeting = !forceRefresh && Boolean(
             bossGreeting
             && !isBossGreetingOutdated
@@ -2774,13 +2864,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         if (canReuseBossGreeting) {
-            setIsBossGreetingVisible((prev) => !prev);
+            const nextIsVisible = !isBossGreetingVisible;
+            setIsBossGreetingVisible(nextIsVisible);
+            trackBossGreetingResult({
+                resumeId,
+                source: 'toggle',
+                action: nextIsVisible ? 'shown' : 'hidden',
+            });
             return;
         }
         if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
+            trackBossGreetingResult({
+                resumeId,
+                source: bossGreetingSource,
+                action: 'empty',
+            });
             showToastError(BOSS_GREETING_TOAST_MESSAGES.empty);
             return;
         }
+        const startedAt = Date.now();
+        trackBossGreetingStart({
+            resumeId,
+            source: bossGreetingSource,
+        });
         const requestedResumeId = resumeId;
         const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
         const requestId = bossGreetingRequestIdRef.current + 1;
@@ -2804,11 +2910,23 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return;
             }
             if (!effectiveResult) {
+                trackBossGreetingResult({
+                    resumeId,
+                    source: bossGreetingSource,
+                    action: 'analysis_unavailable',
+                    durationMs: Date.now() - startedAt,
+                });
                 closeToast(toastId);
                 releaseActiveBossGreetingToast();
                 return;
             }
             if (!effectiveResult.summary?.trim()) {
+                trackBossGreetingResult({
+                    resumeId,
+                    source: bossGreetingSource,
+                    action: 'empty',
+                    durationMs: Date.now() - startedAt,
+                });
                 updateToast(toastId, {
                     message: BOSS_GREETING_TOAST_MESSAGES.empty,
                     type: 'error',
@@ -2857,6 +2975,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
             setBossGreeting(nextGreeting);
             setBossGreetingSignature(requestedBossGreetingSignature);
+            trackBossGreetingResult({
+                resumeId,
+                source: bossGreetingSource,
+                action: 'success',
+                durationMs: Date.now() - startedAt,
+            });
             updateToast(toastId, {
                 message: BOSS_GREETING_TOAST_MESSAGES.success,
                 type: 'success',
@@ -2870,6 +2994,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return;
             }
             console.error('[ResumeEditor] 生成 BOSS 招呼语失败:', error);
+            trackBossGreetingResult({
+                resumeId,
+                source: bossGreetingSource,
+                action: 'error',
+                durationMs: Date.now() - startedAt,
+            });
             updateToast(toastId, {
                 message: BOSS_GREETING_TOAST_MESSAGES.error,
                 type: 'error',
@@ -2884,6 +3014,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [
         analysisResult,
         bossGreeting,
+        isBossGreetingVisible,
         isBossGreetingOutdated,
         isGeneratingBossGreeting,
         isOutdated,
@@ -2909,8 +3040,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [generateBossGreeting]);
 
     const handleCollapseBossGreeting = useCallback(() => {
+        trackBossGreetingResult({
+            resumeId,
+            source: 'toggle',
+            action: 'hidden',
+        });
         setIsBossGreetingVisible(false);
-    }, []);
+    }, [resumeId]);
 
     const handleCopyBossGreeting = useCallback(async () => {
         if (!bossGreeting.trim()) {
@@ -2921,12 +3057,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 throw new Error('clipboard_unavailable');
             }
             await navigator.clipboard.writeText(bossGreeting);
+            trackBossGreetingResult({
+                resumeId,
+                source: 'copy',
+                action: 'success',
+            });
             showToastSuccess(BOSS_GREETING_TOAST_MESSAGES.copySuccess);
         } catch (error) {
             console.error('[ResumeEditor] 复制 BOSS 招呼语失败:', error);
+            trackBossGreetingResult({
+                resumeId,
+                source: 'copy',
+                action: 'error',
+            });
             showToastError(BOSS_GREETING_TOAST_MESSAGES.copyError);
         }
-    }, [bossGreeting, showToastError, showToastSuccess]);
+    }, [bossGreeting, resumeId, showToastError, showToastSuccess]);
 
     useEffect(() => {
         autoAssembleRequestIdRef.current += 1;

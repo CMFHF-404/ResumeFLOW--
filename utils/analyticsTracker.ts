@@ -46,6 +46,31 @@ type JDAnalysisPayload = {
   durationMs?: number;
 };
 
+type SmartAssemblyPayload = {
+  resumeId?: string | null;
+  action?: 'success' | 'partial_overflow' | 'no_match' | 'skipped' | 'error' | 'empty_jd' | 'analysis_unavailable';
+  durationMs?: number;
+  experienceCount?: number;
+  certificationCount?: number;
+  skillCount?: number;
+  totalSelected?: number;
+};
+
+type BossGreetingPayload = {
+  resumeId?: string | null;
+  source: 'generate' | 'refresh' | 'copy' | 'toggle';
+  action?: 'success' | 'error' | 'empty' | 'shown' | 'hidden' | 'analysis_unavailable';
+  durationMs?: number;
+};
+
+type ResumeDuplicatedPayload = {
+  source: 'dashboard' | 'editor';
+  action: 'success' | 'error' | 'partial' | 'warning';
+  sourceResumeId?: string | null;
+  duplicatedResumeId?: string | null;
+  durationMs?: number;
+};
+
 type LayoutChangePayload = {
   from: string;
   to: string;
@@ -160,6 +185,72 @@ export const trackJDAnalysisComplete = ({
     ...(typeof durationMs === 'number' ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs } : {}),
   });
   incrementAnalyticsCounter(authUserKey, 'aiAnalysisCount');
+};
+
+export const trackSmartAssemblyStart = ({ resumeId }: Pick<SmartAssemblyPayload, 'resumeId'>) => {
+  trackEvent(ANALYTICS_EVENTS.SMART_ASSEMBLY_START, {
+    ...(resumeId ? { [ANALYTICS_PROPERTIES.RESUME_ID]: resumeId } : {}),
+  });
+};
+
+export const trackSmartAssemblyResult = ({
+  resumeId,
+  action,
+  durationMs,
+  experienceCount,
+  certificationCount,
+  skillCount,
+  totalSelected,
+}: SmartAssemblyPayload) => {
+  trackEvent(ANALYTICS_EVENTS.SMART_ASSEMBLY_RESULT, {
+    ...(resumeId ? { [ANALYTICS_PROPERTIES.RESUME_ID]: resumeId } : {}),
+    ...(action ? { [ANALYTICS_PROPERTIES.ACTION]: action } : {}),
+    ...(typeof durationMs === 'number' ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs } : {}),
+    ...(typeof experienceCount === 'number' ? { [ANALYTICS_PROPERTIES.EXPERIENCE_COUNT]: experienceCount } : {}),
+    ...(typeof certificationCount === 'number' ? { [ANALYTICS_PROPERTIES.CERTIFICATION_COUNT]: certificationCount } : {}),
+    ...(typeof skillCount === 'number' ? { [ANALYTICS_PROPERTIES.SKILL_COUNT]: skillCount } : {}),
+    ...(typeof totalSelected === 'number' ? { [ANALYTICS_PROPERTIES.TOTAL_SELECTED]: totalSelected } : {}),
+  });
+};
+
+export const trackBossGreetingStart = ({
+  resumeId,
+  source,
+}: Pick<BossGreetingPayload, 'resumeId' | 'source'>) => {
+  trackEvent(ANALYTICS_EVENTS.BOSS_GREETING_START, {
+    ...(resumeId ? { [ANALYTICS_PROPERTIES.RESUME_ID]: resumeId } : {}),
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+  });
+};
+
+export const trackBossGreetingResult = ({
+  resumeId,
+  source,
+  action,
+  durationMs,
+}: BossGreetingPayload) => {
+  trackEvent(ANALYTICS_EVENTS.BOSS_GREETING_RESULT, {
+    ...(resumeId ? { [ANALYTICS_PROPERTIES.RESUME_ID]: resumeId } : {}),
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+    ...(action ? { [ANALYTICS_PROPERTIES.ACTION]: action } : {}),
+    ...(typeof durationMs === 'number' ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs } : {}),
+  });
+};
+
+export const trackResumeDuplicated = ({
+  source,
+  action,
+  sourceResumeId,
+  duplicatedResumeId,
+  durationMs,
+}: ResumeDuplicatedPayload) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_DUPLICATED, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+    [ANALYTICS_PROPERTIES.ACTION]: action,
+    ...(sourceResumeId ? { [ANALYTICS_PROPERTIES.SOURCE_RESUME_ID]: sourceResumeId } : {}),
+    ...(duplicatedResumeId ? { [ANALYTICS_PROPERTIES.DUPLICATED_RESUME_ID]: duplicatedResumeId } : {}),
+    ...(typeof durationMs === 'number' ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs } : {}),
+  });
 };
 
 export const trackLayoutModeChange = ({ from, to }: LayoutChangePayload) => {
