@@ -1,4 +1,5 @@
 export const DEFAULT_RESUME_TITLE = "未命名简历";
+export const UNTITLED_RESUME_TITLE = "未命名简历";
 
 export const MATCH_BADGE_STYLES = {
   emerald: {

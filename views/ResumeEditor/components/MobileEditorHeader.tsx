@@ -32,6 +32,7 @@ export type MobileEditorHeaderProps = {
     onAutoAssemble: () => void;
     isAutoAssembling: boolean;
     onCreateResume: () => void;
+    canCreateResume: boolean;
     isCreatingResume: boolean;
     isSmartPageApplied: boolean;
     onAdjustToSinglePage: () => void;
@@ -72,6 +73,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onAutoAssemble,
     isAutoAssembling,
     onCreateResume,
+    canCreateResume,
     isCreatingResume,
     isSmartPageApplied,
     onAdjustToSinglePage,
@@ -149,6 +151,13 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         : bossGreeting && isBossGreetingOutdated
             ? '重新生成 BOSS 招呼语'
             : '生成 BOSS 招呼语';
+    const isCreateResumeDisabled = isCreatingResume || !canCreateResume;
+    const createResumeLabel = isCreatingResume ? '新建中' : '新建简历';
+    const createResumeTitle = isCreatingResume
+        ? '新建中...'
+        : canCreateResume
+            ? '新建简历'
+            : '当前简历加载中';
 
     const handleStartEdit = () => {
         setDraftName(resumeName);
@@ -295,13 +304,13 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 <button
                                     type="button"
                                     onClick={onCreateResume}
-                                    disabled={isCreatingResume}
+                                    disabled={isCreateResumeDisabled}
                                     className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                    aria-label={isCreatingResume ? '创建副本中' : '创建副本'}
-                                    title={isCreatingResume ? '创建副本中...' : '创建副本'}
+                                    aria-label={createResumeTitle}
+                                    title={createResumeTitle}
                                 >
                                     <CopyPlus className="h-4 w-4" />
-                                    副本
+                                    {createResumeLabel}
                                 </button>
                                 <button
                                     type="button"

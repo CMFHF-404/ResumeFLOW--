@@ -47,12 +47,12 @@ const CollapsedCertificationCard: React.FC<{
         >
             <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate">
+                    <div className="flex items-center gap-3 mb-1 min-w-0">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate min-w-0 shrink">
                             {data.name || '未填写证书名称'}
                         </h3>
-                        <span className="text-gray-300 dark:text-gray-600">|</span>
-                        <span className="text-gray-700 dark:text-gray-300 font-medium truncate">
+                        <span className="shrink-0 text-gray-300 dark:text-gray-600">|</span>
+                        <span className="text-gray-700 dark:text-gray-300 font-medium truncate min-w-0 shrink">
                             {data.issuer || '未填写颁发机构'}
                         </span>
                     </div>
