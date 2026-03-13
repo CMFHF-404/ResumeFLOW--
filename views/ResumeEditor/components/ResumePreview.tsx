@@ -31,8 +31,13 @@ type TouchDragSession = {
     mode: TouchDragMode;
     sourceId: string;
     container: HTMLElement | null;
+    sourceElement: HTMLElement | null;
     startX: number;
     startY: number;
+    currentX: number;
+    currentY: number;
+    sourceRectLeft: number;
+    sourceRectTop: number;
     activated: boolean;
     timerId: number | null;
 };
@@ -41,6 +46,12 @@ type TouchFeedbackState = {
     sourceId: string;
     phase: 'pressing' | 'dragging';
 } | null;
+type TouchDragPreviewState = {
+    sourceId: string;
+    width: number;
+    height: number;
+    html: string;
+};
 
 const STAR_CONTEXT_SEPARATOR = ' ';
 const normalizeStarText = (value?: string) => value?.trim() ?? '';
@@ -48,13 +59,16 @@ const LIST_GAP_CLASS = 'gap-y-[var(--rf-list-spacing)]';
 const RICH_TEXT_LIST_NESTED_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5';
 const DATA_ITEM_ID_ATTR = 'data-rf-item-id';
 const DATA_ITEM_CONTAINER_ATTR = 'data-rf-item-container';
+const DATA_ITEM_SURFACE_ATTR = 'data-rf-item-surface';
 const DATA_SECTION_ID_ATTR = 'data-rf-section-id';
+const DATA_SECTION_SURFACE_ATTR = 'data-rf-section-surface';
 const PREVIEW_SCALE_EPSILON = 0.001;
 const PREVIEW_SIZE_EPSILON = 0.5;
 const TOUCH_LONG_PRESS_DELAY_MS = 260;
 const TOUCH_DRAG_CANCEL_DISTANCE_PX = 14;
 const TOUCH_AUTOSCROLL_EDGE_PX = 88;
 const TOUCH_AUTOSCROLL_MAX_STEP_PX = 18;
+const TOUCH_DRAG_PREVIEW_LIFT_PX = 10;
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -82,6 +96,20 @@ const buildPreviewTypographyCss = (scale: number, previewScope: string) => {
         .a4-preview[data-rf-preview-scope="${previewScope}"] .text-3xl { font-size: ${px(TAILWIND_TEXT_SIZES_PX['3xl'])}; }
         .a4-preview[data-rf-preview-scope="${previewScope}"] .text-\\[11px\\] { font-size: ${px(11)}; }
     `;
+};
+
+const detectTouchOnlyInteractionEnvironment = () => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+        return false;
+    }
+
+    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
+        || window.matchMedia('(any-pointer: coarse)').matches
+        || navigator.maxTouchPoints > 0;
+    const hasFineHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+        || window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches;
+
+    return hasCoarsePointer && !hasFineHoverPointer;
 };
 
 const resolveSectionSpacingPx = (spacingClass: string) => {
@@ -232,7 +260,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const previewScrollRef = React.useRef<HTMLElement | null>(null);
     const previewViewportRef = React.useRef<HTMLDivElement | null>(null);
     const touchSessionRef = React.useRef<TouchDragSession | null>(null);
+    const touchDragPreviewRef = React.useRef<HTMLDivElement | null>(null);
+    const desktopDragPreviewRef = React.useRef<HTMLDivElement | null>(null);
     const [touchFeedback, setTouchFeedback] = React.useState<TouchFeedbackState>(null);
+    const [touchDragPreview, setTouchDragPreview] = React.useState<TouchDragPreviewState | null>(null);
+    const [isTouchOnlyInteractionEnvironment, setIsTouchOnlyInteractionEnvironment] = React.useState(
+        detectTouchOnlyInteractionEnvironment
+    );
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
         [fontSize, previewScope]
@@ -293,6 +327,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     );
 
     const isReadOnly = Boolean(readOnly);
+    const enableNativeHtmlDrag = !isReadOnly && !isTouchOnlyInteractionEnvironment;
+    const isTouchDragging = touchFeedback?.phase === 'dragging';
 
     // 拖拽时浏览器可能“冻结”hover 状态（尤其是起始元素），导致 hover 高光在拖动过程中残留。
     // 因此拖拽期间禁用所有 hover 视觉反馈，只保留拖拽交互本身（实时重排）。
@@ -326,6 +362,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
         const feedbackPhase = getTouchFeedbackState('section', sectionId);
         const baseClass = `-m-2 rounded p-2 ${interactionTransitionClass}`;
+        if (feedbackPhase === 'dragging' && touchDragPreview?.sourceId === sectionId) {
+            return `${baseClass} border border-dashed border-primary/35 bg-primary/[0.03] shadow-none`;
+        }
         if (feedbackPhase === 'dragging') {
             return `${baseClass} bg-primary/10 ring-1 ring-primary/35 shadow-[0_14px_32px_rgba(16,185,129,0.14)] -translate-y-0.5`;
         }
@@ -333,10 +372,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return `${baseClass} bg-primary/6 ring-1 ring-primary/20 shadow-[0_10px_22px_rgba(16,185,129,0.10)]`;
         }
         return baseClass;
-    }, [getTouchFeedbackState, interactionTransitionClass]);
+    }, [getTouchFeedbackState, interactionTransitionClass, touchDragPreview?.sourceId]);
     const getItemSurfaceClass = React.useCallback((itemKey: string) => {
         const feedbackPhase = getTouchFeedbackState('item', itemKey);
         const baseClass = `${itemHoverBgClass} -m-2 rounded p-2 ${touchSelectionClass} ${interactionTransitionClass}`;
+        if (feedbackPhase === 'dragging' && touchDragPreview?.sourceId === itemKey) {
+            return `${baseClass} opacity-20 ring-1 ring-primary/15 shadow-none`;
+        }
         if (feedbackPhase === 'dragging') {
             return `${baseClass} bg-white ring-1 ring-primary/35 shadow-[0_18px_38px_rgba(15,23,42,0.16)] -translate-y-1`;
         }
@@ -344,7 +386,126 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return `${baseClass} bg-white/95 ring-1 ring-primary/20 shadow-[0_10px_24px_rgba(15,23,42,0.10)] -translate-y-0.5`;
         }
         return baseClass;
-    }, [getTouchFeedbackState, interactionTransitionClass, itemHoverBgClass, touchSelectionClass]);
+    }, [getTouchFeedbackState, interactionTransitionClass, itemHoverBgClass, touchDragPreview?.sourceId, touchSelectionClass]);
+
+    const clearTouchDragPreview = React.useCallback(() => {
+        setTouchDragPreview(null);
+    }, []);
+
+    const clearDesktopDragPreview = React.useCallback(() => {
+        const previewNode = desktopDragPreviewRef.current;
+        if (!previewNode) {
+            return;
+        }
+
+        previewNode.remove();
+        desktopDragPreviewRef.current = null;
+    }, []);
+
+    const createDesktopDragPreview = React.useCallback((
+        event: React.DragEvent<HTMLElement>,
+        sourceElement: HTMLElement | null
+    ) => {
+        if (!event.dataTransfer || !sourceElement || typeof document === 'undefined') {
+            return;
+        }
+
+        clearDesktopDragPreview();
+
+        const rect = sourceElement.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            return;
+        }
+
+        const clone = sourceElement.cloneNode(true) as HTMLElement;
+        clone.style.margin = '0';
+        clone.style.width = `${rect.width}px`;
+        clone.style.height = `${rect.height}px`;
+        clone.style.maxWidth = 'none';
+        clone.style.transform = 'none';
+        clone.style.pointerEvents = 'none';
+        clone.style.opacity = '1';
+        clone.style.boxSizing = 'border-box';
+
+        const previewNode = document.createElement('div');
+        previewNode.style.position = 'fixed';
+        previewNode.style.left = '-9999px';
+        previewNode.style.top = '-9999px';
+        previewNode.style.pointerEvents = 'none';
+        previewNode.style.zIndex = '-1';
+        previewNode.style.width = `${rect.width}px`;
+        previewNode.style.height = `${rect.height}px`;
+        previewNode.style.borderRadius = '18px';
+        previewNode.style.overflow = 'visible';
+        previewNode.style.filter = 'drop-shadow(0 22px 40px rgba(15, 23, 42, 0.18))';
+        previewNode.style.transform = 'scale(1.03)';
+        previewNode.style.transformOrigin = 'top left';
+        previewNode.appendChild(clone);
+        document.body.appendChild(previewNode);
+        desktopDragPreviewRef.current = previewNode;
+
+        const offsetX = Math.min(rect.width - 12, Math.max(12, event.clientX - rect.left));
+        const offsetY = Math.min(rect.height - 12, Math.max(12, event.clientY - rect.top));
+        event.dataTransfer.setDragImage(previewNode, offsetX, offsetY);
+    }, [clearDesktopDragPreview]);
+
+    const updateTouchDragPreviewPosition = React.useCallback((clientX: number, clientY: number) => {
+        const previewNode = touchDragPreviewRef.current;
+        const session = touchSessionRef.current;
+        const previewElement = previewRef.current;
+        if (!previewNode || !session || !previewElement) {
+            return;
+        }
+
+        const previewRect = previewElement.getBoundingClientRect();
+        const previewScale = previewElement.offsetWidth > 0
+            ? previewRect.width / previewElement.offsetWidth
+            : 1;
+        const safeScale = previewScale > 0 ? previewScale : 1;
+        const left = (clientX - previewRect.left - session.startX + session.sourceRectLeft) / safeScale;
+        const top = (clientY - previewRect.top - session.startY + session.sourceRectTop) / safeScale
+            - (TOUCH_DRAG_PREVIEW_LIFT_PX / safeScale);
+
+        previewNode.style.transform = `translate3d(${left}px, ${top}px, 0) scale(1.03)`;
+    }, [previewRef]);
+
+    const createTouchDragPreview = React.useCallback((session: TouchDragSession) => {
+        if (!session.sourceElement) {
+            clearTouchDragPreview();
+            return;
+        }
+
+        const previewElement = previewRef.current;
+        if (!previewElement) {
+            clearTouchDragPreview();
+            return;
+        }
+
+        const sourceRect = session.sourceElement.getBoundingClientRect();
+        const previewRect = previewElement.getBoundingClientRect();
+        const previewScale = previewElement.offsetWidth > 0
+            ? previewRect.width / previewElement.offsetWidth
+            : 1;
+        const safeScale = previewScale > 0 ? previewScale : 1;
+        const clone = session.sourceElement.cloneNode(true) as HTMLElement;
+        clone.style.margin = '0';
+        clone.style.width = '100%';
+        clone.style.height = '100%';
+        clone.style.maxWidth = 'none';
+        clone.style.transform = 'none';
+        clone.style.pointerEvents = 'none';
+        clone.style.opacity = '1';
+
+        session.sourceRectLeft = sourceRect.left;
+        session.sourceRectTop = sourceRect.top;
+
+        setTouchDragPreview({
+            sourceId: session.sourceId,
+            width: sourceRect.width / safeScale,
+            height: sourceRect.height / safeScale,
+            html: clone.outerHTML,
+        });
+    }, [clearTouchDragPreview, previewRef]);
 
     const cancelTouchSession = React.useCallback(() => {
         const session = touchSessionRef.current;
@@ -356,7 +517,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }
         touchSessionRef.current = null;
         setTouchFeedback(null);
-    }, []);
+        clearTouchDragPreview();
+    }, [clearTouchDragPreview]);
 
     const finishTouchSession = React.useCallback((shouldCommit: boolean) => {
         const session = touchSessionRef.current;
@@ -369,6 +531,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         const wasActivated = session.activated;
         touchSessionRef.current = null;
         setTouchFeedback(null);
+        clearTouchDragPreview();
         if (shouldCommit && wasActivated) {
             onTouchDragEnd();
             return;
@@ -376,7 +539,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         if (wasActivated) {
             onTouchDragCancel();
         }
-    }, [onTouchDragCancel, onTouchDragEnd]);
+    }, [clearTouchDragPreview, onTouchDragCancel, onTouchDragEnd]);
 
     const autoScrollPreview = React.useCallback((clientY: number) => {
         const container = previewScrollRef.current;
@@ -449,7 +612,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         event: React.TouchEvent<HTMLElement>,
         mode: TouchDragMode,
         sourceId: string,
-        container: HTMLElement | null
+        container: HTMLElement | null,
+        sourceElement: HTMLElement | null
     ) => {
         if (isReadOnly || event.touches.length !== 1 || typeof window === 'undefined') {
             return;
@@ -469,8 +633,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             mode,
             sourceId,
             container,
+            sourceElement,
             startX: touch.clientX,
             startY: touch.clientY,
+            currentX: touch.clientX,
+            currentY: touch.clientY,
+            sourceRectLeft: 0,
+            sourceRectTop: 0,
             activated: false,
             timerId: null,
         };
@@ -492,6 +661,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             }
 
             current.activated = true;
+            createTouchDragPreview(current);
             setTouchFeedback({
                 mode,
                 sourceId,
@@ -505,13 +675,20 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }, TOUCH_LONG_PRESS_DELAY_MS);
 
         touchSessionRef.current = nextSession;
-    }, [cancelTouchSession, isReadOnly, onTouchDragEnd, onTouchItemDragStart, onTouchSectionDragStart]);
+    }, [cancelTouchSession, createTouchDragPreview, isReadOnly, onTouchDragEnd, onTouchItemDragStart, onTouchSectionDragStart]);
 
     const handleSectionTitleTouchStart = React.useCallback((
         event: React.TouchEvent<HTMLElement>,
         sectionId: string
     ) => {
-        startTouchLongPress(event, 'section', sectionId, previewContentRef.current);
+        const sectionSurface = event.currentTarget.closest(`[${DATA_SECTION_SURFACE_ATTR}]`);
+        startTouchLongPress(
+            event,
+            'section',
+            sectionId,
+            previewContentRef.current,
+            sectionSurface instanceof HTMLElement ? sectionSurface : null
+        );
     }, [previewContentRef, startTouchLongPress]);
 
     const handleItemCardTouchStart = React.useCallback((
@@ -523,12 +700,79 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             event,
             'item',
             itemKey,
-            container instanceof HTMLElement ? container : null
+            container instanceof HTMLElement ? container : null,
+            event.currentTarget
         );
     }, [startTouchLongPress]);
 
     const stopTouchStartPropagation = React.useCallback((event: React.TouchEvent<HTMLElement>) => {
         event.stopPropagation();
+    }, []);
+
+    const handleNativeSectionDragStart = React.useCallback((
+        event: React.DragEvent<HTMLElement>,
+        sectionId: string
+    ) => {
+        const sourceElement = event.currentTarget.querySelector(`[${DATA_SECTION_SURFACE_ATTR}]`);
+        createDesktopDragPreview(
+            event,
+            sourceElement instanceof HTMLElement ? sourceElement : event.currentTarget
+        );
+        onSectionDragStart(event, sectionId);
+    }, [createDesktopDragPreview, onSectionDragStart]);
+
+    const handleNativeItemDragStart = React.useCallback((
+        event: React.DragEvent<HTMLElement>,
+        itemKey: string
+    ) => {
+        event.stopPropagation();
+        const sourceElement = event.currentTarget.querySelector(`[${DATA_ITEM_SURFACE_ATTR}]`);
+        createDesktopDragPreview(
+            event,
+            sourceElement instanceof HTMLElement ? sourceElement : event.currentTarget
+        );
+        onItemDragStart(event, itemKey);
+    }, [createDesktopDragPreview, onItemDragStart]);
+
+    const handleNativeDragEnd = React.useCallback((event: React.DragEvent<HTMLElement>) => {
+        event.stopPropagation();
+        clearDesktopDragPreview();
+        onDragEnd();
+    }, [clearDesktopDragPreview, onDragEnd]);
+
+    React.useEffect(() => {
+        if (typeof window === 'undefined') {
+            return undefined;
+        }
+
+        const mediaQueries = [
+            window.matchMedia('(pointer: coarse)'),
+            window.matchMedia('(any-pointer: coarse)'),
+            window.matchMedia('(hover: hover) and (pointer: fine)'),
+            window.matchMedia('(any-hover: hover) and (any-pointer: fine)'),
+        ];
+        const updateInteractionEnvironment = () => {
+            setIsTouchOnlyInteractionEnvironment(detectTouchOnlyInteractionEnvironment());
+        };
+
+        updateInteractionEnvironment();
+        mediaQueries.forEach((mediaQuery) => {
+            if (typeof mediaQuery.addEventListener === 'function') {
+                mediaQuery.addEventListener('change', updateInteractionEnvironment);
+                return;
+            }
+            mediaQuery.addListener(updateInteractionEnvironment);
+        });
+
+        return () => {
+            mediaQueries.forEach((mediaQuery) => {
+                if (typeof mediaQuery.removeEventListener === 'function') {
+                    mediaQuery.removeEventListener('change', updateInteractionEnvironment);
+                    return;
+                }
+                mediaQuery.removeListener(updateInteractionEnvironment);
+            });
+        };
     }, []);
 
     React.useEffect(() => {
@@ -555,6 +799,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             if (!touch) {
                 return;
             }
+            session.currentX = touch.clientX;
+            session.currentY = touch.clientY;
 
             if (!session.activated) {
                 const distance = Math.hypot(touch.clientX - session.startX, touch.clientY - session.startY);
@@ -566,6 +812,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
             event.preventDefault();
             updateTouchDragHover(touch.clientX, touch.clientY);
+            updateTouchDragPreviewPosition(touch.clientX, touch.clientY);
         };
 
         const handleTouchFinish = (event: TouchEvent) => {
@@ -606,13 +853,45 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             document.removeEventListener('touchend', handleTouchFinish);
             document.removeEventListener('touchcancel', handleTouchCancel);
         };
-    }, [finishTouchSession, updateTouchDragHover]);
+    }, [finishTouchSession, updateTouchDragHover, updateTouchDragPreviewPosition]);
 
     React.useEffect(() => {
         return () => {
             cancelTouchSession();
         };
     }, [cancelTouchSession]);
+
+    React.useEffect(() => {
+        return () => {
+            clearDesktopDragPreview();
+        };
+    }, [clearDesktopDragPreview]);
+
+    React.useEffect(() => {
+        if (!isTouchDragging || typeof window === 'undefined' || typeof document === 'undefined') {
+            return undefined;
+        }
+
+        const preventScroll = (event: TouchEvent | WheelEvent) => {
+            event.preventDefault();
+        };
+
+        document.addEventListener('touchmove', preventScroll, { passive: false });
+        document.addEventListener('wheel', preventScroll, { passive: false });
+
+        return () => {
+            document.removeEventListener('touchmove', preventScroll);
+            document.removeEventListener('wheel', preventScroll);
+        };
+    }, [isTouchDragging]);
+
+    React.useLayoutEffect(() => {
+        const session = touchSessionRef.current;
+        if (!touchDragPreview || !session || !session.activated) {
+            return;
+        }
+        updateTouchDragPreviewPosition(session.currentX, session.currentY);
+    }, [touchDragPreview, updateTouchDragPreviewPosition]);
 
     const syncScaledPreviewMetrics = React.useCallback(() => {
         if (!isScaledEditorPreview) {
@@ -749,9 +1028,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 data-rf-section-id={sectionId}
                 className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                 style={sectionWrapperStyle}
-                draggable={!isReadOnly}
+                draggable={enableNativeHtmlDrag}
                 onDragStart={
-                    isReadOnly ? undefined : (event) => onSectionDragStart(event, sectionId)
+                    enableNativeHtmlDrag ? (event) => handleNativeSectionDragStart(event, sectionId) : undefined
                 }
                 onDrop={
                     isReadOnly
@@ -762,12 +1041,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         }
                 }
                 onDragEnd={
-                    isReadOnly
-                        ? undefined
-                        : (event) => {
-                            event.stopPropagation();
-                            onDragEnd();
-                        }
+                    enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                 }
             >
                 {!isReadOnly ? (
@@ -777,6 +1051,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 ) : null}
 
                 <div
+                    data-rf-section-surface={sectionId}
                     className={getSectionSurfaceClass(sectionId)}
                     style={sectionSurfaceStyle}
                 >
@@ -832,22 +1107,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key={item.id}
                                     data-rf-item-id={itemKey}
                                     className={`relative group/item ${itemDragClass}`}
-                                    draggable={!isReadOnly}
+                                    draggable={enableNativeHtmlDrag}
                                     onDragStart={
-                                        isReadOnly
-                                            ? undefined
-                                            : (event) => {
-                                                event.stopPropagation();
-                                                onItemDragStart(event, itemKey);
-                                            }
+                                        enableNativeHtmlDrag ? (event) => handleNativeItemDragStart(event, itemKey) : undefined
                                     }
                                     onDragEnd={
-                                        isReadOnly
-                                            ? undefined
-                                            : (event) => {
-                                                event.stopPropagation();
-                                                onDragEnd();
-                                            }
+                                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                     }
                                 >
                                     {!isReadOnly ? (
@@ -865,6 +1130,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
+                                        data-rf-item-surface={itemKey}
                                         className={getItemSurfaceClass(itemKey)}
                                         style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                         onTouchStart={
@@ -898,7 +1164,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         <main
             ref={previewScrollRef}
             className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8"
-            style={{ touchAction: isDragging ? 'none' : 'pan-y' }}
+            style={{
+                touchAction: isDragging ? 'none' : 'pan-y',
+                overscrollBehaviorY: isDragging ? 'none' : 'contain',
+            }}
         >
             <div
                 ref={isScaledEditorPreview ? previewViewportRef : null}
@@ -986,9 +1255,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     data-rf-section-id="education"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     style={sectionWrapperStyle}
-                                    draggable={!isReadOnly}
+                                    draggable={enableNativeHtmlDrag}
                                     onDragStart={
-                                        isReadOnly ? undefined : (event) => onSectionDragStart(event, 'education')
+                                        enableNativeHtmlDrag
+                                            ? (event) => handleNativeSectionDragStart(event, 'education')
+                                            : undefined
                                     }
                                     onDrop={
                                         isReadOnly
@@ -999,12 +1270,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             }
                                     }
                                     onDragEnd={
-                                        isReadOnly
-                                            ? undefined
-                                            : (event) => {
-                                                event.stopPropagation();
-                                                onDragEnd();
-                                            }
+                                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                     }
                                 >
                                     {!isReadOnly ? (
@@ -1014,6 +1280,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
+                                        data-rf-section-surface="education"
                                         className={getSectionSurfaceClass('education')}
                                         style={sectionSurfaceStyle}
                                     >
@@ -1076,22 +1343,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         key={edu.id}
                                                         data-rf-item-id={itemKey}
                                                         className={`relative group/item ${itemDragClass}`}
-                                                        draggable={!isReadOnly}
+                                                        draggable={enableNativeHtmlDrag}
                                                         onDragStart={
-                                                            isReadOnly
-                                                                ? undefined
-                                                                : (event) => {
-                                                                    event.stopPropagation();
-                                                                    onItemDragStart(event, itemKey);
-                                                                }
+                                                            enableNativeHtmlDrag
+                                                                ? (event) => handleNativeItemDragStart(event, itemKey)
+                                                                : undefined
                                                         }
                                                         onDragEnd={
-                                                            isReadOnly
-                                                                ? undefined
-                                                                : (event) => {
-                                                                    event.stopPropagation();
-                                                                    onDragEnd();
-                                                                }
+                                                            enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                                         }
                                                     >
                                                         {!isReadOnly ? (
@@ -1108,6 +1367,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             </div>
                                                         ) : null}
                                                         <div
+                                                            data-rf-item-surface={itemKey}
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
@@ -1152,9 +1412,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     style={sectionWrapperStyle}
                                     data-rf-section-id="certifications"
-                                    draggable={!isReadOnly}
+                                    draggable={enableNativeHtmlDrag}
                                     onDragStart={
-                                        isReadOnly ? undefined : (event) => onSectionDragStart(event, 'certifications')
+                                        enableNativeHtmlDrag
+                                            ? (event) => handleNativeSectionDragStart(event, 'certifications')
+                                            : undefined
                                     }
                                     onDrop={
                                         isReadOnly
@@ -1165,12 +1427,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             }
                                     }
                                     onDragEnd={
-                                        isReadOnly
-                                            ? undefined
-                                            : (event) => {
-                                                event.stopPropagation();
-                                                onDragEnd();
-                                            }
+                                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                     }
                                 >
                                     {!isReadOnly ? (
@@ -1180,6 +1437,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
+                                        data-rf-section-surface="certifications"
                                         className={getSectionSurfaceClass('certifications')}
                                         style={sectionSurfaceStyle}
                                     >
@@ -1237,22 +1495,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         key={cert.id}
                                                         data-rf-item-id={itemKey}
                                                         className={`relative group/item ${itemDragClass}`}
-                                                        draggable={!isReadOnly}
+                                                        draggable={enableNativeHtmlDrag}
                                                         onDragStart={
-                                                            isReadOnly
-                                                                ? undefined
-                                                                : (event) => {
-                                                                    event.stopPropagation();
-                                                                    onItemDragStart(event, itemKey);
-                                                                }
+                                                            enableNativeHtmlDrag
+                                                                ? (event) => handleNativeItemDragStart(event, itemKey)
+                                                                : undefined
                                                         }
                                                         onDragEnd={
-                                                            isReadOnly
-                                                                ? undefined
-                                                                : (event) => {
-                                                                    event.stopPropagation();
-                                                                    onDragEnd();
-                                                                }
+                                                            enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                                         }
                                                     >
                                                         {!isReadOnly ? (
@@ -1269,6 +1519,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             </div>
                                                         ) : null}
                                                         <div
+                                                            data-rf-item-surface={itemKey}
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
@@ -1308,9 +1559,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     data-rf-section-id="skills"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
                                     style={sectionWrapperStyle}
-                                    draggable={!isReadOnly}
+                                    draggable={enableNativeHtmlDrag}
                                     onDragStart={
-                                        isReadOnly ? undefined : (event) => onSectionDragStart(event, 'skills')
+                                        enableNativeHtmlDrag
+                                            ? (event) => handleNativeSectionDragStart(event, 'skills')
+                                            : undefined
                                     }
                                     onDrop={
                                         isReadOnly
@@ -1321,12 +1574,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             }
                                     }
                                     onDragEnd={
-                                        isReadOnly
-                                            ? undefined
-                                            : (event) => {
-                                                event.stopPropagation();
-                                                onDragEnd();
-                                            }
+                                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                     }
                                 >
                                     {!isReadOnly ? (
@@ -1336,6 +1584,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     ) : null}
 
                                     <div
+                                        data-rf-section-surface="skills"
                                         className={getSectionSurfaceClass('skills')}
                                         style={sectionSurfaceStyle}
                                     >
@@ -1394,22 +1643,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         key={group.name}
                                                         data-rf-item-id={itemKey}
                                                         className={`relative group/item ${itemDragClass}`}
-                                                        draggable={!isReadOnly}
+                                                        draggable={enableNativeHtmlDrag}
                                                         onDragStart={
-                                                            isReadOnly
-                                                                ? undefined
-                                                                : (event) => {
-                                                                    event.stopPropagation();
-                                                                    onItemDragStart(event, itemKey);
-                                                                }
+                                                            enableNativeHtmlDrag
+                                                                ? (event) => handleNativeItemDragStart(event, itemKey)
+                                                                : undefined
                                                         }
                                                         onDragEnd={
-                                                            isReadOnly
-                                                                ? undefined
-                                                                : (event) => {
-                                                                    event.stopPropagation();
-                                                                    onDragEnd();
-                                                                }
+                                                            enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                                         }
                                                     >
                                                         {!isReadOnly ? (
@@ -1429,6 +1670,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             </div>
                                                         ) : null}
                                                         <div
+                                                            data-rf-item-surface={itemKey}
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
@@ -1454,6 +1696,21 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         return null;
                     })}
                 </div>
+                {touchDragPreview ? (
+                    <div
+                        ref={touchDragPreviewRef}
+                        className="pointer-events-none absolute left-0 top-0 z-[60] overflow-visible rounded-[18px]"
+                        style={{
+                            width: `${touchDragPreview.width}px`,
+                            height: `${touchDragPreview.height}px`,
+                            transform: 'translate3d(-200vw, -200vh, 0) scale(1.03)',
+                            transformOrigin: 'top left',
+                            willChange: 'transform',
+                            filter: 'drop-shadow(0 22px 40px rgba(15, 23, 42, 0.18))',
+                        }}
+                        dangerouslySetInnerHTML={{ __html: touchDragPreview.html }}
+                    />
+                ) : null}
                     </div>
                 </div>
             </div>
