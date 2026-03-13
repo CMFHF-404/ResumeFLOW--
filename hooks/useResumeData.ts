@@ -19,7 +19,7 @@ import {
     Resume,
 } from '../services/resumeService';
 import { skillsService, UserSkill } from '../services/skillsService';
-import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
+import { UNTITLED_RESUME_TITLE } from '../constants/resumeConstants';
 import type {
     ActiveResumeContext,
     CachedResumeResolveResult,
@@ -46,6 +46,18 @@ type ReloadedResumeContext = {
     profile: ResumeEditorProfile;
     profileSyncMode: ProfileSyncMode;
 };
+type ReloadResumeContextSuccessResult = {
+    status: 'success';
+    resumeId: string;
+    context: ReloadedResumeContext;
+};
+type ReloadResumeContextFailureResult = {
+    status: 'failed';
+    reason: 'missing_active_resume' | 'load_error';
+    requestedId: string | null;
+    error?: unknown;
+};
+type ReloadResumeContextResult = ReloadResumeContextSuccessResult | ReloadResumeContextFailureResult;
 
 type UseResumeDataOptions = {
     configSnapshot: ResumeEditorConfig;
@@ -99,7 +111,7 @@ type UseResumeDataResult = {
     lastSavedAt: string | null;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
     flushResumeConfig: (configOverride?: ResumeEditorConfig) => Promise<void>;
-    reloadResumeContext: (resumeId?: string | null) => Promise<ReloadedResumeContext | null>;
+    reloadResumeContext: (resumeId?: string | null) => Promise<ReloadResumeContextResult>;
     suppressAutoSaveForConfig: (config: ResumeEditorConfig) => void;
     clearSuppressedAutoSave: () => void;
 };
@@ -150,7 +162,7 @@ const ensureActiveResumeId = async (resumes: Resume[]): Promise<string> => {
         setActiveResumeId(resumes[0].id);
         return resumes[0].id;
     }
-    const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
+    const created = await resumeService.create({ title: UNTITLED_RESUME_TITLE });
     setActiveResumeId(created.id);
     return created.id;
 };
@@ -595,8 +607,9 @@ const useResumeContextLoader = (
         lastSavedConfigRef,
         shouldWaitForDebouncedConfigRef,
     } = state;
-    const reloadResumeContext = useCallback(
-        async (requestedId?: string | null) => {
+    const reloadQueueRef = useRef<Promise<void>>(Promise.resolve());
+    const performReloadResumeContext = useCallback(
+        async (requestedId?: string | null): Promise<ReloadResumeContextResult> => {
             const previousHydrated = hasHydratedConfigRef.current;
             const previousSaveState = latestSaveStateRef.current;
             const previousLastSavedAt = latestLastSavedAtRef.current;
@@ -609,7 +622,11 @@ const useResumeContextLoader = (
             try {
                 const { id: activeId, detail: cachedDetail } = await resolveRequestedResumeContext(requestedId);
                 if (!activeId) {
-                    return;
+                    return {
+                        status: 'failed',
+                        reason: 'missing_active_resume',
+                        requestedId: requestedId ?? null,
+                    };
                 }
                 const [
                     detail,
@@ -640,8 +657,12 @@ const useResumeContextLoader = (
                 setSaveState('saved');
                 hasHydratedConfigRef.current = true;
                 return {
-                    profile: resolvedProfile,
-                    profileSyncMode: resolvedProfileSyncMode,
+                    status: 'success',
+                    resumeId: activeId,
+                    context: {
+                        profile: resolvedProfile,
+                        profileSyncMode: resolvedProfileSyncMode,
+                    },
                 };
             } catch (error) {
                 console.error('[ResumeEditor] 加载简历上下文失败:', error);
@@ -653,7 +674,12 @@ const useResumeContextLoader = (
                 } else {
                     setSaveState('error');
                 }
-                return null;
+                return {
+                    status: 'failed',
+                    reason: 'load_error',
+                    requestedId: requestedId ?? null,
+                    error,
+                };
             } finally {
                 setIsLoadingResume(false);
                 setIsLoadingExperiences(false);
@@ -678,6 +704,16 @@ const useResumeContextLoader = (
             setSaveState,
             shouldWaitForDebouncedConfigRef,
         ]
+    );
+    const reloadResumeContext = useCallback(
+        (requestedId?: string | null) => {
+            const queuedReload = reloadQueueRef.current
+                .catch(() => undefined)
+                .then(() => performReloadResumeContext(requestedId));
+            reloadQueueRef.current = queuedReload.then(() => undefined, () => undefined);
+            return queuedReload;
+        },
+        [performReloadResumeContext]
     );
 
     useEffect(() => {

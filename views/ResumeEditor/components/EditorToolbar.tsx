@@ -9,6 +9,7 @@ type EditorToolbarProps = {
     isSmartPageApplied: boolean;
     onAdjustToSinglePage: () => void;
     onRestoreDefault: () => void;
+    canCreateResume: boolean;
     isCreatingResume: boolean;
     onCreateResume: () => void;
     resumeName: string;
@@ -46,6 +47,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     isSmartPageApplied,
     onAdjustToSinglePage,
     onRestoreDefault,
+    canCreateResume,
     isCreatingResume,
     onCreateResume,
     resumeName,
@@ -93,6 +95,12 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
         () => buildSaveStatusClass(saveState),
         [saveState]
     );
+    const isCreateResumeDisabled = isCreatingResume || !canCreateResume;
+    const createResumeTitle = isCreatingResume
+        ? '新增中...'
+        : canCreateResume
+            ? '新增简历'
+            : '当前简历加载中';
 
     return (
         <header className="bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:px-6">
@@ -140,9 +148,9 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                                 <button
                                     onClick={onCreateResume}
                                     className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                    title={isCreatingResume ? '新增中...' : '新增简历'}
+                                    title={createResumeTitle}
                                     type="button"
-                                    disabled={isCreatingResume}
+                                    disabled={isCreateResumeDisabled}
                                 >
                                     <Plus className="w-3.5 h-3.5" />
                                 </button>
@@ -155,7 +163,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                         onClick={onCreateResume}
                         type="button"
-                        disabled={isCreatingResume}
+                        disabled={isCreateResumeDisabled}
+                        title={createResumeTitle}
                     >
                         <Plus className="w-4 h-4" />
                         {isCreatingResume ? '新增中...' : '新增简历'}

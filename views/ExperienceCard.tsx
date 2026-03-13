@@ -106,9 +106,9 @@ const CollapsedExperienceCard: React.FC<{
       <div className="hidden items-start justify-between gap-4 md:flex">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex min-w-0 items-center gap-3">
-            <h3 className="min-w-0 flex-1 truncate font-bold text-gray-900 dark:text-white">{data.org}</h3>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
-            <span className="min-w-0 flex-1 truncate font-medium text-gray-700 dark:text-gray-300">{data.title}</span>
+            <h3 className="min-w-0 shrink truncate font-bold text-gray-900 dark:text-white">{data.org}</h3>
+            <span className="shrink-0 text-gray-300 dark:text-gray-600">|</span>
+            <span className="min-w-0 shrink truncate font-medium text-gray-700 dark:text-gray-300">{data.title}</span>
           </div>
           <p className="truncate text-sm text-gray-500 dark:text-gray-400">
             {data.star?.s

@@ -41,7 +41,8 @@ import {
     trackResumeExported,
     trackSmartOnePageTriggered,
 } from '../../utils/analyticsTracker';
-import { DEFAULT_RESUME_TITLE } from '../../constants/resumeConstants';
+import { mapResumesToDashboard } from '../../utils/dashboardResumeMapper';
+import { DEFAULT_RESUME_TITLE, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
     A4_HEIGHT_MM,
@@ -289,6 +290,14 @@ type AutoAssemblyStateSnapshot = {
     selection: ManualSelectionSnapshot;
     layout: LayoutSnapshot;
 };
+type DashboardResumesSyncResult =
+    | { status: 'success' | 'skipped' }
+    | { status: 'failed'; error: unknown };
+type CreateResumeFlowResult =
+    | { status: 'success'; resumeId: string }
+    | { status: 'warning'; stage: 'sync'; resumeId: string; error: unknown }
+    | { status: 'partial'; stage: 'rename' | 'load'; resumeId: string; error?: unknown }
+    | { status: 'failed'; stage: 'create' | 'duplicate'; error: unknown };
 
 const buildDefaultSmartPageLayout = (
     density: 'compact' | 'standard' | 'spacious',
@@ -475,7 +484,10 @@ const JD_COMPANY_PATTERNS = [
 ];
 
 const normalizeResumeTitle = (value: string) => value.trim();
-const isDefaultResumeTitle = (value: string) => normalizeResumeTitle(value) === DEFAULT_RESUME_TITLE;
+const isDefaultResumeTitle = (value: string) => {
+    const normalized = normalizeResumeTitle(value);
+    return normalized === UNTITLED_RESUME_TITLE || normalized === DEFAULT_RESUME_TITLE;
+};
 
 const sanitizeAutoNamePart = (value?: string) => {
     const trimmed = value?.trim() ?? '';
@@ -609,7 +621,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
     const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
     const [isCreatingResume, setIsCreatingResume] = useState(false);
-    const [resumeName, setResumeName] = useState(DEFAULT_RESUME_TITLE);
+    const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
@@ -1170,29 +1182,25 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         },
         [cachedResumes, isCacheOwnerMatched, onResumesUpdate]
     );
-    const prependDashboardCache = useCallback((created: ResumeRecord) => {
+    const refreshDashboardResumesFromServer = useCallback(async (): Promise<DashboardResumesSyncResult> => {
         if (!onResumesUpdate || !isCacheOwnerMatched) {
-            return;
+            return { status: 'skipped' };
         }
-        const createdResume: DashboardResume = {
-            id: created.id,
-            name: created.title,
-            targetRole: created.target_role || '通用',
-            matchRate: 0,
-            createdAt: formatDateLabel(created.created_at),
-            lastModified: formatRelativeTime(created.updated_at),
-            status: 'draft',
-            type: 'general',
-        };
-        const next = [createdResume, ...cachedResumes.filter((item) => item.id !== created.id)];
-        onResumesUpdate(next);
-    }, [cachedResumes, isCacheOwnerMatched, onResumesUpdate]);
+        try {
+            const resumes = await resumeService.list({ force: true });
+            onResumesUpdate(mapResumesToDashboard(resumes));
+            return { status: 'success' };
+        } catch (error) {
+            console.error('[ResumeEditor] 刷新简历列表失败:', error);
+            return { status: 'failed', error };
+        }
+    }, [isCacheOwnerMatched, onResumesUpdate]);
     useEffect(() => {
         if (!resumeDetail?.resume) {
             return;
         }
-        const nextTitle = normalizeResumeTitle(resumeDetail.resume.title || DEFAULT_RESUME_TITLE);
-        setResumeName(nextTitle || DEFAULT_RESUME_TITLE);
+        const nextTitle = normalizeResumeTitle(resumeDetail.resume.title || UNTITLED_RESUME_TITLE);
+        setResumeName(nextTitle || UNTITLED_RESUME_TITLE);
     }, [resumeDetail]);
     const applyResumeNameUpdate = useCallback(
         async (nextName: string, options?: { silent?: boolean }) => {
@@ -1212,14 +1220,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             try {
                 const updated = await resumeService.update(resumeId, { title: normalized });
                 const updatedTitle = normalizeResumeTitle(updated.title || normalized);
-                setResumeName(updatedTitle || DEFAULT_RESUME_TITLE);
+                setResumeName(updatedTitle || UNTITLED_RESUME_TITLE);
                 if (resumeDetail) {
                     applyResumeDetail({
                         ...resumeDetail,
                         resume: {
                             ...resumeDetail.resume,
                             ...updated,
-                            title: updatedTitle || DEFAULT_RESUME_TITLE,
+                            title: updatedTitle || UNTITLED_RESUME_TITLE,
                         },
                     });
                 }
@@ -1838,51 +1846,155 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         skill.setRenamingCategoryDraft,
         skill.setRenamingCategoryTarget,
     ]);
+    const runCreateResumeFlow = useCallback(async (): Promise<CreateResumeFlowResult> => {
+        let nextResume: ResumeRecord;
+        if (!resumeId) {
+            try {
+                nextResume = await resumeService.create({ title: UNTITLED_RESUME_TITLE });
+            } catch (error) {
+                console.error('[ResumeEditor] 创建空白简历失败:', error);
+                return {
+                    status: 'failed',
+                    stage: 'create',
+                    error,
+                };
+            }
+        } else {
+            await flushResumeConfig(buildCommittedResumeConfigSnapshot());
+
+            let duplicated: ResumeRecord;
+            try {
+                duplicated = await resumeService.duplicate(resumeId);
+            } catch (error) {
+                console.error('[ResumeEditor] 创建副本失败:', error);
+                return {
+                    status: 'failed',
+                    stage: 'duplicate',
+                    error,
+                };
+            }
+
+            nextResume = duplicated;
+            try {
+                nextResume = await resumeService.update(duplicated.id, { title: UNTITLED_RESUME_TITLE });
+            } catch (error) {
+                console.error('[ResumeEditor] 新副本重命名失败:', error);
+                await refreshDashboardResumesFromServer();
+                return {
+                    status: 'partial',
+                    stage: 'rename',
+                    resumeId: duplicated.id,
+                    error,
+                };
+            }
+        }
+
+        const reloadResult = await reloadResumeContext(nextResume.id);
+        if (reloadResult.status !== 'success') {
+            await refreshDashboardResumesFromServer();
+            return {
+                status: 'partial',
+                stage: 'load',
+                resumeId: nextResume.id,
+                error: reloadResult.error,
+            };
+        }
+
+        setResumeName(UNTITLED_RESUME_TITLE);
+        resetEditorTransientState(
+            reloadResult.context.profile,
+            reloadResult.context.profileSyncMode
+        );
+
+        const syncResult = await refreshDashboardResumesFromServer();
+        if (syncResult.status === 'failed') {
+            return {
+                status: 'warning',
+                stage: 'sync',
+                resumeId: nextResume.id,
+                error: syncResult.error,
+            };
+        }
+
+        return {
+            status: 'success',
+            resumeId: nextResume.id,
+        };
+    }, [
+        buildCommittedResumeConfigSnapshot,
+        flushResumeConfig,
+        refreshDashboardResumesFromServer,
+        reloadResumeContext,
+        resetEditorTransientState,
+        resumeId,
+    ]);
     const handleCreateResume = useCallback(async () => {
         if (isCreatingResume) {
             return;
         }
-        let hasSwitchedResume = false;
+        if (isLoadingResume) {
+            showToastError('当前简历尚未加载完成，请稍后再试');
+            return;
+        }
+        const toastId = showToastLoading('正在创建并切换简历...');
         setIsCreatingResume(true);
+        suppressAutoSaveForConfig(resumeConfigSnapshot);
+
         try {
-            suppressAutoSaveForConfig(resumeConfigSnapshot);
-            await flushResumeConfig(buildCommittedResumeConfigSnapshot());
-            const created = resumeId
-                ? await resumeService.duplicate(resumeId)
-                : await resumeService.create({ title: DEFAULT_RESUME_TITLE });
-            prependDashboardCache(created);
-            const reloadedContext = await reloadResumeContext(created.id);
-            if (!reloadedContext) {
-                throw new Error('resume_reload_failed');
+            const result = await runCreateResumeFlow();
+            if (result.status === 'success') {
+                updateToast(toastId, {
+                    message: '新简历已创建并切换',
+                    type: 'success',
+                    duration: 3000,
+                });
+                return;
             }
-            resetEditorTransientState(
-                reloadedContext.profile,
-                reloadedContext.profileSyncMode
-            );
-            hasSwitchedResume = true;
-            showToastSuccess('新简历已创建');
+            if (result.status === 'warning') {
+                updateToast(toastId, {
+                    message: '新简历已创建并切换',
+                    type: 'success',
+                    duration: 3000,
+                });
+                showToastInfo('简历列表同步失败，请稍后刷新仪表盘');
+                return;
+            }
+            if (result.status === 'partial') {
+                updateToast(toastId, {
+                    message: '副本已创建，但未完成切换，请从仪表盘打开',
+                    type: 'error',
+                    duration: 4000,
+                });
+                return;
+            }
+            updateToast(toastId, {
+                message: '创建新简历失败，请稍后重试',
+                type: 'error',
+                duration: 4000,
+            });
         } catch (error) {
-            console.error('[ResumeEditor] 创建新简历失败:', error);
-            showToastError('创建新简历失败，请稍后重试');
+            console.error('[ResumeEditor] 创建简历流程异常:', error);
+            updateToast(toastId, {
+                message: '创建新简历失败，请稍后重试',
+                type: 'error',
+                duration: 4000,
+            });
         } finally {
-            if (!hasSwitchedResume) {
-                clearSuppressedAutoSave();
-            }
+            clearSuppressedAutoSave();
             setIsCreatingResume(false);
         }
     }, [
-        buildCommittedResumeConfigSnapshot,
         clearSuppressedAutoSave,
-        flushResumeConfig,
         isCreatingResume,
-        prependDashboardCache,
-        reloadResumeContext,
-        resetEditorTransientState,
+        isLoadingResume,
         resumeId,
         showToastError,
-        showToastSuccess,
+        showToastInfo,
+        showToastLoading,
         suppressAutoSaveForConfig,
         resumeConfigSnapshot,
+        runCreateResumeFlow,
+        updateToast,
     ]);
     const openMobileEditorDrawer = useCallback(() => {
         if (mobileEditorDrawerTimerRef.current !== null) {
@@ -2899,13 +3011,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 && currentAutoName
                 && normalizeResumeTitle(resumeName) === currentAutoName
             ) {
-                void applyResumeNameUpdate(DEFAULT_RESUME_TITLE, { silent: true });
+                void applyResumeNameUpdate(UNTITLED_RESUME_TITLE, { silent: true });
             }
         },
         [analysisResult, applyResumeNameUpdate, jdText, resumeName, setJdText]
     );
     const showDebugInfo =
         import.meta.env.DEV && localStorage.getItem('jdDebug') === '1';
+    const canCreateResume = !isLoadingResume;
     const isEditorBusy = isLoadingResume || isCreatingResume;
 
     useEffect(() => {
@@ -2954,6 +3067,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isSmartPageApplied={isSmartPageApplied}
                     onAdjustToSinglePage={adjustToSinglePage}
                     onRestoreDefault={restoreDefault}
+                    canCreateResume={canCreateResume}
                     isCreatingResume={isCreatingResume}
                     onCreateResume={handleCreateResume}
                     resumeName={resumeName}
@@ -2974,6 +3088,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
                     onCreateResume={handleCreateResume}
+                    canCreateResume={canCreateResume}
                     isCreatingResume={isCreatingResume}
                     isSmartPageApplied={isSmartPageApplied}
                     onAdjustToSinglePage={adjustToSinglePage}

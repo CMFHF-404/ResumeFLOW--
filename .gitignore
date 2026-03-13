@@ -57,3 +57,4 @@ env.bak/
 venv.bak/
 
 .env.local
+.claude/settings.local.json

@@ -5,14 +5,12 @@ import { resumeService } from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
-import { formatDateLabel, formatRelativeTime } from '../utils/timeUtils';
-import { clampMatchScore } from '../utils/resumeHelpers';
+import { mapResumeToDashboard, mapResumesToDashboard, resolveDashboardResumeMatchRate } from '../utils/dashboardResumeMapper';
 import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
-import { loadJDAnalysisCache } from './jdAnalysisStorage';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -28,7 +26,6 @@ const DELETE_CANCEL_LABEL = '取消';
 const COPY_SUFFIX = ' (副本)';
 const VIEW_MODE_STORAGE_KEY = 'yuanzijianli.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
-const DEFAULT_MATCH_RATE = 0;
 const DELETE_TOAST_MESSAGES = {
   loading: '正在删除简历...',
   success: '删除成功',
@@ -114,16 +111,10 @@ const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
   return value === 'list' ? 'list' : 'grid';
 };
 
-const resolveResumeMatchRate = (resumeId: string) => {
-  const cached = loadJDAnalysisCache(resumeId);
-  const score = clampMatchScore(cached?.result?.matchPercentage);
-  return typeof score === 'number' ? score : DEFAULT_MATCH_RATE;
-};
-
 const mergeMatchRatesIntoResumes = (items: Resume[]) => {
   let changed = false;
   const next = items.map((resume) => {
-    const matchRate = resolveResumeMatchRate(resume.id);
+    const matchRate = resolveDashboardResumeMatchRate(resume.id);
     if (resume.matchRate === matchRate) {
       return resume;
     }
@@ -152,27 +143,6 @@ const areResumeListsEqual = (prev: Resume[], next: Resume[]) => {
       && item.type === other.type;
   });
 };
-
-const mapResumeToDashboard = (resume: {
-  id: string;
-  title: string;
-  target_role?: string;
-  created_at: string;
-  updated_at: string;
-}): Resume => ({
-  id: resume.id,
-  name: resume.title,
-  targetRole: resume.target_role || '通用',
-  matchRate: resolveResumeMatchRate(resume.id),
-  createdAt: formatDateLabel(resume.created_at),
-  lastModified: formatRelativeTime(resume.updated_at),
-  status: 'draft',
-  type: 'general',
-});
-
-type ResumeRecord = Parameters<typeof mapResumeToDashboard>[0];
-
-const mapResumesToDashboard = (resumes: ResumeRecord[]) => resumes.map(mapResumeToDashboard);
 
 const Dashboard: React.FC<DashboardProps> = ({
   setView,
