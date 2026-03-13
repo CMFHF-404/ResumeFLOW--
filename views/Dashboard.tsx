@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, LayoutTemplate, Eye, PencilLine, UploadCloud } from 'lucide-react';
+import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X } from 'lucide-react';
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
@@ -12,6 +12,7 @@ import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
 import { trackResumeDuplicated } from '../utils/analyticsTracker';
+import { formatRelativeTime } from '../utils/timeUtils';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -22,15 +23,21 @@ interface DashboardProps {
 }
 
 const DELETE_CONFIRM_TITLE = '删除简历';
+const BULK_DELETE_CONFIRM_TITLE = '批量删除简历';
 const DELETE_CONFIRM_LABEL = '删除';
 const DELETE_CANCEL_LABEL = '取消';
 const COPY_SUFFIX = ' (副本)';
 const VIEW_MODE_STORAGE_KEY = 'yuanzijianli.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
+const MOBILE_LONG_PRESS_DURATION = 450;
 const DELETE_TOAST_MESSAGES = {
   loading: '正在删除简历...',
   success: '删除成功',
   error: '删除失败，请重试',
+} as const;
+const BATCH_DELETE_TOAST_MESSAGES = {
+  loading: '正在删除所选简历...',
+  empty: '请先选择要删除的简历',
 } as const;
 const DELETE_VERIFY_MESSAGES = {
   notRemoved: '删除未生效，已重新同步列表',
@@ -176,9 +183,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [isDeletingResume, setIsDeletingResume] = useState(false);
   const [isCopyingResume, setIsCopyingResume] = useState(false);
   const [isRenamingResume, setIsRenamingResume] = useState(false);
+  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
+  const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [batchDeleteTargetIds, setBatchDeleteTargetIds] = useState<string[]>([]);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
   const welcomeName = resolveDisplayName(userProfile?.full_name, DEFAULT_WELCOME_NAME);
   const {
     toasts,
@@ -291,6 +303,23 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const effectiveViewMode = isMobile ? 'list' : viewMode;
+  const selectedResumeIdSet = useMemo(() => new Set(selectedResumeIds), [selectedResumeIds]);
+  const selectedCount = selectedResumeIds.length;
+  const allSelected = resumes.length > 0 && selectedCount === resumes.length;
+  const pendingDeleteIds = useMemo(() => {
+    if (batchDeleteTargetIds.length > 0) {
+      return batchDeleteTargetIds;
+    }
+    return deleteTargetId ? [deleteTargetId] : [];
+  }, [batchDeleteTargetIds, deleteTargetId]);
+  const isBatchDeleting = pendingDeleteIds.length > 1;
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   const openResume = (id: string) => {
     setActiveResumeId(id);
@@ -323,6 +352,65 @@ const Dashboard: React.FC<DashboardProps> = ({
     setDropdownAnchor(null);
   }, []);
 
+  const exitBatchEditMode = useCallback(() => {
+    clearLongPressTimer();
+    longPressTriggeredRef.current = false;
+    setIsBatchEditMode(false);
+    setSelectedResumeIds([]);
+  }, [clearLongPressTimer]);
+
+  const enterBatchEditMode = useCallback((initialId?: string) => {
+    closeDropdown();
+    setIsBatchEditMode(true);
+    setSelectedResumeIds(initialId ? [initialId] : []);
+  }, [closeDropdown]);
+
+  const toggleResumeSelection = useCallback((id: string) => {
+    setSelectedResumeIds((prev) => (
+      prev.includes(id)
+        ? prev.filter((item) => item !== id)
+        : [...prev, id]
+    ));
+  }, []);
+
+  const handleResumeCardClick = useCallback((id: string) => {
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+    if (isBatchEditMode) {
+      toggleResumeSelection(id);
+      return;
+    }
+    openResume(id);
+  }, [isBatchEditMode, toggleResumeSelection]);
+
+  const handleSelectionIndicatorClick = useCallback((id: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    toggleResumeSelection(id);
+  }, [toggleResumeSelection]);
+
+  const handleSelectAllToggle = useCallback(() => {
+    setSelectedResumeIds((prev) => (
+      prev.length === resumes.length ? [] : resumes.map((resume) => resume.id)
+    ));
+  }, [resumes]);
+
+  const handleBatchDeleteRequest = useCallback(() => {
+    if (selectedResumeIds.length === 0) {
+      const toastId = showToastLoading(BATCH_DELETE_TOAST_MESSAGES.empty);
+      updateToast(toastId, {
+        message: BATCH_DELETE_TOAST_MESSAGES.empty,
+        type: 'error',
+        duration: 2000,
+      });
+      return;
+    }
+    closeDropdown();
+    setDeleteTargetId(null);
+    setBatchDeleteTargetIds(selectedResumeIds);
+  }, [closeDropdown, selectedResumeIds, showToastLoading, updateToast]);
+
   const syncDropdownPosition = useCallback((anchor: DropdownAnchor) => {
     if (!dropdownRef.current) {
       return;
@@ -339,6 +427,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleDropdownClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (isBatchEditMode) {
+      return;
+    }
     if (openDropdownId === id) {
       closeDropdown();
       return;
@@ -352,6 +443,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    setBatchDeleteTargetIds([]);
     setDeleteTargetId(id);
     closeDropdown();
   };
@@ -459,10 +551,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     setPreviewTargetId(null);
   };
 
-  const deleteTarget = useMemo(
-    () => resumes.find((resume) => resume.id === deleteTargetId) ?? null,
-    [deleteTargetId, resumes]
+  const deleteTargets = useMemo(
+    () => resumes.filter((resume) => pendingDeleteIds.includes(resume.id)),
+    [pendingDeleteIds, resumes]
   );
+  const deleteTarget = deleteTargets[0] ?? null;
   const renameTarget = useMemo(
     () => resumes.find((resume) => resume.id === renameTargetId) ?? null,
     [renameTargetId, resumes]
@@ -473,45 +566,96 @@ const Dashboard: React.FC<DashboardProps> = ({
   );
 
   const handleConfirmDelete = async () => {
-    if (!deleteTargetId || isDeletingResume) {
+    if (pendingDeleteIds.length === 0 || isDeletingResume) {
       return;
     }
-    const targetId = deleteTargetId;
-    const toastId = showToastLoading(DELETE_TOAST_MESSAGES.loading);
+    const targetIds = pendingDeleteIds;
+    const activeResumeId = getActiveResumeId();
+    const toastId = showToastLoading(
+      targetIds.length > 1 ? BATCH_DELETE_TOAST_MESSAGES.loading : DELETE_TOAST_MESSAGES.loading
+    );
     try {
       setIsDeletingResume(true);
-      await resumeService.remove(targetId);
+      const deleteResults = await Promise.allSettled(
+        targetIds.map(async (targetId) => {
+          await resumeService.remove(targetId);
+          return targetId;
+        })
+      );
+      const deletedIds = deleteResults.flatMap((result, index) => (
+        result.status === 'fulfilled' ? [targetIds[index]] : []
+      ));
+      const failedIds = deleteResults.flatMap((result, index) => (
+        result.status === 'rejected' ? [targetIds[index]] : []
+      ));
       resumeService.clearListCache();
-      console.log('[Dashboard] 删除请求完成，准备刷新列表:', targetId);
-      if (getActiveResumeId() === targetId) {
-        clearActiveResumeId();
-      }
+      console.log('[Dashboard] 删除请求完成，准备刷新列表:', targetIds);
       setDeleteTargetId(null);
-      if (renameTargetId === targetId) {
-        setRenameTargetId(null);
-      }
-      if (previewTargetId === targetId) {
-        setPreviewTargetId(null);
-      }
+      setBatchDeleteTargetIds([]);
       let refreshedResumes: Resume[] | null = null;
       try {
         refreshedResumes = await fetchDashboardResumes({ force: true });
         setResumes(refreshedResumes);
       } catch (refreshError) {
         console.error('[Dashboard] 删除后刷新列表失败:', refreshError);
-        setResumes((prev) => prev.filter((resume) => resume.id !== targetId));
-        updateToast(toastId, { message: DELETE_VERIFY_MESSAGES.syncFailed, type: 'error', duration: 3000 });
+        if (deletedIds.length > 0) {
+          setResumes((prev) => prev.filter((resume) => !deletedIds.includes(resume.id)));
+        }
+        if (activeResumeId && deletedIds.includes(activeResumeId)) {
+          clearActiveResumeId();
+        }
+        if (renameTargetId && deletedIds.includes(renameTargetId)) {
+          setRenameTargetId(null);
+        }
+        if (previewTargetId && deletedIds.includes(previewTargetId)) {
+          setPreviewTargetId(null);
+        }
+        setSelectedResumeIds((prev) => prev.filter((id) => !deletedIds.includes(id)));
+        updateToast(toastId, {
+          message: failedIds.length > 0
+            ? `已删除 ${deletedIds.length} 份，${failedIds.length} 份删除失败`
+            : DELETE_VERIFY_MESSAGES.syncFailed,
+          type: 'error',
+          duration: 3000,
+        });
         return;
       }
-      const stillExists = refreshedResumes.some((resume) => resume.id === targetId);
-      if (stillExists) {
-        console.warn('[Dashboard] 删除后列表仍包含该简历，请检查后端删除逻辑:', targetId);
+      const remainingIds = refreshedResumes
+        .filter((resume) => targetIds.includes(resume.id))
+        .map((resume) => resume.id);
+      if (remainingIds.length > 0) {
+        console.warn('[Dashboard] 删除后列表仍包含部分简历，请检查后端删除逻辑:', remainingIds);
       }
+      const confirmedDeletedIds = targetIds.filter((id) => !remainingIds.includes(id));
+      if (activeResumeId && confirmedDeletedIds.includes(activeResumeId)) {
+        clearActiveResumeId();
+      }
+      if (renameTargetId && confirmedDeletedIds.includes(renameTargetId)) {
+        setRenameTargetId(null);
+      }
+      if (previewTargetId && confirmedDeletedIds.includes(previewTargetId)) {
+        setPreviewTargetId(null);
+      }
+      setSelectedResumeIds((prev) => prev.filter((id) => !confirmedDeletedIds.includes(id)));
+      const unresolvedCount = remainingIds.length;
       updateToast(toastId, {
-        message: stillExists ? DELETE_VERIFY_MESSAGES.notRemoved : DELETE_TOAST_MESSAGES.success,
-        type: stillExists ? 'error' : 'success',
-        duration: stillExists ? 3000 : 2000,
+        message: unresolvedCount > 0
+          ? (
+            targetIds.length > 1
+              ? `已删除 ${Math.max(targetIds.length - unresolvedCount, 0)} 份，${unresolvedCount} 份删除失败`
+              : DELETE_VERIFY_MESSAGES.notRemoved
+          )
+          : (
+            targetIds.length > 1
+              ? `已删除 ${targetIds.length} 份简历`
+              : DELETE_TOAST_MESSAGES.success
+          ),
+        type: unresolvedCount > 0 ? 'error' : 'success',
+        duration: unresolvedCount > 0 ? 3000 : 2000,
       });
+      if (targetIds.length > 1 && refreshedResumes.length === 0) {
+        exitBatchEditMode();
+      }
     } catch (error) {
       console.error('[Dashboard] 删除简历失败:', error);
       updateToast(toastId, { message: DELETE_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
@@ -525,6 +669,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     setDeleteTargetId(null);
+    setBatchDeleteTargetIds([]);
   };
 
   useLayoutEffect(() => {
@@ -561,6 +706,50 @@ const Dashboard: React.FC<DashboardProps> = ({
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, [closeDropdown]);
+
+  useEffect(() => {
+    setSelectedResumeIds((prev) => {
+      const next = prev.filter((id) => resumes.some((resume) => resume.id === id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [resumes]);
+
+  useEffect(() => {
+    if (isBatchEditMode && resumes.length === 0) {
+      exitBatchEditMode();
+    }
+  }, [exitBatchEditMode, isBatchEditMode, resumes.length]);
+
+  useEffect(() => {
+    if (isBatchEditMode) {
+      closeDropdown();
+    }
+  }, [closeDropdown, isBatchEditMode]);
+
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer();
+    };
+  }, [clearLongPressTimer]);
+
+  const handleMobileLongPressStart = (id: string) => {
+    if (!isMobile || isBatchEditMode) {
+      return;
+    }
+    clearLongPressTimer();
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      enterBatchEditMode(id);
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(20);
+      }
+    }, MOBILE_LONG_PRESS_DURATION);
+  };
+
+  const handleMobileLongPressCancel = () => {
+    clearLongPressTimer();
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -625,15 +814,28 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
                   你已创建了 <span className="font-bold text-gray-900 dark:text-white">{resumes.length}</span> 份简历。
                 </p>
+                {!isBatchEditMode && isMobile && resumes.length > 0 && (
+                  <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">长按卡片可进入批量编辑</p>
+                )}
               </div>
-              <button
-                onClick={handleCreateResume}
-                disabled={isCreatingResume}
-                className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-all disabled:opacity-60 md:hidden"
-              >
-                <Plus className="h-4 w-4" />
-                {isCreatingResume ? '创建中...' : '创建新简历'}
-              </button>
+              {isBatchEditMode ? (
+                <button
+                  onClick={exitBatchEditMode}
+                  className="flex shrink-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800 md:hidden"
+                >
+                  <X className="h-4 w-4" />
+                  完成
+                </button>
+              ) : (
+                <button
+                  onClick={handleCreateResume}
+                  disabled={isCreatingResume}
+                  className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-all disabled:opacity-60 md:hidden"
+                >
+                  <Plus className="h-4 w-4" />
+                  {isCreatingResume ? '创建中...' : '创建新简历'}
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-4">
@@ -651,10 +853,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <List className="w-5 h-5" />
                 </button>
               </div>
+              {resumes.length > 0 && (
+                <button
+                  onClick={isBatchEditMode ? exitBatchEditMode : () => enterBatchEditMode()}
+                  className={`hidden items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all md:flex ${isBatchEditMode
+                    ? 'border border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800'
+                    : 'border border-primary/20 bg-primary/10 text-primary shadow-sm hover:bg-primary/15 dark:border-primary/30 dark:bg-primary/10 dark:text-primary-light'
+                    }`}
+                  type="button"
+                >
+                  {isBatchEditMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+                  {isBatchEditMode ? '退出批量编辑' : '批量编辑'}
+                </button>
+              )}
               <button
                 onClick={handleCreateResume}
                 disabled={isCreatingResume}
-                className="hidden items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:shadow-primary/20 disabled:transform-none md:flex"
+                className={`hidden items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:shadow-primary/20 disabled:transform-none md:flex ${isBatchEditMode ? 'md:hidden' : ''}`}
               >
                 <Plus className="w-5 h-5" />
                 {isCreatingResume ? '创建中...' : '创建新简历'}
@@ -662,10 +877,79 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
+          {isBatchEditMode && resumes.length > 0 && (
+            <div className="rounded-2xl border border-primary/15 bg-white/95 p-4 shadow-sm backdrop-blur dark:border-primary/20 dark:bg-surface-dark/95">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary dark:bg-primary/15">
+                    <CheckSquare className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white">批量编辑中</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">已选择 {selectedCount} 份简历</div>
+                  </div>
+                  <div className="flex items-center gap-2 md:hidden">
+                    <button
+                      onClick={handleSelectAllToggle}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                      type="button"
+                    >
+                      {allSelected ? '取消全选' : '全选'}
+                    </button>
+                    <button
+                      onClick={handleBatchDeleteRequest}
+                      disabled={selectedCount === 0 || isDeletingResume}
+                      className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-red-500/20 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      type="button"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+                <div className="hidden items-center gap-2 md:flex">
+                  <button
+                    onClick={handleSelectAllToggle}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    type="button"
+                  >
+                    {allSelected ? '取消全选' : '全选'}
+                  </button>
+                  <button
+                    onClick={handleBatchDeleteRequest}
+                    disabled={selectedCount === 0 || isDeletingResume}
+                    className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-red-500/20 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    type="button"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {effectiveViewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {resumes.map(resume => (
-                <div key={resume.id} onClick={() => openResume(resume.id)} className="group bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col relative cursor-pointer">
+                <div
+                  key={resume.id}
+                  onClick={() => handleResumeCardClick(resume.id)}
+                  className={`group bg-white dark:bg-surface-dark rounded-2xl border overflow-hidden transition-all duration-300 flex flex-col relative cursor-pointer ${selectedResumeIdSet.has(resume.id)
+                    ? 'border-primary/60 shadow-xl shadow-primary/10 ring-2 ring-primary/20 dark:border-primary/50'
+                    : 'border-gray-200 hover:shadow-xl hover:border-primary/30 dark:border-gray-700'
+                    }`}
+                >
+                  {isBatchEditMode && (
+                    <button
+                      className={`absolute left-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-all ${selectedResumeIdSet.has(resume.id)
+                        ? 'border-primary bg-primary text-white'
+                        : 'border-white/80 bg-white/90 text-gray-400 dark:border-gray-600 dark:bg-gray-800/90 dark:text-gray-500'
+                        }`}
+                      onClick={(event) => handleSelectionIndicatorClick(resume.id, event)}
+                      type="button"
+                    >
+                      {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    </button>
+                  )}
                   <div className="aspect-[210/297] bg-gray-100 dark:bg-gray-900 relative p-6 overflow-hidden border-b border-gray-100 dark:border-gray-800">
                     <div className="w-full h-full bg-white dark:bg-gray-800 shadow-sm p-3 md:p-4 transform group-hover:scale-[1.02] transition-transform duration-500 origin-top opacity-90 flex flex-col gap-2">
                       {/* Mini Resume Visuals */}
@@ -680,15 +964,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="h-1 w-full bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
                       </div>
                     </div>
-                    <div className="absolute inset-0 bg-gray-900/5 dark:bg-gray-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                      <button
-                        className="pointer-events-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-white/90 dark:bg-gray-800/90 text-gray-900 dark:text-white rounded-full shadow-lg hover:shadow-xl transition-shadow"
-                        onClick={(e) => handlePreview(resume.id, e)}
-                      >
-                        <Eye className="w-4 h-4" />
-                        预览
-                      </button>
-                    </div>
+                    {!isBatchEditMode && (
+                      <div className="absolute inset-0 bg-gray-900/5 dark:bg-gray-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                        <button
+                          className="pointer-events-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-white/90 dark:bg-gray-800/90 text-gray-900 dark:text-white rounded-full shadow-lg hover:shadow-xl transition-shadow"
+                          onClick={(e) => handlePreview(resume.id, e)}
+                        >
+                          <Eye className="w-4 h-4" />
+                          预览
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="flex justify-between items-start mb-1">
@@ -703,29 +989,41 @@ const Dashboard: React.FC<DashboardProps> = ({
                     )}
                     <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between relative">
                       <span className="text-xs text-gray-400 font-medium">{resume.lastModified}</span>
-                      <div className="relative">
-                        <button
-                          className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors dropdown-trigger"
-                          onClick={(e) => handleDropdownClick(e, resume.id)}
+                      {isBatchEditMode ? (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${selectedResumeIdSet.has(resume.id)
+                          ? 'bg-primary/10 text-primary dark:bg-primary/15'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                          }`}
                         >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </div>
+                          {selectedResumeIdSet.has(resume.id) ? '已选择' : '点击选择'}
+                        </span>
+                      ) : (
+                        <div className="relative">
+                          <button
+                            className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors dropdown-trigger"
+                            onClick={(e) => handleDropdownClick(e, resume.id)}
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               ))}
-              <button
-                onClick={handleCreateResume}
-                disabled={isCreatingResume}
-                className="group flex flex-col items-center justify-center h-full min-h-[400px] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:border-gray-200"
-              >
-                <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 group-hover:text-primary group-hover:bg-white dark:group-hover:bg-gray-700 shadow-sm transition-colors mb-4">
-                  <Plus className="w-8 h-8" />
-                </div>
-                <h3 className="font-semibold text-gray-500 dark:text-gray-400 group-hover:text-primary transition-colors">创建新简历</h3>
-                <p className="text-xs text-gray-400 mt-2">从空白开始或使用模版</p>
-              </button>
+              {!isBatchEditMode && (
+                <button
+                  onClick={handleCreateResume}
+                  disabled={isCreatingResume}
+                  className="group flex flex-col items-center justify-center h-full min-h-[400px] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:border-gray-200"
+                >
+                  <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 group-hover:text-primary group-hover:bg-white dark:group-hover:bg-gray-700 shadow-sm transition-colors mb-4">
+                    <Plus className="w-8 h-8" />
+                  </div>
+                  <h3 className="font-semibold text-gray-500 dark:text-gray-400 group-hover:text-primary transition-colors">创建新简历</h3>
+                  <p className="text-xs text-gray-400 mt-2">从空白开始或使用模版</p>
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -741,9 +1039,28 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {resumes.map(resume => (
-                      <tr key={resume.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => openResume(resume.id)}>
+                      <tr
+                        key={resume.id}
+                        className={`group transition-colors cursor-pointer ${selectedResumeIdSet.has(resume.id)
+                          ? 'bg-primary/5 dark:bg-primary/10'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                          }`}
+                        onClick={() => handleResumeCardClick(resume.id)}
+                      >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
+                            {isBatchEditMode && (
+                              <button
+                                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${selectedResumeIdSet.has(resume.id)
+                                  ? 'border-primary bg-primary text-white'
+                                  : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
+                                  }`}
+                                onClick={(event) => handleSelectionIndicatorClick(resume.id, event)}
+                                type="button"
+                              >
+                                {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                              </button>
+                            )}
                             <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
                               <FileText className="w-5 h-5" />
                             </div>
@@ -766,14 +1083,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                           {resume.lastModified}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-3">
-                            <button
-                              className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors dropdown-trigger"
-                              onClick={(e) => handleDropdownClick(e, resume.id)}
+                          {isBatchEditMode ? (
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${selectedResumeIdSet.has(resume.id)
+                              ? 'bg-primary/10 text-primary dark:bg-primary/15'
+                              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                              }`}
                             >
-                              <MoreHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
+                              {selectedResumeIdSet.has(resume.id) ? '已选' : '未选'}
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-3">
+                              <button
+                                className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors dropdown-trigger"
+                                onClick={(e) => handleDropdownClick(e, resume.id)}
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -784,8 +1111,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {resumes.map((resume) => (
                   <div
                     key={resume.id}
-                    className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:hover:bg-gray-800/40"
-                    onClick={() => openResume(resume.id)}
+                    className={`rounded-2xl border bg-white p-4 shadow-sm transition-colors dark:bg-surface-dark touch-manipulation select-none ${selectedResumeIdSet.has(resume.id)
+                      ? 'border-primary/60 bg-primary/5 dark:border-primary/50 dark:bg-primary/10'
+                      : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/40'
+                      }`}
+                    onClick={() => handleResumeCardClick(resume.id)}
+                    onContextMenu={(event) => {
+                      if (isMobile) {
+                        event.preventDefault();
+                      }
+                    }}
+                    onTouchStart={() => handleMobileLongPressStart(resume.id)}
+                    onTouchMove={handleMobileLongPressCancel}
+                    onTouchEnd={handleMobileLongPressCancel}
+                    onTouchCancel={handleMobileLongPressCancel}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -807,13 +1146,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </div>
                       </div>
-                      <button
-                        className="dropdown-trigger rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white"
-                        onClick={(e) => handleDropdownClick(e, resume.id)}
-                        type="button"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
+                      {isBatchEditMode ? (
+                        <button
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${selectedResumeIdSet.has(resume.id)
+                            ? 'border-primary bg-primary text-white'
+                            : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
+                            }`}
+                          onClick={(event) => handleSelectionIndicatorClick(resume.id, event)}
+                          type="button"
+                        >
+                          {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                        </button>
+                      ) : (
+                        <button
+                          className="dropdown-trigger rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white"
+                          onClick={(e) => handleDropdownClick(e, resume.id)}
+                          type="button"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -870,17 +1222,22 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
       <ConfirmDialog
-        isOpen={Boolean(deleteTargetId)}
-        title={DELETE_CONFIRM_TITLE}
+        isOpen={pendingDeleteIds.length > 0}
+        title={isBatchDeleting ? BULK_DELETE_CONFIRM_TITLE : DELETE_CONFIRM_TITLE}
         description={
-          deleteTarget
-            ? `确定删除简历「${deleteTarget.name}」吗？此操作无法撤销。`
-            : '确定删除该简历吗？此操作无法撤销。'
+          isBatchDeleting
+            ? `确定删除已选择的 ${pendingDeleteIds.length} 份简历吗？此操作无法撤销。`
+            : (
+              deleteTarget
+                ? `确定删除简历「${deleteTarget.name}」吗？此操作无法撤销。`
+                : '确定删除该简历吗？此操作无法撤销。'
+            )
         }
         confirmLabel={DELETE_CONFIRM_LABEL}
         cancelLabel={DELETE_CANCEL_LABEL}
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
+        isConfirming={isDeletingResume}
       />
       <RenameResumeDialog
         isOpen={Boolean(renameTargetId && renameTarget)}

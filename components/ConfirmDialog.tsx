@@ -8,6 +8,7 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  isConfirming?: boolean;
 };
 
 const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -18,6 +19,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelLabel = '取消',
   onConfirm,
   onCancel,
+  isConfirming = false,
 }) => {
   if (!isOpen) {
     return null;
@@ -31,6 +33,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onCancel}
+            disabled={isConfirming}
             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             type="button"
           >
@@ -38,10 +41,11 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-lg shadow-red-500/30"
+            disabled={isConfirming}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-lg shadow-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
             type="button"
           >
-            {confirmLabel}
+            {isConfirming ? '处理中...' : confirmLabel}
           </button>
         </div>
       </div>
