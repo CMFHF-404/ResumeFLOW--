@@ -34,6 +34,22 @@ const PrintPortal: React.FC<PrintPortalProps> = ({ isActive, children }) => {
     setRoot(ensurePrintRoot());
   }, [isActive]);
 
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    if (isActive) {
+      document.body.dataset.rfLegacyPrintActive = 'true';
+      return () => {
+        delete document.body.dataset.rfLegacyPrintActive;
+      };
+    }
+
+    delete document.body.dataset.rfLegacyPrintActive;
+    return undefined;
+  }, [isActive]);
+
   if (!isActive || !root) {
     return null;
   }

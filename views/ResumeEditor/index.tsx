@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Database } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import PrintPortal from '../../components/PrintPortal';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
-import { usePrintJob } from '../../hooks/usePrintJob';
 import { useResumeData } from '../../hooks/useResumeData';
+import { exportService } from '../../services/exportService';
 import { profileService } from '../../services/profileService';
 import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
 import { aiService, type JDAnalysisResult } from '../../services/aiService';
@@ -133,6 +132,7 @@ import {
     resolveSelectionSet,
     sortByCategory,
 } from './helpers';
+import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
@@ -445,6 +445,17 @@ const toggleGroupedSelectionSnapshotIds = (ids: string[], targetIds: string[]) =
         next.delete(id);
     });
     return [...next];
+};
+
+const downloadBlobFile = (blob: Blob, fileName: string) => {
+    const objectUrl = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
 };
 
 const waitForNextFrame = (callback: () => void) => {
@@ -788,12 +799,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const previewContentRef = useRef<HTMLDivElement | null>(null);
     const measurePreviewRef = useRef<HTMLDivElement | null>(null);
     const measurePreviewContentRef = useRef<HTMLDivElement | null>(null);
-    const printPreviewRef = useRef<HTMLDivElement | null>(null);
-    const printPreviewContentRef = useRef<HTMLDivElement | null>(null);
     const a4HeightRef = useRef<number | null>(null);
     const smartPageAdjustingRef = useRef(false);
     const isUpdatingResumeNameRef = useRef(false);
-    const { printContent, isPrinting, startPrint } = usePrintJob();
+    const [isExportingPdf, setIsExportingPdf] = useState(false);
 
     const layoutOrders: ResumeLayoutOrders = useMemo(
         () => ({
@@ -3093,80 +3102,78 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsBossGreetingVisible(false);
     }, [closeToast, resumeId]);
 
-    const handleExportPdf = useCallback(() => {
-        if (isPrinting) {
+    const handleExportPdf = useCallback(async () => {
+        if (isExportingPdf) {
             return;
         }
-        const content = (
-            <div className="rf-print-preview-shell">
-                <ResumePreview
-                    previewRef={printPreviewRef}
-                    previewContentRef={printPreviewContentRef}
-                    previewScope="print"
-                    lineHeight={lineHeight}
-                    fontSize={fontSize}
-                    listSpacingValue={listSpacingValue}
-                    bulletSpacingValue={bulletSpacingValue}
-                    topPaddingPx={topPaddingPx}
-                    profile={profile}
-                    sectionSpacingClass={sectionSpacingClass}
-                    listSpacingClass={listSpacingClass}
-                    sectionOrder={sectionOrder}
-                    selectedWorkItems={selectedWorkItems}
-                    selectedProjectItems={selectedProjectItems}
-                    educations={educations}
-                    selectedEduIds={selectedEduIds}
-                    sortedCertifications={sortedCertifications}
-                    selectedCertIds={selectedCertIds}
-                    selectedSkillGroups={selectedSkillGroups}
-                    readOnly
-                    isDragging={false}
-                    draggedItemKey={null}
-                    draggedSectionId={null}
-                    onSectionDragStart={() => { }}
-                    onSectionDragHover={() => { }}
-                    onSectionDrop={() => { }}
-                    onTouchSectionDragStart={() => { }}
-                    onItemDragStart={() => { }}
-                    onItemDragHover={() => { }}
-                    onItemDrop={() => { }}
-                    onTouchItemDragStart={() => { }}
-                    onTouchDragEnd={() => { }}
-                    onTouchDragCancel={() => { }}
-                    onDragEnd={() => { }}
-                    onNavigateTab={() => { }}
-                    onEditExperience={() => { }}
-                    onEditCertification={() => { }}
-                    onEditSkill={() => { }}
-                />
-            </div>
-        );
-        startPrint({
-            title: buildResumeExportTitle(resumeName),
-            content,
+
+        const snapshot = buildResumePdfRenderSnapshot({
+            resumeName,
+            profile,
+            lineHeight,
+            fontSize,
+            listSpacingValue,
+            bulletSpacingValue,
+            topPaddingPx,
+            sectionSpacingClass,
+            listSpacingClass,
+            sectionOrder,
+            selectedWorkItems,
+            selectedProjectItems,
+            educations,
+            selectedEduIds,
+            sortedCertifications,
+            selectedCertIds,
+            selectedSkillGroups,
         });
-        trackResumeExported(authUserKey);
+        const exportTitle = buildResumeExportTitle(resumeName);
+        const toastId = showToastLoading('正在生成 PDF...');
+
+        setIsExportingPdf(true);
+        try {
+            const pdfBlob = await exportService.exportResumePdf(snapshot, exportTitle);
+            downloadBlobFile(pdfBlob, `${exportTitle}.pdf`);
+            updateToast(toastId, {
+                message: 'PDF 已生成，开始下载。',
+                type: 'success',
+                duration: 3000,
+            });
+            trackResumeExported(authUserKey);
+        } catch (error) {
+            console.error('[ResumeEditor] PDF 导出失败:', error);
+            const message = error instanceof Error
+                ? error.message
+                : 'PDF 导出失败，请稍后重试。';
+            updateToast(toastId, {
+                message,
+                type: 'error',
+                duration: 4000,
+            });
+        } finally {
+            setIsExportingPdf(false);
+        }
     }, [
         authUserKey,
         bulletSpacingValue,
         educations,
         fontSize,
-        isPrinting,
+        isExportingPdf,
         lineHeight,
         listSpacingClass,
         listSpacingValue,
         profile,
-        topPaddingPx,
         resumeName,
         sectionOrder,
+        sectionSpacingClass,
         selectedCertIds,
         selectedEduIds,
         selectedProjectItems,
         selectedSkillGroups,
         selectedWorkItems,
+        showToastLoading,
         sortedCertifications,
-        sectionSpacingClass,
-        startPrint,
+        topPaddingPx,
+        updateToast,
     ]);
     const handleEditExperience = (id: string) => {
         setSidebarTab('experience');
@@ -3275,6 +3282,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     resumeName={resumeName}
                     onResumeNameChange={handleResumeNameChange}
                     onExportPdf={handleExportPdf}
+                    isExportingPdf={isExportingPdf}
                 />
             </div>
             <div className="md:hidden">
@@ -3287,6 +3295,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isAnalyzing={isAnalyzing}
                     onAnalyze={handleAnalyzeWithAutoName}
                     onExportPdf={handleExportPdf}
+                    isExportingPdf={isExportingPdf}
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
                     onCreateResume={handleCreateResume}
@@ -3613,9 +3622,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 </div>
             ) : null}
             <ToastContainer toasts={toasts} onClose={closeToast} />
-            <PrintPortal isActive={Boolean(printContent)}>
-                {printContent}
-            </PrintPortal>
             <ConfirmDialog
                 isOpen={!!confirmDialog}
                 title={confirmDialog?.title || ''}

@@ -21,6 +21,7 @@ AUTH_HEADER = "Authorization"
 BEARER_PREFIX = "Bearer "
 ALLOWED_ALGORITHMS = {"RS256", "ES384"}
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+PUBLIC_GET_PATH_PREFIXES = ("/exports/render-snapshots/",)
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,12 @@ def _extract_token(request: Request) -> Optional[str]:
 
 
 def _is_public_request(request: Request) -> bool:
-    return request.url.path in PUBLIC_PATHS or request.method == "OPTIONS"
+    path = request.url.path
+    if path in PUBLIC_PATHS or request.method == "OPTIONS":
+        return True
+    return request.method == "GET" and any(
+        path.startswith(prefix) for prefix in PUBLIC_GET_PATH_PREFIXES
+    )
 
 
 async def _verify_token(token: str) -> Dict[str, Any]:

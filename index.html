@@ -9,12 +9,34 @@
     <script defer src="https://rfumami.zeabur.app/script.js" data-website-id="248594f3-739f-4c38-b977-d95c5f5883a6" data-auto-track="false"></script>
     <link rel="icon" type="image/png" href="/favicon.png">
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet">
     <style>
+        @font-face {
+            font-family: 'Inter';
+            src: url('/fonts/Arial.ttf') format('truetype');
+            font-style: normal;
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Inter';
+            src: url('/fonts/Arial-Bold.ttf') format('truetype');
+            font-style: normal;
+            font-weight: 700;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Noto Sans SC';
+            src: url('/fonts/NotoSansSC-VF.ttf') format('truetype');
+            font-style: normal;
+            font-weight: 300 700;
+            font-display: swap;
+        }
+
         body {
             font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            font-synthesis: none;
         }
 
         /* Custom scrollbar for webkit */
@@ -104,11 +126,11 @@
                 background: white !important;
             }
 
-            #root {
+            body[data-rf-legacy-print-active="true"] #root {
                 display: none !important;
             }
 
-            #rf-print-root {
+            body[data-rf-legacy-print-active="true"] #rf-print-root {
                 position: static !important;
                 left: auto !important;
                 top: auto !important;

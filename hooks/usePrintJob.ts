@@ -295,12 +295,6 @@ const buildIsolatedPrintWindowHtml = ({
 
         window.addEventListener('afterprint', () => {
           notify('afterprint');
-          setTimeout(() => {
-            try {
-              window.close();
-            } catch (error) {
-            }
-          }, 0);
         });
 
         window.addEventListener('pagehide', () => {
@@ -382,7 +376,7 @@ export const usePrintJob = () => {
   const isolatedPrintPollRef = useRef<number | null>(null);
   const isolatedPrintFallbackRef = useRef<PrintFallbackCleanup | null>(null);
 
-  const finalizeIsolatedPrint = useCallback(() => {
+  const finalizeIsolatedPrint = useCallback((closeWindow = true) => {
     isolatedPrintFallbackRef.current?.();
     isolatedPrintFallbackRef.current = null;
 
@@ -392,7 +386,7 @@ export const usePrintJob = () => {
     }
 
     const isolatedWindow = isolatedPrintWindowRef.current;
-    if (isolatedWindow && !isolatedWindow.closed) {
+    if (closeWindow && isolatedWindow && !isolatedWindow.closed) {
       try {
         isolatedWindow.close();
       } catch (error) {
@@ -417,6 +411,12 @@ export const usePrintJob = () => {
         return;
       }
 
+      if (payload.type === 'ready') {
+        isolatedPrintFallbackRef.current?.();
+        isolatedPrintFallbackRef.current = null;
+        return;
+      }
+
       if (payload.type === 'afterprint' || payload.type === 'pagehide' || payload.type === 'error') {
         finalizeIsolatedPrint();
       }
@@ -430,6 +430,25 @@ export const usePrintJob = () => {
 
   useEffect(() => () => {
     finalizeIsolatedPrint();
+  }, [finalizeIsolatedPrint]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!isolatedPrintPhaseRef.current) {
+        return;
+      }
+      window.setTimeout(() => {
+        if (!isolatedPrintPhaseRef.current) {
+          return;
+        }
+        finalizeIsolatedPrint();
+      }, 300);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [finalizeIsolatedPrint]);
 
   const getActiveIsolatedPrintSession = useCallback(() => {

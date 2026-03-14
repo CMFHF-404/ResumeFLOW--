@@ -5,11 +5,17 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from sqlalchemy import Column, Text, Enum as SAEnum
+from sqlalchemy import Column, DateTime, Text, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlmodel import Field, SQLModel
 
 from .utils.time_utils import utc_now
+
+
+def utc_now_aware() -> datetime:
+    from datetime import timezone
+
+    return datetime.now(timezone.utc)
 
 
 class ExperienceCategory(str, Enum):
@@ -157,6 +163,28 @@ class Feedback(SQLModel, table=True):
         default_factory=dict, sa_column=Column(JSONB, nullable=False)
     )
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class ExportRenderSnapshot(SQLModel, table=True):
+    __tablename__ = "export_render_snapshots"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    payload_json: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False),
+    )
+    expires_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False)
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    consumed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
 
 from .domain.resume.models import Resume, ResumeExperienceLink
