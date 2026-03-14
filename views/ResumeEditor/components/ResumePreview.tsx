@@ -72,6 +72,7 @@ const TOUCH_DRAG_PREVIEW_LIFT_PX = 10;
 const EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO = 1.4;
 const DESKTOP_EDITOR_MEDIA_QUERY = '(min-width: 768px)';
 const MOBILE_EDITOR_MEDIA_QUERY = '(max-width: 767px)';
+const MOBILE_USER_AGENT_PATTERN = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i;
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -101,6 +102,26 @@ const buildPreviewTypographyCss = (scale: number, previewScope: string) => {
     `;
 };
 
+const detectMobileLikeNavigator = () => {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+
+    const navigatorWithUAData = navigator as Navigator & {
+        userAgentData?: { mobile?: boolean };
+    };
+    if (typeof navigatorWithUAData.userAgentData?.mobile === 'boolean') {
+        return navigatorWithUAData.userAgentData.mobile;
+    }
+
+    const userAgent = navigator.userAgent || '';
+    if (MOBILE_USER_AGENT_PATTERN.test(userAgent)) {
+        return true;
+    }
+
+    return (navigator.platform || '') === 'MacIntel' && navigator.maxTouchPoints > 1;
+};
+
 const detectTouchOnlyInteractionEnvironment = () => {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
         return false;
@@ -109,14 +130,18 @@ const detectTouchOnlyInteractionEnvironment = () => {
     const hasFineHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches
         || window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches;
     const hasTouchPoints = navigator.maxTouchPoints > 0;
-    const isMobileViewport = window.matchMedia(MOBILE_EDITOR_MEDIA_QUERY).matches;
-    if (isMobileViewport && hasTouchPoints && !hasFineHoverPointer) {
-        return true;
-    }
-
     const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
         || window.matchMedia('(any-pointer: coarse)').matches
         || hasTouchPoints;
+    const isMobileViewport = window.matchMedia(MOBILE_EDITOR_MEDIA_QUERY).matches;
+    const isMobileLikeNavigator = detectMobileLikeNavigator();
+
+    // 某些真机手机会同时上报 touch + fine/hover（例如手写笔悬停或厂商定制能力）。
+    // 预览区在移动断点下仍应优先采用移动触摸交互，否则会退回旧的长按拖拽模式，
+    // 同时失去页面级滚动，出现“卡片长按拖动 + 预览无法滑动”的组合故障。
+    if (isMobileViewport && hasCoarsePointer && (isMobileLikeNavigator || !hasFineHoverPointer)) {
+        return true;
+    }
 
     return hasCoarsePointer && !hasFineHoverPointer;
 };
@@ -876,6 +901,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }
 
         const mediaQueries = [
+            window.matchMedia(MOBILE_EDITOR_MEDIA_QUERY),
             window.matchMedia('(pointer: coarse)'),
             window.matchMedia('(any-pointer: coarse)'),
             window.matchMedia('(hover: hover) and (pointer: fine)'),
@@ -888,6 +914,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         };
 
         updateInteractionEnvironment();
+        window.addEventListener('resize', updateInteractionEnvironment);
         mediaQueries.forEach((mediaQuery) => {
             if (typeof mediaQuery.addEventListener === 'function') {
                 mediaQuery.addEventListener('change', updateInteractionEnvironment);
@@ -897,6 +924,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         });
 
         return () => {
+            window.removeEventListener('resize', updateInteractionEnvironment);
             mediaQueries.forEach((mediaQuery) => {
                 if (typeof mediaQuery.removeEventListener === 'function') {
                     mediaQuery.removeEventListener('change', updateInteractionEnvironment);
