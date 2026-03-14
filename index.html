@@ -58,13 +58,16 @@
             left: -10000px;
             top: 0;
             width: 210mm;
-            visibility: hidden;
+            max-height: 0;
+            opacity: 0;
             pointer-events: none;
             overflow: hidden;
+            z-index: -1;
         }
 
         .rf-print-surface {
             background: white;
+            visibility: visible;
         }
 
         .fluid-input {
@@ -111,8 +114,11 @@
                 top: auto !important;
                 width: auto !important;
                 visibility: visible !important;
+                max-height: none !important;
+                opacity: 1 !important;
                 pointer-events: auto !important;
                 overflow: visible !important;
+                z-index: auto !important;
             }
 
             .a4-preview {
@@ -120,9 +126,24 @@
                 margin: 0 auto !important;
             }
 
-            .rf-print-preview main {
+            .rf-print-preview-shell,
+            .rf-print-preview-shell main {
                 background: white !important;
                 padding: 0 !important;
+                overflow: visible !important;
+            }
+
+            .rf-print-preview-shell main {
+                display: block !important;
+                min-height: auto !important;
+            }
+
+            .rf-print-preview-shell main>div,
+            .rf-print-preview-shell main>div>div {
+                display: block !important;
+                width: auto !important;
+                min-height: auto !important;
+                overflow: visible !important;
             }
 
             .rf-break-avoid {
