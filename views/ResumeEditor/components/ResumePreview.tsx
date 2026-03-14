@@ -71,6 +71,7 @@ const TOUCH_AUTOSCROLL_MAX_STEP_PX = 18;
 const TOUCH_DRAG_PREVIEW_LIFT_PX = 10;
 const EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO = 1.4;
 const DESKTOP_EDITOR_MEDIA_QUERY = '(min-width: 768px)';
+const MOBILE_EDITOR_MEDIA_QUERY = '(max-width: 767px)';
 
 // Tailwind 的 text-* 类是 rem 单位；仅设置预览容器 fontSize 不会让这些字号随之缩放。
 // 这里按比例重写预览内部常用 text-* 的字号，确保“智能一页”调整字号真实生效。
@@ -105,11 +106,17 @@ const detectTouchOnlyInteractionEnvironment = () => {
         return false;
     }
 
-    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
-        || window.matchMedia('(any-pointer: coarse)').matches
-        || navigator.maxTouchPoints > 0;
     const hasFineHoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches
         || window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches;
+    const hasTouchPoints = navigator.maxTouchPoints > 0;
+    const isMobileViewport = window.matchMedia(MOBILE_EDITOR_MEDIA_QUERY).matches;
+    if (isMobileViewport && hasTouchPoints && !hasFineHoverPointer) {
+        return true;
+    }
+
+    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
+        || window.matchMedia('(any-pointer: coarse)').matches
+        || hasTouchPoints;
 
     return hasCoarsePointer && !hasFineHoverPointer;
 };
