@@ -309,6 +309,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const desktopDragPreviewRef = React.useRef<HTMLDivElement | null>(null);
     const [touchFeedback, setTouchFeedback] = React.useState<TouchFeedbackState>(null);
     const [touchDragPreview, setTouchDragPreview] = React.useState<TouchDragPreviewState | null>(null);
+    const [activeMobileItemControlId, setActiveMobileItemControlId] = React.useState<string | null>(null);
     const [isTouchOnlyInteractionEnvironment, setIsTouchOnlyInteractionEnvironment] = React.useState(
         detectTouchOnlyInteractionEnvironment
     );
@@ -395,11 +396,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         : showTouchDragHandles
             ? `${sectionControlBaseClass} opacity-100`
             : `${sectionControlBaseClass} opacity-0 group-hover:opacity-100 transition-opacity`;
-    const itemControlClass = isDragging || isReadOnly
-        ? `${itemControlBaseClass} opacity-0`
-        : showTouchDragHandles
-            ? `${itemControlBaseClass} opacity-100`
-            : `${itemControlBaseClass} opacity-0 group-hover/item:opacity-100 transition-opacity`;
     const itemHoverBgClass = isDragging || isReadOnly ? '' : 'group-hover/item:bg-primary/5';
     const sectionDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
     const itemDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
@@ -448,6 +444,26 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }
         return baseClass;
     }, [getTouchFeedbackState, interactionTransitionClass, itemHoverBgClass, touchDragPreview?.sourceId, touchSelectionClass]);
+    const getItemControlClass = React.useCallback((itemKey: string) => {
+        if (isDragging || isReadOnly) {
+            return `${itemControlBaseClass} pointer-events-none opacity-0`;
+        }
+        if (showTouchDragHandles) {
+            const feedbackPhase = getTouchFeedbackState('item', itemKey);
+            const isVisible = activeMobileItemControlId === itemKey || feedbackPhase !== null;
+            return isVisible
+                ? `${itemControlBaseClass} opacity-100`
+                : `${itemControlBaseClass} pointer-events-none opacity-0`;
+        }
+        return `${itemControlBaseClass} opacity-0 group-hover/item:opacity-100 transition-opacity`;
+    }, [
+        activeMobileItemControlId,
+        getTouchFeedbackState,
+        isDragging,
+        isReadOnly,
+        itemControlBaseClass,
+        showTouchDragHandles,
+    ]);
 
     const clearTouchDragPreview = React.useCallback(() => {
         setTouchDragPreview(null);
@@ -590,9 +606,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             window.clearTimeout(session.timerId);
         }
         const wasActivated = session.activated;
+        const shouldPreserveMobileItemControl = showTouchDragHandles && session.mode === 'item';
         touchSessionRef.current = null;
         setTouchFeedback(null);
         clearTouchDragPreview();
+        if (!shouldPreserveMobileItemControl && (!shouldCommit || !wasActivated)) {
+            setActiveMobileItemControlId(null);
+        }
         if (shouldCommit && wasActivated) {
             onTouchDragEnd();
             return;
@@ -600,7 +620,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         if (wasActivated) {
             onTouchDragCancel();
         }
-    }, [clearTouchDragPreview, onTouchDragCancel, onTouchDragEnd]);
+    }, [clearTouchDragPreview, onTouchDragCancel, onTouchDragEnd, showTouchDragHandles]);
 
     const autoScrollPreview = React.useCallback((clientY: number) => {
         const scrollContainer = usePageScrollOnMobile
@@ -759,6 +779,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         event: React.TouchEvent<HTMLElement>,
         itemKey: string
     ) => {
+        setActiveMobileItemControlId(itemKey);
+        if (showTouchDragHandles) {
+            return;
+        }
         const container = event.currentTarget.closest(`[${DATA_ITEM_CONTAINER_ATTR}]`);
         startTouchLongPress(
             event,
@@ -767,7 +791,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             container instanceof HTMLElement ? container : null,
             event.currentTarget
         );
-    }, [startTouchLongPress]);
+    }, [showTouchDragHandles, startTouchLongPress]);
 
     const handleSectionControlTouchStart = React.useCallback((
         event: React.TouchEvent<HTMLElement>,
@@ -790,6 +814,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         itemKey: string
     ) => {
         event.stopPropagation();
+        setActiveMobileItemControlId(itemKey);
         const itemSurface = event.currentTarget
             .closest(`[${DATA_ITEM_ID_ATTR}]`)
             ?.querySelector(`[${DATA_ITEM_SURFACE_ATTR}]`);
@@ -960,6 +985,31 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             cancelTouchSession();
         };
     }, [cancelTouchSession]);
+
+    React.useEffect(() => {
+        if (!showTouchDragHandles || typeof document === 'undefined') {
+            return undefined;
+        }
+
+        const handleDocumentTouchStart = (event: TouchEvent) => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                setActiveMobileItemControlId(null);
+                return;
+            }
+
+            if (target.closest(`[${DATA_ITEM_ID_ATTR}]`) || target.closest(`[${DATA_SECTION_ID_ATTR}]`)) {
+                return;
+            }
+
+            setActiveMobileItemControlId(null);
+        };
+
+        document.addEventListener('touchstart', handleDocumentTouchStart, { passive: true });
+        return () => {
+            document.removeEventListener('touchstart', handleDocumentTouchStart);
+        };
+    }, [showTouchDragHandles]);
 
     React.useEffect(() => {
         return () => {
@@ -1244,7 +1294,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 >
                                     {!isReadOnly ? (
                                         <div
-                                            className={itemControlClass}
+                                            className={getItemControlClass(itemKey)}
                                         >
                                             <div
                                                 onTouchStart={
@@ -1260,7 +1310,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             <button
                                                 type="button"
                                                 className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
-                                                onTouchStart={stopTouchStartPropagation}
+                                                onTouchStart={(event) => {
+                                                    setActiveMobileItemControlId(itemKey);
+                                                    stopTouchStartPropagation(event);
+                                                }}
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     onEditExperience(item.id);
@@ -1271,12 +1324,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         </div>
                                     ) : null}
 
-                                    <div
-                                        data-rf-item-surface={itemKey}
-                                        className={getItemSurfaceClass(itemKey)}
-                                        style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
-                                        onTouchStart={
-                                            isReadOnly || showTouchDragHandles
+                                        <div
+                                            data-rf-item-surface={itemKey}
+                                            className={getItemSurfaceClass(itemKey)}
+                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                            isReadOnly
                                                 ? undefined
                                                 : (event) => handleItemCardTouchStart(event, itemKey)
                                         }
@@ -1510,7 +1563,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     >
                                                         {!isReadOnly ? (
                                                             <div
-                                                                className={itemControlClass}
+                                                                className={getItemControlClass(itemKey)}
                                                             >
                                                                 <div
                                                                     onTouchStart={
@@ -1526,7 +1579,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <button
                                                                     type="button"
                                                                     className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
-                                                                    onTouchStart={stopTouchStartPropagation}
+                                                                    onTouchStart={(event) => {
+                                                                        setActiveMobileItemControlId(itemKey);
+                                                                        stopTouchStartPropagation(event);
+                                                                    }}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         onNavigateTab('profile');
@@ -1541,7 +1597,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
-                                                                isReadOnly || showTouchDragHandles
+                                                                isReadOnly
                                                                     ? undefined
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
@@ -1685,7 +1741,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     >
                                                         {!isReadOnly ? (
                                                             <div
-                                                                className={itemControlClass}
+                                                                className={getItemControlClass(itemKey)}
                                                             >
                                                                 <div
                                                                     onTouchStart={
@@ -1701,7 +1757,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <button
                                                                     type="button"
                                                                     className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
-                                                                    onTouchStart={stopTouchStartPropagation}
+                                                                    onTouchStart={(event) => {
+                                                                        setActiveMobileItemControlId(itemKey);
+                                                                        stopTouchStartPropagation(event);
+                                                                    }}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         onEditCertification(cert.id);
@@ -1716,7 +1775,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
-                                                                isReadOnly || showTouchDragHandles
+                                                                isReadOnly
                                                                     ? undefined
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
@@ -1856,7 +1915,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     >
                                                         {!isReadOnly ? (
                                                             <div
-                                                                className={itemControlClass}
+                                                                className={getItemControlClass(itemKey)}
                                                             >
                                                                 <div
                                                                     onTouchStart={
@@ -1872,7 +1931,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                 <button
                                                                     type="button"
                                                                     className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
-                                                                    onTouchStart={stopTouchStartPropagation}
+                                                                    onTouchStart={(event) => {
+                                                                        setActiveMobileItemControlId(itemKey);
+                                                                        stopTouchStartPropagation(event);
+                                                                    }}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         if (!editableSkill) {
@@ -1890,7 +1952,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
-                                                                isReadOnly || showTouchDragHandles
+                                                                isReadOnly
                                                                     ? undefined
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
