@@ -291,7 +291,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // Toast 状态管理
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
-  const { printContent, isPrinting, startPrint } = usePrintJob();
+  const { printContent, isPrinting, preparePrint, startPrint } = usePrintJob();
 
   const toastApi = useMemo(
     () => ({ success, error: toastError, info, loading, updateToast }),
@@ -350,11 +350,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     if (isPrinting) {
       return;
     }
+    const exportTitle = buildExperienceBankExportTitle();
+    const cancelPreparedPrint = preparePrint(exportTitle);
     const toastId = loading('正在准备导出...');
     try {
       const snapshot = await loadExperienceBankExportSnapshot();
       startPrint({
-        title: buildExperienceBankExportTitle(),
+        title: exportTitle,
         content: <ExperienceBankPrint {...snapshot} />,
       });
       trackExperienceBankExported({
@@ -370,13 +372,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         duration: 1500,
       });
     } catch (error) {
+      cancelPreparedPrint?.();
       console.error('[ExperienceBank] 导出失败:', error);
       updateToast(toastId, {
         message: '导出失败，请稍后重试',
         type: 'error',
       });
     }
-  }, [isPrinting, loading, startPrint, updateToast]);
+  }, [isPrinting, loading, preparePrint, startPrint, updateToast]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
