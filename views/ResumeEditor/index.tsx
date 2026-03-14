@@ -3098,7 +3098,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         const content = (
-            <div className="rf-print-preview">
+            <div className="rf-print-preview-shell">
                 <ResumePreview
                     previewRef={printPreviewRef}
                     previewContentRef={printPreviewContentRef}

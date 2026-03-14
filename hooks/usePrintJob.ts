@@ -13,6 +13,7 @@ type PrintJobState = PrintJobOptions & {
 
 const DEFAULT_FORCE_LIGHT_MODE = true;
 const PRINT_FALLBACK_TIMEOUT_MS = 20_000;
+const PRINT_LAYOUT_STABILIZE_DELAY_MS = 120;
 
 type PrintFallbackCleanup = () => void;
 
@@ -54,6 +55,10 @@ const subscribePrintMediaExit = (onExit: () => void): PrintFallbackCleanup => {
 
 const waitForNextFrame = () => new Promise<void>((resolve) => {
   requestAnimationFrame(() => resolve());
+});
+
+const waitForDelay = (delayMs: number) => new Promise<void>((resolve) => {
+  window.setTimeout(resolve, delayMs);
 });
 
 const waitForFontsReady = async () => {
@@ -150,6 +155,7 @@ export const usePrintJob = () => {
       await waitForNextFrame();
       await waitForFontsReady();
       await waitForNextFrame();
+      await waitForDelay(PRINT_LAYOUT_STABILIZE_DELAY_MS);
 
       if (isCancelled) {
         return;
