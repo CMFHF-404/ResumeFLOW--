@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import {
     Check,
+    ChevronDown,
     ChevronLeft,
+    ChevronUp,
     Copy,
     CopyPlus,
     Download,
@@ -61,6 +63,8 @@ const SUMMARY_CLAMP_STYLE: React.CSSProperties = {
     overflow: 'hidden',
 };
 
+const ANALYSIS_CARD_TRANSITION = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
 const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     resumeId,
     resumeName,
@@ -97,6 +101,9 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     const [isEditing, setIsEditing] = useState(false);
     const [draftName, setDraftName] = useState(resumeName);
     const [isEditingJd, setIsEditingJd] = useState(false);
+    const [isAnalysisCollapsed, setIsAnalysisCollapsed] = useState(false);
+    const [analysisCardHeight, setAnalysisCardHeight] = useState<number | null>(null);
+    const analysisCardContentRef = useRef<HTMLDivElement | null>(null);
 
     const showJdInput = !isJDCollapsed;
 
@@ -108,7 +115,43 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
 
     useEffect(() => {
         setIsEditingJd(false);
+        setIsAnalysisCollapsed(false);
     }, [resumeId]);
+
+    useEffect(() => {
+        const element = analysisCardContentRef.current;
+        if (!element) {
+            return;
+        }
+
+        const updateHeight = () => {
+            setAnalysisCardHeight(element.scrollHeight);
+        };
+
+        updateHeight();
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', updateHeight);
+            return () => {
+                window.removeEventListener('resize', updateHeight);
+            };
+        }
+
+        const observer = new ResizeObserver(() => {
+            updateHeight();
+        });
+
+        observer.observe(element);
+        return () => {
+            observer.disconnect();
+        };
+    }, [showJdInput]);
+
+    useEffect(() => {
+        if (showJdInput || isAnalyzing || isGeneratingBossGreeting || isEditingJd) {
+            setIsAnalysisCollapsed(false);
+        }
+    }, [showJdInput, isAnalyzing, isGeneratingBossGreeting, isEditingJd]);
 
     const attachmentSelectionVersionRef = useRef(0);
 
@@ -145,6 +188,13 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         }
         return '在底部抽屉补充 JD 后，这里会展示匹配评价与简历建议。';
     }, [analysisResult?.summary]);
+
+    const analysisCardMotionStyle = useMemo<React.CSSProperties>(() => ({
+        maxHeight: isAnalysisCollapsed ? 0 : (analysisCardHeight ? `${analysisCardHeight}px` : undefined),
+        opacity: isAnalysisCollapsed ? 0 : 1,
+        transform: `translateY(${isAnalysisCollapsed ? '-18px' : '0px'})`,
+        transition: `max-height 320ms ${ANALYSIS_CARD_TRANSITION}, opacity 220ms ease, transform 320ms ${ANALYSIS_CARD_TRANSITION}`,
+    }), [analysisCardHeight, isAnalysisCollapsed]);
     
     const bossGreetingButtonLabel = isGeneratingBossGreeting
         ? '生成中...'
@@ -242,7 +292,17 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
+                <div className="relative">
+                    <div
+                        className={isAnalysisCollapsed ? 'overflow-hidden pointer-events-none' : 'overflow-visible'}
+                        style={analysisCardMotionStyle}
+                        aria-hidden={isAnalysisCollapsed}
+                    >
+                        <div
+                            ref={analysisCardContentRef}
+                            id="mobile-analysis-card"
+                            className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80"
+                        >
                     <div className="flex flex-col">
                         <div className="flex items-start justify-between gap-2 px-1 mb-3">
                             {showJdInput ? (
@@ -489,6 +549,64 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             </button>
                         </div>
                     </div>
+                        </div>
+                    </div>
+
+                    {isAnalysisCollapsed ? (
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 pb-1 pt-1.5">
+                            <div className="min-w-0 justify-self-start px-1">
+                                {isOutdated ? (
+                                    <span className="text-[12px] font-semibold text-amber-500 dark:text-amber-300">
+                                        待更新
+                                    </span>
+                                ) : analysisResult ? (
+                                    <div className="leading-none text-emerald-600 dark:text-emerald-400">
+                                        <span className="text-[24px] font-black tracking-tight">
+                                            {analysisResult.matchPercentage ?? 0}
+                                        </span>
+                                        <span className="ml-0.5 text-[12px] font-bold">%</span>
+                                    </div>
+                                ) : (
+                                    <span className="text-[22px] font-black tracking-tight text-gray-300 dark:text-gray-600">
+                                        --
+                                    </span>
+                                )}
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setIsAnalysisCollapsed(false)}
+                                aria-controls="mobile-analysis-card"
+                                aria-expanded={false}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-gray-600 transition-colors hover:text-primary dark:text-gray-300 dark:hover:text-primary"
+                            >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                                展开分析卡片
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={onExportPdf}
+                                className="inline-flex h-10 justify-self-end items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
+                            >
+                                <Download className="h-4 w-4" />
+                                导出
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="mt-0.5 flex justify-center pb-0 pt-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsAnalysisCollapsed(true)}
+                                aria-controls="mobile-analysis-card"
+                                aria-expanded={true}
+                                className="inline-flex translate-y-1 items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-gray-600 transition-colors hover:text-primary dark:text-gray-300 dark:hover:text-primary"
+                            >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                                收起分析卡片
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
