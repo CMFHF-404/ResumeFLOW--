@@ -31,6 +31,7 @@ export type MobileEditorHeaderProps = {
     isAnalyzing: boolean;
     onAnalyze: () => void;
     onExportPdf: () => void;
+    isExportingPdf: boolean;
     onAutoAssemble: () => void;
     isAutoAssembling: boolean;
     onCreateResume: () => void;
@@ -74,6 +75,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     isAnalyzing,
     onAnalyze,
     onExportPdf,
+    isExportingPdf,
     onAutoAssemble,
     isAutoAssembling,
     onCreateResume,
@@ -365,10 +367,11 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 <button
                                     type="button"
                                     onClick={onExportPdf}
-                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
+                                    disabled={isExportingPdf}
+                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60"
                                 >
                                     <Download className="h-4 w-4" />
-                                    导出
+                                    {isExportingPdf ? '导出中' : '导出'}
                                 </button>
                             </div>
                         </div>
@@ -587,10 +590,11 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             <button
                                 type="button"
                                 onClick={onExportPdf}
-                                className="inline-flex h-10 justify-self-end items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
+                                disabled={isExportingPdf}
+                                className="inline-flex h-10 justify-self-end items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60"
                             >
                                 <Download className="h-4 w-4" />
-                                导出
+                                {isExportingPdf ? '导出中' : '导出'}
                             </button>
                         </div>
                     ) : (

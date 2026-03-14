@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LogtoProvider, LogtoConfig } from '@logto/react';
 import App from './App';
+import ResumePdfExportPage from './views/ResumePdfExportPage';
 
 const config: LogtoConfig = {
   endpoint: import.meta.env.VITE_LOGTO_ENDPOINT,
@@ -15,10 +16,13 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+const isResumePdfExportPath = window.location.pathname === '/print/resume-export';
 
 // 在开发环境禁用严格模式，避免双重挂载导致重复请求
 // 生产环境保留严格模式以检测潜在问题
-const appContent = (
+const appContent = isResumePdfExportPath ? (
+  <ResumePdfExportPage />
+) : (
   <LogtoProvider config={config}>
     <App />
   </LogtoProvider>

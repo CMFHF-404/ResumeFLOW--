@@ -1,3 +1,11 @@
+import asyncio
+import sys
+
+# Playwright 在 Windows 上需要 SelectorEventLoop 才能正常启动子进程。
+# Python 3.8+ 在 Windows 上默认使用 ProactorEventLoop，会导致 NotImplementedError。
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
@@ -7,6 +15,7 @@ from .config import load_settings
 from .domain.ai.ai_router import router as ai_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
+from .domain.export.export_router import router as export_router
 from .domain.feedback.feedback_router import router as feedback_router
 from .domain.parser.parser_router import router as parser_router
 from .domain.profile import profile_router
@@ -14,7 +23,12 @@ from .domain.skills.skill_router import router as skills_router
 from .routers import experience_versions, resumes
 
 from contextlib import asynccontextmanager
-from .database import ensure_experience_version_tags_column, verify_db_connection
+from .database import (
+    ensure_experience_version_tags_column,
+    ensure_export_render_snapshots_table,
+    verify_db_connection,
+)
+from .domain.export.browser_pdf_service import close_browser
 
 def build_cors_allow_credentials(allow_origins: List[str]) -> bool:
     return "*" not in allow_origins
@@ -26,6 +40,7 @@ async def lifespan(app: FastAPI):
     try:
         await verify_db_connection()
         await ensure_experience_version_tags_column()
+        await ensure_export_render_snapshots_table()
     except Exception as e:
         # 如果连不上数据库，直接抛出异常阻止启动
         print(f"CRITICAL: Failed to connect to database. {e}")
@@ -34,6 +49,7 @@ async def lifespan(app: FastAPI):
     
     yield
     # 关闭时：清理工作（如果有）
+    await close_browser()
 
 app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
 settings = load_settings()
@@ -61,6 +77,7 @@ app.include_router(certifications_router)
 app.include_router(ai_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
+app.include_router(export_router)
 
 
 @app.get("/health")

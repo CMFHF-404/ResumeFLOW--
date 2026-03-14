@@ -188,6 +188,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS export_render_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    consumed_at TIMESTAMPTZ
+);
+
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_master_experiences_user_id ON master_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_experience_versions_master_id ON experience_versions(master_experience_id);
@@ -195,3 +204,5 @@ CREATE INDEX IF NOT EXISTS idx_resume_experiences_resume_id ON resume_experience
 CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
+CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_user_id ON export_render_snapshots(user_id);
+CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_expires_at ON export_render_snapshots(expires_at);

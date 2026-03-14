@@ -218,6 +218,26 @@ export type SkillGroupView = {
   skills: SkillItemView[];
 };
 
+export type ResumePdfRenderSnapshot = {
+  resumeName: string;
+  profile: ResumeEditorProfile;
+  lineHeight: number;
+  fontSize: number;
+  listSpacingValue: string;
+  bulletSpacingValue: string;
+  topPaddingPx: number;
+  sectionSpacingClass: string;
+  listSpacingClass: string;
+  sectionOrder: string[];
+  selectedWorkItems: ResumeExperienceView[];
+  selectedProjectItems: ResumeExperienceView[];
+  educations: EducationView[];
+  selectedEduIds: string[];
+  sortedCertifications: CertificationView[];
+  selectedCertIds: string[];
+  selectedSkillGroups: SkillGroupView[];
+};
+
 export type ExperienceActions = {
   editingExpId: string | null;
   editingDraft: ExperienceEditDraft | null;

@@ -68,7 +68,47 @@ async def ensure_experience_version_tags_column() -> None:
         )
 
 
+async def ensure_export_render_snapshots_table() -> None:
+    """确保 export_render_snapshots 表存在，兼容老环境直接升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS export_render_snapshots (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    consumed_at TIMESTAMPTZ
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_user_id
+                ON export_render_snapshots(user_id)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_expires_at
+                ON export_render_snapshots(expires_at)
+                """
+            )
+        )
+
+
 async def ensure_dev_schema() -> None:
     """开发环境下的结构自检与补齐。"""
     await init_db()
     await ensure_experience_version_tags_column()
+    await ensure_export_render_snapshots_table()

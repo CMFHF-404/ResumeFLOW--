@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -21,6 +22,10 @@ ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
 ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
 ENV_FEISHU_WEBHOOK_URL = "FEISHU_WEBHOOK_URL"
+ENV_FRONTEND_ORIGIN = "FRONTEND_ORIGIN"
+ENV_EXPORT_SNAPSHOT_TTL_SECONDS = "EXPORT_SNAPSHOT_TTL_SECONDS"
+ENV_EXPORT_TOKEN_SECRET = "EXPORT_TOKEN_SECRET"
+ENV_EXPORT_RENDER_TIMEOUT_SECONDS = "EXPORT_RENDER_TIMEOUT_SECONDS"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://api.packyapi.com/v1"
 DEFAULT_AI_MODEL = "gemini-3-flash"
@@ -32,6 +37,9 @@ DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
 ]
+DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
+DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS = 300
+DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS = 45
 ENV_FILE_NAME = ".env"
 
 
@@ -64,6 +72,35 @@ def _load_env() -> None:
     load_dotenv(env_path)
 
 
+def _normalize_origin(value: str) -> str:
+    return value.rstrip("/")
+
+
+def _resolve_frontend_origin(cors_allow_origins: List[str]) -> str:
+    value = os.getenv(ENV_FRONTEND_ORIGIN)
+    if value:
+        return _normalize_origin(value)
+
+    for origin in cors_allow_origins:
+        if origin and origin != "*":
+            return _normalize_origin(origin)
+
+    return DEFAULT_FRONTEND_ORIGIN
+
+
+def _resolve_export_token_secret(
+    database_url: str,
+    logto_issuer: str,
+    logto_audience: str,
+) -> str:
+    configured_secret = os.getenv(ENV_EXPORT_TOKEN_SECRET)
+    if configured_secret:
+        return configured_secret
+
+    seed = "|".join([database_url, logto_issuer, logto_audience])
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -82,6 +119,10 @@ class Settings:
     dev_user_id: str
     cors_allow_origins: List[str]
     feishu_webhook_url: Optional[str]
+    frontend_origin: str
+    export_snapshot_ttl_seconds: int
+    export_token_secret: str
+    export_render_timeout_seconds: int
 
 
 _settings: Optional[Settings] = None
@@ -112,6 +153,18 @@ def load_settings() -> Settings:
         DEFAULT_CORS_ALLOW_ORIGINS,
     )
     feishu_webhook_url = os.getenv(ENV_FEISHU_WEBHOOK_URL)
+    frontend_origin = _resolve_frontend_origin(cors_allow_origins)
+    export_snapshot_ttl_seconds = int(
+        os.getenv(ENV_EXPORT_SNAPSHOT_TTL_SECONDS, DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS)
+    )
+    export_token_secret = _resolve_export_token_secret(
+        database_url,
+        logto_issuer,
+        logto_audience,
+    )
+    export_render_timeout_seconds = int(
+        os.getenv(ENV_EXPORT_RENDER_TIMEOUT_SECONDS, DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS)
+    )
 
     _settings = Settings(
         database_url=database_url,
@@ -130,6 +183,10 @@ def load_settings() -> Settings:
         dev_user_id=dev_user_id,
         cors_allow_origins=cors_allow_origins,
         feishu_webhook_url=feishu_webhook_url,
+        frontend_origin=frontend_origin,
+        export_snapshot_ttl_seconds=export_snapshot_ttl_seconds,
+        export_token_secret=export_token_secret,
+        export_render_timeout_seconds=export_render_timeout_seconds,
     )
     return _settings
 
