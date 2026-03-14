@@ -56,29 +56,33 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     const suggestion = resolveExperienceSuggestion(editingItem, staleExperienceIds);
     return (
         <div className={EDITING_SUGGESTION_NAV_CLASS}>
-            <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3">
-                <div className="shrink-0">
-                    {typeof editingItem.matchScore === 'number' ? (
-                        <MatchBadge
-                            score={editingItem.matchScore}
-                            trend={editingItem.matchTrend}
-                            variant="solid"
-                        />
-                    ) : staleExperienceIds.has(editingItem.id) ? (
-                        <StaleBadge />
-                    ) : (
-                        <span className="text-[10px] text-gray-400">匹配度 --</span>
-                    )}
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/60">
+                <div className="flex items-start justify-between gap-3 md:items-center">
+                    <div className="shrink-0">
+                        {typeof editingItem.matchScore === 'number' ? (
+                            <MatchBadge
+                                score={editingItem.matchScore}
+                                trend={editingItem.matchTrend}
+                                variant="solid"
+                            />
+                        ) : staleExperienceIds.has(editingItem.id) ? (
+                            <StaleBadge />
+                        ) : (
+                            <span className="text-[11px] font-semibold text-gray-400">匹配度 --</span>
+                        )}
+                    </div>
+                    <button
+                        onClick={onPolish}
+                        disabled={isPolishing || !jdText.trim()}
+                        className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-[10.5px] font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-60"
+                    >
+                        <Wand2 className="h-3.5 w-3.5" />
+                        {isPolishing ? '润色中...' : '基于 JD 润色'}
+                    </button>
                 </div>
-                <div className="flex-1 text-[10px] text-gray-500 leading-relaxed">{suggestion}</div>
-                <button
-                    onClick={onPolish}
-                    disabled={isPolishing || !jdText.trim()}
-                    className="shrink-0 flex items-center justify-center gap-1.5 text-[10px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-60"
-                >
-                    <Wand2 className="w-3.5 h-3.5" />
-                    {isPolishing ? '润色中...' : '基于 JD 润色'}
-                </button>
+                <div className="mt-3 w-full rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300 md:bg-transparent md:px-0 md:py-0">
+                    {suggestion}
+                </div>
             </div>
         </div>
     );
