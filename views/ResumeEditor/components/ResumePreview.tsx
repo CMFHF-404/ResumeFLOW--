@@ -385,10 +385,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     // 拖拽时浏览器可能“冻结”hover 状态（尤其是起始元素），导致 hover 高光在拖动过程中残留。
     // 因此拖拽期间禁用所有 hover 视觉反馈，只保留拖拽交互本身（实时重排）。
     const sectionControlBaseClass = showTouchDragHandles
-        ? 'absolute -left-3 top-0 z-10 flex flex-col gap-1 rounded-full bg-white/92 p-1 shadow-sm ring-1 ring-gray-200/80 backdrop-blur dark:bg-gray-800/92 dark:ring-gray-700/80'
+        ? 'absolute -left-10 top-0 z-10 flex flex-col gap-1 rounded-full bg-white/92 p-1 shadow-sm ring-1 ring-gray-200/80 backdrop-blur dark:bg-gray-800/92 dark:ring-gray-700/80'
         : 'absolute -left-6 top-0 flex flex-col gap-1';
     const itemControlBaseClass = showTouchDragHandles
-        ? 'absolute -left-3 top-0 z-10 flex flex-col gap-2 rounded-full bg-white/92 p-1.5 shadow-sm ring-1 ring-gray-200/80 backdrop-blur dark:bg-gray-800/92 dark:ring-gray-700/80'
+        ? 'absolute -left-10 top-0 z-10 flex flex-col gap-2 rounded-full bg-white/92 p-1.5 shadow-sm ring-1 ring-gray-200/80 backdrop-blur dark:bg-gray-800/92 dark:ring-gray-700/80'
         : 'absolute -left-6 top-0 flex flex-col gap-1';
     const sectionControlClass = isDragging || isReadOnly
         ? `${sectionControlBaseClass} opacity-0`
