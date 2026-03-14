@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const PRINT_ROOT_ID = 'rf-print-root';
@@ -19,9 +19,14 @@ type PrintPortalProps = {
 };
 
 const PrintPortal: React.FC<PrintPortalProps> = ({ isActive, children }) => {
-  const [root, setRoot] = useState<HTMLElement | null>(null);
+  const [root, setRoot] = useState<HTMLElement | null>(() => {
+    if (!isActive || typeof document === 'undefined') {
+      return null;
+    }
+    return ensurePrintRoot();
+  });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isActive) {
       setRoot(null);
       return;

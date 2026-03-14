@@ -54,7 +54,13 @@
         }
 
         #rf-print-root {
-            display: none;
+            position: fixed;
+            left: -10000px;
+            top: 0;
+            width: 210mm;
+            visibility: hidden;
+            pointer-events: none;
+            overflow: hidden;
         }
 
         .rf-print-surface {
@@ -100,7 +106,13 @@
             }
 
             #rf-print-root {
-                display: block !important;
+                position: static !important;
+                left: auto !important;
+                top: auto !important;
+                width: auto !important;
+                visibility: visible !important;
+                pointer-events: auto !important;
+                overflow: visible !important;
             }
 
             .a4-preview {
@@ -261,6 +273,7 @@
 
 <body class="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 h-screen">
     <div id="root"></div>
+    <div id="rf-print-root" aria-hidden="true"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
 
