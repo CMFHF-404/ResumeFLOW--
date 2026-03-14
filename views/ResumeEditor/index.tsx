@@ -676,6 +676,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isMobileEditorDrawerOpen, setIsMobileEditorDrawerOpen] = useState(false);
     const [isMobileEditorDrawerVisible, setIsMobileEditorDrawerVisible] = useState(false);
     const mobileEditorDrawerTimerRef = useRef<number | null>(null);
+    const mobileEditorScrollContainerRef = useRef<HTMLDivElement | null>(null);
     const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
     const previousDensityRef = useRef<'compact' | 'standard' | 'spacious'>(density);
     const manualSelectionVersionRef = useRef(0);
@@ -3217,10 +3218,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         if (!isMobileEditorDrawerOpen) {
             return;
         }
+        const scrollContainer = mobileEditorScrollContainerRef.current;
         const { overflow } = document.body.style;
         document.body.style.overflow = 'hidden';
+        const previousContainerOverflow = scrollContainer?.style.overflow ?? '';
+        if (scrollContainer) {
+            scrollContainer.style.overflow = 'hidden';
+        }
         return () => {
             document.body.style.overflow = overflow;
+            if (scrollContainer) {
+                scrollContainer.style.overflow = previousContainerOverflow;
+            }
         };
     }, [isMobileEditorDrawerOpen]);
     useEffect(() => {
@@ -3247,7 +3256,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     return (
         <div
-            className="relative flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark"
+            ref={mobileEditorScrollContainerRef}
+            className="relative flex min-h-full flex-1 flex-col overflow-y-auto bg-background-light dark:bg-background-dark md:h-full md:overflow-hidden"
             aria-busy={isEditorBusy}
         >
             <div className="hidden md:block">
@@ -3302,7 +3312,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onJDCollapseChange={setIsJDCollapsed}
                 />
             </div>
-            <div className="flex flex-1 min-h-0 flex-col overflow-hidden md:flex-row">
+            <div className="flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
                 <div className={`hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden ${SIDEBAR_WIDTH_CLASS}`}>
                     <EditorSidebar
                         sidebarTab={sidebarTab}
@@ -3391,7 +3401,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         }}
                     />
                 </div>
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-20 md:pb-0">
+                <div className="flex flex-1 flex-col overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0">
                     <ResumePreview
                         previewRef={previewRef}
                         previewContentRef={previewContentRef}
@@ -3491,7 +3501,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 />
             </div>
             {isMobileEditorDrawerOpen ? (
-                <div className={`fixed inset-0 z-30 transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${isMobileEditorDrawerVisible ? 'bg-black/35 opacity-100 backdrop-blur-[1px]' : 'bg-black/0 opacity-0'}`}>
+                <div className={`fixed inset-0 z-[70] transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${isMobileEditorDrawerVisible ? 'bg-black/35 opacity-100 backdrop-blur-[1px]' : 'bg-black/0 opacity-0'}`}>
                     <button
                         type="button"
                         aria-label="关闭经历库抽屉遮罩"

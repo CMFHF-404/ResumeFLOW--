@@ -152,11 +152,14 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
             ? '重新生成 BOSS 招呼语'
             : '生成 BOSS 招呼语';
     const isCreateResumeDisabled = isCreatingResume || !canCreateResume;
-    const createResumeLabel = isCreatingResume ? '新建中' : '新建简历';
+    const hasSourceResume = Boolean(resumeId);
+    const createResumeLabel = isCreatingResume
+        ? (hasSourceResume ? '副本中' : '新建中')
+        : (hasSourceResume ? '副本' : '新建');
     const createResumeTitle = isCreatingResume
-        ? '新建中...'
+        ? (hasSourceResume ? '副本中...' : '新建中...')
         : canCreateResume
-            ? '新建简历'
+            ? (hasSourceResume ? '创建副本' : '新建简历')
             : '当前简历加载中';
 
     const handleStartEdit = () => {
@@ -288,19 +291,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             )}
 
                             <div className={`flex items-center justify-end gap-1.5 sm:gap-2 ${showJdInput ? 'pt-1' : ''}`}>
-                                {!showJdInput && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsEditingJd(true);
-                                            onJDCollapseChange(false);
-                                        }}
-                                        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                    >
-                                        <Edit2 className="h-4 w-4" />
-                                        编辑 JD
-                                    </button>
-                                )}
                                 <button
                                     type="button"
                                     onClick={onCreateResume}
@@ -369,15 +359,30 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
                                             评价
                                         </span>
-                                        <button
-                                            type="button"
-                                            onClick={onAnalyze}
-                                            disabled={isAnalyzing}
-                                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
-                                            aria-label="刷新 JD 分析"
-                                        >
-                                            <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                        </button>
+                                        <div className="flex items-center gap-0.5">
+                                            {/* 编辑 JD 图标按钮，位于刷新按钮左侧 */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsEditingJd(true);
+                                                    onJDCollapseChange(false);
+                                                }}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary"
+                                                aria-label="编辑 JD"
+                                                title="编辑 JD"
+                                            >
+                                                <Edit2 className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={onAnalyze}
+                                                disabled={isAnalyzing}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                                                aria-label="刷新 JD 分析"
+                                            >
+                                                <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                            </button>
+                                        </div>
                                     </div>
                                     <p
                                         className="text-[12.5px] leading-5 text-emerald-800 dark:text-emerald-300/80"

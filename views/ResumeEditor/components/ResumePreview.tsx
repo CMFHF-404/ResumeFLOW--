@@ -122,6 +122,32 @@ const detectDesktopEditorViewport = () => {
     return window.matchMedia(DESKTOP_EDITOR_MEDIA_QUERY).matches;
 };
 
+const isScrollableOverflow = (overflowValue: string) => (
+    overflowValue === 'auto'
+    || overflowValue === 'scroll'
+    || overflowValue === 'overlay'
+);
+
+const findNearestScrollableAncestor = (element: HTMLElement | null) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        return null;
+    }
+
+    let current = element?.parentElement ?? null;
+    while (current) {
+        const computedStyle = window.getComputedStyle(current);
+        if (
+            isScrollableOverflow(computedStyle.overflowY)
+            && current.scrollHeight > current.clientHeight
+        ) {
+            return current;
+        }
+        current = current.parentElement;
+    }
+
+    return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
+};
+
 const resolveElementVerticalPadding = (element: HTMLElement) => {
     const computedStyle = window.getComputedStyle(element);
     const paddingTop = Number.parseFloat(computedStyle.paddingTop);
@@ -286,6 +312,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const [isTouchOnlyInteractionEnvironment, setIsTouchOnlyInteractionEnvironment] = React.useState(
         detectTouchOnlyInteractionEnvironment
     );
+    const [isDesktopEditorViewport, setIsDesktopEditorViewport] = React.useState(
+        detectDesktopEditorViewport
+    );
+    const isReadOnly = Boolean(readOnly);
+    const showTouchDragHandles = !isReadOnly && isTouchOnlyInteractionEnvironment;
+    const usePageScrollOnMobile = previewScope === 'editor'
+        && isTouchOnlyInteractionEnvironment
+        && !isDesktopEditorViewport;
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
         [fontSize, previewScope]
@@ -345,19 +379,27 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         [headerBottomPaddingPx, sectionSpacingPx]
     );
 
-    const isReadOnly = Boolean(readOnly);
     const enableNativeHtmlDrag = !isReadOnly && !isTouchOnlyInteractionEnvironment;
     const isTouchDragging = touchFeedback?.phase === 'dragging';
 
     // 拖拽时浏览器可能“冻结”hover 状态（尤其是起始元素），导致 hover 高光在拖动过程中残留。
     // 因此拖拽期间禁用所有 hover 视觉反馈，只保留拖拽交互本身（实时重排）。
-    const sectionControlBaseClass = 'absolute -left-6 top-0 flex flex-col gap-1';
+    const sectionControlBaseClass = showTouchDragHandles
+        ? 'absolute -left-3 top-0 z-10 flex flex-col gap-1 rounded-full bg-white/92 p-1 shadow-sm ring-1 ring-gray-200/80 backdrop-blur dark:bg-gray-800/92 dark:ring-gray-700/80'
+        : 'absolute -left-6 top-0 flex flex-col gap-1';
+    const itemControlBaseClass = showTouchDragHandles
+        ? 'absolute -left-3 top-0 z-10 flex flex-col gap-2 rounded-full bg-white/92 p-1.5 shadow-sm ring-1 ring-gray-200/80 backdrop-blur dark:bg-gray-800/92 dark:ring-gray-700/80'
+        : 'absolute -left-6 top-0 flex flex-col gap-1';
     const sectionControlClass = isDragging || isReadOnly
         ? `${sectionControlBaseClass} opacity-0`
-        : `${sectionControlBaseClass} opacity-0 group-hover:opacity-100 transition-opacity`;
+        : showTouchDragHandles
+            ? `${sectionControlBaseClass} opacity-100`
+            : `${sectionControlBaseClass} opacity-0 group-hover:opacity-100 transition-opacity`;
     const itemControlClass = isDragging || isReadOnly
-        ? 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0'
-        : 'absolute -left-6 top-0 flex flex-col gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity';
+        ? `${itemControlBaseClass} opacity-0`
+        : showTouchDragHandles
+            ? `${itemControlBaseClass} opacity-100`
+            : `${itemControlBaseClass} opacity-0 group-hover/item:opacity-100 transition-opacity`;
     const itemHoverBgClass = isDragging || isReadOnly ? '' : 'group-hover/item:bg-primary/5';
     const sectionDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
     const itemDragClass = isReadOnly ? 'cursor-default' : 'cursor-move';
@@ -561,11 +603,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [clearTouchDragPreview, onTouchDragCancel, onTouchDragEnd]);
 
     const autoScrollPreview = React.useCallback((clientY: number) => {
-        const container = previewScrollRef.current;
-        if (!container) {
+        const scrollContainer = usePageScrollOnMobile
+            ? findNearestScrollableAncestor(previewScrollRef.current)
+            : previewScrollRef.current;
+        if (!scrollContainer) {
             return;
         }
-        const rect = container.getBoundingClientRect();
+
+        const rect = scrollContainer.getBoundingClientRect();
         if (!rect.height) {
             return;
         }
@@ -580,9 +625,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }
 
         if (delta !== 0) {
-            container.scrollTop += delta;
+            scrollContainer.scrollTop += delta;
         }
-    }, []);
+    }, [usePageScrollOnMobile]);
 
     const updateTouchDragHover = React.useCallback((clientX: number, clientY: number) => {
         const session = touchSessionRef.current;
@@ -724,6 +769,40 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         );
     }, [startTouchLongPress]);
 
+    const handleSectionControlTouchStart = React.useCallback((
+        event: React.TouchEvent<HTMLElement>,
+        sectionId: string
+    ) => {
+        event.stopPropagation();
+        const sectionWrapper = event.currentTarget.closest(`[${DATA_SECTION_ID_ATTR}]`);
+        const sectionSurface = sectionWrapper?.querySelector(`[${DATA_SECTION_SURFACE_ATTR}]`);
+        startTouchLongPress(
+            event,
+            'section',
+            sectionId,
+            previewContentRef.current,
+            sectionSurface instanceof HTMLElement ? sectionSurface : null
+        );
+    }, [previewContentRef, startTouchLongPress]);
+
+    const handleItemControlTouchStart = React.useCallback((
+        event: React.TouchEvent<HTMLElement>,
+        itemKey: string
+    ) => {
+        event.stopPropagation();
+        const itemSurface = event.currentTarget
+            .closest(`[${DATA_ITEM_ID_ATTR}]`)
+            ?.querySelector(`[${DATA_ITEM_SURFACE_ATTR}]`);
+        const container = event.currentTarget.closest(`[${DATA_ITEM_CONTAINER_ATTR}]`);
+        startTouchLongPress(
+            event,
+            'item',
+            itemKey,
+            container instanceof HTMLElement ? container : null,
+            itemSurface instanceof HTMLElement ? itemSurface : null
+        );
+    }, [startTouchLongPress]);
+
     const stopTouchStartPropagation = React.useCallback((event: React.TouchEvent<HTMLElement>) => {
         event.stopPropagation();
     }, []);
@@ -769,9 +848,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             window.matchMedia('(any-pointer: coarse)'),
             window.matchMedia('(hover: hover) and (pointer: fine)'),
             window.matchMedia('(any-hover: hover) and (any-pointer: fine)'),
+            window.matchMedia(DESKTOP_EDITOR_MEDIA_QUERY),
         ];
         const updateInteractionEnvironment = () => {
             setIsTouchOnlyInteractionEnvironment(detectTouchOnlyInteractionEnvironment());
+            setIsDesktopEditorViewport(detectDesktopEditorViewport());
         };
 
         updateInteractionEnvironment();
@@ -1081,8 +1162,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 }
             >
                 {!isReadOnly ? (
-                    <div className={sectionControlClass}>
-                        <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                    <div
+                        className={sectionControlClass}
+                        onTouchStart={
+                            showTouchDragHandles
+                                ? (event) => handleSectionControlTouchStart(event, sectionId)
+                                : undefined
+                        }
+                        style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                    >
+                        <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
                     </div>
                 ) : null}
 
@@ -1095,7 +1184,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
                         style={{ ...sectionTitleStyle, ...touchHandleStyle }}
                         onTouchStart={
-                            isReadOnly ? undefined : (event) => handleSectionTitleTouchStart(event, sectionId)
+                            isReadOnly || showTouchDragHandles
+                                ? undefined
+                                : (event) => handleSectionTitleTouchStart(event, sectionId)
                         }
                     >
                         {title}
@@ -1152,16 +1243,31 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                                 >
                                     {!isReadOnly ? (
-                                        <div className={itemControlClass}>
-                                            <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                            <Edit3
-                                                className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                        <div
+                                            className={itemControlClass}
+                                        >
+                                            <div
+                                                onTouchStart={
+                                                    showTouchDragHandles
+                                                        ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                        : undefined
+                                                }
+                                                style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                            >
+                                                <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
                                                 onTouchStart={stopTouchStartPropagation}
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     onEditExperience(item.id);
                                                 }}
-                                            />
+                                            >
+                                                <Edit3 className="h-3.5 w-3.5" />
+                                            </button>
                                         </div>
                                     ) : null}
 
@@ -1170,7 +1276,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         className={getItemSurfaceClass(itemKey)}
                                         style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                         onTouchStart={
-                                            isReadOnly ? undefined : (event) => handleItemCardTouchStart(event, itemKey)
+                                            isReadOnly || showTouchDragHandles
+                                                ? undefined
+                                                : (event) => handleItemCardTouchStart(event, itemKey)
                                         }
                                     >
                                         <div className="flex justify-between items-baseline mb-1">
@@ -1199,10 +1307,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     return (
         <main
             ref={previewScrollRef}
-            className="flex-1 bg-gray-100 dark:bg-gray-900/50 overflow-y-auto overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8"
+            className={`bg-gray-100 dark:bg-gray-900/50 overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8 ${
+                usePageScrollOnMobile ? 'overflow-visible' : 'flex-1 overflow-y-auto'
+            }`}
             style={{
                 touchAction: isDragging ? 'none' : 'pan-y',
-                overscrollBehaviorY: isDragging ? 'none' : 'contain',
+                overscrollBehaviorY: isDragging ? 'none' : (usePageScrollOnMobile ? undefined : 'contain'),
+                WebkitOverflowScrolling: usePageScrollOnMobile ? undefined : 'touch',
             }}
         >
             <div
@@ -1310,8 +1421,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                                 >
                                     {!isReadOnly ? (
-                                        <div className={sectionControlClass}>
-                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <div
+                                            className={sectionControlClass}
+                                            onTouchStart={
+                                                showTouchDragHandles
+                                                    ? (event) => handleSectionControlTouchStart(event, 'education')
+                                                    : undefined
+                                            }
+                                            style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                        >
+                                            <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
                                         </div>
                                     ) : null}
 
@@ -1324,7 +1443,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
                                             style={{ ...sectionTitleStyle, ...touchHandleStyle }}
                                             onTouchStart={
-                                                isReadOnly
+                                                isReadOnly || showTouchDragHandles
                                                     ? undefined
                                                     : (event) => handleSectionTitleTouchStart(event, 'education')
                                             }
@@ -1390,16 +1509,31 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         }
                                                     >
                                                         {!isReadOnly ? (
-                                                            <div className={itemControlClass}>
-                                                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                                <Edit3
-                                                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                            <div
+                                                                className={itemControlClass}
+                                                            >
+                                                                <div
+                                                                    onTouchStart={
+                                                                        showTouchDragHandles
+                                                                            ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                                        : undefined
+                                                                    }
+                                                                    style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                                    className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                                                >
+                                                                    <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
                                                                     onTouchStart={stopTouchStartPropagation}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         onNavigateTab('profile');
                                                                     }}
-                                                                />
+                                                                >
+                                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                                </button>
                                                             </div>
                                                         ) : null}
                                                         <div
@@ -1407,7 +1541,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
-                                                                isReadOnly
+                                                                isReadOnly || showTouchDragHandles
                                                                     ? undefined
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
@@ -1467,8 +1601,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                                 >
                                     {!isReadOnly ? (
-                                        <div className={sectionControlClass}>
-                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <div
+                                            className={sectionControlClass}
+                                            onTouchStart={
+                                                showTouchDragHandles
+                                                    ? (event) => handleSectionControlTouchStart(event, 'certifications')
+                                                    : undefined
+                                            }
+                                            style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                        >
+                                            <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
                                         </div>
                                     ) : null}
 
@@ -1481,7 +1623,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
                                             style={{ ...sectionTitleStyle, ...touchHandleStyle }}
                                             onTouchStart={
-                                                isReadOnly
+                                                isReadOnly || showTouchDragHandles
                                                     ? undefined
                                                     : (event) => handleSectionTitleTouchStart(event, 'certifications')
                                             }
@@ -1542,16 +1684,31 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         }
                                                     >
                                                         {!isReadOnly ? (
-                                                            <div className={itemControlClass}>
-                                                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                                <Edit3
-                                                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                            <div
+                                                                className={itemControlClass}
+                                                            >
+                                                                <div
+                                                                    onTouchStart={
+                                                                        showTouchDragHandles
+                                                                            ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                                        : undefined
+                                                                    }
+                                                                    style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                                    className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                                                >
+                                                                    <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
                                                                     onTouchStart={stopTouchStartPropagation}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         onEditCertification(cert.id);
                                                                     }}
-                                                                />
+                                                                >
+                                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                                </button>
                                                             </div>
                                                         ) : null}
                                                         <div
@@ -1559,7 +1716,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
-                                                                isReadOnly
+                                                                isReadOnly || showTouchDragHandles
                                                                     ? undefined
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
@@ -1614,8 +1771,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                                 >
                                     {!isReadOnly ? (
-                                        <div className={sectionControlClass}>
-                                            <GripVertical className="w-4 h-4 text-primary cursor-move" />
+                                        <div
+                                            className={sectionControlClass}
+                                            onTouchStart={
+                                                showTouchDragHandles
+                                                    ? (event) => handleSectionControlTouchStart(event, 'skills')
+                                                    : undefined
+                                            }
+                                            style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                        >
+                                            <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
                                         </div>
                                     ) : null}
 
@@ -1628,7 +1793,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
                                             style={{ ...sectionTitleStyle, ...touchHandleStyle }}
                                             onTouchStart={
-                                                isReadOnly
+                                                isReadOnly || showTouchDragHandles
                                                     ? undefined
                                                     : (event) => handleSectionTitleTouchStart(event, 'skills')
                                             }
@@ -1690,10 +1855,23 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         }
                                                     >
                                                         {!isReadOnly ? (
-                                                            <div className={itemControlClass}>
-                                                                <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move" />
-                                                                <Edit3
-                                                                    className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-primary"
+                                                            <div
+                                                                className={itemControlClass}
+                                                            >
+                                                                <div
+                                                                    onTouchStart={
+                                                                        showTouchDragHandles
+                                                                            ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                                        : undefined
+                                                                    }
+                                                                    style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                                    className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                                                >
+                                                                    <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
                                                                     onTouchStart={stopTouchStartPropagation}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
@@ -1702,7 +1880,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                         }
                                                                         onEditSkill(editableSkill.id);
                                                                     }}
-                                                                />
+                                                                >
+                                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                                </button>
                                                             </div>
                                                         ) : null}
                                                         <div
@@ -1710,7 +1890,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                             className={getItemSurfaceClass(itemKey)}
                                                             style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
                                                             onTouchStart={
-                                                                isReadOnly
+                                                                isReadOnly || showTouchDragHandles
                                                                     ? undefined
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
