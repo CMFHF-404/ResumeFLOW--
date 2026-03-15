@@ -33,6 +33,7 @@ import { mergeLinkedInLink } from '../profileUtils';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
+import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
 import {
     trackBossGreetingResult,
@@ -445,17 +446,6 @@ const toggleGroupedSelectionSnapshotIds = (ids: string[], targetIds: string[]) =
         next.delete(id);
     });
     return [...next];
-};
-
-const downloadBlobFile = (blob: Blob, fileName: string) => {
-    const objectUrl = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
 };
 
 const waitForNextFrame = (callback: () => void) => {
@@ -3131,8 +3121,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
         setIsExportingPdf(true);
         try {
-            const pdfBlob = await exportService.exportResumePdf(snapshot, exportTitle);
-            downloadBlobFile(pdfBlob, `${exportTitle}.pdf`);
+            const { downloadUrl, fileName } = await exportService.createResumePdfDownloadLink(
+                snapshot,
+                exportTitle
+            );
+            await downloadUrlFile(downloadUrl, fileName);
             updateToast(toastId, {
                 message: 'PDF 已生成，开始下载。',
                 type: 'success',

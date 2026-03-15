@@ -55,8 +55,10 @@ app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
 settings = load_settings()
 allow_credentials = build_cors_allow_credentials(settings.cors_allow_origins)
 
-# CORS配置 - 必须在认证中间件之前，确保所有响应都有CORS头
-# FastAPI中间件采用洋葱模型，先注册的后执行响应处理
+if not settings.enable_dev_auth_bypass:
+    app.add_middleware(LogtoAuthMiddleware)
+# CORS 必须放在最外层，确保包括鉴权失败在内的所有响应都带上跨域头
+# Starlette/FastAPI 中后注册的中间件会包裹先注册的中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins,
@@ -64,10 +66,8 @@ app.add_middleware(
     allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
-# 认证中间件放在CORS之后，这样即使认证失败，响应也会包含CORS头
-if not settings.enable_dev_auth_bypass:
-    app.add_middleware(LogtoAuthMiddleware)
 app.include_router(profile_router.router)
 app.include_router(experience_router.router)
 app.include_router(experience_versions.router)

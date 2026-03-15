@@ -34,7 +34,7 @@ import {
   buildExperienceBankExportTitle,
 } from '../utils/exportFilename';
 import { buildExperienceBankPdfRenderSnapshot } from '../utils/experienceBankPdf';
-import { downloadBlobFile } from '../utils/downloadBlobFile';
+import { downloadUrlFile } from '../utils/downloadUrlFile';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
@@ -357,8 +357,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         ...latestSnapshot,
         exportDateLabel: buildExperienceBankExportDateLabel(exportDate),
       });
-      const pdfBlob = await exportService.exportExperienceBankPdf(snapshot, exportTitle);
-      downloadBlobFile(pdfBlob, `${exportTitle}.pdf`);
+      const { downloadUrl, fileName } = await exportService.createExperienceBankPdfDownloadLink(
+        snapshot,
+        exportTitle
+      );
+      await downloadUrlFile(downloadUrl, fileName);
       trackExperienceBankExported({
         workCount: snapshot.workItems.length,
         projectCount: snapshot.projectItems.length,

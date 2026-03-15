@@ -8,7 +8,7 @@ import re
 import unicodedata
 import zlib
 from typing import TypeVar
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ValidationError
@@ -31,6 +31,7 @@ from .browser_pdf_service import (
     render_resume_pdf,
 )
 from .schemas import (
+    ExportDownloadLinkRead,
     ExperienceBankPdfExportRequest,
     ExperienceBankPdfRenderSnapshot,
     ExperienceBankRenderSnapshotRead,
@@ -109,6 +110,18 @@ def _build_ascii_download_filename(value: str) -> str:
     return f"{ascii_stem}{ascii_ext}"
 
 
+def _build_pdf_download_response(pdf_bytes: bytes, file_name: str | None) -> Response:
+    sanitized_file_name = _sanitize_download_filename(file_name)
+    ascii_file_name = _build_ascii_download_filename(sanitized_file_name)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{ascii_file_name}"; '
+            f"filename*=UTF-8''{quote(sanitized_file_name)}"
+        ),
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
 async def _render_snapshot_pdf_response(
     session: AsyncSession,
     user_id: str,
@@ -126,16 +139,83 @@ async def _render_snapshot_pdf_response(
         raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     await mark_render_snapshot_consumed(session, record)
+    return _build_pdf_download_response(pdf_bytes, file_name)
 
+
+def _build_download_url(
+    request: Request,
+    route_name: str,
+    snapshot_id: str,
+    token: str,
+    file_name: str | None,
+) -> str:
+    path = request.app.url_path_for(route_name, snapshot_id=snapshot_id)
+    query = urlencode(
+        {
+            "token": token,
+            "fileName": _sanitize_download_filename(file_name),
+        }
+    )
+    return f"{path}?{query}"
+
+
+async def _create_download_link_response(
+    request: Request,
+    session: AsyncSession,
+    user_id: str,
+    snapshot: ResumePdfRenderSnapshot | ExperienceBankPdfRenderSnapshot,
+    file_name: str | None,
+    route_name: str,
+) -> ExportDownloadLinkRead:
+    record, token = await create_render_snapshot(session, user_id, snapshot)
     sanitized_file_name = _sanitize_download_filename(file_name)
-    ascii_file_name = _build_ascii_download_filename(sanitized_file_name)
-    headers = {
-        "Content-Disposition": (
-            f'attachment; filename="{ascii_file_name}"; '
-            f"filename*=UTF-8''{quote(sanitized_file_name)}"
+    return ExportDownloadLinkRead(
+        downloadUrl=_build_download_url(
+            request,
+            route_name,
+            str(record.id),
+            token,
+            sanitized_file_name,
         ),
-    }
-    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+        fileName=sanitized_file_name,
+    )
+
+
+async def _render_snapshot_pdf_download_response(
+    session: AsyncSession,
+    snapshot_id: str,
+    token: str,
+    snapshot_model: type[ResumePdfRenderSnapshot] | type[ExperienceBankPdfRenderSnapshot],
+    renderer: Callable[[str, str], Awaitable[bytes]],
+    file_name: str | None,
+):
+    try:
+        record, _ = await get_render_snapshot_by_token(
+            session,
+            snapshot_id,
+            token,
+            snapshot_model,
+        )
+    except SnapshotTokenError as exc:
+        raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except SnapshotConsumedError as exc:
+        raise HTTPException(status_code=HTTP_410_GONE, detail=str(exc)) from exc
+    except SnapshotExpiredError as exc:
+        raise HTTPException(status_code=HTTP_410_GONE, detail=str(exc)) from exc
+    except SnapshotPayloadError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SnapshotNotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    try:
+        pdf_bytes = await renderer(str(record.id), token)
+    except BrowserPdfRenderTimeoutError as exc:
+        raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    except BrowserPdfRenderError as exc:
+        raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    await mark_render_snapshot_consumed(session, record)
+    return _build_pdf_download_response(pdf_bytes, file_name)
 
 
 async def _parse_export_request(
@@ -236,6 +316,27 @@ async def export_resume_pdf(
 
 
 @router.post(
+    "/resume-pdf-link",
+    response_model=ExportDownloadLinkRead,
+    openapi_extra=_build_export_request_openapi("ResumePdfExportRequest"),
+)
+async def create_resume_pdf_download_link(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    payload = await _parse_export_request(request, ResumePdfExportRequest)
+    return await _create_download_link_response(
+        request,
+        session,
+        current_user.id,
+        payload.snapshot,
+        payload.fileName or payload.snapshot.resumeName,
+        "download_resume_pdf",
+    )
+
+
+@router.post(
     "/experience-bank-pdf",
     openapi_extra=_build_export_request_openapi("ExperienceBankPdfExportRequest"),
 )
@@ -251,6 +352,64 @@ async def export_experience_bank_pdf(
         payload.snapshot,
         render_experience_bank_pdf,
         payload.fileName or "experience-bank-export",
+    )
+
+
+@router.post(
+    "/experience-bank-pdf-link",
+    response_model=ExportDownloadLinkRead,
+    openapi_extra=_build_export_request_openapi("ExperienceBankPdfExportRequest"),
+)
+async def create_experience_bank_pdf_download_link(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    payload = await _parse_export_request(request, ExperienceBankPdfExportRequest)
+    return await _create_download_link_response(
+        request,
+        session,
+        current_user.id,
+        payload.snapshot,
+        payload.fileName or "experience-bank-export",
+        "download_experience_bank_pdf",
+    )
+
+
+@router.get("/download/resume-pdf/{snapshot_id}", name="download_resume_pdf")
+async def download_resume_pdf(
+    snapshot_id: str,
+    token: str = Query(..., min_length=1),
+    fileName: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _render_snapshot_pdf_download_response(
+        session,
+        snapshot_id,
+        token,
+        ResumePdfRenderSnapshot,
+        render_resume_pdf,
+        fileName,
+    )
+
+
+@router.get(
+    "/download/experience-bank-pdf/{snapshot_id}",
+    name="download_experience_bank_pdf",
+)
+async def download_experience_bank_pdf(
+    snapshot_id: str,
+    token: str = Query(..., min_length=1),
+    fileName: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _render_snapshot_pdf_download_response(
+        session,
+        snapshot_id,
+        token,
+        ExperienceBankPdfRenderSnapshot,
+        render_experience_bank_pdf,
+        fileName,
     )
 
 
