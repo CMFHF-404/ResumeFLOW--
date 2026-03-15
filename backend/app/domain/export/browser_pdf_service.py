@@ -57,8 +57,15 @@ def _should_use_threaded_render_fallback() -> bool:
 
 
 def _create_worker_event_loop() -> asyncio.AbstractEventLoop:
-    if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
-        return asyncio.WindowsSelectorEventLoopPolicy().new_event_loop()
+    """
+    在工作线程中创建事件循环。
+
+    Windows 上 Playwright 需要启动浏览器子进程（create_subprocess_exec），
+    而只有 ProactorEventLoop 支持此操作，SelectorEventLoop（默认）不支持。
+    因此在 Windows 上必须强制使用 WindowsProactorEventLoopPolicy。
+    """
+    if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
+        return asyncio.WindowsProactorEventLoopPolicy().new_event_loop()
     return asyncio.new_event_loop()
 
 
@@ -89,19 +96,21 @@ async def _launch_browser(playwright: Playwright) -> Browser:
     )
 
 
-def _build_page_url(snapshot_id: str, token: str) -> str:
+def _build_page_url_for_path(snapshot_id: str, token: str, page_path: str) -> str:
     settings = load_settings()
     query = urlencode({"exportId": snapshot_id, "token": token})
-    return f"{settings.frontend_origin}/print/resume-export?{query}"
+    normalized_page_path = page_path if page_path.startswith("/") else f"/{page_path}"
+    return f"{settings.frontend_origin}{normalized_page_path}?{query}"
 
 
 async def _render_pdf_with_browser(
     browser: Browser,
     snapshot_id: str,
     token: str,
+    page_path: str,
 ) -> bytes:
     settings = load_settings()
-    page_url = _build_page_url(snapshot_id, token)
+    page_url = _build_page_url_for_path(snapshot_id, token, page_path)
     timeout_ms = settings.export_render_timeout_seconds * 1000
     context = await browser.new_context(
         color_scheme="light",
@@ -153,30 +162,38 @@ async def _render_pdf_with_browser(
         await context.close()
 
 
-async def _render_resume_pdf_shared_browser(snapshot_id: str, token: str) -> bytes:
+async def _render_pdf_shared_browser(
+    snapshot_id: str,
+    token: str,
+    page_path: str,
+) -> bytes:
     browser = await _get_browser()
-    return await _render_pdf_with_browser(browser, snapshot_id, token)
+    return await _render_pdf_with_browser(browser, snapshot_id, token, page_path)
 
 
-async def _render_resume_pdf_ephemeral_browser(snapshot_id: str, token: str) -> bytes:
+async def _render_pdf_ephemeral_browser(
+    snapshot_id: str,
+    token: str,
+    page_path: str,
+) -> bytes:
     playwright = await async_playwright().start()
     browser: Optional[Browser] = None
     try:
         browser = await _launch_browser(playwright)
-        return await _render_pdf_with_browser(browser, snapshot_id, token)
+        return await _render_pdf_with_browser(browser, snapshot_id, token, page_path)
     finally:
         if browser is not None:
             await browser.close()
         await playwright.stop()
 
 
-def _render_resume_pdf_in_worker_thread(snapshot_id: str, token: str) -> bytes:
+def _render_pdf_in_worker_thread(snapshot_id: str, token: str, page_path: str) -> bytes:
     loop = _create_worker_event_loop()
 
     try:
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(
-            _render_resume_pdf_ephemeral_browser(snapshot_id, token)
+            _render_pdf_ephemeral_browser(snapshot_id, token, page_path)
         )
     finally:
         try:
@@ -201,11 +218,24 @@ async def close_browser() -> None:
 
 
 async def render_resume_pdf(snapshot_id: str, token: str) -> bytes:
+    return await render_export_pdf(snapshot_id, token, "/print/resume-export")
+
+
+async def render_experience_bank_pdf(snapshot_id: str, token: str) -> bytes:
+    return await render_export_pdf(
+        snapshot_id,
+        token,
+        "/print/experience-bank-export",
+    )
+
+
+async def render_export_pdf(snapshot_id: str, token: str, page_path: str) -> bytes:
     if _should_use_threaded_render_fallback():
         return await asyncio.to_thread(
-            _render_resume_pdf_in_worker_thread,
+            _render_pdf_in_worker_thread,
             snapshot_id,
             token,
+            page_path,
         )
 
-    return await _render_resume_pdf_shared_browser(snapshot_id, token)
+    return await _render_pdf_shared_browser(snapshot_id, token, page_path)

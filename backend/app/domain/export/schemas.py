@@ -4,6 +4,11 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from ..certifications.schemas import CertificationRead
+from ..experience.schemas import ExperienceListItem
+from ..profile.schemas import ProfileRead
+from ..skills.schemas import UserSkillRead
+
 
 class StarFields(BaseModel):
     s: str = ""
@@ -94,3 +99,21 @@ class ResumePdfExportRequest(BaseModel):
 class RenderSnapshotRead(BaseModel):
     snapshot: ResumePdfRenderSnapshot
 
+
+class ExperienceBankPdfRenderSnapshot(BaseModel):
+    profile: Optional[ProfileRead] = None
+    workItems: List[ExperienceListItem] = Field(default_factory=list)
+    projectItems: List[ExperienceListItem] = Field(default_factory=list)
+    educationItems: List[ExperienceListItem] = Field(default_factory=list)
+    certifications: List[CertificationRead] = Field(default_factory=list)
+    skills: List[UserSkillRead] = Field(default_factory=list)
+    exportDateLabel: Optional[str] = None
+
+
+class ExperienceBankPdfExportRequest(BaseModel):
+    snapshot: ExperienceBankPdfRenderSnapshot
+    fileName: Optional[str] = None
+
+
+class ExperienceBankRenderSnapshotRead(BaseModel):
+    snapshot: ExperienceBankPdfRenderSnapshot

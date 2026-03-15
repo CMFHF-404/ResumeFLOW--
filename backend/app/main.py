@@ -1,13 +1,9 @@
 import asyncio
 import sys
 
-# Playwright 在 Windows 上需要 SelectorEventLoop 才能正常启动子进程。
-# Python 3.8+ 在 Windows 上默认使用 ProactorEventLoop，会导致 NotImplementedError。
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from typing import List
 
 from .auth_middleware import LogtoAuthMiddleware
@@ -16,6 +12,10 @@ from .domain.ai.ai_router import router as ai_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
 from .domain.export.export_router import router as export_router
+from .domain.export.schemas import (
+    ExperienceBankPdfExportRequest,
+    ResumePdfExportRequest,
+)
 from .domain.feedback.feedback_router import router as feedback_router
 from .domain.parser.parser_router import router as parser_router
 from .domain.profile import profile_router
@@ -78,6 +78,34 @@ app.include_router(ai_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
 app.include_router(export_router)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    components = schema.setdefault("components", {}).setdefault("schemas", {})
+
+    for model in (ResumePdfExportRequest, ExperienceBankPdfExportRequest):
+        model_schema = model.model_json_schema(
+            ref_template="#/components/schemas/{model}"
+        )
+        model_defs = model_schema.pop("$defs", {})
+        for name, definition in model_defs.items():
+            components.setdefault(name, definition)
+        components[model.__name__] = model_schema
+
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 
 @app.get("/health")

@@ -26,3 +26,10 @@ export const buildResumeExportTitle = (resumeName: string, date = new Date()) =>
 export const buildExperienceBankExportTitle = (date = new Date()) => {
   return `经历库-${buildDateStamp(date)}`;
 };
+
+export const buildExperienceBankExportDateLabel = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = padDatePart(date.getMonth() + MONTH_OFFSET);
+  const day = padDatePart(date.getDate());
+  return `${year}.${month}.${day}`;
+};

@@ -5,13 +5,13 @@ import type { Profile } from '../services/profileService';
 import type { UserSkill } from '../services/skillsService';
 import { buildExperienceDate, formatYearMonth } from '../utils/dateUtils';
 import { buildEduCardData, buildEducationDateLabel } from '../utils/educationUtils';
+import { buildExperienceBankExportDateLabel } from '../utils/exportFilename';
 import { stripRichTextToText } from '../utils/richText';
 import { parseYearMonthValue } from './experienceUtils';
 import { resolveLinkedInLink } from './profileUtils';
 import { CERT_META_PREFIX } from './ResumeEditor/constants';
 
 const ST_SEPARATOR = '； ';
-const EXPORT_DATE_SEPARATOR = '.';
 
 const normalizePlainText = (value: unknown) => {
   if (value === null || value === undefined) {
@@ -70,15 +70,6 @@ const buildCertDateLabel = (cert: Certification) => {
   const issue = formatCertDate(cert.issue_date);
   const expiry = formatCertDate(cert.expiry_date);
   return [issue, expiry].filter(Boolean).join(' - ');
-};
-
-const padDateValue = (value: number) => String(value).padStart(2, '0');
-
-const buildExportDateLabel = (date = new Date()) => {
-  const year = date.getFullYear();
-  const month = padDateValue(date.getMonth() + 1);
-  const day = padDateValue(date.getDate());
-  return [year, month, day].join(EXPORT_DATE_SEPARATOR);
 };
 
 const buildSkillGroups = (skills: UserSkill[]) => {
@@ -237,6 +228,7 @@ export type ExperienceBankPrintProps = {
   educationItems: ExperienceListItem[];
   certifications: Certification[];
   skills: UserSkill[];
+  exportDateLabel?: string | null;
 };
 
 type ProfileField = { label: string; value: string };
@@ -352,6 +344,7 @@ const ExperienceBankPrint: React.FC<ExperienceBankPrintProps> = ({
   educationItems,
   certifications,
   skills,
+  exportDateLabel,
 }) => {
   const profileFields = buildProfileFields(profile);
   const sortedWork = sortByStartDateDesc(workItems);
@@ -361,7 +354,7 @@ const ExperienceBankPrint: React.FC<ExperienceBankPrintProps> = ({
 
   return (
     <div className="rf-print-preview mx-auto w-[210mm] min-h-[297mm] bg-white text-gray-900 px-10 py-8 space-y-8">
-      <PrintHeader dateLabel={buildExportDateLabel()} />
+      <PrintHeader dateLabel={exportDateLabel || buildExperienceBankExportDateLabel()} />
       <ProfileSection fields={profileFields} />
       <ExperienceSectionBlock title="工作经历" items={sortedWork} />
       <ExperienceSectionBlock title="项目经历" items={sortedProject} />

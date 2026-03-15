@@ -54,10 +54,10 @@ const STAR_SECTIONS: Array<{
   color: string;
   ph: string;
 }> = [
-    { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: 'Describe the context...' },
-    { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: 'What were your goals?' },
-    { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: 'What specifically did you do?' },
-    { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: 'Quantifiable outcomes...' },
+    { id: 's', label: 'S - 情境 (Situation)', color: 'blue', ph: '情境描述：描述当时面临的背景、面临的挑战或问题...' },
+    { id: 't', label: 'T - 任务 (Task)', color: 'orange', ph: '任务目标：说明你的职责是什么，需要达到什么样的具体目标...' },
+    { id: 'a', label: 'A - 行动 (Action)', color: 'amber', ph: '行动细节：你具体做了什么，采取了哪些步骤，使用了什么技能或工具... \n\n【TIPS】：如果您暂时不知道 STAR 怎么写，可以将全部经历写在此处，AI 润色将自动为您拆分' },
+    { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: '取得成果：最终取得了什么量化的成果、正面反馈或具体影响...' },
   ];
 
 type ExperienceCardProps = {

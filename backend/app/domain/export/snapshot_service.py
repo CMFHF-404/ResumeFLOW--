@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import uuid
-from typing import Optional
+from typing import Optional, TypeVar
 
 from jose import ExpiredSignatureError, JWTError, jwt
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...config import load_settings
 from ...models import ExportRenderSnapshot
-from .schemas import ResumePdfRenderSnapshot
 
 TOKEN_ALGORITHM = "HS256"
-TOKEN_SCOPE = "resume_render_snapshot"
+TOKEN_SCOPE = "export_render_snapshot"
+SnapshotModelT = TypeVar("SnapshotModelT", bound=BaseModel)
 
 
 class SnapshotError(Exception):
@@ -34,6 +35,10 @@ class SnapshotTokenError(SnapshotError):
 
 
 class SnapshotConsumedError(SnapshotError):
+    pass
+
+
+class SnapshotPayloadError(SnapshotError):
     pass
 
 
@@ -93,7 +98,7 @@ def _decode_snapshot_token(token: str) -> dict:
 async def create_render_snapshot(
     session: AsyncSession,
     user_id: str,
-    snapshot: ResumePdfRenderSnapshot,
+    snapshot: BaseModel,
     ttl_seconds: Optional[int] = None,
 ) -> tuple[ExportRenderSnapshot, str]:
     settings = load_settings()
@@ -119,7 +124,8 @@ async def get_render_snapshot_by_token(
     session: AsyncSession,
     snapshot_id: str,
     token: str,
-) -> tuple[ExportRenderSnapshot, ResumePdfRenderSnapshot]:
+    snapshot_model: type[SnapshotModelT],
+) -> tuple[ExportRenderSnapshot, SnapshotModelT]:
     claims = _decode_snapshot_token(token)
     if claims.get("sub") != snapshot_id:
         raise SnapshotTokenError("导出快照令牌与请求不匹配。")
@@ -147,7 +153,10 @@ async def get_render_snapshot_by_token(
     if _as_utc_timestamp(record.expires_at) < _as_utc_timestamp(_utc_now_aware()):
         raise SnapshotExpiredError("导出快照已过期，请重新导出。")
 
-    parsed_snapshot = ResumePdfRenderSnapshot.model_validate(record.payload_json or {})
+    try:
+        parsed_snapshot = snapshot_model.model_validate(record.payload_json or {})
+    except ValidationError as exc:
+        raise SnapshotPayloadError("导出快照不存在。") from exc
     return record, parsed_snapshot
 
 
