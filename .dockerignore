@@ -12,30 +12,10 @@ tmp_test.txt
 README.md
 docs/
 
-# Frontend app and build artifacts
+# Node / frontend build artifacts
 node_modules/
 dist/
 dist-ssr/
-public/
-components/
-constants/
-data/
-hooks/
-services/
-types/
-utils/
-views/
-App.tsx
-index.html
-index.tsx
-metadata.json
-package.json
-package-lock.json
-patch.js
-tsconfig.json
-types.ts
-vite-env.d.ts
-vite.config.ts
 .env.local
 .env.production
 
