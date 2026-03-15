@@ -21,7 +21,10 @@ AUTH_HEADER = "Authorization"
 BEARER_PREFIX = "Bearer "
 ALLOWED_ALGORITHMS = {"RS256", "ES384"}
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
-PUBLIC_GET_PATH_PREFIXES = ("/exports/render-snapshots/",)
+PUBLIC_GET_PATH_PREFIXES = (
+    "/exports/render-snapshots/",
+    "/exports/experience-bank-render-snapshots/",
+)
 
 
 @dataclass(frozen=True)

@@ -75,23 +75,6 @@
             position: relative;
         }
 
-        #rf-print-root {
-            position: fixed;
-            left: -10000px;
-            top: 0;
-            width: 210mm;
-            max-height: 0;
-            opacity: 0;
-            pointer-events: none;
-            overflow: hidden;
-            z-index: -1;
-        }
-
-        .rf-print-surface {
-            background: white;
-            visibility: visible;
-        }
-
         .fluid-input {
             width: 100%;
             border: none;
@@ -124,23 +107,6 @@
         @media print {
             body {
                 background: white !important;
-            }
-
-            body[data-rf-legacy-print-active="true"] #root {
-                display: none !important;
-            }
-
-            body[data-rf-legacy-print-active="true"] #rf-print-root {
-                position: static !important;
-                left: auto !important;
-                top: auto !important;
-                width: auto !important;
-                visibility: visible !important;
-                max-height: none !important;
-                opacity: 1 !important;
-                pointer-events: auto !important;
-                overflow: visible !important;
-                z-index: auto !important;
             }
 
             .a4-preview {
@@ -326,7 +292,6 @@
 
 <body class="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 h-screen">
     <div id="root"></div>
-    <div id="rf-print-root" aria-hidden="true"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
 

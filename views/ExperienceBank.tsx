@@ -13,8 +13,8 @@ import {
   FileText,
 } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
-import PrintPortal from '../components/PrintPortal';
 import { ToastContainer, useToast } from '../components/Toast';
+import { exportService } from '../services/exportService';
 import { Profile, profileService } from '../services/profileService';
 import type { Certification } from '../services/certificationsService';
 import { certificationsService } from '../services/certificationsService';
@@ -23,14 +23,18 @@ import { experienceService } from '../services/experienceService';
 import type { UserSkill } from '../services/skillsService';
 import { skillsService } from '../services/skillsService';
 import { useEducationManager } from '../hooks/useEducationManager';
-import { usePrintJob } from '../hooks/usePrintJob';
 import EducationSection from './EducationSection';
 import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
-import ExperienceBankPrint from './ExperienceBankPrint';
-import { buildExperienceBankExportTitle } from '../utils/exportFilename';
+import type { ExperienceBankPdfRenderSnapshot } from '../types/experienceBankExport';
+import {
+  buildExperienceBankExportDateLabel,
+  buildExperienceBankExportTitle,
+} from '../utils/exportFilename';
+import { buildExperienceBankPdfRenderSnapshot } from '../utils/experienceBankPdf';
+import { downloadBlobFile } from '../utils/downloadBlobFile';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
@@ -86,16 +90,7 @@ const buildProfileSnapshot = (profile: Profile) => ({
   location: profile.location || '',
 });
 
-type ExperienceBankExportSnapshot = {
-  profile: Profile;
-  workItems: ExperienceListItem[];
-  projectItems: ExperienceListItem[];
-  educationItems: ExperienceListItem[];
-  certifications: Certification[];
-  skills: UserSkill[];
-};
-
-const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankExportSnapshot> => {
+const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot> => {
   const [
     profile,
     workItems,
@@ -291,7 +286,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   // Toast 状态管理
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
-  const { printContent, isPrinting, preparePrint, startPrint } = usePrintJob();
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const toastApi = useMemo(
     () => ({ success, error: toastError, info, loading, updateToast }),
@@ -347,18 +342,23 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   }, [applyProfileSnapshot, refreshEducation, resolveCurrentProfileSnapshot]);
 
   const handleExportAll = useCallback(async () => {
-    if (isPrinting) {
+    if (isExportingPdf) {
       return;
     }
-    const exportTitle = buildExperienceBankExportTitle();
-    const cancelPreparedPrint = preparePrint(exportTitle);
-    const toastId = loading('正在准备导出...');
+
+    const exportDate = new Date();
+    const exportTitle = buildExperienceBankExportTitle(exportDate);
+    const toastId = loading('正在生成 PDF...');
+    setIsExportingPdf(true);
+
     try {
-      const snapshot = await loadExperienceBankExportSnapshot();
-      startPrint({
-        title: exportTitle,
-        content: <ExperienceBankPrint {...snapshot} />,
+      const latestSnapshot = await loadExperienceBankExportSnapshot();
+      const snapshot = buildExperienceBankPdfRenderSnapshot({
+        ...latestSnapshot,
+        exportDateLabel: buildExperienceBankExportDateLabel(exportDate),
       });
+      const pdfBlob = await exportService.exportExperienceBankPdf(snapshot, exportTitle);
+      downloadBlobFile(pdfBlob, `${exportTitle}.pdf`);
       trackExperienceBankExported({
         workCount: snapshot.workItems.length,
         projectCount: snapshot.projectItems.length,
@@ -367,19 +367,20 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         skillCount: snapshot.skills.length,
       });
       updateToast(toastId, {
-        message: '导出窗口已打开',
+        message: 'PDF 已生成，开始下载。',
         type: 'success',
-        duration: 1500,
+        duration: 3000,
       });
     } catch (error) {
-      cancelPreparedPrint?.();
       console.error('[ExperienceBank] 导出失败:', error);
       updateToast(toastId, {
-        message: '导出失败，请稍后重试',
+        message: error instanceof Error ? error.message : '导出失败，请稍后重试',
         type: 'error',
       });
+    } finally {
+      setIsExportingPdf(false);
     }
-  }, [isPrinting, loading, preparePrint, startPrint, updateToast]);
+  }, [isExportingPdf, loading, updateToast]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -407,11 +408,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           <button
             className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
             onClick={handleExportAll}
-            disabled={isPrinting}
+            disabled={isExportingPdf}
             type="button"
           >
             <Download className="w-4 h-4" />
-            导出全部
+            {isExportingPdf ? '导出中...' : '导出全部'}
           </button>
         </div>
         </div>
@@ -431,11 +432,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             <button
               className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800"
               onClick={handleExportAll}
-              disabled={isPrinting}
+              disabled={isExportingPdf}
               type="button"
             >
               <Download className="h-4 w-4" />
-              导出全部
+              {isExportingPdf ? '导出中...' : '导出全部'}
             </button>
           </div>
 
@@ -592,10 +593,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         }}
         toast={toastApi}
       />
-
-      <PrintPortal isActive={Boolean(printContent)}>
-        {printContent}
-      </PrintPortal>
 
       <ToastContainer toasts={toasts} onClose={closeToast} />
     </div>

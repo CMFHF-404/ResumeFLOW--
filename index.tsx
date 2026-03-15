@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LogtoProvider, LogtoConfig } from '@logto/react';
 import App from './App';
+import ExperienceBankPdfExportPage from './views/ExperienceBankPdfExportPage';
 import ResumePdfExportPage from './views/ResumePdfExportPage';
 
 const config: LogtoConfig = {
@@ -17,11 +18,15 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 const isResumePdfExportPath = window.location.pathname === '/print/resume-export';
+const isExperienceBankPdfExportPath =
+  window.location.pathname === '/print/experience-bank-export';
 
 // 在开发环境禁用严格模式，避免双重挂载导致重复请求
 // 生产环境保留严格模式以检测潜在问题
 const appContent = isResumePdfExportPath ? (
   <ResumePdfExportPage />
+) : isExperienceBankPdfExportPath ? (
+  <ExperienceBankPdfExportPage />
 ) : (
   <LogtoProvider config={config}>
     <App />
