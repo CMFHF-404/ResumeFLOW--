@@ -11,7 +11,12 @@ type ExperienceBankRenderSnapshotResponse = {
   snapshot: ExperienceBankPdfRenderSnapshot;
 };
 
-const FALLBACK_EXPORT_ERROR_MESSAGE = 'PDF 导出失败，请稍后重试。';
+type ExportDownloadLinkResponse = {
+  downloadUrl: string;
+  fileName: string;
+};
+
+const FALLBACK_EXPORT_ERROR_MESSAGE = 'PDF 导出准备失败，请稍后重试。';
 const FALLBACK_SNAPSHOT_ERROR_MESSAGE = '导出快照加载失败，请重新发起导出。';
 
 const toUnicodeEscape = (value: number) => `\\u${value.toString(16).padStart(4, '0')}`;
@@ -112,17 +117,16 @@ const normalizeAxiosError = async (
 };
 
 export const exportService = {
-  async exportResumePdf(
+  async createResumePdfDownloadLink(
     snapshot: ResumePdfRenderSnapshot,
     fileName?: string
-  ): Promise<Blob> {
+  ): Promise<ExportDownloadLinkResponse> {
     try {
       const body = stringifyAsciiSafeJson({ snapshot, fileName });
-      const response = await apiClient.post<Blob>(
-        '/exports/resume-pdf',
+      const response = await apiClient.post<ExportDownloadLinkResponse>(
+        '/exports/resume-pdf-link',
         body,
         {
-          responseType: 'blob',
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
           },
@@ -149,17 +153,16 @@ export const exportService = {
     }
   },
 
-  async exportExperienceBankPdf(
+  async createExperienceBankPdfDownloadLink(
     snapshot: ExperienceBankPdfRenderSnapshot,
     fileName?: string
-  ): Promise<Blob> {
+  ): Promise<ExportDownloadLinkResponse> {
     try {
       const body = stringifyAsciiSafeJson({ snapshot, fileName });
-      const response = await apiClient.post<Blob>(
-        '/exports/experience-bank-pdf',
+      const response = await apiClient.post<ExportDownloadLinkResponse>(
+        '/exports/experience-bank-pdf-link',
         body,
         {
-          responseType: 'blob',
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
           },

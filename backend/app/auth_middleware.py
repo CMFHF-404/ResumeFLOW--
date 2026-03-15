@@ -24,6 +24,8 @@ PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 PUBLIC_GET_PATH_PREFIXES = (
     "/exports/render-snapshots/",
     "/exports/experience-bank-render-snapshots/",
+    "/exports/download/resume-pdf/",
+    "/exports/download/experience-bank-pdf/",
 )
 
 

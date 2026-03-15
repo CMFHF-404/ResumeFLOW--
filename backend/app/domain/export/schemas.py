@@ -100,6 +100,11 @@ class RenderSnapshotRead(BaseModel):
     snapshot: ResumePdfRenderSnapshot
 
 
+class ExportDownloadLinkRead(BaseModel):
+    downloadUrl: str
+    fileName: str
+
+
 class ExperienceBankPdfRenderSnapshot(BaseModel):
     profile: Optional[ProfileRead] = None
     workItems: List[ExperienceListItem] = Field(default_factory=list)
