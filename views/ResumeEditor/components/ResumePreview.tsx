@@ -349,10 +349,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         detectDesktopEditorViewport
     );
     const isReadOnly = Boolean(readOnly);
-    const showTouchDragHandles = !isReadOnly && isTouchOnlyInteractionEnvironment;
-    const usePageScrollOnMobile = previewScope === 'editor'
-        && isTouchOnlyInteractionEnvironment
-        && !isDesktopEditorViewport;
+    const useMobileEditorInteraction = previewScope === 'editor' && !isDesktopEditorViewport;
+    const showTouchDragHandles = !isReadOnly
+        && (isTouchOnlyInteractionEnvironment || useMobileEditorInteraction);
+    const usePageScrollOnMobile = useMobileEditorInteraction;
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
         [fontSize, previewScope]
