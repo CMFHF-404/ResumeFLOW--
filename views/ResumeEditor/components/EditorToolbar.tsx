@@ -182,9 +182,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         <span className="text-gray-400">自动保存</span>
                         <span className={`font-semibold ${saveStatusClass}`}>{saveStatusText}</span>
                     </div>
-                    <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
                     <button
-                        className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                        className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden"
                         onClick={onToggleTheme}
                     >
                         {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
