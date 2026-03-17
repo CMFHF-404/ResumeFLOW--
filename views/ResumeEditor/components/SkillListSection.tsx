@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Edit3, Plus, Trash2, Wrench, ChevronDown } from 'lucide-react';
+import { CheckCircle2, Edit3, Plus, Trash2, Wrench, X, ChevronDown } from 'lucide-react';
 import type { MatchTrend } from '../../../types/analysis';
 import type { SkillActions, SkillGroupView, SkillItemView } from '../../../types/resume';
 import {
@@ -198,10 +198,13 @@ const SkillTag: React.FC<{
                 {typeof matchScore === 'number' ? (
                     <MatchBadge score={matchScore} trend={matchTrend} label="" />
                 ) : null}
-                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="ml-0.5 flex items-center gap-1">
                     <button
                         type="button"
-                        className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 ${isSelected
+                            ? 'text-white/85 hover:bg-white/15 hover:text-white'
+                            : 'text-rose-300 hover:bg-rose-50 hover:text-rose-500 dark:text-rose-400/80 dark:hover:bg-rose-900/20 dark:hover:text-rose-300'
+                            }`}
                         onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
@@ -211,11 +214,14 @@ const SkillTag: React.FC<{
                         title="删除技能"
                         aria-label="删除技能"
                     >
-                        <Trash2 className="w-3 h-3" />
+                        <X className="w-3 h-3" />
                     </button>
                     <button
                         type="button"
-                        className="p-1 text-gray-300 rounded hover:text-rose-600 hover:bg-rose-50"
+                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 ${isSelected
+                            ? 'text-white/85 hover:bg-white/15 hover:text-white'
+                            : 'text-rose-300 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400/80 dark:hover:bg-rose-900/20 dark:hover:text-rose-300'
+                            }`}
                         onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
