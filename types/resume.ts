@@ -16,6 +16,7 @@ export type ResumeExperienceView = {
   title: string;
   company: string;
   date: string;
+  tags?: string[];
   startDate?: string;
   endDate?: string;
   isCurrent?: boolean;
@@ -141,6 +142,7 @@ export type ExperienceEditDraft = {
   masterId: string;
   title: string;
   company: string;
+  tags: string[];
   startDate: string;
   endDate: string;
   isCurrent?: boolean;
@@ -252,6 +254,7 @@ export type ExperienceActions = {
   cancelEditingExperience: () => void;
   updateEditingStar: (field: StarFieldKey, value: string) => void;
   updateEditingMeta: (field: "company" | "title", value: string) => void;
+  updateEditingTags: (tags: string[]) => void;
   updateEditingDate: (field: "startDate" | "endDate", value: string) => void;
   handleSaveExperience: () => Promise<void>;
   handlePolishWithJD: () => Promise<void>;

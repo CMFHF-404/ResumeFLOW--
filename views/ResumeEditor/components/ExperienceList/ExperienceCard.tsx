@@ -40,10 +40,12 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
         onPolish(itemId);
     };
 
+    const actionButtonBaseClass = 'inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors';
+
     return (
         <div className="flex items-center gap-1 shrink-0 ml-2">
             <button
-                className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                className={`${actionButtonBaseClass} bg-rose-50 text-rose-500 hover:bg-rose-100 md:bg-transparent md:text-gray-500 md:hover:bg-red-50 md:hover:text-red-500`}
                 onClick={handleDelete}
                 disabled={deleting}
                 title="删除"
@@ -52,7 +54,7 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
                 <Trash2 className="w-3.5 h-3.5" />
             </button>
             <button
-                className={`p-1 text-gray-300 rounded ${themeStyles.editHoverData}`}
+                className={`${actionButtonBaseClass} bg-slate-100 text-slate-600 hover:bg-slate-200 md:bg-transparent md:text-gray-500 ${themeStyles.editHoverData}`}
                 onClick={handleEdit}
                 title="编辑"
                 aria-label="编辑"
@@ -60,7 +62,7 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
                 <Edit3 className="w-3.5 h-3.5" />
             </button>
             <button
-                className={`p-1 text-gray-300 rounded ${themeStyles.editHoverData}`}
+                className={`${actionButtonBaseClass} bg-amber-50 text-amber-600 hover:bg-amber-100 md:bg-transparent md:text-gray-400 ${themeStyles.editHoverData}`}
                 onClick={handlePolish}
                 disabled={isPolishing}
                 title="基于 JD 润色（默认仅保存到当前简历）"
