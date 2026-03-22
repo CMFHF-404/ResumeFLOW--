@@ -22,6 +22,15 @@ type SkillListSectionProps = {
     onResetRenamingCategory: () => void;
 };
 
+const getSkillVisualUnits = (value: string) => Array.from(value.trim()).reduce((sum, char) => (
+    /[\u0000-\u00ff]/.test(char) ? sum + 1 : sum + 2
+), 0);
+
+const getAdaptiveInputWidth = (value: string, fallback = '') => {
+    const contentLength = Math.max(getSkillVisualUnits(value), getSkillVisualUnits(fallback), 10);
+    return `${Math.min(Math.max(contentLength + 4, 12), 48)}ch`;
+};
+
 const resolveDraftGroupName = (skill: SkillActions) => {
     if (!skill.skillDraft || !skill.skillDraftContext) {
         return null;
@@ -52,9 +61,10 @@ const SkillTypeEditor: React.FC<{
             <div className="flex flex-wrap gap-2">
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
                     <input
-                        className="bg-transparent border-none text-xs text-white p-0 m-0 w-24 outline-none focus:ring-0 placeholder-rose-200"
+                        className="bg-transparent border-none text-xs text-white p-0 m-0 min-w-[12ch] max-w-[48ch] outline-none focus:ring-0 placeholder-rose-200"
                         placeholder="输入第一项技能..."
                         value={skill.skillDraft?.name || ''}
+                        style={{ width: getAdaptiveInputWidth(skill.skillDraft?.name || '', '输入第一项技能...') }}
                         onChange={(event) => skill.updateSkillDraft('name', event.target.value)}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter') skill.handleSaveSkill();
@@ -149,14 +159,15 @@ const SkillTag: React.FC<{
 }) => (
         isEditing ? (
             <div
-                className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none"
+                className="group flex max-w-full items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none"
             >
                 {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
                 <input
                     autoFocus
-                    className="bg-transparent border-none text-xs text-white p-0 m-0 w-24 outline-none focus:ring-0 placeholder-rose-200"
+                    className="bg-transparent border-none text-xs text-white p-0 m-0 min-w-[12ch] max-w-[48ch] outline-none focus:ring-0 placeholder-rose-200"
                     placeholder={skill.name}
                     value={draftName}
+                    style={{ width: getAdaptiveInputWidth(draftName, skill.name) }}
                     onChange={(event) => onUpdateDraftName(event.target.value)}
                     onBlur={() => {
                         if (!isSaving) {
@@ -176,9 +187,6 @@ const SkillTag: React.FC<{
                     }}
                     disabled={isSaving}
                 />
-                {typeof matchScore === 'number' ? (
-                    <MatchBadge score={matchScore} trend={matchTrend} label="" />
-                ) : null}
             </div>
         ) : (
             <label
@@ -363,9 +371,10 @@ const SkillGroupBody: React.FC<{
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
                     <input
                         autoFocus
-                        className="bg-transparent border-none text-xs text-white p-0 m-0 w-20 outline-none focus:ring-0 placeholder-rose-200"
+                        className="bg-transparent border-none text-xs text-white p-0 m-0 min-w-[12ch] max-w-[48ch] outline-none focus:ring-0 placeholder-rose-200"
                         placeholder="输入技能..."
                         value={skill.skillDraft?.name || ''}
+                        style={{ width: getAdaptiveInputWidth(skill.skillDraft?.name || '', '输入技能...') }}
                         onChange={(event) => skill.updateSkillDraft('name', event.target.value)}
                         onBlur={skill.handleSaveSkill}
                         onKeyDown={(event) => {

@@ -274,6 +274,7 @@ export const buildResumeExperienceView = (
     const startDate = snapshot?.start_date ?? latest?.start_date;
     const endDate = snapshot?.end_date ?? latest?.end_date;
     const isCurrent = snapshot?.is_current ?? latest?.is_current ?? false;
+    const tags = snapshot?.tags ?? latest?.tags ?? [];
     const baseStar = buildStarFields(snapshot?.star ?? latest?.star);
     const hasStarOverride = Boolean(
         resumeItem?.overrides_json
@@ -285,6 +286,7 @@ export const buildResumeExperienceView = (
         title,
         company,
         date: buildExperienceDate(startDate, endDate, isCurrent),
+        tags,
         startDate,
         endDate,
         isCurrent,
@@ -303,6 +305,7 @@ export const buildDraftExperienceView = (
     title: DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY[category],
     company: DEFAULT_EXPERIENCE_COMPANY_BY_CATEGORY[category],
     date: '',
+    tags: [],
     startDate: '',
     endDate: '',
     isCurrent: false,
@@ -315,6 +318,7 @@ export const buildExperienceEditDraft = (item: ResumeExperienceView): Experience
     masterId: item.id,
     title: item.title,
     company: item.company,
+    tags: [...(item.tags ?? [])],
     startDate: item.startDate ?? '',
     endDate: item.isCurrent ? '至今' : item.endDate ?? '',
     isCurrent: item.isCurrent,

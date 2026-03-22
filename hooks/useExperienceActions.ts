@@ -510,6 +510,7 @@ type ExperienceEditHandlers = {
     cancelEditingExperience: () => void;
     updateEditingStar: (field: StarFieldKey, value: string) => void;
     updateEditingMeta: (field: 'company' | 'title', value: string) => void;
+    updateEditingTags: (tags: string[]) => void;
     updateEditingDate: (field: 'startDate' | 'endDate', value: string) => void;
 };
 
@@ -656,6 +657,18 @@ const createExperienceEditHandlers = (
         });
     };
 
+    const updateEditingTags = (tags: string[]) => {
+        state.setEditingDraft((prev) => {
+            if (!prev) {
+                return prev;
+            }
+            return {
+                ...prev,
+                tags,
+            };
+        });
+    };
+
     const updateEditingDate = (field: 'startDate' | 'endDate', value: string) => {
         state.setEditingDraft((prev) => {
             if (!prev) {
@@ -685,6 +698,7 @@ const createExperienceEditHandlers = (
         cancelEditingExperience,
         updateEditingStar,
         updateEditingMeta,
+        updateEditingTags,
         updateEditingDate,
     };
 };
@@ -720,6 +734,7 @@ const createExperienceUpdateHelpers = (
         applyExperienceUpdate(masterId, {
             title: version.title ?? '',
             company: version.org ?? '',
+            tags: version.tags ?? [],
             startDate: version.start_date,
             endDate: version.end_date,
             isCurrent: version.is_current,
@@ -760,12 +775,13 @@ const buildMasterUpdatePayload = (
         is_current: dates.isCurrent,
         summary: latest?.summary,
         highlights: latest?.highlights || [],
-        tags: latest?.tags || [],
+        tags: draft.tags || [],
         star,
     };
 };
 
 const syncExperienceToMaster = async (
+    resumeId: string | null,
     masterId: string,
     draft: ExperienceEditDraft,
     sourceMap: ExperienceDomain['sourceMap'],
@@ -773,7 +789,8 @@ const syncExperienceToMaster = async (
     updateHelpers: ExperienceUpdateHelpers,
     resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload'],
     mergeStarFieldsWithSource: ExperienceHelpers['mergeStarFieldsWithSource'],
-    resumeMap: ExperienceDomain['resumeMap']
+    resumeMap: ExperienceDomain['resumeMap'],
+    applyResumeDetail: (detail: ResumeDetail | null) => void
 ) => {
     const source = sourceMap.get(masterId);
     if (!source) {
@@ -797,6 +814,29 @@ const syncExperienceToMaster = async (
     );
     const detail: ExperienceDetail = await experienceService.update(masterId, { version: payload });
     const updatedVersion = detail.latest_version || source.latest_version;
+    const resumeLink = resumeMap.get(masterId);
+    if (resumeId && resumeLink?.id && updatedVersion?.id) {
+        const resumeDetail = await resumeService.updateAssembly(resumeId, {
+            operations: [
+                {
+                    op: 'override',
+                    resume_experience_id: resumeLink.id,
+                    experience_version_id: updatedVersion.id,
+                    clear_override_keys: [
+                        'title',
+                        'org',
+                        'start_date',
+                        'end_date',
+                        'is_current',
+                        'tags',
+                        'star',
+                    ],
+                    overrides_json: {},
+                },
+            ],
+        });
+        applyResumeDetail(resumeDetail);
+    }
     setSourceMap((prev) =>
         setMapEntry(prev, masterId, {
             ...source,
@@ -857,6 +897,7 @@ const buildExperienceOverridePayload = (
     );
     const overrides: Record<string, any> = {
         star: resolvedStar,
+        tags: draft.tags || [],
         is_current: dates.isCurrent,
     };
     if (dates.startDate) {
@@ -932,6 +973,7 @@ const saveExperienceOverride = async (
     updateHelpers.applyExperienceUpdate(masterId, {
         title: payload.resolvedTitle,
         company: payload.resolvedOrg,
+        tags: draft.tags || [],
         star: payload.resolvedStar,
         startDate: payload.dates.startDate,
         endDate: payload.dates.endDate,
@@ -1081,6 +1123,7 @@ const createExperienceSaveHandlers = (
                         org:
                             state.editingDraft.company.trim()
                             || defaults.experienceCompanyByCategory[state.editingDraft.category],
+                        tags: state.editingDraft.tags || [],
                         start_date: dates.startDate,
                         end_date: dates.endDate,
                         is_current: dates.isCurrent,
@@ -1091,6 +1134,7 @@ const createExperienceSaveHandlers = (
                 draftHandlers.replaceDraftExperience(state.editingDraft.masterId, detail);
             } else if (state.syncToMaster) {
                 await syncExperienceToMaster(
+                    resumeId,
                     state.editingDraft.masterId,
                     state.editingDraft,
                     domain.sourceMap,
@@ -1098,7 +1142,8 @@ const createExperienceSaveHandlers = (
                     updateHelpers,
                     helpers.resolveExperienceDatePayload,
                     helpers.mergeStarFieldsWithSource,
-                    domain.resumeMap
+                    domain.resumeMap,
+                    applyResumeDetail
                 );
             } else {
                 await saveExperienceOverride(
@@ -2315,6 +2360,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
             cancelEditingExperience: editHandlers.cancelEditingExperience,
             updateEditingStar: editHandlers.updateEditingStar,
             updateEditingMeta: editHandlers.updateEditingMeta,
+            updateEditingTags: editHandlers.updateEditingTags,
             updateEditingDate: editHandlers.updateEditingDate,
             handleSaveExperience: saveHandlers.handleSaveExperience,
             handlePolishWithJD: saveHandlers.handlePolishWithJD,

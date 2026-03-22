@@ -26,7 +26,10 @@ OP_REQUIREMENTS = {
     "add": {"required": {"experience_version_id"}, "optional": {"display_order"}},
     "remove": {"required": {"resume_experience_id"}, "optional": set()},
     "reorder": {"required": {"resume_experience_id", "display_order"}, "optional": set()},
-    "override": {"required": {"resume_experience_id", "overrides_json"}, "optional": set()},
+    "override": {
+        "required": {"resume_experience_id", "overrides_json"},
+        "optional": {"experience_version_id", "clear_override_keys"},
+    },
 }
 
 
@@ -200,8 +203,19 @@ async def _handle_override(
     session: AsyncSession, user_id: str, resume: Resume, op: Dict[str, Any]
 ) -> None:
     link = await _get_link(session, resume.id, op["resume_experience_id"])
+    next_version_id = op.get("experience_version_id")
+    if next_version_id is not None:
+        await get_version_for_user(session, user_id, next_version_id)
+        link.experience_version_id = next_version_id
     overrides = _filter_overrides(op.get("overrides_json") or {})
     existing = _normalize_overrides(link.overrides_json)
+    clear_override_keys = _normalize_override_keys(op.get("clear_override_keys"))
+    if clear_override_keys:
+        existing = {
+            key: value
+            for key, value in existing.items()
+            if key not in clear_override_keys
+        }
     merged = {**existing, **overrides}
     link.overrides_json = merged
     session.add(link)
@@ -268,6 +282,16 @@ def _normalize_overrides(value: Any) -> Dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _normalize_override_keys(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [
+        key
+        for key in value
+        if isinstance(key, str) and key in ALLOWED_OVERRIDE_KEYS
+    ]
 
 
 def _build_resume_experience(

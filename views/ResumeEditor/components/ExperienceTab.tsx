@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Wand2 } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
+import { SKILL_TAGS } from '../../../data/skillTags';
 import type { ExperienceActions, ExperienceTabProps, StarFieldKey } from '../../../types/resume';
+import TagInput from '../../TagInput';
 import { ADD_PROJECT_EXPERIENCE_LABEL, ADD_WORK_EXPERIENCE_LABEL } from '../constants';
 import MatchScoreFilter from './MatchScoreFilter';
 import CertificationListSection from './CertificationListSection';
@@ -451,6 +453,16 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
                         minDate={experience.editingDraft?.startDate || ''}
                     />
                 </div>
+            </div>
+            <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    技能标签
+                </label>
+                <TagInput
+                    value={experience.editingDraft?.tags || []}
+                    suggestions={SKILL_TAGS}
+                    onChange={experience.updateEditingTags}
+                />
             </div>
         </div>
 
