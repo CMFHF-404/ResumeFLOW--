@@ -108,6 +108,7 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
   maxDate,
   portalId
 }, ref) => {
+  const resolvedPortalId = portalId ?? DEFAULT_DATE_PICKER_PORTAL_ID;
 
   const parseMonthValue = (rawValue?: string) => {
     if (!rawValue) return null;
@@ -183,7 +184,7 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
         popperClassName="z-[9999]"
         showPopperArrow={false}
         popperPlacement="bottom-end"
-        portalId={portalId}
+        portalId={resolvedPortalId}
         popperProps={{
           strategy: 'fixed',
         }}
