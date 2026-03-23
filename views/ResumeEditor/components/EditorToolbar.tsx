@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus } from 'lucide-react';
+import UnAuthPrompt from '../../../components/UnAuthPrompt';
 
 type EditorToolbarProps = {
     isDarkMode: boolean;
@@ -161,6 +162,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
+                    <UnAuthPrompt />
                     <button
                         className="md:hidden flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                         onClick={onCreateResume}

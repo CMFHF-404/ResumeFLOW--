@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X } from 'lucide-react';
+import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn } from 'lucide-react';
+import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
 import { resumeService } from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
@@ -13,6 +14,7 @@ import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
 import { trackResumeDuplicated } from '../utils/analyticsTracker';
 import { formatRelativeTime } from '../utils/timeUtils';
+import UnAuthPrompt from '../components/UnAuthPrompt';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -164,6 +166,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   );
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
+  const { signIn, isAuthenticated } = useLogto();
   const isCacheOwnerMatched = Boolean(
     cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
   );
@@ -767,6 +770,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
         <div className="flex items-center justify-between gap-4 md:justify-end">
+          <UnAuthPrompt />
           <button
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
             onClick={toggleTheme}
@@ -785,26 +789,49 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-10">
           {/* 推广卡片：当没有简历时显示 */}
           {resumes.length === 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-800 p-6 shadow-sm">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                    <UploadCloud className="w-6 h-6 text-primary" />
-                    快速开始，从导入简历开始
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    暂无经历数据，导入您的简历快速构建经历库，让原子简历为您智能分析和优化
-                  </p>
+            isAuthenticated ? (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-800 p-6 shadow-sm">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                      <UploadCloud className="w-6 h-6 text-primary" />
+                      快速开始，从导入简历开始
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      暂无经历数据，导入您的简历快速构建经历库，让原子简历为您智能分析和优化
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
+                    className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
+                  >
+                    <UploadCloud className="w-5 h-5" />
+                    导入简历
+                  </button>
                 </div>
-                <button
-                  onClick={() => setView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
-                  className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
-                >
-                  <UploadCloud className="w-5 h-5" />
-                  导入简历
-                </button>
               </div>
-            </div>
+            ) : (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl border border-amber-200 dark:border-amber-800/50 p-6 shadow-sm">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                      <FileText className="w-6 h-6 text-amber-600 dark:text-amber-500" />
+                      解锁全部功能，从登录开始
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      您还未登录。立即登录即可创建、管理简历，并享受智能简历工厂的完整功能。
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href)}
+                    className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
+                  >
+                    <LogIn className="w-5 h-5 -scale-x-100" />
+                    立即登录
+                  </button>
+                </div>
+              </div>
+            )
           )}
           <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end md:gap-4">
             <div className="flex items-start justify-between gap-4 md:block">
