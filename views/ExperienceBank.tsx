@@ -12,6 +12,7 @@ import {
   Link as LinkIcon,
   FileText,
 } from 'lucide-react';
+import { useLogto } from '@logto/react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
 import UnAuthPrompt from '../components/UnAuthPrompt';
@@ -39,6 +40,33 @@ import { downloadUrlFile } from '../utils/downloadUrlFile';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
+const PENDING_RESUME_UPLOAD_KEY = 'yuanzijianli.pendingResumeUpload';
+
+const readPendingResumeUpload = () => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    return window.sessionStorage.getItem(PENDING_RESUME_UPLOAD_KEY) === '1';
+  } catch (error) {
+    return false;
+  }
+};
+
+const writePendingResumeUpload = (shouldPersist: boolean) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    if (shouldPersist) {
+      window.sessionStorage.setItem(PENDING_RESUME_UPLOAD_KEY, '1');
+      return;
+    }
+    window.sessionStorage.removeItem(PENDING_RESUME_UPLOAD_KEY);
+  } catch (error) {
+    // ignore storage errors (private mode, etc.)
+  }
+};
 
 const resolveNextProfilePatch = (
   parsedPersonalInfo?: ParsedPersonalInfo,
@@ -127,6 +155,17 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
+  const { isAuthenticated, signIn } = useLogto();
+
+  const handleImportResumeClick = useCallback(async () => {
+    if (!isAuthenticated) {
+      writePendingResumeUpload(true);
+      await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
+      return;
+    }
+    writePendingResumeUpload(false);
+    setIsResumeModalOpen(true);
+  }, [isAuthenticated, signIn]);
 
   // Personal Info State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -229,9 +268,18 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   useEffect(() => {
     if (shouldOpenResumeUpload) {
       console.log('[ExperienceBank] 自动打开简历上传弹窗');
-      setIsResumeModalOpen(true);
+      void handleImportResumeClick();
     }
-  }, [shouldOpenResumeUpload]);
+  }, [handleImportResumeClick, shouldOpenResumeUpload]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !readPendingResumeUpload()) {
+      return;
+    }
+    console.log('[ExperienceBank] 恢复待执行的简历导入动作');
+    writePendingResumeUpload(false);
+    setIsResumeModalOpen(true);
+  }, [isAuthenticated]);
 
   // 开始编辑个人信息
   const handleEditProfile = () => {
@@ -404,7 +452,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           <UnAuthPrompt />
           <button
             className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
-            onClick={() => setIsResumeModalOpen(true)}
+            onClick={handleImportResumeClick}
             type="button"
           >
             <UploadCloud className="w-4 h-4" />
@@ -428,7 +476,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           <div className="flex items-center gap-2 md:hidden">
             <button
               className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800"
-              onClick={() => setIsResumeModalOpen(true)}
+              onClick={handleImportResumeClick}
               type="button"
             >
               <UploadCloud className="h-4 w-4" />
