@@ -149,7 +149,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </button>
         {isAuthenticated ? (
           <button
-            className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-300 transition hover:bg-red-950/40 hover:text-red-200"
+            className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
             onClick={handleSignOut}
             type="button"
             role="menuitem"
@@ -159,12 +159,12 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           </button>
         ) : (
           <button
-            className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-emerald-300 transition hover:bg-emerald-950/40 hover:text-emerald-200"
+            className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-emerald-400 transition hover:bg-emerald-500/10 hover:text-emerald-300"
             onClick={handleSignIn}
             type="button"
             role="menuitem"
           >
-            <LogIn className="h-4 w-4" />
+            <LogIn className="h-4 w-4 -scale-x-100" />
             <span>登录</span>
           </button>
         )}
@@ -284,7 +284,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
           {isAuthenticated ? (
             <button
-              className={`${desktopUtilityButtonClass} text-red-300 hover:bg-red-950/40 hover:text-red-200`}
+              className="group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 transition-all md:p-3 text-red-500 hover:bg-red-500/10 hover:text-red-400"
               onClick={handleSignOut}
               type="button"
             >
@@ -293,11 +293,11 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             </button>
           ) : (
             <button
-              className={`${desktopUtilityButtonClass} text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200`}
+              className="group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 transition-all md:p-3 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
               onClick={handleSignIn}
               type="button"
             >
-              <LogIn className="h-5 w-5" />
+              <LogIn className="h-5 w-5 -scale-x-100" />
               <div className="nav-tooltip hidden md:block">登录</div>
             </button>
           )}

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
+import UnAuthPrompt from '../components/UnAuthPrompt';
 import { exportService } from '../services/exportService';
 import { Profile, profileService } from '../services/profileService';
 import type { Certification } from '../services/certificationsService';
@@ -400,6 +401,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
+          <UnAuthPrompt />
           <button
             className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
             onClick={() => setIsResumeModalOpen(true)}
