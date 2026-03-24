@@ -485,9 +485,23 @@ const isAbortLikeError = (error: unknown) => {
   return error.name === 'AbortError' || /aborted|abort/i.test(error.message);
 };
 
+const USER_VISIBLE_PARSE_ERROR_PATTERNS = [
+  /无法读取附件中的文本内容/,
+  /文件为空，无法解析/,
+  /不支持的文件类型/,
+  /文件过大，无法直接解析/,
+  /文件无法读取，请确认文件未损坏、未加密且内容可解析/,
+] as const;
+
 const resolveParseErrorMessage = (error: unknown) => {
   if (error instanceof Error && error.name === TIMEOUT_ERROR_NAME) {
     return '解析超时，请稍后重试。';
+  }
+  if (error instanceof Error && error.message.trim()) {
+    const message = error.message.trim();
+    if (USER_VISIBLE_PARSE_ERROR_PATTERNS.some((pattern) => pattern.test(message))) {
+      return message;
+    }
   }
   return '解析失败，请检查文件内容或稍后重试。';
 };
@@ -497,7 +511,10 @@ const buildParseErrorMessage = (error: unknown, errorCount: number) => {
   if (errorCount < 2) {
     return baseMessage;
   }
-  if (baseMessage.includes(REPEATED_PARSE_ERROR_HINT)) {
+  if (
+    baseMessage.includes(REPEATED_PARSE_ERROR_HINT)
+    || baseMessage.includes('无法读取附件中的文本内容')
+  ) {
     return baseMessage;
   }
   return `${baseMessage} ${REPEATED_PARSE_ERROR_HINT}`;

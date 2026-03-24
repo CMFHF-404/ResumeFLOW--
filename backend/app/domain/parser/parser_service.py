@@ -6,6 +6,7 @@ import inspect
 import json
 import logging
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -40,6 +41,7 @@ SUPPORTED_DOCX_TYPES = {
 }
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 MIN_TEXT_LENGTH = 30
+MIN_MEANINGFUL_TEXT_CHARS = 10
 MAX_RESUME_TEXT_CHARS = 12_000
 LONG_RESUME_TEXT_THRESHOLD = 6_000
 CHUNK_MAX_CHARS = 3_200
@@ -63,6 +65,9 @@ PARA_SPLIT_PATTERN = re.compile(r"\n\s*\n+")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？!?;；.])\s+")
 LINK_SPLIT_PATTERN = re.compile(r"[\s,;，；]+")
 PERSONAL_INFO_FIELDS = ("full_name", "email", "phone", "location")
+UNREADABLE_RESUME_TEXT_ERROR = (
+    "无法读取附件中的文本内容，请检查上传内容；当前不支持无法读取文本的附件。"
+)
 PROJECT_KEYWORDS = {
     "project",
     "projects",
@@ -665,10 +670,6 @@ def _resolve_file_kind(file: UploadFile) -> str:
     raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
 
 
-def _encode_upload_data(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
-
-
 def _ensure_attachment_size_limit(data: bytes) -> None:
     if len(data) <= MAX_ATTACHMENT_BYTES:
         return
@@ -720,6 +721,10 @@ def _build_resume_messages(prompt: str, content: str) -> List[Dict[str, Any]]:
         {"role": "system", "content": prompt},
         {"role": "user", "content": content},
     ]
+
+
+def _encode_upload_data(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")
 
 
 def _build_resume_attachment_messages(
@@ -1371,16 +1376,77 @@ def extract_resume_text(
     return text
 
 
+def _count_meaningful_text_chars(text: str) -> int:
+    return sum(
+        1
+        for char in text
+        if unicodedata.category(char).startswith(("L", "N"))
+    )
+
+
 def _prepare_resume_text(text: str, request_id: Optional[str] = None) -> Optional[str]:
     cleaned = _clean_resume_text(text)
-    if len(cleaned.strip()) >= MIN_TEXT_LENGTH:
-        return cleaned
-    logger.info(
-        "[ResumeParse] extracted text too short, fallback to attachment request_id=%s text_length=%s",
-        request_id,
-        len(cleaned.strip()),
+    stripped = cleaned.strip()
+    meaningful_char_count = _count_meaningful_text_chars(stripped)
+    if meaningful_char_count < MIN_MEANINGFUL_TEXT_CHARS:
+        logger.info(
+            "[ResumeParse] extracted text unreadable, fallback to attachment request_id=%s text_length=%s meaningful_char_count=%s",
+            request_id,
+            len(stripped),
+            meaningful_char_count,
+        )
+        return None
+    if len(stripped) < MIN_TEXT_LENGTH:
+        logger.info(
+            "[ResumeParse] extracted text too short, fallback to attachment request_id=%s text_length=%s meaningful_char_count=%s",
+            request_id,
+            len(stripped),
+            meaningful_char_count,
+        )
+        return None
+    return cleaned
+
+
+async def _parse_resume_from_text(
+    *,
+    cleaned_text: str,
+    request_id: Optional[str],
+    progress_callback: ParseProgressCallback = None,
+) -> Dict[str, Any]:
+    use_chunking = _should_use_chunking(cleaned_text)
+    await _emit_progress(
+        progress_callback,
+        {
+            "type": "progress",
+            "node": "segment_resume",
+            "title": "切分简历结构" if use_chunking else "构建解析上下文",
+        },
     )
-    return None
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "request_ai", "title": "调用 AI 结构化解析"},
+    )
+
+    total_start = perf_counter()
+    if use_chunking:
+        result = await _parse_resume_chunked(cleaned_text, request_id)
+        mode = "chunked"
+    else:
+        result = await _parse_resume_single(cleaned_text, request_id)
+        mode = "single"
+
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "merge_result", "title": "整理解析结果"},
+    )
+    total_ms = (perf_counter() - total_start) * 1000
+    _log_timing(
+        "parse_resume_total",
+        total_ms,
+        request_id,
+        {"mode": mode, "input_length": len(cleaned_text)},
+    )
+    return _normalize_parse_result(result)
 
 
 async def _parse_resume_from_attachment(
@@ -1426,48 +1492,6 @@ async def _parse_resume_from_attachment(
     return _normalize_parse_result(result)
 
 
-async def _parse_resume_from_text(
-    *,
-    cleaned_text: str,
-    request_id: Optional[str],
-    progress_callback: ParseProgressCallback = None,
-) -> Dict[str, Any]:
-    use_chunking = _should_use_chunking(cleaned_text)
-    await _emit_progress(
-        progress_callback,
-        {
-            "type": "progress",
-            "node": "segment_resume",
-            "title": "切分简历结构" if use_chunking else "构建解析上下文",
-        },
-    )
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "request_ai", "title": "调用 AI 结构化解析"},
-    )
-
-    total_start = perf_counter()
-    if use_chunking:
-        result = await _parse_resume_chunked(cleaned_text, request_id)
-        mode = "chunked"
-    else:
-        result = await _parse_resume_single(cleaned_text, request_id)
-        mode = "single"
-
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "merge_result", "title": "整理解析结果"},
-    )
-    total_ms = (perf_counter() - total_start) * 1000
-    _log_timing(
-        "parse_resume_total",
-        total_ms,
-        request_id,
-        {"mode": mode, "input_length": len(cleaned_text)},
-    )
-    return _normalize_parse_result(result)
-
-
 async def parse_resume(
     file_data: bytes,
     filename: str,
@@ -1493,17 +1517,16 @@ async def parse_resume(
         request_id,
     )
 
-    encode_start = perf_counter()
-    encoded_file = _encode_upload_data(file_data)
-    encode_ms = (perf_counter() - encode_start) * 1000
-    _log_timing(
-        "encode_file",
-        encode_ms,
-        request_id,
-        {"encoded_length": len(encoded_file)},
-    )
-
     if not cleaned:
+        encode_start = perf_counter()
+        encoded_file = _encode_upload_data(file_data)
+        encode_ms = (perf_counter() - encode_start) * 1000
+        _log_timing(
+            "encode_file",
+            encode_ms,
+            request_id,
+            {"encoded_length": len(encoded_file)},
+        )
         return await _parse_resume_from_attachment(
             encoded_file=encoded_file,
             filename=filename,
@@ -1545,17 +1568,16 @@ async def parse_resume_with_thoughts(
         request_id,
     )
 
-    encode_start = perf_counter()
-    encoded_file = _encode_upload_data(file_data)
-    encode_ms = (perf_counter() - encode_start) * 1000
-    _log_timing(
-        "encode_file",
-        encode_ms,
-        request_id,
-        {"encoded_length": len(encoded_file)},
-    )
-
     if not cleaned:
+        encode_start = perf_counter()
+        encoded_file = _encode_upload_data(file_data)
+        encode_ms = (perf_counter() - encode_start) * 1000
+        _log_timing(
+            "encode_file",
+            encode_ms,
+            request_id,
+            {"encoded_length": len(encoded_file)},
+        )
         return await _parse_resume_from_attachment(
             encoded_file=encoded_file,
             filename=filename,
