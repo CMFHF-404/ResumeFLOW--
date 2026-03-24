@@ -506,6 +506,14 @@ const resolveParseErrorMessage = (error: unknown) => {
   return '解析失败，请检查文件内容或稍后重试。';
 };
 
+const isHttpNotFoundError = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const response = (error as { response?: { status?: number } }).response;
+  return response?.status === 404;
+};
+
 const buildParseErrorMessage = (error: unknown, errorCount: number) => {
   const baseMessage = resolveParseErrorMessage(error);
   if (errorCount < 2) {
@@ -1686,6 +1694,7 @@ const useResumeImport = (
       let experienceCount = 0;
       let certificationCount = 0;
       let skillCount = 0;
+      const unavailableModules: string[] = [];
       for (const item of selectedItems) {
         await experienceService.create({
           category: item.category,
@@ -1693,16 +1702,56 @@ const useResumeImport = (
         });
         experienceCount += 1;
       }
-      const [certificationPayloads, skillPayloads] = await Promise.all([
-        buildCertificationImportPayloads(selectedCertifications),
-        buildSkillImportPayloads(selectedSkillTags),
-      ]);
+      let certificationPayloads: Awaited<ReturnType<typeof buildCertificationImportPayloads>> = [];
+      try {
+        certificationPayloads = await buildCertificationImportPayloads(selectedCertifications);
+      } catch (error) {
+        if (isHttpNotFoundError(error)) {
+          unavailableModules.push('证书');
+          console.warn('[ResumeUploadModal] Certifications API unavailable, skip import.', error);
+        } else {
+          throw error;
+        }
+      }
+      let skillPayloads: Awaited<ReturnType<typeof buildSkillImportPayloads>> = [];
+      try {
+        skillPayloads = await buildSkillImportPayloads(selectedSkillTags);
+      } catch (error) {
+        if (isHttpNotFoundError(error)) {
+          unavailableModules.push('技能');
+          console.warn('[ResumeUploadModal] Skills API unavailable, skip import.', error);
+        } else {
+          throw error;
+        }
+      }
       for (const payload of certificationPayloads) {
-        await certificationsService.create(payload);
+        try {
+          await certificationsService.create(payload);
+        } catch (error) {
+          if (isHttpNotFoundError(error)) {
+            if (!unavailableModules.includes('证书')) {
+              unavailableModules.push('证书');
+            }
+            console.warn('[ResumeUploadModal] Certifications API unavailable during create, skip rest.', error);
+            break;
+          }
+          throw error;
+        }
         certificationCount += 1;
       }
       for (const payload of skillPayloads) {
-        await skillsService.create(payload);
+        try {
+          await skillsService.create(payload);
+        } catch (error) {
+          if (isHttpNotFoundError(error)) {
+            if (!unavailableModules.includes('技能')) {
+              unavailableModules.push('技能');
+            }
+            console.warn('[ResumeUploadModal] Skills API unavailable during create, skip rest.', error);
+            break;
+          }
+          throw error;
+        }
         skillCount += 1;
       }
       const summaryParts = [];
@@ -1717,6 +1766,9 @@ const useResumeImport = (
       }
       if (personalInfoSelectedCount > 0) {
         summaryParts.push(`已更新 ${personalInfoSelectedCount} 项个人信息`);
+      }
+      if (unavailableModules.length > 0) {
+        summaryParts.push(`${unavailableModules.join('、')}模块暂不可用，已自动跳过`);
       }
       const summary = summaryParts.length ? summaryParts.join(' / ') : '没有新内容可导入';
       if (toastId) {
