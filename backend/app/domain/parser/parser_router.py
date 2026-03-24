@@ -28,6 +28,7 @@ from .schemas import ResumeParseResponse
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 logger = logging.getLogger(__name__)
+GENERIC_STREAM_PARSE_ERROR = "解析失败，请检查文件内容或稍后重试。"
 
 
 def _ndjson_line(payload: Dict[str, Any]) -> str:
@@ -211,14 +212,14 @@ async def parse_resume_stream_endpoint(
                     total_ms,
                 )
                 raise
-            except Exception as exc:
+            except Exception:
                 total_ms = (perf_counter() - total_start) * 1000
                 logger.exception(
                     "[ResumeParse] stream error request_id=%s duration_ms=%.2f",
                     request_id,
                     total_ms,
                 )
-                await emit({"type": "error", "message": str(exc)})
+                await emit({"type": "error", "message": GENERIC_STREAM_PARSE_ERROR})
             finally:
                 await queue.put(None)
 
