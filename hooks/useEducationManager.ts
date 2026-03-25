@@ -163,6 +163,9 @@ const useEducationList = () => {
     return { educations, setEducations, isLoading, refreshEducation };
 };
 
+const CARD_HIGHLIGHT_CLASS = 'card-highlight';
+const CARD_HIGHLIGHT_DURATION_MS = 900;
+
 const useEducationCardRefs = () => {
     const eduCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -174,16 +177,31 @@ const useEducationCardRefs = () => {
         }
     }, []);
 
+    /** 展开时滚动到卡片（无闪动） */
     const scrollToCard = useCallback((eduId: string, delay: number) => {
         setTimeout(() => {
-            const element = eduCardRefs.current.get(eduId);
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
+            eduCardRefs.current.get(eduId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }, delay);
     }, []);
 
-    return { setCardRef, scrollToCard };
+    /**
+     * 折叠后：先滚动到卡片位置，再触发高亮脉冲动画，帮助用户确认位置。
+     */
+    const highlightCard = useCallback((eduId: string, delay: number) => {
+        setTimeout(() => {
+            const element = eduCardRefs.current.get(eduId);
+            if (!element) return;
+            element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            element.classList.remove(CARD_HIGHLIGHT_CLASS);
+            void element.offsetWidth;
+            element.classList.add(CARD_HIGHLIGHT_CLASS);
+            setTimeout(() => {
+                element.classList.remove(CARD_HIGHLIGHT_CLASS);
+            }, CARD_HIGHLIGHT_DURATION_MS);
+        }, delay);
+    }, []);
+
+    return { setCardRef, scrollToCard, highlightCard };
 };
 
 const useEducationStore = () => {
@@ -253,7 +271,8 @@ const useEducationEditors = (
 
 const useEducationExpansion = (
     ensureEduCardState: (eduId: string, seedData?: EduCardData) => void,
-    scrollToCard: (eduId: string, delay: number) => void
+    scrollToCard: (eduId: string, delay: number) => void,
+    highlightCard: (eduId: string, delay: number) => void
 ) => {
     const [expandedEduCards, setExpandedEduCards] = useState<Set<string>>(new Set());
     const [collapsingEduCards, setCollapsingEduCards] = useState<Set<string>>(new Set());
@@ -265,12 +284,13 @@ const useEducationExpansion = (
                 if (next.has(eduId)) {
                     setCollapsingEduCards((collapsing) => addToSet(collapsing, eduId));
                     next.delete(eduId);
-                    // 收起动画结束后再滚动，避免位置跳动。
+                    // 收起动画结束后滚动+高亮闪动
                     setTimeout(() => {
                         setCollapsingEduCards((current) => removeFromSet(current, eduId));
-                        scrollToCard(eduId, EDU_SCROLL_COLLAPSE_DELAY_MS);
+                        highlightCard(eduId, EDU_SCROLL_COLLAPSE_DELAY_MS);
                     }, EDU_COLLAPSE_DURATION_MS);
                 } else {
+                    // 展开：只滚动，不高亮
                     next.add(eduId);
                     ensureEduCardState(eduId, seedData);
                     scrollToCard(eduId, EDU_SCROLL_EXPAND_DELAY_MS);
@@ -278,7 +298,7 @@ const useEducationExpansion = (
                 return next;
             });
         },
-        [ensureEduCardState, scrollToCard]
+        [ensureEduCardState, highlightCard, scrollToCard]
     );
 
     const removeEduExpansion = useCallback((eduId: string) => {
@@ -436,14 +456,15 @@ const useEducationDelete = (
     setOriginalEduData: Dispatch<SetStateAction<Map<string, EduCardData>>>,
     setModifiedEduCards: Dispatch<SetStateAction<Set<string>>>,
     removeEduExpansion: (eduId: string) => void,
-    scrollToCard: (eduId: string, delay: number) => void
+    /** 删除请求时高亮提示卡片位置，替代 scrollToCard */
+    highlightCard: (eduId: string, delay: number) => void
 ) => {
     const [deletingEduId, setDeletingEduId] = useState<string | null>(null);
 
     const requestDeleteEdu = useCallback((eduId: string) => {
         setDeletingEduId(eduId);
-        scrollToCard(eduId, 0);
-    }, [scrollToCard]);
+        highlightCard(eduId, 0);
+    }, [highlightCard]);
 
     const handleConfirmDelete = useCallback(async () => {
         if (!deletingEduId || savingEduIds.has(deletingEduId)) {
@@ -502,7 +523,7 @@ const useEducationDelete = (
  */
 export const useEducationManager = (toast: EducationToastApi): EducationManager => {
     const { educations, setEducations, isLoading, refreshEducation } = useEducationList();
-    const { setCardRef, scrollToCard } = useEducationCardRefs();
+    const { setCardRef, scrollToCard, highlightCard } = useEducationCardRefs();
     const store = useEducationStore();
     const { ensureEduCardState } = useEducationInitializer(
         educations,
@@ -514,7 +535,7 @@ export const useEducationManager = (toast: EducationToastApi): EducationManager 
         store.setEduData,
         store.setModifiedEduCards
     );
-    const expansion = useEducationExpansion(ensureEduCardState, scrollToCard);
+    const expansion = useEducationExpansion(ensureEduCardState, scrollToCard, highlightCard);
     const createActions = useEducationCreate(
         toast,
         refreshEducation,
@@ -543,7 +564,7 @@ export const useEducationManager = (toast: EducationToastApi): EducationManager 
         store.setOriginalEduData,
         store.setModifiedEduCards,
         expansion.removeEduExpansion,
-        scrollToCard
+        highlightCard
     );
 
     const sortedEducations = useMemo(

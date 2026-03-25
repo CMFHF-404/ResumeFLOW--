@@ -278,6 +278,9 @@ const useExperienceList = (category: ExperienceSectionProps['category'], refresh
   return { experiences, setExperiences, isLoading, refreshExperiences };
 };
 
+const CARD_HIGHLIGHT_CLASS = 'card-highlight';
+const CARD_HIGHLIGHT_DURATION_MS = 900;
+
 const useCardRefs = () => {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -289,16 +292,32 @@ const useCardRefs = () => {
     }
   }, []);
 
+  /** 展开时滚动到卡片（无闪动） */
   const scrollToCard = useCallback((cardId: string, delay: number) => {
     setTimeout(() => {
-      const element = cardRefs.current.get(cardId);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      cardRefs.current.get(cardId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, delay);
   }, []);
 
-  return { setCardRef, scrollToCard };
+  /**
+   * 折叠后：先滚动到卡片位置，再触发高亮脉冲动画，帮助用户确认位置。
+   */
+  const highlightCard = useCallback((cardId: string, delay: number) => {
+    setTimeout(() => {
+      const element = cardRefs.current.get(cardId);
+      if (!element) return;
+      element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // 移除旧动画（如有），强制重排以重新触发
+      element.classList.remove(CARD_HIGHLIGHT_CLASS);
+      void element.offsetWidth;
+      element.classList.add(CARD_HIGHLIGHT_CLASS);
+      setTimeout(() => {
+        element.classList.remove(CARD_HIGHLIGHT_CLASS);
+      }, CARD_HIGHLIGHT_DURATION_MS);
+    }, delay);
+  }, []);
+
+  return { setCardRef, scrollToCard, highlightCard };
 };
 
 const useCardDataStore = () => {
@@ -457,7 +476,8 @@ const useCardRemoval = (
 
 const useCardExpansionState = (
   ensureCardState: (cardId: string, seedData?: ExperienceCardData) => void,
-  scrollToCard: (cardId: string, delay: number) => void
+  scrollToCard: (cardId: string, delay: number) => void,
+  highlightCard: (cardId: string, delay: number) => void
 ) => {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [collapsingCards, setCollapsingCards] = useState<Set<string>>(new Set());
@@ -467,6 +487,7 @@ const useCardExpansionState = (
       setExpandedCards((prev) => {
         const next = new Set(prev);
         if (next.has(cardId)) {
+          // 收起：fold 动画结束后滚动+高亮闪动
           setCollapsingCards((collapsing) => new Set(collapsing).add(cardId));
           next.delete(cardId);
           setTimeout(() => {
@@ -475,9 +496,10 @@ const useCardExpansionState = (
               updated.delete(cardId);
               return updated;
             });
-            scrollToCard(cardId, 50);
+            highlightCard(cardId, 50);
           }, 300);
         } else {
+          // 展开：只滚动，不高亮
           next.add(cardId);
           ensureCardState(cardId);
           scrollToCard(cardId, 100);
@@ -485,7 +507,7 @@ const useCardExpansionState = (
         return next;
       });
     },
-    [ensureCardState, scrollToCard]
+    [ensureCardState, highlightCard, scrollToCard]
   );
 
   const removeCardExpansion = useCallback((cardId: string) => {
@@ -514,7 +536,6 @@ type ExperienceCreateParams = {
   setOriginalCardData: React.Dispatch<React.SetStateAction<Map<string, ExperienceCardData>>>;
   setModifiedCards: React.Dispatch<React.SetStateAction<Set<string>>>;
   setExpandedCards: React.Dispatch<React.SetStateAction<Set<string>>>;
-  scrollToCard: (cardId: string, delay: number) => void;
 };
 
 const useExperienceCreate = ({
@@ -527,7 +548,6 @@ const useExperienceCreate = ({
   setOriginalCardData,
   setModifiedCards,
   setExpandedCards,
-  scrollToCard,
 }: ExperienceCreateParams) => {
   const [isCreating, setIsCreating] = useState(false);
 
@@ -565,7 +585,6 @@ const useExperienceCreate = ({
       setModifiedCards((prev) => new Set(prev).add(tempId));
 
       setExpandedCards((prev) => new Set(prev).add(tempId));
-      scrollToCard(tempId, 100);
 
     } catch (error) {
       console.error(`[ExperienceSection] 创建${category}草稿失败:`, error);
@@ -573,7 +592,7 @@ const useExperienceCreate = ({
     } finally {
       setIsCreating(false);
     }
-  }, [category, defaultOrg, defaultTitle, isCreating, scrollToCard, setCardData, setExpandedCards, setExperiences, setModifiedCards, setOriginalCardData, toast]);
+  }, [category, defaultOrg, defaultTitle, isCreating, setCardData, setExpandedCards, setExperiences, setModifiedCards, setOriginalCardData, toast]);
 
   return { isCreating, handleAddNew };
 };
@@ -713,7 +732,8 @@ type ExperienceDeleteParams = {
   category: ExperienceSectionProps['category'];
   toast: ToastApi;
   refreshExperiences: () => Promise<ExperienceListItem[]>;
-  scrollToCard: (cardId: string, delay: number) => void;
+  /** 删除请求时（确认 dialog 出现前）高亮提示卡片位置，替代 scrollToCard */
+  highlightCard: (cardId: string, delay: number) => void;
   setExperiences: React.Dispatch<React.SetStateAction<ExperienceListItem[]>>;
   removeCardState: (cardId: string) => void;
   removeCardExpansion: (cardId: string) => void;
@@ -723,7 +743,7 @@ const useExperienceDelete = ({
   category,
   toast,
   refreshExperiences,
-  scrollToCard,
+  highlightCard,
   setExperiences,
   removeCardState,
   removeCardExpansion,
@@ -733,9 +753,9 @@ const useExperienceDelete = ({
   const requestDelete = useCallback(
     (cardId: string) => {
       setDeletingCardId(cardId);
-      scrollToCard(cardId, 0);
+      highlightCard(cardId, 0);
     },
-    [scrollToCard]
+    [highlightCard]
   );
 
   const executeDelete = useCallback(async () => {
@@ -1149,7 +1169,7 @@ const useExperienceSectionModel = ({
   toast,
 }: ExperienceSectionProps): ExperienceSectionModel => {
   const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(category, refreshSignal);
-  const { setCardRef, scrollToCard } = useCardRefs();
+  const { setCardRef, scrollToCard, highlightCard } = useCardRefs();
   const store = useCardDataStore();
   const { ensureCardState } = useCardInitializer(experiences, store.setCardData, store.setOriginalCardData);
   const { updateCardField, updateCardStar, resetCard } = useCardEditors(
@@ -1158,14 +1178,13 @@ const useExperienceSectionModel = ({
     store.setModifiedCards
   );
   const { removeCardState } = useCardRemoval(store.setCardData, store.setModifiedCards, store.setOriginalCardData);
-  const expansion = useCardExpansionState(ensureCardState, scrollToCard);
+  const expansion = useCardExpansionState(ensureCardState, scrollToCard, highlightCard);
   const { isCreating, handleAddNew } = useExperienceCreate({
     category, defaultOrg, defaultTitle, toast, setExperiences,
     setCardData: store.setCardData,
     setOriginalCardData: store.setOriginalCardData,
     setModifiedCards: store.setModifiedCards,
     setExpandedCards: expansion.setExpandedCards,
-    scrollToCard,
   });
   const { savingCardId, handleSaveCard } = useExperienceSave({
     category, cardData: store.cardData, emptyTitleError, toast, refreshExperiences,
@@ -1175,7 +1194,7 @@ const useExperienceSectionModel = ({
     setModifiedCards: store.setModifiedCards,
   });
   const deleteActions = useExperienceDelete({
-    category, toast, refreshExperiences, scrollToCard, setExperiences,
+    category, toast, refreshExperiences, highlightCard, setExperiences,
     removeCardState,
     removeCardExpansion: expansion.removeCardExpansion,
   });
