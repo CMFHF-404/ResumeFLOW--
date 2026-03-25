@@ -1300,7 +1300,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         hasThoughtTitle = true;
                         updateToast(toastId, {
                             message: title,
-                            type: 'loading',
+                            type: 'ai_thinking',
                             duration: 0,
                         });
                         return;

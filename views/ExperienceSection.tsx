@@ -14,7 +14,7 @@ type ToastApi = {
   success: (message: string, duration?: number) => string;
   error: (message: string, duration?: number) => string;
   loading: (message: string) => string;
-  updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading'; duration?: number }) => void;
+  updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
 };
 
 type ExperienceSectionProps = {
@@ -999,7 +999,7 @@ const usePolishActions = ({
           if (!title) {
             return;
           }
-          toast.updateToast(toastId, { message: title, type: 'loading', duration: 0 });
+          toast.updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
         });
         const latestData = cardDataRef.current.get(cardId);
         if (!latestData) {

@@ -192,7 +192,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [batchDeleteTargetIds, setBatchDeleteTargetIds] = useState<string[]>([]);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
-  const longPressTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const welcomeName = resolveDisplayName(userProfile?.full_name, DEFAULT_WELCOME_NAME);
   const {

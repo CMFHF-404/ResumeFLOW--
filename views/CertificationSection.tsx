@@ -38,7 +38,7 @@ type ToastApi = {
     success: (message: string, duration?: number) => string;
     error: (message: string, duration?: number) => string;
     loading: (message: string) => string;
-    updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading'; duration?: number }) => void;
+    updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
 };
 
 interface CertificationSectionProps {

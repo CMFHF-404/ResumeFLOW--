@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, Info, X, Loader } from 'lucide-react';
 /**
  * Toast 类型
  */
-export type ToastType = 'success' | 'error' | 'info' | 'loading';
+export type ToastType = 'success' | 'error' | 'info' | 'loading' | 'ai_thinking';
 
 /**
  * Toast 配置接口
@@ -64,6 +64,14 @@ const getToastStyles = (type: ToastType) => {
             icon: Loader,
             iconColor: 'text-primary',
             spin: true
+        },
+        ai_thinking: {
+            bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+            border: 'border-indigo-200 dark:border-indigo-800',
+            text: 'text-indigo-800 dark:text-indigo-200',
+            icon: Loader,
+            iconColor: 'text-indigo-600 dark:text-indigo-400',
+            spin: true
         }
     };
     return styles[type];
@@ -94,7 +102,16 @@ export const Toast: React.FC<ToastProps> = ({ message, type, duration = 3000, id
       `}
         >
             <Icon className={`w-5 h-5 shrink-0 ${style.iconColor} ${style.spin ? 'animate-spin' : ''}`} />
-            <span className="flex-1 text-sm font-medium">{message}</span>
+            {type === 'ai_thinking' ? (
+                <span
+                    className="flex-1 text-sm font-bold bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 bg-[length:200%_auto] bg-clip-text text-transparent"
+                    style={{ animation: 'toast-ai-gradient 3s linear infinite' }}
+                >
+                    思考中：{message}
+                </span>
+            ) : (
+                <span className="flex-1 text-sm font-medium">{message}</span>
+            )}
             <button
                 onClick={() => onClose(id)}
                 className="shrink-0 hover:opacity-70 transition-opacity"
@@ -102,6 +119,12 @@ export const Toast: React.FC<ToastProps> = ({ message, type, duration = 3000, id
             >
                 <X className="w-4 h-4" />
             </button>
+            <style>{`
+                @keyframes toast-ai-gradient {
+                    0% { background-position: 0% center; }
+                    100% { background-position: -200% center; }
+                }
+            `}</style>
         </div>
     );
 };
@@ -164,5 +187,6 @@ export const useToast = () => {
         error: (message: string, duration?: number) => showToast(message, 'error', duration),
         info: (message: string, duration?: number) => showToast(message, 'info', duration),
         loading: (message: string) => showToast(message, 'loading', 0), // 0 表示不自动关闭
+        ai_thinking: (message: string) => showToast(message, 'ai_thinking', 0),
     };
 };
