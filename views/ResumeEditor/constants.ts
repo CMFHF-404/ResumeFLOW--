@@ -131,6 +131,7 @@ export const SMART_PAGE_TOAST_MESSAGES = {
     overflow: '内容过多，即使调整行间距与字号也无法保留页尾留白，请删减部分内容。',
     adjusting: '正在尝试自动适配一页...',
 } as const;
+export const DEFAULT_MATCH_SCORE_FILTER = 70;
 export const AUTO_ASSEMBLY_MAX_EXPERIENCES = 3;
 export const AUTO_ASSEMBLY_MATCH_THRESHOLD = 80;
 export const AUTO_ASSEMBLY_TOAST_MESSAGES = {

@@ -39,13 +39,13 @@ const MatchScoreFilter: React.FC<MatchScoreFilterProps> = ({ value, onChange }) 
                 title="调整匹配度筛选"
             >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>{value > 0 ? `≥ ${value}` : '筛选'}</span>
+                <span>{value > 0 ? `小于 ${value}%` : '筛选'}</span>
             </button>
 
             {isOpen && (
                 <div className="absolute right-0 top-full mt-2 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg z-50 dark:border-gray-700 dark:bg-gray-800 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">最低匹配度</span>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">隐藏匹配度小于</span>
                         <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">{value}%</span>
                     </div>
                     <div className="px-1">

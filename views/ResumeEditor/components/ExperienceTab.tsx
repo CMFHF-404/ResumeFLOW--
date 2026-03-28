@@ -18,10 +18,6 @@ const SCROLL_TARGET_PREFIX = {
     certification: 'certification',
     skillGroup: 'skill-group',
 } as const;
-const DEFAULT_MATCH_SCORE_FILTER = 70;
-
-const clampMatchScoreFilter = (value: number) => Math.min(100, Math.max(0, value));
-
 const buildFilterHiddenMessage = (
     label: string,
     unit: string,
@@ -31,7 +27,7 @@ const buildFilterHiddenMessage = (
     if (hiddenCount <= 0) {
         return `暂无${label}`;
     }
-    return `当前有 ${hiddenCount}${unit}${label}因最低匹配度 ≥ ${matchScoreFilter}% 被隐藏`;
+    return `当前有 ${hiddenCount}${unit}${label}因匹配度小于 ${matchScoreFilter}% 被隐藏`;
 };
 
 const formatHiddenSummary = (
@@ -75,6 +71,8 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     certification,
     skill,
     selection,
+    matchScoreFilter,
+    onMatchScoreFilterChange,
     scrollContainerRef,
     workItems,
     projectItems,
@@ -96,7 +94,6 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetProjectSort,
     onResetCertificationSort,
 }) => {
-    const [matchScoreFilter, setMatchScoreFilter] = useState(DEFAULT_MATCH_SCORE_FILTER);
     const listScrollSnapshotRef = useRef<number | null>(null);
     const shouldRestoreScrollRef = useRef(false);
     const prevEditingExpIdRef = useRef<string | null>(experience.editingExpId);
@@ -311,7 +308,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 <div className="flex items-center gap-2">
                     <MatchScoreFilter 
                         value={matchScoreFilter}
-                        onChange={setMatchScoreFilter}
+                        onChange={onMatchScoreFilterChange}
                     />
                     <button
                         type="button"
@@ -328,12 +325,12 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 <div className="mx-1 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
                     <div className="flex items-start justify-between gap-3">
                         <span>
-                            当前已按最低匹配度 ≥ {matchScoreFilter}% 进行筛选，已隐藏
+                            当前已隐藏匹配度小于 {matchScoreFilter}% 的内容，已隐藏
                             {hiddenSummary.text ? ` ${hiddenSummary.text}` : '部分内容'}。
                         </span>
                         <button
                             type="button"
-                            onClick={() => setMatchScoreFilter(0)}
+                            onClick={() => onMatchScoreFilterChange(0)}
                             className="shrink-0 rounded-md border border-amber-300 px-2 py-0.5 font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-900/30"
                         >
                             显示全部
