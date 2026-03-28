@@ -309,6 +309,8 @@ export type ExperienceTabProps = {
   certification: CertificationActions;
   skill: SkillActions;
   selection: SelectionActions;
+  matchScoreFilter: number;
+  onMatchScoreFilterChange: (value: number) => void;
   scrollContainerRef?: RefObject<HTMLDivElement>;
   workItems: ResumeExperienceView[];
   projectItems: ResumeExperienceView[];

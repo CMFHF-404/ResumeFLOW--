@@ -100,6 +100,7 @@ import {
     JD_ANALYSIS_PROGRESS_NODE_TITLES,
     JD_ANALYSIS_TOAST_DURATION_MS,
     JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
+    DEFAULT_MATCH_SCORE_FILTER,
 } from './constants';
 import { parseDragItemKey, type DragItemType } from './dragKeys';
 import {
@@ -304,6 +305,11 @@ type AutoAssemblyStateSnapshot = {
     selection: ManualSelectionSnapshot;
     layout: LayoutSnapshot;
 };
+type AutoAssemblyExecutionResult = {
+    result: SmartPageExecutionResult;
+    finalSelection: ManualSelectionSnapshot | null;
+};
+type MatchScoreFilterSource = 'manual' | 'auto';
 type DashboardResumesSyncResult =
     | { status: 'success' | 'skipped' }
     | { status: 'failed'; error: unknown };
@@ -422,6 +428,25 @@ const buildSelectionSnapshot = (
     certificationIds: [...selectedCertIds],
     skillIds: [...selectedSkillIds],
 });
+
+const buildAutoAssemblySelectionFilter = (
+    result: JDAnalysisResult,
+    selection: Pick<ManualSelectionSnapshot, 'experienceIds' | 'certificationIds' | 'skillIds'>
+) => {
+    const experienceScoreMap = toMatchScoreMap(result.experienceMatches);
+    const certificationScoreMap = toMatchScoreMap(result.certificationMatches);
+    const skillScoreMap = toMatchScoreMap(result.skillMatches);
+    const selectedScores = [
+        ...selection.experienceIds.map((id) => experienceScoreMap.get(id)),
+        ...selection.certificationIds.map((id) => certificationScoreMap.get(id)),
+        ...selection.skillIds.map((id) => skillScoreMap.get(id)),
+    ].filter((score): score is number => typeof score === 'number' && score > 0);
+    if (selectedScores.length === 0) {
+        return DEFAULT_MATCH_SCORE_FILTER;
+    }
+    const minSelectedScore = Math.min(...selectedScores);
+    return Math.max(0, Math.min(100, Math.floor(minSelectedScore / 10) * 10));
+};
 
     const buildLayoutSnapshot = (
         layout: SmartPageLayout,
@@ -667,6 +692,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     // 2. Experience State
     const [experienceItems, setExperienceItems] = useState<ResumeExperienceView[]>([]);
     const [selectedExpIds, setSelectedExpIds] = useState<Set<string>>(new Set());
+    const [matchScoreFilter, setMatchScoreFilter] = useState(DEFAULT_MATCH_SCORE_FILTER);
+    const [matchScoreFilterSource, setMatchScoreFilterSource] = useState<MatchScoreFilterSource>('manual');
     const [isAutoAssembling, setIsAutoAssembling] = useState(false);
     const [bossGreeting, setBossGreeting] = useState('');
     const [bossGreetingSignature, setBossGreetingSignature] = useState('');
@@ -721,6 +748,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const bossGreetingRequestIdRef = useRef(0);
     const activeAutoAssembleToastIdRef = useRef<string | null>(null);
     const activeBossGreetingToastIdRef = useRef<string | null>(null);
+    const previousMatchScoreFilterResumeIdRef = useRef<string | null>(null);
     const bossGreetingUiStateRef = useRef({
         text: '',
         isVisible: false,
@@ -2544,7 +2572,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         requestedSelectionVersion: number,
         requestedLayoutVersion: number,
         initialStateSnapshot: AutoAssemblyStateSnapshot
-    ): Promise<SmartPageExecutionResult> => {
+    ): Promise<AutoAssemblyExecutionResult> => {
         const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
         const isSelectionVersionCurrent = () => (
             manualSelectionVersionRef.current === requestedSelectionVersion
@@ -2650,31 +2678,46 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         let lastOverflowResult: Extract<SmartPageExecutionResult, { status: 'overflow' }> | null = null;
         const initialResult = await applySelectionAndMeasure(currentSelection);
         if (initialResult.status === 'fit' || initialResult.status === 'skipped') {
-            return initialResult;
+            return {
+                result: initialResult,
+                finalSelection: initialResult.status === 'skipped' ? null : { ...currentSelection },
+            };
         }
         lastOverflowResult = initialResult;
         const skillResult = await removeNext(selection.skillRemovalQueue, 'skillIds');
         if (skillResult) {
-            return skillResult;
+            return {
+                result: skillResult,
+                finalSelection: skillResult.status === 'skipped' ? null : { ...currentSelection },
+            };
         }
         const certificationResult = await removeNext(
             selection.certificationRemovalQueue,
             'certificationIds'
         );
         if (certificationResult) {
-            return certificationResult;
+            return {
+                result: certificationResult,
+                finalSelection: certificationResult.status === 'skipped' ? null : { ...currentSelection },
+            };
         }
         const experienceResult = await removeNext(selection.experienceRemovalQueue, 'experienceIds');
         if (experienceResult) {
-            return experienceResult;
+            return {
+                result: experienceResult,
+                finalSelection: experienceResult.status === 'skipped' ? null : { ...currentSelection },
+            };
         }
-        return lastOverflowResult ?? {
-            status: 'overflow',
-            topPaddingPx,
-            sectionSpacingKey,
-            itemSpacingEm,
-            lineHeight,
-            fontSize,
+        return {
+            result: lastOverflowResult ?? {
+                status: 'overflow',
+                topPaddingPx,
+                sectionSpacingKey,
+                itemSpacingEm,
+                lineHeight,
+                fontSize,
+            },
+            finalSelection: { ...currentSelection },
         };
     }, [applyAssemblySelection, applyLayoutSnapshot, waitForSmartPageIdle]);
 
@@ -2751,7 +2794,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 releaseActiveAutoAssembleToast();
                 return;
             }
-            const smartPageResult = await runAutoAssemblySelection(
+            const autoAssemblyExecution = await runAutoAssemblySelection(
                 selection,
                 requestedResumeId,
                 requestedSelectionVersion,
@@ -2774,10 +2817,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     ),
                 }
             );
+            const { result: smartPageResult, finalSelection } = autoAssemblyExecution;
             if (!isResumeRequestCurrent() || !isAutoAssembleRequestCurrent()) {
                 closeToast(toastId);
                 releaseActiveAutoAssembleToast();
                 return;
+            }
+            if (smartPageResult.status !== 'skipped' && finalSelection) {
+                setMatchScoreFilter(
+                    buildAutoAssemblySelectionFilter(effectiveResult, finalSelection)
+                );
+                setMatchScoreFilterSource('auto');
             }
             trackSmartAssemblyResult({
                 resumeId,
@@ -3194,6 +3244,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const handleToggleJdCollapse = () => {
         setIsJDCollapsed((prev) => !prev);
     };
+    const resetAutoDerivedMatchScoreFilter = useCallback(() => {
+        setMatchScoreFilter(DEFAULT_MATCH_SCORE_FILTER);
+        setMatchScoreFilterSource('manual');
+    }, []);
+    const handleMatchScoreFilterChange = useCallback((value: number) => {
+        setMatchScoreFilter(value);
+        setMatchScoreFilterSource('manual');
+    }, []);
     const handleJdTextChange = useCallback(
         (value: string) => {
             const nextJdText = value.trim();
@@ -3232,6 +3290,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
         };
     }, [isMobileEditorDrawerOpen]);
+    useEffect(() => {
+        if (previousMatchScoreFilterResumeIdRef.current === resumeId) {
+            return;
+        }
+        previousMatchScoreFilterResumeIdRef.current = resumeId;
+        if (matchScoreFilterSource !== 'auto') {
+            return;
+        }
+        resetAutoDerivedMatchScoreFilter();
+    }, [matchScoreFilterSource, resetAutoDerivedMatchScoreFilter, resumeId]);
+    useEffect(() => {
+        if (matchScoreFilterSource !== 'auto' || (analysisResult && !isOutdated)) {
+            return;
+        }
+        resetAutoDerivedMatchScoreFilter();
+    }, [analysisResult, isOutdated, matchScoreFilterSource, resetAutoDerivedMatchScoreFilter]);
     useEffect(() => {
         if (!isMobileEditorDrawerOpen || typeof window === 'undefined') {
             return;
@@ -3374,6 +3448,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             certification,
                             skill,
                             selection: trackedSelection,
+                            matchScoreFilter,
+                            onMatchScoreFilterChange: handleMatchScoreFilterChange,
                             workItems,
                             projectItems,
                             selectedExpIds,
@@ -3575,6 +3651,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                     certification,
                                     skill,
                                     selection: trackedSelection,
+                                    matchScoreFilter,
+                                    onMatchScoreFilterChange: handleMatchScoreFilterChange,
                                     workItems,
                                     projectItems,
                                     selectedExpIds,
