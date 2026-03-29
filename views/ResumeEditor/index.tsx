@@ -2706,17 +2706,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => buildStableResumeSnapshotText(selectedResumeSnapshot),
         [selectedResumeSnapshot]
     );
+    const editablePersonalSummary = useMemo(() => {
+        if (hasPersonalSummaryOverride) {
+            return personalSummary;
+        }
+        return profile.summary;
+    }, [hasPersonalSummaryOverride, personalSummary, profile.summary]);
     const effectivePersonalSummary = useMemo(() => {
+        if (!isSummaryVisible) {
+            return '';
+        }
         if (hasPersonalSummaryOverride) {
             return personalSummary.trim();
         }
         return profile.summary.trim();
-    }, [hasPersonalSummaryOverride, personalSummary, profile.summary]);
+    }, [hasPersonalSummaryOverride, isSummaryVisible, personalSummary, profile.summary]);
     const handlePersonalSummaryChange = useCallback((value: string) => {
         personalSummaryDraftVersionRef.current += 1;
+        if (!isSummaryVisible && !editablePersonalSummary.trim() && value.trim()) {
+            setIsSummaryVisible(true);
+        }
         setPersonalSummary(value);
         setHasPersonalSummaryOverride(true);
-    }, []);
+    }, [editablePersonalSummary, isSummaryVisible]);
     const previewProfile = useMemo(
         () => ({
             ...profile,
@@ -3432,7 +3444,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('请先填写 JD 内容或完成 JD 分析后再生成个人评价。');
             return;
         }
-        if (effectivePersonalSummary.trim() && typeof window !== 'undefined') {
+        if (editablePersonalSummary.trim() && typeof window !== 'undefined') {
             const shouldOverwrite = window.confirm('当前已有个人评价内容，是否用 AI 生成结果覆盖？');
             if (!shouldOverwrite) {
                 return;
@@ -3498,6 +3510,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 releaseActivePersonalSummaryToast();
                 return;
             }
+            if (!isSummaryVisible && !editablePersonalSummary.trim() && response.summary.trim()) {
+                setIsSummaryVisible(true);
+            }
             setPersonalSummary(response.summary);
             setHasPersonalSummaryOverride(true);
             updateToast(toastId, {
@@ -3526,9 +3541,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [
         closeToast,
+        editablePersonalSummary,
         isGeneratingPersonalSummary,
+        isSummaryVisible,
         jdPolishContext,
-        effectivePersonalSummary,
         personalSummaryContext,
         personalSummaryCurrentSignature,
         resumeId,
@@ -3872,13 +3888,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                               experience,
                               certification,
                               skill,
-                              selection: trackedSelection,
-                              personalSummary: effectivePersonalSummary,
-                              isGeneratingPersonalSummary,
-                              canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
-                              onPersonalSummaryChange: handlePersonalSummaryChange,
-                              onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
-                              matchScoreFilter,
+                                selection: trackedSelection,
+                                personalSummary: editablePersonalSummary,
+                                isSummaryVisible,
+                                isGeneratingPersonalSummary,
+                                canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
+                                onPersonalSummaryChange: handlePersonalSummaryChange,
+                                onSummaryVisibilityChange: setIsSummaryVisible,
+                                onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
+                                matchScoreFilter,
                             onMatchScoreFilterChange: handleMatchScoreFilterChange,
                             workItems,
                             projectItems,
@@ -4124,13 +4142,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                       experience,
                                       certification,
                                       skill,
-                                      selection: trackedSelection,
-                                      personalSummary: effectivePersonalSummary,
-                                      isGeneratingPersonalSummary,
-                                      canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
-                                      onPersonalSummaryChange: handlePersonalSummaryChange,
-                                      onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
-                                      matchScoreFilter,
+                                        selection: trackedSelection,
+                                        personalSummary: editablePersonalSummary,
+                                        isSummaryVisible,
+                                        isGeneratingPersonalSummary,
+                                        canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
+                                        onPersonalSummaryChange: handlePersonalSummaryChange,
+                                        onSummaryVisibilityChange: setIsSummaryVisible,
+                                        onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
+                                        matchScoreFilter,
                                     onMatchScoreFilterChange: handleMatchScoreFilterChange,
                                     workItems,
                                     projectItems,
