@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus } from 'lucide-react';
+import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus, SlidersHorizontal } from 'lucide-react';
 import UnAuthPrompt from '../../../components/UnAuthPrompt';
 
 type EditorToolbarProps = {
@@ -7,7 +7,10 @@ type EditorToolbarProps = {
     saveState: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
     lastSavedAt: string | null;
     onToggleTheme: () => void;
+    isLayoutModified: boolean;
     isSmartPageApplied: boolean;
+    isLayoutAdjustToolbarOpen: boolean;
+    onToggleLayoutAdjustToolbar: () => void;
     onAdjustToSinglePage: () => void;
     onRestoreDefault: () => void;
     canCreateResume: boolean;
@@ -46,7 +49,10 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     saveState,
     lastSavedAt,
     onToggleTheme,
+    isLayoutModified,
     isSmartPageApplied,
+    isLayoutAdjustToolbarOpen,
+    onToggleLayoutAdjustToolbar,
     onAdjustToSinglePage,
     onRestoreDefault,
     canCreateResume,
@@ -59,11 +65,23 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(resumeName);
-    const smartPageButtonBaseClass =
+    const canRestoreDefault = isLayoutModified || isSmartPageApplied;
+    const actionButtonBaseClass =
         'flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors';
-    const smartPageButtonClass = isSmartPageApplied
-        ? `${smartPageButtonBaseClass} font-medium border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700`
-        : `${smartPageButtonBaseClass} font-semibold border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400`;
+    const smartPageButtonClass = canRestoreDefault
+        ? `${actionButtonBaseClass} font-medium border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700`
+        : `${actionButtonBaseClass} font-semibold border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400`;
+    const settingsButtonClass = [
+        actionButtonBaseClass,
+        'rounded-r-none border-r-0',
+        isLayoutAdjustToolbarOpen
+            ? 'border-primary bg-primary/10 text-primary dark:border-primary/70 dark:bg-primary/15'
+            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800',
+    ].join(' ');
+    const smartPageButtonJoinedClass = [
+        smartPageButtonClass,
+        'rounded-l-none',
+    ].join(' ');
 
     const handleStartEdit = () => {
         setEditValue(resumeName);
@@ -173,13 +191,25 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         <Plus className="w-4 h-4" />
                         {isCreatingResume ? '新增中...' : '新增简历'}
                     </button>
-                    <button
-                        onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
-                        className={smartPageButtonClass}
-                    >
-                        <LayoutTemplate className="w-4 h-4" />
-                        {isSmartPageApplied ? '恢复默认' : '智能一页'}
-                    </button>
+                    <div className="inline-flex items-center">
+                        <button
+                            type="button"
+                            onClick={onToggleLayoutAdjustToolbar}
+                            className={settingsButtonClass}
+                            aria-label="打开手动调节工具栏"
+                            aria-pressed={isLayoutAdjustToolbarOpen}
+                            title="手动调节"
+                        >
+                            <SlidersHorizontal className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={canRestoreDefault ? onRestoreDefault : onAdjustToSinglePage}
+                            className={smartPageButtonJoinedClass}
+                        >
+                            <LayoutTemplate className="w-4 h-4" />
+                            {canRestoreDefault ? '恢复默认' : '智能一页'}
+                        </button>
+                    </div>
                     <div className="order-last flex w-full items-center gap-2 text-xs md:order-none md:w-auto">
                         <span className="text-gray-400">自动保存</span>
                         <span className={`font-semibold ${saveStatusClass}`}>{saveStatusText}</span>

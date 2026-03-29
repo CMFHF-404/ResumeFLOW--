@@ -11,6 +11,7 @@ import {
     LayoutTemplate,
     MessageSquare,
     RefreshCw,
+    SlidersHorizontal,
     Wand2,
     X,
 } from 'lucide-react';
@@ -37,7 +38,10 @@ export type MobileEditorHeaderProps = {
     onCreateResume: () => void;
     canCreateResume: boolean;
     isCreatingResume: boolean;
+    isLayoutModified: boolean;
     isSmartPageApplied: boolean;
+    isLayoutAdjustToolbarOpen: boolean;
+    onToggleLayoutAdjustToolbar: () => void;
     onAdjustToSinglePage: () => void;
     onRestoreDefault: () => void;
     bossGreeting: string;
@@ -81,7 +85,10 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onCreateResume,
     canCreateResume,
     isCreatingResume,
+    isLayoutModified,
     isSmartPageApplied,
+    isLayoutAdjustToolbarOpen,
+    onToggleLayoutAdjustToolbar,
     onAdjustToSinglePage,
     onRestoreDefault,
     bossGreeting,
@@ -204,6 +211,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
             ? '重新生成 BOSS 招呼语'
             : '生成 BOSS 招呼语';
     const isCreateResumeDisabled = isCreatingResume || !canCreateResume;
+    const canRestoreDefault = isLayoutModified || isSmartPageApplied;
     const hasSourceResume = Boolean(resumeId);
     const createResumeLabel = isCreatingResume
         ? (hasSourceResume ? '副本中' : '新建中')
@@ -525,25 +533,41 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                         )}
 
                         <div className={`flex gap-2 w-full ${showJdInput ? 'mt-4' : ''}`}>
-                            <button
-                                type="button"
-                                onClick={isSmartPageApplied ? onRestoreDefault : onAdjustToSinglePage}
-                                className={[
-                                    'flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition-colors disabled:opacity-60',
-                                    isSmartPageApplied
-                                        ? 'border-gray-200 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700'
-                                        : 'border-primary/20 bg-primary/8 text-primary hover:bg-primary/12',
-                                ].join(' ')}
-                            >
-                                <LayoutTemplate className="h-4 w-4" />
-                                {isSmartPageApplied ? '还原一页' : '智能一页'}
-                            </button>
+                            <div className="flex min-w-[132px] flex-[1.18]">
+                                <button
+                                    type="button"
+                                    onClick={onToggleLayoutAdjustToolbar}
+                                    className={[
+                                        'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-l-xl rounded-r-none border border-r-0 transition-colors',
+                                        isLayoutAdjustToolbarOpen
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-primary/20 bg-white text-primary hover:bg-primary/8 dark:border-primary/30 dark:bg-gray-900 dark:text-primary dark:hover:bg-primary/12',
+                                    ].join(' ')}
+                                    aria-label="打开手动调节工具栏"
+                                    aria-pressed={isLayoutAdjustToolbarOpen}
+                                >
+                                    <SlidersHorizontal className="h-4 w-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={canRestoreDefault ? onRestoreDefault : onAdjustToSinglePage}
+                                    className={[
+                                        'min-w-0 flex-1 inline-flex h-10 items-center justify-center gap-1 rounded-r-xl rounded-l-none border px-2.5 text-[11.5px] font-semibold whitespace-nowrap transition-colors disabled:opacity-60',
+                                        canRestoreDefault
+                                            ? 'border-gray-200 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700'
+                                            : 'border-primary/20 bg-primary/8 text-primary hover:bg-primary/12',
+                                    ].join(' ')}
+                                >
+                                    <LayoutTemplate className="h-4 w-4" />
+                                    {canRestoreDefault ? '恢复默认' : '智能一页'}
+                                </button>
+                            </div>
                             <button
                                 type="button"
                                 onClick={onAutoAssemble}
                                 disabled={isAutoAssembling}
                                 className={[
-                                    'flex flex-[2] items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors',
+                                    'flex min-w-[138px] flex-[1.42] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2.5 text-[11.5px] font-semibold whitespace-nowrap transition-colors',
                                     'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400',
                                 ].join(' ')}
                             >

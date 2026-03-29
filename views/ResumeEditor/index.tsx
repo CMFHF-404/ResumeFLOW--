@@ -143,6 +143,7 @@ import {
 import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
+import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
 import ResumePreview from './components/ResumePreview';
 
@@ -174,6 +175,17 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const CSS_PX_PER_MM = 96 / 25.4;
 const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
+const formatOptionNumberLabel = (value: number, maxDecimals = 2) => (
+    value.toFixed(maxDecimals).replace(/\.?0+$/, '')
+);
+const LINE_HEIGHT_OPTIONS = LINE_HEIGHT_STEPS.map((value) => ({
+    value,
+    label: formatOptionNumberLabel(value),
+}));
+const FONT_SIZE_OPTIONS = FONT_SIZE_STEPS.map((value) => ({
+    value,
+    label: `${formatOptionNumberLabel(value, 1)} px`,
+}));
 
 type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8;
 
@@ -219,10 +231,60 @@ const buildReductionStepsFromCurrent = (start: number, min: number, step: number
     return buildItemSpacingSteps(start, min, step);
 };
 
+const SECTION_SPACING_KEYS: SectionSpacingKey[] = [8, 6, 5, 4, 3, 2];
+const MAX_ITEM_SPACING_EM = Math.max(...Object.values(LIST_SPACING_BY_DENSITY));
+const ITEM_SPACING_OPTIONS = Array.from(new Set([
+    ...buildItemSpacingSteps(
+        MAX_ITEM_SPACING_EM,
+        SMART_PAGE_ITEM_SPACING_MIN,
+        SMART_PAGE_ITEM_SPACING_STEP
+    ),
+    ...Object.values(LIST_SPACING_BY_DENSITY),
+].map((value) => Number(value.toFixed(3))))).sort((left, right) => right - left);
+const SECTION_SPACING_OPTIONS = SECTION_SPACING_KEYS.map((value) => ({
+    value,
+    label: `${value}`,
+}));
+const ITEM_SPACING_SELECT_OPTIONS = ITEM_SPACING_OPTIONS.map((value) => ({
+    value,
+    label: formatOptionNumberLabel(value, 3),
+}));
+
+const areLayoutValuesEqual = (current: SmartPageLayout, defaults: SmartPageLayout) => (
+    current.topPaddingPx === defaults.topPaddingPx
+    && current.sectionSpacingKey === defaults.sectionSpacingKey
+    && current.itemSpacingEm === defaults.itemSpacingEm
+    && current.lineHeight === defaults.lineHeight
+    && current.fontSize === defaults.fontSize
+);
+
+const resolveNearestSectionSpacingKey = (value: number): SectionSpacingKey => (
+    SECTION_SPACING_KEYS.reduce<SectionSpacingKey>((nearest, candidate) => {
+        const candidateDistance = Math.abs(candidate - value);
+        const nearestDistance = Math.abs(nearest - value);
+        if (candidateDistance < nearestDistance) {
+            return candidate;
+        }
+        return nearest;
+    }, SECTION_SPACING_KEYS[0])
+);
+
 const resolveDefaultTopPaddingPx = (a4Height?: number) => {
     const pxPerMm = a4Height ? a4Height / A4_HEIGHT_MM : CSS_PX_PER_MM;
     return Number((pxPerMm * PREVIEW_PADDING_MM).toFixed(2));
 };
+const TOP_PADDING_MAX_PX = resolveDefaultTopPaddingPx();
+const TOP_PADDING_MIN_PX = SMART_PAGE_TOP_PADDING_MIN_PX;
+const TOP_PADDING_OPTIONS = buildTopPaddingSteps(
+    TOP_PADDING_MAX_PX,
+    TOP_PADDING_MIN_PX,
+    SMART_PAGE_TOP_PADDING_STEP_PX
+);
+const TOP_PADDING_SELECT_OPTIONS = TOP_PADDING_OPTIONS.map((value) => ({
+    value,
+    label: `${formatOptionNumberLabel(value)} px`,
+}));
+const TOP_PADDING_SLIDER_MAX = TOP_PADDING_OPTIONS[0] ?? TOP_PADDING_MAX_PX;
 
 const resolveDefaultSectionSpacingKey = (
     density: 'compact' | 'standard' | 'spacious'
@@ -664,6 +726,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
     const [isDragging, setIsDragging] = useState(false);
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
+    const [isLayoutAdjustToolbarOpen, setIsLayoutAdjustToolbarOpen] = useState(false);
     const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
     const [isCreatingResume, setIsCreatingResume] = useState(false);
     const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
@@ -761,6 +824,21 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         text: '',
         isVisible: false,
     });
+    const currentLayout = useMemo<SmartPageLayout>(() => ({
+        topPaddingPx,
+        sectionSpacingKey,
+        itemSpacingEm,
+        lineHeight,
+        fontSize,
+    }), [fontSize, itemSpacingEm, lineHeight, sectionSpacingKey, topPaddingPx]);
+    const defaultLayout = useMemo(
+        () => buildDefaultSmartPageLayout(density),
+        [density]
+    );
+    const isLayoutModified = useMemo(
+        () => !areLayoutValuesEqual(currentLayout, defaultLayout),
+        [currentLayout, defaultLayout]
+    );
     const {
         toasts,
         success: showToastSuccess,
@@ -943,6 +1021,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         compareByDateDesc,
         compareCertificationByDateDesc,
     });
+    useEffect(() => {
+        setIsLayoutAdjustToolbarOpen(false);
+    }, [resumeId]);
     const hydratingPersistedJDAnalysisSnapshot = useMemo(() => {
         const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
             resumeDetail?.resume?.config?.jdAnalysis
@@ -1875,6 +1956,52 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError(SMART_PAGE_TOAST_MESSAGES.overflow);
         }
     };
+    const applyManualLayoutChange = useCallback((
+        updater: (layout: SmartPageLayout) => SmartPageLayout
+    ) => {
+        const nextLayout = updater(currentLayout);
+        commitLayoutSnapshot(buildLayoutSnapshot(nextLayout, false), { incrementVersion: true });
+        applyVisibleLayout(nextLayout);
+        setIsSmartPageApplied(false);
+    }, [applyVisibleLayout, commitLayoutSnapshot, currentLayout]);
+    const handleToggleLayoutAdjustToolbar = useCallback(() => {
+        setIsLayoutAdjustToolbarOpen((prev) => {
+            if (!prev) {
+                showToastInfo('进入手动调节模式');
+            }
+            return !prev;
+        });
+    }, [showToastInfo]);
+    const handleLineHeightChange = useCallback((value: number) => {
+        applyManualLayoutChange((layout) => ({
+            ...layout,
+            lineHeight: Number(value.toFixed(2)),
+        }));
+    }, [applyManualLayoutChange]);
+    const handleFontSizeChange = useCallback((value: number) => {
+        applyManualLayoutChange((layout) => ({
+            ...layout,
+            fontSize: Number(value.toFixed(1)),
+        }));
+    }, [applyManualLayoutChange]);
+    const handleTopPaddingChange = useCallback((value: number) => {
+        applyManualLayoutChange((layout) => ({
+            ...layout,
+            topPaddingPx: Number(value.toFixed(2)),
+        }));
+    }, [applyManualLayoutChange]);
+    const handleSectionSpacingChange = useCallback((value: number) => {
+        applyManualLayoutChange((layout) => ({
+            ...layout,
+            sectionSpacingKey: resolveNearestSectionSpacingKey(value),
+        }));
+    }, [applyManualLayoutChange]);
+    const handleItemSpacingChange = useCallback((value: number) => {
+        applyManualLayoutChange((layout) => ({
+            ...layout,
+            itemSpacingEm: Number(value.toFixed(2)),
+        }));
+    }, [applyManualLayoutChange]);
     const adjustToSinglePage = () => {
         void handleAdjustToSinglePage();
     };
@@ -3372,7 +3499,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     saveState={saveState}
                     lastSavedAt={lastSavedAt}
                     onToggleTheme={toggleTheme}
+                    isLayoutModified={isLayoutModified}
                     isSmartPageApplied={isSmartPageApplied}
+                    isLayoutAdjustToolbarOpen={isLayoutAdjustToolbarOpen}
+                    onToggleLayoutAdjustToolbar={handleToggleLayoutAdjustToolbar}
                     onAdjustToSinglePage={adjustToSinglePage}
                     onRestoreDefault={restoreDefault}
                     canCreateResume={canCreateResume}
@@ -3400,7 +3530,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onCreateResume={handleCreateResume}
                     canCreateResume={canCreateResume}
                     isCreatingResume={isCreatingResume}
+                    isLayoutModified={isLayoutModified}
                     isSmartPageApplied={isSmartPageApplied}
+                    isLayoutAdjustToolbarOpen={isLayoutAdjustToolbarOpen}
+                    onToggleLayoutAdjustToolbar={handleToggleLayoutAdjustToolbar}
                     onAdjustToSinglePage={adjustToSinglePage}
                     onRestoreDefault={restoreDefault}
                     bossGreeting={bossGreeting}
@@ -3512,6 +3645,50 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     />
                 </div>
                 <div className="flex flex-1 flex-col overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0">
+                    {isLayoutAdjustToolbarOpen ? (
+                        <LayoutAdjustToolbar
+                            lineHeight={lineHeight}
+                            fontSize={fontSize}
+                            topPaddingPx={topPaddingPx}
+                            sectionSpacingKey={sectionSpacingKey}
+                            itemSpacingEm={itemSpacingEm}
+                            lineHeightOptions={LINE_HEIGHT_OPTIONS}
+                            fontSizeOptions={FONT_SIZE_OPTIONS}
+                            topPaddingOptions={TOP_PADDING_SELECT_OPTIONS}
+                            sectionSpacingOptions={SECTION_SPACING_OPTIONS}
+                            itemSpacingOptions={ITEM_SPACING_SELECT_OPTIONS}
+                            lineHeightSlider={{
+                                min: LINE_HEIGHT_MIN,
+                                max: LINE_HEIGHT_DEFAULT,
+                                step: LINE_HEIGHT_STEP,
+                            }}
+                            fontSizeSlider={{
+                                min: FONT_SIZE_MIN,
+                                max: FONT_SIZE_DEFAULT,
+                                step: FONT_SIZE_STEP,
+                            }}
+                            topPaddingSlider={{
+                                min: TOP_PADDING_MIN_PX,
+                                max: TOP_PADDING_SLIDER_MAX,
+                                step: SMART_PAGE_TOP_PADDING_STEP_PX,
+                            }}
+                            sectionSpacingSlider={{
+                                min: 2,
+                                max: 8,
+                                step: 1,
+                            }}
+                            itemSpacingSlider={{
+                                min: SMART_PAGE_ITEM_SPACING_MIN,
+                                max: MAX_ITEM_SPACING_EM,
+                                step: SMART_PAGE_ITEM_SPACING_STEP,
+                            }}
+                            onLineHeightChange={handleLineHeightChange}
+                            onFontSizeChange={handleFontSizeChange}
+                            onTopPaddingChange={handleTopPaddingChange}
+                            onSectionSpacingChange={handleSectionSpacingChange}
+                            onItemSpacingChange={handleItemSpacingChange}
+                        />
+                    ) : null}
                     <ResumePreview
                         previewRef={previewRef}
                         previewContentRef={previewContentRef}
