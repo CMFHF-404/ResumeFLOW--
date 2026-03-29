@@ -9,6 +9,7 @@ import { ADD_PROJECT_EXPERIENCE_LABEL, ADD_WORK_EXPERIENCE_LABEL } from '../cons
 import MatchScoreFilter from './MatchScoreFilter';
 import CertificationListSection from './CertificationListSection';
 import ExperienceListSection from './ExperienceList/ListSection';
+import PersonalSummaryPanel from './PersonalSummaryPanel';
 import SkillListSection from './SkillListSection';
 
 const SCROLL_TARGET_ATTR = 'data-rf-edit-target';
@@ -71,6 +72,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     certification,
     skill,
     selection,
+    personalSummary,
+    isGeneratingPersonalSummary,
+    canGeneratePersonalSummary,
+    onPersonalSummaryChange,
+    onGeneratePersonalSummary,
     matchScoreFilter,
     onMatchScoreFilterChange,
     scrollContainerRef,
@@ -321,6 +327,13 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                     </button>
                 </div>
             </div>
+            <PersonalSummaryPanel
+                value={personalSummary}
+                isGenerating={isGeneratingPersonalSummary}
+                canGenerate={canGeneratePersonalSummary}
+                onChange={onPersonalSummaryChange}
+                onGenerate={onGeneratePersonalSummary}
+            />
             {matchScoreFilter > 0 && hiddenSummary.hiddenTotal > 0 ? (
                 <div className="mx-1 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
                     <div className="flex items-start justify-between gap-3">

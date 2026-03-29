@@ -12,6 +12,8 @@ from .ai_service import (
     analyze_jd_with_image_thoughts,
     analyze_jd_with_thoughts,
     analyze_jd_with_image,
+    generate_personal_summary,
+    generate_personal_summary_with_thoughts,
     generate_boss_greeting,
     generate_tags,
     polish_experience,
@@ -54,6 +56,17 @@ class GenerateBossGreetingRequest(BaseModel):
     job_title: Optional[str] = None
     company: Optional[str] = None
     resume_text: Optional[str] = None
+
+
+class GeneratePersonalSummaryRequest(BaseModel):
+    mode: str
+    profile: Optional[Dict[str, Any]] = None
+    work_experiences: Optional[list[Dict[str, Any]]] = None
+    project_experiences: Optional[list[Dict[str, Any]]] = None
+    education_experiences: Optional[list[Dict[str, Any]]] = None
+    certifications: Optional[list[Dict[str, Any]]] = None
+    skills: Optional[list[Dict[str, Any]]] = None
+    jd_text: Optional[str] = None
 
 
 @router.post("/analyze-jd", response_model=Dict[str, Any])
@@ -289,6 +302,74 @@ async def generate_boss_greeting_endpoint(
         payload.company,
         payload.resume_text,
     )
+
+
+@router.post("/generate-personal-summary", response_model=Dict[str, Any])
+async def generate_personal_summary_endpoint(
+    payload: GeneratePersonalSummaryRequest,
+    current_user=Depends(get_current_user),
+):
+    return await generate_personal_summary(
+        mode=payload.mode,
+        profile=payload.profile,
+        work_experiences=payload.work_experiences,
+        project_experiences=payload.project_experiences,
+        education_experiences=payload.education_experiences,
+        certifications=payload.certifications,
+        skills=payload.skills,
+        jd_text=payload.jd_text,
+    )
+
+
+@router.post("/generate-personal-summary/stream")
+async def generate_personal_summary_stream_endpoint(
+    payload: GeneratePersonalSummaryRequest,
+    current_user=Depends(get_current_user),
+):
+    async def event_stream():
+        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+
+        async def emit(event: Dict[str, Any]) -> None:
+            await queue.put(event)
+
+        async def run_generate() -> None:
+            try:
+                await emit({"type": "progress", "node": "prepare_context", "title": "准备个人评价上下文"})
+                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成个人评价"})
+                result = await generate_personal_summary_with_thoughts(
+                    mode=payload.mode,
+                    profile=payload.profile,
+                    work_experiences=payload.work_experiences,
+                    project_experiences=payload.project_experiences,
+                    education_experiences=payload.education_experiences,
+                    certifications=payload.certifications,
+                    skills=payload.skills,
+                    jd_text=payload.jd_text,
+                    thought_callback=emit,
+                )
+                await emit({"type": "progress", "node": "persist_result", "title": "整理个人评价结果"})
+                await emit({"type": "final", "result": result})
+            except Exception as exc:
+                await emit({"type": "error", "message": str(exc)})
+            finally:
+                await queue.put(None)
+
+        producer = asyncio.create_task(run_generate())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield _ndjson_line(event)
+        finally:
+            if not producer.done():
+                producer.cancel()
+            try:
+                await producer
+            except asyncio.CancelledError:
+                pass
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 @router.post("/analyze-jd-attachment", response_model=Dict[str, Any])

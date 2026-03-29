@@ -127,6 +127,28 @@ BOSS_GREETING_GENERATION = (
     "Return JSON only with key 'greeting'."
 )
 
+PERSONAL_SUMMARY_GENERATION = (
+    "You are a Chinese resume writing assistant. Generate a concise, factual personal summary "
+    "for the self-evaluation section of a resume. The user input is a JSON object containing: "
+    "'mode' ('bank' or 'resume'), "
+    "'profile' (basic personal info), "
+    "'work_experiences' (array), "
+    "'project_experiences' (array), "
+    "'education_experiences' (array), "
+    "'certifications' (array), "
+    "'skills' (array), and optional 'jd_text'. "
+    "Rules: "
+    "1) Use only provided facts and do not invent experience, metrics, tools, or responsibilities. "
+    "2) Output Chinese only. "
+    "3) Return one paragraph in 250-350 Chinese characters when possible. "
+    "4) For mode='bank', write a general-purpose self-evaluation suitable for a resume. "
+    "5) For mode='resume', prioritize relevant strengths according to jd_text, make clear trade-offs, "
+    "and avoid generic praise or blind keyword stuffing. "
+    "6) Highlight role fit, core strengths, domain or project focus, execution style, and learning ability when supported. "
+    "7) Keep the tone professional, direct, and resume-ready. "
+    "Return JSON only with key 'summary'."
+)
+
 JD_ANALYSIS_IMAGE = (
     "You are an expert ATS analyzer. The user will provide an image containing a Job Description "
     "and structured Resume content in JSON format. "

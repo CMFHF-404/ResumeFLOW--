@@ -48,7 +48,26 @@ const clampValue = (value: number, config: SliderConfig) => {
     return Math.min(config.max, Math.max(config.min, value));
 };
 
-const formatInputValue = (value: number, step: number) => {
+const resolveFallbackValue = (config: SliderConfig, options: NumericOption[]) => (
+    options[0]?.value
+    ?? (Number.isFinite(config.min) ? config.min : 0)
+);
+
+const normalizeControlValue = (
+    value: number | undefined,
+    config: SliderConfig,
+    options: NumericOption[]
+) => {
+    if (!Number.isFinite(value)) {
+        return resolveFallbackValue(config, options);
+    }
+    return clampValue(value, config);
+};
+
+const formatInputValue = (value: number | undefined, step: number) => {
+    if (!Number.isFinite(value)) {
+        return '';
+    }
     if (Number.isInteger(value)) {
         return String(value);
     }
@@ -102,6 +121,7 @@ const DesktopSelectField: React.FC<{ control: ControlDescriptor }> = ({ control 
 
 const MobileSliderField: React.FC<{ control: ControlDescriptor }> = ({ control }) => {
     const sliderOptions = [...control.options].sort((left, right) => left.value - right.value);
+    const normalizedValue = normalizeControlValue(control.value, control.slider, sliderOptions);
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white/92 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
@@ -111,7 +131,7 @@ const MobileSliderField: React.FC<{ control: ControlDescriptor }> = ({ control }
                     min={0}
                     max={Math.max(sliderOptions.length - 1, 0)}
                     step={1}
-                    value={Math.max(resolveSelectedOptionIndex(control.value, sliderOptions), 0)}
+                    value={Math.max(resolveSelectedOptionIndex(normalizedValue, sliderOptions), 0)}
                     onChange={(event) => {
                         const nextOption = sliderOptions[Number(event.target.value)];
                         if (!nextOption) {
@@ -126,7 +146,7 @@ const MobileSliderField: React.FC<{ control: ControlDescriptor }> = ({ control }
                     min={control.slider.min}
                     max={control.slider.max}
                     step={control.slider.step}
-                    value={formatInputValue(control.value, control.slider.step)}
+                    value={formatInputValue(normalizedValue, control.slider.step)}
                     onChange={(event) => {
                         const next = Number(event.target.value);
                         if (Number.isNaN(next)) {
@@ -209,7 +229,10 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
             slider: itemSpacingSlider,
             onChange: onItemSpacingChange,
         },
-    ];
+    ].map((control) => ({
+        ...control,
+        value: normalizeControlValue(control.value, control.slider, control.options),
+    }));
     const [activeMobileControlKey, setActiveMobileControlKey] = useState(controls[0]?.key ?? 'line-height');
     const activeMobileControl = useMemo(
         () => controls.find((control) => control.key === activeMobileControlKey) ?? controls[0],

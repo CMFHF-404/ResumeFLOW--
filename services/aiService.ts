@@ -81,6 +81,21 @@ export interface GenerateBossGreetingResponse {
     greeting: string;
 }
 
+export interface GeneratePersonalSummaryParams {
+    mode: 'bank' | 'resume';
+    profile?: Record<string, unknown>;
+    workExperiences?: Array<Record<string, unknown>>;
+    projectExperiences?: Array<Record<string, unknown>>;
+    educationExperiences?: Array<Record<string, unknown>>;
+    certifications?: Array<Record<string, unknown>>;
+    skills?: Array<Record<string, unknown>>;
+    jdText?: string;
+}
+
+export interface GeneratePersonalSummaryResponse {
+    summary: string;
+}
+
 type RawJDAnalysisResult = JDAnalysisResult & {
     extracted_jd_text?: unknown;
 };
@@ -146,6 +161,33 @@ export type PolishStreamEvent =
     | AIThoughtEvent
     | PolishFinalEvent
     | PolishErrorEvent;
+
+export type PersonalSummaryProgressNode =
+    | 'prepare_context'
+    | 'request_ai'
+    | 'persist_result';
+
+export type PersonalSummaryProgressEvent = {
+    type: 'progress';
+    node: PersonalSummaryProgressNode;
+    title?: string;
+};
+
+type PersonalSummaryFinalEvent = {
+    type: 'final';
+    result: GeneratePersonalSummaryResponse;
+};
+
+type PersonalSummaryErrorEvent = {
+    type: 'error';
+    message?: string;
+};
+
+export type PersonalSummaryStreamEvent =
+    | PersonalSummaryProgressEvent
+    | AIThoughtEvent
+    | PersonalSummaryFinalEvent
+    | PersonalSummaryErrorEvent;
 
 const parseNdjsonLines = (chunk: string) => chunk.split('\n').map((line) => line.trim()).filter(Boolean);
 
@@ -311,6 +353,74 @@ const streamPolishRequest = async (
     return finalResult;
 };
 
+const streamPersonalSummaryRequest = async (
+    payload: Record<string, unknown>,
+    options: {
+        onEvent?: (event: PersonalSummaryStreamEvent) => void;
+    } = {}
+): Promise<GeneratePersonalSummaryResponse> => {
+    const headers = new Headers();
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) {
+        dispatchLoginRequired('write-operation');
+        throw new Error('Authentication required for write operation');
+    }
+    headers.set('Authorization', authHeader);
+    headers.set('Content-Type', 'application/json');
+
+    const response = await fetch(resolveApiUrl('/api/generate-personal-summary/stream'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    });
+
+    ensureStreamResponseOk(response);
+    if (!response.body) {
+        throw new Error('AI stream response body is empty');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: GeneratePersonalSummaryResponse | null = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = parseNdjsonLines(buffer);
+        const hasTrailingNewline = buffer.endsWith('\n');
+        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
+
+        lines.forEach((line) => {
+            let parsed: PersonalSummaryStreamEvent;
+            try {
+                parsed = JSON.parse(line) as PersonalSummaryStreamEvent;
+            } catch (error) {
+                console.warn('Failed to parse stream line', error);
+                return;
+            }
+            options.onEvent?.(parsed);
+            if (parsed.type === 'error') {
+                throw new Error(parsed.message || 'AI stream error');
+            }
+            if (parsed.type === 'final') {
+                finalResult = parsed.result;
+            }
+        });
+    }
+
+    if (!finalResult) {
+        throw new Error('AI stream did not return final result');
+    }
+    if (!finalResult.summary?.trim()) {
+        throw new Error('AI 未生成有效的个人评价，请稍后重试');
+    }
+    return finalResult;
+};
+
 const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
     const extractedJdText = typeof result.extractedJdText === 'string'
         ? result.extractedJdText
@@ -396,6 +506,23 @@ export const aiService = {
             }
         );
         return response.data;
+    },
+
+    async generatePersonalSummaryStream(
+        data: GeneratePersonalSummaryParams,
+        onEvent?: (event: PersonalSummaryStreamEvent) => void
+    ) {
+        const payload = {
+            mode: data.mode,
+            profile: data.profile ?? {},
+            work_experiences: data.workExperiences ?? [],
+            project_experiences: data.projectExperiences ?? [],
+            education_experiences: data.educationExperiences ?? [],
+            certifications: data.certifications ?? [],
+            skills: data.skills ?? [],
+            ...(data.jdText ? { jd_text: data.jdText } : {}),
+        };
+        return streamPersonalSummaryRequest(payload, { onEvent });
     },
 
     /**

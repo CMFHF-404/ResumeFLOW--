@@ -16,7 +16,12 @@ import type {
     StarFields,
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
-import { RICH_TEXT_INLINE_STYLES_CLASS, sanitizeRichTextHtml, splitRichTextLines } from '../../../utils/richText';
+import {
+    RICH_TEXT_INLINE_STYLES_CLASS,
+    sanitizeRichTextHtml,
+    splitRichTextLines,
+    stripRichTextToText,
+} from '../../../utils/richText';
 import { type DropPosition, resolveDragTarget } from '../../../utils/dragSort';
 import { buildDragItemKey } from '../dragKeys';
 
@@ -403,6 +408,24 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const sectionTitleStyle = React.useMemo(
         () => ({ marginBottom: `${sectionTitleGapPx}px` }),
         [sectionTitleGapPx]
+    );
+    const summaryHtml = React.useMemo(
+        () => sanitizeRichTextHtml(profile.summary ?? ''),
+        [profile.summary]
+    );
+    const hasMeaningfulSummary = React.useMemo(
+        () => Boolean(stripRichTextToText(profile.summary ?? '').trim()),
+        [profile.summary]
+    );
+    const visibleSectionOrder = React.useMemo(
+        () => (hasMeaningfulSummary ? sectionOrder : sectionOrder.filter((sectionId) => sectionId !== 'summary')),
+        [hasMeaningfulSummary, sectionOrder]
+    );
+    const contactItems = React.useMemo(
+        () => [profile.email, profile.phone, profile.location, profile.linkedin]
+            .map((value) => value?.trim() ?? '')
+            .filter(Boolean),
+        [profile.email, profile.linkedin, profile.location, profile.phone]
     );
     const headerStyle = React.useMemo(
         () => ({
@@ -1392,6 +1415,72 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         );
     };
 
+    const renderSummarySection = () => {
+        if (!hasMeaningfulSummary || !summaryHtml.trim()) {
+            return null;
+        }
+
+        return (
+            <div
+                key="summary"
+                id="summary"
+                data-rf-section-id="summary"
+                className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                style={sectionWrapperStyle}
+                draggable={enableNativeHtmlDrag}
+                onDragStart={
+                    enableNativeHtmlDrag
+                        ? (event) => handleNativeSectionDragStart(event, 'summary')
+                        : undefined
+                }
+                onDrop={
+                    isReadOnly
+                        ? undefined
+                        : (event) => {
+                            event.stopPropagation();
+                            onSectionDrop(event);
+                        }
+                }
+                onDragEnd={enableNativeHtmlDrag ? handleNativeDragEnd : undefined}
+            >
+                {!isReadOnly ? (
+                    <div
+                        className={sectionControlClass}
+                        onTouchStart={
+                            showTouchDragHandles
+                                ? (event) => handleSectionControlTouchStart(event, 'summary')
+                                : undefined
+                        }
+                        style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                    >
+                        <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
+                    </div>
+                ) : null}
+                <div
+                    data-rf-section-surface="summary"
+                    className={getSectionSurfaceClass('summary')}
+                    style={sectionSurfaceStyle}
+                >
+                    <h2
+                        className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+                        style={{ ...sectionTitleStyle, ...touchHandleStyle }}
+                        onTouchStart={
+                            isReadOnly || showTouchDragHandles
+                                ? undefined
+                                : (event) => handleSectionTitleTouchStart(event, 'summary')
+                        }
+                    >
+                        个人评价
+                    </h2>
+                    <div
+                        className={`text-sm leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                        dangerouslySetInnerHTML={{ __html: summaryHtml }}
+                    />
+                </div>
+            </div>
+        );
+    };
+
     return (
         <main
             ref={previewScrollRef}
@@ -1459,18 +1548,18 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
                             {profile.name}
                         </h1>
-                        <div className="text-[11px] text-gray-600 flex justify-center flex-wrap gap-x-4 gap-y-1 font-medium">
-                            <span>{profile.email}</span>
-                            <span>{profile.phone}</span>
-                            <span>{profile.location}</span>
-                            <span>{profile.linkedin}</span>
-                        </div>
+                        {contactItems.length ? (
+                            <div className="text-[11px] text-gray-600 flex justify-center flex-wrap gap-x-4 gap-y-1 font-medium">
+                                {contactItems.map((item) => (
+                                    <span key={item}>{item}</span>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
 
-                    {sectionOrder.map((sectionId) => {
+                    {visibleSectionOrder.map((sectionId) => {
                         if (sectionId === 'summary') {
-                            // 职业总结模块已从编辑流程移除，预览保持隐藏。
-                            return null;
+                            return renderSummarySection();
                         }
 
                         if (sectionId === 'work') {

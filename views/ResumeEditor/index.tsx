@@ -8,7 +8,7 @@ import { useResumeData } from '../../hooks/useResumeData';
 import { exportService } from '../../services/exportService';
 import { profileService } from '../../services/profileService';
 import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
-import { aiService, type JDAnalysisResult } from '../../services/aiService';
+import { aiService, type JDAnalysisResult, type PersonalSummaryStreamEvent } from '../../services/aiService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type {
@@ -359,6 +359,24 @@ type BossGreetingSignatureParams = {
     resumeText: string;
 };
 
+type PersonalSummarySignatureParams = {
+    jdText: string;
+    context: {
+        profile: {
+            name: string;
+            email: string;
+            phone: string;
+            location: string;
+            linkedin: string;
+        };
+        workExperiences: Array<Record<string, unknown>>;
+        projectExperiences: Array<Record<string, unknown>>;
+        educationExperiences: Array<Record<string, unknown>>;
+        certifications: Array<Record<string, unknown>>;
+        skills: Array<Record<string, unknown>>;
+    };
+};
+
 type ManualSelectionSnapshot = {
     experienceIds: string[];
     certificationIds: string[];
@@ -485,6 +503,14 @@ const buildBossGreetingSignature = ({
     jobTitle: jobTitle ?? '',
     company: company ?? '',
     resumeText,
+});
+
+const buildPersonalSummarySignature = ({
+    jdText,
+    context,
+}: PersonalSummarySignatureParams) => JSON.stringify({
+    jdText: jdText.trim(),
+    context,
 });
 
 const buildSelectionSnapshot = (
@@ -651,6 +677,9 @@ const buildJDPolishContext = (
     if (!analysisResult || isOutdated) {
         return '';
     }
+    if (analysisResult.extractedJdText?.trim()) {
+        return analysisResult.extractedJdText.trim();
+    }
     const contextLines = [
         analysisResult.jobTitle?.trim() ? `目标岗位：${analysisResult.jobTitle.trim()}` : '',
         analysisResult.company?.trim() ? `目标公司：${analysisResult.company.trim()}` : '',
@@ -732,10 +761,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
     // 1. Profile State
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
+    const [personalSummary, setPersonalSummary] = useState('');
+    const [hasPersonalSummaryOverride, setHasPersonalSummaryOverride] = useState(false);
     const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
     const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const [isGeneratingPersonalSummary, setIsGeneratingPersonalSummary] = useState(false);
     const [originalProfile, setOriginalProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [originalProfileSyncMode, setOriginalProfileSyncMode] = useState<ProfileSyncMode>(
         PROFILE_SYNC_MODES.global
@@ -817,8 +849,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const latestBossGreetingAnalysisOutdatedRef = useRef(false);
     const autoAssembleRequestIdRef = useRef(0);
     const bossGreetingRequestIdRef = useRef(0);
+    const personalSummaryRequestIdRef = useRef(0);
+    const personalSummaryDraftVersionRef = useRef(0);
+    const latestPersonalSummarySignatureRef = useRef('');
     const activeAutoAssembleToastIdRef = useRef<string | null>(null);
     const activeBossGreetingToastIdRef = useRef<string | null>(null);
+    const activePersonalSummaryToastIdRef = useRef<string | null>(null);
     const previousMatchScoreFilterResumeIdRef = useRef<string | null>(null);
     const bossGreetingUiStateRef = useRef({
         text: '',
@@ -923,6 +959,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () =>
             buildResumeConfigSnapshot(
                 profile,
+                personalSummary,
+                hasPersonalSummaryOverride,
                 profileSyncMode,
                 selectedExpIds,
                 selectedEduIds,
@@ -949,6 +987,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             itemSpacingEm,
             layoutOrders,
             persistedJDAnalysisSnapshot,
+            hasPersonalSummaryOverride,
+            personalSummary,
             profile,
             profileSyncMode,
             sectionOrder,
@@ -991,6 +1031,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
         isAutoSavePaused,
         setProfile,
+        setPersonalSummary,
+        setHasPersonalSummaryOverride,
         setProfileSyncMode,
         setProfileSocialLinks,
         setSectionOrder,
@@ -1043,6 +1085,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const nextProfileSyncMode = isEditingProfile ? originalProfileSyncMode : profileSyncMode;
         return buildResumeConfigSnapshot(
             nextProfile,
+            personalSummary,
+            hasPersonalSummaryOverride,
             nextProfileSyncMode,
             selectedExpIds,
             selectedEduIds,
@@ -1072,6 +1116,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         lineHeight,
         originalProfile,
         originalProfileSyncMode,
+        hasPersonalSummaryOverride,
+        personalSummary,
         profile,
         profileSyncMode,
         sectionOrder,
@@ -2631,6 +2677,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => projectItems.filter((item) => selectedExpIds.has(item.id)),
         [projectItems, selectedExpIds]
     );
+    const selectedEducations = useMemo(
+        () => educations.filter((item) => selectedEduIds.has(item.id)),
+        [educations, selectedEduIds]
+    );
     const sortedCertifications = certifications;
     const selectedSkillGroups = useMemo(() => {
         return skillGroups
@@ -2656,6 +2706,96 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => buildStableResumeSnapshotText(selectedResumeSnapshot),
         [selectedResumeSnapshot]
     );
+    const effectivePersonalSummary = useMemo(() => {
+        if (hasPersonalSummaryOverride) {
+            return personalSummary.trim();
+        }
+        return profile.summary.trim();
+    }, [hasPersonalSummaryOverride, personalSummary, profile.summary]);
+    const handlePersonalSummaryChange = useCallback((value: string) => {
+        personalSummaryDraftVersionRef.current += 1;
+        setPersonalSummary(value);
+        setHasPersonalSummaryOverride(true);
+    }, []);
+    const previewProfile = useMemo(
+        () => ({
+            ...profile,
+            summary: effectivePersonalSummary,
+        }),
+        [effectivePersonalSummary, profile]
+    );
+    const personalSummaryContext = useMemo(
+        () => ({
+            profile: {
+                name: profile.name,
+                email: profile.email,
+                phone: profile.phone,
+                location: profile.location,
+                linkedin: profile.linkedin,
+            },
+            workExperiences: selectedWorkItems.map((item) => ({
+                id: item.id,
+                title: item.title,
+                org: item.company,
+                start_date: item.startDate,
+                end_date: item.endDate,
+                is_current: item.isCurrent ?? false,
+                star: item.star,
+            })),
+            projectExperiences: selectedProjectItems.map((item) => ({
+                id: item.id,
+                title: item.title,
+                org: item.company,
+                start_date: item.startDate,
+                end_date: item.endDate,
+                is_current: item.isCurrent ?? false,
+                star: item.star,
+            })),
+            educationExperiences: selectedEducations.map((item) => ({
+                id: item.id,
+                school: item.school,
+                major: item.major,
+                degree: item.degree,
+                start_date: item.startDate,
+                end_date: item.endDate,
+                is_current: item.isCurrent ?? false,
+                gpa: item.gpa || '',
+                courses: item.courses || '',
+            })),
+            certifications: selectedCertifications.map((item) => ({
+                id: item.id,
+                name: item.name,
+                issuer: item.issuer || '',
+                issue_date: item.date,
+            })),
+            skills: selectedSkillGroups.flatMap((group) =>
+                group.skills.map((skill) => ({
+                    id: skill.id,
+                    name: skill.name,
+                    category: group.name,
+                }))
+            ),
+        }),
+        [
+            profile.email,
+            profile.linkedin,
+            profile.location,
+            profile.name,
+            profile.phone,
+            selectedCertifications,
+            selectedEducations,
+            selectedProjectItems,
+            selectedSkillGroups,
+            selectedWorkItems,
+        ]
+    );
+    const personalSummaryCurrentSignature = useMemo(
+        () => buildPersonalSummarySignature({
+            jdText: jdPolishContext,
+            context: personalSummaryContext,
+        }),
+        [jdPolishContext, personalSummaryContext]
+    );
     const bossGreetingCurrentSignature = useMemo(
         () => buildBossGreetingSignature({
             jdText: jdPolishContext,
@@ -2671,6 +2811,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
     latestResumeIdRef.current = resumeId;
     latestBossGreetingSignatureRef.current = bossGreetingCurrentSignature;
+    latestPersonalSummarySignatureRef.current = personalSummaryCurrentSignature;
     latestBossGreetingAnalysisOutdatedRef.current = isOutdated;
     bossGreetingUiStateRef.current = {
         text: bossGreeting,
@@ -3283,9 +3424,123 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [bossGreeting, resumeId, showToastError, showToastSuccess]);
 
+    const handleGeneratePersonalSummary = useCallback(async () => {
+        if (isGeneratingPersonalSummary) {
+            return;
+        }
+        if (!jdPolishContext.trim()) {
+            showToastError('请先填写 JD 内容或完成 JD 分析后再生成个人评价。');
+            return;
+        }
+        if (effectivePersonalSummary.trim() && typeof window !== 'undefined') {
+            const shouldOverwrite = window.confirm('当前已有个人评价内容，是否用 AI 生成结果覆盖？');
+            if (!shouldOverwrite) {
+                return;
+            }
+        }
+
+        const toastId = showToastLoading('正在生成个人评价...');
+        activePersonalSummaryToastIdRef.current = toastId;
+        const requestedResumeId = resumeId;
+        const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
+        const requestId = personalSummaryRequestIdRef.current + 1;
+        personalSummaryRequestIdRef.current = requestId;
+        const draftVersionAtStart = personalSummaryDraftVersionRef.current;
+        const requestedPersonalSummarySignature = personalSummaryCurrentSignature;
+        const isPersonalSummaryRequestCurrent = () => personalSummaryRequestIdRef.current === requestId;
+        const releaseActivePersonalSummaryToast = () => {
+            if (activePersonalSummaryToastIdRef.current === toastId) {
+                activePersonalSummaryToastIdRef.current = null;
+            }
+        };
+        setIsGeneratingPersonalSummary(true);
+        try {
+            const response = await aiService.generatePersonalSummaryStream(
+                {
+                    mode: 'resume',
+                    profile: personalSummaryContext.profile,
+                    workExperiences: personalSummaryContext.workExperiences,
+                    projectExperiences: personalSummaryContext.projectExperiences,
+                    educationExperiences: personalSummaryContext.educationExperiences,
+                    certifications: personalSummaryContext.certifications,
+                    skills: personalSummaryContext.skills,
+                    jdText: jdPolishContext,
+                },
+                (event: PersonalSummaryStreamEvent) => {
+                    if (event.type !== 'thought') {
+                        return;
+                    }
+                    if (
+                        !isResumeRequestCurrent()
+                        || !isPersonalSummaryRequestCurrent()
+                        || latestPersonalSummarySignatureRef.current !== requestedPersonalSummarySignature
+                    ) {
+                        return;
+                    }
+                    const title = extractThoughtHeadline(event.summary);
+                    if (!title) {
+                        return;
+                    }
+                    updateToast(toastId, {
+                        message: title,
+                        type: 'ai_thinking',
+                        duration: 0,
+                    });
+                }
+            );
+            if (
+                !isResumeRequestCurrent()
+                || !isPersonalSummaryRequestCurrent()
+                || personalSummaryDraftVersionRef.current !== draftVersionAtStart
+                || latestPersonalSummarySignatureRef.current !== requestedPersonalSummarySignature
+            ) {
+                closeToast(toastId);
+                releaseActivePersonalSummaryToast();
+                return;
+            }
+            setPersonalSummary(response.summary);
+            setHasPersonalSummaryOverride(true);
+            updateToast(toastId, {
+                message: '个人评价已生成',
+                type: 'success',
+                duration: 2500,
+            });
+            releaseActivePersonalSummaryToast();
+        } catch (error) {
+            if (!isResumeRequestCurrent() || !isPersonalSummaryRequestCurrent()) {
+                closeToast(toastId);
+                releaseActivePersonalSummaryToast();
+                return;
+            }
+            console.error('[ResumeEditor] 生成个人评价失败:', error);
+            updateToast(toastId, {
+                message: error instanceof Error ? error.message : '个人评价生成失败，请稍后重试',
+                type: 'error',
+                duration: 3500,
+            });
+            releaseActivePersonalSummaryToast();
+        } finally {
+            if (isPersonalSummaryRequestCurrent()) {
+                setIsGeneratingPersonalSummary(false);
+            }
+        }
+    }, [
+        closeToast,
+        isGeneratingPersonalSummary,
+        jdPolishContext,
+        effectivePersonalSummary,
+        personalSummaryContext,
+        personalSummaryCurrentSignature,
+        resumeId,
+        showToastError,
+        showToastLoading,
+        updateToast,
+    ]);
+
     useEffect(() => {
         autoAssembleRequestIdRef.current += 1;
         bossGreetingRequestIdRef.current += 1;
+        personalSummaryRequestIdRef.current += 1;
         if (activeAutoAssembleToastIdRef.current) {
             closeToast(activeAutoAssembleToastIdRef.current);
             activeAutoAssembleToastIdRef.current = null;
@@ -3294,8 +3549,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             closeToast(activeBossGreetingToastIdRef.current);
             activeBossGreetingToastIdRef.current = null;
         }
+        if (activePersonalSummaryToastIdRef.current) {
+            closeToast(activePersonalSummaryToastIdRef.current);
+            activePersonalSummaryToastIdRef.current = null;
+        }
         setIsAutoAssembling(false);
         setIsGeneratingBossGreeting(false);
+        setIsGeneratingPersonalSummary(false);
         setBossGreeting('');
         setBossGreetingSignature('');
         setIsBossGreetingVisible(false);
@@ -3308,7 +3568,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
         const snapshot = buildResumePdfRenderSnapshot({
             resumeName,
-            profile,
+            profile: previewProfile,
             lineHeight,
             fontSize,
             listSpacingValue,
@@ -3363,7 +3623,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         lineHeight,
         listSpacingClass,
         listSpacingValue,
-        profile,
+        previewProfile,
         resumeName,
         sectionOrder,
         sectionSpacingClass,
@@ -3609,11 +3869,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             onToggleEducationSelection: trackedSelection.toggleEducationSelection,
                         }}
                         experienceTabProps={{
-                            experience,
-                            certification,
-                            skill,
-                            selection: trackedSelection,
-                            matchScoreFilter,
+                              experience,
+                              certification,
+                              skill,
+                              selection: trackedSelection,
+                              personalSummary: effectivePersonalSummary,
+                              isGeneratingPersonalSummary,
+                              canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
+                              onPersonalSummaryChange: handlePersonalSummaryChange,
+                              onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
+                              matchScoreFilter,
                             onMatchScoreFilterChange: handleMatchScoreFilterChange,
                             workItems,
                             projectItems,
@@ -3698,7 +3963,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         listSpacingValue={listSpacingValue}
                         bulletSpacingValue={bulletSpacingValue}
                         topPaddingPx={topPaddingPx}
-                        profile={profile}
+                          profile={previewProfile}
                         sectionSpacingClass={sectionSpacingClass}
                         listSpacingClass={listSpacingClass}
                         sectionOrder={sectionOrder}
@@ -3755,7 +4020,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     listSpacingValue={measureListSpacingValue}
                     bulletSpacingValue={measureBulletSpacingValue}
                     topPaddingPx={measureLayout.topPaddingPx}
-                    profile={profile}
+                      profile={previewProfile}
                     sectionSpacingClass={measureSectionSpacingClass}
                     listSpacingClass={listSpacingClass}
                     sectionOrder={sectionOrder}
@@ -3856,11 +4121,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                     onToggleEducationSelection: trackedSelection.toggleEducationSelection,
                                 }}
                                 experienceTabProps={{
-                                    experience,
-                                    certification,
-                                    skill,
-                                    selection: trackedSelection,
-                                    matchScoreFilter,
+                                      experience,
+                                      certification,
+                                      skill,
+                                      selection: trackedSelection,
+                                      personalSummary: effectivePersonalSummary,
+                                      isGeneratingPersonalSummary,
+                                      canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
+                                      onPersonalSummaryChange: handlePersonalSummaryChange,
+                                      onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
+                                      matchScoreFilter,
                                     onMatchScoreFilterChange: handleMatchScoreFilterChange,
                                     workItems,
                                     projectItems,
