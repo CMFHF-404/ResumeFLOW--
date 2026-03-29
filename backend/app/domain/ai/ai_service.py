@@ -13,6 +13,7 @@ from .prompts import (
     BOSS_GREETING_GENERATION,
     JD_ANALYSIS,
     JD_ANALYSIS_IMAGE,
+    PERSONAL_SUMMARY_GENERATION,
     STAR_POLISH,
     TAG_GENERATION,
 )
@@ -175,6 +176,13 @@ def _normalize_greeting_result(result: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(greeting, str) and greeting.strip():
         return {"greeting": greeting.strip()}
     return {"greeting": ""}
+
+
+def _normalize_summary_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    summary = result.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return {"summary": summary.strip()}
+    return {"summary": ""}
 
 
 def _extract_content(response_data: Dict[str, Any]) -> str:
@@ -817,4 +825,91 @@ async def generate_boss_greeting(
     ]
     result = await _call_llm(messages, json_mode=True)
     return _normalize_greeting_result(result)
+
+
+async def generate_personal_summary(
+    mode: str,
+    profile: Optional[Dict[str, Any]] = None,
+    work_experiences: Optional[List[Dict[str, Any]]] = None,
+    project_experiences: Optional[List[Dict[str, Any]]] = None,
+    education_experiences: Optional[List[Dict[str, Any]]] = None,
+    certifications: Optional[List[Dict[str, Any]]] = None,
+    skills: Optional[List[Dict[str, Any]]] = None,
+    jd_text: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload = {
+        "mode": mode,
+        "profile": profile or {},
+        "work_experiences": work_experiences or [],
+        "project_experiences": project_experiences or [],
+        "education_experiences": education_experiences or [],
+        "certifications": certifications or [],
+        "skills": skills or [],
+        "jd_text": jd_text or "",
+    }
+    messages = [
+        {"role": "system", "content": PERSONAL_SUMMARY_GENERATION},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+    result = await _call_llm(messages, json_mode=True)
+    return _normalize_summary_result(result)
+
+
+async def generate_personal_summary_with_thoughts(
+    mode: str,
+    profile: Optional[Dict[str, Any]] = None,
+    work_experiences: Optional[List[Dict[str, Any]]] = None,
+    project_experiences: Optional[List[Dict[str, Any]]] = None,
+    education_experiences: Optional[List[Dict[str, Any]]] = None,
+    certifications: Optional[List[Dict[str, Any]]] = None,
+    skills: Optional[List[Dict[str, Any]]] = None,
+    jd_text: Optional[str] = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not settings.gemini_api_key:
+        return await generate_personal_summary(
+            mode=mode,
+            profile=profile,
+            work_experiences=work_experiences,
+            project_experiences=project_experiences,
+            education_experiences=education_experiences,
+            certifications=certifications,
+            skills=skills,
+            jd_text=jd_text,
+        )
+
+    payload = {
+        "mode": mode,
+        "profile": profile or {},
+        "work_experiences": work_experiences or [],
+        "project_experiences": project_experiences or [],
+        "education_experiences": education_experiences or [],
+        "certifications": certifications or [],
+        "skills": skills or [],
+        "jd_text": jd_text or "",
+    }
+    try:
+        result = await _stream_gemini_json_response(
+            system_prompt=PERSONAL_SUMMARY_GENERATION,
+            user_parts=[{"text": json.dumps(payload, ensure_ascii=False)}],
+            error_message="个人评价生成失败，请稍后重试。",
+            request_label="personal_summary",
+            thought_callback=thought_callback,
+        )
+    except Exception:
+        logger.warning(
+            "[AI Stream] Gemini thought streaming failed for personal_summary, falling back to standard generation.",
+            exc_info=True,
+        )
+        return await generate_personal_summary(
+            mode=mode,
+            profile=profile,
+            work_experiences=work_experiences,
+            project_experiences=project_experiences,
+            education_experiences=education_experiences,
+            certifications=certifications,
+            skills=skills,
+            jd_text=jd_text,
+        )
+    return _normalize_summary_result(result)
 

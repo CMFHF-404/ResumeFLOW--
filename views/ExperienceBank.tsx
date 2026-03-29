@@ -11,12 +11,14 @@ import {
   MapPin,
   Link as LinkIcon,
   FileText,
+  Wand2,
 } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { exportService } from '../services/exportService';
+import { aiService } from '../services/aiService';
 import { Profile, profileService } from '../services/profileService';
 import type { Certification } from '../services/certificationsService';
 import { certificationsService } from '../services/certificationsService';
@@ -119,6 +121,65 @@ const buildProfileSnapshot = (profile: Profile) => ({
   location: profile.location || '',
 });
 
+const sortById = <T extends { id: string }>(items: T[]) => (
+  [...items].sort((left, right) => left.id.localeCompare(right.id))
+);
+
+const buildExperienceBankSummaryPayload = (
+  profile: Profile | null,
+  snapshot: ExperienceBankPdfRenderSnapshot
+) => ({
+  mode: 'bank' as const,
+  profile: {
+    name: profile?.full_name || '',
+    email: profile?.email || '',
+    phone: profile?.phone || '',
+    location: profile?.location || '',
+    linkedin: profile ? resolveLinkedInLink(profile) : '',
+  },
+  workExperiences: sortById(snapshot.workItems.map((item) => ({
+    id: item.master.id,
+    title: item.latest_version?.title || '',
+    org: item.latest_version?.org || '',
+    start_date: item.latest_version?.start_date,
+    end_date: item.latest_version?.end_date,
+    is_current: item.latest_version?.is_current ?? false,
+    star: item.latest_version?.star || {},
+    summary: item.latest_version?.summary || '',
+  }))),
+  projectExperiences: sortById(snapshot.projectItems.map((item) => ({
+    id: item.master.id,
+    title: item.latest_version?.title || '',
+    org: item.latest_version?.org || '',
+    start_date: item.latest_version?.start_date,
+    end_date: item.latest_version?.end_date,
+    is_current: item.latest_version?.is_current ?? false,
+    star: item.latest_version?.star || {},
+    summary: item.latest_version?.summary || '',
+  }))),
+  educationExperiences: sortById(snapshot.educationItems.map((item) => ({
+    id: item.master.id,
+    school: item.latest_version?.org || '',
+    major: item.latest_version?.title || '',
+    start_date: item.latest_version?.start_date,
+    end_date: item.latest_version?.end_date,
+    is_current: item.latest_version?.is_current ?? false,
+    summary: item.latest_version?.summary || '',
+    star: item.latest_version?.star || {},
+  }))),
+  certifications: sortById(snapshot.certifications.map((cert) => ({
+    id: cert.id,
+    name: cert.name,
+    issuer: cert.issuer || '',
+    issue_date: cert.issue_date || '',
+  }))),
+  skills: sortById(snapshot.skills.map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    category: skill.category || '',
+  }))),
+});
+
 const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot> => {
   const [
     profile,
@@ -135,6 +196,37 @@ const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankPdfRend
     certificationsService.list({ force: true }),
     skillsService.list({ force: true }),
   ]);
+
+  return {
+    profile,
+    workItems,
+    projectItems,
+    educationItems,
+    certifications,
+    skills,
+  };
+};
+
+const loadExperienceBankValidationSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot | null> => {
+  const [
+    profile,
+    workItems,
+    projectItems,
+    educationItems,
+    certifications,
+    skills,
+  ] = await Promise.all([
+    profileService.peekProfileForCurrentUser(),
+    experienceService.peekListForCurrentUser('work', { allowStale: true }),
+    experienceService.peekListForCurrentUser('project', { allowStale: true }),
+    experienceService.peekListForCurrentUser('education', { allowStale: true }),
+    certificationsService.peekListForCurrentUser({ allowStale: true }),
+    skillsService.peekListForCurrentUser({ allowStale: true }),
+  ]);
+
+  if (!profile || !workItems || !projectItems || !educationItems || !certifications || !skills) {
+    return null;
+  }
 
   return {
     profile,
@@ -174,18 +266,89 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     email: "",
     phone: "",
     location: "",
-    link: ""
+    link: "",
+    summary: "",
   });
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [link, setLink] = useState("");
+  const [summary, setSummary] = useState("");
   const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
-
-  // 请求防抖：使用 ref 追踪请求状态
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const isLoadingProfileRef = useRef(false);
   const hasHydratedProfileRef = useRef(false);
+  const summaryGenerationRequestIdRef = useRef(0);
+  const summaryDraftVersionRef = useRef(0);
+  const activeSummaryToastIdRef = useRef<string | null>(null);
+  const profileDraftOverridesRef = useRef({
+    name: false,
+    email: false,
+    phone: false,
+    location: false,
+    link: false,
+    summary: false,
+  });
+  const latestDraftProfileRef = useRef({
+    name: '',
+    email: '',
+    phone: '',
+    location: '',
+    link: '',
+    summary: '',
+    profileSocialLinks: {} as Record<string, any>,
+  });
+
+  latestDraftProfileRef.current = {
+    name,
+    email,
+    phone,
+    location,
+    link,
+    summary,
+    profileSocialLinks,
+  };
+
+  const buildDraftProfileSnapshot = useCallback((profile: Profile | null): Profile | null => {
+    if (!profile) {
+      return null;
+    }
+    const overrides = profileDraftOverridesRef.current;
+    const hasAnyOverride = Object.values(overrides).some(Boolean);
+    if (!hasHydratedProfileRef.current && !hasAnyOverride) {
+      return profile;
+    }
+    const currentDraft = latestDraftProfileRef.current;
+    return {
+      ...profile,
+      full_name: overrides.name ? currentDraft.name : profile.full_name,
+      email: overrides.email ? currentDraft.email : profile.email,
+      phone: overrides.phone ? currentDraft.phone : profile.phone,
+      location: overrides.location ? currentDraft.location : profile.location,
+      summary: overrides.summary ? currentDraft.summary : profile.summary,
+      social_links: overrides.link
+        ? mergeLinkedInLink(profile.social_links || currentDraft.profileSocialLinks, currentDraft.link)
+        : profile.social_links,
+    };
+  }, []);
+
+  const markProfileFieldDraftTouched = useCallback((
+    field: keyof typeof profileDraftOverridesRef.current
+  ) => {
+    profileDraftOverridesRef.current[field] = true;
+  }, []);
+
+  const resetProfileDraftOverrides = useCallback(() => {
+    profileDraftOverridesRef.current = {
+      name: false,
+      email: false,
+      phone: false,
+      location: false,
+      link: false,
+      summary: false,
+    };
+  }, []);
 
   // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
   const onProfileUpdateRef = useRef(onProfileUpdate);
@@ -193,11 +356,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
   const applyProfileSnapshot = useCallback((profile: Profile) => {
     const resolvedLink = resolveLinkedInLink(profile);
+    resetProfileDraftOverrides();
     setName(profile.full_name || "");
     setEmail(profile.email || "");
     setPhone(profile.phone || "");
     setLocation(profile.location || "");
     setLink(resolvedLink);
+    setSummary(profile.summary || "");
     setProfileSocialLinks({ ...(profile.social_links || {}) });
     setOriginalProfile({
       name: profile.full_name || "",
@@ -205,6 +370,32 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       phone: profile.phone || "",
       location: profile.location || "",
       link: resolvedLink,
+      summary: profile.summary || "",
+    });
+  }, [resetProfileDraftOverrides]);
+
+  const mergeRecoveredProfileIntoDraft = useCallback((profile: Profile) => {
+    const overrides = profileDraftOverridesRef.current;
+    const currentDraft = latestDraftProfileRef.current;
+    const resolvedLink = resolveLinkedInLink(profile);
+    const mergedSocialLinks = overrides.link
+      ? mergeLinkedInLink(profile.social_links || currentDraft.profileSocialLinks, currentDraft.link)
+      : { ...(profile.social_links || {}) };
+
+    setName(overrides.name ? currentDraft.name : (profile.full_name || ""));
+    setEmail(overrides.email ? currentDraft.email : (profile.email || ""));
+    setPhone(overrides.phone ? currentDraft.phone : (profile.phone || ""));
+    setLocation(overrides.location ? currentDraft.location : (profile.location || ""));
+    setLink(overrides.link ? currentDraft.link : resolvedLink);
+    setSummary(overrides.summary ? currentDraft.summary : (profile.summary || ""));
+    setProfileSocialLinks(mergedSocialLinks);
+    setOriginalProfile({
+      name: profile.full_name || "",
+      email: profile.email || "",
+      phone: profile.phone || "",
+      location: profile.location || "",
+      link: resolvedLink,
+      summary: profile.summary || "",
     });
   }, []);
 
@@ -291,24 +482,40 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       email,
       phone,
       location,
-      link
+      link,
+      summary,
     });
     setIsEditingProfile(true);
   };
 
   // 取消编辑个人信息
   const handleCancelProfile = () => {
+    summaryGenerationRequestIdRef.current += 1;
+    if (activeSummaryToastIdRef.current) {
+      closeToast(activeSummaryToastIdRef.current);
+      activeSummaryToastIdRef.current = null;
+    }
+    setIsGeneratingSummary(false);
+    summaryDraftVersionRef.current += 1;
+    resetProfileDraftOverrides();
     setName(originalProfile.name);
     setEmail(originalProfile.email);
     setPhone(originalProfile.phone);
     setLocation(originalProfile.location);
     setLink(originalProfile.link);
+    setSummary(originalProfile.summary);
     setIsEditingProfile(false);
   };
 
   // 保存个人信息
   const handleSaveProfile = async () => {
     try {
+      summaryGenerationRequestIdRef.current += 1;
+      if (activeSummaryToastIdRef.current) {
+        closeToast(activeSummaryToastIdRef.current);
+        activeSummaryToastIdRef.current = null;
+      }
+      setIsGeneratingSummary(false);
       setIsSavingProfile(true);
       const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, link);
       const updated = await profileService.updateProfile({
@@ -316,6 +523,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         email,
         phone,
         location,
+        summary,
         social_links: nextSocialLinks,
       });
       applyProfileSnapshot(updated);
@@ -402,8 +610,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
     try {
       const latestSnapshot = await loadExperienceBankExportSnapshot();
+      const profileSnapshot = buildDraftProfileSnapshot(latestSnapshot.profile);
       const snapshot = buildExperienceBankPdfRenderSnapshot({
         ...latestSnapshot,
+        profile: profileSnapshot,
         exportDateLabel: buildExperienceBankExportDateLabel(exportDate),
       });
       const { downloadUrl, fileName } = await exportService.createExperienceBankPdfDownloadLink(
@@ -432,7 +642,185 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     } finally {
       setIsExportingPdf(false);
     }
-  }, [isExportingPdf, loading, updateToast]);
+  }, [buildDraftProfileSnapshot, isExportingPdf, loading, updateToast]);
+
+  const handleGenerateSummary = useCallback(async () => {
+    if (isGeneratingSummary || isLoadingProfile) {
+      return;
+    }
+
+    setIsGeneratingSummary(true);
+    const requestId = summaryGenerationRequestIdRef.current + 1;
+    summaryGenerationRequestIdRef.current = requestId;
+    const draftVersionAtStart = summaryDraftVersionRef.current;
+    const isCurrentSummaryRequest = () => summaryGenerationRequestIdRef.current === requestId;
+    let toastId: string | null = null;
+    const releaseActiveSummaryToast = () => {
+      if (toastId && activeSummaryToastIdRef.current === toastId) {
+        activeSummaryToastIdRef.current = null;
+      }
+    };
+    try {
+      const latestSnapshot = await loadExperienceBankExportSnapshot();
+      if (
+        !isCurrentSummaryRequest()
+        || summaryDraftVersionRef.current !== draftVersionAtStart
+      ) {
+        return;
+      }
+      mergeRecoveredProfileIntoDraft(latestSnapshot.profile);
+      hasHydratedProfileRef.current = true;
+      const hasContent = latestSnapshot.workItems.length > 0
+        || latestSnapshot.projectItems.length > 0
+        || latestSnapshot.educationItems.length > 0
+        || latestSnapshot.certifications.length > 0
+        || latestSnapshot.skills.length > 0;
+      const profileSnapshot = buildDraftProfileSnapshot(latestSnapshot.profile);
+      const existingSummary = profileSnapshot?.summary?.trim() || '';
+      if (!hasContent) {
+        toastError('请先完善经历库内容后再生成个人评价。');
+        return;
+      }
+      if (existingSummary && typeof window !== 'undefined') {
+        const shouldOverwrite = window.confirm('当前已有个人评价内容，是否用 AI 生成结果覆盖？');
+        if (!shouldOverwrite) {
+          return;
+        }
+      }
+
+      toastId = loading('正在生成个人评价...');
+      activeSummaryToastIdRef.current = toastId;
+      if (!isEditingProfile) {
+        setIsEditingProfile(true);
+      }
+      const requestPayload = buildExperienceBankSummaryPayload(profileSnapshot, latestSnapshot);
+      const requestSignature = JSON.stringify(requestPayload);
+
+      const response = await aiService.generatePersonalSummaryStream(requestPayload, (event) => {
+        if (toastId && event.type === 'thought' && isCurrentSummaryRequest()) {
+          updateToast(toastId, {
+            message: event.summary,
+            type: 'ai_thinking',
+            duration: 0,
+          });
+        }
+      });
+
+      if (
+        !isCurrentSummaryRequest()
+        || summaryDraftVersionRef.current !== draftVersionAtStart
+      ) {
+        if (toastId) {
+          closeToast(toastId);
+        }
+        releaseActiveSummaryToast();
+        return;
+      }
+      const currentSnapshot = await loadExperienceBankValidationSnapshot();
+      if (!currentSnapshot) {
+        if (toastId) {
+          closeToast(toastId);
+        }
+        releaseActiveSummaryToast();
+        return;
+      }
+      const currentProfileSnapshot = buildDraftProfileSnapshot(currentSnapshot.profile);
+      const currentSignature = JSON.stringify(
+        buildExperienceBankSummaryPayload(currentProfileSnapshot, currentSnapshot)
+      );
+      if (
+        !isCurrentSummaryRequest()
+        || summaryDraftVersionRef.current !== draftVersionAtStart
+        || currentSignature !== requestSignature
+      ) {
+        if (toastId) {
+          closeToast(toastId);
+        }
+        releaseActiveSummaryToast();
+        return;
+      }
+      markProfileFieldDraftTouched('summary');
+      setSummary(response.summary);
+      if (toastId) {
+        updateToast(toastId, {
+          message: '个人评价已生成',
+          type: 'success',
+          duration: 2500,
+        });
+      }
+      releaseActiveSummaryToast();
+    } catch (error) {
+      if (!isCurrentSummaryRequest()) {
+        if (toastId) {
+          closeToast(toastId);
+        }
+        releaseActiveSummaryToast();
+        return;
+      }
+      console.error('[ExperienceBank] 个人评价生成失败:', error);
+      if (toastId) {
+        updateToast(toastId, {
+          message: error instanceof Error ? error.message : '个人评价生成失败，请稍后重试',
+          type: 'error',
+          duration: 3500,
+        });
+      } else {
+        toastError(error instanceof Error ? error.message : '个人评价生成失败，请稍后重试');
+      }
+      releaseActiveSummaryToast();
+    } finally {
+      if (isCurrentSummaryRequest()) {
+        setIsGeneratingSummary(false);
+      }
+    }
+  }, [
+    buildDraftProfileSnapshot,
+    closeToast,
+    email,
+    isEditingProfile,
+    isGeneratingSummary,
+    isLoadingProfile,
+    link,
+    loading,
+    location,
+    mergeRecoveredProfileIntoDraft,
+    name,
+    phone,
+    summary,
+    toastError,
+    updateToast,
+  ]);
+
+  const handleSummaryChange = useCallback((value: string) => {
+    summaryDraftVersionRef.current += 1;
+    markProfileFieldDraftTouched('summary');
+    setSummary(value);
+  }, [markProfileFieldDraftTouched]);
+
+  const handleNameChange = useCallback((value: string) => {
+    markProfileFieldDraftTouched('name');
+    setName(value);
+  }, [markProfileFieldDraftTouched]);
+
+  const handleEmailChange = useCallback((value: string) => {
+    markProfileFieldDraftTouched('email');
+    setEmail(value);
+  }, [markProfileFieldDraftTouched]);
+
+  const handlePhoneChange = useCallback((value: string) => {
+    markProfileFieldDraftTouched('phone');
+    setPhone(value);
+  }, [markProfileFieldDraftTouched]);
+
+  const handleLocationChange = useCallback((value: string) => {
+    markProfileFieldDraftTouched('location');
+    setLocation(value);
+  }, [markProfileFieldDraftTouched]);
+
+  const handleLinkChange = useCallback((value: string) => {
+    markProfileFieldDraftTouched('link');
+    setLink(value);
+  }, [markProfileFieldDraftTouched]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
@@ -461,7 +849,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           <button
             className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
             onClick={handleExportAll}
-            disabled={isExportingPdf}
+            disabled={isExportingPdf || isLoadingProfile}
             type="button"
           >
             <Download className="w-4 h-4" />
@@ -485,7 +873,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             <button
               className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800"
               onClick={handleExportAll}
-              disabled={isExportingPdf}
+              disabled={isExportingPdf || isLoadingProfile}
               type="button"
             >
               <Download className="h-4 w-4" />
@@ -538,7 +926,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   <input
                     className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => handleNameChange(e.target.value)}
                     disabled={!isEditingProfile || isLoadingProfile}
                   />
                 </div>
@@ -547,7 +935,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   <input
                     className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => handleEmailChange(e.target.value)}
                     disabled={!isEditingProfile || isLoadingProfile}
                   />
                 </div>
@@ -556,7 +944,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   <input
                     className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
                     disabled={!isEditingProfile || isLoadingProfile}
                   />
                 </div>
@@ -565,7 +953,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   <input
                     className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={(e) => handleLocationChange(e.target.value)}
                     disabled={!isEditingProfile || isLoadingProfile}
                   />
                 </div>
@@ -574,10 +962,34 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                   <input
                     className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                     value={link}
-                    onChange={(e) => setLink(e.target.value)}
+                    onChange={(e) => handleLinkChange(e.target.value)}
                     disabled={!isEditingProfile || isLoadingProfile}
                   />
                 </div>
+              </div>
+              <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-700">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-400">个人评价</label>
+                    <p className="mt-1 text-xs text-gray-400">适用于简历“自我评价”部分的总结内容。</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateSummary()}
+                    disabled={isGeneratingSummary || isLoadingProfile}
+                    className="inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Wand2 className={`h-4 w-4 ${isGeneratingSummary ? 'animate-spin' : ''}`} />
+                    {isGeneratingSummary ? '生成中...' : 'AI 一键生成'}
+                  </button>
+                </div>
+                <textarea
+                  className="min-h-[132px] w-full resize-y rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:bg-transparent disabled:border-transparent disabled:p-0 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-300"
+                  value={summary}
+                  onChange={(e) => handleSummaryChange(e.target.value)}
+                  disabled={!isEditingProfile || isLoadingProfile}
+                  placeholder="填写适合展示在简历中的个人评价，或使用 AI 自动生成。"
+                />
               </div>
             </div>
           </section>

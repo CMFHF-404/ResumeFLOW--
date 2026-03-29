@@ -51,6 +51,19 @@ const clearProfileCache = () => {
 };
 
 export const profileService = {
+    peekProfile() {
+        return cachedProfile;
+    },
+
+    async peekProfileForCurrentUser() {
+        const cacheOwnerKey = await getAuthCacheKey();
+        if (profileCacheOwnerKey !== cacheOwnerKey) {
+            clearProfileCache();
+            profileCacheOwnerKey = cacheOwnerKey;
+        }
+        return cachedProfile;
+    },
+
     async getProfile(options?: { force?: boolean }) {
         const cacheOwnerKey = await getAuthCacheKey();
         if (profileCacheOwnerKey !== cacheOwnerKey) {

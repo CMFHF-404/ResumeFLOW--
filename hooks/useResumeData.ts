@@ -70,6 +70,8 @@ type UseResumeDataOptions = {
     autoSaveDelayMs: number;
     isAutoSavePaused?: boolean;
     setProfile: Dispatch<SetStateAction<ResumeEditorProfile>>;
+    setPersonalSummary: Dispatch<SetStateAction<string>>;
+    setHasPersonalSummaryOverride: Dispatch<SetStateAction<boolean>>;
     setProfileSyncMode: Dispatch<SetStateAction<ProfileSyncMode>>;
     setProfileSocialLinks: Dispatch<SetStateAction<Record<string, any>>>;
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
@@ -311,6 +313,8 @@ const buildEffectiveConfigSnapshot = (
 
 const createApplyResumeConfig = (
     setProfile: UseResumeDataOptions['setProfile'],
+    setPersonalSummary: UseResumeDataOptions['setPersonalSummary'],
+    setHasPersonalSummaryOverride: UseResumeDataOptions['setHasPersonalSummaryOverride'],
     setProfileSyncMode: UseResumeDataOptions['setProfileSyncMode'],
     setProfileSocialLinks: UseResumeDataOptions['setProfileSocialLinks'],
     setSectionOrder: UseResumeDataOptions['setSectionOrder'],
@@ -328,7 +332,12 @@ const createApplyResumeConfig = (
             setProfileSocialLinks({ ...(profileData.social_links || {}) });
         }
         const resolvedDensity = config.layout?.density ?? 'standard';
-        setProfile(resolveProfileSnapshot(config, profileData || undefined));
+        const resolvedProfile = resolveProfileSnapshot(config, profileData || undefined);
+        const hasPersonalSummaryOverride = typeof config.personalSummary === 'string';
+        const resolvedPersonalSummary = hasPersonalSummaryOverride ? config.personalSummary : '';
+        setProfile(resolvedProfile);
+        setPersonalSummary(resolvedPersonalSummary);
+        setHasPersonalSummaryOverride(hasPersonalSummaryOverride);
         setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
         setIsSummaryVisible(config.layout?.isSummaryVisible ?? false);
         setDensity(resolvedDensity);
@@ -478,6 +487,8 @@ const createApplySkillState = (
 const useResumeConfigApplier = (options: UseResumeDataOptions) => {
     const {
         setProfile,
+        setPersonalSummary,
+        setHasPersonalSummaryOverride,
         setProfileSyncMode,
         setProfileSocialLinks,
         setSectionOrder,
@@ -491,6 +502,8 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
     return useCallback(
         createApplyResumeConfig(
             setProfile,
+            setPersonalSummary,
+            setHasPersonalSummaryOverride,
             setProfileSyncMode,
             setProfileSocialLinks,
             setSectionOrder,
@@ -509,6 +522,8 @@ const useResumeConfigApplier = (options: UseResumeDataOptions) => {
             setIsSummaryVisible,
             applyLayoutConfig,
             setProfile,
+            setPersonalSummary,
+            setHasPersonalSummaryOverride,
             setProfileSocialLinks,
             setProfileSyncMode,
             setSectionOrder,

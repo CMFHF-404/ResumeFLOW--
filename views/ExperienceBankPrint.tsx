@@ -274,6 +274,17 @@ const ProfileSection: React.FC<{ fields: ProfileField[] }> = ({ fields }) => {
   );
 };
 
+const SummarySection: React.FC<{ summary: string }> = ({ summary }) => {
+  if (!summary) {
+    return null;
+  }
+  return (
+    <SectionWrapper title="个人评价">
+      <div className="text-xs leading-relaxed text-gray-800">{summary}</div>
+    </SectionWrapper>
+  );
+};
+
 const ExperienceSectionBlock: React.FC<{
   title: string;
   items: ExperienceListItem[];
@@ -347,6 +358,7 @@ const ExperienceBankPrint: React.FC<ExperienceBankPrintProps> = ({
   exportDateLabel,
 }) => {
   const profileFields = buildProfileFields(profile);
+  const summary = normalizePlainText(profile?.summary);
   const sortedWork = sortByStartDateDesc(workItems);
   const sortedProject = sortByStartDateDesc(projectItems);
   const sortedEducation = sortByStartDateDesc(educationItems);
@@ -356,6 +368,7 @@ const ExperienceBankPrint: React.FC<ExperienceBankPrintProps> = ({
     <div className="rf-print-preview mx-auto w-[210mm] min-h-[297mm] bg-white text-gray-900 px-10 py-8 space-y-8">
       <PrintHeader dateLabel={exportDateLabel || buildExperienceBankExportDateLabel()} />
       <ProfileSection fields={profileFields} />
+      <SummarySection summary={summary} />
       <ExperienceSectionBlock title="工作经历" items={sortedWork} />
       <ExperienceSectionBlock title="项目经历" items={sortedProject} />
       <EducationSectionBlock items={sortedEducation} />

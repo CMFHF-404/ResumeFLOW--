@@ -422,6 +422,8 @@ export const resolveSelectionSet = (ids?: Array<string | number>) => {
 
 export const buildResumeConfigSnapshot = (
     profile: ResumeEditorProfile,
+    personalSummary: string,
+    hasPersonalSummaryOverride: boolean,
     profileSyncMode: ProfileSyncMode,
     selectedExpIds: Set<string>,
     selectedEduIds: Set<string>,
@@ -440,6 +442,7 @@ export const buildResumeConfigSnapshot = (
     jdAnalysis?: ResumeJDAnalysis | null
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
+    ...(hasPersonalSummaryOverride ? { personalSummary } : {}),
     profileSyncMode,
     selection: {
         experienceIds: Array.from(selectedExpIds),
@@ -470,6 +473,9 @@ export const normalizeSectionOrder = (order?: string[]) => {
             unique.push(sectionId);
         }
     });
+    if (!unique.includes('summary')) {
+        unique.unshift('summary');
+    }
     DEFAULT_SECTION_ORDER.forEach((sectionId) => {
         if (!unique.includes(sectionId)) {
             unique.push(sectionId);

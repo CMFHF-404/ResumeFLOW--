@@ -113,6 +113,7 @@ export type ResumeJDAnalysis = {
 
 export type ResumeEditorConfig = {
   profile?: ResumeEditorProfile;
+  personalSummary?: string;
   profileSyncMode?: ProfileSyncMode;
   selection?: {
     experienceIds?: string[];
@@ -324,6 +325,11 @@ export type ExperienceTabProps = {
   certification: CertificationActions;
   skill: SkillActions;
   selection: SelectionActions;
+  personalSummary: string;
+  isGeneratingPersonalSummary: boolean;
+  canGeneratePersonalSummary: boolean;
+  onPersonalSummaryChange: (value: string) => void;
+  onGeneratePersonalSummary: () => void;
   matchScoreFilter: number;
   onMatchScoreFilterChange: (value: number) => void;
   scrollContainerRef?: RefObject<HTMLDivElement>;
