@@ -970,7 +970,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
               <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-700">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-400">个人评价</label>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      <FileText className="h-3.5 w-3.5 text-primary/80" />
+                      个人评价
+                    </label>
                     <p className="mt-1 text-xs text-gray-400">适用于简历“自我评价”部分的总结内容。</p>
                   </div>
                   <button
@@ -983,13 +986,25 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                     {isGeneratingSummary ? '生成中...' : 'AI 一键生成'}
                   </button>
                 </div>
-                <textarea
-                  className="min-h-[132px] w-full resize-y rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:bg-transparent disabled:border-transparent disabled:p-0 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-300"
-                  value={summary}
-                  onChange={(e) => handleSummaryChange(e.target.value)}
-                  disabled={!isEditingProfile || isLoadingProfile}
-                  placeholder="填写适合展示在简历中的个人评价，或使用 AI 自动生成。"
-                />
+                {isEditingProfile ? (
+                  <textarea
+                    className="min-h-[132px] w-full resize-y rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-300"
+                    value={summary}
+                    onChange={(e) => handleSummaryChange(e.target.value)}
+                    disabled={isLoadingProfile}
+                    placeholder="填写适合展示在简历中的个人评价，或AI自动基于个人经历生成。"
+                  />
+                ) : (
+                  <div className="min-h-[132px] rounded-lg border border-gray-100 bg-gray-50/70 px-4 py-3 text-sm leading-8 text-gray-700 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+                    {summary.trim() ? (
+                      <p className="whitespace-pre-wrap break-words">{summary.trim()}</p>
+                    ) : (
+                      <p className="text-gray-400 dark:text-gray-500">
+                        填写适合展示在简历中的个人评价，或AI自动基于个人经历生成。
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </section>

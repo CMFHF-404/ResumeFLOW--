@@ -335,11 +335,16 @@ const createApplyResumeConfig = (
         const resolvedProfile = resolveProfileSnapshot(config, profileData || undefined);
         const hasPersonalSummaryOverride = typeof config.personalSummary === 'string';
         const resolvedPersonalSummary = hasPersonalSummaryOverride ? config.personalSummary : '';
+        const storedSummaryVisibility = config.layout?.isSummaryVisible;
+        const legacySummaryVisibilityFallback = hasPersonalSummaryOverride
+            ? Boolean(resolvedPersonalSummary.trim())
+            : Boolean(resolvedProfile.summary?.trim());
+
         setProfile(resolvedProfile);
         setPersonalSummary(resolvedPersonalSummary);
         setHasPersonalSummaryOverride(hasPersonalSummaryOverride);
         setSectionOrder(normalizeSectionOrder(config.layout?.sectionOrder));
-        setIsSummaryVisible(config.layout?.isSummaryVisible ?? false);
+        setIsSummaryVisible(storedSummaryVisibility ?? legacySummaryVisibilityFallback);
         setDensity(resolvedDensity);
         applyLayoutConfig({
             ...config,

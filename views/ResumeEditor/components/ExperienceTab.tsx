@@ -73,9 +73,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     skill,
     selection,
     personalSummary,
+    isSummaryVisible,
     isGeneratingPersonalSummary,
     canGeneratePersonalSummary,
     onPersonalSummaryChange,
+    onSummaryVisibilityChange,
     onGeneratePersonalSummary,
     matchScoreFilter,
     onMatchScoreFilterChange,
@@ -329,9 +331,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             </div>
             <PersonalSummaryPanel
                 value={personalSummary}
+                isVisible={isSummaryVisible}
                 isGenerating={isGeneratingPersonalSummary}
                 canGenerate={canGeneratePersonalSummary}
                 onChange={onPersonalSummaryChange}
+                onVisibilityChange={onSummaryVisibilityChange}
                 onGenerate={onGeneratePersonalSummary}
             />
             {matchScoreFilter > 0 && hiddenSummary.hiddenTotal > 0 ? (

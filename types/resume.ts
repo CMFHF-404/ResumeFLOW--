@@ -326,9 +326,11 @@ export type ExperienceTabProps = {
   skill: SkillActions;
   selection: SelectionActions;
   personalSummary: string;
+  isSummaryVisible: boolean;
   isGeneratingPersonalSummary: boolean;
   canGeneratePersonalSummary: boolean;
   onPersonalSummaryChange: (value: string) => void;
+  onSummaryVisibilityChange: (value: boolean) => void;
   onGeneratePersonalSummary: () => void;
   matchScoreFilter: number;
   onMatchScoreFilterChange: (value: number) => void;
