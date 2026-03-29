@@ -1,6 +1,7 @@
 import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "react";
-import type { MatchTrend } from "./analysis";
+import type { JDAnalysisItemSignatures, MatchTrend } from "./analysis";
 import type { ResumeDetail } from "../services/resumeService";
+import type { JDAnalysisResult } from "../services/aiService";
 
 export type StarFields = {
   s: string;
@@ -97,6 +98,19 @@ export type ResumeEditorProfile = {
 
 export type ProfileSyncMode = "global" | "local";
 
+export type ResumeJDAnalysis = {
+  jdText: string;
+  jdInputSignature: string;
+  experienceSignature: string;
+  result: JDAnalysisResult;
+  itemSignatures: JDAnalysisItemSignatures;
+  experienceText?: string;
+  inputMode: "text" | "attachment";
+  attachmentName?: string;
+  attachmentExtractedText?: string;
+  updatedAt: string;
+};
+
 export type ResumeEditorConfig = {
   profile?: ResumeEditorProfile;
   profileSyncMode?: ProfileSyncMode;
@@ -118,6 +132,7 @@ export type ResumeEditorConfig = {
     isSummaryVisible?: boolean;
     orders?: ResumeLayoutOrders;
   };
+  jdAnalysis?: ResumeJDAnalysis;
 };
 
 export type ResumeLayoutOrders = {

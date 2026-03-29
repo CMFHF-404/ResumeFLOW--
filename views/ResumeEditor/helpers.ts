@@ -9,6 +9,7 @@ import type {
     ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeExperienceView,
+    ResumeJDAnalysis,
     ResumeLayoutOrders,
     SkillGroupView,
     StarFields,
@@ -435,7 +436,8 @@ export const buildResumeConfigSnapshot = (
     fontSize: number,
     isSmartPageApplied: boolean,
     isSummaryVisible: boolean,
-    orders: ResumeLayoutOrders
+    orders: ResumeLayoutOrders,
+    jdAnalysis?: ResumeJDAnalysis | null
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
     profileSyncMode,
@@ -457,6 +459,7 @@ export const buildResumeConfigSnapshot = (
         isSummaryVisible,
         orders: { ...orders },
     },
+    ...(jdAnalysis ? { jdAnalysis } : {}),
 });
 
 export const normalizeSectionOrder = (order?: string[]) => {

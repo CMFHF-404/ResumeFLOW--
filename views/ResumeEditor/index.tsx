@@ -17,6 +17,7 @@ import type {
     ProfileSyncMode,
     ResumeEditorConfig,
     ResumeEditorProfile,
+    ResumeJDAnalysis,
     ResumeLayoutOrders,
     ResumeExperienceView,
     SkillGroupView,
@@ -30,6 +31,11 @@ import {
     mergeStarFieldsWithSource,
 } from '../../utils/resumeHelpers';
 import { mergeLinkedInLink } from '../profileUtils';
+import {
+    loadJDAnalysisCache,
+    normalizeJDAnalysisPersistence,
+    selectPreferredPersistedJDAnalysis,
+} from '../jdAnalysisStorage';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
@@ -699,6 +705,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [bossGreetingSignature, setBossGreetingSignature] = useState('');
     const [isBossGreetingVisible, setIsBossGreetingVisible] = useState(false);
     const [isGeneratingBossGreeting, setIsGeneratingBossGreeting] = useState(false);
+    const [persistedJDAnalysisSnapshot, setPersistedJDAnalysisSnapshot] =
+        useState<ResumeJDAnalysis | null | undefined>(undefined);
     // 3. UI State
     const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
     const [isMobileEditorDrawerOpen, setIsMobileEditorDrawerOpen] = useState(false);
@@ -851,7 +859,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 fontSize,
                 isSmartPageApplied,
                 isSummaryVisible,
-                layoutOrders
+                layoutOrders,
+                persistedJDAnalysisSnapshot
             ),
         [
             density,
@@ -861,6 +870,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             lineHeight,
             itemSpacingEm,
             layoutOrders,
+            persistedJDAnalysisSnapshot,
             profile,
             profileSyncMode,
             sectionOrder,
@@ -872,49 +882,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedSkillIds,
         ]
     );
-    const buildCommittedResumeConfigSnapshot = useCallback(() => {
-        // 创建新简历前只持久化已确认的 profile 状态，避免把编辑中的草稿静默写回旧简历。
-        const nextProfile = isEditingProfile ? originalProfile : profile;
-        const nextProfileSyncMode = isEditingProfile ? originalProfileSyncMode : profileSyncMode;
-        return buildResumeConfigSnapshot(
-            nextProfile,
-            nextProfileSyncMode,
-            selectedExpIds,
-            selectedEduIds,
-            selectedCertIds,
-            selectedSkillIds,
-            sectionOrder,
-            density,
-            topPaddingPx,
-            sectionSpacingKey,
-            itemSpacingEm,
-            lineHeight,
-            fontSize,
-            isSmartPageApplied,
-            isSummaryVisible,
-            layoutOrders
-        );
-    }, [
-        density,
-        fontSize,
-        isEditingProfile,
-        isSmartPageApplied,
-        isSummaryVisible,
-        itemSpacingEm,
-        layoutOrders,
-        lineHeight,
-        originalProfile,
-        originalProfileSyncMode,
-        profile,
-        profileSyncMode,
-        sectionOrder,
-        sectionSpacingKey,
-        selectedCertIds,
-        selectedEduIds,
-        selectedExpIds,
-        selectedSkillIds,
-        topPaddingPx,
-    ]);
     const applyLayoutConfig = useCallback((config: ResumeEditorConfig) => {
         const nextLayout = resolveLayoutSnapshotFromConfig(config.layout);
         setTopPaddingPx(nextLayout.topPaddingPx);
@@ -942,6 +909,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         clearSuppressedAutoSave,
     } = useResumeData({
         configSnapshot: resumeConfigSnapshot,
+        persistedJDAnalysisSnapshot,
         autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
         isAutoSavePaused,
         setProfile,
@@ -975,9 +943,70 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         compareByDateDesc,
         compareCertificationByDateDesc,
     });
+    const hydratingPersistedJDAnalysisSnapshot = useMemo(() => {
+        const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
+            resumeDetail?.resume?.config?.jdAnalysis
+        );
+        return selectPreferredPersistedJDAnalysis(
+            backendPersistedJDAnalysis,
+            resumeId ? loadJDAnalysisCache(resumeId) : null
+        )?.payload ?? null;
+    }, [resumeDetail?.resume?.config?.jdAnalysis, resumeId]);
+    const committedPersistedJDAnalysisSnapshot =
+        persistedJDAnalysisSnapshot !== undefined
+            ? persistedJDAnalysisSnapshot
+            : hydratingPersistedJDAnalysisSnapshot;
+    const buildCommittedResumeConfigSnapshot = useCallback(() => {
+        // 创建新简历前只持久化已确认的 profile 状态，避免把编辑中的草稿静默写回旧简历。
+        const nextProfile = isEditingProfile ? originalProfile : profile;
+        const nextProfileSyncMode = isEditingProfile ? originalProfileSyncMode : profileSyncMode;
+        return buildResumeConfigSnapshot(
+            nextProfile,
+            nextProfileSyncMode,
+            selectedExpIds,
+            selectedEduIds,
+            selectedCertIds,
+            selectedSkillIds,
+            sectionOrder,
+            density,
+            topPaddingPx,
+            sectionSpacingKey,
+            itemSpacingEm,
+            lineHeight,
+            fontSize,
+            isSmartPageApplied,
+            isSummaryVisible,
+            layoutOrders,
+            committedPersistedJDAnalysisSnapshot
+        );
+    }, [
+        committedPersistedJDAnalysisSnapshot,
+        density,
+        fontSize,
+        isEditingProfile,
+        isSmartPageApplied,
+        isSummaryVisible,
+        itemSpacingEm,
+        layoutOrders,
+        lineHeight,
+        originalProfile,
+        originalProfileSyncMode,
+        profile,
+        profileSyncMode,
+        sectionOrder,
+        sectionSpacingKey,
+        selectedCertIds,
+        selectedEduIds,
+        selectedExpIds,
+        selectedSkillIds,
+        topPaddingPx,
+    ]);
     // 将 resumeId 同步到 ref，供不可在 render 阶段读取的异步回调使用。
     useEffect(() => {
         latestResumeIdRef.current = resumeId;
+    }, [resumeId]);
+    useEffect(() => {
+        setPersistedJDAnalysisSnapshot(undefined);
     }, [resumeId]);
     const {
         jdText,
@@ -1007,6 +1036,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setExperienceItems,
         certifications,
         skillGroups,
+        persistedJDAnalysis: resumeDetail?.resume?.config?.jdAnalysis,
+        onPersistedJDAnalysisChange: setPersistedJDAnalysisSnapshot,
+        isLoadingResume,
         isLoadingExperiences,
         authUserKey,
     });
@@ -2023,7 +2055,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         const toastId = showToastLoading('正在创建并切换简历...');
         setIsCreatingResume(true);
-        suppressAutoSaveForConfig(resumeConfigSnapshot);
+        suppressAutoSaveForConfig(buildCommittedResumeConfigSnapshot());
 
         try {
             const result = await runCreateResumeFlow();
@@ -2077,7 +2109,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastInfo,
         showToastLoading,
         suppressAutoSaveForConfig,
-        resumeConfigSnapshot,
+        buildCommittedResumeConfigSnapshot,
         runCreateResumeFlow,
         updateToast,
     ]);

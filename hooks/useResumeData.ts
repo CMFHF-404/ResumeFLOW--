@@ -13,6 +13,11 @@ import { certificationsService, Certification as CertificationRecord } from '../
 import { experienceService, ExperienceListItem } from '../services/experienceService';
 import { profileService, Profile } from '../services/profileService';
 import {
+    loadJDAnalysisCache,
+    normalizeJDAnalysisPersistence,
+    selectPreferredPersistedJDAnalysis,
+} from '../views/jdAnalysisStorage';
+import {
     resumeService,
     ResumeDetail,
     ResumeExperienceItem,
@@ -61,6 +66,7 @@ type ReloadResumeContextResult = ReloadResumeContextSuccessResult | ReloadResume
 
 type UseResumeDataOptions = {
     configSnapshot: ResumeEditorConfig;
+    persistedJDAnalysisSnapshot?: ResumeEditorConfig['jdAnalysis'] | null;
     autoSaveDelayMs: number;
     isAutoSavePaused?: boolean;
     setProfile: Dispatch<SetStateAction<ResumeEditorProfile>>;
@@ -260,6 +266,47 @@ const updateLastSavedRef = (
     signature: string
 ) => {
     signatureRef.current = signature;
+};
+
+const mergeResumeRecordIntoDetail = (
+    detail: ResumeDetail | null,
+    updatedResume: Resume
+) => {
+    if (!detail || detail.resume.id !== updatedResume.id) {
+        return detail;
+    }
+    return {
+        ...detail,
+        resume: {
+            ...detail.resume,
+            ...updatedResume,
+        },
+    };
+};
+
+const buildEffectiveConfigSnapshot = (
+    configSnapshot: ResumeEditorConfig,
+    persistedJDAnalysisSnapshot: ResumeEditorConfig['jdAnalysis'] | null | undefined,
+    resumeId: string | null,
+    resumeDetail: ResumeDetail | null
+): ResumeEditorConfig => {
+    if (persistedJDAnalysisSnapshot !== undefined) {
+        return configSnapshot;
+    }
+    const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
+        (resumeDetail?.resume?.config as ResumeEditorConfig | undefined)?.jdAnalysis
+    );
+    const selectedPersistedJDAnalysis = selectPreferredPersistedJDAnalysis(
+        backendPersistedJDAnalysis,
+        resumeId ? loadJDAnalysisCache(resumeId) : null
+    )?.payload;
+    if (!selectedPersistedJDAnalysis) {
+        return configSnapshot;
+    }
+    return {
+        ...configSnapshot,
+        jdAnalysis: selectedPersistedJDAnalysis,
+    };
 };
 
 const createApplyResumeConfig = (
@@ -777,6 +824,7 @@ const useResumeAutoSave = (
     saveState: ResumeState['saveState'],
     setSaveState: ResumeState['setSaveState'],
     setLastSavedAt: ResumeState['setLastSavedAt'],
+    setResumeDetail: ResumeState['setResumeDetail'],
     lastSavedConfigRef: MutableRefObject<string | null>,
     hasHydratedConfigRef: MutableRefObject<boolean>,
     shouldWaitForDebouncedConfigRef: MutableRefObject<boolean>,
@@ -845,10 +893,11 @@ const useResumeAutoSave = (
         setSaveState('saving');
         resumeService
             .update(resumeId, { config: debouncedConfig })
-            .then(() => {
+            .then((updatedResume) => {
                 if (sessionId !== saveSessionRef.current) {
                     return;
                 }
+                setResumeDetail((prev) => mergeResumeRecordIntoDetail(prev, updatedResume));
                 updateLastSavedRef(lastSavedConfigRef, debouncedConfigSignature);
                 setSaveState('saved');
                 setLastSavedAt(new Date().toLocaleTimeString());
@@ -865,6 +914,7 @@ const useResumeAutoSave = (
         debouncedConfigSignature,
         resumeId,
         setLastSavedAt,
+        setResumeDetail,
         setSaveState,
         lastSavedConfigRef,
         hasHydratedConfigRef,
@@ -880,6 +930,7 @@ const useResumeConfigFlusher = (
     configSnapshot: ResumeEditorConfig,
     setSaveState: ResumeState['setSaveState'],
     setLastSavedAt: ResumeState['setLastSavedAt'],
+    setResumeDetail: ResumeState['setResumeDetail'],
     lastSavedConfigRef: MutableRefObject<string | null>,
     hasHydratedConfigRef: MutableRefObject<boolean>
 ) => {
@@ -894,7 +945,8 @@ const useResumeConfigFlusher = (
         }
         setSaveState('saving');
         try {
-            await resumeService.update(resumeId, { config: nextConfig });
+            const updatedResume = await resumeService.update(resumeId, { config: nextConfig });
+            setResumeDetail((prev) => mergeResumeRecordIntoDetail(prev, updatedResume));
             updateLastSavedRef(lastSavedConfigRef, configSignature);
             setSaveState('saved');
             setLastSavedAt(new Date().toLocaleTimeString());
@@ -909,6 +961,7 @@ const useResumeConfigFlusher = (
         lastSavedConfigRef,
         resumeId,
         setLastSavedAt,
+        setResumeDetail,
         setSaveState,
     ]);
 };
@@ -947,14 +1000,29 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         options.resolveProfileSyncMode,
         options.resolveProfileSnapshot
     );
+    const effectiveConfigSnapshot = useMemo(
+        () => buildEffectiveConfigSnapshot(
+            options.configSnapshot,
+            options.persistedJDAnalysisSnapshot,
+            state.resumeId,
+            state.resumeDetail
+        ),
+        [
+            options.configSnapshot,
+            options.persistedJDAnalysisSnapshot,
+            state.resumeId,
+            state.resumeDetail,
+        ]
+    );
     useResumeAutoSave(
         state.resumeId,
-        options.configSnapshot,
+        effectiveConfigSnapshot,
         options.autoSaveDelayMs,
         options.isAutoSavePaused ?? false,
         state.saveState,
         state.setSaveState,
         state.setLastSavedAt,
+        state.setResumeDetail,
         state.lastSavedConfigRef,
         state.hasHydratedConfigRef,
         state.shouldWaitForDebouncedConfigRef,
@@ -962,9 +1030,10 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     );
     const flushResumeConfig = useResumeConfigFlusher(
         state.resumeId,
-        options.configSnapshot,
+        effectiveConfigSnapshot,
         state.setSaveState,
         state.setLastSavedAt,
+        state.setResumeDetail,
         state.lastSavedConfigRef,
         state.hasHydratedConfigRef
     );
