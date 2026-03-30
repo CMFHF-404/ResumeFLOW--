@@ -37,12 +37,18 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     return `${baseClass} text-slate-300 hover:text-white hover:bg-slate-800`;
   };
   const mobileTabButtonClass = (view: ViewState) => {
-    const baseClass = "flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl px-3 transition-all";
+    const baseClass = "flex h-11 items-center justify-center rounded-2xl transition-all duration-300 ease-in-out overflow-hidden";
     if (currentView === view) {
-      return `${baseClass} bg-primary text-white shadow-lg shadow-primary/30`;
+      return `${baseClass} bg-primary text-white shadow-lg shadow-primary/30 flex-1 px-3 gap-2`;
     }
-    return `${baseClass} bg-slate-950/40 text-slate-300 hover:bg-slate-800 hover:text-white`;
+    return `${baseClass} bg-slate-950/40 text-slate-300 hover:bg-slate-800 hover:text-white w-12 px-0 gap-0`;
   };
+
+  const mobileTabs = [
+    { view: ViewState.DASHBOARD, icon: FolderOpen, label: '我的简历' },
+    { view: ViewState.EXPERIENCE_BANK, icon: Database, label: '经历库' },
+    { view: ViewState.EDITOR, icon: Wand2, label: '简历工厂' },
+  ];
   const desktopUtilityButtonClass =
     "group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 text-slate-300 transition-all hover:bg-slate-800 hover:text-white md:p-3";
 
@@ -190,31 +196,28 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             {isAvatarMenuOpen ? renderMobileAvatarMenu() : null}
           </div>
 
-          <div className="grid min-w-0 flex-1 grid-cols-3 gap-2">
-            <button
-              className={mobileTabButtonClass(ViewState.DASHBOARD)}
-              onClick={() => handleSetView(ViewState.DASHBOARD)}
-              type="button"
-            >
-              <FolderOpen className="h-5 w-5 shrink-0" />
-              <span className="truncate text-xs font-medium">我的简历</span>
-            </button>
-            <button
-              className={mobileTabButtonClass(ViewState.EXPERIENCE_BANK)}
-              onClick={() => handleSetView(ViewState.EXPERIENCE_BANK)}
-              type="button"
-            >
-              <Database className="h-5 w-5 shrink-0" />
-              <span className="truncate text-xs font-medium">经历库</span>
-            </button>
-            <button
-              className={mobileTabButtonClass(ViewState.EDITOR)}
-              onClick={() => handleSetView(ViewState.EDITOR)}
-              type="button"
-            >
-              <Wand2 className="h-5 w-5 shrink-0" />
-              <span className="truncate text-xs font-medium">简历工厂</span>
-            </button>
+          <div className="flex min-w-0 flex-1 gap-2">
+            {mobileTabs.map(tab => {
+              const isActive = currentView === tab.view;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.view}
+                  className={mobileTabButtonClass(tab.view)}
+                  onClick={() => handleSetView(tab.view)}
+                  type="button"
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span
+                    className={`truncate text-xs font-medium transition-all duration-300 ease-in-out ${
+                      isActive ? 'max-w-[5rem] opacity-100 ml-1' : 'max-w-0 opacity-0 ml-0'
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
