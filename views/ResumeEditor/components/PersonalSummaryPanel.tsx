@@ -87,15 +87,7 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
                         className="min-h-[132px] w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
                     />
                 </div>
-            ) : hasValue ? (
-                <p className="px-1 text-[11px] leading-5 text-gray-400 dark:text-gray-500">
-                    已折叠，当前{isVisible ? '会显示在简历中' : '不会显示在简历中'}。
-                </p>
-            ) : (
-                <p className="px-1 text-[11px] leading-5 text-gray-400 dark:text-gray-500">
-                    已折叠，当前{isVisible ? '会显示在简历中' : '不会显示在简历中'}。
-                </p>
-            )}
+            ) : null}
         </section>
     );
 };
