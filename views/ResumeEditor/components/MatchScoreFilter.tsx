@@ -39,7 +39,7 @@ const MatchScoreFilter: React.FC<MatchScoreFilterProps> = ({ value, onChange }) 
                 title="调整匹配度筛选"
             >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>{value > 0 ? `小于 ${value}%` : '筛选'}</span>
+                <span>{value > 0 ? `≥ ${value}%` : '筛选'}</span>
             </button>
 
             {isOpen && (

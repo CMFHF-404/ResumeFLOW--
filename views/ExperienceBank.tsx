@@ -971,20 +971,22 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                      <FileText className="h-3.5 w-3.5 text-primary/80" />
+                      <FileText className="h-3.5 w-3.5 text-gray-400" />
                       个人评价
                     </label>
                     <p className="mt-1 text-xs text-gray-400">适用于简历“自我评价”部分的总结内容。</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateSummary()}
-                    disabled={isGeneratingSummary || isLoadingProfile}
-                    className="inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Wand2 className={`h-4 w-4 ${isGeneratingSummary ? 'animate-spin' : ''}`} />
-                    {isGeneratingSummary ? '生成中...' : 'AI 一键生成'}
-                  </button>
+                  {isEditingProfile && (
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateSummary()}
+                      disabled={isGeneratingSummary || isLoadingProfile}
+                      className="inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Wand2 className={`h-4 w-4 ${isGeneratingSummary ? 'animate-spin' : ''}`} />
+                      {isGeneratingSummary ? '生成中...' : 'AI 一键生成'}
+                    </button>
+                  )}
                 </div>
                 {isEditingProfile ? (
                   <textarea
