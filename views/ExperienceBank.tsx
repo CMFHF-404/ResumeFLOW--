@@ -13,6 +13,7 @@ import {
   FileText,
   Wand2,
 } from 'lucide-react';
+import { ImageCropModal, ProfileAvatarZone } from '../components/ImageCropModal';
 import { useLogto } from '@logto/react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
@@ -268,6 +269,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     location: "",
     link: "",
     summary: "",
+    avatarDataUrl: null as string | null,
+    extraJson: {} as Record<string, any>,
   });
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -276,6 +279,12 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
   const [link, setLink] = useState("");
   const [summary, setSummary] = useState("");
   const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
+  // 头像状态
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
+  const [profileExtraJson, setProfileExtraJson] = useState<Record<string, any>>({});
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const isLoadingProfileRef = useRef(false);
   const hasHydratedProfileRef = useRef(false);
@@ -356,6 +365,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
   const applyProfileSnapshot = useCallback((profile: Profile) => {
     const resolvedLink = resolveLinkedInLink(profile);
+    const extraJson = profile.extra_json || {};
+    const savedAvatar = typeof extraJson.avatar_data_url === 'string' ? extraJson.avatar_data_url : null;
     resetProfileDraftOverrides();
     setName(profile.full_name || "");
     setEmail(profile.email || "");
@@ -364,6 +375,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     setLink(resolvedLink);
     setSummary(profile.summary || "");
     setProfileSocialLinks({ ...(profile.social_links || {}) });
+    setAvatarDataUrl(savedAvatar);
+    setProfileExtraJson(extraJson);
     setOriginalProfile({
       name: profile.full_name || "",
       email: profile.email || "",
@@ -371,6 +384,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       location: profile.location || "",
       link: resolvedLink,
       summary: profile.summary || "",
+      avatarDataUrl: savedAvatar,
+      extraJson,
     });
   }, [resetProfileDraftOverrides]);
 
@@ -378,6 +393,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     const overrides = profileDraftOverridesRef.current;
     const currentDraft = latestDraftProfileRef.current;
     const resolvedLink = resolveLinkedInLink(profile);
+    const extraJson = profile.extra_json || {};
+    const savedAvatar = typeof extraJson.avatar_data_url === 'string' ? extraJson.avatar_data_url : null;
     const mergedSocialLinks = overrides.link
       ? mergeLinkedInLink(profile.social_links || currentDraft.profileSocialLinks, currentDraft.link)
       : { ...(profile.social_links || {}) };
@@ -396,6 +413,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       location: profile.location || "",
       link: resolvedLink,
       summary: profile.summary || "",
+      avatarDataUrl: savedAvatar,
+      extraJson,
     });
   }, []);
 
@@ -484,6 +503,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       location,
       link,
       summary,
+      avatarDataUrl,
+      extraJson: profileExtraJson,
     });
     setIsEditingProfile(true);
   };
@@ -504,10 +525,12 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     setLocation(originalProfile.location);
     setLink(originalProfile.link);
     setSummary(originalProfile.summary);
+    setAvatarDataUrl(originalProfile.avatarDataUrl);
+    setProfileExtraJson(originalProfile.extraJson);
     setIsEditingProfile(false);
   };
 
-  // 保存个人信息
+  // 保存个人信息（含头像）
   const handleSaveProfile = async () => {
     try {
       summaryGenerationRequestIdRef.current += 1;
@@ -518,6 +541,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
       setIsGeneratingSummary(false);
       setIsSavingProfile(true);
       const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, link);
+      // 合并 extra_json，保留现有字段，只更新头像
+      const nextExtraJson = { ...profileExtraJson };
+      if (avatarDataUrl) {
+        nextExtraJson.avatar_data_url = avatarDataUrl;
+      } else {
+        delete nextExtraJson.avatar_data_url;
+      }
       const updated = await profileService.updateProfile({
         full_name: name,
         email,
@@ -525,6 +555,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         location,
         summary,
         social_links: nextSocialLinks,
+        extra_json: nextExtraJson,
       });
       applyProfileSnapshot(updated);
       setIsEditingProfile(false);
@@ -822,6 +853,57 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
     setLink(value);
   }, [markProfileFieldDraftTouched]);
 
+  const isAvatarInteractionEnabled = !isLoadingProfile && !isSavingProfile;
+
+  // ─── 头像上传 handlers ────────────────────────────────────────────────────
+
+  const handleAvatarUploadClick = useCallback(() => {
+    if (!isAvatarInteractionEnabled) {
+      return;
+    }
+    avatarFileInputRef.current?.click();
+  }, [isAvatarInteractionEnabled]);
+
+  /** 用户选择文件后，读取为 DataURL 并打开裁剪弹窗 */
+  const handleFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const src = evt.target?.result as string;
+      setPendingImageSrc(src);
+      setIsCropModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+    // 重置 input，允许再次选同一文件
+    e.target.value = '';
+  }, []);
+
+  /** 裁剪确认：更新头像状态，若非编辑模式自动进入编辑模式 */
+  const handleCropConfirm = useCallback((cropDataUrl: string) => {
+    setAvatarDataUrl(cropDataUrl);
+    setIsCropModalOpen(false);
+    setPendingImageSrc(null);
+    if (!isEditingProfile) {
+      setIsEditingProfile(true);
+    }
+  }, [isEditingProfile]);
+
+  /** 删除头像：清空头像状态，自动进入编辑模式 */
+  const handleAvatarDelete = useCallback(() => {
+    setAvatarDataUrl(null);
+    setIsCropModalOpen(false);
+    setPendingImageSrc(null);
+    if (!isEditingProfile) {
+      setIsEditingProfile(true);
+    }
+  }, [isEditingProfile]);
+
+  const handleCropCancel = useCallback(() => {
+    setIsCropModalOpen(false);
+    setPendingImageSrc(null);
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
       <header className="hidden bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:block md:px-8">
@@ -919,52 +1001,137 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
                 )}
               </div>
             </div>
+            {/* 隐藏 file input，由头像区点击触发 */}
+            <input
+              ref={avatarFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={!isAvatarInteractionEnabled}
+              onChange={handleFileSelected}
+            />
             <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> 姓名</label>
-                  <input
-                    className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
-                    value={name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={!isEditingProfile || isLoadingProfile}
+              {/*
+                布局策略：
+                - PC (md+)：flex-row，头像固定列在左，字段网格在右
+                - Mobile：头像浮在右上角（与姓名同行），电话/邮箱互换顺序
+              */}
+              <div className="flex gap-5 md:gap-6">
+
+                {/* PC端头像（md+ 显示，左侧固定列） */}
+                <div className="hidden md:flex md:shrink-0 md:flex-col md:items-center md:pt-1">
+                  <ProfileAvatarZone
+                    avatarDataUrl={avatarDataUrl}
+                    isClickable={isAvatarInteractionEnabled}
+                    size="md"
+                    onUploadClick={handleAvatarUploadClick}
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Mail className="w-3 h-3" /> 邮箱</label>
-                  <input
-                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
-                    value={email}
-                    onChange={(e) => handleEmailChange(e.target.value)}
-                    disabled={!isEditingProfile || isLoadingProfile}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Phone className="w-3 h-3" /> 电话</label>
-                  <input
-                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
-                    value={phone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
-                    disabled={!isEditingProfile || isLoadingProfile}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><MapPin className="w-3 h-3" /> 地点</label>
-                  <input
-                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
-                    value={location}
-                    onChange={(e) => handleLocationChange(e.target.value)}
-                    disabled={!isEditingProfile || isLoadingProfile}
-                  />
-                </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1"><LinkIcon className="w-3 h-3" /> 链接 (LinkedIn/Portfolio)</label>
-                  <input
-                    className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
-                    value={link}
-                    onChange={(e) => handleLinkChange(e.target.value)}
-                    disabled={!isEditingProfile || isLoadingProfile}
-                  />
+
+                {/* 右侧（或全宽）信息区 */}
+                <div className="flex-1 min-w-0">
+
+                  {/* ── 移动端首行：姓名（左）+ 头像（右）─────────────────── */}
+                  <div className="flex items-start gap-3 mb-5 md:hidden">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <User className="w-3 h-3" /> 姓名
+                      </label>
+                      <input
+                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile}
+                      />
+                    </div>
+                    <div className="shrink-0 mt-1">
+                      <ProfileAvatarZone
+                        avatarDataUrl={avatarDataUrl}
+                        isClickable={isAvatarInteractionEnabled}
+                        size="sm"
+                        onUploadClick={handleAvatarUploadClick}
+                      />
+                    </div>
+                  </div>
+
+                  {/*
+                    ── 字段网格 ─────────────────────────────────────────────
+                    Mobile (grid-cols-1) 显示顺序（通过 order）：
+                      姓名（hidden md:block → mobile不渲染）
+                      电话 order-1  → 排第1
+                      邮箱 order-2  → 排第2
+                      地点 order-3  → 排第3
+                      链接 order-4  → 排第4
+                    PC (md+) 所有 order 重置为 0，按 DOM 顺序流动
+                  */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                    {/* 姓名 - 仅 PC（mobile 已在上方单独渲染） */}
+                    <div className="hidden md:block space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <User className="w-3 h-3" /> 姓名
+                      </label>
+                      <input
+                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile}
+                      />
+                    </div>
+
+                    {/* 邮箱 - mobile 排第2，PC 正常流 */}
+                    <div className="order-2 md:order-none space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <Mail className="w-3 h-3" /> 邮箱
+                      </label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={email}
+                        onChange={(e) => handleEmailChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile}
+                      />
+                    </div>
+
+                    {/* 电话 - mobile 排第1（在邮箱前），PC 正常流 */}
+                    <div className="order-1 md:order-none space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <Phone className="w-3 h-3" /> 电话
+                      </label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={phone}
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile}
+                      />
+                    </div>
+
+                    {/* 地点 */}
+                    <div className="order-3 md:order-none space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> 地点
+                      </label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={location}
+                        onChange={(e) => handleLocationChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile}
+                      />
+                    </div>
+
+                    {/* 链接 */}
+                    <div className="order-4 md:order-none md:col-span-2 space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <LinkIcon className="w-3 h-3" /> 链接 (LinkedIn/Portfolio)
+                      </label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={link}
+                        onChange={(e) => handleLinkChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile}
+                      />
+                    </div>
+
+                  </div>
                 </div>
               </div>
               <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-700">
@@ -1074,6 +1241,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
           location,
         }}
         toast={toastApi}
+      />
+
+      {/* 图片裁剪弹窗 */}
+      <ImageCropModal
+        imageSrc={isCropModalOpen ? pendingImageSrc : null}
+        hasExistingAvatar={!!avatarDataUrl}
+        onConfirm={handleCropConfirm}
+        onCancel={handleCropCancel}
+        onDelete={handleAvatarDelete}
       />
 
       <ToastContainer toasts={toasts} onClose={closeToast} />
