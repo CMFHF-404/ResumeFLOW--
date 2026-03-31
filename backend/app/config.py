@@ -22,6 +22,8 @@ ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
 ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
 ENV_FEISHU_WEBHOOK_URL = "FEISHU_WEBHOOK_URL"
+ENV_FEISHU_APP_ID = "FEISHU_APP_ID"
+ENV_FEISHU_APP_SECRET = "FEISHU_APP_SECRET"
 ENV_FRONTEND_ORIGIN = "FRONTEND_ORIGIN"
 ENV_EXPORT_SNAPSHOT_TTL_SECONDS = "EXPORT_SNAPSHOT_TTL_SECONDS"
 ENV_EXPORT_TOKEN_SECRET = "EXPORT_TOKEN_SECRET"
@@ -119,6 +121,8 @@ class Settings:
     dev_user_id: str
     cors_allow_origins: List[str]
     feishu_webhook_url: Optional[str]
+    feishu_app_id: Optional[str]
+    feishu_app_secret: Optional[str]
     frontend_origin: str
     export_snapshot_ttl_seconds: int
     export_token_secret: str
@@ -153,6 +157,8 @@ def load_settings() -> Settings:
         DEFAULT_CORS_ALLOW_ORIGINS,
     )
     feishu_webhook_url = os.getenv(ENV_FEISHU_WEBHOOK_URL)
+    feishu_app_id = os.getenv(ENV_FEISHU_APP_ID)
+    feishu_app_secret = os.getenv(ENV_FEISHU_APP_SECRET)
     frontend_origin = _resolve_frontend_origin(cors_allow_origins)
     export_snapshot_ttl_seconds = int(
         os.getenv(ENV_EXPORT_SNAPSHOT_TTL_SECONDS, DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS)
@@ -183,6 +189,8 @@ def load_settings() -> Settings:
         dev_user_id=dev_user_id,
         cors_allow_origins=cors_allow_origins,
         feishu_webhook_url=feishu_webhook_url,
+        feishu_app_id=feishu_app_id,
+        feishu_app_secret=feishu_app_secret,
         frontend_origin=frontend_origin,
         export_snapshot_ttl_seconds=export_snapshot_ttl_seconds,
         export_token_secret=export_token_secret,

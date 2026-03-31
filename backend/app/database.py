@@ -107,8 +107,39 @@ async def ensure_export_render_snapshots_table() -> None:
         )
 
 
+async def ensure_feedback_images_column() -> None:
+    """确保 feedback.image_base64_list 列存在，兼容老环境升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        result = await connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'feedback'
+                  AND column_name = 'image_base64_list'
+                """
+            )
+        )
+        if result.first():
+            return
+
+        await connection.execute(
+            text(
+                """
+                ALTER TABLE feedback
+                ADD COLUMN IF NOT EXISTS image_base64_list TEXT[] NOT NULL DEFAULT '{}'
+                """
+            )
+        )
+
+
 async def ensure_dev_schema() -> None:
     """开发环境下的结构自检与补齐。"""
     await init_db()
     await ensure_experience_version_tags_column()
     await ensure_export_render_snapshots_table()
+    await ensure_feedback_images_column()

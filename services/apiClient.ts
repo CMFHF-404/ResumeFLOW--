@@ -144,6 +144,11 @@ export const getAuthCacheKey = async (): Promise<string> => {
 // 请求拦截器:自动添加JWT Token
 apiClient.interceptors.request.use(
     async (config) => {
+        if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+            // 让浏览器为 FormData 自动设置带 boundary 的 Content-Type。
+            config.headers.delete('Content-Type');
+        }
+
         const resource = getLogtoResource();
         const token = await resolveAccessToken(resource);
         console.log(`[API Client] Resource: ${resource}, Token found: ${!!token}`);

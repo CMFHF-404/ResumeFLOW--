@@ -162,6 +162,10 @@ class Feedback(SQLModel, table=True):
     context_json: Dict[str, Any] = Field(
         default_factory=dict, sa_column=Column(JSONB, nullable=False)
     )
+    # 存储用户上传的图片，每项为 base64 编码字符串（含 data URI 前缀）
+    image_base64_list: List[str] = Field(
+        default_factory=list, sa_column=Column(ARRAY(Text), nullable=False, server_default="{}")
+    )
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 

@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     content TEXT NOT NULL,
     contact TEXT,
     context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    image_base64_list TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
