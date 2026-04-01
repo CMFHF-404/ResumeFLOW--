@@ -14,6 +14,7 @@ import type {
     SkillGroupView,
     StarFields,
 } from '../../types/resume';
+import type { ResumeTemplateId } from '../../constants/resumeTemplates';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
 import type { ResumeDetail, ResumeExperienceItem } from '../../services/resumeService';
@@ -439,6 +440,7 @@ export const buildResumeConfigSnapshot = (
     isSmartPageApplied: boolean,
     isSummaryVisible: boolean,
     orders: ResumeLayoutOrders,
+    templateId: ResumeTemplateId,
     jdAnalysis?: ResumeJDAnalysis | null
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
@@ -461,6 +463,7 @@ export const buildResumeConfigSnapshot = (
         isSmartPageApplied,
         isSummaryVisible,
         orders: { ...orders },
+        templateId,
     },
     ...(jdAnalysis ? { jdAnalysis } : {}),
 });

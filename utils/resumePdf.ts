@@ -6,6 +6,7 @@ import type {
   ResumePdfRenderSnapshot,
   SkillGroupView,
 } from '../types/resume';
+import type { ResumeTemplateId } from '../constants/resumeTemplates';
 import {
   FONT_SIZE_DEFAULT,
   LINE_HEIGHT_DEFAULT,
@@ -29,6 +30,7 @@ type ResumePdfSnapshotInput = {
   sortedCertifications: CertificationView[];
   selectedCertIds: Set<string>;
   selectedSkillGroups: SkillGroupView[];
+  templateId: ResumeTemplateId;
 };
 
 const cloneExperience = (item: ResumeExperienceView) => ({
@@ -63,6 +65,7 @@ export const buildResumePdfRenderSnapshot = ({
   sortedCertifications,
   selectedCertIds,
   selectedSkillGroups,
+  templateId,
 }: ResumePdfSnapshotInput): ResumePdfRenderSnapshot => ({
   resumeName,
   profile: { ...profile },
@@ -81,4 +84,5 @@ export const buildResumePdfRenderSnapshot = ({
   sortedCertifications: sortedCertifications.map((item) => ({ ...item })),
   selectedCertIds: Array.from(selectedCertIds),
   selectedSkillGroups: selectedSkillGroups.map(cloneSkillGroup),
+  templateId,
 });
