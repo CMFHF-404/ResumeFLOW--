@@ -141,10 +141,12 @@ import {
     sortByCategory,
 } from './helpers';
 import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
+import { DEFAULT_RESUME_TEMPLATE_ID, type ResumeTemplateId } from '../../constants/resumeTemplates';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
+import TemplateSelectorModal from './components/TemplateSelectorModal';
 import ResumePreview from './components/ResumePreview';
 
 const buildLineHeightSteps = (start: number, min: number, step: number) => {
@@ -756,6 +758,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
     const [isLayoutAdjustToolbarOpen, setIsLayoutAdjustToolbarOpen] = useState(false);
+    const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
     const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
     const [isCreatingResume, setIsCreatingResume] = useState(false);
     const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
@@ -943,6 +946,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const smartPageAdjustingRef = useRef(false);
     const isUpdatingResumeNameRef = useRef(false);
     const [isExportingPdf, setIsExportingPdf] = useState(false);
+    const [resumeTemplateId, setResumeTemplateId] = useState<ResumeTemplateId>(DEFAULT_RESUME_TEMPLATE_ID);
 
     const layoutOrders: ResumeLayoutOrders = useMemo(
         () => ({
@@ -976,6 +980,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 isSmartPageApplied,
                 isSummaryVisible,
                 layoutOrders,
+                resumeTemplateId,
                 persistedJDAnalysisSnapshot
             ),
         [
@@ -991,6 +996,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             personalSummary,
             profile,
             profileSyncMode,
+            resumeTemplateId,
             sectionOrder,
             sectionSpacingKey,
             selectedCertIds,
@@ -1008,6 +1014,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setLineHeight(nextLayout.lineHeight);
         setFontSize(nextLayout.fontSize);
         setIsSmartPageApplied(nextLayout.isSmartPageApplied);
+        setResumeTemplateId(config.layout?.templateId ?? DEFAULT_RESUME_TEMPLATE_ID);
     }, []);
     const {
         resumeId,
@@ -1102,6 +1109,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isSmartPageApplied,
             isSummaryVisible,
             layoutOrders,
+            resumeTemplateId,
             committedPersistedJDAnalysisSnapshot
         );
     }, [
@@ -1120,6 +1128,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         personalSummary,
         profile,
         profileSyncMode,
+        resumeTemplateId,
         sectionOrder,
         sectionSpacingKey,
         selectedCertIds,
@@ -3600,6 +3609,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             sortedCertifications,
             selectedCertIds,
             selectedSkillGroups,
+            templateId: resumeTemplateId,
         });
         const exportTitle = buildResumeExportTitle(resumeName);
         const toastId = showToastLoading('正在生成 PDF...');
@@ -3788,6 +3798,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onResumeNameChange={handleResumeNameChange}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
+                    onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
                 />
             </div>
             <div className="md:hidden">
@@ -3801,6 +3812,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onAnalyze={handleAnalyzeWithAutoName}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
+                    onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
                     onCreateResume={handleCreateResume}
@@ -3981,7 +3993,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         listSpacingValue={listSpacingValue}
                         bulletSpacingValue={bulletSpacingValue}
                         topPaddingPx={topPaddingPx}
-                          profile={previewProfile}
+                        templateId={resumeTemplateId}
+                        profile={previewProfile}
                         sectionSpacingClass={sectionSpacingClass}
                         listSpacingClass={listSpacingClass}
                         sectionOrder={sectionOrder}
@@ -4013,6 +4026,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     />
                 </div>
             </div>
+            <TemplateSelectorModal
+                isOpen={isTemplateSelectorOpen}
+                selectedTemplateId={resumeTemplateId}
+                onClose={() => setIsTemplateSelectorOpen(false)}
+                onSelectTemplate={(templateId) => {
+                    setResumeTemplateId(templateId);
+                    setIsTemplateSelectorOpen(false);
+                }}
+            />
+
             <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 md:hidden">
                 <div className="pointer-events-auto rounded-t-[28px] border border-b-0 border-border-light bg-surface-light/96 px-4 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2 shadow-[0_-18px_40px_rgba(15,23,42,0.14)] backdrop-blur dark:border-border-dark dark:bg-surface-dark/96">
                     <button
@@ -4038,7 +4061,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     listSpacingValue={measureListSpacingValue}
                     bulletSpacingValue={measureBulletSpacingValue}
                     topPaddingPx={measureLayout.topPaddingPx}
-                      profile={previewProfile}
+                    templateId={resumeTemplateId}
+                    profile={previewProfile}
                     sectionSpacingClass={measureSectionSpacingClass}
                     listSpacingClass={listSpacingClass}
                     sectionOrder={sectionOrder}
