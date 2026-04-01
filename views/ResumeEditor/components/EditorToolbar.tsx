@@ -20,6 +20,7 @@ type EditorToolbarProps = {
     onResumeNameChange: (name: string) => void;
     onExportPdf: () => void;
     isExportingPdf: boolean;
+    onOpenTemplateSelector: () => void;
 };
 
 const buildSaveStatusText = (state: EditorToolbarProps['saveState'], lastSavedAt: string | null) => {
@@ -62,6 +63,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     onResumeNameChange,
     onExportPdf,
     isExportingPdf,
+    onOpenTemplateSelector,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(resumeName);
@@ -134,6 +136,14 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                     <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
                     <div className="hidden items-center gap-2 md:flex">
                         <span className="text-sm font-medium text-gray-500">简历工厂</span>
+                        <button
+                            type="button"
+                            onClick={onOpenTemplateSelector}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                        >
+                            <LayoutTemplate className="h-3.5 w-3.5" />
+                            模板
+                        </button>
                     </div>
                     <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
                     <div className="flex min-w-0 items-center gap-2">
