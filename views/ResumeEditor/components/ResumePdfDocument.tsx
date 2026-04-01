@@ -39,6 +39,7 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
         listSpacingValue={snapshot.listSpacingValue}
         bulletSpacingValue={snapshot.bulletSpacingValue}
         topPaddingPx={snapshot.topPaddingPx}
+        templateId={snapshot.templateId}
         profile={snapshot.profile}
         sectionSpacingClass={snapshot.sectionSpacingClass}
         listSpacingClass={snapshot.listSpacingClass}
