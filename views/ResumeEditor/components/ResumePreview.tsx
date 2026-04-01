@@ -24,6 +24,7 @@ import {
 } from '../../../utils/richText';
 import { type DropPosition, resolveDragTarget } from '../../../utils/dragSort';
 import { buildDragItemKey } from '../dragKeys';
+import { resolveResumeTemplate, type ResumeTemplateId } from '../../../constants/resumeTemplates';
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
@@ -266,6 +267,7 @@ export type ResumePreviewProps = {
     listSpacingValue: string;
     bulletSpacingValue: string;
     topPaddingPx: number;
+    templateId?: ResumeTemplateId;
     profile: ResumeEditorProfile;
     sectionSpacingClass: string;
     listSpacingClass: string;
@@ -307,6 +309,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     listSpacingValue,
     bulletSpacingValue,
     topPaddingPx,
+    templateId = 'modern-slate',
     profile,
     sectionSpacingClass,
     listSpacingClass,
@@ -427,6 +430,23 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             .filter(Boolean),
         [profile.email, profile.linkedin, profile.location, profile.phone]
     );
+
+    const activeTemplate = React.useMemo(
+        () => resolveResumeTemplate(templateId),
+        [templateId]
+    );
+    const profileInitials = React.useMemo(() => {
+        const normalized = (profile.name || '').trim();
+        if (!normalized) {
+            return '简历';
+        }
+        const parts = normalized.split(/\s+/).filter(Boolean);
+        if (parts.length === 1) {
+            return parts[0].slice(0, 2).toUpperCase();
+        }
+        return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+    }, [profile.name]);
+
     const headerStyle = React.useMemo(
         () => ({
             marginBottom: `${sectionSpacingPx}px`,
@@ -1542,14 +1562,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 >
                     <div
                         id="basic-info"
-                        className={`border-b-2 border-gray-900 pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} text-center scroll-mt-8`}
-                        style={headerStyle}
+                        className={`border-b-2 pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} ${activeTemplate.headerClassName} scroll-mt-8`}
+                        style={{ ...headerStyle, borderColor: activeTemplate.accentColor }}
                     >
-                        <h1 className="text-3xl font-bold uppercase tracking-widest mb-2 text-gray-900">
+                        <div className={`mb-2 flex items-center ${activeTemplate.headerClassName === 'text-center' ? 'justify-center' : 'justify-between'}`}><h1 className="text-3xl font-bold uppercase tracking-widest text-gray-900">
                             {profile.name}
-                        </h1>
+                        </h1>{activeTemplate.hasAvatar ? (<div className="ml-3 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-gray-100 text-sm font-bold text-gray-700">{profileInitials}</div>) : null}</div>
                         {contactItems.length ? (
-                            <div className="text-[11px] text-gray-600 flex justify-center flex-wrap gap-x-4 gap-y-1 font-medium">
+                            <div className={`text-[11px] text-gray-600 flex flex-wrap gap-x-4 gap-y-1 font-medium ${activeTemplate.headerClassName === 'text-center' ? 'justify-center' : 'justify-start'}`}>
                                 {contactItems.map((item) => (
                                     <span key={item}>{item}</span>
                                 ))}

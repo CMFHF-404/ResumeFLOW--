@@ -59,6 +59,7 @@ export type MobileEditorHeaderProps = {
     hasMissingAttachmentContext: boolean;
     isJDCollapsed: boolean;
     onJDCollapseChange: (collapsed: boolean) => void;
+    onOpenTemplateSelector: () => void;
 };
 
 const SUMMARY_CLAMP_STYLE: React.CSSProperties = {
@@ -106,6 +107,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     hasMissingAttachmentContext,
     isJDCollapsed,
     onJDCollapseChange,
+    onOpenTemplateSelector,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [draftName, setDraftName] = useState(resumeName);
@@ -361,6 +363,16 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             )}
 
                             <div className={`flex items-center justify-end gap-1.5 sm:gap-2 ${showJdInput ? 'pt-1' : ''}`}>
+                                <button
+                                    type="button"
+                                    onClick={onOpenTemplateSelector}
+                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                    aria-label="选择简历模板"
+                                    title="选择简历模板"
+                                >
+                                    <LayoutTemplate className="h-4 w-4" />
+                                    模板
+                                </button>
                                 <button
                                     type="button"
                                     onClick={onCreateResume}

@@ -1,5 +1,6 @@
 import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { JDAnalysisItemSignatures, MatchTrend } from "./analysis";
+import type { ResumeTemplateId } from '../constants/resumeTemplates';
 import type { ResumeDetail } from "../services/resumeService";
 import type { JDAnalysisResult } from "../services/aiService";
 
@@ -132,6 +133,7 @@ export type ResumeEditorConfig = {
     isSmartPageApplied?: boolean;
     isSummaryVisible?: boolean;
     orders?: ResumeLayoutOrders;
+    templateId?: ResumeTemplateId;
   };
   jdAnalysis?: ResumeJDAnalysis;
 };
@@ -254,6 +256,7 @@ export type ResumePdfRenderSnapshot = {
   sortedCertifications: CertificationView[];
   selectedCertIds: string[];
   selectedSkillGroups: SkillGroupView[];
+  templateId: ResumeTemplateId;
 };
 
 export type ExperienceActions = {
