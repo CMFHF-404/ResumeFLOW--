@@ -210,9 +210,10 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                             {canRestoreDefault ? '恢复默认' : '智能一页'}
                         </button>
                     </div>
+                    {/* min-w 固定宽度：避免不同状态文字长度不同导致"智能一页"按钮位置抖动 */}
                     <div className="order-last flex w-full items-center gap-2 text-xs md:order-none md:w-auto">
-                        <span className="text-gray-400">自动保存</span>
-                        <span className={`font-semibold ${saveStatusClass}`}>{saveStatusText}</span>
+                        <span className="text-gray-400 shrink-0">自动保存</span>
+                        <span className={`font-semibold min-w-[7rem] ${saveStatusClass}`}>{saveStatusText}</span>
                     </div>
                     <button
                         className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden"
