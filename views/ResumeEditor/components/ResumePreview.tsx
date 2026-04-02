@@ -558,7 +558,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return 'rounded-none border-0 bg-transparent';
         }
         if (activeTemplate.layoutKind === 'accent') {
-            return 'rounded-2xl border border-[var(--rf-accent-border)]/80 bg-white';
+            return 'bg-transparent';
         }
         if (activeTemplate.layoutKind === 'minimal') {
             return 'rounded-xl border border-gray-200/80 bg-white/80';
@@ -571,7 +571,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
         const feedbackPhase = getTouchFeedbackState('section', sectionId);
         const templateToneClass = getTemplateSectionSurfaceToneClass(sectionId);
-        const baseClass = `-m-2 rounded p-2 ${templateToneClass} ${interactionTransitionClass}`.trim();
+        const isAccent = activeTemplate.layoutKind === 'accent';
+        const baseClass = isAccent
+            ? `-m-1 rounded p-1 ${templateToneClass} ${interactionTransitionClass}`.trim()
+            : `-m-2 rounded p-2 ${templateToneClass} ${interactionTransitionClass}`.trim();
         if (feedbackPhase === 'dragging' && touchDragPreview?.sourceId === sectionId) {
             return `${baseClass} border border-dashed border-primary/35 bg-primary/[0.03] shadow-none`;
         }
@@ -1392,6 +1395,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         if (activeTemplate.layoutKind === 'minimal') {
             return 'border-b border-gray-200';
         }
+        if (activeTemplate.layoutKind === 'accent') {
+            return '';
+        }
         return 'border-b';
     }, [activeTemplate.layoutKind]);
     const renderAvatarFrame = React.useCallback((className: string) => {
@@ -1416,28 +1422,36 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const renderSectionHeading = React.useCallback((
         title: string,
         sectionId: string
-    ) => (
-        <h2
-            className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-            style={{
-                ...sectionTitleStyle,
-                ...touchHandleStyle,
-                color: sectionId === 'summary' && activeTemplate.layoutKind === 'minimal'
-                    ? '#4b5563'
-                    : 'var(--rf-accent-text)',
-                borderBottomColor: activeTemplate.layoutKind === 'minimal'
-                    ? '#e5e7eb'
-                    : 'var(--rf-accent-border)',
-            }}
-            onTouchStart={
-                isReadOnly || showTouchDragHandles
-                    ? undefined
-                    : (event) => handleSectionTitleTouchStart(event, sectionId)
-            }
-        >
-            {title}
-        </h2>
-    ), [
+    ) => {
+        const isAccent = activeTemplate.layoutKind === 'accent';
+        return (
+            <h2
+                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent ? 'pl-3.5 py-1.5 flex items-center' : SECTION_TITLE_BOTTOM_PADDING} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING}`}
+                style={{
+                    ...sectionTitleStyle,
+                    ...touchHandleStyle,
+                    color: sectionId === 'summary' && activeTemplate.layoutKind === 'minimal'
+                        ? '#4b5563'
+                        : 'var(--rf-accent-text)',
+                    borderBottomColor: activeTemplate.layoutKind === 'minimal'
+                        ? '#e5e7eb'
+                        : isAccent ? 'transparent' : 'var(--rf-accent-border)',
+                    ...(isAccent ? {
+                        borderLeft: `5px solid var(--rf-accent-color)`,
+                        background: `linear-gradient(to right, var(--rf-accent-soft-bg), transparent)`,
+                        borderRadius: '0 4px 4px 0',
+                    } : {})
+                }}
+                onTouchStart={
+                    isReadOnly || showTouchDragHandles
+                        ? undefined
+                        : (event) => handleSectionTitleTouchStart(event, sectionId)
+                }
+            >
+                {title}
+            </h2>
+        );
+    }, [
         activeTemplate.layoutKind,
         isReadOnly,
         sectionHeadingBorderClassName,
@@ -1447,6 +1461,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         touchHandleStyle,
         touchSelectionClass,
     ]);
+    const renderAccentTopDecoration = React.useCallback(() => {
+        if (activeTemplate.layoutKind !== 'accent') {
+            return null;
+        }
+
+        return (
+            <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-0 right-0 top-0 h-1.5"
+                style={{ backgroundColor: 'var(--rf-accent-color)' }}
+            />
+        );
+    }, [activeTemplate.layoutKind]);
 
     const renderExperienceSection = (
         sectionId: 'work' | 'project',
@@ -1762,35 +1789,36 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
-                    className={`mb-6 overflow-hidden rounded-[26px] border ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    className={`scroll-mt-8 mb-8 flex flex-col`}
                     style={{
                         ...commonHeaderStyle,
-                        borderColor: 'var(--rf-accent-border)',
+                        paddingBottom: 0,
+                        borderBottom: 'none',
                     }}
                 >
-                    <div className="h-3" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
-                    <div className="px-5 pb-5 pt-4">
-                        <h1 className="text-[30px] font-bold tracking-[0.12em] text-gray-900">
+                    <div className="flex items-center mb-4 mt-2">
+                        <h1 
+                            className="text-[34px] font-bold tracking-[0.12em] text-gray-900 pl-4"
+                            style={{
+                                borderLeft: '6px solid var(--rf-accent-color)',
+                                borderRadius: '2px',
+                            }}
+                        >
                             {profile.name}
                         </h1>
-                        {contactItems.length ? (
-                            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-[11px] font-medium text-gray-600">
-                                {contactItems.map((item) => (
-                                    <span
-                                        key={item}
-                                        className="rounded-full border px-2.5 py-1"
-                                        style={{
-                                            borderColor: 'var(--rf-accent-border)',
-                                            backgroundColor: 'var(--rf-accent-soft-bg)',
-                                            color: 'var(--rf-accent-text)',
-                                        }}
-                                    >
-                                        {item}
-                                    </span>
-                                ))}
-                            </div>
-                        ) : null}
                     </div>
+                    {contactItems.length ? (
+                        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 text-[11.5px] font-medium text-gray-600 pl-5">
+                            {contactItems.map((item, index) => (
+                                <span key={item} className="inline-flex items-center whitespace-nowrap">
+                                    <span>{item}</span>
+                                    {index < contactItems.length - 1 && (
+                                        <span className="text-gray-300 ml-1.5 mr-0.5 opacity-60">|</span>
+                                    )}
+                                </span>
+                            ))}
+                        </div>
+                    ) : null}
                 </div>
             );
         }
@@ -2353,6 +2381,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         data-rf-preview-scope={previewScope}
                         style={previewStyle}
                     >
+                {renderAccentTopDecoration()}
                 <div
                     ref={previewContentRef}
                     className={previewContentLayoutClassName}

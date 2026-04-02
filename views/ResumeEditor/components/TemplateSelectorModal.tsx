@@ -67,19 +67,36 @@ const TemplateThumbnail: React.FC<{
 
   if (template.layoutKind === 'accent') {
     return (
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
-        <div className="h-3" style={{ backgroundColor: theme.accentColor }} />
-        <div className="p-3">
-          <div className="mb-2 h-2.5 w-24 rounded bg-gray-900/80" />
-          <div className="mb-3 flex gap-1">
-            <div className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentSoftBg }} />
-            <div className="h-1.5 w-10 rounded-full" style={{ backgroundColor: theme.accentSoftBg }} />
+      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+        <div className="absolute left-0 right-0 top-0 h-[3px]" style={{ backgroundColor: theme.accentColor }} />
+        <div className="p-3 pt-4">
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center">
+              <div className="mr-1.5 h-2.5 w-1 rounded-[1px]" style={{ backgroundColor: theme.accentColor }} />
+              <div className="h-2.5 w-16 rounded bg-gray-900/80" />
+            </div>
+            <div className="flex items-center gap-1.5 pl-2.5">
+              <div className="h-1 w-12 rounded bg-gray-300/80" />
+              <div className="h-1.5 w-[1px] bg-gray-300/50" />
+              <div className="h-1 w-14 rounded bg-gray-300/80" />
+            </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {[0, 1, 2].map((item) => (
-              <div key={item} className="rounded-md border px-2 py-1.5" style={{ borderColor: theme.accentBorder }}>
-                <div className="mb-1 h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentColor }} />
-                <div className="h-1.5 w-full rounded bg-gray-200" />
+              <div key={item}>
+                <div className="mb-1.5 flex items-stretch">
+                  <div className="w-[3px] shrink-0 rounded-l-[1px]" style={{ backgroundColor: theme.accentColor }} />
+                  <div
+                    className="flex flex-1 items-center px-1.5 py-0.5"
+                    style={{ background: `linear-gradient(to right, ${theme.accentSoftBg}, transparent)` }}
+                  >
+                    <div className="h-1.5 w-12 rounded opacity-70" style={{ backgroundColor: theme.accentColor }} />
+                  </div>
+                </div>
+                <div className="space-y-1.5 pl-[4.5px]">
+                  <div className="h-1.5 w-full rounded bg-gray-200 dark:bg-gray-800" />
+                  <div className="h-1.5 w-5/6 rounded bg-gray-200 dark:bg-gray-800" />
+                </div>
               </div>
             ))}
           </div>
