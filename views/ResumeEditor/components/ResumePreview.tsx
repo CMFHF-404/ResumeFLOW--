@@ -81,6 +81,8 @@ const TOUCH_AUTOSCROLL_EDGE_PX = 88;
 const TOUCH_AUTOSCROLL_MAX_STEP_PX = 18;
 const TOUCH_DRAG_PREVIEW_LIFT_PX = 10;
 const EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO = 1.4;
+const A4_PAGE_WIDTH_MM = 210;
+const SPLIT_TEMPLATE_SIDEBAR_RATIO = 0.4;
 const DESKTOP_EDITOR_MEDIA_QUERY = '(min-width: 768px)';
 const MOBILE_EDITOR_MEDIA_QUERY = '(max-width: 767px)';
 const MOBILE_USER_AGENT_PATTERN = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i;
@@ -448,7 +450,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     );
     const isSplitTemplate = activeTemplate.layoutKind === 'split';
     const isSplitSidebarEligibleSection = React.useCallback(
-        (sectionId: string) => sectionId === 'summary' || sectionId === 'skills',
+        (sectionId: string) => (
+            sectionId === 'summary'
+            || sectionId === 'education'
+            || sectionId === 'certifications'
+            || sectionId === 'skills'
+        ),
         []
     );
     const splitColumnSectionIds = React.useMemo(() => {
@@ -548,7 +555,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [touchFeedback]);
     const getTemplateSectionSurfaceToneClass = React.useCallback((sectionId: string) => {
         if (isSplitTemplate && splitSidebarSectionIdSet.has(sectionId)) {
-            return 'border border-[var(--rf-accent-border)] bg-[var(--rf-accent-soft-bg)]';
+            return 'rounded-none border-0 bg-transparent';
         }
         if (activeTemplate.layoutKind === 'accent') {
             return 'rounded-2xl border border-[var(--rf-accent-border)]/80 bg-white';
@@ -1295,6 +1302,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [isScaledEditorPreview, scaledPreviewMetrics.heightPx, scaledPreviewMetrics.widthPx]);
 
     const previewStyle = React.useMemo(() => {
+        const splitTemplateSidebarWidthMm = PREVIEW_PADDING_MM
+            + ((A4_PAGE_WIDTH_MM - (PREVIEW_PADDING_MM * 2)) * SPLIT_TEMPLATE_SIDEBAR_RATIO);
         const baseStyle = {
             lineHeight,
             fontSize: `${fontSize}px`,
@@ -1309,6 +1318,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             '--rf-accent-soft-bg': activeThemeColor.accentSoftBg,
             '--rf-accent-border': activeThemeColor.accentBorder,
             '--rf-accent-text': activeThemeColor.accentText,
+            background: isSplitTemplate
+                ? `linear-gradient(to right, var(--rf-accent-soft-bg) 0 ${splitTemplateSidebarWidthMm}mm, #ffffff ${splitTemplateSidebarWidthMm}mm 100%)`
+                : '#ffffff',
         } as React.CSSProperties;
 
         if (!isScaledEditorPreview) {
@@ -1326,6 +1338,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         bulletSpacingValue,
         fontSize,
         isScaledEditorPreview,
+        isSplitTemplate,
         lineHeight,
         listSpacingValue,
         scaledPreviewMetrics.scale,
@@ -1337,8 +1350,31 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     ]);
 
     const previewContentLayoutClassName = React.useMemo(
-        () => (isSplitTemplate ? 'grid grid-cols-[0.82fr_1.18fr] gap-x-6 items-start' : ''),
+        () => (isSplitTemplate
+            ? `grid grid-cols-[0.8fr_1.2fr] rounded-[30px] ${isReadOnly ? 'overflow-hidden' : ''}`.trim()
+            : ''),
+        [isReadOnly, isSplitTemplate]
+    );
+    const previewContentLayoutStyle = React.useMemo(
+        () => (isSplitTemplate
+            ? {
+                backgroundColor: '#ffffff',
+            } as React.CSSProperties
+            : undefined),
         [isSplitTemplate]
+    );
+    const splitSidebarColumnStyle = React.useMemo(
+        () => ({
+            backgroundColor: 'var(--rf-accent-soft-bg)',
+            borderRight: '1px solid var(--rf-accent-border)',
+        } as React.CSSProperties),
+        []
+    );
+    const splitMainColumnStyle = React.useMemo(
+        () => ({
+            backgroundColor: '#ffffff',
+        } as React.CSSProperties),
+        []
     );
     const getTemplateSectionWrapperStyle = React.useCallback((sectionId: string) => {
         return sectionWrapperStyle;
@@ -1557,11 +1593,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                 : (event) => handleItemCardTouchStart(event, itemKey)
                                         }
                                     >
-                                        <div className="flex justify-between items-baseline mb-1">
-                                            <h3 className="text-sm font-bold text-gray-900">
-                                                {item.company}
-                                            </h3>
-                                            <span className="text-xs font-medium text-gray-900">
+                                        <div className="mb-1 flex items-start gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="text-sm font-bold leading-snug text-gray-900">
+                                                    {item.company}
+                                                </h3>
+                                            </div>
+                                            <span className="shrink-0 whitespace-nowrap pt-0.5 text-xs font-medium text-gray-900">
                                                 {item.date}
                                             </span>
                                         </div>
@@ -1646,22 +1684,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
-                    className={`scroll-mt-8 rounded-[28px] border p-5 ${HEADER_EXTRA_TOP_SPACING_CLASS}`}
+                    className={`scroll-mt-8 ${HEADER_EXTRA_TOP_SPACING_CLASS}`}
                     style={{
                         ...commonHeaderStyle,
-                        gridColumn: '1',
-                        backgroundColor: 'var(--rf-accent-soft-bg)',
-                        borderColor: 'var(--rf-accent-border)',
                     }}
                 >
-                    <div className="mb-4 flex items-start justify-between gap-4">
+                    <div className="mb-5 flex items-start justify-between gap-5">
                         <div className="min-w-0 flex-1">
                             <div className="mb-2 h-1.5 w-14 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
                             <h1 className="text-[28px] font-bold tracking-[0.12em] text-gray-900">
                                 {profile.name}
                             </h1>
                         </div>
-                        {renderAvatarFrame('flex h-24 w-[4.25rem] shrink-0 overflow-hidden rounded-2xl border border-white/70 bg-white p-0.5 shadow-sm')}
+                        {renderAvatarFrame('flex h-32 w-24 shrink-0 overflow-hidden rounded-[1.4rem] border border-white/75 bg-white p-0.5 shadow-sm')}
                     </div>
                     {contactItems.length ? (
                         <div className="space-y-1.5 text-[11px] font-medium text-gray-700">
@@ -1940,7 +1975,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                             }
                                         >
-                                            <div className="flex justify-between items-baseline mb-0.5">
+                                            <div className="mb-0.5 flex justify-between items-baseline">
                                                 <h3 className="text-sm font-bold text-gray-900">
                                                     {edu.school}
                                                 </h3>
@@ -1949,7 +1984,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                 </span>
                                             </div>
                                             <p className="text-xs text-gray-900">
-                                                {edu.major}, {edu.degree}
+                                                {edu.major ? <span className="font-semibold">{edu.major}</span> : null}
+                                                {edu.major && edu.degree ? ' | ' : null}
+                                                {edu.degree || null}
                                             </p>
                                             {edu.gpa ? (
                                                 <p className="text-xs text-gray-900">GPA: {edu.gpa}</p>
@@ -2108,18 +2145,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                             }
                                         >
-                                            <div className="flex justify-between items-baseline">
-                                                <div>
-                                                    <span className="text-xs font-bold text-gray-900">
-                                                        {cert.name}
-                                                    </span>
-                                                    {cert.issuer ? (
-                                                        <span className="text-xs text-gray-900 ml-2">
-                                                            ({cert.issuer})
-                                                        </span>
-                                                    ) : null}
+                                            <div className="space-y-1">
+                                                <div className="text-xs font-bold text-gray-900">
+                                                    {cert.name}
                                                 </div>
-                                                <span className="text-xs text-gray-900">{cert.date}</span>
+                                                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs text-gray-700">
+                                                    <span>{cert.issuer ? `(${cert.issuer})` : ''}</span>
+                                                    <span className="font-medium text-gray-900">{cert.date}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -2323,6 +2356,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 <div
                     ref={previewContentRef}
                     className={previewContentLayoutClassName}
+                    style={previewContentLayoutStyle}
                     onDragOver={
                         isReadOnly
                             ? undefined
@@ -2356,11 +2390,17 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 >
                     {isSplitTemplate ? (
                         <>
-                            <div className="flex min-w-0 flex-col">
+                            <div
+                                className="flex min-w-0 flex-col self-stretch px-6 pb-7 pt-6"
+                                style={splitSidebarColumnStyle}
+                            >
                                 {renderHeaderBlock()}
                                 {renderOrderedSections(splitColumnSectionIds.sidebar)}
                             </div>
-                            <div className="flex min-w-0 flex-col">
+                            <div
+                                className="flex min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
+                                style={splitMainColumnStyle}
+                            >
                                 {renderOrderedSections(splitColumnSectionIds.main)}
                             </div>
                         </>
