@@ -141,7 +141,14 @@ import {
     sortByCategory,
 } from './helpers';
 import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
-import { DEFAULT_RESUME_TEMPLATE_ID, type ResumeTemplateId } from '../../constants/resumeTemplates';
+import {
+    DEFAULT_RESUME_TEMPLATE_ID,
+    RESUME_THEME_COLOR_PRESETS,
+    normalizeResumeTemplateId,
+    resolveDefaultResumeThemeColorPresetId,
+    type ResumeTemplateId,
+    type ResumeThemeColorPresetId,
+} from '../../constants/resumeTemplates';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
@@ -947,6 +954,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const isUpdatingResumeNameRef = useRef(false);
     const [isExportingPdf, setIsExportingPdf] = useState(false);
     const [resumeTemplateId, setResumeTemplateId] = useState<ResumeTemplateId>(DEFAULT_RESUME_TEMPLATE_ID);
+    const [themeColorPresetId, setThemeColorPresetId] = useState<ResumeThemeColorPresetId>(
+        resolveDefaultResumeThemeColorPresetId(DEFAULT_RESUME_TEMPLATE_ID)
+    );
 
     const layoutOrders: ResumeLayoutOrders = useMemo(
         () => ({
@@ -981,6 +991,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 isSummaryVisible,
                 layoutOrders,
                 resumeTemplateId,
+                themeColorPresetId,
                 persistedJDAnalysisSnapshot
             ),
         [
@@ -997,6 +1008,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             profile,
             profileSyncMode,
             resumeTemplateId,
+            themeColorPresetId,
             sectionOrder,
             sectionSpacingKey,
             selectedCertIds,
@@ -1014,7 +1026,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setLineHeight(nextLayout.lineHeight);
         setFontSize(nextLayout.fontSize);
         setIsSmartPageApplied(nextLayout.isSmartPageApplied);
-        setResumeTemplateId(config.layout?.templateId ?? DEFAULT_RESUME_TEMPLATE_ID);
+        const rawTemplateId = config.layout?.templateId;
+        const nextTemplateId = normalizeResumeTemplateId(rawTemplateId);
+        setResumeTemplateId(nextTemplateId);
+        setThemeColorPresetId(
+            config.layout?.themeColorPresetId
+            ?? resolveDefaultResumeThemeColorPresetId(rawTemplateId ?? nextTemplateId)
+        );
     }, []);
     const {
         resumeId,
@@ -1110,6 +1128,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isSummaryVisible,
             layoutOrders,
             resumeTemplateId,
+            themeColorPresetId,
             committedPersistedJDAnalysisSnapshot
         );
     }, [
@@ -1129,6 +1148,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         profile,
         profileSyncMode,
         resumeTemplateId,
+        themeColorPresetId,
         sectionOrder,
         sectionSpacingKey,
         selectedCertIds,
@@ -3610,6 +3630,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedCertIds,
             selectedSkillGroups,
             templateId: resumeTemplateId,
+            themeColorPresetId,
         });
         const exportTitle = buildResumeExportTitle(resumeName);
         const toastId = showToastLoading('正在生成 PDF...');
@@ -3977,11 +3998,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                 max: MAX_ITEM_SPACING_EM,
                                 step: SMART_PAGE_ITEM_SPACING_STEP,
                             }}
+                            themeColorPresetId={themeColorPresetId}
+                            themeColorOptions={RESUME_THEME_COLOR_PRESETS}
                             onLineHeightChange={handleLineHeightChange}
                             onFontSizeChange={handleFontSizeChange}
                             onTopPaddingChange={handleTopPaddingChange}
                             onSectionSpacingChange={handleSectionSpacingChange}
                             onItemSpacingChange={handleItemSpacingChange}
+                            onThemeColorChange={setThemeColorPresetId}
                         />
                     ) : null}
                     <ResumePreview
@@ -3994,6 +4018,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         bulletSpacingValue={bulletSpacingValue}
                         topPaddingPx={topPaddingPx}
                         templateId={resumeTemplateId}
+                        themeColorPresetId={themeColorPresetId}
                         profile={previewProfile}
                         sectionSpacingClass={sectionSpacingClass}
                         listSpacingClass={listSpacingClass}
@@ -4031,7 +4056,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 selectedTemplateId={resumeTemplateId}
                 onClose={() => setIsTemplateSelectorOpen(false)}
                 onSelectTemplate={(templateId) => {
+                    if (templateId === resumeTemplateId) {
+                        setIsTemplateSelectorOpen(false);
+                        return;
+                    }
                     setResumeTemplateId(templateId);
+                    setThemeColorPresetId(resolveDefaultResumeThemeColorPresetId(templateId));
                     setIsTemplateSelectorOpen(false);
                 }}
             />
@@ -4062,6 +4092,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     bulletSpacingValue={measureBulletSpacingValue}
                     topPaddingPx={measureLayout.topPaddingPx}
                     templateId={resumeTemplateId}
+                    themeColorPresetId={themeColorPresetId}
                     profile={previewProfile}
                     sectionSpacingClass={measureSectionSpacingClass}
                     listSpacingClass={listSpacingClass}

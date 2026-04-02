@@ -5,6 +5,13 @@ import type { Certification as CertificationRecord } from '../../../services/cer
 import type { UserSkill } from '../../../services/skillsService';
 import type { Profile } from '../../../services/profileService';
 import type { ResumeDetail } from '../../../services/resumeService';
+import {
+    DEFAULT_RESUME_TEMPLATE_ID,
+    normalizeResumeTemplateId,
+    resolveDefaultResumeThemeColorPresetId,
+    type ResumeTemplateId,
+    type ResumeThemeColorPresetId,
+} from '../../../constants/resumeTemplates';
 import type {
     CertificationView,
     EducationView,
@@ -58,6 +65,8 @@ type PreviewState = {
     selectedCertIds: Set<string>;
     selectedSkillGroups: SkillGroupView[];
     density: 'compact' | 'standard' | 'spacious';
+    templateId: ResumeTemplateId;
+    themeColorPresetId: ResumeThemeColorPresetId;
 };
 
 type PreviewSnapshot = {
@@ -159,6 +168,8 @@ const buildPreviewState = (
     skills: UserSkill[]
 ): PreviewState => {
     const config = (detail.resume?.config || {}) as ResumeEditorConfig;
+    const rawTemplateId = config.layout?.templateId;
+    const templateId = normalizeResumeTemplateId(rawTemplateId);
     const density = config.layout?.density ?? 'standard';
     const sectionOrder = normalizeSectionOrder(config.layout?.sectionOrder);
     const orders = config.layout?.orders;
@@ -209,6 +220,9 @@ const buildPreviewState = (
         selectedCertIds,
         selectedSkillGroups: buildSelectedSkillGroups(orderedSkillGroups, selectedSkillIds),
         density,
+        templateId,
+        themeColorPresetId: config.layout?.themeColorPresetId
+            ?? resolveDefaultResumeThemeColorPresetId(rawTemplateId ?? templateId ?? DEFAULT_RESUME_TEMPLATE_ID),
     };
 };
 
@@ -375,6 +389,8 @@ const buildResumePreviewProps = (
     listSpacingValue,
     bulletSpacingValue: DEFAULT_BULLET_SPACING_VALUE,
     topPaddingPx: DEFAULT_TOP_PADDING_PX,
+    templateId: previewState.templateId,
+    themeColorPresetId: previewState.themeColorPresetId,
     profile: previewState.profile,
     sectionSpacingClass: spacingClass,
     listSpacingClass: 'space-y-[var(--rf-list-spacing)]',

@@ -14,7 +14,7 @@ import type {
     SkillGroupView,
     StarFields,
 } from '../../types/resume';
-import type { ResumeTemplateId } from '../../constants/resumeTemplates';
+import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../../constants/resumeTemplates';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
 import type { ResumeDetail, ResumeExperienceItem } from '../../services/resumeService';
@@ -349,6 +349,9 @@ export const buildProfileFromService = (profile?: Profile | null): ResumeEditorP
     if (!profile) {
         return null;
     }
+    const avatarDataUrl = typeof profile.extra_json?.avatar_data_url === 'string'
+        ? profile.extra_json.avatar_data_url
+        : '';
     return {
         name: profile.full_name || '',
         email: profile.email || '',
@@ -356,6 +359,7 @@ export const buildProfileFromService = (profile?: Profile | null): ResumeEditorP
         location: profile.location || '',
         linkedin: resolveLinkedInLink(profile),
         summary: profile.summary || '',
+        avatarDataUrl,
     };
 };
 
@@ -366,12 +370,15 @@ const isSameProfileSnapshot = (
     if (!base || !other) {
         return false;
     }
+    const baseAvatarDataUrl = typeof base.avatarDataUrl === 'string' ? base.avatarDataUrl : '';
+    const otherAvatarDataUrl = typeof other.avatarDataUrl === 'string' ? other.avatarDataUrl : '';
     return base.name === other.name
         && base.email === other.email
         && base.phone === other.phone
         && base.location === other.location
         && base.linkedin === other.linkedin
-        && base.summary === other.summary;
+        && base.summary === other.summary
+        && baseAvatarDataUrl === otherAvatarDataUrl;
 };
 
 export const resolveProfileSyncMode = (
@@ -441,6 +448,7 @@ export const buildResumeConfigSnapshot = (
     isSummaryVisible: boolean,
     orders: ResumeLayoutOrders,
     templateId: ResumeTemplateId,
+    themeColorPresetId: ResumeThemeColorPresetId,
     jdAnalysis?: ResumeJDAnalysis | null
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
@@ -464,6 +472,7 @@ export const buildResumeConfigSnapshot = (
         isSummaryVisible,
         orders: { ...orders },
         templateId,
+        themeColorPresetId,
     },
     ...(jdAnalysis ? { jdAnalysis } : {}),
 });

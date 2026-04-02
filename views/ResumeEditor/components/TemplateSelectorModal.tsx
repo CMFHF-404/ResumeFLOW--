@@ -2,6 +2,8 @@ import React from 'react';
 import { Check, X } from 'lucide-react';
 import {
   RESUME_TEMPLATE_DEFINITIONS,
+  resolveDefaultResumeThemeColorPresetId,
+  resolveResumeThemeColor,
   resolveResumeTemplate,
   type ResumeTemplateId,
 } from '../../../constants/resumeTemplates';
@@ -11,6 +13,129 @@ type TemplateSelectorModalProps = {
   selectedTemplateId: ResumeTemplateId;
   onClose: () => void;
   onSelectTemplate: (id: ResumeTemplateId) => void;
+};
+
+const TemplateThumbnail: React.FC<{
+  templateId: ResumeTemplateId;
+}> = ({ templateId }) => {
+  const template = resolveResumeTemplate(templateId);
+  const theme = resolveResumeThemeColor(
+    templateId,
+    resolveDefaultResumeThemeColorPresetId(templateId)
+  );
+
+  if (template.layoutKind === 'classic') {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
+        <div className="mb-2 h-1.5 w-28 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+        <div className="mb-1 h-2.5 w-20 rounded bg-gray-900/80" />
+        <div className="mb-3 h-1.5 w-40 rounded bg-gray-200" />
+        <div className="space-y-2">
+          {[0, 1, 2].map((item) => (
+            <div key={item}>
+              <div className="mb-1 h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+              <div className="h-1.5 w-full rounded bg-gray-200" />
+              <div className="mt-1 h-1.5 w-4/5 rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (template.layoutKind === 'minimal') {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
+        <div className="mb-2 flex justify-center">
+          <div className="h-2.5 w-20 rounded bg-gray-900/80" />
+        </div>
+        <div className="mb-3 flex justify-center">
+          <div className="h-1 w-16 rounded-full" style={{ backgroundColor: theme.accentBorder }} />
+        </div>
+        <div className="space-y-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item}>
+              <div className="mb-1 h-1.5 w-10 rounded-full bg-gray-300" />
+              <div className="h-1.5 w-full rounded bg-gray-200" />
+              <div className="mt-1 h-1.5 w-3/4 rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (template.layoutKind === 'accent') {
+    return (
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+        <div className="h-3" style={{ backgroundColor: theme.accentColor }} />
+        <div className="p-3">
+          <div className="mb-2 h-2.5 w-24 rounded bg-gray-900/80" />
+          <div className="mb-3 flex gap-1">
+            <div className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentSoftBg }} />
+            <div className="h-1.5 w-10 rounded-full" style={{ backgroundColor: theme.accentSoftBg }} />
+          </div>
+          <div className="space-y-2">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="rounded-md border px-2 py-1.5" style={{ borderColor: theme.accentBorder }}>
+                <div className="mb-1 h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+                <div className="h-1.5 w-full rounded bg-gray-200" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (template.layoutKind === 'avatar') {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 h-2.5 w-16 rounded bg-gray-900/80" />
+            <div className="h-1.5 w-full rounded bg-gray-200" />
+          </div>
+          <div className="h-10 w-7 rounded-md border border-gray-300 bg-gray-100" />
+        </div>
+        <div className="mb-3 h-1 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+        <div className="space-y-2">
+          {[0, 1].map((item) => (
+            <div key={item}>
+              <div className="mb-1 h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+              <div className="h-1.5 w-full rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+      <div className="grid grid-cols-[0.7fr_1.3fr]">
+        <div className="p-3" style={{ backgroundColor: theme.accentSoftBg }}>
+          <div className="mb-2 h-10 w-7 rounded-md border border-white/70 bg-white/80" />
+          <div className="mb-1 h-1.5 w-10 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+          <div className="space-y-1">
+            <div className="h-1.5 w-full rounded bg-white/80" />
+            <div className="h-1.5 w-4/5 rounded bg-white/80" />
+            <div className="h-1.5 w-3/5 rounded bg-white/80" />
+          </div>
+        </div>
+        <div className="p-3">
+          <div className="mb-2 h-2.5 w-[4.5rem] rounded bg-gray-900/80" />
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="mb-2">
+              <div className="mb-1 h-1.5 w-11 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+              <div className="h-1.5 w-full rounded bg-gray-200" />
+              <div className="mt-1 h-1.5 w-3/4 rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
@@ -39,27 +164,12 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {RESUME_TEMPLATE_DEFINITIONS.map((template) => {
             const isSelected = template.id === selectedTemplateId;
-            const resolved = resolveResumeTemplate(template.id);
             return (
               <article
                 key={template.id}
-                className={`rounded-xl border p-3 ${template.cardClassName} ${isSelected ? 'ring-2 ring-primary' : ''}`}
+                className={`rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900 ${isSelected ? 'ring-2 ring-primary' : ''}`}
               >
-                <div className="mb-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
-                  <div className={`mb-2 flex ${resolved.headerClassName === 'text-center' ? 'justify-center' : 'justify-between'} items-center`}>
-                    {template.hasAvatar ? (
-                      <div className="mr-2 flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">
-                        照片
-                      </div>
-                    ) : null}
-                    <div className={`h-2 w-24 rounded ${resolved.headerClassName === 'text-center' ? '' : 'flex-1'}`} style={{ backgroundColor: template.accentColor }} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="h-1.5 w-full rounded bg-gray-200" />
-                    <div className="h-1.5 w-4/5 rounded bg-gray-200" />
-                    <div className="h-1.5 w-3/4 rounded bg-gray-200" />
-                  </div>
-                </div>
+                <TemplateThumbnail templateId={template.id} />
 
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{template.name}</h3>
                 <p className="mt-1 min-h-[38px] text-xs text-gray-500 dark:text-gray-400">{template.description}</p>

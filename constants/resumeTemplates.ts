@@ -3,81 +3,178 @@ export type ResumeTemplateId =
   | 'minimal-gray'
   | 'accent-emerald'
   | 'avatar-professional'
-  | 'avatar-creative'
   | 'avatar-split';
+
+export type ResumeThemeColorPresetId =
+  | 'slate'
+  | 'blue'
+  | 'emerald'
+  | 'teal'
+  | 'violet'
+  | 'rose'
+  | 'amber';
+
+export type ResumeTemplateLayoutKind =
+  | 'classic'
+  | 'minimal'
+  | 'accent'
+  | 'avatar'
+  | 'split';
 
 export type ResumeTemplateDefinition = {
   id: ResumeTemplateId;
   name: string;
   description: string;
   hasAvatar: boolean;
+  layoutKind: ResumeTemplateLayoutKind;
+  defaultThemeColorPresetId: ResumeThemeColorPresetId;
+};
+
+export type ResumeThemeColorDefinition = {
+  id: ResumeThemeColorPresetId;
+  name: string;
   accentColor: string;
-  headerClassName: string;
-  cardClassName: string;
+  accentSoftBg: string;
+  accentBorder: string;
+  accentText: string;
 };
 
 export const DEFAULT_RESUME_TEMPLATE_ID: ResumeTemplateId = 'modern-slate';
+const LEGACY_TEMPLATE_ID_MAP: Record<string, ResumeTemplateId> = {
+  'avatar-creative': 'avatar-professional',
+};
+const LEGACY_TEMPLATE_DEFAULT_THEME_COLOR_MAP: Record<string, ResumeThemeColorPresetId> = {
+  'avatar-creative': 'violet',
+};
+
+export const RESUME_THEME_COLOR_PRESETS: ResumeThemeColorDefinition[] = [
+  {
+    id: 'slate',
+    name: '岩墨灰',
+    accentColor: '#334155',
+    accentSoftBg: '#f1f5f9',
+    accentBorder: '#cbd5e1',
+    accentText: '#1e293b',
+  },
+  {
+    id: 'blue',
+    name: '商务蓝',
+    accentColor: '#2563eb',
+    accentSoftBg: '#eff6ff',
+    accentBorder: '#bfdbfe',
+    accentText: '#1d4ed8',
+  },
+  {
+    id: 'emerald',
+    name: '翡翠绿',
+    accentColor: '#059669',
+    accentSoftBg: '#ecfdf5',
+    accentBorder: '#a7f3d0',
+    accentText: '#047857',
+  },
+  {
+    id: 'teal',
+    name: '青湖色',
+    accentColor: '#0f766e',
+    accentSoftBg: '#f0fdfa',
+    accentBorder: '#99f6e4',
+    accentText: '#115e59',
+  },
+  {
+    id: 'violet',
+    name: '经典紫',
+    accentColor: '#7c3aed',
+    accentSoftBg: '#f5f3ff',
+    accentBorder: '#ddd6fe',
+    accentText: '#6d28d9',
+  },
+  {
+    id: 'rose',
+    name: '玫瑰红',
+    accentColor: '#e11d48',
+    accentSoftBg: '#fff1f2',
+    accentBorder: '#fecdd3',
+    accentText: '#be123c',
+  },
+  {
+    id: 'amber',
+    name: '琥珀橙',
+    accentColor: '#d97706',
+    accentSoftBg: '#fffbeb',
+    accentBorder: '#fde68a',
+    accentText: '#b45309',
+  },
+] as const;
 
 export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
   {
     id: 'modern-slate',
     name: '现代深灰',
-    description: '稳重商务风，适合绝大多数岗位',
+    description: 'ATS 友好的成熟单栏模板，结构清晰稳重。',
     hasAvatar: false,
-    accentColor: '#0f172a',
-    headerClassName: 'text-center',
-    cardClassName: 'bg-white border-slate-200',
+    layoutKind: 'classic',
+    defaultThemeColorPresetId: 'slate',
   },
   {
     id: 'minimal-gray',
     name: '极简留白',
-    description: '简约清爽，强调内容可读性',
+    description: '轻装饰、强可读的 clean 模板，适合大多数岗位。',
     hasAvatar: false,
-    accentColor: '#374151',
-    headerClassName: 'text-left',
-    cardClassName: 'bg-white border-gray-200',
+    layoutKind: 'minimal',
+    defaultThemeColorPresetId: 'slate',
   },
   {
     id: 'accent-emerald',
     name: '活力青绿',
-    description: '有辨识度的现代科技风',
+    description: '现代强调色单栏模板，保留专业感与识别度。',
     hasAvatar: false,
-    accentColor: '#059669',
-    headerClassName: 'text-left',
-    cardClassName: 'bg-emerald-50/60 border-emerald-200',
+    layoutKind: 'accent',
+    defaultThemeColorPresetId: 'emerald',
   },
   {
     id: 'avatar-professional',
     name: '商务头像',
-    description: '带大头照，适合咨询/销售/客户岗位',
+    description: '右上头像与左侧信息严格分栏，适合正式商务简历。',
     hasAvatar: true,
-    accentColor: '#1d4ed8',
-    headerClassName: 'text-left',
-    cardClassName: 'bg-blue-50/60 border-blue-200',
-  },
-  {
-    id: 'avatar-creative',
-    name: '创意头像',
-    description: '带大头照，适合设计/产品岗位',
-    hasAvatar: true,
-    accentColor: '#7c3aed',
-    headerClassName: 'text-left',
-    cardClassName: 'bg-violet-50/60 border-violet-200',
+    layoutKind: 'avatar',
+    defaultThemeColorPresetId: 'blue',
   },
   {
     id: 'avatar-split',
     name: '侧栏头像',
-    description: '带大头照，强化个人品牌识别',
+    description: '成熟双栏模板，左侧品牌信息，右侧主内容。',
     hasAvatar: true,
-    accentColor: '#ea580c',
-    headerClassName: 'text-left',
-    cardClassName: 'bg-orange-50/60 border-orange-200',
+    layoutKind: 'split',
+    defaultThemeColorPresetId: 'amber',
   },
-];
+] as const;
 
-export const resolveResumeTemplate = (templateId?: string | null): ResumeTemplateDefinition => {
+export const normalizeResumeTemplateId = (templateId?: string | null): ResumeTemplateId => {
   if (!templateId) {
-    return RESUME_TEMPLATE_DEFINITIONS[0];
+    return DEFAULT_RESUME_TEMPLATE_ID;
   }
-  return RESUME_TEMPLATE_DEFINITIONS.find((item) => item.id === templateId) ?? RESUME_TEMPLATE_DEFINITIONS[0];
+  const resolvedId = LEGACY_TEMPLATE_ID_MAP[templateId] ?? templateId;
+  return RESUME_TEMPLATE_DEFINITIONS.find((item) => item.id === resolvedId)?.id ?? DEFAULT_RESUME_TEMPLATE_ID;
+};
+
+export const resolveResumeTemplate = (templateId?: string | null): ResumeTemplateDefinition => (
+  RESUME_TEMPLATE_DEFINITIONS.find((item) => item.id === normalizeResumeTemplateId(templateId))
+  ?? RESUME_TEMPLATE_DEFINITIONS[0]
+);
+
+export const resolveDefaultResumeThemeColorPresetId = (
+  templateId?: ResumeTemplateId | string | null
+): ResumeThemeColorPresetId => (
+  (templateId && LEGACY_TEMPLATE_DEFAULT_THEME_COLOR_MAP[templateId])
+  ?? resolveResumeTemplate(templateId).defaultThemeColorPresetId
+);
+
+export const resolveResumeThemeColor = (
+  templateId?: ResumeTemplateId | string | null,
+  themeColorPresetId?: ResumeThemeColorPresetId | string | null
+): ResumeThemeColorDefinition => {
+  const resolvedPresetId = (themeColorPresetId && RESUME_THEME_COLOR_PRESETS.some((item) => item.id === themeColorPresetId))
+    ? themeColorPresetId as ResumeThemeColorPresetId
+    : resolveDefaultResumeThemeColorPresetId(templateId);
+  return RESUME_THEME_COLOR_PRESETS.find((item) => item.id === resolvedPresetId) ?? RESUME_THEME_COLOR_PRESETS[0];
 };

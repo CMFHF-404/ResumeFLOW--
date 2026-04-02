@@ -24,7 +24,12 @@ import {
 } from '../../../utils/richText';
 import { type DropPosition, resolveDragTarget } from '../../../utils/dragSort';
 import { buildDragItemKey } from '../dragKeys';
-import { resolveResumeTemplate, type ResumeTemplateId } from '../../../constants/resumeTemplates';
+import {
+    resolveResumeTemplate,
+    resolveResumeThemeColor,
+    type ResumeTemplateId,
+    type ResumeThemeColorPresetId,
+} from '../../../constants/resumeTemplates';
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
@@ -268,6 +273,7 @@ export type ResumePreviewProps = {
     bulletSpacingValue: string;
     topPaddingPx: number;
     templateId?: ResumeTemplateId;
+    themeColorPresetId?: ResumeThemeColorPresetId;
     profile: ResumeEditorProfile;
     sectionSpacingClass: string;
     listSpacingClass: string;
@@ -310,6 +316,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     bulletSpacingValue,
     topPaddingPx,
     templateId = 'modern-slate',
+    themeColorPresetId,
     profile,
     sectionSpacingClass,
     listSpacingClass,
@@ -435,6 +442,45 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         () => resolveResumeTemplate(templateId),
         [templateId]
     );
+    const activeThemeColor = React.useMemo(
+        () => resolveResumeThemeColor(templateId, themeColorPresetId),
+        [templateId, themeColorPresetId]
+    );
+    const isSplitTemplate = activeTemplate.layoutKind === 'split';
+    const isSplitSidebarEligibleSection = React.useCallback(
+        (sectionId: string) => sectionId === 'summary' || sectionId === 'skills',
+        []
+    );
+    const splitColumnSectionIds = React.useMemo(() => {
+        if (!isSplitTemplate) {
+            return {
+                sidebar: [] as string[],
+                main: visibleSectionOrder,
+            };
+        }
+
+        const sidebar: string[] = [];
+        const main: string[] = [];
+        let hasEnteredMainColumn = false;
+
+        for (const sectionId of visibleSectionOrder) {
+            // Once the user places any section into the main flow, later sections should
+            // stay in that flow so the saved section order remains visible in split layouts.
+            if (!hasEnteredMainColumn && isSplitSidebarEligibleSection(sectionId)) {
+                sidebar.push(sectionId);
+                continue;
+            }
+
+            hasEnteredMainColumn = true;
+            main.push(sectionId);
+        }
+
+        return { sidebar, main };
+    }, [isSplitSidebarEligibleSection, isSplitTemplate, visibleSectionOrder]);
+    const splitSidebarSectionIdSet = React.useMemo(
+        () => new Set(splitColumnSectionIds.sidebar),
+        [splitColumnSectionIds.sidebar]
+    );
     const profileInitials = React.useMemo(() => {
         const normalized = (profile.name || '').trim();
         if (!normalized) {
@@ -446,6 +492,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }
         return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
     }, [profile.name]);
+    const avatarSrc = React.useMemo(
+        () => profile.avatarDataUrl?.trim() ?? '',
+        [profile.avatarDataUrl]
+    );
+    const [hasAvatarLoadError, setHasAvatarLoadError] = React.useState(false);
+
+    React.useEffect(() => {
+        setHasAvatarLoadError(false);
+    }, [avatarSrc]);
 
     const headerStyle = React.useMemo(
         () => ({
@@ -491,9 +546,25 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         }
         return touchFeedback.phase;
     }, [touchFeedback]);
+    const getTemplateSectionSurfaceToneClass = React.useCallback((sectionId: string) => {
+        if (isSplitTemplate && splitSidebarSectionIdSet.has(sectionId)) {
+            return 'border border-[var(--rf-accent-border)] bg-[var(--rf-accent-soft-bg)]';
+        }
+        if (activeTemplate.layoutKind === 'accent') {
+            return 'rounded-2xl border border-[var(--rf-accent-border)]/80 bg-white';
+        }
+        if (activeTemplate.layoutKind === 'minimal') {
+            return 'rounded-xl border border-gray-200/80 bg-white/80';
+        }
+        if (activeTemplate.layoutKind === 'avatar') {
+            return 'rounded-xl border border-gray-200 bg-white';
+        }
+        return '';
+    }, [activeTemplate.layoutKind, isSplitTemplate, splitSidebarSectionIdSet]);
     const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
         const feedbackPhase = getTouchFeedbackState('section', sectionId);
-        const baseClass = `-m-2 rounded p-2 ${interactionTransitionClass}`;
+        const templateToneClass = getTemplateSectionSurfaceToneClass(sectionId);
+        const baseClass = `-m-2 rounded p-2 ${templateToneClass} ${interactionTransitionClass}`.trim();
         if (feedbackPhase === 'dragging' && touchDragPreview?.sourceId === sectionId) {
             return `${baseClass} border border-dashed border-primary/35 bg-primary/[0.03] shadow-none`;
         }
@@ -504,7 +575,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return `${baseClass} bg-primary/6 ring-1 ring-primary/20 shadow-[0_10px_22px_rgba(16,185,129,0.10)]`;
         }
         return baseClass;
-    }, [getTouchFeedbackState, interactionTransitionClass, touchDragPreview?.sourceId]);
+    }, [getTemplateSectionSurfaceToneClass, getTouchFeedbackState, interactionTransitionClass, touchDragPreview?.sourceId]);
     const getItemSurfaceClass = React.useCallback((itemKey: string) => {
         const feedbackPhase = getTouchFeedbackState('item', itemKey);
         const baseClass = `${itemHoverBgClass} -m-2 rounded p-2 ${touchSelectionClass} ${interactionTransitionClass}`;
@@ -1234,6 +1305,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             '--rf-line-height': String(lineHeight),
             '--rf-list-spacing': listSpacingValue,
             '--rf-bullet-spacing': bulletSpacingValue,
+            '--rf-accent-color': activeThemeColor.accentColor,
+            '--rf-accent-soft-bg': activeThemeColor.accentSoftBg,
+            '--rf-accent-border': activeThemeColor.accentBorder,
+            '--rf-accent-text': activeThemeColor.accentText,
         } as React.CSSProperties;
 
         if (!isScaledEditorPreview) {
@@ -1255,6 +1330,86 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         listSpacingValue,
         scaledPreviewMetrics.scale,
         topPaddingPx,
+        activeThemeColor.accentBorder,
+        activeThemeColor.accentColor,
+        activeThemeColor.accentSoftBg,
+        activeThemeColor.accentText,
+    ]);
+
+    const previewContentLayoutClassName = React.useMemo(
+        () => (isSplitTemplate ? 'grid grid-cols-[0.82fr_1.18fr] gap-x-6 items-start' : ''),
+        [isSplitTemplate]
+    );
+    const getTemplateSectionWrapperStyle = React.useCallback((sectionId: string) => {
+        return sectionWrapperStyle;
+    }, [sectionWrapperStyle]);
+    const sectionHeadingTextClassName = React.useMemo(() => {
+        if (activeTemplate.layoutKind === 'minimal') {
+            return 'text-[11px] tracking-[0.28em] text-gray-500';
+        }
+        if (activeTemplate.layoutKind === 'split') {
+            return 'text-[11px] tracking-[0.18em]';
+        }
+        return 'text-xs tracking-widest';
+    }, [activeTemplate.layoutKind]);
+    const sectionHeadingBorderClassName = React.useMemo(() => {
+        if (activeTemplate.layoutKind === 'minimal') {
+            return 'border-b border-gray-200';
+        }
+        return 'border-b';
+    }, [activeTemplate.layoutKind]);
+    const renderAvatarFrame = React.useCallback((className: string) => {
+        if (avatarSrc && !hasAvatarLoadError) {
+            return (
+                <div className={className}>
+                    <img
+                        src={avatarSrc}
+                        alt="个人头像"
+                        className="h-full w-full object-contain"
+                        onError={() => setHasAvatarLoadError(true)}
+                    />
+                </div>
+            );
+        }
+        return (
+            <div className={`${className} items-center justify-center bg-gray-100 p-0.5 text-sm font-bold text-gray-700`}>
+                {profileInitials}
+            </div>
+        );
+    }, [avatarSrc, hasAvatarLoadError, profileInitials]);
+    const renderSectionHeading = React.useCallback((
+        title: string,
+        sectionId: string
+    ) => (
+        <h2
+            className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
+            style={{
+                ...sectionTitleStyle,
+                ...touchHandleStyle,
+                color: sectionId === 'summary' && activeTemplate.layoutKind === 'minimal'
+                    ? '#4b5563'
+                    : 'var(--rf-accent-text)',
+                borderBottomColor: activeTemplate.layoutKind === 'minimal'
+                    ? '#e5e7eb'
+                    : 'var(--rf-accent-border)',
+            }}
+            onTouchStart={
+                isReadOnly || showTouchDragHandles
+                    ? undefined
+                    : (event) => handleSectionTitleTouchStart(event, sectionId)
+            }
+        >
+            {title}
+        </h2>
+    ), [
+        activeTemplate.layoutKind,
+        isReadOnly,
+        sectionHeadingBorderClassName,
+        sectionHeadingTextClassName,
+        sectionTitleStyle,
+        showTouchDragHandles,
+        touchHandleStyle,
+        touchSelectionClass,
     ]);
 
     const renderExperienceSection = (
@@ -1272,7 +1427,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 id={sectionId}
                 data-rf-section-id={sectionId}
                 className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
-                style={sectionWrapperStyle}
+                style={getTemplateSectionWrapperStyle(sectionId)}
                 draggable={enableNativeHtmlDrag}
                 onDragStart={
                     enableNativeHtmlDrag ? (event) => handleNativeSectionDragStart(event, sectionId) : undefined
@@ -1308,17 +1463,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     className={getSectionSurfaceClass(sectionId)}
                     style={sectionSurfaceStyle}
                 >
-                    <h2
-                        className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                        style={{ ...sectionTitleStyle, ...touchHandleStyle }}
-                        onTouchStart={
-                            isReadOnly || showTouchDragHandles
-                                ? undefined
-                                : (event) => handleSectionTitleTouchStart(event, sectionId)
-                        }
-                    >
-                        {title}
-                    </h2>
+                    {renderSectionHeading(title, sectionId)}
                     <div
                         className={listSpacingClass}
                         data-rf-item-container={sectionId}
@@ -1446,7 +1591,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 id="summary"
                 data-rf-section-id="summary"
                 className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
-                style={sectionWrapperStyle}
+                style={getTemplateSectionWrapperStyle('summary')}
                 draggable={enableNativeHtmlDrag}
                 onDragStart={
                     enableNativeHtmlDrag
@@ -1481,17 +1626,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     className={getSectionSurfaceClass('summary')}
                     style={sectionSurfaceStyle}
                 >
-                    <h2
-                        className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                        style={{ ...sectionTitleStyle, ...touchHandleStyle }}
-                        onTouchStart={
-                            isReadOnly || showTouchDragHandles
-                                ? undefined
-                                : (event) => handleSectionTitleTouchStart(event, 'summary')
-                        }
-                    >
-                        个人评价
-                    </h2>
+                    {renderSectionHeading('个人评价', 'summary')}
                     <div
                         className={`text-sm leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                         dangerouslySetInnerHTML={{ __html: summaryHtml }}
@@ -1500,6 +1635,664 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             </div>
         );
     };
+
+    const renderHeaderBlock = () => {
+        const commonHeaderStyle = {
+            ...headerStyle,
+            borderBottomColor: 'var(--rf-accent-border)',
+        } as React.CSSProperties;
+
+        if (activeTemplate.layoutKind === 'split') {
+            return (
+                <div
+                    id="basic-info"
+                    className={`scroll-mt-8 rounded-[28px] border p-5 ${HEADER_EXTRA_TOP_SPACING_CLASS}`}
+                    style={{
+                        ...commonHeaderStyle,
+                        gridColumn: '1',
+                        backgroundColor: 'var(--rf-accent-soft-bg)',
+                        borderColor: 'var(--rf-accent-border)',
+                    }}
+                >
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-2 h-1.5 w-14 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
+                            <h1 className="text-[28px] font-bold tracking-[0.12em] text-gray-900">
+                                {profile.name}
+                            </h1>
+                        </div>
+                        {renderAvatarFrame('flex h-24 w-[4.25rem] shrink-0 overflow-hidden rounded-2xl border border-white/70 bg-white p-0.5 shadow-sm')}
+                    </div>
+                    {contactItems.length ? (
+                        <div className="space-y-1.5 text-[11px] font-medium text-gray-700">
+                            {contactItems.map((item) => (
+                                <div key={item}>{item}</div>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+            );
+        }
+
+        if (activeTemplate.layoutKind === 'avatar') {
+            return (
+                <div
+                    id="basic-info"
+                    className={`border-b pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    style={commonHeaderStyle}
+                >
+                    <div className="mb-2 flex items-start justify-between gap-8">
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-2 h-1.5 w-16 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
+                            <h1 className="text-3xl font-bold uppercase tracking-[0.14em] text-gray-900">
+                                {profile.name}
+                            </h1>
+                            {contactItems.length ? (
+                                <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-gray-600">
+                                    {contactItems.map((item) => (
+                                        <span key={item}>{item}</span>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+                        {renderAvatarFrame('flex h-28 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-300 bg-white p-0.5')}
+                    </div>
+                </div>
+            );
+        }
+
+        if (activeTemplate.layoutKind === 'minimal') {
+            return (
+                <div
+                    id="basic-info"
+                    className={`pb-5 text-center ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    style={commonHeaderStyle}
+                >
+                    <div className="mx-auto mb-3 h-px w-16" style={{ backgroundColor: 'var(--rf-accent-border)' }} />
+                    <h1 className="text-[30px] font-semibold tracking-[0.08em] text-gray-900">
+                        {profile.name}
+                    </h1>
+                    {contactItems.length ? (
+                        <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] font-medium text-gray-500">
+                            {contactItems.map((item) => (
+                                <span key={item}>{item}</span>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+            );
+        }
+
+        if (activeTemplate.layoutKind === 'accent') {
+            return (
+                <div
+                    id="basic-info"
+                    className={`mb-6 overflow-hidden rounded-[26px] border ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    style={{
+                        ...commonHeaderStyle,
+                        borderColor: 'var(--rf-accent-border)',
+                    }}
+                >
+                    <div className="h-3" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
+                    <div className="px-5 pb-5 pt-4">
+                        <h1 className="text-[30px] font-bold tracking-[0.12em] text-gray-900">
+                            {profile.name}
+                        </h1>
+                        {contactItems.length ? (
+                            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-[11px] font-medium text-gray-600">
+                                {contactItems.map((item) => (
+                                    <span
+                                        key={item}
+                                        className="rounded-full border px-2.5 py-1"
+                                        style={{
+                                            borderColor: 'var(--rf-accent-border)',
+                                            backgroundColor: 'var(--rf-accent-soft-bg)',
+                                            color: 'var(--rf-accent-text)',
+                                        }}
+                                    >
+                                        {item}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div
+                id="basic-info"
+                className={`border-b pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                style={commonHeaderStyle}
+            >
+                <div className="mb-3 h-1.5 w-20 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
+                <h1 className="text-[32px] font-bold uppercase tracking-[0.16em] text-gray-900">
+                    {profile.name}
+                </h1>
+                {contactItems.length ? (
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-gray-600">
+                        {contactItems.map((item) => (
+                            <span key={item}>{item}</span>
+                        ))}
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
+
+    const renderSectionById = (sectionId: string) => {
+        if (sectionId === 'summary') {
+            return renderSummarySection();
+        }
+
+        if (sectionId === 'work') {
+            return renderExperienceSection('work', '工作经历', selectedWorkItems);
+        }
+
+        if (sectionId === 'project') {
+            return renderExperienceSection('project', '项目经历', selectedProjectItems);
+        }
+
+        if (sectionId === 'education' && selectedEduIds.size > 0) {
+            const visibleEducations = educations.filter((edu) => selectedEduIds.has(edu.id));
+            return (
+                <div
+                    key="education"
+                    id="education"
+                    data-rf-section-id="education"
+                    className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                    style={getTemplateSectionWrapperStyle('education')}
+                    draggable={enableNativeHtmlDrag}
+                    onDragStart={
+                        enableNativeHtmlDrag
+                            ? (event) => handleNativeSectionDragStart(event, 'education')
+                            : undefined
+                    }
+                    onDrop={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                event.stopPropagation();
+                                onSectionDrop(event);
+                            }
+                    }
+                    onDragEnd={
+                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
+                    }
+                >
+                    {!isReadOnly ? (
+                        <div
+                            className={sectionControlClass}
+                            onTouchStart={
+                                showTouchDragHandles
+                                    ? (event) => handleSectionControlTouchStart(event, 'education')
+                                    : undefined
+                            }
+                            style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                        >
+                            <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
+                        </div>
+                    ) : null}
+
+                    <div
+                        data-rf-section-surface="education"
+                        className={getSectionSurfaceClass('education')}
+                        style={sectionSurfaceStyle}
+                    >
+                        {renderSectionHeading('教育背景', 'education')}
+                        <div
+                            className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
+                            data-rf-item-container="education"
+                            onDragOver={
+                                isReadOnly
+                                    ? undefined
+                                    : (event) => {
+                                        if (!draggedItemKey || draggedSectionId) {
+                                            return;
+                                        }
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        const container = event.currentTarget as HTMLElement;
+                                        const target = resolveDragTarget(
+                                            container,
+                                            event.clientY,
+                                            DATA_ITEM_ID_ATTR,
+                                            draggedItemKey,
+                                            event.target
+                                        );
+                                        if (!target) {
+                                            return;
+                                        }
+                                        onItemDragHover(target.id, target.position);
+                                    }
+                            }
+                            onDrop={
+                                isReadOnly
+                                    ? undefined
+                                    : (event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onItemDrop(event);
+                                    }
+                            }
+                        >
+                            {visibleEducations.map((edu) => {
+                                const itemKey = buildDragItemKey('education', edu.id);
+                                const dateText = buildExperienceDate(
+                                    edu.startDate,
+                                    edu.endDate,
+                                    edu.isCurrent
+                                );
+                                return (
+                                    <div
+                                        key={edu.id}
+                                        data-rf-item-id={itemKey}
+                                        className={`relative group/item ${itemDragClass}`}
+                                        draggable={enableNativeHtmlDrag}
+                                        onDragStart={
+                                            enableNativeHtmlDrag
+                                                ? (event) => handleNativeItemDragStart(event, itemKey)
+                                                : undefined
+                                        }
+                                        onDragEnd={
+                                            enableNativeHtmlDrag ? handleNativeDragEnd : undefined
+                                        }
+                                    >
+                                        {!isReadOnly ? (
+                                            <div
+                                                className={getItemControlClass(itemKey)}
+                                            >
+                                                <div
+                                                    onTouchStart={
+                                                        showTouchDragHandles
+                                                            ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                            : undefined
+                                                    }
+                                                    style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                    className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                                >
+                                                    <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
+                                                    onTouchStart={(event) => {
+                                                        setActiveMobileItemControlId(itemKey);
+                                                        stopTouchStartPropagation(event);
+                                                    }}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        onNavigateTab('profile');
+                                                    }}
+                                                >
+                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <div
+                                            data-rf-item-surface={itemKey}
+                                            className={getItemSurfaceClass(itemKey)}
+                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => handleItemCardTouchStart(event, itemKey)
+                                            }
+                                        >
+                                            <div className="flex justify-between items-baseline mb-0.5">
+                                                <h3 className="text-sm font-bold text-gray-900">
+                                                    {edu.school}
+                                                </h3>
+                                                <span className="text-xs font-medium text-gray-900">
+                                                    {dateText}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-900">
+                                                {edu.major}, {edu.degree}
+                                            </p>
+                                            {edu.gpa ? (
+                                                <p className="text-xs text-gray-900">GPA: {edu.gpa}</p>
+                                            ) : null}
+                                            {edu.courses ? (
+                                                <p className="text-xs text-gray-900">课程：{edu.courses}</p>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (sectionId === 'certifications' && selectedCertIds.size > 0) {
+            const visibleCerts = sortedCertifications.filter((cert) => selectedCertIds.has(cert.id));
+            return (
+                <div
+                    key="certifications"
+                    id="certifications"
+                    className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                    style={getTemplateSectionWrapperStyle('certifications')}
+                    data-rf-section-id="certifications"
+                    draggable={enableNativeHtmlDrag}
+                    onDragStart={
+                        enableNativeHtmlDrag
+                            ? (event) => handleNativeSectionDragStart(event, 'certifications')
+                            : undefined
+                    }
+                    onDrop={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                event.stopPropagation();
+                                onSectionDrop(event);
+                            }
+                    }
+                    onDragEnd={
+                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
+                    }
+                >
+                    {!isReadOnly ? (
+                        <div
+                            className={sectionControlClass}
+                            onTouchStart={
+                                showTouchDragHandles
+                                    ? (event) => handleSectionControlTouchStart(event, 'certifications')
+                                    : undefined
+                            }
+                            style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                        >
+                            <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
+                        </div>
+                    ) : null}
+
+                    <div
+                        data-rf-section-surface="certifications"
+                        className={getSectionSurfaceClass('certifications')}
+                        style={sectionSurfaceStyle}
+                    >
+                        {renderSectionHeading('证书资质', 'certifications')}
+                        <div
+                            className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
+                            data-rf-item-container="certifications"
+                            onDragOver={
+                                isReadOnly
+                                    ? undefined
+                                    : (event) => {
+                                        if (!draggedItemKey || draggedSectionId) {
+                                            return;
+                                        }
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        const container = event.currentTarget as HTMLElement;
+                                        const target = resolveDragTarget(
+                                            container,
+                                            event.clientY,
+                                            DATA_ITEM_ID_ATTR,
+                                            draggedItemKey,
+                                            event.target
+                                        );
+                                        if (!target) {
+                                            return;
+                                        }
+                                        onItemDragHover(target.id, target.position);
+                                    }
+                            }
+                            onDrop={
+                                isReadOnly
+                                    ? undefined
+                                    : (event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onItemDrop(event);
+                                    }
+                            }
+                        >
+                            {visibleCerts.map((cert) => {
+                                const itemKey = buildDragItemKey('certification', cert.id);
+                                return (
+                                    <div
+                                        key={cert.id}
+                                        data-rf-item-id={itemKey}
+                                        className={`relative group/item ${itemDragClass}`}
+                                        draggable={enableNativeHtmlDrag}
+                                        onDragStart={
+                                            enableNativeHtmlDrag
+                                                ? (event) => handleNativeItemDragStart(event, itemKey)
+                                                : undefined
+                                        }
+                                        onDragEnd={
+                                            enableNativeHtmlDrag ? handleNativeDragEnd : undefined
+                                        }
+                                    >
+                                        {!isReadOnly ? (
+                                            <div
+                                                className={getItemControlClass(itemKey)}
+                                            >
+                                                <div
+                                                    onTouchStart={
+                                                        showTouchDragHandles
+                                                            ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                            : undefined
+                                                    }
+                                                    style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                    className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                                >
+                                                    <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
+                                                    onTouchStart={(event) => {
+                                                        setActiveMobileItemControlId(itemKey);
+                                                        stopTouchStartPropagation(event);
+                                                    }}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        onEditCertification(cert.id);
+                                                    }}
+                                                >
+                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <div
+                                            data-rf-item-surface={itemKey}
+                                            className={getItemSurfaceClass(itemKey)}
+                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => handleItemCardTouchStart(event, itemKey)
+                                            }
+                                        >
+                                            <div className="flex justify-between items-baseline">
+                                                <div>
+                                                    <span className="text-xs font-bold text-gray-900">
+                                                        {cert.name}
+                                                    </span>
+                                                    {cert.issuer ? (
+                                                        <span className="text-xs text-gray-900 ml-2">
+                                                            ({cert.issuer})
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                                <span className="text-xs text-gray-900">{cert.date}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (sectionId === 'skills' && selectedSkillGroups.length > 0) {
+            return (
+                <div
+                    key="skills"
+                    id="skills"
+                    data-rf-section-id="skills"
+                    className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
+                    style={getTemplateSectionWrapperStyle('skills')}
+                    draggable={enableNativeHtmlDrag}
+                    onDragStart={
+                        enableNativeHtmlDrag
+                            ? (event) => handleNativeSectionDragStart(event, 'skills')
+                            : undefined
+                    }
+                    onDrop={
+                        isReadOnly
+                            ? undefined
+                            : (event) => {
+                                event.stopPropagation();
+                                onSectionDrop(event);
+                            }
+                    }
+                    onDragEnd={
+                        enableNativeHtmlDrag ? handleNativeDragEnd : undefined
+                    }
+                >
+                    {!isReadOnly ? (
+                        <div
+                            className={sectionControlClass}
+                            onTouchStart={
+                                showTouchDragHandles
+                                    ? (event) => handleSectionControlTouchStart(event, 'skills')
+                                    : undefined
+                            }
+                            style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                        >
+                            <GripVertical className="h-3.5 w-3.5 text-primary cursor-move" />
+                        </div>
+                    ) : null}
+
+                    <div
+                        data-rf-section-surface="skills"
+                        className={getSectionSurfaceClass('skills')}
+                        style={sectionSurfaceStyle}
+                    >
+                        {renderSectionHeading('专业技能', 'skills')}
+                        <div
+                            className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"
+                            data-rf-item-container="skills"
+                            onDragOver={
+                                isReadOnly
+                                    ? undefined
+                                    : (event) => {
+                                        if (!draggedItemKey || draggedSectionId) {
+                                            return;
+                                        }
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        const container = event.currentTarget as HTMLElement;
+                                        const target = resolveDragTarget(
+                                            container,
+                                            event.clientY,
+                                            DATA_ITEM_ID_ATTR,
+                                            draggedItemKey,
+                                            event.target
+                                        );
+                                        if (!target) {
+                                            return;
+                                        }
+                                        onItemDragHover(target.id, target.position);
+                                    }
+                            }
+                            onDrop={
+                                isReadOnly
+                                    ? undefined
+                                    : (event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onItemDrop(event);
+                                    }
+                            }
+                        >
+                            {selectedSkillGroups.map((group) => {
+                                const itemKey = buildDragItemKey('skillGroup', group.name);
+                                const editableSkill = group.skills[0];
+                                return (
+                                    <div
+                                        key={group.name}
+                                        data-rf-item-id={itemKey}
+                                        className={`relative group/item ${itemDragClass}`}
+                                        draggable={enableNativeHtmlDrag}
+                                        onDragStart={
+                                            enableNativeHtmlDrag
+                                                ? (event) => handleNativeItemDragStart(event, itemKey)
+                                                : undefined
+                                        }
+                                        onDragEnd={
+                                            enableNativeHtmlDrag ? handleNativeDragEnd : undefined
+                                        }
+                                    >
+                                        {!isReadOnly ? (
+                                            <div
+                                                className={getItemControlClass(itemKey)}
+                                            >
+                                                <div
+                                                    onTouchStart={
+                                                        showTouchDragHandles
+                                                            ? (event) => handleItemControlTouchStart(event, itemKey)
+                                                            : undefined
+                                                    }
+                                                    style={showTouchDragHandles ? { touchAction: 'none' } : undefined}
+                                                    className={showTouchDragHandles ? 'rounded-full p-0.5' : undefined}
+                                                >
+                                                    <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
+                                                    onTouchStart={(event) => {
+                                                        setActiveMobileItemControlId(itemKey);
+                                                        stopTouchStartPropagation(event);
+                                                    }}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        if (!editableSkill) {
+                                                            return;
+                                                        }
+                                                        onEditSkill(editableSkill.id);
+                                                    }}
+                                                >
+                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <div
+                                            data-rf-item-surface={itemKey}
+                                            className={getItemSurfaceClass(itemKey)}
+                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            onTouchStart={
+                                                isReadOnly
+                                                    ? undefined
+                                                    : (event) => handleItemCardTouchStart(event, itemKey)
+                                            }
+                                        >
+                                            <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
+                                                <span className="font-bold text-gray-900">{group.name}:</span>
+                                                <span>{group.skills.map((skill) => skill.name).join(', ')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return null;
+    };
+
+    const renderOrderedSections = (sectionIds: string[]) => sectionIds.map((sectionId) => renderSectionById(sectionId));
 
     return (
         <main
@@ -1529,6 +2322,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     >
                 <div
                     ref={previewContentRef}
+                    className={previewContentLayoutClassName}
                     onDragOver={
                         isReadOnly
                             ? undefined
@@ -1560,23 +2354,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                             }
                     }
                 >
-                    <div
-                        id="basic-info"
-                        className={`border-b-2 pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} ${activeTemplate.headerClassName} scroll-mt-8`}
-                        style={{ ...headerStyle, borderColor: activeTemplate.accentColor }}
-                    >
-                        <div className={`mb-2 flex items-center ${activeTemplate.headerClassName === 'text-center' ? 'justify-center' : 'justify-between'}`}><h1 className="text-3xl font-bold uppercase tracking-widest text-gray-900">
-                            {profile.name}
-                        </h1>{activeTemplate.hasAvatar ? (<div className="ml-3 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-gray-100 text-sm font-bold text-gray-700">{profileInitials}</div>) : null}</div>
-                        {contactItems.length ? (
-                            <div className={`text-[11px] text-gray-600 flex flex-wrap gap-x-4 gap-y-1 font-medium ${activeTemplate.headerClassName === 'text-center' ? 'justify-center' : 'justify-start'}`}>
-                                {contactItems.map((item) => (
-                                    <span key={item}>{item}</span>
-                                ))}
+                    {isSplitTemplate ? (
+                        <>
+                            <div className="flex min-w-0 flex-col">
+                                {renderHeaderBlock()}
+                                {renderOrderedSections(splitColumnSectionIds.sidebar)}
                             </div>
-                        ) : null}
-                    </div>
-
+                            <div className="flex min-w-0 flex-col">
+                                {renderOrderedSections(splitColumnSectionIds.main)}
+                            </div>
+                        </>
+                    ) : (
+                    <>
+                    {renderHeaderBlock()}
                     {visibleSectionOrder.map((sectionId) => {
                         if (sectionId === 'summary') {
                             return renderSummarySection();
@@ -1598,7 +2388,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     id="education"
                                     data-rf-section-id="education"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
-                                    style={sectionWrapperStyle}
+                                    style={getTemplateSectionWrapperStyle('education')}
                                     draggable={enableNativeHtmlDrag}
                                     onDragStart={
                                         enableNativeHtmlDrag
@@ -1636,17 +2426,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         className={getSectionSurfaceClass('education')}
                                         style={sectionSurfaceStyle}
                                     >
-                                        <h2
-                                            className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                                            style={{ ...sectionTitleStyle, ...touchHandleStyle }}
-                                            onTouchStart={
-                                                isReadOnly || showTouchDragHandles
-                                                    ? undefined
-                                                    : (event) => handleSectionTitleTouchStart(event, 'education')
-                                            }
-                                        >
-                                            教育背景
-                                        </h2>
+                                        {renderSectionHeading('教育背景', 'education')}
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
                                             data-rf-item-container="education"
@@ -1780,7 +2560,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     key="certifications"
                                     id="certifications"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
-                                    style={sectionWrapperStyle}
+                                    style={getTemplateSectionWrapperStyle('certifications')}
                                     data-rf-section-id="certifications"
                                     draggable={enableNativeHtmlDrag}
                                     onDragStart={
@@ -1819,17 +2599,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         className={getSectionSurfaceClass('certifications')}
                                         style={sectionSurfaceStyle}
                                     >
-                                        <h2
-                                            className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                                            style={{ ...sectionTitleStyle, ...touchHandleStyle }}
-                                            onTouchStart={
-                                                isReadOnly || showTouchDragHandles
-                                                    ? undefined
-                                                    : (event) => handleSectionTitleTouchStart(event, 'certifications')
-                                            }
-                                        >
-                                            证书资质
-                                        </h2>
+                                        {renderSectionHeading('证书资质', 'certifications')}
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
                                             data-rf-item-container="certifications"
@@ -1954,7 +2724,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     id="skills"
                                     data-rf-section-id="skills"
                                     className={`${sectionSpacingClass} scroll-mt-20 relative group ${sectionDragClass}`}
-                                    style={sectionWrapperStyle}
+                                    style={getTemplateSectionWrapperStyle('skills')}
                                     draggable={enableNativeHtmlDrag}
                                     onDragStart={
                                         enableNativeHtmlDrag
@@ -1992,17 +2762,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         className={getSectionSurfaceClass('skills')}
                                         style={sectionSurfaceStyle}
                                     >
-                                        <h2
-                                            className={`${touchSelectionClass} text-xs font-bold uppercase tracking-widest text-primary border-b border-gray-200 ${SECTION_TITLE_BOTTOM_PADDING} ${SECTION_TITLE_BOTTOM_SPACING}`}
-                                            style={{ ...sectionTitleStyle, ...touchHandleStyle }}
-                                            onTouchStart={
-                                                isReadOnly || showTouchDragHandles
-                                                    ? undefined
-                                                    : (event) => handleSectionTitleTouchStart(event, 'skills')
-                                            }
-                                        >
-                                            专业技能
-                                        </h2>
+                                        {renderSectionHeading('专业技能', 'skills')}
                                         <div
                                             className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"
                                             data-rf-item-container="skills"
@@ -2117,6 +2877,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
                         return null;
                     })}
+                    </>
+                    )}
                 </div>
                 {touchDragPreview ? (
                     <div

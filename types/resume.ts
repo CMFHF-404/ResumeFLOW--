@@ -1,6 +1,6 @@
 import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { JDAnalysisItemSignatures, MatchTrend } from "./analysis";
-import type { ResumeTemplateId } from '../constants/resumeTemplates';
+import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/resumeTemplates';
 import type { ResumeDetail } from "../services/resumeService";
 import type { JDAnalysisResult } from "../services/aiService";
 
@@ -95,6 +95,7 @@ export type ResumeEditorProfile = {
   location: string;
   linkedin: string;
   summary: string;
+  avatarDataUrl: string;
 };
 
 export type ProfileSyncMode = "global" | "local";
@@ -134,6 +135,7 @@ export type ResumeEditorConfig = {
     isSummaryVisible?: boolean;
     orders?: ResumeLayoutOrders;
     templateId?: ResumeTemplateId;
+    themeColorPresetId?: ResumeThemeColorPresetId;
   };
   jdAnalysis?: ResumeJDAnalysis;
 };
@@ -257,6 +259,7 @@ export type ResumePdfRenderSnapshot = {
   selectedCertIds: string[];
   selectedSkillGroups: SkillGroupView[];
   templateId: ResumeTemplateId;
+  themeColorPresetId: ResumeThemeColorPresetId;
 };
 
 export type ExperienceActions = {
