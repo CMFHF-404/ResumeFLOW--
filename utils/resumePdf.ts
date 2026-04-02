@@ -6,7 +6,7 @@ import type {
   ResumePdfRenderSnapshot,
   SkillGroupView,
 } from '../types/resume';
-import type { ResumeTemplateId } from '../constants/resumeTemplates';
+import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/resumeTemplates';
 import {
   FONT_SIZE_DEFAULT,
   LINE_HEIGHT_DEFAULT,
@@ -31,6 +31,7 @@ type ResumePdfSnapshotInput = {
   selectedCertIds: Set<string>;
   selectedSkillGroups: SkillGroupView[];
   templateId: ResumeTemplateId;
+  themeColorPresetId: ResumeThemeColorPresetId;
 };
 
 const cloneExperience = (item: ResumeExperienceView) => ({
@@ -66,6 +67,7 @@ export const buildResumePdfRenderSnapshot = ({
   selectedCertIds,
   selectedSkillGroups,
   templateId,
+  themeColorPresetId,
 }: ResumePdfSnapshotInput): ResumePdfRenderSnapshot => ({
   resumeName,
   profile: { ...profile },
@@ -85,4 +87,5 @@ export const buildResumePdfRenderSnapshot = ({
   selectedCertIds: Array.from(selectedCertIds),
   selectedSkillGroups: selectedSkillGroups.map(cloneSkillGroup),
   templateId,
+  themeColorPresetId,
 });

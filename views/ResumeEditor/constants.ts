@@ -187,4 +187,5 @@ export const DEFAULT_PROFILE: ResumeEditorProfile = {
     location: '',
     linkedin: '',
     summary: '',
+    avatarDataUrl: '',
 };

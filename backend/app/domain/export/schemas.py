@@ -24,6 +24,7 @@ class ResumeEditorProfileSnapshot(BaseModel):
     location: str = ""
     linkedin: str = ""
     summary: str = ""
+    avatarDataUrl: str = ""
 
 
 class ResumeExperienceViewSnapshot(BaseModel):
@@ -89,6 +90,8 @@ class ResumePdfRenderSnapshot(BaseModel):
     sortedCertifications: List[CertificationViewSnapshot] = Field(default_factory=list)
     selectedCertIds: List[str] = Field(default_factory=list)
     selectedSkillGroups: List[SkillGroupViewSnapshot] = Field(default_factory=list)
+    templateId: str = "modern-slate"
+    themeColorPresetId: str = "slate"
 
 
 class ResumePdfExportRequest(BaseModel):
