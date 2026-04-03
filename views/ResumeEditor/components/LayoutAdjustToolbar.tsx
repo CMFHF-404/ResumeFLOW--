@@ -347,7 +347,7 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
     const activeThemeColor = themeColorOptions.find((item) => item.id === themeColorPresetId) ?? themeColorOptions[0];
 
     return (
-        <section className="border-b border-border-light bg-white/92 backdrop-blur dark:border-border-dark dark:bg-surface-dark/92">
+        <section className="relative border-b border-border-light bg-white/92 backdrop-blur dark:border-border-dark dark:bg-surface-dark/92 md:z-30">
             <div className="hidden px-6 py-4 md:block">
                 <div className="mb-3 flex items-center justify-between gap-4">
                     <div>
