@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, GripVertical } from 'lucide-react';
+import { Edit3, GripVertical, User, Briefcase, Folder, GraduationCap, Wrench, BadgeCheck, List } from 'lucide-react';
 import {
     FONT_SIZE_DEFAULT,
     HEADER_EXTRA_TOP_SPACING_CLASS,
@@ -1423,15 +1423,26 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             </div>
         );
     }, [activeTemplate.layoutKind, avatarSrc, hasAvatarLoadError, profileInitials]);
+    const CLASSIC_SECTION_ICONS: Record<string, React.ElementType> = {
+        summary: User,
+        work: Briefcase,
+        project: Folder,
+        education: GraduationCap,
+        skills: Wrench,
+        certifications: BadgeCheck,
+    };
     const renderSectionHeading = React.useCallback((
         title: string,
         sectionId: string
     ) => {
         const isAccent = activeTemplate.layoutKind === 'accent';
         const isAvatar = activeTemplate.layoutKind === 'avatar';
+        const isClassic = activeTemplate.layoutKind === 'classic';
+        const IconComponent = isClassic ? (CLASSIC_SECTION_ICONS[sectionId] || List) : null;
+        
         return (
             <h2
-                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent ? 'pl-3.5 py-1.5 flex items-center' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''}`}
+                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic ? 'flex items-center' : ''} ${isAccent ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic ? 'gap-[0.4em]' : ''}`}
                 style={{
                     ...(isAccent ? {} : sectionTitleStyle),
                     ...touchHandleStyle,
@@ -1456,7 +1467,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         : (event) => handleSectionTitleTouchStart(event, sectionId)
                 }
             >
-                {title}
+                {IconComponent && (
+                    <IconComponent
+                        className="h-[1.1em] w-[1.1em]"
+                        style={{ color: 'var(--rf-accent-color)' }}
+                    />
+                )}
+                <span>{title}</span>
             </h2>
         );
     }, [
