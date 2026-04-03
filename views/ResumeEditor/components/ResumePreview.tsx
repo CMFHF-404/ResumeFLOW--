@@ -82,6 +82,7 @@ const TOUCH_AUTOSCROLL_MAX_STEP_PX = 18;
 const TOUCH_DRAG_PREVIEW_LIFT_PX = 10;
 const EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO = 1.4;
 const A4_PAGE_WIDTH_MM = 210;
+const A4_PAGE_HEIGHT_MM = 297;
 const SPLIT_TEMPLATE_SIDEBAR_RATIO = 0.4;
 const DESKTOP_EDITOR_MEDIA_QUERY = '(min-width: 768px)';
 const MOBILE_EDITOR_MEDIA_QUERY = '(max-width: 767px)';
@@ -1361,10 +1362,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const previewContentLayoutStyle = React.useMemo(
         () => (isSplitTemplate
             ? {
-                backgroundColor: '#ffffff',
+                minHeight: `calc(${A4_PAGE_HEIGHT_MM}mm - ${topPaddingPx}px - ${PREVIEW_PADDING_MM}mm)`,
+                gridTemplateRows: '1fr',
             } as React.CSSProperties
             : undefined),
-        [isSplitTemplate]
+        [isSplitTemplate, topPaddingPx]
     );
     const splitSidebarColumnStyle = React.useMemo(
         () => ({
@@ -2444,14 +2446,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     {isSplitTemplate ? (
                         <>
                             <div
-                                className="flex min-w-0 flex-col self-stretch px-6 pb-7 pt-6"
+                                className="flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6"
                                 style={splitSidebarColumnStyle}
                             >
                                 {renderHeaderBlock()}
                                 {renderOrderedSections(splitColumnSectionIds.sidebar)}
                             </div>
                             <div
-                                className="flex min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
+                                className="flex min-h-0 min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
                                 style={splitMainColumnStyle}
                             >
                                 {renderOrderedSections(splitColumnSectionIds.main)}
