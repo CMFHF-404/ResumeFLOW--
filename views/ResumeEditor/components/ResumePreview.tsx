@@ -564,15 +564,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return 'rounded-xl border border-gray-200/80 bg-white/80';
         }
         if (activeTemplate.layoutKind === 'avatar') {
-            return 'rounded-xl border border-gray-200 bg-white';
+            return 'bg-transparent';
         }
         return '';
     }, [activeTemplate.layoutKind, isSplitTemplate, splitSidebarSectionIdSet]);
     const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
         const feedbackPhase = getTouchFeedbackState('section', sectionId);
         const templateToneClass = getTemplateSectionSurfaceToneClass(sectionId);
-        const isAccent = activeTemplate.layoutKind === 'accent';
-        const baseClass = isAccent
+        const isAccentOrAvatar = activeTemplate.layoutKind === 'accent' || activeTemplate.layoutKind === 'avatar';
+        const baseClass = isAccentOrAvatar
             ? `-m-1 rounded p-1 ${templateToneClass} ${interactionTransitionClass}`.trim()
             : `-m-2 rounded p-2 ${templateToneClass} ${interactionTransitionClass}`.trim();
         if (feedbackPhase === 'dragging' && touchDragPreview?.sourceId === sectionId) {
@@ -585,7 +585,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return `${baseClass} bg-primary/6 ring-1 ring-primary/20 shadow-[0_10px_22px_rgba(16,185,129,0.10)]`;
         }
         return baseClass;
-    }, [getTemplateSectionSurfaceToneClass, getTouchFeedbackState, interactionTransitionClass, touchDragPreview?.sourceId]);
+    }, [activeTemplate.layoutKind, getTemplateSectionSurfaceToneClass, getTouchFeedbackState, interactionTransitionClass, touchDragPreview?.sourceId]);
     const getItemSurfaceClass = React.useCallback((itemKey: string) => {
         const feedbackPhase = getTouchFeedbackState('item', itemKey);
         const baseClass = `${itemHoverBgClass} -m-2 rounded p-2 ${touchSelectionClass} ${interactionTransitionClass}`;
@@ -1398,12 +1398,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         if (activeTemplate.layoutKind === 'accent') {
             return '';
         }
+        if (activeTemplate.layoutKind === 'avatar') {
+            return 'border-b-[2.5px] pb-1';
+        }
         return 'border-b';
     }, [activeTemplate.layoutKind]);
     const renderAvatarFrame = React.useCallback((className: string) => {
         if (avatarSrc && !hasAvatarLoadError) {
+            const isAvatarLayout = activeTemplate.layoutKind === 'avatar';
             return (
-                <div className={className}>
+                <div className={`${className} ${isAvatarLayout ? 'ring-1 ring-gray-900/10 shadow-sm' : ''}`}>
                     <img
                         src={avatarSrc}
                         alt="个人头像"
@@ -1418,24 +1422,28 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 {profileInitials}
             </div>
         );
-    }, [avatarSrc, hasAvatarLoadError, profileInitials]);
+    }, [activeTemplate.layoutKind, avatarSrc, hasAvatarLoadError, profileInitials]);
     const renderSectionHeading = React.useCallback((
         title: string,
         sectionId: string
     ) => {
         const isAccent = activeTemplate.layoutKind === 'accent';
+        const isAvatar = activeTemplate.layoutKind === 'avatar';
         return (
             <h2
-                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent ? 'pl-3.5 py-1.5 flex items-center' : SECTION_TITLE_BOTTOM_PADDING} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING}`}
+                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent ? 'pl-3.5 py-1.5 flex items-center' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''}`}
                 style={{
-                    ...sectionTitleStyle,
+                    ...(isAccent ? {} : sectionTitleStyle),
                     ...touchHandleStyle,
                     color: sectionId === 'summary' && activeTemplate.layoutKind === 'minimal'
                         ? '#4b5563'
+                        : isAvatar ? 'var(--rf-accent-color)'
                         : 'var(--rf-accent-text)',
                     borderBottomColor: activeTemplate.layoutKind === 'minimal'
                         ? '#e5e7eb'
-                        : isAccent ? 'transparent' : 'var(--rf-accent-border)',
+                        : isAccent ? 'transparent' 
+                        : isAvatar ? 'var(--rf-accent-color)'
+                        : 'var(--rf-accent-border)',
                     ...(isAccent ? {
                         borderLeft: `5px solid var(--rf-accent-color)`,
                         background: `linear-gradient(to right, var(--rf-accent-soft-bg), transparent)`,
@@ -1740,15 +1748,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
-                    className={`border-b pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
-                    style={commonHeaderStyle}
+                    className={`pb-5 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    style={{ ...commonHeaderStyle, borderBottom: 'none' }}
                 >
                     <div className="mb-2 flex items-start justify-between gap-8">
                         <div className="min-w-0 flex-1">
-                            <div className="mb-2 h-1.5 w-16 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
-                            <h1 className="text-3xl font-bold uppercase tracking-[0.14em] text-gray-900">
+                            <h1 className="text-[36px] font-bold uppercase tracking-[0.12em] text-gray-900 leading-none">
                                 {profile.name}
                             </h1>
+                            <div className="mt-3.5 h-[1.5px] w-full max-w-[280px]" style={{ backgroundColor: 'var(--rf-accent-border)' }} />
                             {contactItems.length ? (
                                 <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-gray-600">
                                     {contactItems.map((item) => (
@@ -1757,7 +1765,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 </div>
                             ) : null}
                         </div>
-                        {renderAvatarFrame('flex h-28 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-300 bg-white p-0.5')}
+                        {renderAvatarFrame('flex h-28 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-white')}
                     </div>
                 </div>
             );
