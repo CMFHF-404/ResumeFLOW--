@@ -1306,8 +1306,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [isScaledEditorPreview, scaledPreviewMetrics.heightPx, scaledPreviewMetrics.widthPx]);
 
     const previewStyle = React.useMemo(() => {
-        const splitTemplateSidebarWidthMm = PREVIEW_PADDING_MM
-            + ((A4_PAGE_WIDTH_MM - (PREVIEW_PADDING_MM * 2)) * SPLIT_TEMPLATE_SIDEBAR_RATIO);
         const baseStyle = {
             lineHeight,
             fontSize: `${fontSize}px`,
@@ -1322,9 +1320,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             '--rf-accent-soft-bg': activeThemeColor.accentSoftBg,
             '--rf-accent-border': activeThemeColor.accentBorder,
             '--rf-accent-text': activeThemeColor.accentText,
-            background: isSplitTemplate
-                ? `linear-gradient(to right, var(--rf-accent-soft-bg) 0 ${splitTemplateSidebarWidthMm}mm, #ffffff ${splitTemplateSidebarWidthMm}mm 100%)`
-                : '#ffffff',
+            background: isSplitTemplate ? 'transparent' : '#ffffff',
         } as React.CSSProperties;
 
         if (!isScaledEditorPreview) {
@@ -1355,7 +1351,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
     const previewContentLayoutClassName = React.useMemo(
         () => (isSplitTemplate
-            ? `grid grid-cols-[0.8fr_1.2fr] rounded-[30px] ${isReadOnly ? 'overflow-hidden' : ''}`.trim()
+            ? `relative z-[1] grid grid-cols-[0.8fr_1.2fr] rounded-[30px] ${isReadOnly ? 'overflow-hidden' : ''}`.trim()
             : ''),
         [isReadOnly, isSplitTemplate]
     );
@@ -1367,6 +1363,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             } as React.CSSProperties
             : undefined),
         [isSplitTemplate, topPaddingPx]
+    );
+    const splitTemplateBackgroundStyle = React.useMemo(
+        () => (isSplitTemplate
+            ? {
+                height: `${A4_PAGE_HEIGHT_MM}mm`,
+            } as React.CSSProperties
+            : undefined),
+        [isSplitTemplate]
     );
     const splitSidebarColumnStyle = React.useMemo(
         () => ({
@@ -2407,6 +2411,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         data-rf-preview-scope={previewScope}
                         style={previewStyle}
                     >
+                {isSplitTemplate ? (
+                    <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-x-0 top-0 grid grid-cols-[0.8fr_1.2fr] overflow-hidden rounded-[30px]"
+                        style={splitTemplateBackgroundStyle}
+                    >
+                        <div style={splitSidebarColumnStyle} />
+                        <div style={splitMainColumnStyle} />
+                    </div>
+                ) : null}
                 {renderAccentTopDecoration()}
                 <div
                     ref={previewContentRef}
@@ -2447,14 +2461,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         <>
                             <div
                                 className="flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6"
-                                style={splitSidebarColumnStyle}
                             >
                                 {renderHeaderBlock()}
                                 {renderOrderedSections(splitColumnSectionIds.sidebar)}
                             </div>
                             <div
                                 className="flex min-h-0 min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
-                                style={splitMainColumnStyle}
                             >
                                 {renderOrderedSections(splitColumnSectionIds.main)}
                             </div>
