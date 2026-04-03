@@ -561,7 +561,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return 'bg-transparent';
         }
         if (activeTemplate.layoutKind === 'minimal') {
-            return 'rounded-xl border border-gray-200/80 bg-white/80';
+            return 'bg-transparent';
         }
         if (activeTemplate.layoutKind === 'avatar') {
             return 'bg-transparent';
@@ -571,7 +571,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
         const feedbackPhase = getTouchFeedbackState('section', sectionId);
         const templateToneClass = getTemplateSectionSurfaceToneClass(sectionId);
-        const isAccentOrAvatar = activeTemplate.layoutKind === 'accent' || activeTemplate.layoutKind === 'avatar';
+        const isAccentOrAvatar = activeTemplate.layoutKind === 'accent' || activeTemplate.layoutKind === 'avatar' || activeTemplate.layoutKind === 'minimal';
         const baseClass = isAccentOrAvatar
             ? `-m-1 rounded p-1 ${templateToneClass} ${interactionTransitionClass}`.trim()
             : `-m-2 rounded p-2 ${templateToneClass} ${interactionTransitionClass}`.trim();
@@ -1795,8 +1795,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     className={`pb-5 text-center ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
                     style={commonHeaderStyle}
                 >
-                    <div className="mx-auto mb-3 h-px w-16" style={{ backgroundColor: 'var(--rf-accent-border)' }} />
-                    <h1 className="text-[30px] font-semibold tracking-[0.08em] text-gray-900">
+                    <h1 className="text-[32px] font-semibold tracking-[0.1em] text-gray-900 mt-2">
                         {profile.name}
                     </h1>
                     {contactItems.length ? (
