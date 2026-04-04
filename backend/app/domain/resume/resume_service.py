@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Dict, List, Tuple, Optional
 
 from sqlalchemy import desc
@@ -98,7 +99,7 @@ async def duplicate_resume(
         user_id=user_id,
         title=duplicated_title,
         target_role=source.target_role,
-        config={**(source.config or {})},
+        config=_build_duplicated_config(source.config),
     )
     session.add(duplicated)
     await session.flush()
@@ -115,6 +116,14 @@ async def duplicate_resume(
     await session.commit()
     await session.refresh(duplicated)
     return duplicated
+
+
+def _build_duplicated_config(source_config: Any) -> Dict[str, Any]:
+    if not isinstance(source_config, dict):
+        return {}
+    duplicated_config = deepcopy(source_config)
+    duplicated_config.pop("jdAnalysis", None)
+    return duplicated_config
 
 
 async def get_resume_detail(

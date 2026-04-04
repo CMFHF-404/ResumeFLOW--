@@ -154,6 +154,10 @@ import {
     type ResumeTemplateId,
     type ResumeThemeColorPresetId,
 } from '../../constants/resumeTemplates';
+import {
+    buildPreferredResumeCreateConfig,
+    savePreferredResumeTemplateId,
+} from '../resumeTemplateStorage';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
@@ -2132,7 +2136,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         let duplicateStartedAt: number | null = null;
         if (!resumeId) {
             try {
-                nextResume = await resumeService.create({ title: UNTITLED_RESUME_TITLE });
+                nextResume = await resumeService.create({
+                    title: UNTITLED_RESUME_TITLE,
+                    config: buildPreferredResumeCreateConfig(),
+                });
             } catch (error) {
                 console.error('[ResumeEditor] 创建空白简历失败:', error);
                 return {
@@ -4081,6 +4088,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 themeColorPresetId={themeColorPresetId}
                 onClose={() => setIsTemplateSelectorOpen(false)}
                 onSelectTemplate={(templateId) => {
+                    savePreferredResumeTemplateId(templateId);
                     if (templateId === resumeTemplateId) {
                         setIsTemplateSelectorOpen(false);
                         return;

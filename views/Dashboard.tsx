@@ -19,6 +19,7 @@ import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
 import { trackResumeDuplicated } from '../utils/analyticsTracker';
 import { formatRelativeTime } from '../utils/timeUtils';
 import UnAuthPrompt from '../components/UnAuthPrompt';
+import { buildPreferredResumeCreateConfig } from './resumeTemplateStorage';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -341,7 +342,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
     try {
       setIsCreatingResume(true);
-      const created = await resumeService.create({ title: DEFAULT_RESUME_TITLE });
+      const created = await resumeService.create({
+        title: DEFAULT_RESUME_TITLE,
+        config: buildPreferredResumeCreateConfig(),
+      });
       const newResume = mapResumeToDashboard(created);
       setResumes((prev) => {
         return [newResume, ...prev];
