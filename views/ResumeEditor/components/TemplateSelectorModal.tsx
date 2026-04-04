@@ -2,40 +2,57 @@ import React from 'react';
 import { Check, X } from 'lucide-react';
 import {
   RESUME_TEMPLATE_DEFINITIONS,
+  RESUME_THEME_COLOR_PRESETS,
   resolveDefaultResumeThemeColorPresetId,
   resolveResumeThemeColor,
   resolveResumeTemplate,
+  type ResumeThemeColorPresetId,
   type ResumeTemplateId,
 } from '../../../constants/resumeTemplates';
 
 type TemplateSelectorModalProps = {
   isOpen: boolean;
   selectedTemplateId: ResumeTemplateId;
+  themeColorPresetId: ResumeThemeColorPresetId;
   onClose: () => void;
   onSelectTemplate: (id: ResumeTemplateId) => void;
 };
 
 const TemplateThumbnail: React.FC<{
   templateId: ResumeTemplateId;
-}> = ({ templateId }) => {
+  themeColorPresetId?: string;
+}> = ({ templateId, themeColorPresetId }) => {
+  const resolvedPresetId = (themeColorPresetId && RESUME_THEME_COLOR_PRESETS.some((item) => item.id === themeColorPresetId))
+    ? (themeColorPresetId as ResumeThemeColorPresetId)
+    : resolveDefaultResumeThemeColorPresetId(templateId);
+  const theme = resolveResumeThemeColor(templateId, resolvedPresetId);
   const template = resolveResumeTemplate(templateId);
-  const theme = resolveResumeThemeColor(
-    templateId,
-    resolveDefaultResumeThemeColorPresetId(templateId)
-  );
 
   if (template.layoutKind === 'classic') {
+    const isModernAvatar = templateId === 'modern-slate-avatar';
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
-        <div className="mb-2 h-1.5 w-28 rounded-full" style={{ backgroundColor: theme.accentColor }} />
-        <div className="mb-1 h-2.5 w-20 rounded bg-gray-900/80" />
-        <div className="mb-3 h-1.5 w-40 rounded bg-gray-200" />
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+            <div className="mb-2 h-1.5 w-20 rounded-full" style={{ backgroundColor: theme.accentColor }} />
+            <div className="mb-1 h-2.5 w-16 rounded bg-gray-900/80" />
+            <div className="mb-3 h-1 w-28 rounded bg-gray-200" />
+          </div>
+          {isModernAvatar && (
+            <div className="h-10 w-7 rounded border border-gray-200 bg-gray-50 flex items-center justify-center">
+              <div className="h-full w-full bg-gray-100" />
+            </div>
+          )}
+        </div>
         <div className="space-y-2">
           {[0, 1, 2].map((item) => (
             <div key={item}>
-              <div className="mb-1 h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentColor }} />
-              <div className="h-1.5 w-full rounded bg-gray-200" />
-              <div className="mt-1 h-1.5 w-4/5 rounded bg-gray-200" />
+              <div className="mb-1 flex items-center gap-1.5">
+                {isModernAvatar && <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: theme.accentColor }} />}
+                <div className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.accentColor, opacity: isModernAvatar ? 0.7 : 1 }} />
+              </div>
+              <div className="h-1 w-full rounded bg-gray-200" />
+              <div className="mt-1 h-1 w-4/5 rounded bg-gray-200" />
             </div>
           ))}
         </div>
@@ -158,6 +175,7 @@ const TemplateThumbnail: React.FC<{
 const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   isOpen,
   selectedTemplateId,
+  themeColorPresetId,
   onClose,
   onSelectTemplate,
 }) => {
@@ -186,7 +204,10 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                 key={template.id}
                 className={`rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900 ${isSelected ? 'ring-2 ring-primary' : ''}`}
               >
-                <TemplateThumbnail templateId={template.id} />
+                <TemplateThumbnail
+                  templateId={template.id}
+                  themeColorPresetId={isSelected ? themeColorPresetId : undefined}
+                />
 
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{template.name}</h3>
                 <p className="mt-1 min-h-[38px] text-xs text-gray-500 dark:text-gray-400">{template.description}</p>
