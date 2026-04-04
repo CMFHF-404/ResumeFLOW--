@@ -41,6 +41,7 @@ import {
 import { buildExperienceBankPdfRenderSnapshot } from '../utils/experienceBankPdf';
 import { downloadUrlFile } from '../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../utils/aiThought';
+import { stripRichTextToText } from '../utils/richText';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
@@ -776,7 +777,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
         return;
       }
       markProfileFieldDraftTouched('summary');
-      setSummary(response.summary);
+      setSummary(stripRichTextToText(response.summary).trim());
       if (toastId) {
         updateToast(toastId, {
           message: '个人评价已生成',
