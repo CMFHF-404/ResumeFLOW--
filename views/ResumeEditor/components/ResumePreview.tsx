@@ -1444,11 +1444,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         const isAccent = activeTemplate.layoutKind === 'accent';
         const isAvatar = activeTemplate.layoutKind === 'avatar';
         const isClassic = activeTemplate.layoutKind === 'classic';
-        const IconComponent = isClassic ? (CLASSIC_SECTION_ICONS[sectionId] || List) : null;
+        const isModernAvatar = activeTemplate.id === 'modern-slate-avatar';
+        const IconComponent = (isClassic || isModernAvatar) ? (CLASSIC_SECTION_ICONS[sectionId] || List) : null;
         
         return (
             <h2
-                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic ? 'flex items-center' : ''} ${isAccent ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic ? 'gap-[0.4em]' : ''}`}
+                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar ? 'flex items-center' : ''} ${isAccent ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''}`}
                 style={{
                     ...(isAccent ? {} : sectionTitleStyle),
                     ...touchHandleStyle,
@@ -1859,17 +1860,22 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 className={`border-b pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
                 style={commonHeaderStyle}
             >
-                <div className="mb-3 h-1.5 w-20 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
-                <h1 className="text-[32px] font-bold uppercase tracking-[0.16em] text-gray-900">
-                    {profile.name}
-                </h1>
-                {contactItems.length ? (
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-gray-600">
-                        {contactItems.map((item) => (
-                            <span key={item}>{item}</span>
-                        ))}
+                <div className="flex items-start justify-between gap-6">
+                    <div className="min-w-0 flex-1">
+                        <div className="mb-3 h-1.5 w-20 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
+                        <h1 className="text-[32px] font-bold uppercase tracking-[0.16em] text-gray-900 leading-tight">
+                            {profile.name}
+                        </h1>
+                        {contactItems.length ? (
+                            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-gray-600">
+                                {contactItems.map((item) => (
+                                    <span key={item}>{item}</span>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
-                ) : null}
+                    {activeTemplate.id === 'modern-slate-avatar' && renderAvatarFrame('flex h-28 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white border border-gray-200 shadow-sm')}
+                </div>
             </div>
         );
     };

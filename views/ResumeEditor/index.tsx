@@ -4054,6 +4054,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             <TemplateSelectorModal
                 isOpen={isTemplateSelectorOpen}
                 selectedTemplateId={resumeTemplateId}
+                themeColorPresetId={themeColorPresetId}
                 onClose={() => setIsTemplateSelectorOpen(false)}
                 onSelectTemplate={(templateId) => {
                     if (templateId === resumeTemplateId) {

@@ -3,7 +3,8 @@ export type ResumeTemplateId =
   | 'minimal-gray'
   | 'accent-emerald'
   | 'avatar-professional'
-  | 'avatar-split';
+  | 'avatar-split'
+  | 'modern-slate-avatar';
 
 export type ResumeThemeColorPresetId =
   | 'slate'
@@ -146,6 +147,14 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     hasAvatar: true,
     layoutKind: 'split',
     defaultThemeColorPresetId: 'amber',
+  },
+  {
+    id: 'modern-slate-avatar',
+    name: '商务深灰',
+    description: '在现代深灰基础上增加头像与区块图标，更具视觉活力。',
+    hasAvatar: true,
+    layoutKind: 'classic',
+    defaultThemeColorPresetId: 'slate',
   },
 ] as const;
 
