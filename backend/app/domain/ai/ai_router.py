@@ -4,9 +4,12 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.status import HTTP_400_BAD_REQUEST
 
+from ...database import get_session
 from ...dependencies import get_current_user
+from ..resume.resume_service import NotFoundError, persist_resume_boss_greeting
 from .ai_service import (
     analyze_jd,
     analyze_jd_with_image_thoughts,
@@ -57,6 +60,8 @@ class GenerateBossGreetingRequest(BaseModel):
     job_title: Optional[str] = None
     company: Optional[str] = None
     resume_text: Optional[str] = None
+    resume_id: Optional[str] = None
+    signature: Optional[str] = None
 
 
 class GeneratePersonalSummaryRequest(BaseModel):
@@ -294,20 +299,34 @@ async def generate_tags_endpoint(
 @router.post("/generate-boss-greeting", response_model=Dict[str, Any])
 async def generate_boss_greeting_endpoint(
     payload: GenerateBossGreetingRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    return await generate_boss_greeting(
+    result = await generate_boss_greeting(
         payload.jd_text,
         payload.analysis_summary,
         payload.job_title,
         payload.company,
         payload.resume_text,
     )
+    if payload.resume_id and result.get("greeting"):
+        try:
+            await persist_resume_boss_greeting(
+                session,
+                current_user.id,
+                payload.resume_id,
+                result["greeting"],
+                payload.signature,
+            )
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result
 
 
 @router.post("/generate-boss-greeting/stream")
 async def generate_boss_greeting_stream_endpoint(
     payload: GenerateBossGreetingRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
     async def event_stream():
@@ -328,8 +347,18 @@ async def generate_boss_greeting_stream_endpoint(
                     payload.resume_text,
                     thought_callback=emit,
                 )
+                if payload.resume_id and result.get("greeting"):
+                    await persist_resume_boss_greeting(
+                        session,
+                        current_user.id,
+                        payload.resume_id,
+                        result["greeting"],
+                        payload.signature,
+                    )
                 await emit({"type": "progress", "node": "persist_result", "title": "整理 BOSS 招呼语结果"})
                 await emit({"type": "final", "result": result})
+            except NotFoundError as exc:
+                await emit({"type": "error", "message": str(exc)})
             except Exception as exc:
                 await emit({"type": "error", "message": str(exc)})
             finally:

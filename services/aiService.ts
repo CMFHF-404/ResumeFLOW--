@@ -75,6 +75,8 @@ export interface GenerateBossGreetingParams {
     jobTitle?: string;
     company?: string;
     resumeText: string;
+    resumeId?: string;
+    signature?: string;
 }
 
 export interface GenerateBossGreetingResponse {
@@ -598,6 +600,8 @@ export const aiService = {
                 job_title: data.jobTitle,
                 company: data.company,
                 resume_text: data.resumeText,
+                resume_id: data.resumeId,
+                signature: data.signature,
             }
         );
         return response.data;
@@ -613,6 +617,8 @@ export const aiService = {
             job_title: data.jobTitle,
             company: data.company,
             resume_text: data.resumeText,
+            resume_id: data.resumeId,
+            signature: data.signature,
         };
         return streamBossGreetingRequest(payload, { onEvent });
     },

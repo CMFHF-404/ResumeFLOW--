@@ -8,6 +8,7 @@ import type {
     ProfileSyncMode,
     ResumeEditorConfig,
     ResumeEditorProfile,
+    ResumeBossGreeting,
     ResumeExperienceView,
     ResumeJDAnalysis,
     ResumeLayoutOrders,
@@ -432,6 +433,7 @@ export const buildResumeConfigSnapshot = (
     profile: ResumeEditorProfile,
     personalSummary: string,
     hasPersonalSummaryOverride: boolean,
+    bossGreeting: ResumeBossGreeting | null,
     profileSyncMode: ProfileSyncMode,
     selectedExpIds: Set<string>,
     selectedEduIds: Set<string>,
@@ -453,6 +455,7 @@ export const buildResumeConfigSnapshot = (
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
     ...(hasPersonalSummaryOverride ? { personalSummary } : {}),
+    ...(bossGreeting?.greeting.trim() ? { bossGreeting: { ...bossGreeting } } : {}),
     profileSyncMode,
     selection: {
         experienceIds: Array.from(selectedExpIds),

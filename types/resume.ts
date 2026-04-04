@@ -113,9 +113,15 @@ export type ResumeJDAnalysis = {
   updatedAt: string;
 };
 
+export type ResumeBossGreeting = {
+  greeting: string;
+  signature?: string;
+};
+
 export type ResumeEditorConfig = {
   profile?: ResumeEditorProfile;
   personalSummary?: string;
+  bossGreeting?: ResumeBossGreeting;
   profileSyncMode?: ProfileSyncMode;
   selection?: {
     experienceIds?: string[];

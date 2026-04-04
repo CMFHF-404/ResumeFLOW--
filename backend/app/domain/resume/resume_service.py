@@ -1,7 +1,8 @@
+import json
 from copy import deepcopy
 from typing import Any, Dict, List, Tuple, Optional
 
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -79,6 +80,46 @@ async def update_resume(
     return resume
 
 
+async def persist_resume_boss_greeting(
+    session: AsyncSession,
+    user_id: str,
+    resume_id: str,
+    greeting: str,
+    signature: Optional[str] = None,
+) -> Resume:
+    resume = await _get_resume(session, user_id, resume_id)
+    boss_greeting_payload: Dict[str, Any] = {
+        "greeting": greeting,
+    }
+    if signature:
+        boss_greeting_payload["signature"] = signature
+    updated_at = utc_now()
+    await session.execute(
+        text(
+            """
+            UPDATE resumes
+            SET config = jsonb_set(
+                    COALESCE(config, '{}'::jsonb),
+                    '{bossGreeting}',
+                    CAST(:boss_greeting_payload AS jsonb),
+                    true
+                ),
+                updated_at = :updated_at
+            WHERE id = :resume_id AND user_id = :user_id
+            """
+        ),
+        {
+            "boss_greeting_payload": json.dumps(boss_greeting_payload, ensure_ascii=False),
+            "updated_at": updated_at,
+            "resume_id": str(resume.id),
+            "user_id": user_id,
+        },
+    )
+    await session.commit()
+    await session.refresh(resume)
+    return resume
+
+
 async def delete_resume(
     session: AsyncSession, user_id: str, resume_id: str
 ) -> None:
@@ -123,6 +164,7 @@ def _build_duplicated_config(source_config: Any) -> Dict[str, Any]:
         return {}
     duplicated_config = deepcopy(source_config)
     duplicated_config.pop("jdAnalysis", None)
+    duplicated_config.pop("bossGreeting", None)
     return duplicated_config
 
 

@@ -20,6 +20,7 @@ import type {
     CertificationView,
     EducationView,
     ProfileSyncMode,
+    ResumeBossGreeting,
     ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeJDAnalysis,
@@ -523,6 +524,27 @@ const buildBossGreetingSignature = ({
     resumeText,
 });
 
+const normalizePersistedBossGreeting = (value: unknown): ResumeBossGreeting | null => {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+    const record = value as Partial<ResumeBossGreeting>;
+    const greeting = typeof record.greeting === 'string' ? record.greeting.trim() : '';
+    if (!greeting) {
+        return null;
+    }
+    return {
+        greeting,
+        ...(typeof record.signature === 'string' && record.signature.trim()
+            ? { signature: record.signature }
+            : {}),
+    };
+};
+
+type PendingPersistedBossGreeting = ResumeBossGreeting & {
+    resumeId: string | null;
+};
+
 const buildPersonalSummarySignature = ({
     jdText,
     context,
@@ -871,12 +893,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const personalSummaryRequestIdRef = useRef(0);
     const personalSummaryDraftVersionRef = useRef(0);
     const latestPersonalSummarySignatureRef = useRef('');
+    const pendingPersistedBossGreetingRef = useRef<PendingPersistedBossGreeting | null>(null);
     const activeAutoAssembleToastIdRef = useRef<string | null>(null);
     const activeBossGreetingToastIdRef = useRef<string | null>(null);
     const activePersonalSummaryToastIdRef = useRef<string | null>(null);
     const previousMatchScoreFilterResumeIdRef = useRef<string | null>(null);
     const bossGreetingUiStateRef = useRef({
         text: '',
+        signature: '',
         isVisible: false,
     });
     const currentLayout = useMemo<SmartPageLayout>(() => ({
@@ -977,6 +1001,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }),
         [certifications, educations, experienceItems, skillGroups]
     );
+    const bossGreetingSnapshot = useMemo<ResumeBossGreeting | null>(() => {
+        const greeting = bossGreeting.trim();
+        if (!greeting) {
+            return null;
+        }
+        return {
+            greeting,
+            ...(bossGreetingSignature.trim() ? { signature: bossGreetingSignature } : {}),
+        };
+    }, [bossGreeting, bossGreetingSignature]);
 
     const resumeConfigSnapshot = useMemo(
         () =>
@@ -984,6 +1018,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 profile,
                 personalSummary,
                 hasPersonalSummaryOverride,
+                bossGreetingSnapshot,
                 profileSyncMode,
                 selectedExpIds,
                 selectedEduIds,
@@ -1005,6 +1040,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             ),
         [
             density,
+            bossGreetingSnapshot,
             fontSize,
             isSmartPageApplied,
             isSummaryVisible,
@@ -1109,6 +1145,39 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             resumeId ? loadJDAnalysisCache(resumeId) : null
         )?.payload ?? null;
     }, [resumeDetail?.resume?.config?.jdAnalysis, resumeId]);
+    const persistedBossGreeting = useMemo(
+        () => normalizePersistedBossGreeting(resumeDetail?.resume?.config?.bossGreeting),
+        [resumeDetail?.resume?.config?.bossGreeting]
+    );
+    useEffect(() => {
+        const nextGreeting = persistedBossGreeting?.greeting ?? '';
+        const nextSignature = persistedBossGreeting?.signature ?? '';
+        const pendingBossGreeting = pendingPersistedBossGreetingRef.current;
+        if (
+            pendingBossGreeting
+            && pendingBossGreeting.resumeId === resumeId
+            && (
+                nextGreeting !== pendingBossGreeting.greeting
+                || nextSignature !== (pendingBossGreeting.signature ?? '')
+            )
+        ) {
+            return;
+        }
+        pendingPersistedBossGreetingRef.current = null;
+        const shouldResetVisibility = (
+            nextGreeting !== bossGreetingUiStateRef.current.text
+            || nextSignature !== bossGreetingUiStateRef.current.signature
+        );
+        if (nextGreeting !== bossGreetingUiStateRef.current.text) {
+            setBossGreeting(nextGreeting);
+        }
+        if (nextSignature !== bossGreetingUiStateRef.current.signature) {
+            setBossGreetingSignature(nextSignature);
+        }
+        if (shouldResetVisibility) {
+            setIsBossGreetingVisible(false);
+        }
+    }, [persistedBossGreeting, resumeId]);
     const committedPersistedJDAnalysisSnapshot =
         persistedJDAnalysisSnapshot !== undefined
             ? persistedJDAnalysisSnapshot
@@ -1121,6 +1190,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             nextProfile,
             personalSummary,
             hasPersonalSummaryOverride,
+            bossGreetingSnapshot,
             nextProfileSyncMode,
             selectedExpIds,
             selectedEduIds,
@@ -1141,6 +1211,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             committedPersistedJDAnalysisSnapshot
         );
     }, [
+        bossGreetingSnapshot,
         committedPersistedJDAnalysisSnapshot,
         density,
         fontSize,
@@ -2868,6 +2939,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     latestBossGreetingAnalysisOutdatedRef.current = isOutdated;
     bossGreetingUiStateRef.current = {
         text: bossGreeting,
+        signature: bossGreetingSignature,
         isVisible: isBossGreetingVisible,
     };
 
@@ -3353,6 +3425,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     jobTitle: effectiveResult.jobTitle,
                     company: effectiveResult.company,
                     resumeText: selectedResumeSnapshotText,
+                    resumeId,
+                    signature: requestedBossGreetingSignature,
                 },
                 (event: BossGreetingStreamEvent) => {
                     if (event.type !== 'thought') {
@@ -3397,6 +3471,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
             setBossGreeting(nextGreeting);
             setBossGreetingSignature(requestedBossGreetingSignature);
+            pendingPersistedBossGreetingRef.current = {
+                resumeId: requestedResumeId ?? null,
+                greeting: nextGreeting,
+                signature: requestedBossGreetingSignature,
+            };
             trackBossGreetingResult({
                 resumeId,
                 source: bossGreetingSource,
@@ -3632,6 +3711,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsAutoAssembling(false);
         setIsGeneratingBossGreeting(false);
         setIsGeneratingPersonalSummary(false);
+        pendingPersistedBossGreetingRef.current = null;
         setBossGreeting('');
         setBossGreetingSignature('');
         setIsBossGreetingVisible(false);
