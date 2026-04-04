@@ -1453,9 +1453,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 style={{
                     ...(isAccent ? {} : sectionTitleStyle),
                     ...touchHandleStyle,
-                    color: sectionId === 'summary' && activeTemplate.layoutKind === 'minimal'
-                        ? '#4b5563'
-                        : isAvatar ? 'var(--rf-accent-color)'
+                    color: isAvatar ? 'var(--rf-accent-color)'
                         : 'var(--rf-accent-text)',
                     borderBottomColor: activeTemplate.layoutKind === 'minimal'
                         ? '#e5e7eb'
