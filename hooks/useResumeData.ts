@@ -25,6 +25,7 @@ import {
 } from '../services/resumeService';
 import { skillsService, UserSkill } from '../services/skillsService';
 import { UNTITLED_RESUME_TITLE } from '../constants/resumeConstants';
+import { buildPreferredResumeCreateConfig } from '../views/resumeTemplateStorage';
 import type {
     ActiveResumeContext,
     CachedResumeResolveResult,
@@ -170,7 +171,10 @@ const ensureActiveResumeId = async (resumes: Resume[]): Promise<string> => {
         setActiveResumeId(resumes[0].id);
         return resumes[0].id;
     }
-    const created = await resumeService.create({ title: UNTITLED_RESUME_TITLE });
+    const created = await resumeService.create({
+        title: UNTITLED_RESUME_TITLE,
+        config: buildPreferredResumeCreateConfig(),
+    });
     setActiveResumeId(created.id);
     return created.id;
 };

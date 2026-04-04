@@ -43,6 +43,7 @@ export interface ResumeDetail {
 export interface ResumeCreatePayload {
     title: string;
     target_role?: string;
+    config?: Record<string, any>;
 }
 
 export interface ResumeUpdatePayload {
