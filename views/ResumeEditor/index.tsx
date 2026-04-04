@@ -8,7 +8,12 @@ import { useResumeData } from '../../hooks/useResumeData';
 import { exportService } from '../../services/exportService';
 import { profileService } from '../../services/profileService';
 import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
-import { aiService, type JDAnalysisResult, type PersonalSummaryStreamEvent } from '../../services/aiService';
+import {
+    aiService,
+    type BossGreetingStreamEvent,
+    type JDAnalysisResult,
+    type PersonalSummaryStreamEvent,
+} from '../../services/aiService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type {
@@ -3334,13 +3339,32 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 resumeText: selectedResumeSnapshotText,
             });
             setIsBossGreetingVisible(true);
-            const response = await aiService.generateBossGreeting({
-                jdText: jdPolishContext,
-                analysisSummary: effectiveResult.summary,
-                jobTitle: effectiveResult.jobTitle,
-                company: effectiveResult.company,
-                resumeText: selectedResumeSnapshotText,
-            });
+            const response = await aiService.generateBossGreetingStream(
+                {
+                    jdText: jdPolishContext,
+                    analysisSummary: effectiveResult.summary,
+                    jobTitle: effectiveResult.jobTitle,
+                    company: effectiveResult.company,
+                    resumeText: selectedResumeSnapshotText,
+                },
+                (event: BossGreetingStreamEvent) => {
+                    if (event.type !== 'thought') {
+                        return;
+                    }
+                    if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
+                        return;
+                    }
+                    const title = extractThoughtHeadline(event.summary);
+                    if (!title) {
+                        return;
+                    }
+                    updateToast(toastId, {
+                        message: title,
+                        type: 'ai_thinking',
+                        duration: 0,
+                    });
+                }
+            );
             const nextGreeting = response.greeting.trim();
             if (!nextGreeting) {
                 throw new Error('empty_greeting');

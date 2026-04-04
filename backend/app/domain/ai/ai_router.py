@@ -15,6 +15,7 @@ from .ai_service import (
     generate_personal_summary,
     generate_personal_summary_with_thoughts,
     generate_boss_greeting,
+    generate_boss_greeting_with_thoughts,
     generate_tags,
     polish_experience,
     polish_experience_with_thoughts,
@@ -302,6 +303,54 @@ async def generate_boss_greeting_endpoint(
         payload.company,
         payload.resume_text,
     )
+
+
+@router.post("/generate-boss-greeting/stream")
+async def generate_boss_greeting_stream_endpoint(
+    payload: GenerateBossGreetingRequest,
+    current_user=Depends(get_current_user),
+):
+    async def event_stream():
+        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+
+        async def emit(event: Dict[str, Any]) -> None:
+            await queue.put(event)
+
+        async def run_generate() -> None:
+            try:
+                await emit({"type": "progress", "node": "prepare_context", "title": "准备 BOSS 招呼语上下文"})
+                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成 BOSS 招呼语"})
+                result = await generate_boss_greeting_with_thoughts(
+                    payload.jd_text,
+                    payload.analysis_summary,
+                    payload.job_title,
+                    payload.company,
+                    payload.resume_text,
+                    thought_callback=emit,
+                )
+                await emit({"type": "progress", "node": "persist_result", "title": "整理 BOSS 招呼语结果"})
+                await emit({"type": "final", "result": result})
+            except Exception as exc:
+                await emit({"type": "error", "message": str(exc)})
+            finally:
+                await queue.put(None)
+
+        producer = asyncio.create_task(run_generate())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield _ndjson_line(event)
+        finally:
+            if not producer.done():
+                producer.cancel()
+            try:
+                await producer
+            except asyncio.CancelledError:
+                pass
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 @router.post("/generate-personal-summary", response_model=Dict[str, Any])

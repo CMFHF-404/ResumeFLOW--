@@ -827,6 +827,54 @@ async def generate_boss_greeting(
     return _normalize_greeting_result(result)
 
 
+async def generate_boss_greeting_with_thoughts(
+    jd_text: str,
+    analysis_summary: str,
+    job_title: Optional[str] = None,
+    company: Optional[str] = None,
+    resume_text: Optional[str] = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not settings.gemini_api_key:
+        return await generate_boss_greeting(
+            jd_text,
+            analysis_summary,
+            job_title,
+            company,
+            resume_text,
+        )
+
+    resume_payload = _safe_parse_resume_payload(resume_text) or {}
+    payload = {
+        "jd_text": jd_text,
+        "analysis_summary": analysis_summary,
+        "job_title": job_title or "",
+        "company": company or "",
+        "resume_text": resume_payload,
+    }
+    try:
+        result = await _stream_gemini_json_response(
+            system_prompt=BOSS_GREETING_GENERATION,
+            user_parts=[{"text": json.dumps(payload, ensure_ascii=False)}],
+            error_message="BOSS 招呼语生成失败，请稍后重试。",
+            request_label="boss_greeting",
+            thought_callback=thought_callback,
+        )
+    except Exception:
+        logger.warning(
+            "[AI Stream] Gemini thought streaming failed for boss_greeting, falling back to standard generation.",
+            exc_info=True,
+        )
+        return await generate_boss_greeting(
+            jd_text,
+            analysis_summary,
+            job_title,
+            company,
+            resume_text,
+        )
+    return _normalize_greeting_result(result)
+
+
 async def generate_personal_summary(
     mode: str,
     profile: Optional[Dict[str, Any]] = None,

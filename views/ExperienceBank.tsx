@@ -40,6 +40,7 @@ import {
 } from '../utils/exportFilename';
 import { buildExperienceBankPdfRenderSnapshot } from '../utils/experienceBankPdf';
 import { downloadUrlFile } from '../utils/downloadUrlFile';
+import { extractThoughtHeadline } from '../utils/aiThought';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
@@ -729,8 +730,12 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
 
       const response = await aiService.generatePersonalSummaryStream(requestPayload, (event) => {
         if (toastId && event.type === 'thought' && isCurrentSummaryRequest()) {
+          const title = extractThoughtHeadline(event.summary);
+          if (!title) {
+            return;
+          }
           updateToast(toastId, {
-            message: event.summary,
+            message: title,
             type: 'ai_thinking',
             duration: 0,
           });
