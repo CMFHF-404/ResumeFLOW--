@@ -162,6 +162,33 @@ export type PolishStreamEvent =
     | PolishFinalEvent
     | PolishErrorEvent;
 
+export type BossGreetingProgressNode =
+    | 'prepare_context'
+    | 'request_ai'
+    | 'persist_result';
+
+export type BossGreetingProgressEvent = {
+    type: 'progress';
+    node: BossGreetingProgressNode;
+    title?: string;
+};
+
+type BossGreetingFinalEvent = {
+    type: 'final';
+    result: GenerateBossGreetingResponse;
+};
+
+type BossGreetingErrorEvent = {
+    type: 'error';
+    message?: string;
+};
+
+export type BossGreetingStreamEvent =
+    | BossGreetingProgressEvent
+    | AIThoughtEvent
+    | BossGreetingFinalEvent
+    | BossGreetingErrorEvent;
+
 export type PersonalSummaryProgressNode =
     | 'prepare_context'
     | 'request_ai'
@@ -353,6 +380,74 @@ const streamPolishRequest = async (
     return finalResult;
 };
 
+const streamBossGreetingRequest = async (
+    payload: Record<string, unknown>,
+    options: {
+        onEvent?: (event: BossGreetingStreamEvent) => void;
+    } = {}
+): Promise<GenerateBossGreetingResponse> => {
+    const headers = new Headers();
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) {
+        dispatchLoginRequired('write-operation');
+        throw new Error('Authentication required for write operation');
+    }
+    headers.set('Authorization', authHeader);
+    headers.set('Content-Type', 'application/json');
+
+    const response = await fetch(resolveApiUrl('/api/generate-boss-greeting/stream'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    });
+
+    ensureStreamResponseOk(response);
+    if (!response.body) {
+        throw new Error('AI stream response body is empty');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: GenerateBossGreetingResponse | null = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = parseNdjsonLines(buffer);
+        const hasTrailingNewline = buffer.endsWith('\n');
+        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
+
+        lines.forEach((line) => {
+            let parsed: BossGreetingStreamEvent;
+            try {
+                parsed = JSON.parse(line) as BossGreetingStreamEvent;
+            } catch (error) {
+                console.warn('Failed to parse stream line', error);
+                return;
+            }
+            options.onEvent?.(parsed);
+            if (parsed.type === 'error') {
+                throw new Error(parsed.message || 'AI stream error');
+            }
+            if (parsed.type === 'final') {
+                finalResult = parsed.result;
+            }
+        });
+    }
+
+    if (!finalResult) {
+        throw new Error('AI stream did not return final result');
+    }
+    if (!finalResult.greeting?.trim()) {
+        throw new Error('AI 未生成有效的 BOSS 招呼语，请稍后重试');
+    }
+    return finalResult;
+};
+
 const streamPersonalSummaryRequest = async (
     payload: Record<string, unknown>,
     options: {
@@ -506,6 +601,20 @@ export const aiService = {
             }
         );
         return response.data;
+    },
+
+    async generateBossGreetingStream(
+        data: GenerateBossGreetingParams,
+        onEvent?: (event: BossGreetingStreamEvent) => void
+    ) {
+        const payload = {
+            jd_text: data.jdText,
+            analysis_summary: data.analysisSummary,
+            job_title: data.jobTitle,
+            company: data.company,
+            resume_text: data.resumeText,
+        };
+        return streamBossGreetingRequest(payload, { onEvent });
     },
 
     async generatePersonalSummaryStream(

@@ -174,7 +174,7 @@ export const resolveResumeTemplate = (templateId?: string | null): ResumeTemplat
 export const resolveDefaultResumeThemeColorPresetId = (
   templateId?: ResumeTemplateId | string | null
 ): ResumeThemeColorPresetId => (
-  (templateId && LEGACY_TEMPLATE_DEFAULT_THEME_COLOR_MAP[templateId])
+  (templateId ? LEGACY_TEMPLATE_DEFAULT_THEME_COLOR_MAP[templateId] : undefined)
   ?? resolveResumeTemplate(templateId).defaultThemeColorPresetId
 );
 

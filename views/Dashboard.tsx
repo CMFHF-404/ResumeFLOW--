@@ -6,7 +6,11 @@ import { resumeService } from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
-import { mapResumeToDashboard, mapResumesToDashboard, resolveDashboardResumeMatchRate } from '../utils/dashboardResumeMapper';
+import {
+  mapResumeToDashboard,
+  mapResumesToDashboard,
+  resolveDashboardResumeLocalMatchRate,
+} from '../utils/dashboardResumeMapper';
 import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
@@ -124,12 +128,14 @@ const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
 const mergeMatchRatesIntoResumes = (items: Resume[]) => {
   let changed = false;
   const next = items.map((resume) => {
-    const matchRate = resolveDashboardResumeMatchRate(resume.id);
-    if (resume.matchRate === matchRate) {
+    const localMatchRate = resolveDashboardResumeLocalMatchRate(resume.id);
+    const matchRate = typeof localMatchRate === 'number' ? localMatchRate : resume.matchRate;
+    const status = matchRate > 0 ? 'final' : 'draft';
+    if (resume.matchRate === matchRate && resume.status === status) {
       return resume;
     }
     changed = true;
-    return { ...resume, matchRate };
+    return { ...resume, matchRate, status };
   });
   return changed ? next : items;
 };
