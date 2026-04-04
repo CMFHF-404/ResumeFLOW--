@@ -199,12 +199,17 @@ PERSONAL_SUMMARY_GENERATION = (
     "Rules: "
     "1) Use only provided facts and do not invent experience, metrics, tools, or responsibilities. "
     "2) Output Chinese only. "
-    "3) Return one paragraph in 250-350 Chinese characters when possible. "
+    "3) Return one paragraph in 140-210 Chinese characters when possible, with no lists or headings. "
     "4) For mode='bank', write a general-purpose self-evaluation suitable for a resume. "
     "5) For mode='resume', prioritize relevant strengths according to jd_text, make clear trade-offs, "
     "and avoid generic praise or blind keyword stuffing. "
     "6) Highlight role fit, core strengths, domain or project focus, execution style, and learning ability when supported. "
     "7) Keep the tone professional, direct, and resume-ready. "
+    "8) For mode='resume', you may selectively bold the most relevant phrases with Markdown (**text**) "
+    "to emphasize JD fit, core strengths, or proven results, but use at most 4 bold highlights in total "
+    "and never bold a full sentence. "
+    "9) For mode='bank', return plain text only and do not use Markdown or HTML formatting. "
+    "10) Prefer bolding JD-related keywords or strongest evidence-based strengths only when mode='resume'. "
     "Return JSON only with key 'summary'."
 )
 

@@ -47,6 +47,7 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
+import { normalizeAiRichText, stripRichTextToText } from '../../utils/richText';
 import {
     trackBossGreetingResult,
     trackBossGreetingStart,
@@ -809,6 +810,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isSavingProfile, setIsSavingProfile] = useState(false);
     const [isGeneratingPersonalSummary, setIsGeneratingPersonalSummary] = useState(false);
+    const [isPersonalSummaryOverwriteDialogOpen, setIsPersonalSummaryOverwriteDialogOpen] = useState(false);
     const [originalProfile, setOriginalProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [originalProfileSyncMode, setOriginalProfileSyncMode] = useState<ProfileSyncMode>(
         PROFILE_SYNC_MODES.global
@@ -2824,6 +2826,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         return profile.summary;
     }, [hasPersonalSummaryOverride, personalSummary, profile.summary]);
+    const hasEditablePersonalSummary = useMemo(
+        () => Boolean(stripRichTextToText(editablePersonalSummary).trim()),
+        [editablePersonalSummary]
+    );
     const effectivePersonalSummary = useMemo(() => {
         if (!isSummaryVisible) {
             return '';
@@ -2835,12 +2841,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [hasPersonalSummaryOverride, isSummaryVisible, personalSummary, profile.summary]);
     const handlePersonalSummaryChange = useCallback((value: string) => {
         personalSummaryDraftVersionRef.current += 1;
-        if (!isSummaryVisible && !editablePersonalSummary.trim() && value.trim()) {
+        if (
+            !isSummaryVisible
+            && !hasEditablePersonalSummary
+            && stripRichTextToText(value).trim()
+        ) {
             setIsSummaryVisible(true);
         }
         setPersonalSummary(value);
         setHasPersonalSummaryOverride(true);
-    }, [editablePersonalSummary, isSummaryVisible]);
+    }, [hasEditablePersonalSummary, isSummaryVisible]);
     const previewProfile = useMemo(
         () => ({
             ...profile,
@@ -3575,19 +3585,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [bossGreeting, resumeId, showToastError, showToastSuccess]);
 
-    const handleGeneratePersonalSummary = useCallback(async () => {
+    const runGeneratePersonalSummary = useCallback(async () => {
         if (isGeneratingPersonalSummary) {
             return;
         }
         if (!jdPolishContext.trim()) {
             showToastError('请先填写 JD 内容或完成 JD 分析后再生成个人评价。');
             return;
-        }
-        if (editablePersonalSummary.trim() && typeof window !== 'undefined') {
-            const shouldOverwrite = window.confirm('当前已有个人评价内容，是否用 AI 生成结果覆盖？');
-            if (!shouldOverwrite) {
-                return;
-            }
         }
 
         const toastId = showToastLoading('正在生成个人评价...');
@@ -3649,10 +3653,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 releaseActivePersonalSummaryToast();
                 return;
             }
-            if (!isSummaryVisible && !editablePersonalSummary.trim() && response.summary.trim()) {
+            const normalizedSummary = normalizeAiRichText(response.summary, { allowList: false });
+            const hasGeneratedSummary = Boolean(stripRichTextToText(normalizedSummary).trim());
+            if (!isSummaryVisible && !hasEditablePersonalSummary && hasGeneratedSummary) {
                 setIsSummaryVisible(true);
             }
-            setPersonalSummary(response.summary);
+            setPersonalSummary(normalizedSummary);
             setHasPersonalSummaryOverride(true);
             updateToast(toastId, {
                 message: '个人评价已生成',
@@ -3680,7 +3686,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [
         closeToast,
-        editablePersonalSummary,
+        hasEditablePersonalSummary,
         isGeneratingPersonalSummary,
         isSummaryVisible,
         jdPolishContext,
@@ -3690,6 +3696,27 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastError,
         showToastLoading,
         updateToast,
+    ]);
+
+    const handleGeneratePersonalSummary = useCallback(() => {
+        if (isGeneratingPersonalSummary) {
+            return;
+        }
+        if (!jdPolishContext.trim()) {
+            showToastError('请先填写 JD 内容或完成 JD 分析后再生成个人评价。');
+            return;
+        }
+        if (hasEditablePersonalSummary) {
+            setIsPersonalSummaryOverwriteDialogOpen(true);
+            return;
+        }
+        void runGeneratePersonalSummary();
+    }, [
+        hasEditablePersonalSummary,
+        isGeneratingPersonalSummary,
+        jdPolishContext,
+        runGeneratePersonalSummary,
+        showToastError,
     ]);
 
     useEffect(() => {
@@ -3711,6 +3738,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsAutoAssembling(false);
         setIsGeneratingBossGreeting(false);
         setIsGeneratingPersonalSummary(false);
+        setIsPersonalSummaryOverwriteDialogOpen(false);
         pendingPersistedBossGreetingRef.current = null;
         setBossGreeting('');
         setBossGreetingSignature('');
@@ -4366,6 +4394,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 description={confirmDialog?.description || ''}
                 onConfirm={handleConfirmDelete}
                 onCancel={handleCancelDelete}
+            />
+            <ConfirmDialog
+                isOpen={isPersonalSummaryOverwriteDialogOpen}
+                title="覆盖当前个人评价？"
+                description="当前已有个人评价内容，继续后将使用新的 AI 生成结果覆盖。"
+                confirmLabel="继续生成"
+                tone="primary"
+                isConfirming={isGeneratingPersonalSummary}
+                onConfirm={() => {
+                    setIsPersonalSummaryOverwriteDialogOpen(false);
+                    void runGeneratePersonalSummary();
+                }}
+                onCancel={() => setIsPersonalSummaryOverwriteDialogOpen(false)}
             />
         </div>
     );

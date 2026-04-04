@@ -1723,7 +1723,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 >
                     {renderSectionHeading('个人评价', 'summary')}
                     <div
-                        className={`text-sm leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                        className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                         dangerouslySetInnerHTML={{ __html: summaryHtml }}
                     />
                 </div>

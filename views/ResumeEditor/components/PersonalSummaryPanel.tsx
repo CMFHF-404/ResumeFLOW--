@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Check, ChevronDown, FileText, Wand2 } from 'lucide-react';
+import RichTextEditor from '../../../components/RichTextEditor';
+import { stripRichTextToText } from '../../../utils/richText';
 
 type PersonalSummaryPanelProps = {
     value: string;
@@ -21,7 +23,7 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
     onGenerate,
 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
-    const hasValue = value.trim().length > 0;
+    const hasValue = stripRichTextToText(value).trim().length > 0;
 
     return (
         <section className="space-y-3">
@@ -80,12 +82,18 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
                             {isGenerating ? '生成中...' : 'AI 一键生成'}
                         </button>
                     </div>
-                    <textarea
+                    <RichTextEditor
                         value={value}
-                        onChange={(event) => onChange(event.target.value)}
+                        onChange={onChange}
                         placeholder="可手动填写个人评价，也可根据全部经历和 JD 一键生成。"
-                        className="min-h-[132px] w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                        ariaLabel="个人评价编辑器"
+                        enableList={false}
+                        className="min-h-[132px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
                     />
+                    <div className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-gray-400 dark:text-gray-500">
+                        <span>选中文字后可添加加粗、斜体和超链接。</span>
+                        {hasValue ? <span>已启用富文本</span> : null}
+                    </div>
                 </div>
             ) : null}
         </section>
