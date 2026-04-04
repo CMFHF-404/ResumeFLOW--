@@ -329,15 +329,30 @@ async def _iter_sse_json_payloads(response: httpx.Response):
                 logger.warning("[AI Stream] invalid Gemini SSE trailing payload: %s", payload[:500])
 
 
-async def _stream_gemini_json_response(
+def _build_gemini_generation_config(
+    budget_tokens: Optional[int] = None,
+) -> Dict[str, Any]:
+    config: Dict[str, Any] = {
+        "temperature": 0.2,
+        "responseMimeType": "application/json",
+        "thinkingConfig": {
+            "includeThoughts": True,
+        },
+    }
+    if budget_tokens is None:
+        return config
+
+    config["thinkingConfig"]["thinkingBudget"] = int(budget_tokens)
+    return config
+
+
+def _build_gemini_request_body(
     *,
     system_prompt: str,
     user_parts: List[Dict[str, Any]],
-    error_message: str,
-    request_label: str,
-    thought_callback: ThoughtCallback = None,
+    budget_tokens: Optional[int] = None,
 ) -> Dict[str, Any]:
-    request_body = {
+    return {
         "systemInstruction": {
             "parts": [{"text": system_prompt}],
         },
@@ -347,14 +362,24 @@ async def _stream_gemini_json_response(
                 "parts": user_parts,
             }
         ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "thinkingConfig": {
-                "includeThoughts": True,
-            },
-        },
+        "generationConfig": _build_gemini_generation_config(budget_tokens),
     }
+
+
+async def _stream_gemini_json_response(
+    *,
+    system_prompt: str,
+    user_parts: List[Dict[str, Any]],
+    error_message: str,
+    request_label: str,
+    budget_tokens: Optional[int] = None,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    request_body = _build_gemini_request_body(
+        system_prompt=system_prompt,
+        user_parts=user_parts,
+        budget_tokens=budget_tokens,
+    )
     model = settings.gemini_model
     url = _build_gemini_stream_url(model)
     answer_parts: List[str] = []
@@ -560,6 +585,7 @@ async def analyze_jd_with_thoughts(
             ),
             error_message="JD 分析失败，请稍后重试。",
             request_label="jd_text_analysis",
+            budget_tokens=settings.ai_thinking_budget_jd_analysis,
             thought_callback=thought_callback,
         )
     except Exception:
@@ -724,6 +750,7 @@ async def analyze_jd_with_image_thoughts(
             ),
             error_message="JD 附件分析失败，请稍后重试。",
             request_label="jd_image_analysis",
+            budget_tokens=settings.ai_thinking_budget_jd_analysis,
             thought_callback=thought_callback,
         )
     except Exception:
@@ -786,6 +813,7 @@ async def polish_experience_with_thoughts(
             ],
             error_message="JD 润色失败，请稍后重试。",
             request_label="star_polish",
+            budget_tokens=settings.ai_thinking_budget_polish,
             thought_callback=thought_callback,
         )
     except Exception:
@@ -835,6 +863,15 @@ async def generate_boss_greeting_with_thoughts(
     resume_text: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
+    if settings.ai_thinking_budget_boss_greeting <= 0:
+        return await generate_boss_greeting(
+            jd_text,
+            analysis_summary,
+            job_title,
+            company,
+            resume_text,
+        )
+
     if not settings.gemini_api_key:
         return await generate_boss_greeting(
             jd_text,
@@ -858,6 +895,7 @@ async def generate_boss_greeting_with_thoughts(
             user_parts=[{"text": json.dumps(payload, ensure_ascii=False)}],
             error_message="BOSS 招呼语生成失败，请稍后重试。",
             request_label="boss_greeting",
+            budget_tokens=settings.ai_thinking_budget_boss_greeting,
             thought_callback=thought_callback,
         )
     except Exception:

@@ -18,6 +18,9 @@ ENV_AI_TIMEOUT_SECONDS = "AI_TIMEOUT_SECONDS"
 ENV_GEMINI_API_KEY = "GEMINI_API_KEY"
 ENV_GEMINI_BASE_URL = "GEMINI_BASE_URL"
 ENV_GEMINI_MODEL = "GEMINI_MODEL"
+ENV_AI_THINKING_BUDGET_JD_ANALYSIS = "AI_THINKING_BUDGET_JD_ANALYSIS"
+ENV_AI_THINKING_BUDGET_POLISH = "AI_THINKING_BUDGET_POLISH"
+ENV_AI_THINKING_BUDGET_BOSS_GREETING = "AI_THINKING_BUDGET_BOSS_GREETING"
 ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
 ENV_DEV_USER_ID = "DEV_USER_ID"
 ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
@@ -34,6 +37,9 @@ DEFAULT_AI_MODEL = "gemini-3-flash"
 DEFAULT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_AI_THINKING_BUDGET_JD_ANALYSIS = 4096
+DEFAULT_AI_THINKING_BUDGET_POLISH = 1024
+DEFAULT_AI_THINKING_BUDGET_BOSS_GREETING = 0
 DEFAULT_DEV_USER_ID = "dev-user-test-123"
 DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:5173",
@@ -117,6 +123,9 @@ class Settings:
     gemini_api_key: Optional[str]
     gemini_base_url: str
     gemini_model: str
+    ai_thinking_budget_jd_analysis: int
+    ai_thinking_budget_polish: int
+    ai_thinking_budget_boss_greeting: int
     enable_dev_auth_bypass: bool
     dev_user_id: str
     cors_allow_origins: List[str]
@@ -150,6 +159,24 @@ def load_settings() -> Settings:
     gemini_api_key = os.getenv(ENV_GEMINI_API_KEY)
     gemini_base_url = os.getenv(ENV_GEMINI_BASE_URL, DEFAULT_GEMINI_BASE_URL)
     gemini_model = os.getenv(ENV_GEMINI_MODEL, DEFAULT_GEMINI_MODEL)
+    ai_thinking_budget_jd_analysis = int(
+        os.getenv(
+            ENV_AI_THINKING_BUDGET_JD_ANALYSIS,
+            DEFAULT_AI_THINKING_BUDGET_JD_ANALYSIS,
+        )
+    )
+    ai_thinking_budget_polish = int(
+        os.getenv(
+            ENV_AI_THINKING_BUDGET_POLISH,
+            DEFAULT_AI_THINKING_BUDGET_POLISH,
+        )
+    )
+    ai_thinking_budget_boss_greeting = int(
+        os.getenv(
+            ENV_AI_THINKING_BUDGET_BOSS_GREETING,
+            DEFAULT_AI_THINKING_BUDGET_BOSS_GREETING,
+        )
+    )
     enable_dev_auth_bypass = _get_bool_env(ENV_ENABLE_DEV_AUTH_BYPASS, False)
     dev_user_id = os.getenv(ENV_DEV_USER_ID, DEFAULT_DEV_USER_ID)
     cors_allow_origins = _parse_csv_env(
@@ -185,6 +212,9 @@ def load_settings() -> Settings:
         gemini_api_key=gemini_api_key,
         gemini_base_url=gemini_base_url,
         gemini_model=gemini_model,
+        ai_thinking_budget_jd_analysis=ai_thinking_budget_jd_analysis,
+        ai_thinking_budget_polish=ai_thinking_budget_polish,
+        ai_thinking_budget_boss_greeting=ai_thinking_budget_boss_greeting,
         enable_dev_auth_bypass=enable_dev_auth_bypass,
         dev_user_id=dev_user_id,
         cors_allow_origins=cors_allow_origins,
