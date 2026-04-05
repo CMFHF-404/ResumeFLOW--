@@ -2,9 +2,7 @@ import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, Trash2 } from 'lucide-react';
 import MonthPicker from '../components/MonthPicker';
 import RichTextEditor from '../components/RichTextEditor';
-import { SKILL_TAGS } from '../data/skillTags';
 import { parseYearMonthValue, resolveCardMotionClass } from './experienceUtils';
-import TagInput from './TagInput';
 import { stripRichTextToText } from '../utils/richText';
 
 const getThemeClasses = (color: string = 'primary') => {
@@ -29,7 +27,6 @@ export type ExperienceCardData = {
   title: string;
   start_date: string;
   end_date: string;
-  tags: string[];
   star: Record<StarFieldKey, string>;
 };
 
@@ -67,8 +64,6 @@ type ExperienceCardProps = {
   isCollapsing: boolean;
   isModified: boolean;
   isSaving: boolean;
-  showTags?: boolean;
-  isGeneratingTags: boolean;
   isPolishing: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -77,7 +72,6 @@ type ExperienceCardProps = {
   onFieldChange: (field: string, value: string | string[]) => void;
   onPolishAll: () => void;
   onUndo: (field: StarFieldKey) => boolean;
-  onGenerateTags?: () => void;
   themeColor?: string;
 };
 
@@ -373,8 +367,6 @@ const ExpandedExperienceCard: React.FC<{
   data: ExperienceCardData;
   labels: ExperienceCardLabels;
   isCollapsing: boolean;
-  showTags: boolean;
-  isGeneratingTags: boolean;
   isPolishing: boolean;
   isModified: boolean;
   isSaving: boolean;
@@ -385,14 +377,11 @@ const ExpandedExperienceCard: React.FC<{
   onFieldChange: (field: string, value: string | string[]) => void;
   onPolishAll: () => void;
   onUndo: (field: StarFieldKey) => boolean;
-  onGenerateTags?: () => void;
   themeColor?: string;
 }> = ({
   data,
   labels,
   isCollapsing,
-  showTags,
-  isGeneratingTags,
   isPolishing,
   isModified,
   isSaving,
@@ -403,7 +392,6 @@ const ExpandedExperienceCard: React.FC<{
   onFieldChange,
   onPolishAll,
   onUndo,
-  onGenerateTags,
   themeColor,
 }) => (
     <div className={resolveCardMotionClass(isCollapsing)}>
@@ -420,20 +408,6 @@ const ExpandedExperienceCard: React.FC<{
           onUndo={onUndo}
           themeColor={themeColor}
         />
-
-        {showTags && (
-          <div className="space-y-2 pt-2">
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">技能标签</label>
-            <TagInput
-              value={data.tags || []}
-              suggestions={SKILL_TAGS}
-              onChange={(next) => onFieldChange('tags', next)}
-              onAiFill={onGenerateTags}
-              isAiLoading={isGeneratingTags}
-              themeColor={themeColor}
-            />
-          </div>
-        )}
       </div>
       <ExperienceCardFooter
         isModified={isModified}
@@ -458,8 +432,6 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
       isCollapsing,
       isModified,
       isSaving,
-      showTags = false,
-      isGeneratingTags,
       isPolishing,
       onToggle,
       onDelete,
@@ -468,7 +440,6 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
       onFieldChange,
       onPolishAll,
       onUndo,
-      onGenerateTags,
       themeColor,
     },
     ref
@@ -492,8 +463,6 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             data={data}
             labels={labels}
             isCollapsing={isCollapsing}
-            showTags={showTags}
-            isGeneratingTags={isGeneratingTags}
             isPolishing={isPolishing}
             isModified={isModified}
             isSaving={isSaving}
@@ -504,7 +473,6 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             onFieldChange={onFieldChange}
             onPolishAll={onPolishAll}
             onUndo={onUndo}
-            onGenerateTags={onGenerateTags}
             themeColor={themeColor}
           />
         )}

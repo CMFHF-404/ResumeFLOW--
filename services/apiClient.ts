@@ -94,12 +94,54 @@ const getLogtoAccessToken = (resource?: string): string | null => {
     return pickLogtoAccessToken(tokenMap, resource);
 };
 
-const resolveAccessToken = async (resource?: string): Promise<string | null> => {
+const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
+    const segments = token.split('.');
+    if (segments.length < 2) {
+        return null;
+    }
+    try {
+        const base64 = segments[1]
+            .replace(/-/g, '+')
+            .replace(/_/g, '/')
+            .padEnd(Math.ceil(segments[1].length / 4) * 4, '=');
+        const json = atob(base64);
+        return JSON.parse(json) as Record<string, unknown>;
+    } catch (error) {
+        return null;
+    }
+};
+
+export const readAuthUserKeyFromAccessToken = (token?: string | null): string | null => {
+    if (!token) {
+        return null;
+    }
+    const payload = decodeJwtPayload(token);
+    return typeof payload?.sub === 'string' ? payload.sub : null;
+};
+
+export const readAuthUserKeyFromCachedAccessToken = (): string | null => {
+    const resource = getLogtoResource();
+    const token = getLogtoAccessToken(resource);
+    return readAuthUserKeyFromAccessToken(token);
+};
+
+const resolveAccessTokenFromActiveSession = async (resource?: string): Promise<string | null> => {
     const providerToken = await requestAccessToken(resource);
+    return providerToken ?? null;
+};
+
+const resolveAccessToken = async (resource?: string): Promise<string | null> => {
+    const providerToken = await resolveAccessTokenFromActiveSession(resource);
     if (providerToken) {
         return providerToken;
     }
     return getLogtoAccessToken(resource);
+};
+
+export const resolveAuthUserKeyFromActiveSession = async (): Promise<string | null> => {
+    const resource = getLogtoResource();
+    const token = await resolveAccessTokenFromActiveSession(resource);
+    return readAuthUserKeyFromAccessToken(token);
 };
 
 export const getApiBaseUrl = (): string => {

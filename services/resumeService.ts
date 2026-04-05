@@ -22,7 +22,6 @@ export interface ResumeExperienceMerged {
     is_current: boolean;
     summary?: string;
     highlights: string[];
-    tags: string[];
     star: Record<string, any>;
 }
 

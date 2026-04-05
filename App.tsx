@@ -13,30 +13,13 @@ import { resumeService } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
 import { clearActiveResumeId } from './views/resumeStorage';
-import { useAuthUserKey } from './hooks/useAuthUserKey';
+import {
+  readStoredAuthUserKey,
+  useAuthUserKey,
+  writeStoredAuthUserKey,
+} from './hooks/useAuthUserKey';
 
 const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
-const AUTH_USER_KEY_STORAGE_KEY = 'yuanzijianli.authUserKey';
-
-const readStoredAuthUserKey = () => {
-  try {
-    return localStorage.getItem(AUTH_USER_KEY_STORAGE_KEY);
-  } catch (error) {
-    return null;
-  }
-};
-
-const writeStoredAuthUserKey = (value: string | null) => {
-  try {
-    if (value) {
-      localStorage.setItem(AUTH_USER_KEY_STORAGE_KEY, value);
-    } else {
-      localStorage.removeItem(AUTH_USER_KEY_STORAGE_KEY);
-    }
-  } catch (error) {
-    // ignore storage errors (private mode, etc.)
-  }
-};
 
 const resolveStoredView = (value: string | null): ViewState | null => {
   if (!value) {

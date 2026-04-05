@@ -277,7 +277,6 @@ type UseExperienceActionsResult = {
         cancelEditingExperience: () => void;
         updateEditingStar: (field: StarFieldKey, value: string) => void;
         updateEditingMeta: (field: 'company' | 'title', value: string) => void;
-        updateEditingTags: (tags: string[]) => void;
         updateEditingDate: (field: 'startDate' | 'endDate', value: string) => void;
         handleSaveExperience: () => Promise<void>;
         handlePolishWithJD: () => Promise<void>;
@@ -511,7 +510,6 @@ type ExperienceEditHandlers = {
     cancelEditingExperience: () => void;
     updateEditingStar: (field: StarFieldKey, value: string) => void;
     updateEditingMeta: (field: 'company' | 'title', value: string) => void;
-    updateEditingTags: (tags: string[]) => void;
     updateEditingDate: (field: 'startDate' | 'endDate', value: string) => void;
 };
 
@@ -658,18 +656,6 @@ const createExperienceEditHandlers = (
         });
     };
 
-    const updateEditingTags = (tags: string[]) => {
-        state.setEditingDraft((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return {
-                ...prev,
-                tags,
-            };
-        });
-    };
-
     const updateEditingDate = (field: 'startDate' | 'endDate', value: string) => {
         state.setEditingDraft((prev) => {
             if (!prev) {
@@ -699,7 +685,6 @@ const createExperienceEditHandlers = (
         cancelEditingExperience,
         updateEditingStar,
         updateEditingMeta,
-        updateEditingTags,
         updateEditingDate,
     };
 };
@@ -735,7 +720,6 @@ const createExperienceUpdateHelpers = (
         applyExperienceUpdate(masterId, {
             title: version.title ?? '',
             company: version.org ?? '',
-            tags: version.tags ?? [],
             startDate: version.start_date,
             endDate: version.end_date,
             isCurrent: version.is_current,
@@ -776,7 +760,6 @@ const buildMasterUpdatePayload = (
         is_current: dates.isCurrent,
         summary: latest?.summary,
         highlights: latest?.highlights || [],
-        tags: draft.tags || [],
         star,
     };
 };
@@ -829,7 +812,6 @@ const syncExperienceToMaster = async (
                         'start_date',
                         'end_date',
                         'is_current',
-                        'tags',
                         'star',
                     ],
                     overrides_json: {},
@@ -898,7 +880,6 @@ const buildExperienceOverridePayload = (
     );
     const overrides: Record<string, any> = {
         star: resolvedStar,
-        tags: draft.tags || [],
         is_current: dates.isCurrent,
     };
     if (dates.startDate) {
@@ -974,7 +955,6 @@ const saveExperienceOverride = async (
     updateHelpers.applyExperienceUpdate(masterId, {
         title: payload.resolvedTitle,
         company: payload.resolvedOrg,
-        tags: draft.tags || [],
         star: payload.resolvedStar,
         startDate: payload.dates.startDate,
         endDate: payload.dates.endDate,
@@ -1124,7 +1104,6 @@ const createExperienceSaveHandlers = (
                         org:
                             state.editingDraft.company.trim()
                             || defaults.experienceCompanyByCategory[state.editingDraft.category],
-                        tags: state.editingDraft.tags || [],
                         start_date: dates.startDate,
                         end_date: dates.endDate,
                         is_current: dates.isCurrent,
@@ -2361,7 +2340,6 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
             cancelEditingExperience: editHandlers.cancelEditingExperience,
             updateEditingStar: editHandlers.updateEditingStar,
             updateEditingMeta: editHandlers.updateEditingMeta,
-            updateEditingTags: editHandlers.updateEditingTags,
             updateEditingDate: editHandlers.updateEditingDate,
             handleSaveExperience: saveHandlers.handleSaveExperience,
             handlePolishWithJD: saveHandlers.handlePolishWithJD,
