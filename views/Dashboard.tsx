@@ -2,7 +2,9 @@ import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffe
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
+import { resolveAuthUserKeyFromActiveSession } from '../services/apiClient';
 import { resumeService } from '../services/resumeService';
+import { profileService } from '../services/profileService';
 import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
@@ -342,9 +344,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
     try {
       setIsCreatingResume(true);
+      const profileForCreate = userProfile
+        ?? await profileService.getProfile().catch(() => profileService.peekProfileForCurrentUser());
+      const ownerId = profileForCreate?.user_id ?? authUserKey ?? await resolveAuthUserKeyFromActiveSession();
       const created = await resumeService.create({
         title: DEFAULT_RESUME_TITLE,
-        config: buildPreferredResumeCreateConfig(),
+        config: buildPreferredResumeCreateConfig(
+          profileForCreate?.extra_json,
+          ownerId
+        ),
       });
       const newResume = mapResumeToDashboard(created);
       setResumes((prev) => {

@@ -5,8 +5,9 @@ import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeData } from '../../hooks/useResumeData';
+import { resolveAuthUserKeyFromActiveSession } from '../../services/apiClient';
 import { exportService } from '../../services/exportService';
-import { profileService } from '../../services/profileService';
+import { profileService, type Profile } from '../../services/profileService';
 import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
 import {
     aiService,
@@ -158,7 +159,10 @@ import {
 } from '../../constants/resumeTemplates';
 import {
     buildPreferredResumeCreateConfig,
+    loadResumeTemplatePresetMap,
+    saveResumeTemplatePreset,
     savePreferredResumeTemplateId,
+    syncResumeTemplatePresetsFromProfile,
 } from '../resumeTemplateStorage';
 import EditorSidebar from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
@@ -195,6 +199,7 @@ const buildFontSizeSteps = (start: number, min: number, step: number) => {
 const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const CSS_PX_PER_MM = 96 / 25.4;
 const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
+const TEMPLATE_PRESET_SYNC_TIMEOUT_MS = 1500;
 const formatOptionNumberLabel = (value: number, maxDecimals = 2) => (
     value.toFixed(maxDecimals).replace(/\.?0+$/, '')
 );
@@ -798,6 +803,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
     const [isLayoutAdjustToolbarOpen, setIsLayoutAdjustToolbarOpen] = useState(false);
     const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
+    const [templatePresetMap, setTemplatePresetMap] = useState(() => loadResumeTemplatePresetMap(authUserKey));
+    const [isTemplatePresetMapReady, setIsTemplatePresetMapReady] = useState(false);
+    const [isTemplatePresetFallbackAvailable, setIsTemplatePresetFallbackAvailable] = useState(false);
+    const [templatePresetFallbackOwnerKey, setTemplatePresetFallbackOwnerKey] = useState<string | null>(authUserKey);
     const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
     const [isCreatingResume, setIsCreatingResume] = useState(false);
     const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
@@ -900,6 +909,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const activeBossGreetingToastIdRef = useRef<string | null>(null);
     const activePersonalSummaryToastIdRef = useRef<string | null>(null);
     const previousMatchScoreFilterResumeIdRef = useRef<string | null>(null);
+    const latestAuthUserKeyRef = useRef<string | null>(authUserKey);
+    const templatePresetRequestIdRef = useRef(0);
+    const templatePresetCompletedRequestIdRef = useRef(0);
     const bossGreetingUiStateRef = useRef({
         text: '',
         signature: '',
@@ -929,6 +941,116 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         updateToast,
         closeToast,
     } = useToast();
+    const applyTemplatePresetMapForCurrentUser = useCallback(async (
+        requestId: number,
+        requestedAuthUserKey: string | null | undefined,
+        currentProfile?: Profile | null
+    ) => {
+        const ownerId = currentProfile?.user_id
+            ?? requestedAuthUserKey
+            ?? await resolveAuthUserKeyFromActiveSession();
+        if (
+            templatePresetRequestIdRef.current !== requestId
+            || latestAuthUserKeyRef.current !== (requestedAuthUserKey ?? null)
+        ) {
+            return;
+        }
+        templatePresetCompletedRequestIdRef.current = requestId;
+        const nextPresetMap = currentProfile?.extra_json
+            ? syncResumeTemplatePresetsFromProfile(currentProfile.extra_json, ownerId)
+            : loadResumeTemplatePresetMap(ownerId);
+        setTemplatePresetMap(nextPresetMap);
+        setIsTemplatePresetMapReady(Boolean(ownerId));
+        setIsTemplatePresetFallbackAvailable(false);
+        setTemplatePresetFallbackOwnerKey(ownerId ?? null);
+    }, []);
+    const unlockTemplatePresetMapWithLocalFallback = useCallback((requestedAuthUserKey?: string | null) => {
+        const ownerId = requestedAuthUserKey ?? null;
+        if (!ownerId) {
+            return;
+        }
+        setTemplatePresetMap(loadResumeTemplatePresetMap(ownerId));
+        setIsTemplatePresetMapReady(Boolean(ownerId));
+        setIsTemplatePresetFallbackAvailable(false);
+        setTemplatePresetFallbackOwnerKey(ownerId ?? null);
+    }, []);
+    const refreshTemplatePresetMapForCurrentUser = useCallback((requestedAuthUserKey?: string | null) => {
+        const requestId = ++templatePresetRequestIdRef.current;
+        setIsTemplatePresetMapReady(false);
+        setIsTemplatePresetFallbackAvailable(false);
+        setTemplatePresetFallbackOwnerKey(requestedAuthUserKey ?? null);
+        const profilePromise = profileService
+            .getProfile({ force: true })
+            .catch(() => profileService.peekProfileForCurrentUser());
+        let timeoutId: number | null = null;
+        if (typeof window !== 'undefined') {
+            timeoutId = window.setTimeout(async () => {
+                const ownerId = requestedAuthUserKey ?? await resolveAuthUserKeyFromActiveSession();
+                if (
+                    templatePresetCompletedRequestIdRef.current === requestId
+                    || templatePresetRequestIdRef.current !== requestId
+                    || latestAuthUserKeyRef.current !== (requestedAuthUserKey ?? null)
+                ) {
+                    return;
+                }
+                setTemplatePresetFallbackOwnerKey(ownerId ?? null);
+                setIsTemplatePresetFallbackAvailable(Boolean(ownerId));
+            }, TEMPLATE_PRESET_SYNC_TIMEOUT_MS);
+        }
+        void profilePromise.then((currentProfile) => {
+            if (timeoutId !== null && typeof window !== 'undefined') {
+                window.clearTimeout(timeoutId);
+            }
+            void applyTemplatePresetMapForCurrentUser(requestId, requestedAuthUserKey, currentProfile);
+        });
+    }, [applyTemplatePresetMapForCurrentUser]);
+    useEffect(() => {
+        latestAuthUserKeyRef.current = authUserKey;
+        const requestId = ++templatePresetRequestIdRef.current;
+        setTemplatePresetMap(loadResumeTemplatePresetMap(authUserKey));
+        setIsTemplatePresetMapReady(false);
+        setIsTemplatePresetFallbackAvailable(false);
+        setTemplatePresetFallbackOwnerKey(authUserKey ?? null);
+        let cancelled = false;
+        let timeoutId: number | null = null;
+        const profilePromise = profileService
+            .getProfile({ force: true })
+            .catch(() => profileService.peekProfileForCurrentUser());
+        if (typeof window !== 'undefined') {
+            timeoutId = window.setTimeout(async () => {
+                const ownerId = authUserKey ?? await resolveAuthUserKeyFromActiveSession();
+                if (
+                    templatePresetCompletedRequestIdRef.current === requestId
+                    || templatePresetRequestIdRef.current !== requestId
+                    || cancelled
+                    || latestAuthUserKeyRef.current !== authUserKey
+                ) {
+                    return;
+                }
+                setTemplatePresetFallbackOwnerKey(ownerId ?? null);
+                setIsTemplatePresetFallbackAvailable(Boolean(ownerId));
+            }, TEMPLATE_PRESET_SYNC_TIMEOUT_MS);
+        }
+        void profilePromise.then((currentProfile) => {
+            if (timeoutId !== null && typeof window !== 'undefined') {
+                window.clearTimeout(timeoutId);
+            }
+            if (cancelled) {
+                return;
+            }
+            void applyTemplatePresetMapForCurrentUser(requestId, authUserKey, currentProfile);
+        });
+        return () => {
+            cancelled = true;
+            if (timeoutId !== null && typeof window !== 'undefined') {
+                window.clearTimeout(timeoutId);
+            }
+        };
+    }, [applyTemplatePresetMapForCurrentUser, authUserKey]);
+    const handleOpenTemplateSelector = useCallback(() => {
+        setIsTemplateSelectorOpen(true);
+        refreshTemplatePresetMapForCurrentUser(authUserKey);
+    }, [authUserKey, refreshTemplatePresetMapForCurrentUser]);
     useEffect(() => {
         if (previousDensityRef.current !== density) {
             trackLayoutModeChange({
@@ -1102,6 +1224,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         persistedJDAnalysisSnapshot,
         autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
         isAutoSavePaused,
+        authUserKey,
         setProfile,
         setPersonalSummary,
         setHasPersonalSummaryOverride,
@@ -1138,6 +1261,60 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     useEffect(() => {
         setIsLayoutAdjustToolbarOpen(false);
     }, [resumeId]);
+    const handleSelectTemplate = useCallback((templateId: ResumeTemplateId) => {
+        if (!isTemplatePresetMapReady) {
+            showToastInfo('正在同步模板预设，请稍后再试');
+            return;
+        }
+        savePreferredResumeTemplateId(templateId);
+        if (templateId === resumeTemplateId) {
+            setIsTemplateSelectorOpen(false);
+            return;
+        }
+        const preset = templatePresetMap[templateId];
+        const nextThemeColorPresetId = preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId);
+        const shouldUpdateSectionOrder = Boolean(preset);
+        const isSameSectionOrder = !preset
+            || JSON.stringify(sectionOrder) === JSON.stringify(preset.sectionOrder);
+        if (
+            templateId === resumeTemplateId
+            && themeColorPresetId === nextThemeColorPresetId
+            && isSameSectionOrder
+        ) {
+            setIsTemplateSelectorOpen(false);
+            return;
+        }
+        setResumeTemplateId(templateId);
+        setThemeColorPresetId(nextThemeColorPresetId);
+        if (shouldUpdateSectionOrder) {
+            setSectionOrder([...preset.sectionOrder]);
+        }
+        setIsTemplateSelectorOpen(false);
+    }, [isTemplatePresetMapReady, resumeTemplateId, sectionOrder, showToastInfo, templatePresetMap, themeColorPresetId]);
+    const handleSaveTemplatePreset = useCallback(async (
+        preset: {
+            templateId: ResumeTemplateId;
+            sectionOrder: string[];
+            themeColorPresetId: ResumeThemeColorPresetId;
+        }
+    ) => {
+        try {
+            const savedPreset = await saveResumeTemplatePreset(preset);
+            setTemplatePresetMap((prev) => ({
+                ...prev,
+                [savedPreset.templateId]: savedPreset,
+            }));
+            if (savedPreset.templateId === resumeTemplateId) {
+                setThemeColorPresetId(savedPreset.themeColorPresetId);
+                setSectionOrder([...savedPreset.sectionOrder]);
+            }
+            showToastSuccess('模板预设已保存');
+        } catch (error) {
+            console.error('[ResumeEditor] 保存模板预设失败:', error);
+            showToastError('保存模板预设失败，请稍后重试');
+            throw error;
+        }
+    }, [resumeTemplateId, showToastError, showToastSuccess]);
     const hydratingPersistedJDAnalysisSnapshot = useMemo(() => {
         const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
             resumeDetail?.resume?.config?.jdAnalysis
@@ -2209,9 +2386,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         let duplicateStartedAt: number | null = null;
         if (!resumeId) {
             try {
+                const profileForCreate = await profileService.getProfile().catch(() => profileService.peekProfileForCurrentUser());
+                const ownerId = profileForCreate?.user_id ?? authUserKey ?? await resolveAuthUserKeyFromActiveSession();
                 nextResume = await resumeService.create({
                     title: UNTITLED_RESUME_TITLE,
-                    config: buildPreferredResumeCreateConfig(),
+                    config: buildPreferredResumeCreateConfig(
+                        profileForCreate?.extra_json,
+                        ownerId
+                    ),
                 });
             } catch (error) {
                 console.error('[ResumeEditor] 创建空白简历失败:', error);
@@ -3958,7 +4140,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onResumeNameChange={handleResumeNameChange}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
-                    onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
+                        onOpenTemplateSelector={handleOpenTemplateSelector}
                 />
             </div>
             <div className="md:hidden">
@@ -3972,7 +4154,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onAnalyze={handleAnalyzeWithAutoName}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
-                    onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
+                        onOpenTemplateSelector={handleOpenTemplateSelector}
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
                     onCreateResume={handleCreateResume}
@@ -4194,17 +4376,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 isOpen={isTemplateSelectorOpen}
                 selectedTemplateId={resumeTemplateId}
                 themeColorPresetId={themeColorPresetId}
+                sectionOrder={sectionOrder}
+                templatePresetMap={templatePresetMap}
+                isPresetMapReady={isTemplatePresetMapReady}
+                isPresetSyncFallbackAvailable={isTemplatePresetFallbackAvailable}
                 onClose={() => setIsTemplateSelectorOpen(false)}
-                onSelectTemplate={(templateId) => {
-                    savePreferredResumeTemplateId(templateId);
-                    if (templateId === resumeTemplateId) {
-                        setIsTemplateSelectorOpen(false);
-                        return;
-                    }
-                    setResumeTemplateId(templateId);
-                    setThemeColorPresetId(resolveDefaultResumeThemeColorPresetId(templateId));
-                    setIsTemplateSelectorOpen(false);
-                }}
+                onUseLocalPresetFallback={() => unlockTemplatePresetMapWithLocalFallback(templatePresetFallbackOwnerKey)}
+                onSelectTemplate={handleSelectTemplate}
+                onSaveTemplatePreset={handleSaveTemplatePreset}
             />
 
             <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 md:hidden">

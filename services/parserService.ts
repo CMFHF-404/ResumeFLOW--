@@ -17,7 +17,6 @@ export interface ParsedExperienceVersion {
   is_current?: boolean;
   summary?: string;
   highlights?: string[];
-  tags?: string[];
   star?: Record<string, any>;
 }
 

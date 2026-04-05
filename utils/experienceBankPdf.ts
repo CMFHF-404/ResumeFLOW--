@@ -44,7 +44,6 @@ const cloneExperienceVersion = (
   return {
     ...version,
     highlights: version.highlights ? [...version.highlights] : undefined,
-    tags: version.tags ? [...version.tags] : undefined,
     star: cloneJsonRecord(version.star),
   };
 };

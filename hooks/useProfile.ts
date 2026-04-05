@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLogto } from '@logto/react';
 import { profileService, type Profile } from '../services/profileService';
+import { syncResumeTemplatePresetsFromProfile } from '../views/resumeTemplateStorage';
 
 const LOAD_PROFILE_ERROR_MESSAGE = '加载用户资料失败';
 
@@ -46,6 +47,7 @@ export const useProfile = (): UseProfileResult => {
     });
     try {
       const data = await profileService.getProfile(options);
+      syncResumeTemplatePresetsFromProfile(data.extra_json, data.user_id);
       applyState(() => {
         setProfile(data);
       });

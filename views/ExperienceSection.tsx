@@ -5,7 +5,6 @@ import { aiService, PolishExperienceResponse } from '../services/aiService';
 import { experienceService, ExperienceCategory, ExperienceListItem } from '../services/experienceService';
 import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
-import { mergeTags, sanitizeTagList } from './tagUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
 import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
@@ -29,7 +28,6 @@ type ExperienceSectionProps = {
   defaultOrg: string;
   defaultTitle: string;
   refreshSignal?: number;
-  showTags?: boolean;
   toast: ToastApi;
   themeColor?: string;
 };
@@ -44,7 +42,6 @@ type ExperienceSectionModel = {
   collapsingCards: Set<string>;
   modifiedCards: Set<string>;
   savingCardId: string | null;
-  generatingTagIds: Set<string>;
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
   isPolishing: (cardId: string) => boolean;
@@ -56,7 +53,6 @@ type ExperienceSectionModel = {
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
   onPolishAll: (cardId: string) => void;
   onUndo: (cardId: string, field: StarFieldKey) => boolean;
-  onGenerateTags: (cardId: string) => void;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
 };
@@ -80,7 +76,6 @@ const buildExperienceCardData = (item: ExperienceListItem): ExperienceCardData =
     title: item.latest_version?.title || '',
     start_date: item.latest_version?.start_date || '',
     end_date: item.latest_version?.end_date || '',
-    tags: Array.isArray(item.latest_version?.tags) ? item.latest_version?.tags || [] : [],
     star: {
       s: star.s || '',
       t: star.t || '',
@@ -95,7 +90,6 @@ const createEmptyCardData = (): ExperienceCardData => ({
   title: '',
   start_date: '',
   end_date: '',
-  tags: [],
   star: { s: '', t: '', a: '', r: '' },
 });
 
@@ -148,24 +142,11 @@ const buildStarPolishPayload = (data: ExperienceCardData) => {
   };
 };
 
-const buildTagGenerationText = (data: ExperienceCardData): string => {
-  const parts = [
-    data?.title ? `职位: ${data.title}` : '',
-    data?.org ? `公司: ${data.org}` : '',
-    data?.star?.s ? `S: ${stripRichTextToText(data.star.s)}` : '',
-    data?.star?.t ? `T: ${stripRichTextToText(data.star.t)}` : '',
-    data?.star?.a ? `A: ${stripRichTextToText(data.star.a)}` : '',
-    data?.star?.r ? `R: ${stripRichTextToText(data.star.r)}` : '',
-  ];
-  return parts.filter(Boolean).join('\n');
-};
-
 const buildVersionPayload = (data: ExperienceCardData) => ({
   title: data.title,
   org: data.org || undefined,
   start_date: convertDateToISO(data.start_date),
   end_date: convertDateToISO(data.end_date),
-  tags: data.tags || [],
   star: data.star || {},
 });
 
@@ -196,7 +177,6 @@ const applyOptimisticSave = (
           org: data.org,
           start_date: convertDateToISO(data.start_date),
           end_date: convertDateToISO(data.end_date),
-          tags: data.tags || [],
           star: data.star,
         } as any,
       };
@@ -400,8 +380,6 @@ const useCardEditors = (
           const starField = field.split('.')[1] as StarFieldKey;
           const prevStar = current.star || { s: '', t: '', a: '', r: '' };
           current.star = { ...prevStar, [starField]: value as string };
-        } else if (field === 'tags') {
-          current.tags = value as string[];
         } else {
           (current as any)[field] = value;
         }
@@ -570,7 +548,6 @@ const useExperienceCreate = ({
           title: defaultTitle,
           org: defaultOrg,
           start_date: getTodayLocalISODate(),
-          tags: [],
           star: { s: '', t: '', a: '', r: '' },
         },
       };
@@ -1060,48 +1037,6 @@ const usePolishActions = ({
   return { handlePolishAll, isPolishing, handleUndo, clearStarSnapshot };
 };
 
-const useTagActions = ({ cardData, toast, updateCardField }: ExperienceAiParams) => {
-  const [generatingTagIds, setGeneratingTagIds] = useState<Set<string>>(new Set());
-
-  const handleGenerateTags = useCallback(
-    async (cardId: string) => {
-      const data = cardData.get(cardId);
-      if (!data) {
-        return;
-      }
-      const sourceText = buildTagGenerationText(data);
-      if (!sourceText.trim()) {
-        toast.error('请先填写职位/公司或 STAR 内容，再生成标签');
-        return;
-      }
-
-      setGeneratingTagIds((prev) => new Set(prev).add(cardId));
-      try {
-        const response = await aiService.generateTags(sourceText);
-        const generated = sanitizeTagList(response?.tags);
-        if (!generated.length) {
-          toast.error('未生成有效标签，请稍后重试');
-          return;
-        }
-        const merged = mergeTags(data.tags || [], generated);
-        updateCardField(cardId, 'tags', merged);
-      } catch (error) {
-        console.error('[ExperienceSection] 生成标签失败:', error);
-        toast.error('生成标签失败，请稍后重试');
-      } finally {
-        setGeneratingTagIds((prev) => {
-          const next = new Set(prev);
-          next.delete(cardId);
-          return next;
-        });
-      }
-    },
-    [cardData, toast, updateCardField]
-  );
-
-  return { generatingTagIds, handleGenerateTags };
-};
-
 const useSortedExperiences = (experiences: ExperienceListItem[]) => {
   return useMemo(() => sortExperiencesByStartDate(experiences), [experiences]);
 };
@@ -1116,7 +1051,6 @@ type SectionModelInput = {
   collapsingCards: Set<string>;
   modifiedCards: Set<string>;
   savingCardId: string | null;
-  generatingTagIds: Set<string>;
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
   isPolishing: (cardId: string) => boolean;
@@ -1128,7 +1062,6 @@ type SectionModelInput = {
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
   onPolishAll: (cardId: string) => void;
   onUndo: (cardId: string, field: StarFieldKey) => boolean;
-  onGenerateTags: (cardId: string) => void;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
 };
@@ -1143,7 +1076,6 @@ const buildSectionModel = (input: SectionModelInput): ExperienceSectionModel => 
   collapsingCards: input.collapsingCards,
   modifiedCards: input.modifiedCards,
   savingCardId: input.savingCardId,
-  generatingTagIds: input.generatingTagIds,
   deletingCardId: input.deletingCardId,
   setCardRef: input.setCardRef,
   isPolishing: input.isPolishing,
@@ -1155,7 +1087,6 @@ const buildSectionModel = (input: SectionModelInput): ExperienceSectionModel => 
   onFieldChange: input.onFieldChange,
   onPolishAll: input.onPolishAll,
   onUndo: input.onUndo,
-  onGenerateTags: input.onGenerateTags,
   onDeleteConfirm: input.onDeleteConfirm,
   onDeleteCancel: input.onDeleteCancel,
 });
@@ -1210,7 +1141,6 @@ const useExperienceSectionModel = ({
     updateCardStar,
     category,
   });
-  const tagActions = useTagActions({ cardData: store.cardData, toast, updateCardField });
   const sortedExperiences = useSortedExperiences(experiences);
 
   const handleFieldChange = useCallback(
@@ -1260,7 +1190,6 @@ const useExperienceSectionModel = ({
     collapsingCards: expansion.collapsingCards,
     modifiedCards: store.modifiedCards,
     savingCardId,
-    generatingTagIds: tagActions.generatingTagIds,
     deletingCardId: deleteActions.deletingCardId,
     setCardRef,
     isPolishing,
@@ -1272,7 +1201,6 @@ const useExperienceSectionModel = ({
     onFieldChange: handleFieldChange,
     onPolishAll: handlePolishAll,
     onUndo: handleUndo,
-    onGenerateTags: tagActions.handleGenerateTags,
     onDeleteConfirm: deleteActions.executeDelete,
     onDeleteCancel: deleteActions.cancelDelete,
   });
@@ -1344,10 +1272,9 @@ const AddExperienceButton: React.FC<{
 const ExperienceCardList: React.FC<{
   items: ExperienceListItem[];
   labels: ExperienceCardLabels;
-  showTags: boolean;
   model: ExperienceSectionModel;
   themeColor?: string;
-}> = ({ items, labels, showTags, model, themeColor }) => (
+}> = ({ items, labels, model, themeColor }) => (
   <>
     {items.map((item) => {
       const cardId = item.master.id;
@@ -1362,8 +1289,6 @@ const ExperienceCardList: React.FC<{
           isCollapsing={model.collapsingCards.has(cardId)}
           isModified={model.modifiedCards.has(cardId)}
           isSaving={model.savingCardId === cardId}
-          showTags={showTags}
-          isGeneratingTags={model.generatingTagIds.has(cardId)}
           isPolishing={model.isPolishing(cardId)}
           onToggle={() => model.onToggle(cardId)}
           onDelete={() => model.onDeleteRequest(cardId)}
@@ -1372,7 +1297,6 @@ const ExperienceCardList: React.FC<{
           onFieldChange={(field, value) => model.onFieldChange(cardId, field, value)}
           onPolishAll={() => model.onPolishAll(cardId)}
           onUndo={(field) => model.onUndo(cardId, field)}
-          onGenerateTags={() => model.onGenerateTags(cardId)}
           themeColor={themeColor}
         />
       );
@@ -1408,12 +1332,11 @@ const ExperienceSectionView: React.FC<{
   labels: ExperienceCardLabels;
   addButtonLabel: string;
   deleteConfirmText: string;
-  showTags: boolean;
   model: ExperienceSectionModel;
   themeColor?: string;
   isCollapsed: boolean;
   onToggle: () => void;
-}> = ({ title, subtitle, icon, labels, addButtonLabel, deleteConfirmText, showTags, model, themeColor, isCollapsed, onToggle }) => (
+}> = ({ title, subtitle, icon, labels, addButtonLabel, deleteConfirmText, model, themeColor, isCollapsed, onToggle }) => (
   <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
     <SectionHeader
       icon={icon}
@@ -1432,7 +1355,7 @@ const ExperienceSectionView: React.FC<{
           disabled={model.isCreating}
           themeColor={themeColor}
         />
-        <ExperienceCardList items={model.sortedExperiences} labels={labels} showTags={showTags} model={model} themeColor={themeColor} />
+        <ExperienceCardList items={model.sortedExperiences} labels={labels} model={model} themeColor={themeColor} />
       </>
     )}
     <DeleteDialog
@@ -1456,7 +1379,6 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
       labels={props.labels}
       addButtonLabel={props.addButtonLabel}
       deleteConfirmText={props.deleteConfirmText}
-      showTags={props.showTags ?? false}
       model={model}
       themeColor={props.themeColor}
       isCollapsed={isCollapsed}

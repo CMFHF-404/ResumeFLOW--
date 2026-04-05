@@ -1,7 +1,32 @@
 import { useEffect, useState } from 'react';
 import { useLogto } from '@logto/react';
+import {
+  readAuthUserKeyFromCachedAccessToken,
+  resolveAuthUserKeyFromActiveSession,
+} from '../services/apiClient';
 
 const LOG_PREFIX = '[useAuthUserKey]';
+export const AUTH_USER_KEY_STORAGE_KEY = 'yuanzijianli.authUserKey';
+
+export const readStoredAuthUserKey = () => {
+  try {
+    return localStorage.getItem(AUTH_USER_KEY_STORAGE_KEY);
+  } catch (error) {
+    return null;
+  }
+};
+
+export const writeStoredAuthUserKey = (value: string | null) => {
+  try {
+    if (value) {
+      localStorage.setItem(AUTH_USER_KEY_STORAGE_KEY, value);
+    } else {
+      localStorage.removeItem(AUTH_USER_KEY_STORAGE_KEY);
+    }
+  } catch (error) {
+    // ignore storage errors (private mode, etc.)
+  }
+};
 
 const resolveUserKey = (claims: unknown): string | null => {
   if (!claims || typeof claims !== 'object') {
@@ -12,13 +37,19 @@ const resolveUserKey = (claims: unknown): string | null => {
 };
 
 export const useAuthUserKey = () => {
-  const { isAuthenticated, getIdTokenClaims } = useLogto();
-  const [userKey, setUserKey] = useState<string | null>(null);
+  const { isAuthenticated, isLoading, getIdTokenClaims } = useLogto();
+  const [userKey, setUserKey] = useState<string | null>(() => (
+    readAuthUserKeyFromCachedAccessToken()
+  ));
 
   useEffect(() => {
     let isCancelled = false;
 
     const loadUserKey = async () => {
+      if (isLoading) {
+        return;
+      }
+
       if (!isAuthenticated || !getIdTokenClaims) {
         if (!isCancelled) {
           setUserKey(null);
@@ -35,7 +66,8 @@ export const useAuthUserKey = () => {
       } catch (error) {
         console.warn(`${LOG_PREFIX} 读取用户标识失败`, error);
         if (!isCancelled) {
-          setUserKey(null);
+          const fallbackUserKey = await resolveAuthUserKeyFromActiveSession();
+          setUserKey(fallbackUserKey);
         }
       }
     };
@@ -45,7 +77,7 @@ export const useAuthUserKey = () => {
     return () => {
       isCancelled = true;
     };
-  }, [isAuthenticated, getIdTokenClaims]);
+  }, [getIdTokenClaims, isAuthenticated, isLoading]);
 
   return userKey;
 };

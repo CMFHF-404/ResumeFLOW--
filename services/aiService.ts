@@ -65,10 +65,6 @@ export type AnalyzeJDWithAttachmentParams = {
     prevExperienceText?: string;
 };
 
-export interface GenerateTagsResponse {
-    tags: string[];
-}
-
 export interface GenerateBossGreetingParams {
     jdText: string;
     analysisSummary: string;
@@ -582,13 +578,6 @@ export const aiService = {
             onEvent,
             contentType: 'application/json',
         });
-    },
-
-    async generateTags(text: string) {
-        const response = await apiClient.post<GenerateTagsResponse>('/api/generate-tags', {
-            text,
-        });
-        return response.data;
     },
 
     async generateBossGreeting(data: GenerateBossGreetingParams) {

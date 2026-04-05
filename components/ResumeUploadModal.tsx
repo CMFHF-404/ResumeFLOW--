@@ -241,7 +241,6 @@ const normalizeImportVersion = (version: ParsedExperienceVersion) => ({
   is_current: Boolean(version.is_current),
   summary: normalizeParsedOptionalText(version.summary),
   highlights: normalizeParsedList(version.highlights),
-  tags: normalizeParsedList(version.tags),
   star: version.star || {},
 });
 

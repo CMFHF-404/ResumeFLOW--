@@ -13,7 +13,6 @@ export interface ExperienceVersion {
     is_current?: boolean;
     summary?: string;
     highlights?: string[];
-    tags?: string[];
     star?: Record<string, any>;
 }
 
@@ -47,7 +46,6 @@ export interface ExperienceCreatePayload {
         is_current?: boolean;
         summary?: string;
         highlights?: string[];
-        tags?: string[];
         star?: Record<string, any>;
     };
 }
@@ -64,7 +62,6 @@ export interface ExperienceUpdatePayload {
         is_current?: boolean;
         summary?: string;
         highlights?: string[];
-        tags?: string[];
         star?: Record<string, any>;
     };
 }
