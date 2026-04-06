@@ -15,6 +15,7 @@ MAX_IMAGE_COUNT = 3
 MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2MB
 DEFAULT_CATEGORY = "other"
 ALLOWED_CATEGORIES = {"bug", "suggestion", "other"}
+ALLOWED_CONTACT_TYPES = {"email", "wechat", "phone", "qq"}
 ALLOWED_IMAGE_MIME_PREFIXES = ("image/jpeg", "image/png", "image/webp", "image/gif")
 
 
@@ -24,6 +25,7 @@ class FeedbackView:
     user_id: str
     category: str
     content: str
+    contact_type: Optional[str]
     contact: Optional[str]
     context_json: Dict[str, Any]
     image_count: int
@@ -40,6 +42,14 @@ def _normalize_text(value: Optional[str]) -> Optional[str]:
 def _normalize_category(value: str) -> str:
     normalized = value.strip().lower()
     return normalized if normalized in ALLOWED_CATEGORIES else DEFAULT_CATEGORY
+
+
+def _normalize_contact_type(value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return None
+    normalized = normalized.lower()
+    return normalized if normalized in ALLOWED_CONTACT_TYPES else None
 
 
 def _ensure_valid_content(content: str) -> None:
@@ -88,6 +98,7 @@ def build_feedback_view(feedback: Feedback) -> FeedbackView:
         user_id=feedback.user_id,
         category=feedback.category,
         content=feedback.content,
+        contact_type=feedback.contact_type,
         contact=feedback.contact,
         context_json=feedback.context_json or {},
         image_count=len(feedback.image_base64_list or []),
@@ -101,6 +112,7 @@ def build_feedback_notification(feedback: Feedback) -> FeedbackNotification:
         user_id=feedback.user_id,
         category=feedback.category,
         content=feedback.content,
+        contact_type=feedback.contact_type,
         contact=feedback.contact,
         context=feedback.context_json or {},
         image_base64_list=list(feedback.image_base64_list or []),
@@ -127,6 +139,7 @@ async def create_feedback(
     _ensure_valid_content(content)
     category = _normalize_category(payload.category)
     contact = _normalize_text(payload.contact)
+    contact_type = _normalize_contact_type(payload.contact_type) if contact else None
     context_json = _normalize_context(payload.context_json)
     image_base64_list = _validate_and_encode_images(images) if images else []
 
@@ -134,6 +147,7 @@ async def create_feedback(
         user_id=user_id,
         category=category,
         content=content,
+        contact_type=contact_type,
         contact=contact,
         context_json=context_json,
         image_base64_list=image_base64_list,

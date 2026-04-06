@@ -27,6 +27,7 @@ async def submit_feedback(
     background_tasks: BackgroundTasks,
     category: str = Form(...),
     content: str = Form(...),
+    contact_type: Optional[str] = Form(default=None),
     contact: Optional[str] = Form(default=None),
     context_json: Optional[str] = Form(default=None),
     images: List[UploadFile] = File(default=[]),
@@ -41,6 +42,7 @@ async def submit_feedback(
     payload = FeedbackCreate(
         category=category,
         content=content,
+        contact_type=contact_type or None,
         contact=contact or None,
         context_json=parsed_context,
     )
@@ -61,6 +63,7 @@ async def submit_feedback(
         user_id=view.user_id,
         category=view.category,
         content=view.content,
+        contact_type=view.contact_type,
         contact=view.contact,
         context_json=view.context_json,
         image_count=view.image_count,

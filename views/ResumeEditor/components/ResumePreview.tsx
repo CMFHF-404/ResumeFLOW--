@@ -352,6 +352,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditSkill,
 }) => {
     const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal';
+    const isDashboardModalPreview = previewScope === 'dashboard-modal';
     const previewScrollRef = React.useRef<HTMLElement | null>(null);
     const previewViewportRef = React.useRef<HTMLDivElement | null>(null);
     const touchSessionRef = React.useRef<TouchDragSession | null>(null);
@@ -2393,12 +2394,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         <main
             ref={previewScrollRef}
             className={`bg-gray-100 dark:bg-gray-900/50 overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8 ${
-                usePageScrollOnMobile ? 'overflow-visible' : 'flex-1 overflow-y-auto'
+                usePageScrollOnMobile || isDashboardModalPreview ? 'overflow-visible' : 'flex-1 overflow-y-auto'
             }`}
             style={{
                 touchAction: isDragging ? 'none' : 'pan-y',
-                overscrollBehaviorY: isDragging ? 'none' : (usePageScrollOnMobile ? undefined : 'contain'),
-                WebkitOverflowScrolling: usePageScrollOnMobile ? undefined : 'touch',
+                overscrollBehaviorY: isDragging
+                    ? 'none'
+                    : (usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'contain'),
+                WebkitOverflowScrolling: usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'touch',
             }}
         >
             <div

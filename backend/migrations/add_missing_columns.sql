@@ -293,6 +293,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category TEXT NOT NULL,
     content TEXT NOT NULL,
+    contact_type TEXT,
     contact TEXT,
     context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -302,6 +303,7 @@ ALTER TABLE feedback
     ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     ADD COLUMN IF NOT EXISTS category TEXT,
     ADD COLUMN IF NOT EXISTS content TEXT,
+    ADD COLUMN IF NOT EXISTS contact_type TEXT,
     ADD COLUMN IF NOT EXISTS contact TEXT,
     ADD COLUMN IF NOT EXISTS context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();

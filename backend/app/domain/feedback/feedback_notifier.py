@@ -17,6 +17,12 @@ CATEGORY_LABELS = {
     "suggestion": "建议",
     "other": "其他",
 }
+CONTACT_TYPE_LABELS = {
+    "email": "邮箱",
+    "wechat": "微信",
+    "phone": "电话",
+    "qq": "QQ",
+}
 
 
 @dataclass(frozen=True)
@@ -25,6 +31,7 @@ class FeedbackNotification:
     user_id: str
     category: str
     content: str
+    contact_type: Optional[str]
     contact: Optional[str]
     context: Dict[str, Any]
     image_base64_list: List[str] = field(default_factory=list)
@@ -57,6 +64,17 @@ def _truncate_text(value: str, limit: int = 300) -> str:
     if len(normalized) <= limit:
         return normalized
     return f"{normalized[:limit]}..."
+
+
+def _format_contact(contact_type: Optional[str], contact: Optional[str]) -> str:
+    normalized_contact = _normalize_text(contact)
+    if not normalized_contact:
+        return "未提供"
+    normalized_contact_type = _normalize_text(contact_type).lower() if contact_type else ""
+    contact_type_label = CONTACT_TYPE_LABELS.get(normalized_contact_type, "")
+    if contact_type_label:
+        return f"{contact_type_label}: {normalized_contact}"
+    return normalized_contact
 
 
 def _extract_feishu_error(payload: Dict[str, Any]) -> Optional[str]:
@@ -198,7 +216,7 @@ def _build_rich_post_payload(
     构建飞书富文本（post 类型）消息，支持图片内联展示。
     消息结构：标题 + 文字段落 + 图片行（每张一行）。
     """
-    contact = _normalize_text(notification.contact) or "未提供"
+    contact = _format_contact(notification.contact_type, notification.contact)
     context_text = _format_context(notification.context)
     category_label = CATEGORY_LABELS.get(notification.category, notification.category)
 
@@ -239,7 +257,7 @@ def _build_text_payload(
     image_count_hint: int = 0,
 ) -> Dict[str, Any]:
     """构建纯文字消息（无图，或图片上传失败时的降级方案）。"""
-    contact = _normalize_text(notification.contact) or "未提供"
+    contact = _format_contact(notification.contact_type, notification.contact)
     context_text = _format_context(notification.context)
     category_label = CATEGORY_LABELS.get(notification.category, notification.category)
 

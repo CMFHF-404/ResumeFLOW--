@@ -4,6 +4,7 @@ import apiClient from './apiClient';
 export interface FeedbackFormData {
   category: string;
   content: string;
+  contact_type?: string;
   contact?: string;
   context_json?: Record<string, any>;
 }
@@ -25,6 +26,9 @@ const buildFeedbackFormData = (
   const fd = new FormData();
   fd.append('category', formData.category);
   fd.append('content', formData.content);
+  if (formData.contact_type) {
+    fd.append('contact_type', formData.contact_type);
+  }
   if (formData.contact) {
     fd.append('contact', formData.contact);
   }
