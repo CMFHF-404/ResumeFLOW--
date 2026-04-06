@@ -44,6 +44,8 @@ import {
     LINE_HEIGHT_DEFAULT,
     LIST_SPACING_BY_DENSITY,
     PREVIEW_PADDING_MM,
+    SMART_PAGE_ITEM_SPACING_DEFAULT,
+    SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY,
     SECTION_SPACING_CLASS_BY_DENSITY,
 } from '../../ResumeEditor/constants';
 
@@ -65,6 +67,11 @@ type PreviewState = {
     selectedCertIds: Set<string>;
     selectedSkillGroups: SkillGroupView[];
     density: 'compact' | 'standard' | 'spacious';
+    lineHeight: number;
+    fontSize: number;
+    topPaddingPx: number;
+    itemSpacingEm: number;
+    sectionSpacingKey: 2 | 3 | 4 | 5 | 6 | 8;
     templateId: ResumeTemplateId;
     themeColorPresetId: ResumeThemeColorPresetId;
 };
@@ -79,10 +86,30 @@ const LOADING_TEXT = '正在加载简历预览...';
 const ERROR_TEXT = '加载简历预览失败，请稍后重试';
 const DEFAULT_SPACING_CLASS = SECTION_SPACING_CLASS_BY_DENSITY.standard;
 const DEFAULT_TOP_PADDING_PX = PREVIEW_PADDING_MM * (96 / 25.4);
+const DEFAULT_SECTION_SPACING_KEY = 6;
 
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
     const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
     return `${(baseSpacing * scale).toFixed(3)}em`;
+};
+
+const resolveDefaultSectionSpacingKey = (
+    density: PreviewState['density']
+): PreviewState['sectionSpacingKey'] => {
+    if (density === 'compact') {
+        return 4;
+    }
+    if (density === 'spacious') {
+        return 8;
+    }
+    return DEFAULT_SECTION_SPACING_KEY;
+};
+
+const resolveDefaultItemSpacingEm = (density: PreviewState['density']) => {
+    if (density === 'standard') {
+        return SMART_PAGE_ITEM_SPACING_DEFAULT;
+    }
+    return LIST_SPACING_BY_DENSITY[density];
 };
 
 const applyExplicitOrder = <T,>(
@@ -146,18 +173,17 @@ const buildSelectedSkillGroups = (groups: SkillGroupView[], selectedIds: Set<str
         .filter((group) => group.skills.length > 0);
 };
 
-const resolveSpacingClass = (density?: PreviewState['density']) => {
-    return SECTION_SPACING_CLASS_BY_DENSITY[density ?? 'standard'] ?? DEFAULT_SPACING_CLASS;
+const resolveSpacingClass = (sectionSpacingKey?: PreviewState['sectionSpacingKey']) => {
+    if (sectionSpacingKey === 8) {
+        return SECTION_SPACING_CLASS_BY_DENSITY.spacious;
+    }
+    return SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[sectionSpacingKey ?? DEFAULT_SECTION_SPACING_KEY]
+        ?? DEFAULT_SPACING_CLASS;
 };
 
 const buildPreviewTitle = (resumeName?: string) => {
     return resumeName ? `${DEFAULT_TITLE} - ${resumeName}` : DEFAULT_TITLE;
 };
-
-const DEFAULT_BULLET_SPACING_VALUE = buildSpacingValue(
-    LIST_SPACING_BY_DENSITY.compact,
-    LINE_HEIGHT_DEFAULT
-);
 
 const buildPreviewState = (
     detail: ResumeDetail,
@@ -171,6 +197,11 @@ const buildPreviewState = (
     const rawTemplateId = config.layout?.templateId;
     const templateId = normalizeResumeTemplateId(rawTemplateId);
     const density = config.layout?.density ?? 'standard';
+    const lineHeight = config.layout?.lineHeight ?? LINE_HEIGHT_DEFAULT;
+    const fontSize = config.layout?.fontSize ?? FONT_SIZE_DEFAULT;
+    const topPaddingPx = config.layout?.topPaddingPx ?? DEFAULT_TOP_PADDING_PX;
+    const itemSpacingEm = config.layout?.itemSpacingEm ?? resolveDefaultItemSpacingEm(density);
+    const sectionSpacingKey = config.layout?.sectionSpacingKey ?? resolveDefaultSectionSpacingKey(density);
     const sectionOrder = normalizeSectionOrder(config.layout?.sectionOrder);
     const orders = config.layout?.orders;
     const resumeMap = buildResumeExperienceMap(detail);
@@ -220,6 +251,11 @@ const buildPreviewState = (
         selectedCertIds,
         selectedSkillGroups: buildSelectedSkillGroups(orderedSkillGroups, selectedSkillIds),
         density,
+        lineHeight,
+        fontSize,
+        topPaddingPx,
+        itemSpacingEm,
+        sectionSpacingKey,
         templateId,
         themeColorPresetId: config.layout?.themeColorPresetId
             ?? resolveDefaultResumeThemeColorPresetId(rawTemplateId ?? templateId ?? DEFAULT_RESUME_TEMPLATE_ID),
@@ -384,11 +420,11 @@ const buildResumePreviewProps = (
     previewRef,
     previewContentRef,
     previewScope: 'dashboard-modal',
-    lineHeight: LINE_HEIGHT_DEFAULT,
-    fontSize: FONT_SIZE_DEFAULT,
+    lineHeight: previewState.lineHeight,
+    fontSize: previewState.fontSize,
     listSpacingValue,
-    bulletSpacingValue: DEFAULT_BULLET_SPACING_VALUE,
-    topPaddingPx: DEFAULT_TOP_PADDING_PX,
+    bulletSpacingValue: buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, previewState.lineHeight),
+    topPaddingPx: previewState.topPaddingPx,
     templateId: previewState.templateId,
     themeColorPresetId: previewState.themeColorPresetId,
     profile: previewState.profile,
@@ -435,9 +471,11 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
             : null;
     const previewRef = useRef<HTMLDivElement | null>(null);
     const previewContentRef = useRef<HTMLDivElement | null>(null);
-    const spacingClass = resolveSpacingClass(previewState?.density);
-    const density = previewState?.density ?? 'standard';
-    const listSpacingValue = buildSpacingValue(LIST_SPACING_BY_DENSITY[density], LINE_HEIGHT_DEFAULT);
+    const spacingClass = resolveSpacingClass(previewState?.sectionSpacingKey);
+    const listSpacingValue = buildSpacingValue(
+        previewState?.itemSpacingEm ?? resolveDefaultItemSpacingEm(previewState?.density ?? 'standard'),
+        previewState?.lineHeight ?? LINE_HEIGHT_DEFAULT
+    );
     const previewProps = previewState
         ? buildResumePreviewProps(
             previewState,

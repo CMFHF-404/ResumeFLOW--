@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category TEXT NOT NULL,
     content TEXT NOT NULL,
+    contact_type TEXT,
     contact TEXT,
     context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     image_base64_list TEXT[] NOT NULL DEFAULT '{}',

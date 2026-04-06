@@ -3,7 +3,9 @@ import { Image, Upload, X } from 'lucide-react';
 import {
   FEEDBACK_ALLOWED_IMAGE_TYPES,
   FEEDBACK_CATEGORIES,
+  FEEDBACK_CONTACT_TYPES,
   FEEDBACK_DEFAULT_CATEGORY,
+  FEEDBACK_DEFAULT_CONTACT_TYPE,
   FEEDBACK_MAX_CONTENT_LENGTH,
   FEEDBACK_MAX_IMAGE_SIZE_BYTES,
   FEEDBACK_MAX_IMAGE_SIZE_MB,
@@ -11,6 +13,7 @@ import {
   FEEDBACK_SUCCESS_CLOSE_DELAY_MS,
   FEEDBACK_SUCCESS_MESSAGE,
   type FeedbackCategory,
+  type FeedbackContactType,
 } from '../constants/feedback';
 import { feedbackService, type FeedbackFormData } from '../services/feedbackService';
 
@@ -30,6 +33,7 @@ type FeedbackModalProps = {
 type FeedbackFormState = {
   category: FeedbackCategory;
   content: string;
+  contactType: FeedbackContactType;
   contact: string;
   images: File[];
 };
@@ -43,6 +47,7 @@ type ImagePreview = {
 const DEFAULT_STATE: FeedbackFormState = {
   category: FEEDBACK_DEFAULT_CATEGORY,
   content: '',
+  contactType: FEEDBACK_DEFAULT_CONTACT_TYPE,
   contact: '',
   images: [],
 };
@@ -52,6 +57,19 @@ const DEFAULT_STATE: FeedbackFormState = {
 // ---------------------------------------------------------------------------
 
 const normalizeInput = (value: string) => value.trim();
+
+const isLikelyEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
+
+const resolveContactType = (state: FeedbackFormState): FeedbackContactType | undefined => {
+  const normalizedContact = normalizeInput(state.contact);
+  if (!normalizedContact) {
+    return undefined;
+  }
+  if (isLikelyEmail(normalizedContact)) {
+    return 'email';
+  }
+  return state.contactType;
+};
 
 const validateContent = (content: string): string | null => {
   if (!content) return '请输入反馈内容';
@@ -83,6 +101,7 @@ const buildFormData = (
   formData: {
     category: state.category,
     content: normalizeInput(state.content),
+    contact_type: resolveContactType(state),
     contact: normalizeInput(state.contact) || undefined,
     context_json: context,
   },
@@ -166,19 +185,35 @@ const FeedbackContentField: React.FC<{
 );
 
 const FeedbackContactField: React.FC<{
+  contactType: FeedbackContactType;
   value: string;
+  placeholder: string;
+  onContactTypeChange: (value: FeedbackContactType) => void;
   onChange: (value: string) => void;
-}> = ({ value, onChange }) => (
+}> = ({ contactType, value, placeholder, onContactTypeChange, onChange }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
       联系方式（可选）
     </label>
-    <input
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder="邮箱 / 微信 / 手机号"
-      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
-    />
+    <div className="flex items-stretch gap-3">
+      <select
+        value={contactType}
+        onChange={(event) => onContactTypeChange(event.target.value as FeedbackContactType)}
+        className="w-40 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+      >
+        {FEEDBACK_CONTACT_TYPES.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-w-0 flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+      />
+    </div>
   </div>
 );
 
@@ -324,6 +359,10 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, context, onClose 
     () => normalizeInput(formState.content).length,
     [formState.content]
   );
+  const contactPlaceholder = useMemo(
+    () => FEEDBACK_CONTACT_TYPES.find((item) => item.value === formState.contactType)?.placeholder ?? '请输入联系方式',
+    [formState.contactType]
+  );
 
   /** 释放所有图片预览 URL，防止内存泄漏 */
   const revokeAllPreviews = (previews: ImagePreview[]) => {
@@ -459,7 +498,10 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, context, onClose 
           onRemove={handleRemoveImage}
         />
         <FeedbackContactField
+          contactType={formState.contactType}
           value={formState.contact}
+          placeholder={contactPlaceholder}
+          onContactTypeChange={(value) => setFormState((prev) => ({ ...prev, contactType: value }))}
           onChange={(value) => setFormState((prev) => ({ ...prev, contact: value }))}
         />
         <FeedbackActions

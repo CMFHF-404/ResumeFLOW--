@@ -158,6 +158,7 @@ class Feedback(SQLModel, table=True):
     user_id: str = Field(foreign_key="users.id", index=True)
     category: str
     content: str = Field(sa_column=Column(Text, nullable=False))
+    contact_type: Optional[str] = None
     contact: Optional[str] = None
     context_json: Dict[str, Any] = Field(
         default_factory=dict, sa_column=Column(JSONB, nullable=False)

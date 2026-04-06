@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class FeedbackCreate(BaseModel):
     category: str
     content: str
+    contact_type: Optional[str] = None
     contact: Optional[str] = None
     context_json: Optional[Dict[str, Any]] = None
 
@@ -16,6 +17,7 @@ class FeedbackRead(BaseModel):
     user_id: str
     category: str
     content: str
+    contact_type: Optional[str] = None
     contact: Optional[str] = None
     context_json: Dict[str, Any]
     # 仅返回图片数量，不返回原始 base64 内容（避免接口负载过大）

@@ -25,6 +25,7 @@ from .routers import experience_versions, resumes
 from contextlib import asynccontextmanager
 from .database import (
     ensure_experience_version_tags_column,
+    ensure_feedback_contact_type_column,
     ensure_feedback_images_column,
     ensure_export_render_snapshots_table,
     verify_db_connection,
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI):
         await verify_db_connection()
         await ensure_experience_version_tags_column()
         await ensure_export_render_snapshots_table()
+        await ensure_feedback_contact_type_column()
         await ensure_feedback_images_column()
     except Exception as e:
         # 如果连不上数据库，直接抛出异常阻止启动
