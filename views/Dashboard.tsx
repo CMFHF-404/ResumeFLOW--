@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Moon, Sun, Bell, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn } from 'lucide-react';
+import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
 import { resolveAuthUserKeyFromActiveSession } from '../services/apiClient';
@@ -133,7 +133,7 @@ const mergeMatchRatesIntoResumes = (items: Resume[]) => {
   const next = items.map((resume) => {
     const localMatchRate = resolveDashboardResumeLocalMatchRate(resume.id);
     const matchRate = typeof localMatchRate === 'number' ? localMatchRate : resume.matchRate;
-    const status = matchRate > 0 ? 'final' : 'draft';
+    const status = (matchRate > 0 ? 'final' : 'draft') as Resume['status'];
     if (resume.matchRate === matchRate && resume.status === status) {
       return resume;
     }
@@ -170,9 +170,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   authUserKey = null,
   onResumesUpdate,
 }) => {
-  const [isDarkMode, setIsDarkMode] = useState(() =>
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-  );
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
   const { signIn, isAuthenticated } = useLogto();
@@ -249,19 +246,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     return () => mediaQuery.removeListener(handleChange);
   }, []);
 
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    const root = document.documentElement;
-    const syncThemeState = () => {
-      setIsDarkMode(root.classList.contains('dark'));
-    };
-    syncThemeState();
-    const observer = new MutationObserver(syncThemeState);
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
+
 
   const lastSyncedResumesRef = useRef<Resume[] | null>(null);
   useEffect(() => {
@@ -308,11 +293,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     void loadResumes();
   }, [isCacheOwnerMatched, loadKey, loadResumes]);
 
-  const toggleTheme = () => {
-    const nextIsDark = !document.documentElement.classList.contains('dark');
-    document.documentElement.classList.toggle('dark', nextIsDark);
-    setIsDarkMode(nextIsDark);
-  };
+
 
   const effectiveViewMode = isMobile ? 'list' : viewMode;
   const selectedResumeIdSet = useMemo(() => new Set(selectedResumeIds), [selectedResumeIds]);
@@ -789,15 +770,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
         <div className="flex items-center justify-between gap-4 md:justify-end">
           <UnAuthPrompt />
-          <button
-            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
-            onClick={toggleTheme}
-          >
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
-          <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500">
-            <Bell className="w-4 h-4" />
-          </div>
         </div>
         </div>
       </header>
