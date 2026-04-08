@@ -10,10 +10,15 @@ from starlette.status import HTTP_503_SERVICE_UNAVAILABLE, HTTP_504_GATEWAY_TIME
 
 from ...config import load_settings
 from .prompts import (
+    CERTIFICATION_ASSISTANT_PROMPT,
+    EXPERIENCE_ASSISTANT_PROMPT,
+    GENERAL_ASSISTANT_PROMPT,
     BOSS_GREETING_GENERATION,
     JD_ANALYSIS,
     JD_ANALYSIS_IMAGE,
+    POLISH_MODE_INSTRUCTIONS,
     PERSONAL_SUMMARY_GENERATION,
+    SKILL_ASSISTANT_PROMPT,
     STAR_POLISH,
     TAG_GENERATION,
 )
@@ -776,15 +781,96 @@ def _resolve_star_prompt(target_field: Optional[str]) -> str:
     return STAR_POLISH
 
 
+def _build_polish_prompt(
+    target_field: Optional[str],
+    mode: Optional[str] = None,
+    custom_prompt: Optional[str] = None,
+) -> str:
+    base_prompt = _resolve_star_prompt(target_field)
+    normalized_mode = (mode or "default").strip().lower()
+    mode_instruction = POLISH_MODE_INSTRUCTIONS.get(normalized_mode)
+    prompt_parts = [base_prompt]
+    if mode_instruction:
+        prompt_parts.append(mode_instruction)
+    if custom_prompt and custom_prompt.strip():
+        prompt_parts.append(
+            "Additional user instruction for this rewrite: "
+            f"{custom_prompt.strip()}"
+        )
+    return " ".join(prompt_parts)
+
+
+def _get_assistant_prompt(mode: str) -> str:
+    if mode == "general":
+        return GENERAL_ASSISTANT_PROMPT
+    if mode == "experience":
+        return (
+            GENERAL_ASSISTANT_PROMPT
+            + " Current preferred topic: experience. Start by focusing on experience organization, but do not refuse other topics."
+        )
+    if mode == "certification":
+        return (
+            GENERAL_ASSISTANT_PROMPT
+            + " Current preferred topic: certification. Start by focusing on certification organization, but do not refuse other topics."
+        )
+    if mode == "skill":
+        return (
+            GENERAL_ASSISTANT_PROMPT
+            + " Current preferred topic: skill. Start by focusing on skill organization, but do not refuse other topics."
+        )
+    raise ValueError(f"Unsupported assistant mode: {mode}")
+
+
+def _build_assistant_payload(
+    *,
+    mode: str,
+    user_message: str,
+    session_title: str,
+    entry_source: str,
+    context_json: Dict[str, Any],
+    history: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "mode": mode,
+        "session_title": session_title,
+        "entry_source": entry_source,
+        "context": context_json,
+        "history": history[-16:],
+        "user_message": user_message,
+    }
+
+
+def _normalize_assistant_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    assistant_text = result.get("assistantText")
+    title = result.get("title")
+    draft_card = result.get("draftCard")
+    normalized_text = assistant_text.strip() if isinstance(assistant_text, str) else ""
+    normalized_title = title.strip() if isinstance(title, str) and title.strip() else "AI 助理"
+    normalized_card = draft_card if isinstance(draft_card, dict) else None
+    if not normalized_text:
+        raise ValueError("AI 助理未返回有效回复。")
+    return {
+        "assistantText": normalized_text,
+        "draftCard": normalized_card,
+        "title": normalized_title,
+    }
+
+
 async def polish_experience(
     content: Dict[str, Any],
     target_field: Optional[str] = None,
     jd_text: Optional[str] = None,
+    mode: Optional[str] = None,
+    custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
-    prompt = _resolve_star_prompt(target_field)
+    prompt = _build_polish_prompt(target_field, mode, custom_prompt)
     content_payload = {**content}
     if jd_text:
         content_payload["jd_text"] = jd_text
+    if mode:
+        content_payload["polish_mode"] = mode
+    if custom_prompt:
+        content_payload["custom_prompt"] = custom_prompt
     messages = [
         {"role": "system", "content": prompt},
         {"role": "user", "content": json.dumps(content_payload, ensure_ascii=False)},
@@ -796,15 +882,21 @@ async def polish_experience_with_thoughts(
     content: Dict[str, Any],
     target_field: Optional[str] = None,
     jd_text: Optional[str] = None,
+    mode: Optional[str] = None,
+    custom_prompt: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
     if not settings.gemini_api_key:
-        return await polish_experience(content, target_field, jd_text)
+        return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
 
-    prompt = _resolve_star_prompt(target_field)
+    prompt = _build_polish_prompt(target_field, mode, custom_prompt)
     content_payload = {**content}
     if jd_text:
         content_payload["jd_text"] = jd_text
+    if mode:
+        content_payload["polish_mode"] = mode
+    if custom_prompt:
+        content_payload["custom_prompt"] = custom_prompt
     try:
         return await _stream_gemini_json_response(
             system_prompt=prompt,
@@ -821,7 +913,86 @@ async def polish_experience_with_thoughts(
             "[AI Stream] Gemini thought streaming failed for star_polish, falling back to standard polish.",
             exc_info=True,
         )
-        return await polish_experience(content, target_field, jd_text)
+        return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
+
+
+async def run_assistant_turn(
+    *,
+    mode: str,
+    user_message: str,
+    session_title: str,
+    entry_source: str,
+    context_json: Dict[str, Any],
+    history: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    payload = _build_assistant_payload(
+        mode=mode,
+        user_message=user_message,
+        session_title=session_title,
+        entry_source=entry_source,
+        context_json=context_json,
+        history=history,
+    )
+    messages = [
+        {"role": "system", "content": _get_assistant_prompt(mode)},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+    result = await _call_llm(messages, json_mode=True)
+    return _normalize_assistant_result(result)
+
+
+async def run_assistant_turn_with_thoughts(
+    *,
+    mode: str,
+    user_message: str,
+    session_title: str,
+    entry_source: str,
+    context_json: Dict[str, Any],
+    history: List[Dict[str, Any]],
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    if not settings.gemini_api_key:
+        return await run_assistant_turn(
+            mode=mode,
+            user_message=user_message,
+            session_title=session_title,
+            entry_source=entry_source,
+            context_json=context_json,
+            history=history,
+        )
+
+    payload = _build_assistant_payload(
+        mode=mode,
+        user_message=user_message,
+        session_title=session_title,
+        entry_source=entry_source,
+        context_json=context_json,
+        history=history,
+    )
+    try:
+        result = await _stream_gemini_json_response(
+            system_prompt=_get_assistant_prompt(mode),
+            user_parts=[{"text": json.dumps(payload, ensure_ascii=False)}],
+            error_message="AI 助理整理失败，请稍后重试。",
+            request_label=f"assistant_{mode}",
+            budget_tokens=settings.ai_thinking_budget_polish,
+            thought_callback=thought_callback,
+        )
+    except Exception:
+        logger.warning(
+            "[AI Stream] Gemini thought streaming failed for assistant_%s, falling back to standard assistant turn.",
+            mode,
+            exc_info=True,
+        )
+        return await run_assistant_turn(
+            mode=mode,
+            user_message=user_message,
+            session_title=session_title,
+            entry_source=entry_source,
+            context_json=context_json,
+            history=history,
+        )
+    return _normalize_assistant_result(result)
 
 
 async def generate_tags(text: str) -> Dict[str, Any]:

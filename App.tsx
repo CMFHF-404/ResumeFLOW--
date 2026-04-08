@@ -6,6 +6,7 @@ import ViewErrorBoundary from './components/ViewErrorBoundary';
 import Dashboard from './views/Dashboard';
 import ExperienceBank from './views/ExperienceBank';
 import ResumeEditor from './views/ResumeEditor';
+import AIAssistant, { type AssistantLaunchRequest } from './views/AIAssistant';
 import Callback from './views/Callback';
 import { ViewState, Resume } from './types';
 import { trackPageView } from './utils/analyticsTracker';
@@ -62,8 +63,10 @@ const App: React.FC = () => {
   // 标记是否需要在ExperienceBank中自动打开简历上传弹窗
   const [shouldOpenResumeUpload, setShouldOpenResumeUpload] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const authUserKey = useAuthUserKey();
   const authUserKeyRef = useRef<string | null>(null);
+  const assistantLaunchRequestIdRef = useRef(0);
 
   const resetUserScopedState = useCallback(() => {
     resumeService.clearListCache();
@@ -76,6 +79,7 @@ const App: React.FC = () => {
     setProfileCache(null);
     setShouldOpenResumeUpload(false);
     setIsFeedbackOpen(false);
+    setAssistantLaunchRequest(null);
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
@@ -100,6 +104,29 @@ const App: React.FC = () => {
   const handleResetView = useCallback(() => {
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
+  }, []);
+
+  const handleLaunchAssistant = useCallback((request: AssistantLaunchRequest) => {
+    const nextRequestId = assistantLaunchRequestIdRef.current + 1;
+    assistantLaunchRequestIdRef.current = nextRequestId;
+    setAssistantLaunchRequest({
+      ...request,
+      requestId: `launch-${nextRequestId}`,
+    });
+    setCurrentView(ViewState.AI_ASSISTANT);
+    localStorage.setItem(VIEW_STORAGE_KEY, ViewState.AI_ASSISTANT);
+  }, []);
+
+  const handleConsumeAssistantLaunchRequest = useCallback((requestId?: string) => {
+    setAssistantLaunchRequest((current) => {
+      if (!current) {
+        return current;
+      }
+      if (requestId && current.requestId !== requestId) {
+        return current;
+      }
+      return null;
+    });
   }, []);
 
   useEffect(() => {
@@ -166,7 +193,14 @@ const App: React.FC = () => {
           />
         );
       case ViewState.EXPERIENCE_BANK:
-        return <ExperienceBank cachedProfile={profileCache} onProfileUpdate={handleProfileUpdate} shouldOpenResumeUpload={shouldOpenResumeUpload} />;
+        return (
+          <ExperienceBank
+            cachedProfile={profileCache}
+            onProfileUpdate={handleProfileUpdate}
+            shouldOpenResumeUpload={shouldOpenResumeUpload}
+            onLaunchAssistant={handleLaunchAssistant}
+          />
+        );
       case ViewState.EDITOR:
         return (
           <ResumeEditor
@@ -174,6 +208,14 @@ const App: React.FC = () => {
             cachedResumesOwnerKey={cachedResumesOwnerKey}
             authUserKey={authUserKey}
             onResumesUpdate={handleResumesUpdate}
+            onLaunchAssistant={handleLaunchAssistant}
+          />
+        );
+      case ViewState.AI_ASSISTANT:
+        return (
+          <AIAssistant
+            pendingLaunchRequest={assistantLaunchRequest}
+            onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
           />
         );
       default:

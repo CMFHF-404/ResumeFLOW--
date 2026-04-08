@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
@@ -48,6 +48,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     { view: ViewState.DASHBOARD, icon: FolderOpen, label: '我的简历' },
     { view: ViewState.EXPERIENCE_BANK, icon: Database, label: '经历库' },
     { view: ViewState.EDITOR, icon: Wand2, label: '简历工厂' },
+    { view: ViewState.AI_ASSISTANT, icon: Bot, label: 'AI助理' },
   ];
   const desktopUtilityButtonClass =
     "group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 text-slate-300 transition-all hover:bg-slate-800 hover:text-white md:p-3";
@@ -263,6 +264,16 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             <Wand2 className="w-6 h-6" />
             <span className="text-xs font-medium md:hidden">简历工厂</span>
             <div className="nav-tooltip hidden md:block">简历工厂</div>
+          </button>
+
+          <button
+            className={getButtonClass(ViewState.AI_ASSISTANT)}
+            onClick={() => handleSetView(ViewState.AI_ASSISTANT)}
+            type="button"
+          >
+            <Bot className="w-6 h-6" />
+            <span className="text-xs font-medium md:hidden">AI助理</span>
+            <div className="nav-tooltip hidden md:block">AI助理</div>
           </button>
         </div>
 

@@ -248,6 +248,9 @@ type UseExperienceActionsOptions = {
     jdText: string;
     toast: ToastApi;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
+    onExperienceDraftPersisted?: (draftMasterId: string, savedMasterId: string) => void;
+    onExperienceSaveSuccess?: (masterId: string) => Promise<void>;
+    onExperienceEditDiscarded?: (masterId: string | null) => void;
     experience: ExperienceDomain;
     education: EducationDomain;
     certification: CertificationDomain;
@@ -266,6 +269,7 @@ type UseExperienceActionsResult = {
     experience: {
         editingExpId: string | null;
         editingDraft: ExperienceEditDraft | null;
+        setEditingDraft: Dispatch<SetStateAction<ExperienceEditDraft | null>>;
         syncToMaster: boolean;
         setSyncToMaster: Dispatch<SetStateAction<boolean>>;
         isSavingExperience: boolean;
@@ -603,12 +607,16 @@ const createExperienceEditHandlers = (
     domain: ExperienceDomain,
     helpers: ExperienceHelpers,
     state: ExperienceState,
-    draftHandlers: ExperienceDraftHandlers
+    draftHandlers: ExperienceDraftHandlers,
+    onExperienceEditDiscarded?: (masterId: string | null) => void,
 ): ExperienceEditHandlers => {
     const startEditingExperience = (id: string) => {
         const draft = resolveEditingExperienceDraft(domain, helpers, id);
         if (!draft) {
             return;
+        }
+        if (state.editingExpId && state.editingExpId !== id) {
+            onExperienceEditDiscarded?.(state.editingDraft?.masterId ?? null);
         }
         advanceExperienceEditSession(state.editSessionRef);
         state.setEditingExpId(id);
@@ -617,6 +625,7 @@ const createExperienceEditHandlers = (
     };
 
     const cancelEditingExperience = () => {
+        onExperienceEditDiscarded?.(state.editingDraft?.masterId ?? null);
         if (state.editingDraft?.isDraft && state.editingDraft.masterId) {
             draftHandlers.removeDraftExperience(state.editingDraft.masterId);
         }
@@ -1085,7 +1094,9 @@ const createExperienceSaveHandlers = (
     state: ExperienceState,
     updateHelpers: ExperienceUpdateHelpers,
     draftHandlers: ExperienceDraftHandlers,
-    applyResumeDetail: (detail: ResumeDetail | null) => void
+    applyResumeDetail: (detail: ResumeDetail | null) => void,
+    onExperienceDraftPersisted?: (draftMasterId: string, savedMasterId: string) => void,
+    onExperienceSaveSuccess?: (masterId: string) => Promise<void>,
 ): ExperienceSaveHandlers => {
     const handleSaveExperience = async () => {
         if (!state.editingDraft) {
@@ -1093,6 +1104,7 @@ const createExperienceSaveHandlers = (
         }
         state.setIsSavingExperience(true);
         try {
+            let savedMasterId = state.editingDraft.masterId;
             if (state.editingDraft.isDraft) {
                 const dates = helpers.resolveExperienceDatePayload(state.editingDraft);
                 const payload = {
@@ -1112,6 +1124,10 @@ const createExperienceSaveHandlers = (
                 };
                 const detail = await experienceService.create(payload);
                 draftHandlers.replaceDraftExperience(state.editingDraft.masterId, detail);
+                if (savedMasterId !== detail.master.id) {
+                    onExperienceDraftPersisted?.(savedMasterId, detail.master.id);
+                }
+                savedMasterId = detail.master.id;
             } else if (state.syncToMaster) {
                 await syncExperienceToMaster(
                     resumeId,
@@ -1136,6 +1152,7 @@ const createExperienceSaveHandlers = (
                     updateHelpers
                 );
             }
+            await onExperienceSaveSuccess?.(savedMasterId);
             advanceExperienceEditSession(state.editSessionRef);
             state.setEditingExpId(null);
             state.setEditingDraft(null);
@@ -2224,7 +2241,8 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         options.experience,
         options.helpers,
         experienceState,
-        draftHandlers
+        draftHandlers,
+        options.onExperienceEditDiscarded,
     );
     const updateHelpers = createExperienceUpdateHelpers(options.experience, options.helpers);
     const saveHandlers = createExperienceSaveHandlers(
@@ -2237,7 +2255,9 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         experienceState,
         updateHelpers,
         draftHandlers,
-        options.applyResumeDetail
+        options.applyResumeDetail,
+        options.onExperienceDraftPersisted,
+        options.onExperienceSaveSuccess,
     );
     const deleteHandlers = createExperienceDeleteHandlers(
         options.experience,
@@ -2319,6 +2339,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         experience: {
             editingExpId: experienceState.editingExpId,
             editingDraft: experienceState.editingDraft,
+            setEditingDraft: experienceState.setEditingDraft,
             syncToMaster: experienceState.syncToMaster,
             setSyncToMaster: experienceState.setSyncToMaster,
             isSavingExperience: experienceState.isSavingExperience,

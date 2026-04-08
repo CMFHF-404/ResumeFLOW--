@@ -2,6 +2,7 @@ export enum ViewState {
   DASHBOARD = 'DASHBOARD',
   EDITOR = 'EDITOR',
   EXPERIENCE_BANK = 'EXPERIENCE_BANK',
+  AI_ASSISTANT = 'AI_ASSISTANT',
 }
 
 export interface Resume {

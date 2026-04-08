@@ -107,6 +107,70 @@ async def ensure_export_render_snapshots_table() -> None:
         )
 
 
+async def ensure_ai_assistant_tables() -> None:
+    """确保 AI 助理会话与消息表存在，兼容老环境升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS ai_assistant_sessions (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    entry_source TEXT NOT NULL DEFAULT 'direct',
+                    context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    latest_preview JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS ai_assistant_messages (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    session_id UUID NOT NULL REFERENCES ai_assistant_sessions(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL,
+                    message_type TEXT NOT NULL,
+                    content_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_user_id
+                ON ai_assistant_sessions(user_id)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_updated_at
+                ON ai_assistant_sessions(updated_at DESC)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_assistant_messages_session_id
+                ON ai_assistant_messages(session_id, created_at)
+                """
+            )
+        )
+
+
 async def ensure_feedback_images_column() -> None:
     """确保 feedback.image_base64_list 列存在，兼容老环境升级。"""
     if engine.dialect.name != "postgresql":
@@ -172,5 +236,6 @@ async def ensure_dev_schema() -> None:
     await init_db()
     await ensure_experience_version_tags_column()
     await ensure_export_render_snapshots_table()
+    await ensure_ai_assistant_tables()
     await ensure_feedback_contact_type_column()
     await ensure_feedback_images_column()

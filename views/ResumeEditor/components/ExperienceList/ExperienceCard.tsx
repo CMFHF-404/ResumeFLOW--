@@ -65,8 +65,8 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
                 className={`${actionButtonBaseClass} bg-amber-50 text-amber-600 hover:bg-amber-100 md:bg-transparent md:text-gray-400 ${themeStyles.editHoverData}`}
                 onClick={handlePolish}
                 disabled={isPolishing}
-                title="基于 JD 润色（默认仅保存到当前简历）"
-                aria-label="基于 JD 润色（默认仅保存到当前简历）"
+                title="打开 AI 润色工具栏"
+                aria-label="打开 AI 润色工具栏"
             >
                 <Sparkles className="w-3.5 h-3.5" />
             </button>

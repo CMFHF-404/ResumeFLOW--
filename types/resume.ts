@@ -2,7 +2,7 @@ import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "
 import type { JDAnalysisItemSignatures, MatchTrend } from "./analysis";
 import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/resumeTemplates';
 import type { ResumeDetail } from "../services/resumeService";
-import type { JDAnalysisResult } from "../services/aiService";
+import type { AssistantDraftCard, JDAnalysisResult, PolishMode } from "../services/aiService";
 
 export type StarFields = {
   s: string;
@@ -244,6 +244,18 @@ export type SkillGroupView = {
   skills: SkillItemView[];
 };
 
+export type PolishPreviewState<T> = {
+  mode: Exclude<PolishMode, 'assistant'>;
+  before: T;
+  after: T;
+  customPrompt?: string;
+};
+
+export type AssistantLinkedDraftState = {
+  sessionId?: string;
+  lastDraftCard?: AssistantDraftCard | null;
+};
+
 export type ResumePdfRenderSnapshot = {
   resumeName: string;
   profile: ResumeEditorProfile;
@@ -269,6 +281,7 @@ export type ResumePdfRenderSnapshot = {
 export type ExperienceActions = {
   editingExpId: string | null;
   editingDraft: ExperienceEditDraft | null;
+  setEditingDraft: Dispatch<SetStateAction<ExperienceEditDraft | null>>;
   syncToMaster: boolean;
   setSyncToMaster: Dispatch<SetStateAction<boolean>>;
   isSavingExperience: boolean;
