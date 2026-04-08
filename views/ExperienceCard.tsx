@@ -1,5 +1,7 @@
 import React, { useCallback } from 'react';
-import { ChevronDown, ChevronUp, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import AIPolishToolbar from '../components/AIPolishToolbar';
+import type { PolishMode } from '../services/aiService';
 import MonthPicker from '../components/MonthPicker';
 import RichTextEditor from '../components/RichTextEditor';
 import { parseYearMonthValue, resolveCardMotionClass } from './experienceUtils';
@@ -65,12 +67,20 @@ type ExperienceCardProps = {
   isModified: boolean;
   isSaving: boolean;
   isPolishing: boolean;
+  isPolishPreviewing: boolean;
+  activePolishMode: Exclude<PolishMode, 'assistant'>;
+  customPolishPrompt: string;
   onToggle: () => void;
   onDelete: () => void;
   onSave: () => void;
   onCancel: () => void;
   onFieldChange: (field: string, value: string | string[]) => void;
-  onPolishAll: () => void;
+  onPolishModeChange: (mode: Exclude<PolishMode, 'assistant'>) => void;
+  onCustomPolishPromptChange: (value: string) => void;
+  onRunPolish: () => void;
+  onUndoPolishPreview: () => void;
+  onConfirmPolishPreview: () => void;
+  onOpenAssistant: () => void;
   onUndo: (field: StarFieldKey) => boolean;
   themeColor?: string;
 };
@@ -286,78 +296,98 @@ const StarSectionList: React.FC<{
   </div>
 );
 
-// StarPolishBar component removed as it is now integrated into the footer
-
 const ExperienceCardFooter: React.FC<{
   isModified: boolean;
   isSaving: boolean;
+  isPolishing: boolean;
+  isPolishPreviewing: boolean;
+  activePolishMode: Exclude<PolishMode, 'assistant'>;
+  customPolishPrompt: string;
   onDelete: () => void;
   onCancel: () => void;
   onSave: () => void;
   onToggle: () => void;
-  onPolishAll: () => void;
-  isPolishing: boolean;
+  onPolishModeChange: (mode: Exclude<PolishMode, 'assistant'>) => void;
+  onCustomPolishPromptChange: (value: string) => void;
+  onRunPolish: () => void;
+  onUndoPolishPreview: () => void;
+  onConfirmPolishPreview: () => void;
+  onOpenAssistant: () => void;
   themeColor?: string;
-}> = ({ isModified, isSaving, onDelete, onCancel, onSave, onToggle, onPolishAll, isPolishing, themeColor }) => {
-  const polishTitle = isPolishing ? 'AI 润色中...' : 'AI 整体润色';
-  const polishButtonClass = `inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${themeColor ? `text-${themeColor}-600 hover:text-${themeColor}-700` : 'text-amber-600 hover:text-amber-700'
-    }`;
-
+}> = ({
+  isModified,
+  isSaving,
+  isPolishing,
+  isPolishPreviewing,
+  activePolishMode,
+  customPolishPrompt,
+  onDelete,
+  onCancel,
+  onSave,
+  onToggle,
+  onPolishModeChange,
+  onCustomPolishPromptChange,
+  onRunPolish,
+  onUndoPolishPreview,
+  onConfirmPolishPreview,
+  onOpenAssistant,
+}) => {
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-      {/* AI Polish Button */}
-      <button
-        type="button"
-        onClick={onPolishAll}
-        disabled={isPolishing}
-        title={polishTitle}
-        aria-label={polishTitle}
-        className={polishButtonClass}
-      >
-        <Sparkles className={`w-4 h-4 ${isPolishing ? 'animate-pulse' : ''}`} />
-        {polishTitle}
-      </button>
+    <div className="space-y-4 border-t border-gray-100 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800/50">
+      <AIPolishToolbar
+        isPreviewing={isPolishPreviewing}
+        isRunning={isPolishing}
+        activeMode={activePolishMode}
+        customPrompt={customPolishPrompt}
+        onModeChange={onPolishModeChange}
+        onCustomPromptChange={onCustomPolishPromptChange}
+        onRun={onRunPolish}
+        onUndo={onUndoPolishPreview}
+        onConfirm={onConfirmPolishPreview}
+        onOpenAssistant={onOpenAssistant}
+      />
 
-      {/* Action Buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between">
         <button
           onClick={onDelete}
-          className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
+          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
           title="删除"
           type="button"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="h-4 w-4" />
         </button>
 
-        {isModified ? (
-          <>
+        <div className="flex items-center gap-2">
+          {isModified ? (
+            <>
+              <button
+                onClick={onCancel}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+                disabled={isSaving}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                onClick={onSave}
+                className={`flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-medium shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${getThemeClasses(themeColor).button}`}
+                disabled={isSaving}
+                type="button"
+              >
+                {isSaving ? '保存中...' : '保存'}
+              </button>
+            </>
+          ) : (
             <button
-              onClick={onCancel}
-              className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-              disabled={isSaving}
+              onClick={onToggle}
+              className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
               type="button"
             >
-              取消
+              折叠
+              <ChevronUp className="h-4 w-4" />
             </button>
-            <button
-              onClick={onSave}
-              className={`flex items-center gap-2 text-sm font-medium px-6 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${getThemeClasses(themeColor).button}`}
-              disabled={isSaving}
-              type="button"
-            >
-              {isSaving ? '保存中...' : '保存'}
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={onToggle}
-            className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            type="button"
-          >
-            折叠
-            <ChevronUp className="w-4 h-4" />
-          </button>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -368,14 +398,22 @@ const ExpandedExperienceCard: React.FC<{
   labels: ExperienceCardLabels;
   isCollapsing: boolean;
   isPolishing: boolean;
+  isPolishPreviewing: boolean;
   isModified: boolean;
   isSaving: boolean;
+  activePolishMode: Exclude<PolishMode, 'assistant'>;
+  customPolishPrompt: string;
   onToggle: () => void;
   onDelete: () => void;
   onSave: () => void;
   onCancel: () => void;
   onFieldChange: (field: string, value: string | string[]) => void;
-  onPolishAll: () => void;
+  onPolishModeChange: (mode: Exclude<PolishMode, 'assistant'>) => void;
+  onCustomPolishPromptChange: (value: string) => void;
+  onRunPolish: () => void;
+  onUndoPolishPreview: () => void;
+  onConfirmPolishPreview: () => void;
+  onOpenAssistant: () => void;
   onUndo: (field: StarFieldKey) => boolean;
   themeColor?: string;
 }> = ({
@@ -383,14 +421,22 @@ const ExpandedExperienceCard: React.FC<{
   labels,
   isCollapsing,
   isPolishing,
+  isPolishPreviewing,
   isModified,
   isSaving,
+  activePolishMode,
+  customPolishPrompt,
   onToggle,
   onDelete,
   onSave,
   onCancel,
   onFieldChange,
-  onPolishAll,
+  onPolishModeChange,
+  onCustomPolishPromptChange,
+  onRunPolish,
+  onUndoPolishPreview,
+  onConfirmPolishPreview,
+  onOpenAssistant,
   onUndo,
   themeColor,
 }) => (
@@ -412,12 +458,20 @@ const ExpandedExperienceCard: React.FC<{
       <ExperienceCardFooter
         isModified={isModified}
         isSaving={isSaving}
+        isPolishing={isPolishing}
+        isPolishPreviewing={isPolishPreviewing}
+        activePolishMode={activePolishMode}
+        customPolishPrompt={customPolishPrompt}
         onDelete={onDelete}
         onCancel={onCancel}
         onSave={onSave}
         onToggle={onToggle}
-        onPolishAll={onPolishAll}
-        isPolishing={isPolishing}
+        onPolishModeChange={onPolishModeChange}
+        onCustomPolishPromptChange={onCustomPolishPromptChange}
+        onRunPolish={onRunPolish}
+        onUndoPolishPreview={onUndoPolishPreview}
+        onConfirmPolishPreview={onConfirmPolishPreview}
+        onOpenAssistant={onOpenAssistant}
         themeColor={themeColor}
       />
     </div>
@@ -433,12 +487,20 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
       isModified,
       isSaving,
       isPolishing,
+      isPolishPreviewing,
+      activePolishMode,
+      customPolishPrompt,
       onToggle,
       onDelete,
       onSave,
       onCancel,
       onFieldChange,
-      onPolishAll,
+      onPolishModeChange,
+      onCustomPolishPromptChange,
+      onRunPolish,
+      onUndoPolishPreview,
+      onConfirmPolishPreview,
+      onOpenAssistant,
       onUndo,
       themeColor,
     },
@@ -464,14 +526,22 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             labels={labels}
             isCollapsing={isCollapsing}
             isPolishing={isPolishing}
+            isPolishPreviewing={isPolishPreviewing}
             isModified={isModified}
             isSaving={isSaving}
+            activePolishMode={activePolishMode}
+            customPolishPrompt={customPolishPrompt}
             onToggle={onToggle}
             onDelete={onDelete}
             onSave={onSave}
             onCancel={onCancel}
             onFieldChange={onFieldChange}
-            onPolishAll={onPolishAll}
+            onPolishModeChange={onPolishModeChange}
+            onCustomPolishPromptChange={onCustomPolishPromptChange}
+            onRunPolish={onRunPolish}
+            onUndoPolishPreview={onUndoPolishPreview}
+            onConfirmPolishPreview={onConfirmPolishPreview}
+            onOpenAssistant={onOpenAssistant}
             onUndo={onUndo}
             themeColor={themeColor}
           />

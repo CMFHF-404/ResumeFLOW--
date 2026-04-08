@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ChevronDown } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { aiService, PolishExperienceResponse } from '../services/aiService';
+import { aiService, type PolishExperienceResponse, type PolishMode } from '../services/aiService';
 import { experienceService, ExperienceCategory, ExperienceListItem } from '../services/experienceService';
 import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey } from './ExperienceCard';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
 import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
+import type { PolishPreviewState } from '../types/resume';
+import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from './AIAssistant';
 
 type ToastApi = {
   success: (message: string, duration?: number) => string;
@@ -30,6 +32,7 @@ type ExperienceSectionProps = {
   refreshSignal?: number;
   toast: ToastApi;
   themeColor?: string;
+  onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
 };
 
 type ExperienceSectionModel = {
@@ -45,13 +48,21 @@ type ExperienceSectionModel = {
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
   isPolishing: (cardId: string) => boolean;
+  getPolishMode: (cardId: string) => Exclude<PolishMode, 'assistant'>;
+  getCustomPrompt: (cardId: string) => string;
+  isPreviewingPolish: (cardId: string) => boolean;
   onAdd: () => void;
   onToggle: (cardId: string) => void;
   onDeleteRequest: (cardId: string) => void;
   onSave: (cardId: string) => void;
   onCancel: (cardId: string) => void;
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
-  onPolishAll: (cardId: string) => void;
+  onPolishModeChange: (cardId: string, mode: Exclude<PolishMode, 'assistant'>) => void;
+  onCustomPromptChange: (cardId: string, value: string) => void;
+  onRunPolish: (cardId: string) => void;
+  onUndoPolishPreview: (cardId: string) => void;
+  onConfirmPolishPreview: (cardId: string) => void;
+  onOpenAssistant: (cardId: string) => void;
   onUndo: (cardId: string, field: StarFieldKey) => boolean;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
@@ -405,6 +416,19 @@ const useCardEditors = (
     [setCardData, updateModifiedState]
   );
 
+  const updateCardData = useCallback(
+    (cardId: string, data: ExperienceCardData) => {
+      setCardData((prev) => {
+        const next = new Map(prev);
+        const nextData = cloneExperienceCardData(data);
+        next.set(cardId, nextData);
+        updateModifiedState(cardId, nextData);
+        return next;
+      });
+    },
+    [setCardData, updateModifiedState]
+  );
+
   const resetCard = useCallback(
     (cardId: string) => {
       const original = originalCardData.get(cardId);
@@ -420,7 +444,7 @@ const useCardEditors = (
     [originalCardData, setCardData, setModifiedCards]
   );
 
-  return { updateCardField, updateCardStar, resetCard };
+  return { updateCardField, updateCardStar, updateCardData, resetCard };
 };
 
 const useCardRemoval = (
@@ -581,6 +605,9 @@ type ExperienceSaveParams = {
   toast: ToastApi;
   refreshExperiences: () => Promise<ExperienceListItem[]>;
   toggleCard: (cardId: string) => void;
+  clearPreviewState: (cardId: string) => void;
+  movePendingAssistantApply: (fromCardId: string, toCardId: string) => void;
+  consumePendingAssistantApply: (cardId: string) => Promise<void>;
   setExperiences: React.Dispatch<React.SetStateAction<ExperienceListItem[]>>;
   setCardData: React.Dispatch<React.SetStateAction<Map<string, ExperienceCardData>>>;
   setOriginalCardData: React.Dispatch<React.SetStateAction<Map<string, ExperienceCardData>>>;
@@ -594,6 +621,9 @@ const useExperienceSave = ({
   toast,
   refreshExperiences,
   toggleCard,
+  clearPreviewState,
+  movePendingAssistantApply,
+  consumePendingAssistantApply,
   setExperiences,
   setCardData,
   setOriginalCardData,
@@ -649,6 +679,14 @@ const useExperienceSave = ({
             next.delete(realId);
             return next;
           });
+          movePendingAssistantApply(cardId, realId);
+          try {
+            await consumePendingAssistantApply(realId);
+          } catch (syncError) {
+            console.error('[ExperienceSection] 同步 AI 草稿状态失败:', syncError);
+            toast.error('已创建，但 AI 草稿状态同步失败，请稍后重试', 3000);
+          }
+          clearPreviewState(cardId);
 
           // Close the card (standard behavior is toggle)
           // If we call toggleCard(cardId), it will try to collapse 'temp_...' which is fine if it's in expanded set.
@@ -671,6 +709,13 @@ const useExperienceSave = ({
 
           toastId = toast.loading('正在同步...');
           await experienceService.update(cardId, { version: buildVersionPayload(data) });
+          try {
+            await consumePendingAssistantApply(cardId);
+          } catch (syncError) {
+            console.error('[ExperienceSection] 同步 AI 草稿状态失败:', syncError);
+            toast.error('已保存，但 AI 草稿状态同步失败，请稍后重试', 3000);
+          }
+          clearPreviewState(cardId);
 
           if (toastId) {
             toast.updateToast(toastId, { message: '已保存', type: 'success', duration: 2000 });
@@ -699,7 +744,7 @@ const useExperienceSave = ({
         setSavingCardId(null);
       }
     },
-    [cardData, category, emptyTitleError, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, toast, toggleCard]
+    [cardData, category, clearPreviewState, consumePendingAssistantApply, emptyTitleError, movePendingAssistantApply, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, toast, toggleCard]
   );
 
   return { savingCardId, handleSaveCard };
@@ -781,11 +826,14 @@ type ExperienceAiParams = {
   cardData: Map<string, ExperienceCardData>;
   toast: ToastApi;
   updateCardField: (cardId: string, field: string, value: string | string[]) => void;
+  updateCardData: (cardId: string, data: ExperienceCardData) => void;
 };
 
 type ExperiencePolishParams = ExperienceAiParams & {
   category: ExperienceSectionProps['category'];
   updateCardStar: (cardId: string, star: Record<StarFieldKey, string>) => void;
+  onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
+  registerPendingAssistantApply: (cardId: string, meta: AssistantDraftApplyMeta) => void;
 };
 
 type StarSnapshot = {
@@ -794,8 +842,10 @@ type StarSnapshot = {
 };
 
 type StarSnapshotMap = Partial<Record<StarFieldKey, StarSnapshot>>;
+type CardPolishMode = Exclude<PolishMode, 'assistant'>;
 
 const POLISH_SOURCE = 'experience_bank';
+const DEFAULT_POLISH_MODE: CardPolishMode = 'default';
 const POLISH_TOAST_MESSAGES = {
   loading: '正在进行 AI 润色...',
   success: 'AI 润色完成',
@@ -884,6 +934,10 @@ const useStarSnapshotStore = (
     }
   }, []);
 
+  const clearCardSnapshots = useCallback((cardId: string) => {
+    snapshotRef.current.delete(cardId);
+  }, []);
+
   const handleUndo = useCallback(
     (cardId: string, field: StarFieldKey) => {
       const snapshots = snapshotRef.current.get(cardId);
@@ -912,19 +966,25 @@ const useStarSnapshotStore = (
     [cardData, updateCardField]
   );
 
-  return { storeStarSnapshots, clearStarSnapshot, handleUndo };
+  return { storeStarSnapshots, clearStarSnapshot, clearCardSnapshots, handleUndo };
 };
 
 const usePolishActions = ({
   cardData,
   toast,
   updateCardField,
+  updateCardData,
   updateCardStar,
   category,
+  onLaunchAssistant,
+  registerPendingAssistantApply,
 }: ExperiencePolishParams) => {
   const [polishingTargets, setPolishingTargets] = useState<Set<string>>(new Set());
+  const [polishModes, setPolishModes] = useState<Map<string, CardPolishMode>>(new Map());
+  const [customPrompts, setCustomPrompts] = useState<Map<string, string>>(new Map());
+  const [previewStates, setPreviewStates] = useState<Map<string, PolishPreviewState<ExperienceCardData>>>(new Map());
   const cardDataRef = useRef(cardData);
-  const { storeStarSnapshots, clearStarSnapshot, handleUndo } = useStarSnapshotStore(
+  const { storeStarSnapshots, clearStarSnapshot, clearCardSnapshots, handleUndo } = useStarSnapshotStore(
     cardData,
     updateCardField
   );
@@ -945,7 +1005,30 @@ const usePolishActions = ({
     });
   }, []);
 
-  const handlePolishAll = useCallback(
+  const getPolishMode = useCallback(
+    (cardId: string): CardPolishMode => polishModes.get(cardId) ?? DEFAULT_POLISH_MODE,
+    [polishModes]
+  );
+
+  const getCustomPrompt = useCallback(
+    (cardId: string) => customPrompts.get(cardId) ?? '',
+    [customPrompts]
+  );
+
+  const isPreviewingPolish = useCallback(
+    (cardId: string) => previewStates.has(cardId),
+    [previewStates]
+  );
+
+  const handlePolishModeChange = useCallback((cardId: string, mode: CardPolishMode) => {
+    setPolishModes((prev) => new Map(prev).set(cardId, mode));
+  }, []);
+
+  const handleCustomPromptChange = useCallback((cardId: string, value: string) => {
+    setCustomPrompts((prev) => new Map(prev).set(cardId, value));
+  }, []);
+
+  const handleRunPolish = useCallback(
     async (cardId: string) => {
       if (polishingTargets.has(cardId)) {
         return;
@@ -964,11 +1047,18 @@ const usePolishActions = ({
       let action: 'applied' | 'discarded' = 'discarded';
       let toastId: string | null = null;
       let hasError = false;
+      const mode = getPolishMode(cardId);
+      const customPrompt = getCustomPrompt(cardId).trim();
       trackAiPolishStart({ source: POLISH_SOURCE, field: 'all', category });
       updatePolishingTarget(cardId, true);
       toastId = toast.loading(POLISH_TOAST_MESSAGES.loading);
       try {
-        const response = await aiService.polishExperienceStream({ content }, (event) => {
+        const response = await aiService.polishExperienceStream({
+          content,
+          mode,
+          customPrompt: mode === 'custom' ? customPrompt : undefined,
+          entrySource: 'experience_bank',
+        }, (event) => {
           if (!toastId || event.type !== 'thought') {
             return;
           }
@@ -988,6 +1078,19 @@ const usePolishActions = ({
         if (hasStarChanges(currentStar, nextStar)) {
           updateCardStar(cardId, nextStar);
           storeStarSnapshots(cardId, buildStarSnapshots(currentStar, nextStar));
+          setPreviewStates((prev) => {
+            const next = new Map(prev);
+            next.set(cardId, {
+              mode,
+              customPrompt: mode === 'custom' ? customPrompt : undefined,
+              before: cloneExperienceCardData(data),
+              after: cloneExperienceCardData({
+                ...latestData,
+                star: nextStar,
+              }),
+            });
+            return next;
+          });
           action = 'applied';
         }
       } catch (error) {
@@ -1021,6 +1124,8 @@ const usePolishActions = ({
     [
       cardData,
       category,
+      getCustomPrompt,
+      getPolishMode,
       polishingTargets,
       storeStarSnapshots,
       toast,
@@ -1029,12 +1134,109 @@ const usePolishActions = ({
     ]
   );
 
+  const handleUndoPolishPreview = useCallback((cardId: string) => {
+    const preview = previewStates.get(cardId);
+    if (!preview) {
+      return;
+    }
+    const current = cardDataRef.current.get(cardId);
+    const nextData = cloneExperienceCardData(current ?? preview.before);
+    STAR_FIELD_KEYS.forEach((key) => {
+      if (nextData.star[key] === preview.after.star[key]) {
+        nextData.star[key] = preview.before.star[key];
+      }
+    });
+    updateCardData(cardId, nextData);
+    clearCardSnapshots(cardId);
+    setPreviewStates((prev) => {
+      const next = new Map(prev);
+      next.delete(cardId);
+      return next;
+    });
+  }, [clearCardSnapshots, previewStates, updateCardData]);
+
+  const clearPreviewState = useCallback((cardId: string) => {
+    clearCardSnapshots(cardId);
+    setPreviewStates((prev) => {
+      if (!prev.has(cardId)) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.delete(cardId);
+      return next;
+    });
+  }, [clearCardSnapshots]);
+
+  const handleConfirmPolishPreview = useCallback((cardId: string) => {
+    clearPreviewState(cardId);
+  }, [clearPreviewState]);
+
+  const handleOpenAssistant = useCallback((cardId: string) => {
+    const current = cardDataRef.current.get(cardId);
+    if (!current || !onLaunchAssistant) {
+      return;
+    }
+    onLaunchAssistant({
+      context: {
+        mode: 'experience',
+        entrySource: 'experience_bank',
+        title: `${current.org || '未命名经历'} · AI 整理`,
+        contextJson: {
+          masterId: cardId,
+          category,
+          org: current.org,
+          title: current.title,
+          startDate: current.start_date,
+          endDate: current.end_date,
+          star: current.star,
+        },
+      },
+      initialUserMessage: `请基于这段经历继续和我对话整理，最后输出一张可确认录入的经历卡片。\n\n组织/项目：${current.org || '未填写'}\n角色：${current.title || '未填写'}\n时间：${current.start_date || '未填写'} - ${current.end_date || '至今'}\nS：${stripRichTextToText(current.star.s) || '未填写'}\nT：${stripRichTextToText(current.star.t) || '未填写'}\nA：${stripRichTextToText(current.star.a) || '未填写'}\nR：${stripRichTextToText(current.star.r) || '未填写'}`,
+      applyDraftHandler: async (draft, meta) => {
+        if (draft.type !== 'experience') {
+          return false;
+        }
+        registerPendingAssistantApply(cardId, meta);
+        const nextData: ExperienceCardData = {
+          org: draft.data.org,
+          title: draft.data.title,
+          start_date: draft.data.startDate || '',
+          end_date: draft.data.isCurrent ? '' : (draft.data.endDate || ''),
+          star: {
+            s: draft.data.star.s,
+            t: draft.data.star.t,
+            a: draft.data.star.a,
+            r: draft.data.star.r,
+          },
+        };
+        updateCardData(cardId, nextData);
+        clearPreviewState(cardId);
+        return true;
+      },
+      callbackOnly: true,
+    });
+  }, [category, clearPreviewState, onLaunchAssistant, registerPendingAssistantApply, updateCardData]);
+
   const isPolishing = useCallback(
     (cardId: string) => polishingTargets.has(cardId),
     [polishingTargets]
   );
 
-  return { handlePolishAll, isPolishing, handleUndo, clearStarSnapshot };
+  return {
+    getPolishMode,
+    getCustomPrompt,
+    isPreviewingPolish,
+    handlePolishModeChange,
+    handleCustomPromptChange,
+    handleRunPolish,
+    handleUndoPolishPreview,
+    handleConfirmPolishPreview,
+    handleOpenAssistant,
+    isPolishing,
+    handleUndo,
+    clearStarSnapshot,
+    clearPreviewState,
+  };
 };
 
 const useSortedExperiences = (experiences: ExperienceListItem[]) => {
@@ -1054,13 +1256,21 @@ type SectionModelInput = {
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
   isPolishing: (cardId: string) => boolean;
+  getPolishMode: (cardId: string) => CardPolishMode;
+  getCustomPrompt: (cardId: string) => string;
+  isPreviewingPolish: (cardId: string) => boolean;
   onAdd: () => void;
   onToggle: (cardId: string) => void;
   onDeleteRequest: (cardId: string) => void;
   onSave: (cardId: string) => void;
   onCancel: (cardId: string) => void;
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
-  onPolishAll: (cardId: string) => void;
+  onPolishModeChange: (cardId: string, mode: CardPolishMode) => void;
+  onCustomPromptChange: (cardId: string, value: string) => void;
+  onRunPolish: (cardId: string) => void;
+  onUndoPolishPreview: (cardId: string) => void;
+  onConfirmPolishPreview: (cardId: string) => void;
+  onOpenAssistant: (cardId: string) => void;
   onUndo: (cardId: string, field: StarFieldKey) => boolean;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
@@ -1079,13 +1289,21 @@ const buildSectionModel = (input: SectionModelInput): ExperienceSectionModel => 
   deletingCardId: input.deletingCardId,
   setCardRef: input.setCardRef,
   isPolishing: input.isPolishing,
+  getPolishMode: input.getPolishMode,
+  getCustomPrompt: input.getCustomPrompt,
+  isPreviewingPolish: input.isPreviewingPolish,
   onAdd: input.onAdd,
   onToggle: input.onToggle,
   onDeleteRequest: input.onDeleteRequest,
   onSave: input.onSave,
   onCancel: input.onCancel,
   onFieldChange: input.onFieldChange,
-  onPolishAll: input.onPolishAll,
+  onPolishModeChange: input.onPolishModeChange,
+  onCustomPromptChange: input.onCustomPromptChange,
+  onRunPolish: input.onRunPolish,
+  onUndoPolishPreview: input.onUndoPolishPreview,
+  onConfirmPolishPreview: input.onConfirmPolishPreview,
+  onOpenAssistant: input.onOpenAssistant,
   onUndo: input.onUndo,
   onDeleteConfirm: input.onDeleteConfirm,
   onDeleteCancel: input.onDeleteCancel,
@@ -1098,16 +1316,40 @@ const useExperienceSectionModel = ({
   defaultTitle,
   emptyTitleError,
   toast,
+  onLaunchAssistant,
 }: ExperienceSectionProps): ExperienceSectionModel => {
   const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(category, refreshSignal);
   const { setCardRef, scrollToCard, highlightCard } = useCardRefs();
   const store = useCardDataStore();
+  const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
   const { ensureCardState } = useCardInitializer(experiences, store.setCardData, store.setOriginalCardData);
-  const { updateCardField, updateCardStar, resetCard } = useCardEditors(
+  const { updateCardField, updateCardStar, updateCardData, resetCard } = useCardEditors(
     store.originalCardData,
     store.setCardData,
     store.setModifiedCards
   );
+  const registerPendingAssistantApply = useCallback((cardId: string, meta: AssistantDraftApplyMeta) => {
+    pendingAssistantApplyRef.current.set(cardId, meta.persistApplied);
+  }, []);
+  const movePendingAssistantApply = useCallback((fromCardId: string, toCardId: string) => {
+    const pending = pendingAssistantApplyRef.current.get(fromCardId);
+    if (!pending) {
+      return;
+    }
+    pendingAssistantApplyRef.current.delete(fromCardId);
+    pendingAssistantApplyRef.current.set(toCardId, pending);
+  }, []);
+  const consumePendingAssistantApply = useCallback(async (cardId: string) => {
+    const pending = pendingAssistantApplyRef.current.get(cardId);
+    if (!pending) {
+      return;
+    }
+    await pending();
+    pendingAssistantApplyRef.current.delete(cardId);
+  }, []);
+  const clearPendingAssistantApply = useCallback((cardId: string) => {
+    pendingAssistantApplyRef.current.delete(cardId);
+  }, []);
   const { removeCardState } = useCardRemoval(store.setCardData, store.setModifiedCards, store.setOriginalCardData);
   const expansion = useCardExpansionState(ensureCardState, scrollToCard, highlightCard);
   const { isCreating, handleAddNew } = useExperienceCreate({
@@ -1117,29 +1359,41 @@ const useExperienceSectionModel = ({
     setModifiedCards: store.setModifiedCards,
     setExpandedCards: expansion.setExpandedCards,
   });
-  const { savingCardId, handleSaveCard } = useExperienceSave({
-    category, cardData: store.cardData, emptyTitleError, toast, refreshExperiences,
-    toggleCard: expansion.toggleCard, setExperiences,
-    setCardData: store.setCardData,
-    setOriginalCardData: store.setOriginalCardData,
-    setModifiedCards: store.setModifiedCards,
-  });
   const deleteActions = useExperienceDelete({
     category, toast, refreshExperiences, highlightCard, setExperiences,
     removeCardState,
     removeCardExpansion: expansion.removeCardExpansion,
   });
   const {
-    handlePolishAll,
+    getPolishMode,
+    getCustomPrompt,
+    isPreviewingPolish,
+    handlePolishModeChange,
+    handleCustomPromptChange,
+    handleRunPolish,
+    handleUndoPolishPreview,
+    handleConfirmPolishPreview,
+    handleOpenAssistant,
     isPolishing,
     handleUndo,
     clearStarSnapshot,
+    clearPreviewState,
   } = usePolishActions({
     cardData: store.cardData,
     toast,
     updateCardField,
+    updateCardData,
     updateCardStar,
     category,
+    onLaunchAssistant,
+    registerPendingAssistantApply,
+  });
+  const { savingCardId, handleSaveCard } = useExperienceSave({
+    category, cardData: store.cardData, emptyTitleError, toast, refreshExperiences,
+    toggleCard: expansion.toggleCard, clearPreviewState, movePendingAssistantApply, consumePendingAssistantApply, setExperiences,
+    setCardData: store.setCardData,
+    setOriginalCardData: store.setOriginalCardData,
+    setModifiedCards: store.setModifiedCards,
   });
   const sortedExperiences = useSortedExperiences(experiences);
 
@@ -1157,6 +1411,8 @@ const useExperienceSectionModel = ({
   );
 
   const handleCancel = useCallback((cardId: string) => {
+    clearPendingAssistantApply(cardId);
+    clearPreviewState(cardId);
     if (isTempId(cardId)) {
       setExperiences(prev => prev.filter(item => item.master.id !== cardId));
       store.setCardData(prev => {
@@ -1178,7 +1434,7 @@ const useExperienceSectionModel = ({
     } else {
       resetCard(cardId);
     }
-  }, [resetCard, expansion, setExperiences, store]);
+  }, [clearPendingAssistantApply, clearPreviewState, resetCard, expansion, setExperiences, store]);
 
   return buildSectionModel({
     experiences,
@@ -1193,13 +1449,21 @@ const useExperienceSectionModel = ({
     deletingCardId: deleteActions.deletingCardId,
     setCardRef,
     isPolishing,
+    getPolishMode,
+    getCustomPrompt,
+    isPreviewingPolish,
     onAdd: handleAddNew,
     onToggle: expansion.toggleCard,
     onDeleteRequest: deleteActions.requestDelete,
     onSave: handleSaveCard,
     onCancel: handleCancel,
     onFieldChange: handleFieldChange,
-    onPolishAll: handlePolishAll,
+    onPolishModeChange: handlePolishModeChange,
+    onCustomPromptChange: handleCustomPromptChange,
+    onRunPolish: handleRunPolish,
+    onUndoPolishPreview: handleUndoPolishPreview,
+    onConfirmPolishPreview: handleConfirmPolishPreview,
+    onOpenAssistant: handleOpenAssistant,
     onUndo: handleUndo,
     onDeleteConfirm: deleteActions.executeDelete,
     onDeleteCancel: deleteActions.cancelDelete,
@@ -1290,12 +1554,20 @@ const ExperienceCardList: React.FC<{
           isModified={model.modifiedCards.has(cardId)}
           isSaving={model.savingCardId === cardId}
           isPolishing={model.isPolishing(cardId)}
+          isPolishPreviewing={model.isPreviewingPolish(cardId)}
+          activePolishMode={model.getPolishMode(cardId)}
+          customPolishPrompt={model.getCustomPrompt(cardId)}
           onToggle={() => model.onToggle(cardId)}
           onDelete={() => model.onDeleteRequest(cardId)}
           onSave={() => model.onSave(cardId)}
           onCancel={() => model.onCancel(cardId)}
           onFieldChange={(field, value) => model.onFieldChange(cardId, field, value)}
-          onPolishAll={() => model.onPolishAll(cardId)}
+          onPolishModeChange={(mode) => model.onPolishModeChange(cardId, mode)}
+          onCustomPolishPromptChange={(value) => model.onCustomPromptChange(cardId, value)}
+          onRunPolish={() => model.onRunPolish(cardId)}
+          onUndoPolishPreview={() => model.onUndoPolishPreview(cardId)}
+          onConfirmPolishPreview={() => model.onConfirmPolishPreview(cardId)}
+          onOpenAssistant={() => model.onOpenAssistant(cardId)}
           onUndo={(field) => model.onUndo(cardId, field)}
           themeColor={themeColor}
         />

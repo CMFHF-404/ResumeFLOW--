@@ -9,6 +9,7 @@ from typing import List
 from .auth_middleware import LogtoAuthMiddleware
 from .config import load_settings
 from .domain.ai.ai_router import router as ai_router
+from .domain.assistant.assistant_router import router as assistant_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
 from .domain.export.export_router import router as export_router
@@ -24,6 +25,7 @@ from .routers import experience_versions, resumes
 
 from contextlib import asynccontextmanager
 from .database import (
+    ensure_ai_assistant_tables,
     ensure_experience_version_tags_column,
     ensure_feedback_contact_type_column,
     ensure_feedback_images_column,
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
         await verify_db_connection()
         await ensure_experience_version_tags_column()
         await ensure_export_render_snapshots_table()
+        await ensure_ai_assistant_tables()
         await ensure_feedback_contact_type_column()
         await ensure_feedback_images_column()
     except Exception as e:
@@ -79,6 +82,7 @@ app.include_router(resumes.router)
 app.include_router(skills_router)
 app.include_router(certifications_router)
 app.include_router(ai_router)
+app.include_router(assistant_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
 app.include_router(export_router)

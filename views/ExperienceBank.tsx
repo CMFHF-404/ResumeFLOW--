@@ -33,6 +33,7 @@ import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
+import type { AssistantLaunchRequest } from './AIAssistant';
 import type { ExperienceBankPdfRenderSnapshot } from '../types/experienceBankExport';
 import {
   buildExperienceBankExportDateLabel,
@@ -244,9 +245,15 @@ interface ExperienceBankProps {
   cachedProfile?: any;
   onProfileUpdate?: (data: any) => void;
   shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
+  onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
 }
 
-const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfileUpdate, shouldOpenResumeUpload = false }) => {
+const ExperienceBank: React.FC<ExperienceBankProps> = ({
+  cachedProfile,
+  onProfileUpdate,
+  shouldOpenResumeUpload = false,
+  onLaunchAssistant,
+}) => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
@@ -1203,6 +1210,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             defaultTitle="新职位"
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
+            onLaunchAssistant={onLaunchAssistant}
           />
 
           <ExperienceSection
@@ -1225,6 +1233,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({ cachedProfile, onProfil
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
             themeColor="indigo"
+            onLaunchAssistant={onLaunchAssistant}
           />
 
           <EducationSection model={education} />

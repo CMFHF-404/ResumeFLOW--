@@ -48,6 +48,9 @@ class PolishTextRequest(BaseModel):
     content: Dict[str, Any]
     target_field: Optional[str] = None
     jd_text: Optional[str] = None
+    mode: Optional[str] = None
+    custom_prompt: Optional[str] = None
+    entry_source: Optional[str] = None
 
 
 class GenerateTagsRequest(BaseModel):
@@ -239,7 +242,13 @@ async def polish_text_endpoint(
     payload: PolishTextRequest,
     current_user=Depends(get_current_user),
 ):
-    return await polish_experience(payload.content, payload.target_field, payload.jd_text)
+    return await polish_experience(
+        payload.content,
+        payload.target_field,
+        payload.jd_text,
+        payload.mode,
+        payload.custom_prompt,
+    )
 
 
 @router.post("/polish-text/stream")
@@ -261,6 +270,8 @@ async def polish_text_stream_endpoint(
                     payload.content,
                     payload.target_field,
                     payload.jd_text,
+                    payload.mode,
+                    payload.custom_prompt,
                     thought_callback=emit,
                 )
                 await emit({"type": "progress", "node": "persist_result", "title": "整理润色结果"})

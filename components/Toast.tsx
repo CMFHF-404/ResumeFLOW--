@@ -178,15 +178,40 @@ export const useToast = () => {
         setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, []);
 
-    return {
+    const success = React.useCallback(
+        (message: string, duration?: number) => showToast(message, 'success', duration),
+        [showToast]
+    );
+
+    const error = React.useCallback(
+        (message: string, duration?: number) => showToast(message, 'error', duration),
+        [showToast]
+    );
+
+    const info = React.useCallback(
+        (message: string, duration?: number) => showToast(message, 'info', duration),
+        [showToast]
+    );
+
+    const loading = React.useCallback(
+        (message: string) => showToast(message, 'loading', 0),
+        [showToast]
+    );
+
+    const ai_thinking = React.useCallback(
+        (message: string) => showToast(message, 'ai_thinking', 0),
+        [showToast]
+    );
+
+    return React.useMemo(() => ({
         toasts,
         showToast,
         updateToast,
         closeToast,
-        success: (message: string, duration?: number) => showToast(message, 'success', duration),
-        error: (message: string, duration?: number) => showToast(message, 'error', duration),
-        info: (message: string, duration?: number) => showToast(message, 'info', duration),
-        loading: (message: string) => showToast(message, 'loading', 0), // 0 表示不自动关闭
-        ai_thinking: (message: string) => showToast(message, 'ai_thinking', 0),
-    };
+        success,
+        error,
+        info,
+        loading,
+        ai_thinking,
+    }), [ai_thinking, closeToast, error, info, loading, showToast, success, toasts, updateToast]);
 };

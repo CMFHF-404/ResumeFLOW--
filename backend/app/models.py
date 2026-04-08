@@ -192,4 +192,29 @@ class ExportRenderSnapshot(SQLModel, table=True):
     )
 
 
+class AIAssistantSession(SQLModel, table=True):
+    __tablename__ = "ai_assistant_sessions"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    title: str
+    mode: str
+    entry_source: str = Field(default="direct")
+    context_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    latest_preview: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class AIAssistantMessage(SQLModel, table=True):
+    __tablename__ = "ai_assistant_messages"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    session_id: uuid.UUID = Field(foreign_key="ai_assistant_sessions.id", index=True)
+    role: str
+    message_type: str
+    content_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 from .domain.resume.models import Resume, ResumeExperienceLink

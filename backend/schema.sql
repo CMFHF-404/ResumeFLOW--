@@ -199,6 +199,27 @@ CREATE TABLE IF NOT EXISTS export_render_snapshots (
     consumed_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS ai_assistant_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    entry_source TEXT NOT NULL DEFAULT 'direct',
+    context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    latest_preview JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_assistant_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES ai_assistant_sessions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    message_type TEXT NOT NULL,
+    content_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_master_experiences_user_id ON master_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_experience_versions_master_id ON experience_versions(master_experience_id);
@@ -208,3 +229,6 @@ CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_user_id ON export_render_snapshots(user_id);
 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_expires_at ON export_render_snapshots(expires_at);
+CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_user_id ON ai_assistant_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_updated_at ON ai_assistant_sessions(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_assistant_messages_session_id ON ai_assistant_messages(session_id, created_at);

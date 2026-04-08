@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, User, Wand2 } from 'lucide-react';
+import { Database, User } from 'lucide-react';
 import type { ResumeExperienceView } from '../../../types/resume';
 import {
     EDITING_SUGGESTION_NAV_CLASS,
@@ -13,9 +13,7 @@ import ProfileTab from './ProfileTab';
 type EditingSuggestionProps = {
     editingItem?: ResumeExperienceView;
     staleExperienceIds: Set<string>;
-    jdText: string;
-    isPolishing: boolean;
-    onPolish: () => void;
+    toolbar?: React.ReactNode;
 };
 
 export type EditorSidebarProps = {
@@ -46,9 +44,7 @@ const resolveExperienceSuggestion = (
 const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     editingItem,
     staleExperienceIds,
-    jdText,
-    isPolishing,
-    onPolish,
+    toolbar,
 }) => {
     if (!editingItem) {
         return null;
@@ -71,18 +67,14 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
                             <span className="text-[11px] font-semibold text-gray-400">匹配度 --</span>
                         )}
                     </div>
-                    <button
-                        onClick={onPolish}
-                        disabled={isPolishing || !jdText.trim()}
-                        className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-[10.5px] font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-60"
-                    >
-                        <Wand2 className="h-3.5 w-3.5" />
-                        {isPolishing ? '润色中...' : '基于 JD 润色'}
-                    </button>
+                    <div className="shrink-0 text-[11px] font-semibold text-primary">
+                        AI 润色工具栏
+                    </div>
                 </div>
                 <div className="mt-3 w-full rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300 md:bg-transparent md:px-0 md:py-0">
                     {suggestion}
                 </div>
+                {toolbar ? <div className="mt-3">{toolbar}</div> : null}
             </div>
         </div>
     );

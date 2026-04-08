@@ -13,6 +13,7 @@ import {
     aiService,
     type BossGreetingStreamEvent,
     type JDAnalysisResult,
+    type PolishMode,
     type PersonalSummaryStreamEvent,
 } from '../../services/aiService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
@@ -20,6 +21,8 @@ import type { ExperienceListItem } from '../../services/experienceService';
 import type {
     CertificationView,
     EducationView,
+    ExperienceEditDraft,
+    PolishPreviewState,
     ProfileSyncMode,
     ResumeBossGreeting,
     ResumeEditorConfig,
@@ -170,6 +173,8 @@ import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
 import TemplateSelectorModal from './components/TemplateSelectorModal';
 import ResumePreview from './components/ResumePreview';
+import AIPolishToolbar from '../../components/AIPolishToolbar';
+import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from '../AIAssistant';
 
 const buildLineHeightSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
@@ -778,13 +783,18 @@ type ResumeEditorProps = {
     cachedResumesOwnerKey?: string | null;
     authUserKey?: string | null;
     onResumesUpdate?: (resumes: DashboardResume[]) => void;
+    onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
 };
+
+type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
+const DEFAULT_RESUME_POLISH_MODE: ResumePolishMode = 'default';
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({
     cachedResumes = [],
     cachedResumesOwnerKey = null,
     authUserKey = null,
     onResumesUpdate,
+    onLaunchAssistant,
 }) => {
     const [isDarkMode, setIsDarkMode] = useState(() =>
         typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -1461,6 +1471,34 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => buildJDPolishContext(jdText, analysisResult, isOutdated),
         [analysisResult, isOutdated, jdText]
     );
+    const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
+    const movePendingExperienceAssistantApply = useCallback((draftMasterId: string, savedMasterId: string) => {
+        const pending = pendingAssistantApplyRef.current.get(draftMasterId);
+        if (!pending || draftMasterId === savedMasterId) {
+            return;
+        }
+        pendingAssistantApplyRef.current.delete(draftMasterId);
+        pendingAssistantApplyRef.current.set(savedMasterId, pending);
+    }, []);
+    const handleExperienceSaveSuccess = useCallback(async (masterId: string) => {
+        const pending = pendingAssistantApplyRef.current.get(masterId);
+        if (!pending) {
+            return;
+        }
+        try {
+            await pending();
+            pendingAssistantApplyRef.current.delete(masterId);
+        } catch (error) {
+            console.error('[ResumeEditor] 同步 AI 草稿状态失败:', error);
+            showToastError('已保存，但 AI 草稿状态同步失败，请稍后重试');
+        }
+    }, [showToastError]);
+    const clearPendingExperienceAssistantApply = useCallback((masterId: string | null) => {
+        if (!masterId) {
+            return;
+        }
+        pendingAssistantApplyRef.current.delete(masterId);
+    }, []);
     const {
         confirmDialog,
         handleConfirmDelete,
@@ -1481,6 +1519,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             closeToast,
         },
         applyResumeDetail,
+        onExperienceDraftPersisted: movePendingExperienceAssistantApply,
+        onExperienceSaveSuccess: handleExperienceSaveSuccess,
+        onExperienceEditDiscarded: clearPendingExperienceAssistantApply,
         experience: {
             items: experienceItems,
             setItems: setExperienceItems,
@@ -1579,6 +1620,197 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             certification: CERTIFICATION_DRAFT_PREFIX,
         },
     });
+    const [experiencePolishMode, setExperiencePolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
+    const [experienceCustomPrompt, setExperienceCustomPrompt] = useState('');
+    const [experiencePolishPreview, setExperiencePolishPreview] = useState<PolishPreviewState<ExperienceEditDraft> | null>(null);
+    const [isEditingExperiencePolishRunning, setIsEditingExperiencePolishRunning] = useState(false);
+    const editingExperiencePolishRunningRef = useRef(false);
+
+    useEffect(() => {
+        setExperiencePolishMode(DEFAULT_RESUME_POLISH_MODE);
+        setExperienceCustomPrompt('');
+        setExperiencePolishPreview(null);
+        setIsEditingExperiencePolishRunning(false);
+        editingExperiencePolishRunningRef.current = false;
+    }, [experience.editingExpId]);
+
+    const handleRunEditingExperiencePolish = useCallback(async () => {
+        if (!experience.editingDraft || editingExperiencePolishRunningRef.current) {
+            return;
+        }
+        const trimmedJd = jdPolishContext.trim();
+        if (!trimmedJd) {
+            showToastError('请先填写 JD 再润色');
+            return;
+        }
+
+        const toastId = showToastLoading('正在基于 JD 生成预览...');
+        let hasError = false;
+        let applied = false;
+
+        try {
+            editingExperiencePolishRunningRef.current = true;
+            setIsEditingExperiencePolishRunning(true);
+            const draft = experience.editingDraft;
+            const result = await aiService.polishExperienceStream({
+                content: {
+                    company: draft.company,
+                    role: draft.title,
+                    s: draft.star.s,
+                    t: draft.star.t,
+                    a: draft.star.a,
+                    r: draft.star.r,
+                },
+                jdText: trimmedJd,
+                mode: experiencePolishMode,
+                customPrompt: experiencePolishMode === 'custom' ? experienceCustomPrompt.trim() : undefined,
+                entrySource: 'resume_editor',
+            }, (event) => {
+                if (event.type !== 'thought') {
+                    return;
+                }
+                const title = extractThoughtHeadline(event.summary);
+                if (title) {
+                    updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
+                }
+            });
+
+            const normalizeField = (value?: string) => {
+                if (!value) {
+                    return undefined;
+                }
+                const normalized = normalizeAiRichText(value, { allowList: false });
+                return normalized.trim() ? normalized : undefined;
+            };
+
+            const nextDraft: ExperienceEditDraft = {
+                ...draft,
+                star: {
+                    s: normalizeField(result?.s) ?? draft.star.s,
+                    t: normalizeField(result?.t) ?? draft.star.t,
+                    a: normalizeField(result?.a) ?? draft.star.a,
+                    r: normalizeField(result?.r) ?? draft.star.r,
+                },
+                starTouched: true,
+            };
+
+            const hasChange = (['s', 't', 'a', 'r'] as const).some((key) => nextDraft.star[key] !== draft.star[key]);
+            if (hasChange) {
+                experience.setEditingDraft(nextDraft);
+                setExperiencePolishPreview({
+                    mode: experiencePolishMode,
+                    customPrompt: experiencePolishMode === 'custom' ? experienceCustomPrompt.trim() : undefined,
+                    before: draft,
+                    after: nextDraft,
+                });
+                applied = true;
+            }
+        } catch (error) {
+            hasError = true;
+            console.error('[ResumeEditor] JD 润色预览失败:', error);
+        } finally {
+            if (hasError) {
+                updateToast(toastId, { message: 'JD 润色失败，请稍后重试', type: 'error', duration: 3000 });
+            } else if (applied) {
+                updateToast(toastId, { message: '已生成润色预览，请确认或撤销', type: 'success', duration: 2500 });
+            } else {
+                updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
+            }
+            editingExperiencePolishRunningRef.current = false;
+            setIsEditingExperiencePolishRunning(false);
+        }
+    }, [
+        experience,
+        experienceCustomPrompt,
+        experiencePolishMode,
+        jdPolishContext,
+        showToastError,
+        showToastLoading,
+        updateToast,
+    ]);
+
+    const handleUndoEditingExperiencePolish = useCallback(() => {
+        if (!experiencePolishPreview) {
+            return;
+        }
+        experience.setEditingDraft((prev) => {
+            if (!prev) {
+                return prev;
+            }
+            return {
+                ...prev,
+                star: {
+                    s: prev.star.s === experiencePolishPreview.after.star.s ? experiencePolishPreview.before.star.s : prev.star.s,
+                    t: prev.star.t === experiencePolishPreview.after.star.t ? experiencePolishPreview.before.star.t : prev.star.t,
+                    a: prev.star.a === experiencePolishPreview.after.star.a ? experiencePolishPreview.before.star.a : prev.star.a,
+                    r: prev.star.r === experiencePolishPreview.after.star.r ? experiencePolishPreview.before.star.r : prev.star.r,
+                },
+                starTouched: prev.starTouched || experiencePolishPreview.before.starTouched,
+            };
+        });
+        setExperiencePolishPreview(null);
+    }, [experience, experiencePolishPreview]);
+
+    const handleConfirmEditingExperiencePolish = useCallback(() => {
+        setExperiencePolishPreview(null);
+    }, []);
+
+    const handleOpenExperienceAssistant = useCallback(() => {
+        if (!experience.editingDraft || !onLaunchAssistant) {
+            return;
+        }
+        const draft = experience.editingDraft;
+        onLaunchAssistant({
+            context: {
+                mode: 'experience',
+                entrySource: 'resume_editor',
+                title: `${draft.company || '未命名经历'} · 高级润色`,
+                contextJson: {
+                    resumeId,
+                    masterId: draft.masterId,
+                    category: draft.category,
+                    company: draft.company,
+                    title: draft.title,
+                    startDate: draft.startDate,
+                    endDate: draft.endDate,
+                    isCurrent: draft.isCurrent,
+                    star: draft.star,
+                    jdText: jdPolishContext,
+                },
+            },
+            initialUserMessage: `请基于这段经历和目标 JD 与我继续互动调整，等我确认初稿后输出一张可确认的经历卡片。\n\n目标 JD：${jdPolishContext || '未填写'}\n\n组织/项目：${draft.company || '未填写'}\n角色：${draft.title || '未填写'}\n时间：${draft.startDate || '未填写'} - ${draft.endDate || (draft.isCurrent ? '至今' : '未填写')}\nS：${stripRichTextToText(draft.star.s) || '未填写'}\nT：${stripRichTextToText(draft.star.t) || '未填写'}\nA：${stripRichTextToText(draft.star.a) || '未填写'}\nR：${stripRichTextToText(draft.star.r) || '未填写'}`,
+            applyDraftHandler: async (draftCard, meta) => {
+                if (draftCard.type !== 'experience') {
+                    return false;
+                }
+                pendingAssistantApplyRef.current.set(draft.masterId, meta.persistApplied);
+                experience.setEditingDraft((prev) => {
+                    if (!prev) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        company: draftCard.data.org,
+                        title: draftCard.data.title,
+                        startDate: draftCard.data.startDate || '',
+                        endDate: draftCard.data.isCurrent ? '' : (draftCard.data.endDate || ''),
+                        isCurrent: Boolean(draftCard.data.isCurrent),
+                        star: {
+                            s: draftCard.data.star.s,
+                            t: draftCard.data.star.t,
+                            a: draftCard.data.star.a,
+                            r: draftCard.data.star.r,
+                        },
+                        starTouched: true,
+                    };
+                });
+                setExperiencePolishPreview(null);
+                return true;
+            },
+            callbackOnly: true,
+        });
+    }, [experience, jdPolishContext, onLaunchAssistant, resumeId]);
+
     const markManualSelectionChanged = useCallback(() => {
         manualSelectionVersionRef.current += 1;
     }, []);
@@ -2610,9 +2842,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             mobileEditorDrawerTimerRef.current = null;
         }, MOBILE_EDITOR_DRAWER_ANIMATION_MS);
     }, []);
-    const handlePolishExperienceFromCard = useCallback(async (id: string) => {
-        await experience.handlePolishExperienceById(id);
-    }, [experience]);
+    const handlePolishExperienceFromCard = useCallback((id: string) => {
+        setSidebarTab('experience');
+        experience.startEditingExperience(id);
+        setExperiencePolishPreview(null);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            openMobileEditorDrawer();
+        }
+    }, [experience, openMobileEditorDrawer]);
 
     const resolveIndexPosition = <T,>(
         items: T[],
@@ -2933,6 +3170,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         finishDragInteraction();
     };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
+    const editingSuggestionToolbar = editingItem ? (
+        <AIPolishToolbar
+            isPreviewing={Boolean(experiencePolishPreview)}
+            isRunning={isEditingExperiencePolishRunning}
+            activeMode={experiencePolishMode}
+            customPrompt={experienceCustomPrompt}
+            disabledAssistant={!jdPolishContext.trim()}
+            compact
+            onModeChange={setExperiencePolishMode}
+            onCustomPromptChange={setExperienceCustomPrompt}
+            onRun={() => void handleRunEditingExperiencePolish()}
+            onUndo={handleUndoEditingExperiencePolish}
+            onConfirm={handleConfirmEditingExperiencePolish}
+            onOpenAssistant={handleOpenExperienceAssistant}
+        />
+    ) : null;
     const listSpacingValue = useMemo(() => {
         return buildSpacingValue(itemSpacingEm, lineHeight);
     }, [itemSpacingEm, lineHeight]);
@@ -4275,9 +4528,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         editingSuggestion={{
                             editingItem,
                             staleExperienceIds,
-                            jdText: jdPolishContext,
-                            isPolishing: experience.isPolishing,
-                            onPolish: experience.handlePolishWithJD,
+                            toolbar: editingSuggestionToolbar,
                         }}
                     />
                 </div>
@@ -4550,9 +4801,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                 editingSuggestion={{
                                     editingItem,
                                     staleExperienceIds,
-                                    jdText: jdPolishContext,
-                                    isPolishing: experience.isPolishing,
-                                    onPolish: experience.handlePolishWithJD,
+                                    toolbar: editingSuggestionToolbar,
                                 }}
                             />
                         </div>

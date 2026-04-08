@@ -14,6 +14,9 @@ export interface PolishExperiencePayload {
     };
     targetField?: 's' | 't' | 'a' | 'r';
     jdText?: string;
+    mode?: PolishMode;
+    customPrompt?: string;
+    entrySource?: 'experience_bank' | 'resume_editor';
 }
 
 export interface PolishExperienceResponse {
@@ -93,6 +96,142 @@ export interface GeneratePersonalSummaryParams {
 export interface GeneratePersonalSummaryResponse {
     summary: string;
 }
+
+export type PolishMode = 'default' | 'shorten' | 'expand' | 'custom' | 'assistant';
+
+export type AssistantMode = 'general' | 'experience' | 'certification' | 'skill';
+export type AssistantEntrySource = 'direct' | 'experience_bank' | 'resume_editor';
+export type AssistantMessageType = 'user_text' | 'assistant_text' | 'draft_card';
+export type AssistantDraftCardType = 'experience' | 'certification' | 'skill_group';
+
+export interface AssistantExperienceDraft {
+    category: 'work' | 'project' | 'education';
+    org: string;
+    title: string;
+    startDate: string;
+    endDate: string;
+    isCurrent?: boolean;
+    star: {
+        s: string;
+        t: string;
+        a: string;
+        r: string;
+    };
+}
+
+export interface AssistantCertificationDraft {
+    name: string;
+    issuer: string;
+    issueDate: string;
+    expiryDate: string;
+    credentialId: string;
+    credentialUrl: string;
+    description: string;
+}
+
+export interface AssistantSkillDraftGroup {
+    category: string;
+    skills: Array<{
+        name: string;
+        proficiency?: number | null;
+    }>;
+}
+
+export type AssistantDraftCard =
+    | {
+        type: 'experience';
+        status: 'draft_ready';
+        summary?: string;
+        data: AssistantExperienceDraft;
+    }
+    | {
+        type: 'certification';
+        status: 'draft_ready';
+        summary?: string;
+        data: AssistantCertificationDraft;
+    }
+    | {
+        type: 'skill_group';
+        status: 'draft_ready';
+        summary?: string;
+        data: AssistantSkillDraftGroup;
+    };
+
+export interface AssistantSession {
+    id: string;
+    user_id: string;
+    title: string;
+    mode: AssistantMode;
+    entry_source: AssistantEntrySource;
+    context_json: Record<string, unknown>;
+    latest_preview: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AssistantMessage {
+    id: string;
+    role: 'user' | 'assistant';
+    message_type: AssistantMessageType;
+    content_json: Record<string, unknown>;
+    created_at: string;
+}
+
+export interface AssistantMessageApplyResponse {
+    message: AssistantMessage;
+}
+
+export interface AssistantSessionDetail {
+    session: AssistantSession;
+    messages: AssistantMessage[];
+}
+
+export interface AssistantSessionCreatePayload {
+    mode?: AssistantMode;
+    title?: string;
+    entrySource?: AssistantEntrySource;
+    contextJson?: Record<string, unknown>;
+}
+
+export interface AssistantEntryContext {
+    mode?: AssistantMode;
+    title?: string;
+    entrySource?: AssistantEntrySource;
+    contextJson?: Record<string, unknown>;
+}
+
+export interface AssistantTurnResult {
+    assistantText: string;
+    draftCard?: AssistantDraftCard | null;
+    title?: string;
+}
+
+export type AssistantProgressNode =
+    | 'prepare_context'
+    | 'request_ai'
+    | 'persist_result';
+
+export type AssistantProgressEvent = {
+    type: 'progress';
+    node: AssistantProgressNode;
+    title?: string;
+};
+
+type AssistantFinalEvent = {
+    type: 'final';
+    result: AssistantTurnResult;
+};
+
+type AssistantErrorEvent = {
+    type: 'error';
+    message?: string;
+};
+
+export type AssistantStreamEvent =
+    | AssistantProgressEvent
+    | AIThoughtEvent
+    | AssistantFinalEvent
+    | AssistantErrorEvent;
 
 type RawJDAnalysisResult = JDAnalysisResult & {
     extracted_jd_text?: unknown;
@@ -514,6 +653,72 @@ const streamPersonalSummaryRequest = async (
     return finalResult;
 };
 
+const streamAssistantRequest = async (
+    sessionId: string,
+    payload: Record<string, unknown>,
+    options: {
+        onEvent?: (event: AssistantStreamEvent) => void;
+    } = {}
+): Promise<AssistantTurnResult> => {
+    const headers = new Headers();
+    const authHeader = await getAuthorizationHeader();
+    if (!authHeader) {
+        dispatchLoginRequired('write-operation');
+        throw new Error('Authentication required for write operation');
+    }
+    headers.set('Authorization', authHeader);
+    headers.set('Content-Type', 'application/json');
+
+    const response = await fetch(resolveApiUrl(`/api/assistant/sessions/${sessionId}/stream`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    });
+
+    ensureStreamResponseOk(response);
+    if (!response.body) {
+        throw new Error('AI stream response body is empty');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: AssistantTurnResult | null = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = parseNdjsonLines(buffer);
+        const hasTrailingNewline = buffer.endsWith('\n');
+        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
+
+        lines.forEach((line) => {
+            let parsed: AssistantStreamEvent;
+            try {
+                parsed = JSON.parse(line) as AssistantStreamEvent;
+            } catch (error) {
+                console.warn('Failed to parse stream line', error);
+                return;
+            }
+            options.onEvent?.(parsed);
+            if (parsed.type === 'error') {
+                throw new Error(parsed.message || 'AI stream error');
+            }
+            if (parsed.type === 'final') {
+                finalResult = parsed.result;
+            }
+        });
+    }
+
+    if (!finalResult) {
+        throw new Error('AI stream did not return final result');
+    }
+    return finalResult;
+};
+
 const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
     const extractedJdText = typeof result.extractedJdText === 'string'
         ? result.extractedJdText
@@ -536,6 +741,9 @@ export const aiService = {
             },
             ...(data.targetField ? { target_field: data.targetField } : {}),
             ...(data.jdText ? { jd_text: data.jdText } : {}),
+            ...(data.mode ? { mode: data.mode } : {}),
+            ...(data.customPrompt ? { custom_prompt: data.customPrompt } : {}),
+            ...(data.entrySource ? { entry_source: data.entrySource } : {}),
         };
         const response = await apiClient.post<PolishExperienceResponse>(
             '/api/polish-text',
@@ -556,8 +764,59 @@ export const aiService = {
             },
             ...(data.targetField ? { target_field: data.targetField } : {}),
             ...(data.jdText ? { jd_text: data.jdText } : {}),
+            ...(data.mode ? { mode: data.mode } : {}),
+            ...(data.customPrompt ? { custom_prompt: data.customPrompt } : {}),
+            ...(data.entrySource ? { entry_source: data.entrySource } : {}),
         };
         return streamPolishRequest(payload, { onEvent });
+    },
+
+    async listAssistantSessions() {
+        const response = await apiClient.get<AssistantSession[]>('/api/assistant/sessions');
+        return response.data;
+    },
+
+    async createAssistantSession(data: AssistantSessionCreatePayload) {
+        const response = await apiClient.post<AssistantSession>('/api/assistant/sessions', {
+            mode: data.mode ?? 'general',
+            title: data.title,
+            entry_source: data.entrySource ?? 'direct',
+            context_json: data.contextJson ?? {},
+        });
+        return response.data;
+    },
+
+    async getAssistantSession(sessionId: string) {
+        const response = await apiClient.get<AssistantSessionDetail>(`/api/assistant/sessions/${sessionId}`);
+        return response.data;
+    },
+
+    async deleteAssistantSession(sessionId: string) {
+        await apiClient.delete(`/api/assistant/sessions/${sessionId}`);
+    },
+
+    async markAssistantMessageApplied(
+        sessionId: string,
+        messageId: string,
+        options?: { skipApply?: boolean },
+    ) {
+        const query = options?.skipApply ? '?skip_apply=true' : '';
+        const response = await apiClient.post<AssistantMessageApplyResponse>(`/api/assistant/sessions/${sessionId}/messages/${messageId}/apply${query}`);
+        return response.data.message;
+    },
+
+    async sendAssistantMessage(
+        sessionId: string,
+        payload: {
+            userMessage: string;
+            mode?: AssistantMode;
+        },
+        onEvent?: (event: AssistantStreamEvent) => void
+    ) {
+        return streamAssistantRequest(sessionId, {
+            user_message: payload.userMessage,
+            ...(payload.mode ? { mode: payload.mode } : {}),
+        }, { onEvent });
     },
 
     async analyzeJD({
