@@ -64,6 +64,7 @@ const App: React.FC = () => {
   const [shouldOpenResumeUpload, setShouldOpenResumeUpload] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
+  const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const authUserKey = useAuthUserKey();
   const authUserKeyRef = useRef<string | null>(null);
   const assistantLaunchRequestIdRef = useRef(0);
@@ -80,6 +81,7 @@ const App: React.FC = () => {
     setShouldOpenResumeUpload(false);
     setIsFeedbackOpen(false);
     setAssistantLaunchRequest(null);
+    setAssistantDraftInput('');
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
@@ -216,6 +218,9 @@ const App: React.FC = () => {
           <AIAssistant
             pendingLaunchRequest={assistantLaunchRequest}
             onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
+            draftInput={assistantDraftInput}
+            onDraftInputChange={setAssistantDraftInput}
+            onNavigateToUpload={() => handleSetView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
           />
         );
       default:

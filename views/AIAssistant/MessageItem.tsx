@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Bot, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 export type MessageItemProps = {
   isUser: boolean;
@@ -18,13 +19,33 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content }) => 
   }
 
   return (
-    <div className="flex justify-start mb-6">
+    <div className="flex justify-start mb-6 w-full">
       <div className="mr-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
         <Bot className="h-5 w-5" />
       </div>
-      <div className="max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm bg-white border border-slate-100 px-5 py-3 text-slate-800 shadow-sm">
-          <div className="whitespace-pre-wrap text-sm leading-7">{content}</div>
+      <div className="flex-1 max-w-[85%]">
+        <div className="rounded-2xl rounded-tl-sm bg-white border border-slate-100 px-5 py-4 text-slate-800 shadow-sm">
+          <div className="text-sm leading-7 space-y-3 break-words overflow-hidden">
+            <ReactMarkdown
+              components={{
+                p: ({node, ...props}) => <p className="m-0 whitespace-pre-wrap" {...props} />,
+                strong: ({node, ...props}) => <strong className="font-bold text-slate-900" {...props} />,
+                ul: ({node, ...props}) => <ul className="list-disc pl-5 m-0 space-y-1.5 marker:text-slate-400" {...props} />,
+                ol: ({node, ...props}) => <ol className="list-decimal pl-5 m-0 space-y-1.5 marker:text-slate-400 marker:font-medium" {...props} />,
+                li: ({node, ...props}) => <li className="pl-1 whitespace-pre-wrap" {...props} />,
+                a: ({node, ...props}) => <a className="text-emerald-600 hover:underline hover:text-emerald-700 font-medium transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
+                h1: ({node, ...props}) => <h1 className="text-lg font-bold text-slate-900 mt-4 mb-2" {...props} />,
+                h2: ({node, ...props}) => <h2 className="text-base font-bold text-slate-900 mt-4 mb-2" {...props} />,
+                h3: ({node, ...props}) => <h3 className="text-sm font-bold text-slate-900 mt-3 mb-1.5" {...props} />,
+                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-slate-200 pl-4 italic text-slate-600 my-2 whitespace-pre-wrap" {...props} />,
+                code: ({node, inline, ...props}: any) => inline 
+                  ? <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[13px] font-mono" {...props} />
+                  : <code className="block bg-slate-50 border border-slate-100 text-slate-800 p-3 rounded-lg text-[13px] font-mono overflow-x-auto whitespace-pre my-2 shadow-inner" {...props} />,
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
         </div>
       </div>
     </div>
