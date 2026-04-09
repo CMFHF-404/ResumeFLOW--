@@ -20,6 +20,7 @@ from .assistant_service import (
     list_sessions,
     mark_message_applied,
     persist_assistant_turn,
+    update_session,
 )
 from .schemas import (
     AssistantMessageApplyRead,
@@ -28,6 +29,7 @@ from .schemas import (
     AssistantSessionDetail,
     AssistantSessionRead,
     AssistantSessionStreamRequest,
+    AssistantSessionUpdate,
 )
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
@@ -110,6 +112,20 @@ async def delete_assistant_session(
 ):
     try:
         await delete_session(session, current_user.id, session_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/sessions/{session_id}", response_model=AssistantSessionRead)
+async def update_assistant_session(
+    session_id: UUID,
+    payload: AssistantSessionUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    current_user=Depends(get_current_user),
+):
+    try:
+        updated = await update_session(session, current_user.id, session_id, payload)
+        return _to_session_read(updated)
     except NotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

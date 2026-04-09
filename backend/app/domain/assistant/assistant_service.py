@@ -21,7 +21,7 @@ from ...utils.time_utils import utc_now
 from ..certifications.schemas import CertificationCreate
 from ..experience.schemas import ExperienceCreate, ExperienceVersionPayload
 from ..skills.schemas import UserSkillCreate
-from .schemas import AssistantSessionCreate
+from .schemas import AssistantSessionCreate, AssistantSessionUpdate
 
 
 class NotFoundError(Exception):
@@ -276,6 +276,24 @@ async def create_session(
         entry_source=payload.entry_source,
         context_json=payload.context_json,
     )
+    session.add(assistant_session)
+    await session.commit()
+    await session.refresh(assistant_session)
+    return assistant_session
+
+
+async def update_session(
+    session: AsyncSession,
+    user_id: str,
+    session_id: UUID,
+    payload: AssistantSessionUpdate,
+) -> AIAssistantSession:
+    assistant_session = await get_session(session, user_id, session_id)
+    if payload.title is not None:
+        normalized_title = payload.title.strip()
+        if normalized_title:
+            assistant_session.title = normalized_title
+    assistant_session.updated_at = utc_now()
     session.add(assistant_session)
     await session.commit()
     await session.refresh(assistant_session)
