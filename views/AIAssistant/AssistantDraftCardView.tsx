@@ -1,6 +1,23 @@
 import React from 'react';
 import { Check, Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { type AssistantDraftCard } from '../../services/aiService';
+
+const markdownComponents = {
+  p: ({node, ...props}: any) => <p className="m-0 whitespace-pre-wrap" {...props} />,
+  strong: ({node, ...props}: any) => <strong className="font-bold text-slate-900" {...props} />,
+  ul: ({node, ...props}: any) => <ul className="list-disc pl-5 m-0 space-y-1.5 marker:text-slate-400" {...props} />,
+  ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 m-0 space-y-1.5 marker:text-slate-400 marker:font-medium" {...props} />,
+  li: ({node, ...props}: any) => <li className="pl-1 whitespace-pre-wrap" {...props} />,
+  a: ({node, ...props}: any) => <a className="text-emerald-600 hover:underline hover:text-emerald-700 font-medium transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
+  h1: ({node, ...props}: any) => <h1 className="text-lg font-bold text-slate-900 mt-4 mb-2" {...props} />,
+  h2: ({node, ...props}: any) => <h2 className="text-base font-bold text-slate-900 mt-4 mb-2" {...props} />,
+  h3: ({node, ...props}: any) => <h3 className="text-sm font-bold text-slate-900 mt-3 mb-1.5" {...props} />,
+  blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-slate-200 pl-4 italic text-slate-600 my-2 whitespace-pre-wrap" {...props} />,
+  code: ({node, inline, ...props}: any) => inline 
+    ? <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[13px] font-mono" {...props} />
+    : <code className="block bg-slate-50 border border-slate-100 text-slate-800 p-3 rounded-lg text-[13px] font-mono overflow-x-auto whitespace-pre my-2 shadow-inner" {...props} />,
+};
 
 export const AssistantDraftCardView: React.FC<{
   card: AssistantDraftCard;
@@ -37,7 +54,11 @@ export const AssistantDraftCardView: React.FC<{
             ] as const).map(([label, value]) => (
               <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
                 <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
-                <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{value || '待补充'}</div>
+                <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden">
+                  <ReactMarkdown components={markdownComponents}>
+                    {value || '待补充'}
+                  </ReactMarkdown>
+                </div>
               </div>
             ))}
           </div>
@@ -63,7 +84,11 @@ export const AssistantDraftCardView: React.FC<{
           ))}
           <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 md:col-span-2">
             <div className="text-[11px] uppercase tracking-wider text-slate-400">描述</div>
-            <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{card.data.description || '待补充'}</div>
+            <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden">
+              <ReactMarkdown components={markdownComponents}>
+                {card.data.description || '待补充'}
+              </ReactMarkdown>
+            </div>
           </div>
         </div>
       );

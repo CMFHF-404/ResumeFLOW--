@@ -46,6 +46,9 @@ export type AssistantLaunchRequest = {
 type AIAssistantProps = {
   pendingLaunchRequest?: AssistantLaunchRequest | null;
   onConsumeLaunchRequest?: (requestId?: string) => void;
+  draftInput?: string;
+  onDraftInputChange?: (value: string) => void;
+  onNavigateToUpload?: () => void;
 };
 
 const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: React.ReactNode }> = {
@@ -248,6 +251,9 @@ const reconcileAssistantSessions = (
 const AIAssistant: React.FC<AIAssistantProps> = ({
   pendingLaunchRequest,
   onConsumeLaunchRequest,
+  draftInput = '',
+  onDraftInputChange,
+  onNavigateToUpload,
 }) => {
   const { isAuthenticated } = useLogto();
   const { toasts, success, error, loading, updateToast, closeToast } = useToast();
@@ -257,7 +263,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [sendingCount, setSendingCount] = useState(0);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(draftInput);
   const [activeThought, setActiveThought] = useState<string>('');
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
@@ -393,6 +399,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  useEffect(() => {
+    if (draftInput !== inputValue) {
+      setInputValue(draftInput);
+    }
+  }, [draftInput, inputValue]);
+
+  useEffect(() => {
+    onDraftInputChange?.(inputValue);
+  }, [inputValue, onDraftInputChange]);
 
   useEffect(() => {
     scrollToBottom();
@@ -1023,6 +1039,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     { label: '引导式追问', onClick: () => setInputValue((v) => v + '引导式追问') },
                     { label: 'STAR 整理', onClick: () => setInputValue((v) => v + 'STAR 整理') },
                   ]}
+                  onPlusClick={onNavigateToUpload}
                />
             </div>
           </main>
