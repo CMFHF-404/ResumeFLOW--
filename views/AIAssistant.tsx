@@ -8,9 +8,12 @@ import {
   MessageSquarePlus,
   Sparkles,
   Wrench,
+  Trash2,
+  Edit2,
 } from 'lucide-react';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSession, type AssistantStreamEvent } from '../services/aiService';
 import { experienceService } from '../services/experienceService';
 import { resumeService } from '../services/resumeService';
@@ -258,6 +261,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [activeThought, setActiveThought] = useState<string>('');
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const applyHandlerMapRef = useRef<Map<string, AssistantApplyDraftHandler>>(new Map());
   const callbackOnlySessionIdsRef = useRef<Set<string>>(new Set());
@@ -338,6 +343,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const loadSessionDetail = useCallback(async (sessionId: string) => {
     const requestId = ++detailRequestIdRef.current;
+    const mutationSeqAtStart = sessionMutationCounterRef.current;
     setIsLoadingDetail(true);
     try {
       const detail = await aiService.getAssistantSession(sessionId);
@@ -346,7 +352,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       }
       setMessages(detail.messages);
       setAppliedMessageIds(new Set(detail.messages.filter(isDraftMessageApplied).map((message) => message.id)));
-      setSessionsState((prev) => mergeAssistantSessions(prev, [detail.session]));
+      setSessionsState((prev) => reconcileAssistantSessions(
+        prev,
+        [detail.session],
+        mutationSeqAtStart,
+        sessionMutationSeqsRef.current,
+        deletedSessionSeqsRef.current,
+      ));
     } catch (loadError) {
       if (detailRequestIdRef.current !== requestId || selectedSessionIdRef.current !== sessionId) {
         return;
@@ -729,11 +741,78 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   }, [error, handleCreateSession]);
 
+  const handleDeleteSession = useCallback((e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    setDeleteConfirmId(sessionId);
+  }, []);
+
+  const executeDeleteSession = useCallback(async () => {
+    if (!deleteConfirmId) return;
+    const deletedSession = sessionsRef.current.find((session) => session.id === deleteConfirmId) ?? null;
+    const wasSelected = selectedSessionIdRef.current === deleteConfirmId;
+    setIsDeletingSession(true);
+    markSessionDeleted(deleteConfirmId);
+    setSessionsState((prev) => prev.filter(s => s.id !== deleteConfirmId));
+    if (wasSelected) {
+      selectedSessionIdRef.current = null;
+      setSelectedSessionId(null);
+      setMessages([]);
+      setAppliedMessageIds(new Set());
+      setActiveThought('');
+    }
+    try {
+      await aiService.deleteAssistantSession(deleteConfirmId);
+      success('会话已删除');
+    } catch {
+      deletedSessionSeqsRef.current.delete(deleteConfirmId);
+      sessionMutationSeqsRef.current.delete(deleteConfirmId);
+      if (deletedSession) {
+        setSessionsState((prev) => mergeAssistantSessions(prev, [deletedSession]));
+        if (wasSelected) {
+          selectedSessionIdRef.current = deleteConfirmId;
+          setSelectedSessionId(deleteConfirmId);
+        }
+      }
+      error('删除会话失败');
+    } finally {
+      setIsDeletingSession(false);
+      setDeleteConfirmId(null);
+    }
+  }, [deleteConfirmId, error, markSessionDeleted, setSessionsState, success]);
+
+  const handleRenameSession = useCallback(async (e: React.MouseEvent, session: AssistantSession) => {
+    e.stopPropagation();
+    const newTitle = window.prompt('输入新的会话名称：', session.title);
+    const trimmedTitle = newTitle?.trim();
+    if (!trimmedTitle || trimmedTitle === session.title) return;
+    try {
+      markSessionMutated(session.id);
+      await aiService.updateAssistantSession(session.id, { title: trimmedTitle });
+      setSessionsState((prev) => sortSessionsByUpdatedAt(prev.map((item) => (
+        item.id === session.id
+          ? { ...item, title: trimmedTitle, updated_at: new Date().toISOString() }
+          : item
+      ))));
+      success('重命名成功');
+    } catch {
+      error('重命名失败');
+    }
+  }, [error, markSessionMutated, setSessionsState, success]);
+
   const historyEmpty = !isLoadingSessions && sessions.length === 0;
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-slate-50">
       <ToastContainer toasts={toasts} onClose={closeToast} />
+      <ConfirmDialog
+        isOpen={deleteConfirmId !== null}
+        title="删除对话"
+        description="确定要删除这个对话吗？历史记录将无法恢复。"
+        confirmLabel="删除"
+        onConfirm={() => void executeDeleteSession()}
+        onCancel={() => setDeleteConfirmId(null)}
+        isConfirming={isDeletingSession}
+      />
       {!isAuthenticated ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <div className="w-full max-w-3xl rounded-[32px] border border-white/70 bg-white/80 p-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] backdrop-blur">
@@ -769,20 +848,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   <MessageSquarePlus className="h-5 w-5" />
                 </button>
               </div>
-              <div className="mt-5 grid gap-3">
-                <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-4 text-left">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                    {MODE_META.general.icon}
-                    {MODE_META.general.label}
-                  </div>
-                  <div className="mt-2 text-xs leading-5 text-slate-400">{MODE_META.general.hint}</div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
-                    <span className="rounded-full bg-white/8 px-2.5 py-1">经历</span>
-                    <span className="rounded-full bg-white/8 px-2.5 py-1">证书</span>
-                    <span className="rounded-full bg-white/8 px-2.5 py-1">技能</span>
-                  </div>
-                </div>
-              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
               {historyEmpty ? (
@@ -792,26 +857,37 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               ) : (
                 <div className="space-y-2">
                   {sessions.map((session) => (
-                    <button
+                    <div
                       key={session.id}
-                      type="button"
-                      onClick={() => setSelectedSessionId(session.id)}
-                      className={`w-full rounded-3xl px-4 py-4 text-left transition ${selectedSessionId === session.id ? 'bg-white text-slate-950 shadow-lg' : 'bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'}`}
+                      className={`group relative flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${selectedSessionId === session.id ? 'bg-white text-slate-950 shadow-lg' : 'bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'}`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="truncate text-sm font-semibold">{session.title}</div>
-                        <div className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${selectedSessionId === session.id ? 'bg-slate-950 text-white' : 'bg-white/10 text-emerald-300'}`}>
-                          {MODE_META[session.mode]?.label ?? MODE_META.general.label}
-                        </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionId(session.id)}
+                        className="flex-1 truncate text-sm font-semibold text-left outline-none pr-8"
+                        title={session.title}
+                      >
+                        {session.title}
+                      </button>
+                      <div className="absolute right-3 flex items-center gap-1 md:pointer-events-none md:opacity-0 md:transition md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100">
+                        <button
+                          type="button"
+                          onClick={(e) => void handleRenameSession(e, session)}
+                          className={`p-1.5 rounded-md transition ${selectedSessionId === session.id ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-600' : 'text-slate-400 hover:bg-white/20 hover:text-white'}`}
+                          title="重命名对话"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => void handleDeleteSession(e, session.id)}
+                          className={`p-1.5 rounded-md transition ${selectedSessionId === session.id ? 'text-slate-400 hover:bg-red-50 hover:text-red-500' : 'text-slate-400 hover:bg-red-500/20 hover:text-red-400'}`}
+                          title="删除对话"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <div className={`mt-2 line-clamp-2 text-xs leading-5 ${selectedSessionId === session.id ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {resolveSessionHint(session)}
-                      </div>
-                      <div className={`mt-3 flex items-center justify-between text-[11px] ${selectedSessionId === session.id ? 'text-slate-400' : 'text-slate-500'}`}>
-                        <span>{formatRelativeTime(session.updated_at)}</span>
-                        <span>{isPendingLatestPreview(session) ? '有草稿' : '进行中'}</span>
-                      </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -819,33 +895,71 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           </aside>
 
           <main className="flex min-h-0 flex-1 flex-col">
-            <div className="border-b border-slate-200 bg-white px-4 py-4 md:px-7">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.26em] text-emerald-700">
-                    <Lightbulb className="h-3.5 w-3.5" />
-                    Guided Drafting
-                  </div>
-                  <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">
+            <div className="border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] uppercase tracking-[0.26em] text-emerald-600">AI Assistant</div>
+                  <div className="truncate text-sm font-semibold text-slate-900">
                     {selectedSession ? selectedSession.title : 'AI 助理'}
-                  </h1>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {selectedSession ? resolveSessionHint(selectedSession) : '选择一个会话，或者新建一个综合整理任务。'}
-                  </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 self-start md:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => void handleNewChat('general')}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-                  >
-                    <MessageSquarePlus className="h-4 w-4" />
-                    新对话
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleNewChat('general')}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                  title="新建综合会话"
+                >
+                  <MessageSquarePlus className="h-4 w-4" />
+                </button>
               </div>
+              {sessions.length > 0 ? (
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  {sessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-2 text-sm transition ${
+                        selectedSessionId === session.id
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionId(session.id)}
+                        className="max-w-[140px] truncate text-left"
+                        title={session.title}
+                      >
+                        {session.title}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => void handleRenameSession(e, session)}
+                        className={`rounded-full p-1 transition ${
+                          selectedSessionId === session.id
+                            ? 'text-white/80 hover:bg-white/15 hover:text-white'
+                            : 'text-slate-400 hover:bg-slate-200 hover:text-slate-700'
+                        }`}
+                        title="重命名对话"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => void handleDeleteSession(e, session.id)}
+                        className={`rounded-full p-1 transition ${
+                          selectedSessionId === session.id
+                            ? 'text-white/80 hover:bg-white/15 hover:text-white'
+                            : 'text-slate-400 hover:bg-red-50 hover:text-red-500'
+                        }`}
+                        title="删除对话"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
-
             <div ref={messageViewportRef} className="flex-1 overflow-y-auto px-4 py-6 md:px-7">
               {!selectedSessionId && !isLoadingSessions ? (
                 <div className="mx-auto flex max-w-3xl flex-col gap-6 mt-10">

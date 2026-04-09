@@ -18,6 +18,10 @@ class AssistantSessionCreate(BaseModel):
     context_json: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AssistantSessionUpdate(BaseModel):
+    title: Optional[str] = None
+
+
 class AssistantSessionRead(BaseModel):
     id: str
     user_id: str

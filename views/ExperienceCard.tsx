@@ -331,6 +331,7 @@ const ExperienceCardFooter: React.FC<{
   onUndoPolishPreview,
   onConfirmPolishPreview,
   onOpenAssistant,
+  themeColor,
 }) => {
   return (
     <div className="space-y-4 border-t border-gray-100 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800/50">

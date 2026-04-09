@@ -795,6 +795,11 @@ export const aiService = {
         await apiClient.delete(`/api/assistant/sessions/${sessionId}`);
     },
 
+    async updateAssistantSession(sessionId: string, data: { title?: string }) {
+        const response = await apiClient.patch<AssistantSession>(`/api/assistant/sessions/${sessionId}`, data);
+        return response.data;
+    },
+
     async markAssistantMessageApplied(
         sessionId: string,
         messageId: string,
