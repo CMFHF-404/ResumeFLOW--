@@ -45,7 +45,7 @@ export const AssistantDraftCardView: React.FC<{
             <div className="text-[11px] uppercase tracking-wider text-slate-400">主体</div>
             <div className="mt-1 text-base font-medium text-slate-800">{card.data.org || '待补充组织'} / {card.data.title || '待补充角色'}</div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3">
             {([
               ['S', card.data.star.s],
               ['T', card.data.star.t],

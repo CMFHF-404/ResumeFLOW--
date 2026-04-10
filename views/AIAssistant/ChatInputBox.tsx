@@ -43,7 +43,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="flex flex-col overflow-hidden rounded-[32px] bg-slate-50 shadow-sm transition-all focus-within:bg-white focus-within:shadow-md">
+      <div className="flex flex-col overflow-hidden rounded-[32px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-lg transition-all focus-within:bg-white/90 focus-within:shadow-xl">
         <textarea
           ref={textareaRef}
           value={value}
