@@ -1,18 +1,34 @@
 import React, { useState } from 'react';
-import { Bot, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, Loader2, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 export type MessageItemProps = {
   isUser: boolean;
   content: string;
+  attachment?: {
+    name: string;
+    type?: string;
+    sizeLabel?: string;
+  } | null;
 };
 
-export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content, attachment }) => {
   if (isUser) {
     return (
       <div className="flex justify-end mb-4">
         <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-slate-100 px-5 py-3 text-slate-800">
-          <div className="whitespace-pre-wrap text-sm leading-7">{content}</div>
+          {content ? (
+            <div className="whitespace-pre-wrap text-sm leading-7">{content}</div>
+          ) : null}
+          {attachment ? (
+            <div className={`${content ? 'mt-3' : ''} inline-flex max-w-full items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-xs text-slate-600`}>
+              <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span className="truncate">{attachment.name}</span>
+              <span className="shrink-0 text-slate-400">
+                {[attachment.type, attachment.sizeLabel].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -79,7 +95,7 @@ export const ActiveThoughtBlock: React.FC<{ thought: string }> = ({ thought }) =
         </div>
         
         {expanded && (
-          <div className="mt-2 text-sm leading-6 text-slate-500 border-l-2 border-slate-200 pl-4 ml-1.5 py-1">
+          <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-500 border-l-2 border-slate-200 pl-4 ml-1.5 py-1">
             {thought}
           </div>
         )}

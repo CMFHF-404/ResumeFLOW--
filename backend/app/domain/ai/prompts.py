@@ -233,6 +233,7 @@ ASSISTANT_COMMON_RULES = (
     "'assistantText' (required Chinese string), "
     "'draftCard' (object or null), and "
     "'title' (short Chinese session title, <=12 Chinese characters). "
+    "If the input JSON includes an 'attachment' object or an 'attachments' array, treat them as user-provided source material and use them together with the latest message. "
     "When information is insufficient, ask exactly one focused follow-up question in assistantText and set draftCard to null. "
     "When information is sufficient or the user explicitly asks for an initial draft / says they are okay with a first draft, "
     "return a draftCard. Never fabricate facts. If details are ambiguous, keep wording conservative. "

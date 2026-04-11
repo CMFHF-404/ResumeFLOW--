@@ -220,7 +220,6 @@ const App: React.FC = () => {
             onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
             draftInput={assistantDraftInput}
             onDraftInputChange={setAssistantDraftInput}
-            onNavigateToUpload={() => handleSetView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
           />
         );
       default:

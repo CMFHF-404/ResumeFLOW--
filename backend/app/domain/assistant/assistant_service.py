@@ -9,6 +9,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...models import (
+    AIAssistantImageBlob,
     AIAssistantMessage,
     AIAssistantSession,
     Certification,
@@ -338,6 +339,9 @@ async def delete_session(
 ) -> None:
     assistant_session = await get_session(session, user_id, session_id)
     await session.execute(
+        delete(AIAssistantImageBlob).where(AIAssistantImageBlob.session_id == assistant_session.id)
+    )
+    await session.execute(
         delete(AIAssistantMessage).where(AIAssistantMessage.session_id == assistant_session.id)
     )
     await session.delete(assistant_session)
@@ -423,17 +427,23 @@ async def persist_assistant_turn(
     assistant_session: AIAssistantSession,
     *,
     user_message: str,
+    display_message: str | None = None,
+    user_attachment: dict | None = None,
     assistant_text: str,
     draft_card: dict | None,
     title: str | None = None,
 ) -> list[AIAssistantMessage]:
+    user_content_json = {"text": display_message if display_message is not None else user_message}
+    if user_attachment:
+        user_content_json["attachment"] = user_attachment
+
     created_messages: list[AIAssistantMessage] = []
     created_messages.append(
         AIAssistantMessage(
             session_id=assistant_session.id,
             role="user",
             message_type="user_text",
-            content_json={"text": user_message},
+            content_json=user_content_json,
         )
     )
     created_messages.append(

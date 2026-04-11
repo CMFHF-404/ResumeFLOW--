@@ -207,6 +207,7 @@ export interface AssistantTurnResult {
 }
 
 export type AssistantProgressNode =
+    | 'read_attachment'
     | 'prepare_context'
     | 'request_ai'
     | 'persist_result';
@@ -655,9 +656,10 @@ const streamPersonalSummaryRequest = async (
 
 const streamAssistantRequest = async (
     sessionId: string,
-    payload: Record<string, unknown>,
+    body: BodyInit,
     options: {
         onEvent?: (event: AssistantStreamEvent) => void;
+        contentType?: string | null;
     } = {}
 ): Promise<AssistantTurnResult> => {
     const headers = new Headers();
@@ -667,12 +669,14 @@ const streamAssistantRequest = async (
         throw new Error('Authentication required for write operation');
     }
     headers.set('Authorization', authHeader);
-    headers.set('Content-Type', 'application/json');
+    if (options.contentType !== null) {
+        headers.set('Content-Type', options.contentType ?? 'application/json');
+    }
 
     const response = await fetch(resolveApiUrl(`/api/assistant/sessions/${sessionId}/stream`), {
         method: 'POST',
         headers,
-        body: JSON.stringify(payload),
+        body,
     });
 
     ensureStreamResponseOk(response);
@@ -814,14 +818,34 @@ export const aiService = {
         sessionId: string,
         payload: {
             userMessage: string;
+            displayMessage?: string;
             mode?: AssistantMode;
+            attachment?: File | null;
         },
         onEvent?: (event: AssistantStreamEvent) => void
     ) {
-        return streamAssistantRequest(sessionId, {
+        if (payload.attachment) {
+            const formData = new FormData();
+            formData.append('user_message', payload.userMessage);
+            formData.append('display_message', payload.displayMessage ?? payload.userMessage);
+            if (payload.mode) {
+                formData.append('mode', payload.mode);
+            }
+            formData.append('file', payload.attachment);
+            return streamAssistantRequest(sessionId, formData, {
+                onEvent,
+                contentType: null,
+            });
+        }
+
+        return streamAssistantRequest(sessionId, JSON.stringify({
             user_message: payload.userMessage,
+            display_message: payload.displayMessage ?? payload.userMessage,
             ...(payload.mode ? { mode: payload.mode } : {}),
-        }, { onEvent });
+        }), {
+            onEvent,
+            contentType: 'application/json',
+        });
     },
 
     async analyzeJD({
