@@ -64,10 +64,19 @@ async def list_experience_items(
     q: Optional[str] = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(0, ge=0),
+    include_archived: bool = Query(True),
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    rows = await list_experiences(session, current_user.id, category, q, limit, offset)
+    rows = await list_experiences(
+        session,
+        current_user.id,
+        category,
+        q,
+        limit,
+        offset,
+        include_archived=include_archived,
+    )
     return [
         ExperienceListItem(
             master=_master_to_read(master),

@@ -26,6 +26,13 @@ async def get_current_profile(
     return await _create_profile(session, user_id, full_name_hint=full_name_hint)
 
 
+async def get_profile_if_exists(
+    session: AsyncSession,
+    user_id: str,
+) -> Optional[Profile]:
+    return await _fetch_profile(session, user_id)
+
+
 async def update_profile(
     session: AsyncSession,
     user_id: str,

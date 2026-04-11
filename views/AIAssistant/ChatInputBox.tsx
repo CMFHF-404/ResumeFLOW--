@@ -1,5 +1,6 @@
-import React, { useRef, useEffect } from 'react';
-import { Plus, Mic, ArrowUp, Sparkles, Paperclip, X } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Plus, Mic, ArrowUp, Sparkles, Paperclip, X, Briefcase, ChevronUp } from 'lucide-react';
+import type { AssistantSelectedExperience } from '../../services/aiService';
 
 export type ChatInputBoxProps = {
   value: string;
@@ -8,7 +9,7 @@ export type ChatInputBoxProps = {
   isSending: boolean;
   placeholder?: string;
   quickActions?: { label: string; onClick?: () => void }[];
-  onPlusClick?: () => void;
+  plusActions?: { key: string; label: string; onClick?: () => void }[];
   attachmentPreview?: {
     name: string;
     type?: string;
@@ -16,6 +17,8 @@ export type ChatInputBoxProps = {
     previewUrl?: string | null;
   } | null;
   onRemoveAttachment?: () => void;
+  selectedExperiences?: AssistantSelectedExperience[];
+  onRemoveSelectedExperience?: (masterId: string) => void;
 };
 
 export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
@@ -25,26 +28,46 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   isSending,
   placeholder = '有问题，尽管问',
   quickActions = [],
-  onPlusClick,
+  plusActions = [],
   attachmentPreview,
   onRemoveAttachment,
+  selectedExperiences = [],
+  onRemoveSelectedExperience,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
 
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      // Limit max height to around 5 lines (120px) before scrolling
-      const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
-      textareaRef.current.style.height = `${newHeight}px`;
+  // Resize before paint to avoid visible jump/flicker during rapid typing.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
     }
+    textarea.style.height = '0px';
+    const fullHeight = textarea.scrollHeight;
+    const nextHeight = Math.min(fullHeight, 160);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = fullHeight > 160 ? 'auto' : 'hidden';
   }, [value]);
+
+  useEffect(() => {
+    if (!isPlusMenuOpen) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!plusMenuRef.current?.contains(event.target as Node)) {
+        setIsPlusMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => window.removeEventListener('mousedown', handlePointerDown);
+  }, [isPlusMenuOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isSending && (value.trim() || attachmentPreview)) {
+      if (!isSending && (value.trim() || attachmentPreview || selectedExperiences.length > 0)) {
         onSubmit();
       }
     }
@@ -52,7 +75,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="flex flex-col overflow-hidden rounded-[32px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-lg transition-all focus-within:bg-white/90 focus-within:shadow-xl">
+      <div className="relative flex flex-col overflow-visible rounded-[32px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-lg transition-all focus-within:bg-white/90 focus-within:shadow-xl">
         {attachmentPreview ? (
           <div className="px-5 pt-5">
             <div className="relative flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
@@ -85,6 +108,41 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           </div>
         ) : null}
 
+        {selectedExperiences.length > 0 ? (
+          <div className="px-5 pt-5">
+            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {selectedExperiences.map((item) => (
+                <div
+                  key={item.masterId}
+                  className="flex w-[420px] max-w-[80vw] shrink-0 items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 ring-1 ring-emerald-100">
+                    <Briefcase className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-slate-700">
+                      {item.org || '未填写组织'} / {item.title || '未填写角色'}
+                    </div>
+                    {item.summary ? (
+                      <div className="mt-1 truncate text-xs text-slate-500">
+                        {item.summary}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveSelectedExperience?.(item.masterId)}
+                    className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
+                    title="移除经历"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <textarea
           ref={textareaRef}
           value={value}
@@ -96,10 +154,35 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
         />
 
         <div className="flex items-center justify-between px-3 py-3">
-          <div className="flex items-center gap-1.5 pl-2 overflow-x-auto no-scrollbar">
-             <button type="button" onClick={onPlusClick} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition shrink-0" title="添加附件或扩展">
-                <Plus className="w-5 h-5"/>
-             </button>
+          <div className="flex min-w-0 items-center gap-2 pl-2">
+             <div ref={plusMenuRef} className="relative shrink-0">
+               <button
+                 type="button"
+                 onClick={() => setIsPlusMenuOpen((current) => !current)}
+                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition"
+                 title="添加经历或附件"
+               >
+                  {isPlusMenuOpen ? <ChevronUp className="w-5 h-5" /> : <Plus className="w-5 h-5"/>}
+               </button>
+               {isPlusMenuOpen ? (
+                 <div className="absolute bottom-12 left-0 z-30 min-w-[168px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_32px_rgba(15,23,42,0.12)]">
+                   {plusActions.map((action) => (
+                     <button
+                       key={action.key}
+                       type="button"
+                       onClick={() => {
+                         setIsPlusMenuOpen(false);
+                         action.onClick?.();
+                       }}
+                       className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                     >
+                       {action.label}
+                     </button>
+                   ))}
+                 </div>
+               ) : null}
+             </div>
+             <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto no-scrollbar">
              {quickActions.map((action, idx) => (
                <button
                  key={idx}
@@ -111,6 +194,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                  {action.label}
                </button>
              ))}
+             </div>
           </div>
           
           <div className="flex items-center gap-2 pr-1 shrink-0">
@@ -120,9 +204,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
              <button
                type="button"
                onClick={onSubmit}
-               disabled={isSending || (!value.trim() && !attachmentPreview)}
+               disabled={isSending || (!value.trim() && !attachmentPreview && selectedExperiences.length === 0)}
                className={`flex h-9 w-9 items-center justify-center rounded-full text-white transition disabled:cursor-not-allowed ${
-                 (value.trim() || attachmentPreview) && !isSending 
+                 (value.trim() || attachmentPreview || selectedExperiences.length > 0) && !isSending 
                    ? 'bg-slate-900 hover:bg-slate-800 shadow-md' 
                    : 'bg-slate-200 text-slate-400'
                }`}

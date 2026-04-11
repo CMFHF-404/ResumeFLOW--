@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Bot, Loader2, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
+import { Bot, Loader2, ChevronDown, ChevronRight, Paperclip, Briefcase, FolderKanban, GraduationCap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import type { AssistantSelectedExperience } from '../../services/aiService';
 
 export type MessageItemProps = {
   isUser: boolean;
@@ -10,13 +11,46 @@ export type MessageItemProps = {
     type?: string;
     sizeLabel?: string;
   } | null;
+  selectedExperiences?: AssistantSelectedExperience[];
 };
 
-export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content, attachment }) => {
+const EXPERIENCE_ICON = {
+  work: Briefcase,
+  project: FolderKanban,
+  education: GraduationCap,
+} as const;
+
+export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content, attachment, selectedExperiences = [] }) => {
   if (isUser) {
     return (
       <div className="flex justify-end mb-4">
         <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-slate-100 px-5 py-3 text-slate-800">
+          {selectedExperiences.length > 0 ? (
+            <div className="mb-3 flex flex-col gap-2">
+              {selectedExperiences.map((item) => {
+                const ExperienceIcon = EXPERIENCE_ICON[item.category] ?? Briefcase;
+                return (
+                  <div key={item.masterId} className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-2">
+                    <div className="flex items-start gap-2">
+                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                        <ExperienceIcon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-semibold text-slate-700">
+                          {item.org || '未填写组织'} / {item.title || '未填写角色'}
+                        </div>
+                        {item.summary ? (
+                          <div className="mt-1 max-h-10 overflow-hidden text-xs leading-5 text-slate-500">
+                            {item.summary}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           {content ? (
             <div className="whitespace-pre-wrap text-sm leading-7">{content}</div>
           ) : null}

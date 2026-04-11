@@ -33,6 +33,11 @@ AI_CONNECT_TIMEOUT_SECONDS = 10.0
 AI_POOL_TIMEOUT_SECONDS = 10.0
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 GEMINI_POOL_TIMEOUT_SECONDS = 10.0
+MAX_SELECTED_EXPERIENCE_TEXT_CHARS = 300
+MAX_SELECTED_EXPERIENCE_SUMMARY_CHARS = 300
+MAX_SELECTED_EXPERIENCE_STAR_CHARS = 500
+MAX_SELECTED_EXPERIENCES = 20
+VALID_SELECTED_EXPERIENCE_CATEGORIES = {"work", "project", "education"}
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
@@ -114,6 +119,66 @@ def _safe_parse_resume_payload(resume_text: Optional[str]) -> Optional[Dict[str,
     if not isinstance(data, dict):
         return None
     return data
+
+
+def _clip_optional_text(value: Any, limit: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit].rstrip()}..."
+
+
+def _normalize_selected_experience_item(item: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    master_id = _clip_optional_text(item.get("masterId"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    category = item.get("category")
+    if not master_id or not isinstance(category, str) or category not in VALID_SELECTED_EXPERIENCE_CATEGORIES:
+        return None
+
+    normalized: Dict[str, Any] = {
+        "masterId": master_id,
+        "category": category,
+        "isCurrent": bool(item.get("isCurrent")),
+    }
+    for source_key, limit in (
+        ("org", MAX_SELECTED_EXPERIENCE_TEXT_CHARS),
+        ("title", MAX_SELECTED_EXPERIENCE_TEXT_CHARS),
+        ("startDate", MAX_SELECTED_EXPERIENCE_TEXT_CHARS),
+        ("endDate", MAX_SELECTED_EXPERIENCE_TEXT_CHARS),
+        ("summary", MAX_SELECTED_EXPERIENCE_SUMMARY_CHARS),
+    ):
+        clipped = _clip_optional_text(item.get(source_key), limit)
+        if clipped:
+            normalized[source_key] = clipped
+
+    raw_star = item.get("star")
+    if isinstance(raw_star, dict):
+        normalized_star: Dict[str, str] = {}
+        for key in ("s", "t", "a", "r"):
+            clipped = _clip_optional_text(raw_star.get(key), MAX_SELECTED_EXPERIENCE_STAR_CHARS)
+            if clipped:
+                normalized_star[key] = clipped
+        if normalized_star:
+            normalized["star"] = normalized_star
+    return normalized
+
+
+def _normalize_selected_experiences(items: Any) -> List[Dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+    normalized_items: List[Dict[str, Any]] = []
+    for item in items:
+        normalized = _normalize_selected_experience_item(item)
+        if normalized:
+            normalized_items.append(normalized)
+        if len(normalized_items) >= MAX_SELECTED_EXPERIENCES:
+            break
+    return normalized_items
 
 
 def _extract_skill_ids(resume_text: Optional[str]) -> List[str]:
@@ -839,7 +904,10 @@ def _get_assistant_prompt(mode: str) -> str:
     if mode == "experience":
         return (
             GENERAL_ASSISTANT_PROMPT
-            + " Current preferred topic: experience. Start by focusing on experience organization, but do not refuse other topics."
+            + " Current preferred topic: experience. Start by focusing on experience organization, but do not refuse other topics. "
+            + "When 'context.masterId' exists, treat that record as the primary optimization target. "
+            + "When 'bank_context' clearly matches an existing experience and the user wants to optimize it, return an experience draftCard with data.targetMasterId set to that masterId. "
+            + "The experience draft data may include optional key 'targetMasterId' (string or null). Never fabricate a targetMasterId."
         )
     if mode == "certification":
         return (
@@ -861,10 +929,13 @@ def _build_assistant_payload(
     session_title: str,
     entry_source: str,
     context_json: Dict[str, Any],
+    bank_context: Optional[Dict[str, Any]],
+    selected_experiences: Optional[List[Dict[str, Any]]],
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     normalized_history = _normalize_assistant_history(history[-16:], include_attachment_content=False)
+    normalized_selected_experiences = _normalize_selected_experiences(selected_experiences)
     payload = {
         "mode": mode,
         "session_title": session_title,
@@ -873,6 +944,10 @@ def _build_assistant_payload(
         "history": normalized_history,
         "user_message": user_message,
     }
+    if bank_context is not None:
+        payload["bank_context"] = bank_context
+    if normalized_selected_experiences:
+        payload["selected_experiences"] = normalized_selected_experiences
     if attachments:
         attachment_contexts = [
             _build_assistant_attachment_context(item, include_attachment_content=True)
@@ -933,6 +1008,13 @@ def _normalize_assistant_history(
                     attachment,
                     include_attachment_content=include_attachment_content,
                 )
+            selected_experiences = _normalize_selected_experiences(
+                content_json.get("selected_experiences")
+            )
+            if selected_experiences:
+                normalized_content_json["selected_experiences"] = selected_experiences
+            elif "selected_experiences" in normalized_content_json:
+                normalized_content_json.pop("selected_experiences", None)
             normalized_message["content_json"] = normalized_content_json
         normalized_history.append(normalized_message)
     return normalized_history
@@ -1587,6 +1669,8 @@ async def run_assistant_turn(
     session_title: str,
     entry_source: str,
     context_json: Dict[str, Any],
+    bank_context: Optional[Dict[str, Any]] = None,
+    selected_experiences: Optional[List[Dict[str, Any]]] = None,
     history: List[Dict[str, Any]],
     attachment: Optional[Dict[str, Any]] = None,
     attachment_hydrator: AttachmentHydrator = None,
@@ -1600,6 +1684,8 @@ async def run_assistant_turn(
         session_title=session_title,
         entry_source=entry_source,
         context_json=context_json,
+        bank_context=bank_context,
+        selected_experiences=selected_experiences,
         history=history,
         attachments=resolved_attachments,
     )
@@ -1618,6 +1704,8 @@ async def run_assistant_turn_with_thoughts(
     session_title: str,
     entry_source: str,
     context_json: Dict[str, Any],
+    bank_context: Optional[Dict[str, Any]] = None,
+    selected_experiences: Optional[List[Dict[str, Any]]] = None,
     history: List[Dict[str, Any]],
     attachment: Optional[Dict[str, Any]] = None,
     thought_callback: ThoughtCallback = None,
@@ -1634,6 +1722,8 @@ async def run_assistant_turn_with_thoughts(
             session_title=session_title,
             entry_source=entry_source,
             context_json=context_json,
+            bank_context=bank_context,
+            selected_experiences=selected_experiences,
             history=history,
             attachment=attachment,
             attachment_hydrator=attachment_hydrator,
@@ -1648,6 +1738,8 @@ async def run_assistant_turn_with_thoughts(
         session_title=session_title,
         entry_source=entry_source,
         context_json=context_json,
+        bank_context=bank_context,
+        selected_experiences=selected_experiences,
         history=history,
         attachments=resolved_attachments,
     )
@@ -1676,6 +1768,8 @@ async def run_assistant_turn_with_thoughts(
             session_title=session_title,
             entry_source=entry_source,
             context_json=context_json,
+            bank_context=bank_context,
+            selected_experiences=selected_experiences,
             history=history,
             attachment=attachment,
             attachment_hydrator=attachment_hydrator,

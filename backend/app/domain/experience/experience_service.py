@@ -20,6 +20,7 @@ async def list_experiences(
     keyword: Optional[str],
     limit: int,
     offset: int,
+    include_archived: bool = True,
 ) -> List[Tuple[MasterExperience, Optional[ExperienceVersion]]]:
     statement = (
         select(MasterExperience, ExperienceVersion)
@@ -35,6 +36,8 @@ async def list_experiences(
     )
     if category:
         statement = statement.where(MasterExperience.category == category)
+    if not include_archived:
+        statement = statement.where(MasterExperience.is_archived.is_(False))
     if keyword:
         like_value = f"%{keyword}%"
         statement = statement.where(

@@ -19,6 +19,12 @@ const markdownComponents = {
     : <code className="block bg-slate-50 border border-slate-100 text-slate-800 p-3 rounded-lg text-[13px] font-mono overflow-x-auto whitespace-pre my-2 shadow-inner" {...props} />,
 };
 
+const EXPERIENCE_CATEGORY_LABELS = {
+  work: '工作经历',
+  project: '项目经历',
+  education: '教育经历',
+} as const;
+
 export const AssistantDraftCardView: React.FC<{
   card: AssistantDraftCard;
   disabled?: boolean;
@@ -26,6 +32,12 @@ export const AssistantDraftCardView: React.FC<{
   onApply: () => void;
 }> = ({ card, disabled, isApplying, onApply }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const experienceApplyHint = card.type === 'experience'
+    ? (card.data.targetMasterId ? '将更新现有经历' : '将新建经历')
+    : null;
+  const experienceCategoryLabel = card.type === 'experience'
+    ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
+    : null;
 
   const renderContent = () => {
     if (card.type === 'experience') {
@@ -34,7 +46,7 @@ export const AssistantDraftCardView: React.FC<{
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
               <div className="text-[11px] uppercase tracking-wider text-slate-400">类别</div>
-              <div className="mt-1 text-sm font-medium text-slate-800">{card.data.category}</div>
+              <div className="mt-1 text-sm font-medium text-slate-800">{experienceCategoryLabel}</div>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
               <div className="text-[11px] uppercase tracking-wider text-slate-400">时间</div>
@@ -47,6 +59,12 @@ export const AssistantDraftCardView: React.FC<{
             <div className="text-[11px] uppercase tracking-wider text-slate-400">主体</div>
             <div className="mt-1 text-base font-medium text-slate-800">{card.data.org || '待补充组织'} / {card.data.title || '待补充角色'}</div>
           </div>
+          {!card.data.targetMasterId ? (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-slate-500">录入方式</div>
+              <div className="mt-1 text-sm font-medium text-slate-800">{experienceApplyHint}</div>
+            </div>
+          ) : null}
           <div className="grid gap-3">
             {([
               ['S', card.data.star.s],
@@ -118,12 +136,21 @@ export const AssistantDraftCardView: React.FC<{
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mt-3 transition-all duration-300">
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 border border-emerald-100">
-              <Sparkles className="h-3 w-3" />
-              可确认草稿
-            </div>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 border border-emerald-100">
+            <Sparkles className="h-3 w-3" />
+            可确认草稿
           </div>
+          {experienceApplyHint ? (
+            <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+              card.data.targetMasterId
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-sky-200 bg-sky-50 text-sky-700'
+            }`}>
+              {experienceApplyHint}
+            </div>
+          ) : null}
+        </div>
           <h4 className="mt-1 text-sm font-semibold text-slate-800 truncate" title={card.summary}>
             {card.summary || 'AI 已整理出可录入初稿'}
           </h4>
