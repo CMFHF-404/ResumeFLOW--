@@ -32,13 +32,20 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   const getButtonClass = (view: ViewState) => {
     const baseClass = "flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-2 transition-all relative group md:p-3";
     if (currentView === view) {
+      if (view === ViewState.AI_ASSISTANT) {
+        return `${baseClass} ai-active-gradient text-white shadow-lg shadow-emerald-500/30`;
+      }
       return `${baseClass} bg-primary text-white shadow-lg shadow-primary/30`;
     }
     return `${baseClass} text-slate-300 hover:text-white hover:bg-slate-800`;
   };
+
   const mobileTabButtonClass = (view: ViewState) => {
     const baseClass = "flex h-11 items-center justify-center rounded-2xl transition-all duration-300 ease-in-out overflow-hidden";
     if (currentView === view) {
+      if (view === ViewState.AI_ASSISTANT) {
+        return `${baseClass} ai-active-gradient text-white shadow-lg shadow-emerald-500/20 flex-1 px-3 gap-2`;
+      }
       return `${baseClass} bg-primary text-white shadow-lg shadow-primary/30 flex-1 px-3 gap-2`;
     }
     return `${baseClass} bg-slate-950/40 text-slate-300 hover:bg-slate-800 hover:text-white w-12 px-0 gap-0`;

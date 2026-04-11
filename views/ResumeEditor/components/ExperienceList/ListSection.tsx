@@ -47,6 +47,10 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     staleExperienceIds,
     isAdding,
     isPolishing,
+    activePolishItemId,
+    hasBlockingPolishState,
+    polishToolbar,
+    onClosePolishToolbar,
     onResetSort,
 }) => {
     const themeStyles = EXPERIENCE_THEME_STYLES[theme];
@@ -101,6 +105,12 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     deletingIds={deletingIds}
                     staleExperienceIds={staleExperienceIds}
                     isPolishing={isPolishing}
+                    isPolishToolbarOpen={activePolishItemId === item.id}
+                    isSelectionLocked={hasBlockingPolishState && activePolishItemId === item.id}
+                    isPolishActionLocked={hasBlockingPolishState}
+                    isDeleteLocked={hasBlockingPolishState && activePolishItemId === item.id}
+                    polishToolbar={activePolishItemId === item.id ? polishToolbar : undefined}
+                    onClosePolishToolbar={activePolishItemId === item.id ? onClosePolishToolbar : undefined}
                 />
             ))}
         </div>

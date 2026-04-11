@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, Edit3, Sparkles, Trash2 } from 'lucide-react';
+import { Edit3, Sparkles, Trash2, X } from 'lucide-react';
 import type { ExperienceCardProps } from '../../../../types/resume';
 import { MatchBadge, StaleBadge } from '../Badges';
 
@@ -10,6 +10,8 @@ type ExperienceCardActionsProps = {
     itemId: string;
     deleting: boolean;
     isPolishing: boolean;
+    isPolishActionLocked?: boolean;
+    isDeleteLocked?: boolean;
     onDelete: (id: string) => void;
     onEdit: (id: string) => void;
     onPolish: (id: string) => void;
@@ -20,6 +22,8 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
     itemId,
     deleting,
     isPolishing,
+    isPolishActionLocked,
+    isDeleteLocked,
     onDelete,
     onEdit,
     onPolish,
@@ -47,7 +51,7 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
             <button
                 className={`${actionButtonBaseClass} bg-rose-50 text-rose-500 hover:bg-rose-100 md:bg-transparent md:text-gray-500 md:hover:bg-red-50 md:hover:text-red-500`}
                 onClick={handleDelete}
-                disabled={deleting}
+                disabled={deleting || isDeleteLocked}
                 title="删除"
                 aria-label="删除"
             >
@@ -64,7 +68,7 @@ const ExperienceCardActions: React.FC<ExperienceCardActionsProps> = ({
             <button
                 className={`${actionButtonBaseClass} bg-amber-50 text-amber-600 hover:bg-amber-100 md:bg-transparent md:text-gray-400 ${themeStyles.editHoverData}`}
                 onClick={handlePolish}
-                disabled={isPolishing}
+                disabled={isPolishing || isPolishActionLocked}
                 title="打开 AI 润色工具栏"
                 aria-label="打开 AI 润色工具栏"
             >
@@ -145,6 +149,12 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
     deletingIds,
     staleExperienceIds,
     isPolishing,
+    isPolishToolbarOpen,
+    isSelectionLocked,
+    isPolishActionLocked,
+    isDeleteLocked,
+    polishToolbar,
+    onClosePolishToolbar,
 }) => {
     const hasReason = Boolean(item.matchReason?.trim());
     const [isReasonOpen, setIsReasonOpen] = useState(true);
@@ -171,17 +181,28 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
 
     return (
         <div
-            onClick={() => onToggleSelection(item.id)}
-            className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected ? `${themeStyles.borderSelected} ring-1 ${themeStyles.ringSelected}` : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'}`}
+            onClick={() => {
+                if (isSelectionLocked) {
+                    return;
+                }
+                onToggleSelection(item.id);
+            }}
+            className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected ? `${themeStyles.borderSelected} ring-1 ${themeStyles.ringSelected}` : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'} ${isPolishToolbarOpen ? 'z-20 opacity-100 shadow-[0_18px_50px_rgba(15,23,42,0.12)]' : ''}`}
         >
             <div className="flex items-start gap-3">
                 <div className="pt-1">
                     <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => onToggleSelection(item.id)}
+                        onChange={() => {
+                            if (isSelectionLocked) {
+                                return;
+                            }
+                            onToggleSelection(item.id);
+                        }}
+                        disabled={isSelectionLocked}
                         onClick={(event) => event.stopPropagation()}
-                        className={`w-4 h-4 rounded border-gray-300 ${themeStyles.checkboxText} ${themeStyles.checkboxFocus} cursor-pointer`}
+                        className={`w-4 h-4 rounded border-gray-300 ${themeStyles.checkboxText} ${themeStyles.checkboxFocus} ${isSelectionLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                     />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -195,6 +216,8 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                             itemId={item.id}
                             deleting={deletingIds.has(item.id)}
                             isPolishing={isPolishing}
+                            isPolishActionLocked={isPolishActionLocked}
+                            isDeleteLocked={isDeleteLocked}
                             onDelete={onDelete}
                             onEdit={onEdit}
                             onPolish={onPolish}
@@ -218,6 +241,47 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
             {hasReason && isReasonOpen ? (
                 <div>
                     <ExperienceReasonPanel reason={item.matchReason ?? ''} onClick={handleReasonAreaClick} />
+                </div>
+            ) : null}
+            {isPolishToolbarOpen && polishToolbar ? (
+                <div
+                    className="absolute inset-x-3 top-full z-30 mt-3 md:inset-x-auto md:right-3 md:top-12 md:w-[390px]"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur">
+                        <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
+                            <div className="min-w-0">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                                    AI 润色工具栏
+                                </div>
+                                <div className="mt-1 truncate text-sm font-semibold text-slate-900">
+                                    {item.title || '未填写职位'}
+                                </div>
+                                {item.company ? (
+                                    <div className="mt-0.5 truncate text-xs text-slate-500">
+                                        {item.company}
+                                    </div>
+                                ) : null}
+                            </div>
+                            {onClosePolishToolbar ? (
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onClosePolishToolbar();
+                                    }}
+                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                                    title="关闭润色工具栏"
+                                    aria-label="关闭润色工具栏"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            ) : null}
+                        </div>
+                        <div className="p-3">
+                            {polishToolbar}
+                        </div>
+                    </div>
                 </div>
             ) : null}
         </div>

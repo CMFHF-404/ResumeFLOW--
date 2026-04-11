@@ -96,6 +96,10 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onAutoAssemble,
     onResetRenamingCategory,
     onPolishExperience,
+    activePolishExperienceId,
+    hasBlockingPolishState,
+    polishToolbar,
+    onClosePolishExperienceToolbar,
     onResetWorkSort,
     onResetProjectSort,
     onResetCertificationSort,
@@ -111,14 +115,81 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     }, [scrollContainerRef]);
 
     const handleEditExperienceFromList = useCallback((id: string) => {
+        if (hasBlockingPolishState) {
+            onClosePolishExperienceToolbar?.();
+            return;
+        }
         recordListScroll();
         experience.startEditingExperience(id);
-    }, [experience.startEditingExperience, recordListScroll]);
+    }, [
+        experience.startEditingExperience,
+        hasBlockingPolishState,
+        onClosePolishExperienceToolbar,
+        recordListScroll,
+    ]);
 
     const handlePolishExperienceFromList = useCallback((id: string) => {
         recordListScroll();
         onPolishExperience(id);
     }, [onPolishExperience, recordListScroll]);
+
+    const guardBlockedSidebarAction = useCallback(() => {
+        if (!hasBlockingPolishState) {
+            return false;
+        }
+        onClosePolishExperienceToolbar?.();
+        return true;
+    }, [hasBlockingPolishState, onClosePolishExperienceToolbar]);
+
+    const handleAddWorkExperience = useCallback(() => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        void experience.handleAddExperience('work');
+    }, [experience, guardBlockedSidebarAction]);
+
+    const handleAddProjectExperience = useCallback(() => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        void experience.handleAddExperience('project');
+    }, [experience, guardBlockedSidebarAction]);
+
+    const handleBeginCreateCertification = useCallback(() => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        certification.beginCreateCertification();
+    }, [certification, guardBlockedSidebarAction]);
+
+    const handleBeginEditCertification = useCallback((id: string) => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        certification.beginEditCertification(id);
+    }, [certification, guardBlockedSidebarAction]);
+
+    const guardedSkill = useMemo(() => ({
+        ...skill,
+        beginCreateSkillType: () => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.beginCreateSkillType();
+        },
+        beginCreateSkillInGroup: (groupName: string) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.beginCreateSkillInGroup(groupName);
+        },
+        beginEditSkill: (id: string) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.beginEditSkill(id);
+        },
+    }), [guardBlockedSidebarAction, skill]);
 
     const scrollTarget = useMemo(() => {
         if (experience.editingExpId) {
@@ -362,7 +433,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 theme="primary"
                 actionLabel={ADD_WORK_EXPERIENCE_LABEL}
                 onToggleSelection={selection.toggleExperienceSelection}
-                onAddItem={() => experience.handleAddExperience('work')}
+                onAddItem={handleAddWorkExperience}
                 onEditItem={handleEditExperienceFromList}
                 onPolishItem={handlePolishExperienceFromList}
                 onDeleteItem={experience.requestDeleteExperience}
@@ -370,6 +441,10 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 staleExperienceIds={staleExperienceIds}
                 isAdding={experience.isAddingExperience}
                 isPolishing={experience.isPolishing}
+                activePolishItemId={activePolishExperienceId}
+                hasBlockingPolishState={hasBlockingPolishState}
+                polishToolbar={polishToolbar}
+                onClosePolishToolbar={onClosePolishExperienceToolbar}
                 onResetSort={onResetWorkSort}
             />
             <ExperienceListSection
@@ -381,7 +456,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 theme="project"
                 actionLabel={ADD_PROJECT_EXPERIENCE_LABEL}
                 onToggleSelection={selection.toggleExperienceSelection}
-                onAddItem={() => experience.handleAddExperience('project')}
+                onAddItem={handleAddProjectExperience}
                 onEditItem={handleEditExperienceFromList}
                 onPolishItem={handlePolishExperienceFromList}
                 onDeleteItem={experience.requestDeleteExperience}
@@ -389,6 +464,10 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 staleExperienceIds={staleExperienceIds}
                 isAdding={experience.isAddingExperience}
                 isPolishing={experience.isPolishing}
+                activePolishItemId={activePolishExperienceId}
+                hasBlockingPolishState={hasBlockingPolishState}
+                polishToolbar={polishToolbar}
+                onClosePolishToolbar={onClosePolishExperienceToolbar}
                 onResetSort={onResetProjectSort}
             />
             <CertificationListSection
@@ -399,8 +478,8 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 matchScores={certificationMatchScores}
                 matchTrends={certificationMatchTrends}
                 onToggleSelection={selection.toggleCertificationSelection}
-                onBeginCreate={certification.beginCreateCertification}
-                onBeginEdit={certification.beginEditCertification}
+                onBeginCreate={handleBeginCreateCertification}
+                onBeginEdit={handleBeginEditCertification}
                 onCancelEdit={certification.cancelCertificationEdit}
                 onSave={certification.handleSaveCertification}
                 onDelete={certification.requestDeleteCertification}
@@ -418,7 +497,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 selectedIds={selectedSkillIds}
                 matchScores={skillMatchScores}
                 matchTrends={skillMatchTrends}
-                skill={skill}
+                skill={guardedSkill}
                 onToggleSelection={selection.toggleSkillSelection}
                 onToggleGroupSelection={selection.toggleSkillGroupSelection}
                 onResetRenamingCategory={onResetRenamingCategory}
