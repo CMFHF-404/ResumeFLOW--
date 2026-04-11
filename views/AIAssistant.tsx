@@ -157,22 +157,24 @@ const resolveAssistantStreamThought = (event: AssistantStreamEvent) => {
 };
 
 const readMessageAttachmentPreview = (message: AssistantMessage): AssistantAttachmentPreview | null => {
-  const attachment = message.content_json?.attachment;
-  if (!attachment || typeof attachment !== 'object') {
+  const rawAttachment = message.content_json?.attachment;
+  if (!rawAttachment || typeof rawAttachment !== 'object') {
     return null;
   }
-  const name = typeof attachment.name === 'string' ? attachment.name.trim() : '';
+  // 断言为字典类型以便安全读取各字段（content_json 是非结构化 JSON）
+  const attachment = rawAttachment as Record<string, unknown>;
+  const name = typeof attachment['name'] === 'string' ? attachment['name'].trim() : '';
   if (!name) {
     return null;
   }
   return {
     name,
-    type: typeof attachment.type === 'string'
-      ? attachment.type
-      : typeof attachment.contentType === 'string'
-        ? attachment.contentType
+    type: typeof attachment['type'] === 'string'
+      ? attachment['type']
+      : typeof attachment['contentType'] === 'string'
+        ? attachment['contentType']
         : undefined,
-    sizeLabel: typeof attachment.sizeLabel === 'string' ? attachment.sizeLabel : undefined,
+    sizeLabel: typeof attachment['sizeLabel'] === 'string' ? attachment['sizeLabel'] : undefined,
   };
 };
 
@@ -1238,14 +1240,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="mx-auto flex max-w-4xl flex-col pt-4 pb-8">
+                <div className="mx-auto flex max-w-3xl flex-col pt-4 pb-8">
                   {messages.map((message) => {
                     if (message.message_type === 'draft_card') {
                       const draftCard = message.content_json as unknown as AssistantDraftCard;
                       return (
-                        <div key={message.id} className="max-w-[95%] self-start flex justify-start mb-6">
-                           <div className="mr-4 w-8 shrink-0"></div>
-                           <div className="flex-1">
+                        <div key={message.id} className="w-full self-center flex justify-center mb-6">
+                           <div className="flex-1 max-w-2xl">
                              <AssistantDraftCardView
                                card={draftCard}
                                onApply={() => void handleApplyDraft(message.id, draftCard)}
