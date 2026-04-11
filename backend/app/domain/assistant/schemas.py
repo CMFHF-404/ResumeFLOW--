@@ -51,6 +51,7 @@ class AssistantSessionStreamRequest(BaseModel):
     user_message: str = ""
     display_message: Optional[str] = None
     mode: Optional[AssistantMode] = None
+    selected_experiences: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class AssistantMessageApplyRead(BaseModel):

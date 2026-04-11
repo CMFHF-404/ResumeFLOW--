@@ -1,6 +1,7 @@
 import apiClient, { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
 import { dispatchLoginRequired } from './authRedirect';
 import type { MatchScoreEntry, MatchTrend } from '../types/analysis';
+import type { ExperienceCategory } from './experienceService';
 
 export interface PolishExperiencePayload {
     content: {
@@ -103,6 +104,7 @@ export type AssistantMode = 'general' | 'experience' | 'certification' | 'skill'
 export type AssistantEntrySource = 'direct' | 'experience_bank' | 'resume_editor';
 export type AssistantMessageType = 'user_text' | 'assistant_text' | 'draft_card';
 export type AssistantDraftCardType = 'experience' | 'certification' | 'skill_group';
+export const MAX_ASSISTANT_SELECTED_EXPERIENCES = 20;
 
 export interface AssistantExperienceDraft {
     category: 'work' | 'project' | 'education';
@@ -111,6 +113,7 @@ export interface AssistantExperienceDraft {
     startDate: string;
     endDate: string;
     isCurrent?: boolean;
+    targetMasterId?: string | null;
     star: {
         s: string;
         t: string;
@@ -179,6 +182,23 @@ export interface AssistantMessage {
 
 export interface AssistantMessageApplyResponse {
     message: AssistantMessage;
+}
+
+export interface AssistantSelectedExperience {
+    masterId: string;
+    category: ExperienceCategory;
+    org: string;
+    title: string;
+    startDate: string;
+    endDate: string;
+    isCurrent: boolean;
+    summary?: string;
+    star?: {
+        s?: string;
+        t?: string;
+        a?: string;
+        r?: string;
+    };
 }
 
 export interface AssistantSessionDetail {
@@ -821,6 +841,7 @@ export const aiService = {
             displayMessage?: string;
             mode?: AssistantMode;
             attachment?: File | null;
+            selectedExperiences?: AssistantSelectedExperience[];
         },
         onEvent?: (event: AssistantStreamEvent) => void
     ) {
@@ -830,6 +851,9 @@ export const aiService = {
             formData.append('display_message', payload.displayMessage ?? payload.userMessage);
             if (payload.mode) {
                 formData.append('mode', payload.mode);
+            }
+            if (payload.selectedExperiences?.length) {
+                formData.append('selected_experiences', JSON.stringify(payload.selectedExperiences));
             }
             formData.append('file', payload.attachment);
             return streamAssistantRequest(sessionId, formData, {
@@ -842,6 +866,7 @@ export const aiService = {
             user_message: payload.userMessage,
             display_message: payload.displayMessage ?? payload.userMessage,
             ...(payload.mode ? { mode: payload.mode } : {}),
+            ...(payload.selectedExperiences?.length ? { selected_experiences: payload.selectedExperiences } : {}),
         }), {
             onEvent,
             contentType: 'application/json',

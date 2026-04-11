@@ -1,5 +1,7 @@
 import asyncio
+import html
 import json
+import re
 from typing import Any, Dict
 from uuid import UUID
 
@@ -14,7 +16,11 @@ from ...database import get_session as get_db_session
 from ...dependencies import get_current_user
 from ...models import AIAssistantImageBlob
 from ..ai import jd_attachment_service
-from ..ai.ai_service import run_assistant_turn_with_thoughts
+from ..ai.ai_service import _normalize_selected_experiences, run_assistant_turn_with_thoughts
+from ..certifications.certification_service import list_certifications
+from ..experience.experience_service import list_experiences
+from ..profile.profile_service import get_profile_if_exists
+from ..skills.skill_service import list_user_skills
 from .assistant_service import (
     InvalidMessageError,
     NotFoundError,
@@ -41,6 +47,12 @@ router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024
 MAX_ASSISTANT_ATTACHMENT_TEXT_CHARS = 12_000
 MAX_ASSISTANT_ATTACHMENT_EXCERPT_CHARS = 1_200
+MAX_BANK_PROFILE_SUMMARY_CHARS = 300
+MAX_BANK_EXPERIENCE_SUMMARY_CHARS = 300
+MAX_BANK_CERT_DESCRIPTION_CHARS = 300
+MAX_BANK_STAR_FIELD_CHARS = 500
+MAX_BANK_TEXT_LENGTH = 300
+BANK_CONTEXT_FETCH_BATCH_SIZE = 500
 
 
 def _ndjson_line(payload: Dict[str, Any]) -> str:
@@ -69,15 +81,18 @@ def _sanitize_message_content_json(content_json: Dict[str, Any] | None) -> Dict[
 
     sanitized = {**content_json}
     attachment = content_json.get("attachment")
-    if not isinstance(attachment, dict):
-        return sanitized
-
-    sanitized_attachment = {
-        key: value
-        for key, value in attachment.items()
-        if key not in {"imageB64", "text"}
-    }
-    sanitized["attachment"] = sanitized_attachment
+    if isinstance(attachment, dict):
+        sanitized_attachment = {
+            key: value
+            for key, value in attachment.items()
+            if key not in {"imageB64", "text"}
+        }
+        sanitized["attachment"] = sanitized_attachment
+    selected_experiences = _normalize_selected_experiences(content_json.get("selected_experiences"))
+    if selected_experiences:
+        sanitized["selected_experiences"] = selected_experiences
+    elif "selected_experiences" in sanitized:
+        sanitized.pop("selected_experiences", None)
     return sanitized
 
 
@@ -97,6 +112,166 @@ def _clip_text(value: str, limit: int) -> str:
     return f"{value[:limit].rstrip()}\n...(内容已截断)"
 
 
+def _normalize_bank_text(value: Any, limit: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    normalized = re.sub(r"(?i)<br\s*/?>", "\n", normalized)
+    normalized = re.sub(r"(?i)</p\s*>", "\n", normalized)
+    normalized = re.sub(r"<[^>]+>", " ", normalized)
+    normalized = html.unescape(normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if not normalized:
+        return None
+    if len(normalized) > limit:
+        normalized = normalized[:limit].rstrip() + "..."
+    return normalized
+
+
+def _serialize_optional_date(value: Any) -> str | None:
+    if value is None:
+        return None
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _build_star_snapshot(raw_star: Any) -> Dict[str, str]:
+    if not isinstance(raw_star, dict):
+        return {}
+    snapshot: Dict[str, str] = {}
+    for key in ("s", "t", "a", "r"):
+        normalized = _normalize_bank_text(raw_star.get(key), MAX_BANK_STAR_FIELD_CHARS)
+        if normalized:
+            snapshot[key] = normalized
+    return snapshot
+
+
+async def _build_bank_context(
+    session: AsyncSession,
+    *,
+    user_id: str,
+) -> Dict[str, Any]:
+    profile = await get_profile_if_exists(session, user_id)
+    experience_rows: list[tuple[Any, Any]] = []
+    offset = 0
+    while True:
+        batch = await list_experiences(
+            session,
+            user_id,
+            None,
+            None,
+            BANK_CONTEXT_FETCH_BATCH_SIZE,
+            offset,
+            include_archived=False,
+        )
+        if not batch:
+            break
+        experience_rows.extend(batch)
+        if len(batch) < BANK_CONTEXT_FETCH_BATCH_SIZE:
+            break
+        offset += BANK_CONTEXT_FETCH_BATCH_SIZE
+    certifications = await list_certifications(session, user_id)
+    skills = await list_user_skills(session, user_id)
+
+    profile_payload: Dict[str, Any] = {}
+    if profile is not None:
+        for source_key, target_key in (
+            ("full_name", "full_name"),
+            ("title", "title"),
+            ("location", "location"),
+            ("email", "email"),
+            ("phone", "phone"),
+        ):
+            normalized = _normalize_bank_text(getattr(profile, source_key, None), MAX_BANK_TEXT_LENGTH)
+            if normalized:
+                profile_payload[target_key] = normalized
+        profile_summary = _normalize_bank_text(profile.summary, MAX_BANK_PROFILE_SUMMARY_CHARS)
+        if profile_summary:
+            profile_payload["summary"] = profile_summary
+
+    grouped_experiences: Dict[str, list[Dict[str, Any]]] = {
+        "work": [],
+        "project": [],
+        "education": [],
+    }
+    for master, latest_version in experience_rows:
+        if master.is_archived or latest_version is None:
+            continue
+        experience_payload: Dict[str, Any] = {
+            "masterId": str(master.id),
+            "isCurrent": bool(latest_version.is_current),
+        }
+        for source_key, target_key, limit in (
+            ("title", "title", MAX_BANK_TEXT_LENGTH),
+            ("org", "org", MAX_BANK_TEXT_LENGTH),
+            ("summary", "summary", MAX_BANK_EXPERIENCE_SUMMARY_CHARS),
+        ):
+            normalized = _normalize_bank_text(getattr(latest_version, source_key, None), limit)
+            if normalized:
+                experience_payload[target_key] = normalized
+        start_date = _serialize_optional_date(latest_version.start_date)
+        end_date = _serialize_optional_date(latest_version.end_date)
+        if start_date:
+            experience_payload["startDate"] = start_date
+        if end_date:
+            experience_payload["endDate"] = end_date
+        star_snapshot = _build_star_snapshot(latest_version.star)
+        if star_snapshot:
+            experience_payload["star"] = star_snapshot
+        grouped_experiences[master.category.value].append(experience_payload)
+
+    certification_payloads: list[Dict[str, Any]] = []
+    for cert in certifications:
+        item: Dict[str, Any] = {"id": str(cert.id)}
+        for source_key, target_key in (
+            ("name", "name"),
+            ("issuer", "issuer"),
+        ):
+            normalized = _normalize_bank_text(getattr(cert, source_key, None), MAX_BANK_TEXT_LENGTH)
+            if normalized:
+                item[target_key] = normalized
+        for source_key, target_key in (
+            ("issue_date", "issueDate"),
+            ("expiry_date", "expiryDate"),
+        ):
+            serialized = _serialize_optional_date(getattr(cert, source_key, None))
+            if serialized:
+                item[target_key] = serialized
+        description = _normalize_bank_text(cert.description, MAX_BANK_CERT_DESCRIPTION_CHARS)
+        if description:
+            item["description"] = description
+        certification_payloads.append(item)
+
+    skill_payloads: list[Dict[str, Any]] = []
+    for user_skill, skill in skills:
+        normalized_name = _normalize_bank_text(skill.name, MAX_BANK_TEXT_LENGTH)
+        if not normalized_name:
+            continue
+        item: Dict[str, Any] = {
+            "id": str(user_skill.id),
+            "name": normalized_name,
+        }
+        category = _normalize_bank_text(skill.category, MAX_BANK_TEXT_LENGTH)
+        if category:
+            item["category"] = category
+        if user_skill.proficiency is not None:
+            item["proficiency"] = user_skill.proficiency
+        skill_payloads.append(item)
+
+    return {
+        "profile": profile_payload,
+        "experiences": grouped_experiences,
+        "certifications": certification_payloads,
+        "skills": skill_payloads,
+    }
+
+
 async def _parse_stream_payload(
     request: Request,
 ) -> tuple[AssistantSessionStreamRequest, UploadFile | None]:
@@ -110,10 +285,20 @@ async def _parse_stream_payload(
             attachment_file = candidate
         elif hasattr(candidate, "filename") and hasattr(candidate, "read") and getattr(candidate, "filename", None):
             attachment_file = candidate
+        raw_selected_experiences = form.get("selected_experiences")
+        selected_experiences: list[Dict[str, Any]] = []
+        if isinstance(raw_selected_experiences, str) and raw_selected_experiences.strip():
+            try:
+                parsed_selected_experiences = json.loads(raw_selected_experiences)
+                if isinstance(parsed_selected_experiences, list):
+                    selected_experiences = [item for item in parsed_selected_experiences if isinstance(item, dict)]
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="所选经历参数不是有效 JSON。") from exc
         payload_dict = {
             "user_message": str(form.get("user_message") or ""),
             "display_message": str(form.get("display_message") or ""),
             "mode": str(form.get("mode") or "") or None,
+            "selected_experiences": selected_experiences,
         }
     else:
         try:
@@ -125,6 +310,11 @@ async def _parse_stream_payload(
         payload = AssistantSessionStreamRequest.model_validate(payload_dict)
     except ValidationError as exc:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="请求参数格式不正确。") from exc
+    payload = payload.model_copy(
+        update={
+            "selected_experiences": _normalize_selected_experiences(payload.selected_experiences),
+        }
+    )
     if not payload.user_message.strip() and attachment_file is None:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="请输入消息或上传附件后再发送。")
     return payload, attachment_file
@@ -211,16 +401,9 @@ async def _build_attachment_payload(
     *,
     assistant_session_id: UUID,
     file: UploadFile,
+    prepared_attachment: Any | None = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    file_bytes = await file.read()
-    await file.seek(0)
-    if not file_bytes:
-        raise ValueError("上传的附件为空，请重新选择文件。")
-    if len(file_bytes) > MAX_ASSISTANT_ATTACHMENT_BYTES:
-        max_mb = MAX_ASSISTANT_ATTACHMENT_BYTES / (1024 * 1024)
-        raise ValueError(f"附件过大，请上传不超过 {max_mb:.0f}MB 的文件。")
-
-    attachment = await jd_attachment_service.extract_jd_from_attachment(file)
+    attachment = prepared_attachment or await _prepare_attachment_result(file)
     attachment_name = file.filename or "附件"
     prompt_payload: Dict[str, Any] = {
         "name": attachment_name,
@@ -258,6 +441,29 @@ async def _build_attachment_payload(
     persisted_payload["text"] = full_text_content
     persisted_payload["textExcerpt"] = _clip_text(full_text_content, MAX_ASSISTANT_ATTACHMENT_EXCERPT_CHARS)
     return prompt_payload, persisted_payload
+
+
+async def _validate_attachment_file(file: UploadFile) -> None:
+    file_bytes = await file.read()
+    await file.seek(0)
+    if not file_bytes:
+        raise ValueError("上传的附件为空，请重新选择文件。")
+    if len(file_bytes) > MAX_ASSISTANT_ATTACHMENT_BYTES:
+        max_mb = MAX_ASSISTANT_ATTACHMENT_BYTES / (1024 * 1024)
+        raise ValueError(f"附件过大，请上传不超过 {max_mb:.0f}MB 的文件。")
+
+
+async def _prepare_attachment_result(file: UploadFile) -> Any:
+    await _validate_attachment_file(file)
+    attachment = await jd_attachment_service.extract_jd_from_attachment(file)
+    if not attachment.is_image:
+        full_text_content = (attachment.text or "").strip()
+        if len(full_text_content) > MAX_ASSISTANT_ATTACHMENT_TEXT_CHARS:
+            raise ValueError(
+                f"附件正文过长，当前对话上传最多支持约 {MAX_ASSISTANT_ATTACHMENT_TEXT_CHARS} 个字符。"
+                "请拆分文件后重试，或只上传需要讨论的部分。"
+            )
+    return attachment
 
 
 @router.get("/sessions", response_model=list[AssistantSessionRead])
@@ -372,14 +578,19 @@ async def stream_assistant_session_turn(
                 messages = (await get_session_detail(session, current_user.id, session_id))[1]
                 attachment_payload: Dict[str, Any] | None = None
                 persisted_attachment: Dict[str, Any] | None = None
+                prepared_attachment: Any | None = None
                 if attachment_file is not None:
                     await emit({"type": "progress", "node": "read_attachment", "title": "解析对话附件"})
+                    prepared_attachment = await _prepare_attachment_result(attachment_file)
+                await emit({"type": "progress", "node": "prepare_context", "title": "准备对话上下文"})
+                bank_context = await _build_bank_context(session, user_id=current_user.id)
+                if attachment_file is not None:
                     attachment_payload, persisted_attachment = await _build_attachment_payload(
                         session,
                         assistant_session_id=assistant_session.id,
                         file=attachment_file,
+                        prepared_attachment=prepared_attachment,
                     )
-                await emit({"type": "progress", "node": "prepare_context", "title": "准备对话上下文"})
                 await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
                 result = await run_assistant_turn_with_thoughts(
                     mode=payload.mode or assistant_session.mode,
@@ -387,6 +598,8 @@ async def stream_assistant_session_turn(
                     session_title=assistant_session.title,
                     entry_source=assistant_session.entry_source,
                     context_json=assistant_session.context_json,
+                    bank_context=bank_context,
+                    selected_experiences=payload.selected_experiences,
                     history=_build_history_messages(messages),
                     attachment=attachment_payload,
                     thought_callback=emit,
@@ -402,6 +615,7 @@ async def stream_assistant_session_turn(
                     user_message=payload.user_message,
                     display_message=payload.display_message,
                     user_attachment=persisted_attachment,
+                    user_selected_experiences=payload.selected_experiences,
                     assistant_text=result["assistantText"],
                     draft_card=result.get("draftCard"),
                     title=result.get("title"),

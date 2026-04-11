@@ -79,6 +79,7 @@ interface ExperienceListCacheEntry {
 
 // 短期缓存窗口：避免频繁挂载导致列表请求风暴
 const EXPERIENCE_LIST_CACHE_TTL_MS = 10_000;
+const EXPERIENCE_LIST_PAGE_SIZE = 200;
 
 const buildExperienceListCacheKey = (category?: ExperienceCategory): ExperienceListCacheKey => {
     return category ?? 'all';
@@ -178,6 +179,31 @@ export const experienceService = {
                 experienceListInFlight.delete(cacheKey);
             }
         }
+    },
+
+    async listAll(category?: ExperienceCategory) {
+        await ensureExperienceCacheOwner();
+        const allItems: ExperienceListItem[] = [];
+        let offset = 0;
+
+        while (true) {
+            const response = await apiClient.get<ExperienceListItem[]>('/experiences', {
+                params: {
+                    ...(category ? { category } : {}),
+                    include_archived: false,
+                    limit: EXPERIENCE_LIST_PAGE_SIZE,
+                    offset,
+                },
+            });
+            const batch = filterArchivedExperiences(response.data);
+            allItems.push(...batch);
+            if (response.data.length < EXPERIENCE_LIST_PAGE_SIZE) {
+                break;
+            }
+            offset += EXPERIENCE_LIST_PAGE_SIZE;
+        }
+
+        return allItems;
     },
 
     async create(data: ExperienceCreatePayload) {

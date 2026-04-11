@@ -14,13 +14,15 @@ import {
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSession, type AssistantStreamEvent } from '../services/aiService';
-import { experienceService } from '../services/experienceService';
+import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSession, type AssistantStreamEvent } from '../services/aiService';
+import { experienceService, type ExperienceListItem } from '../services/experienceService';
 import { resumeService } from '../services/resumeService';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
+import { stripRichTextToText } from '../utils/richText';
 
 import { AssistantDraftCardView } from './AIAssistant/AssistantDraftCardView';
+import ExperiencePicker from './AIAssistant/ExperiencePicker';
 import { MessageItem, ActiveThoughtBlock } from './AIAssistant/MessageItem';
 import { ChatInputBox } from './AIAssistant/ChatInputBox';
 
@@ -60,6 +62,107 @@ type AssistantAttachmentPreview = {
 type AssistantComposerAttachment = AssistantAttachmentPreview & {
   file: File;
   selectionId: string;
+};
+
+const SELECTED_EXPERIENCE_TEXT_LIMIT = 300;
+const SELECTED_EXPERIENCE_SUMMARY_LIMIT = 300;
+const SELECTED_EXPERIENCE_STAR_LIMIT = 500;
+
+const clipSelectedExperienceText = (value: string, limit: number) => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+};
+
+const buildSelectedExperienceSummary = (item: ExperienceListItem) => {
+  const latest = item.latest_version;
+  const summary = clipSelectedExperienceText(
+    stripRichTextToText(latest?.summary || ''),
+    SELECTED_EXPERIENCE_SUMMARY_LIMIT,
+  );
+  if (summary) {
+    return summary;
+  }
+  const star = latest?.star || {};
+  return (
+    clipSelectedExperienceText(
+      stripRichTextToText(typeof star.s === 'string' ? star.s : ''),
+      SELECTED_EXPERIENCE_STAR_LIMIT,
+    )
+    || clipSelectedExperienceText(
+      stripRichTextToText(typeof star.a === 'string' ? star.a : ''),
+      SELECTED_EXPERIENCE_STAR_LIMIT,
+    )
+    || ''
+  );
+};
+
+const buildSelectedExperience = (item: ExperienceListItem): AssistantSelectedExperience => {
+  const latest = item.latest_version;
+  const star = latest?.star || {};
+  return {
+    masterId: item.master.id,
+    category: item.master.category,
+    org: clipSelectedExperienceText(latest?.org || '', SELECTED_EXPERIENCE_TEXT_LIMIT),
+    title: clipSelectedExperienceText(latest?.title || '', SELECTED_EXPERIENCE_TEXT_LIMIT),
+    startDate: clipSelectedExperienceText(latest?.start_date || '', SELECTED_EXPERIENCE_TEXT_LIMIT),
+    endDate: clipSelectedExperienceText(latest?.end_date || '', SELECTED_EXPERIENCE_TEXT_LIMIT),
+    isCurrent: Boolean(latest?.is_current),
+    summary: buildSelectedExperienceSummary(item),
+    star: {
+      s: clipSelectedExperienceText(
+        stripRichTextToText(typeof star.s === 'string' ? star.s : ''),
+        SELECTED_EXPERIENCE_STAR_LIMIT,
+      ),
+      t: clipSelectedExperienceText(
+        stripRichTextToText(typeof star.t === 'string' ? star.t : ''),
+        SELECTED_EXPERIENCE_STAR_LIMIT,
+      ),
+      a: clipSelectedExperienceText(
+        stripRichTextToText(typeof star.a === 'string' ? star.a : ''),
+        SELECTED_EXPERIENCE_STAR_LIMIT,
+      ),
+      r: clipSelectedExperienceText(
+        stripRichTextToText(typeof star.r === 'string' ? star.r : ''),
+        SELECTED_EXPERIENCE_STAR_LIMIT,
+      ),
+    },
+  };
+};
+
+const EXPERIENCE_CATEGORY_SET = new Set<AssistantSelectedExperience['category']>([
+  'work',
+  'project',
+  'education',
+]);
+
+const normalizeSelectedExperienceText = (value: unknown, limit = SELECTED_EXPERIENCE_TEXT_LIMIT): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return clipSelectedExperienceText(value, limit);
+};
+
+const normalizeSelectedExperienceStar = (value: unknown): AssistantSelectedExperience['star'] | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const rawStar = value as Record<string, unknown>;
+  const star = {
+    s: normalizeSelectedExperienceText(rawStar.s, SELECTED_EXPERIENCE_STAR_LIMIT),
+    t: normalizeSelectedExperienceText(rawStar.t, SELECTED_EXPERIENCE_STAR_LIMIT),
+    a: normalizeSelectedExperienceText(rawStar.a, SELECTED_EXPERIENCE_STAR_LIMIT),
+    r: normalizeSelectedExperienceText(rawStar.r, SELECTED_EXPERIENCE_STAR_LIMIT),
+  };
+  if (!star.s && !star.t && !star.a && !star.r) {
+    return undefined;
+  }
+  return star;
 };
 
 const createAttachmentSelectionId = () => {
@@ -176,6 +279,36 @@ const readMessageAttachmentPreview = (message: AssistantMessage): AssistantAttac
         : undefined,
     sizeLabel: typeof attachment['sizeLabel'] === 'string' ? attachment['sizeLabel'] : undefined,
   };
+};
+
+const readMessageSelectedExperiences = (message: AssistantMessage): AssistantSelectedExperience[] => {
+  const rawSelections = message.content_json?.selected_experiences;
+  if (!Array.isArray(rawSelections)) {
+    return [];
+  }
+  return rawSelections.flatMap((item) => {
+    if (!item || typeof item !== 'object') {
+      return [];
+    }
+    const candidate = item as Record<string, unknown>;
+    const masterId = normalizeSelectedExperienceText(candidate.masterId);
+    const category = candidate.category;
+    if (!masterId || typeof category !== 'string' || !EXPERIENCE_CATEGORY_SET.has(category as AssistantSelectedExperience['category'])) {
+      return [];
+    }
+    const normalized: AssistantSelectedExperience = {
+      masterId,
+      category: category as AssistantSelectedExperience['category'],
+      org: normalizeSelectedExperienceText(candidate.org),
+      title: normalizeSelectedExperienceText(candidate.title),
+      startDate: normalizeSelectedExperienceText(candidate.startDate),
+      endDate: normalizeSelectedExperienceText(candidate.endDate),
+      isCurrent: Boolean(candidate.isCurrent),
+      summary: normalizeSelectedExperienceText(candidate.summary, SELECTED_EXPERIENCE_SUMMARY_LIMIT) || undefined,
+      star: normalizeSelectedExperienceStar(candidate.star),
+    };
+    return [normalized];
+  });
 };
 
 const buildResumeExperienceOverrideOperation = (draft: Extract<AssistantDraftCard, { type: 'experience' }>['data']) => {
@@ -342,6 +475,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [composerAttachment, setComposerAttachment] = useState<AssistantComposerAttachment | null>(null);
+  const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
+  const [pickerExperiences, setPickerExperiences] = useState<AssistantSelectedExperience[]>([]);
+  const [isExperiencePickerOpen, setIsExperiencePickerOpen] = useState(false);
+  const [isLoadingPickerExperiences, setIsLoadingPickerExperiences] = useState(false);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -357,6 +494,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const sessionMutationCounterRef = useRef(0);
   const messageMutationSeqRef = useRef(0);
   const [composerViewportOffset, setComposerViewportOffset] = useState(220);
+  const lastMirroredDraftInputRef = useRef(draftInput);
 
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
@@ -395,6 +533,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   }, []);
 
+  const clearSelectedExperiences = useCallback(() => {
+    setSelectedExperiences([]);
+  }, []);
+
   const clearComposerAttachmentIfMatches = useCallback((target: AssistantComposerAttachment | null) => {
     if (!target || !isSameComposerAttachment(composerAttachmentRef.current, target)) {
       return;
@@ -428,6 +570,27 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const openAttachmentPicker = useCallback(() => {
     attachmentInputRef.current?.click();
   }, []);
+
+  const openExperiencePicker = useCallback(async () => {
+    setIsExperiencePickerOpen(true);
+    if (isLoadingPickerExperiences) {
+      return;
+    }
+    setIsLoadingPickerExperiences(true);
+    try {
+      const [work, project, education] = await Promise.all([
+        experienceService.listAll('work'),
+        experienceService.listAll('project'),
+        experienceService.listAll('education'),
+      ]);
+      setPickerExperiences([...work, ...project, ...education].map(buildSelectedExperience));
+    } catch (loadError) {
+      console.error('[AIAssistant] Failed to load experiences for picker:', loadError);
+      error('加载经历列表失败，请稍后重试');
+    } finally {
+      setIsLoadingPickerExperiences(false);
+    }
+  }, [error, isLoadingPickerExperiences]);
 
   const scrollToBottom = useCallback(() => {
     if (!messageViewportRef.current) {
@@ -521,6 +684,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   useEffect(() => {
     if (!selectedSessionId || !isAuthenticated) {
       clearComposerAttachment();
+      clearSelectedExperiences();
       preserveComposerAttachmentOnNextSelectionRef.current = false;
       markMessagesMutated();
       setMessages([]);
@@ -538,7 +702,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setAppliedMessageIds(new Set());
     setActiveThought('');
     void loadSessionDetail(selectedSessionId);
-  }, [clearComposerAttachment, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
+  }, [clearComposerAttachment, clearSelectedExperiences, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -549,10 +713,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [composerAttachment]);
 
   useEffect(() => {
-    setInputValue((current) => (current === draftInput ? current : draftInput));
+    if (draftInput === lastMirroredDraftInputRef.current) {
+      return;
+    }
+    lastMirroredDraftInputRef.current = draftInput;
+    setInputValue(draftInput);
   }, [draftInput]);
 
   useEffect(() => {
+    lastMirroredDraftInputRef.current = inputValue;
     onDraftInputChange?.(inputValue);
   }, [inputValue, onDraftInputChange]);
 
@@ -609,12 +778,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!options?.preserveAttachment) {
       clearComposerAttachment();
     }
+    clearSelectedExperiences();
     selectedSessionIdRef.current = created.id;
     setSelectedSessionId(created.id);
     markMessagesMutated();
     setMessages([]);
     setInputValue(options?.seedInput === false ? '' : buildInitialPrompt(mode));
-  }, [clearComposerAttachment, markMessagesMutated, markSessionMutated, setSessionsState]);
+  }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionMutated, setSessionsState]);
 
   const cleanupSupersededSession = useCallback(async (sessionId: string) => {
     applyHandlerMapRef.current.delete(sessionId);
@@ -624,6 +794,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     const wasSelected = selectedSessionIdRef.current === sessionId;
     if (wasSelected) {
       clearComposerAttachment();
+      clearSelectedExperiences();
       selectedSessionIdRef.current = null;
       setSelectedSessionId((current) => (current === sessionId ? null : current));
       markMessagesMutated();
@@ -637,7 +808,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     } catch (cleanupError) {
       console.warn('[AIAssistant] Failed to cleanup superseded launch session:', cleanupError);
     }
-  }, [clearComposerAttachment, markMessagesMutated, markSessionDeleted, setSessionsState]);
+  }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionDeleted, setSessionsState]);
 
   const createSessionRecord = useCallback(async (context?: AssistantEntryContext) => {
     const mode = context?.mode ?? 'general';
@@ -690,16 +861,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     payload: {
       userMessage: string;
       attachment?: AssistantComposerAttachment | null;
+      selectedExperiences?: AssistantSelectedExperience[];
     },
     mode?: AssistantMode,
     options?: { shouldAbort?: () => boolean },
   ) => {
     const trimmedMessage = payload.userMessage.trim();
     const attachment = payload.attachment ?? null;
-    if (!trimmedMessage && !attachment) {
+    const selectedExperienceItems = payload.selectedExperiences ?? [];
+    if (!trimmedMessage && !attachment && selectedExperienceItems.length === 0) {
       return;
     }
-    const effectiveMessage = trimmedMessage || '请先阅读我上传的附件，并帮我整理其中的信息。';
+    const effectiveMessage = trimmedMessage
+      || (attachment
+        ? '请先阅读我上传的附件，并帮我整理其中的信息。'
+        : '请优先参考我选中的经历，并结合当前上下文给出针对性的整理与建议。');
     const now = new Date().toISOString();
     const optimisticMessageId = `local-user-${now}-${Math.random()}`;
     const optimisticUserMessage: AssistantMessage = {
@@ -715,6 +891,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             sizeLabel: attachment.sizeLabel,
           },
         } : {}),
+        ...(selectedExperienceItems.length > 0 ? {
+          selected_experiences: selectedExperienceItems,
+        } : {}),
       },
       created_at: now,
     };
@@ -724,6 +903,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       markMessagesMutated();
       setMessages((prev) => [...prev, optimisticUserMessage]);
       setInputValue((prev) => (prev.trim() === trimmedMessage ? '' : prev));
+      setSelectedExperiences([]);
     }
     try {
       const result = await aiService.sendAssistantMessage(
@@ -733,6 +913,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           displayMessage: trimmedMessage,
           mode,
           attachment: attachment?.file ?? null,
+          selectedExperiences: selectedExperienceItems,
         },
         (event: AssistantStreamEvent) => {
           if (selectedSessionIdRef.current !== sessionId) {
@@ -777,6 +958,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         }
         setActiveThought('');
         clearComposerAttachmentIfMatches(attachment);
+        setSelectedExperiences([]);
         void loadSessionDetail(sessionId);
       }
     } catch (sendError) {
@@ -786,6 +968,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         markMessagesMutated();
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessageId));
         setInputValue((current) => (current.trim() ? current : trimmedMessage));
+        setSelectedExperiences((current) => (current.length > 0 ? current : selectedExperienceItems));
       }
       error('AI 助理回复失败，请稍后重试');
     } finally {
@@ -849,7 +1032,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleSubmit = useCallback(async () => {
     const nextInput = inputValue.trim();
-    if (!nextInput && !composerAttachment) {
+    if (!nextInput && !composerAttachment && selectedExperiences.length === 0) {
       return;
     }
     let activeSessionId = selectedSessionId;
@@ -865,8 +1048,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!activeSessionId) {
       return;
     }
-    await sendMessage(activeSessionId, { userMessage: nextInput, attachment: composerAttachment }, activeMode);
-  }, [composerAttachment, handleCreateSession, inputValue, selectedSession?.mode, selectedSessionId, sendMessage]);
+    await sendMessage(
+      activeSessionId,
+      {
+        userMessage: nextInput,
+        attachment: composerAttachment,
+        selectedExperiences,
+      },
+      activeMode,
+    );
+  }, [composerAttachment, handleCreateSession, inputValue, selectedExperiences, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleApplyDraft = useCallback(async (messageId: string, card: AssistantDraftCard) => {
     if (!selectedSession) {
@@ -883,6 +1074,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       let applied = false;
       let appliedMessage: AssistantMessage | null = null;
       let shouldPersistAppliedMarker = true;
+      if (
+        card.type === 'experience'
+        && selectedSession.entry_source === 'resume_editor'
+      ) {
+        const contextMasterId = readContextString(selectedSession.context_json ?? {}, 'masterId');
+        const targetMasterId = typeof card.data.targetMasterId === 'string' && card.data.targetMasterId.trim()
+          ? card.data.targetMasterId.trim()
+          : null;
+        if (contextMasterId && targetMasterId && targetMasterId !== contextMasterId) {
+          throw new Error('AI 草稿目标经历与当前编辑上下文不一致，请重新生成或回到对应经历中处理。');
+        }
+      }
       if (applyHandler) {
         applied = await applyHandler(card, {
           sessionId: selectedSession.id,
@@ -1071,6 +1274,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         onCancel={() => setDeleteConfirmId(null)}
         isConfirming={isDeletingSession}
       />
+      <ExperiencePicker
+        isOpen={isExperiencePickerOpen}
+        items={pickerExperiences}
+        selectedIds={selectedExperiences.map((item) => item.masterId)}
+        isLoading={isLoadingPickerExperiences}
+        onClose={() => setIsExperiencePickerOpen(false)}
+        onConfirm={(masterIds) => {
+          const cappedMasterIds = masterIds.slice(0, MAX_ASSISTANT_SELECTED_EXPERIENCES);
+          setSelectedExperiences(pickerExperiences.filter((item) => cappedMasterIds.includes(item.masterId)));
+          setIsExperiencePickerOpen(false);
+        }}
+      />
       {!isAuthenticated ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <div className="w-full max-w-3xl rounded-[32px] border border-white/70 bg-white/80 p-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] backdrop-blur">
@@ -1080,7 +1295,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               </div>
               <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900">AI 助理</h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                这里会一步步追问你的经历、证书和技能，再整理成可确认录入的结构化卡片。
+                这里会一步步追问你的经历、证书和技能，并默认参考你的经历库，优先建议复用或优化已有内容。
               </p>
               <div className="mt-6 flex justify-center">
                 <UnAuthPrompt />
@@ -1233,7 +1448,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                       <div>
                         <h2 className="text-xl font-semibold text-slate-800">开始一个整理任务</h2>
                         <p className="mt-2 text-sm leading-7 text-slate-600">
-                          你可以让我帮你把混乱的经历梳成 STAR，也可以整理证书与技能，最后输出一张可确认录入的特殊卡片。
+                          你可以让我帮你把混乱的经历梳成 STAR，也可以整理证书与技能。AI 会默认参考你的经历库，优先建议复用或优化已有内容，最后输出一张可确认录入的结构化卡片。
                         </p>
                       </div>
                     </div>
@@ -1260,8 +1475,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     const isUser = message.role === 'user';
                     const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
                     const attachment = readMessageAttachmentPreview(message);
+                    const selectedExperiencePreviews = readMessageSelectedExperiences(message);
                     return (
-                      <MessageItem key={message.id} isUser={isUser} content={text} attachment={attachment} />
+                      <MessageItem
+                        key={message.id}
+                        isUser={isUser}
+                        content={text}
+                        attachment={attachment}
+                        selectedExperiences={selectedExperiencePreviews}
+                      />
                     );
                   })}
                   {isLoadingDetail ? (
@@ -1296,9 +1518,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     { label: '引导式追问', onClick: () => setInputValue((v) => v + '引导式追问') },
                     { label: 'STAR 整理', onClick: () => setInputValue((v) => v + 'STAR 整理') },
                   ]}
-                  onPlusClick={openAttachmentPicker}
+                  plusActions={[
+                    { key: 'pick-experience', label: '选择经历', onClick: () => void openExperiencePicker() },
+                    { key: 'upload-attachment', label: '上传附件', onClick: openAttachmentPicker },
+                  ]}
                   attachmentPreview={composerAttachment}
                   onRemoveAttachment={clearComposerAttachment}
+                  selectedExperiences={selectedExperiences}
+                  onRemoveSelectedExperience={(masterId) => {
+                    setSelectedExperiences((current) => current.filter((item) => item.masterId !== masterId));
+                  }}
                 />
               </div>
             </div>
