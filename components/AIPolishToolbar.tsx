@@ -10,6 +10,7 @@ export type AIPolishToolbarProps = {
   activeMode: ToolbarMode;
   customPrompt: string;
   disabledAssistant?: boolean;
+  previewDescription?: string;
   onModeChange: (mode: ToolbarMode) => void;
   onCustomPromptChange: (value: string) => void;
   onRun: () => void;
@@ -33,6 +34,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   activeMode,
   customPrompt,
   disabledAssistant,
+  previewDescription,
   onModeChange,
   onCustomPromptChange,
   onRun,
@@ -48,13 +50,16 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
-            <div className="mt-1 text-sm text-emerald-900">现在可以撤销恢复原文，或确认采用到当前编辑态。</div>
+            <div className="mt-1 text-sm text-emerald-900">
+              {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onUndo}
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              disabled={isRunning}
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RotateCcw className="h-4 w-4" />
               撤销
@@ -62,10 +67,11 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             <button
               type="button"
               onClick={onConfirm}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+              disabled={isRunning}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Check className="h-4 w-4" />
-              确认
+              {isRunning ? '处理中...' : '确认'}
             </button>
           </div>
         </div>

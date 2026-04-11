@@ -186,7 +186,11 @@ const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: Reac
   general: {
     label: '综合助理',
     hint: '同一条对话里自由整理经历、证书与技能',
-    icon: <Bot className="h-4 w-4" />,
+    icon: (
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+        <Bot className="h-3.5 w-3.5" />
+      </div>
+    ),
   },
   experience: {
     label: '经历整理',
