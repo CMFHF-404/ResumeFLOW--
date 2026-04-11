@@ -148,6 +148,19 @@ async def ensure_ai_assistant_tables() -> None:
         await connection.execute(
             text(
                 """
+                CREATE TABLE IF NOT EXISTS ai_assistant_image_blobs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    session_id UUID NOT NULL REFERENCES ai_assistant_sessions(id) ON DELETE CASCADE,
+                    mime_type TEXT NOT NULL DEFAULT '',
+                    payload_base64 TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
                 CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_user_id
                 ON ai_assistant_sessions(user_id)
                 """
@@ -166,6 +179,14 @@ async def ensure_ai_assistant_tables() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_ai_assistant_messages_session_id
                 ON ai_assistant_messages(session_id, created_at)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_assistant_image_blobs_session_id
+                ON ai_assistant_image_blobs(session_id, created_at)
                 """
             )
         )

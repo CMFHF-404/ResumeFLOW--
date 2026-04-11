@@ -48,7 +48,8 @@ class AssistantSessionDetail(BaseModel):
 
 
 class AssistantSessionStreamRequest(BaseModel):
-    user_message: str
+    user_message: str = ""
+    display_message: Optional[str] = None
     mode: Optional[AssistantMode] = None
 
 

@@ -48,7 +48,35 @@ type AIAssistantProps = {
   onConsumeLaunchRequest?: (requestId?: string) => void;
   draftInput?: string;
   onDraftInputChange?: (value: string) => void;
-  onNavigateToUpload?: () => void;
+};
+
+type AssistantAttachmentPreview = {
+  name: string;
+  type?: string;
+  sizeLabel?: string;
+  previewUrl?: string | null;
+};
+
+type AssistantComposerAttachment = AssistantAttachmentPreview & {
+  file: File;
+  selectionId: string;
+};
+
+const createAttachmentSelectionId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+const isSameComposerAttachment = (
+  left: AssistantComposerAttachment | null | undefined,
+  right: AssistantComposerAttachment | null | undefined,
+) => {
+  if (!left || !right) {
+    return false;
+  }
+  return left.selectionId === right.selectionId;
 };
 
 const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: React.ReactNode }> = {
@@ -103,6 +131,49 @@ const resolveSessionHint = (session: AssistantSession | null) => {
 const readContextString = (context: Record<string, unknown>, key: string) => {
   const value = context[key];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
+const formatFileSize = (size: number) => {
+  if (!Number.isFinite(size) || size <= 0) {
+    return '';
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const resolveAssistantStreamThought = (event: AssistantStreamEvent) => {
+  if (event.type === 'thought') {
+    return extractThoughtHeadline(event.summary) || event.summary;
+  }
+  if (event.type === 'progress') {
+    return event.title?.trim() || '';
+  }
+  return '';
+};
+
+const readMessageAttachmentPreview = (message: AssistantMessage): AssistantAttachmentPreview | null => {
+  const attachment = message.content_json?.attachment;
+  if (!attachment || typeof attachment !== 'object') {
+    return null;
+  }
+  const name = typeof attachment.name === 'string' ? attachment.name.trim() : '';
+  if (!name) {
+    return null;
+  }
+  return {
+    name,
+    type: typeof attachment.type === 'string'
+      ? attachment.type
+      : typeof attachment.contentType === 'string'
+        ? attachment.contentType
+        : undefined,
+    sizeLabel: typeof attachment.sizeLabel === 'string' ? attachment.sizeLabel : undefined,
+  };
 };
 
 const buildResumeExperienceOverrideOperation = (draft: Extract<AssistantDraftCard, { type: 'experience' }>['data']) => {
@@ -253,7 +324,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   onConsumeLaunchRequest,
   draftInput = '',
   onDraftInputChange,
-  onNavigateToUpload,
 }) => {
   const { isAuthenticated } = useLogto();
   const { toasts, success, error, loading, updateToast, closeToast } = useToast();
@@ -269,16 +339,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [composerAttachment, setComposerAttachment] = useState<AssistantComposerAttachment | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const composerAttachmentRef = useRef<AssistantComposerAttachment | null>(null);
   const applyHandlerMapRef = useRef<Map<string, AssistantApplyDraftHandler>>(new Map());
   const callbackOnlySessionIdsRef = useRef<Set<string>>(new Set());
   const selectedSessionIdRef = useRef<string | null>(null);
+  const preserveComposerAttachmentOnNextSelectionRef = useRef(false);
   const detailRequestIdRef = useRef(0);
   const sessionsRef = useRef<AssistantSession[]>([]);
   const sessionMutationSeqsRef = useRef<Map<string, number>>(new Map());
   const deletedSessionSeqsRef = useRef<Map<string, number>>(new Map());
   const sessionMutationCounterRef = useRef(0);
+  const messageMutationSeqRef = useRef(0);
   const [composerViewportOffset, setComposerViewportOffset] = useState(220);
 
   const selectedSession = useMemo(
@@ -299,6 +374,57 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     sessionMutationCounterRef.current = nextSeq;
     sessionMutationSeqsRef.current.set(sessionId, nextSeq);
     deletedSessionSeqsRef.current.set(sessionId, nextSeq);
+  }, []);
+
+  const markMessagesMutated = useCallback(() => {
+    messageMutationSeqRef.current += 1;
+    return messageMutationSeqRef.current;
+  }, []);
+
+  const clearComposerAttachment = useCallback(() => {
+    setComposerAttachment((current) => {
+      if (current?.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+      return null;
+    });
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
+  }, []);
+
+  const clearComposerAttachmentIfMatches = useCallback((target: AssistantComposerAttachment | null) => {
+    if (!target || !isSameComposerAttachment(composerAttachmentRef.current, target)) {
+      return;
+    }
+    clearComposerAttachment();
+  }, [clearComposerAttachment]);
+
+  const handleAttachmentSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setComposerAttachment((current) => {
+      if (current?.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+      return {
+        file,
+        selectionId: createAttachmentSelectionId(),
+        name: file.name,
+        type: file.type || '附件',
+        sizeLabel: formatFileSize(file.size),
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+      };
+    });
+    if (event.target) {
+      event.target.value = '';
+    }
+  }, []);
+
+  const openAttachmentPicker = useCallback(() => {
+    attachmentInputRef.current?.click();
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -352,21 +478,26 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const loadSessionDetail = useCallback(async (sessionId: string) => {
     const requestId = ++detailRequestIdRef.current;
     const mutationSeqAtStart = sessionMutationCounterRef.current;
+    const messageMutationAtStart = messageMutationSeqRef.current;
     setIsLoadingDetail(true);
     try {
       const detail = await aiService.getAssistantSession(sessionId);
       if (detailRequestIdRef.current !== requestId || selectedSessionIdRef.current !== sessionId) {
         return;
       }
+      if (messageMutationSeqRef.current > messageMutationAtStart) {
+        return;
+      }
       setMessages(detail.messages);
       setAppliedMessageIds(new Set(detail.messages.filter(isDraftMessageApplied).map((message) => message.id)));
-      setSessionsState((prev) => reconcileAssistantSessions(
-        prev,
-        [detail.session],
-        mutationSeqAtStart,
-        sessionMutationSeqsRef.current,
-        deletedSessionSeqsRef.current,
-      ));
+      setSessionsState((prev) => {
+        const localMutationSeq = sessionMutationSeqsRef.current.get(detail.session.id) ?? 0;
+        const deletedSeq = deletedSessionSeqsRef.current.get(detail.session.id) ?? 0;
+        if (deletedSeq > mutationSeqAtStart || localMutationSeq > mutationSeqAtStart) {
+          return prev;
+        }
+        return mergeAssistantSessions(prev, [detail.session]);
+      });
     } catch (loadError) {
       if (detailRequestIdRef.current !== requestId || selectedSessionIdRef.current !== sessionId) {
         return;
@@ -387,26 +518,37 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   useEffect(() => {
     if (!selectedSessionId || !isAuthenticated) {
+      clearComposerAttachment();
+      preserveComposerAttachmentOnNextSelectionRef.current = false;
+      markMessagesMutated();
       setMessages([]);
       setAppliedMessageIds(new Set());
       setActiveThought('');
       return;
     }
+    const preserveComposerAttachment = preserveComposerAttachmentOnNextSelectionRef.current;
+    preserveComposerAttachmentOnNextSelectionRef.current = false;
+    if (!preserveComposerAttachment) {
+      clearComposerAttachment();
+    }
+    markMessagesMutated();
     setMessages([]);
     setAppliedMessageIds(new Set());
     setActiveThought('');
     void loadSessionDetail(selectedSessionId);
-  }, [isAuthenticated, loadSessionDetail, selectedSessionId]);
+  }, [clearComposerAttachment, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
 
   useEffect(() => {
-    if (draftInput !== inputValue) {
-      setInputValue(draftInput);
-    }
-  }, [draftInput, inputValue]);
+    composerAttachmentRef.current = composerAttachment;
+  }, [composerAttachment]);
+
+  useEffect(() => {
+    setInputValue((current) => (current === draftInput ? current : draftInput));
+  }, [draftInput]);
 
   useEffect(() => {
     onDraftInputChange?.(inputValue);
@@ -445,21 +587,32 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     scrollToBottom();
   }, [messages, activeThought, scrollToBottom]);
 
+  useEffect(() => () => {
+    if (composerAttachment?.previewUrl) {
+      URL.revokeObjectURL(composerAttachment.previewUrl);
+    }
+  }, [composerAttachment]);
+
   const commitCreatedSession = useCallback((
     created: AssistantSession,
     mode: AssistantMode,
-    options?: { seedInput?: boolean; selectSession?: boolean },
+    options?: { seedInput?: boolean; selectSession?: boolean; preserveAttachment?: boolean },
   ) => {
     markSessionMutated(created.id);
     setSessionsState((prev) => mergeAssistantSessions(prev, [created]));
     if (options?.selectSession === false) {
       return;
     }
+    preserveComposerAttachmentOnNextSelectionRef.current = Boolean(options?.preserveAttachment);
+    if (!options?.preserveAttachment) {
+      clearComposerAttachment();
+    }
     selectedSessionIdRef.current = created.id;
     setSelectedSessionId(created.id);
+    markMessagesMutated();
     setMessages([]);
     setInputValue(options?.seedInput === false ? '' : buildInitialPrompt(mode));
-  }, [markSessionMutated, setSessionsState]);
+  }, [clearComposerAttachment, markMessagesMutated, markSessionMutated, setSessionsState]);
 
   const cleanupSupersededSession = useCallback(async (sessionId: string) => {
     applyHandlerMapRef.current.delete(sessionId);
@@ -468,8 +621,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setSessionsState((prev) => prev.filter((session) => session.id !== sessionId));
     const wasSelected = selectedSessionIdRef.current === sessionId;
     if (wasSelected) {
+      clearComposerAttachment();
       selectedSessionIdRef.current = null;
       setSelectedSessionId((current) => (current === sessionId ? null : current));
+      markMessagesMutated();
       setMessages([]);
       setAppliedMessageIds(new Set());
       setActiveThought('');
@@ -480,7 +635,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     } catch (cleanupError) {
       console.warn('[AIAssistant] Failed to cleanup superseded launch session:', cleanupError);
     }
-  }, [markSessionDeleted, setSessionsState]);
+  }, [clearComposerAttachment, markMessagesMutated, markSessionDeleted, setSessionsState]);
 
   const createSessionRecord = useCallback(async (context?: AssistantEntryContext) => {
     const mode = context?.mode ?? 'general';
@@ -494,13 +649,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleCreateSession = useCallback(async (
     context?: AssistantEntryContext,
-    options?: { seedInput?: boolean },
+    options?: { seedInput?: boolean; preserveAttachment?: boolean },
   ) => {
     const mode = context?.mode ?? 'general';
     const created = await createSessionRecord(context);
-    commitCreatedSession(created, mode, { seedInput: options?.seedInput });
+    commitCreatedSession(created, mode, {
+      seedInput: options?.seedInput,
+      preserveAttachment: options?.preserveAttachment,
+    });
+    void loadSessions();
     return created;
-  }, [commitCreatedSession, createSessionRecord]);
+  }, [commitCreatedSession, createSessionRecord, loadSessions]);
 
   const persistSessionSnapshot = useCallback((sessionId: string, title?: string, draftCard?: AssistantDraftCard | null) => {
     markSessionMutated(sessionId);
@@ -526,67 +685,111 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const sendMessage = useCallback(async (
     sessionId: string,
-    userMessage: string,
+    payload: {
+      userMessage: string;
+      attachment?: AssistantComposerAttachment | null;
+    },
     mode?: AssistantMode,
     options?: { shouldAbort?: () => boolean },
   ) => {
-    const trimmedMessage = userMessage.trim();
-    if (!trimmedMessage) {
+    const trimmedMessage = payload.userMessage.trim();
+    const attachment = payload.attachment ?? null;
+    if (!trimmedMessage && !attachment) {
       return;
     }
+    const effectiveMessage = trimmedMessage || '请先阅读我上传的附件，并帮我整理其中的信息。';
+    const now = new Date().toISOString();
+    const optimisticMessageId = `local-user-${now}-${Math.random()}`;
+    const optimisticUserMessage: AssistantMessage = {
+      id: optimisticMessageId,
+      role: 'user',
+      message_type: 'user_text',
+      content_json: {
+        text: trimmedMessage,
+        ...(attachment ? {
+          attachment: {
+            name: attachment.name,
+            type: attachment.type,
+            sizeLabel: attachment.sizeLabel,
+          },
+        } : {}),
+      },
+      created_at: now,
+    };
     setSendingCount((count) => count + 1);
     if (selectedSessionIdRef.current === sessionId) {
       setActiveThought('');
+      markMessagesMutated();
+      setMessages((prev) => [...prev, optimisticUserMessage]);
+      setInputValue((prev) => (prev.trim() === trimmedMessage ? '' : prev));
     }
     try {
       const result = await aiService.sendAssistantMessage(
         sessionId,
-        { userMessage: trimmedMessage, mode },
+        {
+          userMessage: effectiveMessage,
+          displayMessage: trimmedMessage,
+          mode,
+          attachment: attachment?.file ?? null,
+        },
         (event: AssistantStreamEvent) => {
-          if (event.type !== 'thought' || selectedSessionIdRef.current !== sessionId) {
+          if (selectedSessionIdRef.current !== sessionId) {
             return;
           }
-          const headline = extractThoughtHeadline(event.summary) || event.summary;
-          setActiveThought(headline);
+          if (event.type !== 'thought' && event.type !== 'progress') {
+            return;
+          }
+          const headline = resolveAssistantStreamThought(event);
+          setActiveThought((current) => {
+            if (!headline.trim()) {
+              return current;
+            }
+            if (!current) {
+              return headline;
+            }
+            const segments = current.split('\n');
+            if (segments[segments.length - 1] === headline) {
+              return current;
+            }
+            return `${current}\n${headline}`;
+          });
         }
       );
-      const now = new Date().toISOString();
-      const optimisticMessages: AssistantMessage[] = [
-        {
-          id: `local-user-${now}-${Math.random()}`,
-          role: 'user',
-          message_type: 'user_text',
-          content_json: { text: trimmedMessage },
-          created_at: now,
-        },
-        {
-          id: `local-assistant-${now}-${Math.random()}`,
-          role: 'assistant',
-          message_type: 'assistant_text',
-          content_json: { text: result.assistantText },
-          created_at: now,
-        },
-      ];
       if (options?.shouldAbort?.()) {
         return;
       }
       persistSessionSnapshot(sessionId, result.title, result.draftCard ?? null);
       if (selectedSessionIdRef.current === sessionId) {
-        setMessages((prev) => [...prev, ...optimisticMessages]);
-        setInputValue((prev) => (prev.trim() === trimmedMessage ? '' : prev));
+        if (result.assistantText.trim()) {
+          markMessagesMutated();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `local-assistant-${new Date().toISOString()}-${Math.random()}`,
+              role: 'assistant',
+              message_type: 'assistant_text',
+              content_json: { text: result.assistantText },
+              created_at: new Date().toISOString(),
+            },
+          ]);
+        }
         setActiveThought('');
-        setTimeout(() => void loadSessionDetail(sessionId), 100);
+        clearComposerAttachmentIfMatches(attachment);
+        void loadSessionDetail(sessionId);
       }
     } catch (sendError) {
       console.error('[AIAssistant] Failed to send message:', sendError);
       if (selectedSessionIdRef.current === sessionId) {
         setActiveThought('');
+        markMessagesMutated();
+        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessageId));
+        setInputValue((current) => (current.trim() ? current : trimmedMessage));
       }
       error('AI 助理回复失败，请稍后重试');
     } finally {
       setSendingCount((count) => Math.max(0, count - 1));
     }
-  }, [error, loadSessionDetail, persistSessionSnapshot]);
+  }, [clearComposerAttachmentIfMatches, error, loadSessionDetail, markMessagesMutated, persistSessionSnapshot]);
 
   useEffect(() => {
     if (!pendingLaunchRequest || !isAuthenticated) {
@@ -620,7 +823,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           }
           await sendMessage(
             created.id,
-            pendingLaunchRequest.initialUserMessage,
+            { userMessage: pendingLaunchRequest.initialUserMessage },
             pendingLaunchRequest.context.mode,
             { shouldAbort: () => cancelled },
           );
@@ -644,21 +847,24 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleSubmit = useCallback(async () => {
     const nextInput = inputValue.trim();
-    if (!nextInput) {
+    if (!nextInput && !composerAttachment) {
       return;
     }
     let activeSessionId = selectedSessionId;
     let activeMode: AssistantMode | undefined = selectedSession?.mode;
     if (!activeSessionId) {
-      const created = await handleCreateSession(undefined, { seedInput: false });
+      const created = await handleCreateSession(undefined, {
+        seedInput: false,
+        preserveAttachment: Boolean(composerAttachment),
+      });
       activeSessionId = created.id;
       activeMode = created.mode;
     }
     if (!activeSessionId) {
       return;
     }
-    await sendMessage(activeSessionId, nextInput, activeMode);
-  }, [handleCreateSession, inputValue, selectedSession?.mode, selectedSessionId, sendMessage]);
+    await sendMessage(activeSessionId, { userMessage: nextInput, attachment: composerAttachment }, activeMode);
+  }, [composerAttachment, handleCreateSession, inputValue, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleApplyDraft = useCallback(async (messageId: string, card: AssistantDraftCard) => {
     if (!selectedSession) {
@@ -745,6 +951,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           return;
         }
         const updatedMessage = appliedMessage ?? await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
+        markMessagesMutated();
         setMessages((prev) => prev.map((message) => (
           message.id === messageId
             ? {
@@ -776,7 +983,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         return next;
       });
     }
-  }, [applyingMessageIds, appliedMessageIds, error, markSessionMutated, selectedSession, setSessionsState, success]);
+  }, [applyingMessageIds, appliedMessageIds, error, markMessagesMutated, markSessionMutated, selectedSession, setSessionsState, success]);
 
   const handleNewChat = useCallback(async (mode: AssistantMode = 'general') => {
     try {
@@ -801,8 +1008,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     markSessionDeleted(deleteConfirmId);
     setSessionsState((prev) => prev.filter(s => s.id !== deleteConfirmId));
     if (wasSelected) {
+      clearComposerAttachment();
       selectedSessionIdRef.current = null;
       setSelectedSessionId(null);
+      markMessagesMutated();
       setMessages([]);
       setAppliedMessageIds(new Set());
       setActiveThought('');
@@ -825,7 +1034,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setIsDeletingSession(false);
       setDeleteConfirmId(null);
     }
-  }, [deleteConfirmId, error, markSessionDeleted, setSessionsState, success]);
+  }, [clearComposerAttachment, deleteConfirmId, error, markMessagesMutated, markSessionDeleted, setSessionsState, success]);
 
   const handleRenameSession = useCallback(async (e: React.MouseEvent, session: AssistantSession) => {
     e.stopPropagation();
@@ -1049,8 +1258,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     }
                     const isUser = message.role === 'user';
                     const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
+                    const attachment = readMessageAttachmentPreview(message);
                     return (
-                      <MessageItem key={message.id} isUser={isUser} content={text} />
+                      <MessageItem key={message.id} isUser={isUser} content={text} attachment={attachment} />
                     );
                   })}
                   {isLoadingDetail ? (
@@ -1068,6 +1278,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               className="absolute inset-x-0 bottom-0 px-4 pb-6 pt-10 md:px-7 bg-gradient-to-t from-slate-50/95 via-slate-50/80 to-transparent pointer-events-none"
             >
               <div className="pointer-events-auto">
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.docx,.jpg,.jpeg,.png,.webp"
+                  onChange={handleAttachmentSelect}
+                />
                 <ChatInputBox
                   value={inputValue}
                   onChange={setInputValue}
@@ -1078,8 +1295,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     { label: '引导式追问', onClick: () => setInputValue((v) => v + '引导式追问') },
                     { label: 'STAR 整理', onClick: () => setInputValue((v) => v + 'STAR 整理') },
                   ]}
-                  onPlusClick={onNavigateToUpload}
-               />
+                  onPlusClick={openAttachmentPicker}
+                  attachmentPreview={composerAttachment}
+                  onRemoveAttachment={clearComposerAttachment}
+                />
               </div>
             </div>
           </main>

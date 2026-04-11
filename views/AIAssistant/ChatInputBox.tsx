@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Plus, Mic, ArrowUp, Bot, Sparkles } from 'lucide-react';
+import { Plus, Mic, ArrowUp, Sparkles, Paperclip, X } from 'lucide-react';
 
 export type ChatInputBoxProps = {
   value: string;
@@ -9,6 +9,13 @@ export type ChatInputBoxProps = {
   placeholder?: string;
   quickActions?: { label: string; onClick?: () => void }[];
   onPlusClick?: () => void;
+  attachmentPreview?: {
+    name: string;
+    type?: string;
+    sizeLabel?: string;
+    previewUrl?: string | null;
+  } | null;
+  onRemoveAttachment?: () => void;
 };
 
 export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
@@ -19,6 +26,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   placeholder = '有问题，尽管问',
   quickActions = [],
   onPlusClick,
+  attachmentPreview,
+  onRemoveAttachment,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -35,7 +44,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isSending && value.trim()) {
+      if (!isSending && (value.trim() || attachmentPreview)) {
         onSubmit();
       }
     }
@@ -44,6 +53,38 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="flex flex-col overflow-hidden rounded-[32px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-lg transition-all focus-within:bg-white/90 focus-within:shadow-xl">
+        {attachmentPreview ? (
+          <div className="px-5 pt-5">
+            <div className="relative flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+              {attachmentPreview.previewUrl ? (
+                <img
+                  src={attachmentPreview.previewUrl}
+                  alt={attachmentPreview.name}
+                  className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200"
+                />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white text-slate-400 ring-1 ring-slate-200">
+                  <Paperclip className="h-5 w-5" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1 pr-8">
+                <div className="truncate text-sm font-medium text-slate-700">{attachmentPreview.name}</div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {[attachmentPreview.type, attachmentPreview.sizeLabel].filter(Boolean).join(' · ') || '已选择附件'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onRemoveAttachment}
+                className="absolute right-2 top-2 rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
+                title="移除附件"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <textarea
           ref={textareaRef}
           value={value}
@@ -79,9 +120,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
              <button
                type="button"
                onClick={onSubmit}
-               disabled={isSending || !value.trim()}
+               disabled={isSending || (!value.trim() && !attachmentPreview)}
                className={`flex h-9 w-9 items-center justify-center rounded-full text-white transition disabled:cursor-not-allowed ${
-                 value.trim() && !isSending 
+                 (value.trim() || attachmentPreview) && !isSending 
                    ? 'bg-slate-900 hover:bg-slate-800 shadow-md' 
                    : 'bg-slate-200 text-slate-400'
                }`}

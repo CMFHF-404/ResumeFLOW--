@@ -217,4 +217,14 @@ class AIAssistantMessage(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
+class AIAssistantImageBlob(SQLModel, table=True):
+    __tablename__ = "ai_assistant_image_blobs"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    session_id: uuid.UUID = Field(foreign_key="ai_assistant_sessions.id", index=True)
+    mime_type: str = Field(default="", nullable=False)
+    payload_base64: str = Field(sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 from .domain.resume.models import Resume, ResumeExperienceLink
