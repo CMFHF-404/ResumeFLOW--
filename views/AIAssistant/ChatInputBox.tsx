@@ -8,7 +8,6 @@ export type ChatInputBoxProps = {
   onSubmit: () => void;
   isSending: boolean;
   placeholder?: string;
-  quickActions?: { label: string; onClick?: () => void }[];
   plusActions?: { key: string; label: string; onClick?: () => void }[];
   attachmentPreview?: {
     name: string;
@@ -27,7 +26,6 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onSubmit,
   isSending,
   placeholder = '有问题，尽管问',
-  quickActions = [],
   plusActions = [],
   attachmentPreview,
   onRemoveAttachment,
@@ -181,19 +179,6 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                    ))}
                  </div>
                ) : null}
-             </div>
-             <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto no-scrollbar">
-             {quickActions.map((action, idx) => (
-               <button
-                 key={idx}
-                 type="button"
-                 onClick={action.onClick}
-                 className="shrink-0 flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:border-slate-300 transition shadow-sm ml-1"
-               >
-                 <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                 {action.label}
-               </button>
-             ))}
              </div>
           </div>
           

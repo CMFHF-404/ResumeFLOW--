@@ -205,18 +205,6 @@ const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: Reac
   },
 };
 
-const buildInitialPrompt = (mode: AssistantMode = 'general') => {
-  if (mode === 'general') {
-    return '请作为综合型简历助理和我对话。你可以帮我整理经历、证书、技能；如果信息不完整，请一步步追问我，最后输出可确认录入的卡片。';
-  }
-  if (mode === 'certification') {
-    return '我想整理一张证书，请一步步问我并输出可确认的证书卡片。';
-  }
-  if (mode === 'skill') {
-    return '我想整理技能，请先帮我分类，再输出可确认的技能组卡片。';
-  }
-  return '请像简历教练一样一步步追问我，把经历整理成 STAR 卡片。';
-};
 
 const resolveSessionHint = (session: AssistantSession | null) => {
   if (!session) {
@@ -766,8 +754,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const commitCreatedSession = useCallback((
     created: AssistantSession,
-    mode: AssistantMode,
-    options?: { seedInput?: boolean; selectSession?: boolean; preserveAttachment?: boolean },
+    options?: { selectSession?: boolean; preserveAttachment?: boolean },
   ) => {
     markSessionMutated(created.id);
     setSessionsState((prev) => mergeAssistantSessions(prev, [created]));
@@ -783,7 +770,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setSelectedSessionId(created.id);
     markMessagesMutated();
     setMessages([]);
-    setInputValue(options?.seedInput === false ? '' : buildInitialPrompt(mode));
+    setInputValue('');
   }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionMutated, setSessionsState]);
 
   const cleanupSupersededSession = useCallback(async (sessionId: string) => {
@@ -824,10 +811,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     context?: AssistantEntryContext,
     options?: { seedInput?: boolean; preserveAttachment?: boolean },
   ) => {
-    const mode = context?.mode ?? 'general';
     const created = await createSessionRecord(context);
-    commitCreatedSession(created, mode, {
-      seedInput: options?.seedInput,
+    commitCreatedSession(created, {
       preserveAttachment: options?.preserveAttachment,
     });
     void loadSessions();
@@ -990,7 +975,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           await cleanupSupersededSession(created.id);
           return;
         }
-        commitCreatedSession(created, mode, { seedInput: !pendingLaunchRequest.initialUserMessage });
+        commitCreatedSession(created, { selectSession: true });
         if (cancelled) {
           await cleanupSupersededSession(created.id);
           return;
@@ -1514,10 +1499,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onSubmit={() => void handleSubmit()}
                   isSending={isSending}
                   placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
-                  quickActions={[
-                    { label: '引导式追问', onClick: () => setInputValue((v) => v + '引导式追问') },
-                    { label: 'STAR 整理', onClick: () => setInputValue((v) => v + 'STAR 整理') },
-                  ]}
                   plusActions={[
                     { key: 'pick-experience', label: '选择经历', onClick: () => void openExperiencePicker() },
                     { key: 'upload-attachment', label: '上传附件', onClick: openAttachmentPicker },
