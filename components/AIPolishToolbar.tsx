@@ -11,6 +11,7 @@ export type AIPolishToolbarProps = {
   customPrompt: string;
   disabledAssistant?: boolean;
   previewDescription?: string;
+  previewContent?: React.ReactNode;
   onModeChange: (mode: ToolbarMode) => void;
   onCustomPromptChange: (value: string) => void;
   onRun: () => void;
@@ -35,6 +36,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   customPrompt,
   disabledAssistant,
   previewDescription,
+  previewContent,
   onModeChange,
   onCustomPromptChange,
   onRun,
@@ -46,20 +48,35 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
 }) => {
   if (isPreviewing) {
     return (
-      <div className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 ${className ?? ''}`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
-            <div className="mt-1 text-sm text-emerald-900">
-              {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
+      <div
+        className={`flex min-h-[240px] max-h-[min(68vh,34rem)] flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] ${className ?? ''}`}
+      >
+        <div className="border-b border-emerald-200/80 px-4 py-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
+          <div className="mt-1 text-sm leading-6 text-emerald-900">
+            {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="w-full max-w-[560px]">
+              {previewContent ? (
+                previewContent
+              ) : (
+                <div className="rounded-[20px] border border-emerald-100 bg-white/85 px-4 py-5 text-center text-sm leading-6 text-emerald-900 shadow-[0_14px_40px_rgba(16,185,129,0.08)]">
+                  {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+        </div>
+        <div className="border-t border-emerald-200/80 bg-white/92 px-4 py-3 backdrop-blur">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
               type="button"
               onClick={onUndo}
               disabled={isRunning}
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RotateCcw className="h-4 w-4" />
               撤销
@@ -68,7 +85,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
               type="button"
               onClick={onConfirm}
               disabled={isRunning}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Check className="h-4 w-4" />
               {isRunning ? '处理中...' : '确认'}
@@ -121,7 +138,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             type="button"
             onClick={onRun}
             disabled={isRunning || (activeMode === 'custom' && !customPrompt.trim())}
-            className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Sparkles className={`h-4 w-4 ${isRunning ? 'animate-pulse' : ''}`} />
             {isRunning ? '生成中...' : '执行'}

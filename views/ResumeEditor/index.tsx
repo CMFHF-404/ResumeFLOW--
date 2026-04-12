@@ -51,7 +51,12 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
-import { normalizeAiRichText, stripRichTextToText } from '../../utils/richText';
+import {
+    normalizeAiRichText,
+    RICH_TEXT_INLINE_STYLES_CLASS,
+    sanitizeRichTextHtml,
+    stripRichTextToText,
+} from '../../utils/richText';
 import {
     trackBossGreetingResult,
     trackBossGreetingStart,
@@ -795,6 +800,65 @@ type FloatingExperiencePolishPreviewState = {
     beforeItem: ResumeExperienceView;
     afterItem: ResumeExperienceView;
     wasSelected: boolean;
+};
+
+const EXPERIENCE_PREVIEW_FIELD_LABELS: Array<{ key: keyof ExperienceEditDraft['star']; label: string }> = [
+    { key: 's', label: '背景（S）' },
+    { key: 't', label: '任务（T）' },
+    { key: 'a', label: '行动（A）' },
+    { key: 'r', label: '结果（R）' },
+];
+const EXPERIENCE_PREVIEW_LIST_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1';
+
+const buildPreviewHtml = (value: string) => sanitizeRichTextHtml(value).trim();
+
+const ExperiencePolishPreviewContent: React.FC<{ draft: ExperienceEditDraft }> = ({ draft }) => {
+    const dateLabel = buildExperienceDate(
+        draft.startDate,
+        draft.isCurrent ? '' : draft.endDate,
+        Boolean(draft.isCurrent)
+    ) || '未填写时间';
+
+    return (
+        <div className="space-y-4 text-left">
+            <div className="rounded-[22px] border border-emerald-100 bg-white/92 px-4 py-4 shadow-[0_18px_48px_rgba(16,185,129,0.08)]">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                    润色后预览
+                </div>
+                <div className="mt-2 text-lg font-semibold text-slate-900">
+                    {draft.title.trim() || '未填写职位'}
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                    {draft.company.trim() || '未填写公司'}
+                </div>
+                <div className="mt-2 text-xs font-medium tracking-[0.18em] text-slate-400">
+                    {dateLabel}
+                </div>
+            </div>
+            <div className="space-y-3">
+                {EXPERIENCE_PREVIEW_FIELD_LABELS.map(({ key, label }) => {
+                    const html = buildPreviewHtml(draft.star[key]);
+                    if (!html) {
+                        return null;
+                    }
+                    return (
+                        <section
+                            key={key}
+                            className="rounded-[20px] border border-slate-200/80 bg-white/88 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.05)]"
+                        >
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                {label}
+                            </div>
+                            <div
+                                className={`mt-2 break-words text-sm leading-6 text-slate-700 ${EXPERIENCE_PREVIEW_LIST_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                                dangerouslySetInnerHTML={{ __html: html }}
+                            />
+                        </section>
+                    );
+                })}
+            </div>
+        </div>
+    );
 };
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({
@@ -3606,6 +3670,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             customPrompt={experienceCustomPrompt}
             disabledAssistant={!jdPolishContext.trim()}
             compact
+            previewContent={
+                experiencePolishPreview?.after ? (
+                    <ExperiencePolishPreviewContent draft={experiencePolishPreview.after} />
+                ) : undefined
+            }
             onModeChange={setExperiencePolishMode}
             onCustomPromptChange={setExperienceCustomPrompt}
             onRun={() => void handleRunEditingExperiencePolish()}
@@ -3622,6 +3691,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             customPrompt={floatingPolishCustomPrompt}
             disabledAssistant={!jdPolishContext.trim()}
             previewDescription="润色结果已同步到右侧简历预览，确认后会保存到当前简历。"
+            previewContent={
+                floatingPolishPreview?.afterDraft ? (
+                    <ExperiencePolishPreviewContent draft={floatingPolishPreview.afterDraft} />
+                ) : undefined
+            }
             onModeChange={setFloatingPolishMode}
             onCustomPromptChange={setFloatingPolishCustomPrompt}
             onRun={() => void handleRunFloatingExperiencePolish()}

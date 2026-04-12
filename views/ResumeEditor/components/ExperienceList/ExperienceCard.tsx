@@ -244,45 +244,54 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                 </div>
             ) : null}
             {isPolishToolbarOpen && polishToolbar ? (
-                <div
-                    className="absolute inset-x-3 top-full z-30 mt-3 md:inset-x-auto md:right-3 md:top-12 md:w-[390px]"
-                    onClick={(event) => event.stopPropagation()}
-                >
-                    <div className="overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur">
-                        <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                                    AI 润色工具栏
-                                </div>
-                                <div className="mt-1 truncate text-sm font-semibold text-slate-900">
-                                    {item.title || '未填写职位'}
-                                </div>
-                                {item.company ? (
-                                    <div className="mt-0.5 truncate text-xs text-slate-500">
-                                        {item.company}
+                <>
+                    <div
+                        className="fixed inset-0 z-[55] bg-slate-950/18 backdrop-blur-[1px] md:hidden"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onClosePolishToolbar?.();
+                        }}
+                    />
+                    <div
+                        className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:right-3 md:top-12 md:bottom-auto md:z-30 md:mt-0 md:block md:w-[390px]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex max-h-full w-full max-w-[32rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur md:max-h-[min(78vh,42rem)]">
+                            <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                                        AI 润色工具栏
                                     </div>
+                                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">
+                                        {item.title || '未填写职位'}
+                                    </div>
+                                    {item.company ? (
+                                        <div className="mt-0.5 truncate text-xs text-slate-500">
+                                            {item.company}
+                                        </div>
+                                    ) : null}
+                                </div>
+                                {onClosePolishToolbar ? (
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onClosePolishToolbar();
+                                        }}
+                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                                        title="关闭润色工具栏"
+                                        aria-label="关闭润色工具栏"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
                                 ) : null}
                             </div>
-                            {onClosePolishToolbar ? (
-                                <button
-                                    type="button"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        onClosePolishToolbar();
-                                    }}
-                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-                                    title="关闭润色工具栏"
-                                    aria-label="关闭润色工具栏"
-                                >
-                                    <X className="h-4 w-4" />
-                                </button>
-                            ) : null}
-                        </div>
-                        <div className="p-3">
-                            {polishToolbar}
+                            <div className="min-h-0 flex-1 p-3">
+                                {polishToolbar}
+                            </div>
                         </div>
                     </div>
-                </div>
+                </>
             ) : null}
         </div>
     );
