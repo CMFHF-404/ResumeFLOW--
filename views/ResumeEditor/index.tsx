@@ -1928,6 +1928,31 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         if (floatingPolishPreview) {
+            setExperienceItems((prev) =>
+                prev.map((item) => (
+                    item.id === floatingPolishPreview.targetId ? floatingPolishPreview.beforeItem : item
+                ))
+            );
+            if (!floatingPolishPreview.wasSelected) {
+                setSelectedExpIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(floatingPolishPreview.targetId);
+                    return next;
+                });
+            }
+            setFloatingPolishPreview(null);
+            setActiveFloatingPolishExperienceId(null);
+            return;
+        }
+        setActiveFloatingPolishExperienceId(null);
+    }, [floatingPolishPreview, isFloatingExperiencePolishRunning, showToastError]);
+
+    const handleDismissFloatingPolishToolbar = useCallback(() => {
+        if (isFloatingExperiencePolishRunning) {
+            showToastError('请等待当前润色完成后再继续操作');
+            return;
+        }
+        if (floatingPolishPreview) {
             showToastError('请先确认或撤销当前润色预览');
             return;
         }
@@ -5127,6 +5152,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
                             polishToolbar: floatingPolishToolbar,
                             onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
+                            onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
                             onResetWorkSort: () => handleResetSort('work'),
                             onResetProjectSort: () => handleResetSort('project'),
                             onResetCertificationSort: handleResetCertificationSort,
@@ -5405,6 +5431,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                     hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
                                     polishToolbar: floatingPolishToolbar,
                                     onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
+                                    onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
                                     onResetWorkSort: () => handleResetSort('work'),
                                     onResetProjectSort: () => handleResetSort('project'),
                                     onResetCertificationSort: handleResetCertificationSort,

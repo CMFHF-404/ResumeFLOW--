@@ -100,6 +100,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     hasBlockingPolishState,
     polishToolbar,
     onClosePolishExperienceToolbar,
+    onDismissPolishExperienceToolbar,
     onResetWorkSort,
     onResetProjectSort,
     onResetCertificationSort,
@@ -116,7 +117,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
 
     const handleEditExperienceFromList = useCallback((id: string) => {
         if (hasBlockingPolishState) {
-            onClosePolishExperienceToolbar?.();
+            onDismissPolishExperienceToolbar?.();
             return;
         }
         recordListScroll();
@@ -124,7 +125,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     }, [
         experience.startEditingExperience,
         hasBlockingPolishState,
-        onClosePolishExperienceToolbar,
+        onDismissPolishExperienceToolbar,
         recordListScroll,
     ]);
 
@@ -137,9 +138,9 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         if (!hasBlockingPolishState) {
             return false;
         }
-        onClosePolishExperienceToolbar?.();
+        onDismissPolishExperienceToolbar?.();
         return true;
-    }, [hasBlockingPolishState, onClosePolishExperienceToolbar]);
+    }, [hasBlockingPolishState, onDismissPolishExperienceToolbar]);
 
     const handleAddWorkExperience = useCallback(() => {
         if (guardBlockedSidebarAction()) {
@@ -445,6 +446,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 hasBlockingPolishState={hasBlockingPolishState}
                 polishToolbar={polishToolbar}
                 onClosePolishToolbar={onClosePolishExperienceToolbar}
+                onDismissPolishToolbar={onDismissPolishExperienceToolbar}
                 onResetSort={onResetWorkSort}
             />
             <ExperienceListSection
@@ -468,6 +470,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 hasBlockingPolishState={hasBlockingPolishState}
                 polishToolbar={polishToolbar}
                 onClosePolishToolbar={onClosePolishExperienceToolbar}
+                onDismissPolishToolbar={onDismissPolishExperienceToolbar}
                 onResetSort={onResetProjectSort}
             />
             <CertificationListSection
