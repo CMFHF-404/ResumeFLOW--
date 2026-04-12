@@ -29,6 +29,7 @@ import type {
     ResumeEditorProfile,
     ResumeJDAnalysis,
     ResumeLayoutOrders,
+    ResumePrintLayoutMeasurement,
     ResumeExperienceView,
     SkillGroupView,
 } from '../../types/resume';
@@ -51,6 +52,7 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
+import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
     normalizeAiRichText,
     RICH_TEXT_INLINE_STYLES_CLASS,
@@ -115,8 +117,7 @@ import {
     SMART_PAGE_SECTION_SPACING_STEPS,
     SMART_PAGE_TOP_PADDING_MIN_PX,
     SMART_PAGE_TOP_PADDING_STEP_PX,
-    SMART_PAGE_BOTTOM_GAP_MM,
-    SMART_PAGE_HEIGHT_TOLERANCE,
+    PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX,
     SMART_PAGE_TOAST_MESSAGES,
     JD_ANALYSIS_TOAST_MESSAGES,
     JD_ANALYSIS_PROGRESS_NODE_TITLES,
@@ -746,41 +747,25 @@ const buildJDPolishContext = (
     return contextLines.join('\n');
 };
 
-const resolveSmartPageAvailableHeight = (a4Height: number, topPaddingPx: number) => {
-    const pxPerMm = a4Height / A4_HEIGHT_MM;
-    const bottomPaddingPx = pxPerMm * PREVIEW_PADDING_MM;
-    const requiredBottomGapPx = Math.max(bottomPaddingPx, pxPerMm * SMART_PAGE_BOTTOM_GAP_MM);
-    return Math.max(0, a4Height - topPaddingPx - requiredBottomGapPx);
-};
-
-const isWithinAvailableHeight = (contentHeight: number, availableHeight: number) =>
-    contentHeight + SMART_PAGE_HEIGHT_TOLERANCE <= availableHeight;
-
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
     const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
     // 用 em 而不是 rem：这样间距会跟随预览容器的 fontSize 缩放（智能一页阶段2会调整字号）。
     return `${(baseSpacing * scale).toFixed(3)}em`;
 };
 
-const resolveElementMarginBottom = (element: HTMLElement) => {
-    const computed = window.getComputedStyle(element);
-    const raw = computed.marginBottom;
-    const parsed = Number.parseFloat(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
-};
-
-// scrollHeight 不一定包含“最后一个子元素的 margin-bottom”（尤其在 margin 折叠时），用 rect + margin 兜底。
-const resolveMeasuredContentHeight = (container: HTMLElement) => {
-    const baseHeight = container.scrollHeight;
-    const lastChild = container.lastElementChild;
-    if (!(lastChild instanceof HTMLElement)) {
-        return baseHeight;
+const measureResumeLayout = (
+    pageElement: HTMLElement | null,
+    contentElement: HTMLElement | null
+): ResumePrintLayoutMeasurement | null => {
+    if (!pageElement || !contentElement) {
+        return null;
     }
-    const containerRect = container.getBoundingClientRect();
-    const lastRect = lastChild.getBoundingClientRect();
-    const trailingMargin = resolveElementMarginBottom(lastChild);
-    const rectHeight = Math.max(0, lastRect.bottom - containerRect.top + trailingMargin);
-    return Math.max(baseHeight, rectHeight);
+
+    return measureResumePrintLayout(
+        pageElement,
+        contentElement,
+        PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX
+    );
 };
 
 type ResumeEditorProps = {
@@ -883,6 +868,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     );
     const [isDragging, setIsDragging] = useState(false);
     const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
+    const [previewPrintMeasurement, setPreviewPrintMeasurement] = useState<ResumePrintLayoutMeasurement | null>(null);
     const [isLayoutAdjustToolbarOpen, setIsLayoutAdjustToolbarOpen] = useState(false);
     const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
     const [templatePresetMap, setTemplatePresetMap] = useState(() => loadResumeTemplatePresetMap(authUserKey));
@@ -2699,6 +2685,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setItemSpacingEm(defaultLayout.itemSpacingEm);
         setLineHeight(defaultLayout.lineHeight);
         setFontSize(defaultLayout.fontSize);
+        setMeasureLayout(defaultLayout);
         setIsSmartPageApplied(isApplied);
     };
     const applyVisibleLayout = (nextLayout: SmartPageLayout) => {
@@ -2707,32 +2694,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setItemSpacingEm(nextLayout.itemSpacingEm);
         setLineHeight(nextLayout.lineHeight);
         setFontSize(nextLayout.fontSize);
+        setMeasureLayout(nextLayout);
     };
     const applyLayoutSnapshot = async (snapshot: LayoutSnapshot) => {
         applyVisibleLayout(snapshot);
         setIsSmartPageApplied(snapshot.isSmartPageApplied);
         await waitForPreviewUpdate(2);
     };
-    const measureContentHeight = () => {
-        const container = measurePreviewContentRef.current;
-        if (!container) {
-            return 0;
-        }
-        return resolveMeasuredContentHeight(container);
-    };
+    const measureContentLayout = () => measureResumeLayout(
+        measurePreviewRef.current,
+        measurePreviewContentRef.current
+    );
     const applyMeasureLayoutAndMeasure = async (nextLayout: SmartPageLayout) => {
         setMeasureLayout(nextLayout);
         await waitForPreviewUpdate(2);
-        return measureContentHeight();
+        return measureContentLayout();
     };
 
     const tryMeasureLayout = async (
         a4Height: number,
         nextLayout: SmartPageLayout
     ): Promise<SmartPageResult> => {
-        const height = await applyMeasureLayoutAndMeasure(nextLayout);
-        const availableHeight = resolveSmartPageAvailableHeight(a4Height, nextLayout.topPaddingPx);
-        if (isWithinAvailableHeight(height, availableHeight)) {
+        const measurement = await applyMeasureLayoutAndMeasure(nextLayout);
+        if (measurement?.fits) {
             return nextLayout;
         }
         return null;
@@ -3811,6 +3795,47 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }),
         [effectivePersonalSummary, profile]
     );
+    useEffect(() => {
+        let cancelled = false;
+
+        const syncPreviewMeasurement = async () => {
+            await waitForPreviewUpdate(2);
+            if (document.fonts?.ready) {
+                await document.fonts.ready;
+                await waitForPreviewUpdate(1);
+            }
+            if (cancelled) {
+                return;
+            }
+
+            setPreviewPrintMeasurement(
+                measureResumeLayout(
+                    measurePreviewRef.current,
+                    measurePreviewContentRef.current
+                )
+            );
+        };
+
+        void syncPreviewMeasurement();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        measureLayout,
+        previewProfile,
+        resumeTemplateId,
+        themeColorPresetId,
+        sectionOrder,
+        selectedWorkItems,
+        selectedProjectItems,
+        educations,
+        selectedEduIds,
+        sortedCertifications,
+        selectedCertIds,
+        selectedSkillGroups,
+    ]);
+    const isPreviewOverflowing = previewPrintMeasurement?.fits === false;
     const personalSummaryContext = useMemo(
         () => ({
             profile: {
@@ -4764,6 +4789,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         listSpacingValue,
         previewProfile,
         resumeName,
+        resumeTemplateId,
         sectionOrder,
         sectionSpacingClass,
         selectedCertIds,
@@ -4773,8 +4799,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedWorkItems,
         showToastLoading,
         sortedCertifications,
+        themeColorPresetId,
         topPaddingPx,
         updateToast,
+        waitForPreviewUpdate,
     ]);
     const hasFloatingPolishBlockingState = useCallback(() => {
         if (isFloatingExperiencePolishRunning) {
@@ -4965,7 +4993,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onResumeNameChange={handleResumeNameChange}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
-                        onOpenTemplateSelector={handleOpenTemplateSelector}
+                    isPreviewOverflowing={isPreviewOverflowing}
+                    onOpenTemplateSelector={handleOpenTemplateSelector}
                 />
             </div>
             <div className="md:hidden">
@@ -4979,7 +5008,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onAnalyze={handleAnalyzeWithAutoName}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
-                        onOpenTemplateSelector={handleOpenTemplateSelector}
+                    isPreviewOverflowing={isPreviewOverflowing}
+                    onOpenTemplateSelector={handleOpenTemplateSelector}
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
                     onCreateResume={handleCreateResume}
@@ -5160,6 +5190,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         previewRef={previewRef}
                         previewContentRef={previewContentRef}
                         previewScope="editor"
+                        showOverflowGuide={isPreviewOverflowing}
                         lineHeight={lineHeight}
                         fontSize={fontSize}
                         listSpacingValue={listSpacingValue}

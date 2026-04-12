@@ -270,6 +270,7 @@ export type ResumePreviewProps = {
     previewRef: React.RefObject<HTMLDivElement>;
     previewContentRef: React.RefObject<HTMLDivElement>;
     previewScope: string;
+    showOverflowGuide?: boolean;
     lineHeight: number;
     fontSize: number;
     listSpacingValue: string;
@@ -313,6 +314,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     previewRef,
     previewContentRef,
     previewScope,
+    showOverflowGuide = false,
     lineHeight,
     fontSize,
     listSpacingValue,
@@ -1308,6 +1310,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
     const previewStyle = React.useMemo(() => {
         const baseStyle = {
+            boxSizing: 'border-box',
+            width: `${A4_PAGE_WIDTH_MM}mm`,
+            height: `${A4_PAGE_HEIGHT_MM}mm`,
+            minHeight: `${A4_PAGE_HEIGHT_MM}mm`,
             lineHeight,
             fontSize: `${fontSize}px`,
             paddingTop: `${topPaddingPx}px`,
@@ -1385,6 +1391,38 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             backgroundColor: '#ffffff',
         } as React.CSSProperties),
         []
+    );
+    const overflowGuideStyle = React.useMemo(
+        () => ({
+            left: `${PREVIEW_PADDING_MM}mm`,
+            right: `${PREVIEW_PADDING_MM}mm`,
+            bottom: `${PREVIEW_PADDING_MM}mm`,
+            borderTop: '2px dashed #dc2626',
+            boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.82)',
+        } as React.CSSProperties),
+        []
+    );
+    const overflowGuideLabelStyle = React.useMemo(
+        () => (useMobileEditorInteraction
+            ? {
+                left: `${PREVIEW_PADDING_MM}mm`,
+                bottom: `calc(${PREVIEW_PADDING_MM}mm + 6px)`,
+                transform: 'none',
+                border: '2px solid #dc2626',
+                color: '#dc2626',
+                backgroundColor: '#ffffff',
+                boxShadow: '0 8px 24px rgba(220, 38, 38, 0.12)',
+            } as React.CSSProperties
+            : {
+                left: '-12px',
+                bottom: `${PREVIEW_PADDING_MM}mm`,
+                transform: 'translate(-100%, 50%)',
+                border: '2px solid #dc2626',
+                color: '#dc2626',
+                backgroundColor: '#ffffff',
+                boxShadow: '0 8px 24px rgba(220, 38, 38, 0.12)',
+            } as React.CSSProperties),
+        [useMobileEditorInteraction]
     );
     const getTemplateSectionWrapperStyle = React.useCallback((sectionId: string) => {
         return sectionWrapperStyle;
@@ -2418,6 +2456,22 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         data-rf-preview-scope={previewScope}
                         style={previewStyle}
                     >
+                {showOverflowGuide ? (
+                    <>
+                        <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute z-[40]"
+                            style={overflowGuideStyle}
+                        />
+                        <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute z-[41] whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold tracking-[0.08em]"
+                            style={overflowGuideLabelStyle}
+                        >
+                            超出A4纸
+                        </div>
+                    </>
+                ) : null}
                 {isSplitTemplate ? (
                     <div
                         aria-hidden="true"

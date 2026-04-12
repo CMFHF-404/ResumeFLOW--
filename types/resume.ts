@@ -288,6 +288,14 @@ export type ResumePdfRenderSnapshot = {
   themeColorPresetId: ResumeThemeColorPresetId;
 };
 
+export type ResumePrintLayoutMeasurement = {
+  fits: boolean;
+  overflowPx: number;
+  printableTop: number;
+  printableBottom: number;
+  contentBottom: number;
+};
+
 export type ExperienceActions = {
   editingExpId: string | null;
   editingDraft: ExperienceEditDraft | null;
