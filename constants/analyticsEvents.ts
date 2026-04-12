@@ -8,6 +8,9 @@ export const ANALYTICS_EVENTS = {
   EXPERIENCE_BANK_EXPORTED: 'experience_bank_exported',
   AI_POLISH_START: 'ai_polish_start',
   AI_POLISH_RESULT: 'ai_polish_result',
+  AI_POLISH_APPLIED: 'ai_polish_applied',
+  AI_POLISH_UNDONE: 'ai_polish_undone',
+  AI_ASSISTANT_DRAFT_APPLIED: 'ai_assistant_draft_applied',
   JD_ANALYSIS_START: 'jd_analysis_start',
   JD_ANALYSIS_COMPLETE: 'jd_analysis_complete',
   SMART_ASSEMBLY_START: 'smart_assembly_start',
@@ -54,6 +57,7 @@ export const ANALYTICS_PROPERTIES = {
   WORK_COUNT: 'work_count',
   PROJECT_COUNT: 'project_count',
   EDUCATION_COUNT: 'education_count',
+  CALLBACK_ONLY: 'callback_only',
 } as const;
 
 export type AiPolishAction = 'applied' | 'edited' | 'discarded';

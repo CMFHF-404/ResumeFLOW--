@@ -7,7 +7,13 @@ import ExperienceCard, { ExperienceCardData, ExperienceCardLabels, StarFieldKey 
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { normalizeAiRichText, stripRichTextToText } from '../utils/richText';
-import { trackAiPolishResult, trackAiPolishStart } from '../utils/analyticsTracker';
+import {
+  trackAiAssistantDraftApplied,
+  trackAiPolishApplied,
+  trackAiPolishResult,
+  trackAiPolishStart,
+  trackAiPolishUndone,
+} from '../utils/analyticsTracker';
 import type { PolishPreviewState } from '../types/resume';
 import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from './AIAssistant';
 
@@ -606,8 +612,10 @@ type ExperienceSaveParams = {
   refreshExperiences: () => Promise<ExperienceListItem[]>;
   toggleCard: (cardId: string) => void;
   clearPreviewState: (cardId: string) => void;
+  hasPendingAiPolishApply: (cardId: string) => boolean;
+  clearPendingAiPolishApply: (cardId: string) => void;
   movePendingAssistantApply: (fromCardId: string, toCardId: string) => void;
-  consumePendingAssistantApply: (cardId: string) => Promise<void>;
+  consumePendingAssistantApply: (cardId: string) => Promise<{ shouldTrack: boolean; error?: unknown }>;
   setExperiences: React.Dispatch<React.SetStateAction<ExperienceListItem[]>>;
   setCardData: React.Dispatch<React.SetStateAction<Map<string, ExperienceCardData>>>;
   setOriginalCardData: React.Dispatch<React.SetStateAction<Map<string, ExperienceCardData>>>;
@@ -622,6 +630,8 @@ const useExperienceSave = ({
   refreshExperiences,
   toggleCard,
   clearPreviewState,
+  hasPendingAiPolishApply,
+  clearPendingAiPolishApply,
   movePendingAssistantApply,
   consumePendingAssistantApply,
   setExperiences,
@@ -639,6 +649,7 @@ const useExperienceSave = ({
         if (!data) {
           return;
         }
+        const shouldTrackAiPolishApplied = hasPendingAiPolishApply(cardId);
         if (!data.title || !data.title.trim()) {
           toast.error(emptyTitleError);
           return;
@@ -680,13 +691,24 @@ const useExperienceSave = ({
             return next;
           });
           movePendingAssistantApply(cardId, realId);
-          try {
-            await consumePendingAssistantApply(realId);
-          } catch (syncError) {
+          const assistantApplySync = await consumePendingAssistantApply(realId);
+          if (assistantApplySync.shouldTrack) {
+            trackAiAssistantDraftApplied({
+              source: 'experience_bank',
+              cardType: 'experience',
+              callbackOnly: true,
+            });
+          }
+          if (assistantApplySync.error) {
+            const syncError = assistantApplySync.error;
             console.error('[ExperienceSection] 同步 AI 草稿状态失败:', syncError);
             toast.error('已创建，但 AI 草稿状态同步失败，请稍后重试', 3000);
           }
           clearPreviewState(cardId);
+          if (shouldTrackAiPolishApplied) {
+            trackAiPolishApplied({ source: POLISH_SOURCE, field: 'all', category });
+            clearPendingAiPolishApply(cardId);
+          }
 
           // Close the card (standard behavior is toggle)
           // If we call toggleCard(cardId), it will try to collapse 'temp_...' which is fine if it's in expanded set.
@@ -709,13 +731,24 @@ const useExperienceSave = ({
 
           toastId = toast.loading('正在同步...');
           await experienceService.update(cardId, { version: buildVersionPayload(data) });
-          try {
-            await consumePendingAssistantApply(cardId);
-          } catch (syncError) {
+          const assistantApplySync = await consumePendingAssistantApply(cardId);
+          if (assistantApplySync.shouldTrack) {
+            trackAiAssistantDraftApplied({
+              source: 'experience_bank',
+              cardType: 'experience',
+              callbackOnly: true,
+            });
+          }
+          if (assistantApplySync.error) {
+            const syncError = assistantApplySync.error;
             console.error('[ExperienceSection] 同步 AI 草稿状态失败:', syncError);
             toast.error('已保存，但 AI 草稿状态同步失败，请稍后重试', 3000);
           }
           clearPreviewState(cardId);
+          if (shouldTrackAiPolishApplied) {
+            trackAiPolishApplied({ source: POLISH_SOURCE, field: 'all', category });
+            clearPendingAiPolishApply(cardId);
+          }
 
           if (toastId) {
             toast.updateToast(toastId, { message: '已保存', type: 'success', duration: 2000 });
@@ -744,7 +777,7 @@ const useExperienceSave = ({
         setSavingCardId(null);
       }
     },
-    [cardData, category, clearPreviewState, consumePendingAssistantApply, emptyTitleError, movePendingAssistantApply, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, toast, toggleCard]
+    [cardData, category, clearPendingAiPolishApply, clearPreviewState, consumePendingAssistantApply, emptyTitleError, hasPendingAiPolishApply, movePendingAssistantApply, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, toast, toggleCard]
   );
 
   return { savingCardId, handleSaveCard };
@@ -834,6 +867,9 @@ type ExperiencePolishParams = ExperienceAiParams & {
   updateCardStar: (cardId: string, star: Record<StarFieldKey, string>) => void;
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
   registerPendingAssistantApply: (cardId: string, meta: AssistantDraftApplyMeta) => void;
+  hasPendingAiPolishApply: (cardId: string) => boolean;
+  markPendingAiPolishApply: (cardId: string) => void;
+  clearPendingAiPolishApply: (cardId: string) => void;
 };
 
 type StarSnapshot = {
@@ -978,6 +1014,9 @@ const usePolishActions = ({
   category,
   onLaunchAssistant,
   registerPendingAssistantApply,
+  hasPendingAiPolishApply,
+  markPendingAiPolishApply,
+  clearPendingAiPolishApply,
 }: ExperiencePolishParams) => {
   const [polishingTargets, setPolishingTargets] = useState<Set<string>>(new Set());
   const [polishModes, setPolishModes] = useState<Map<string, CardPolishMode>>(new Map());
@@ -1088,6 +1127,7 @@ const usePolishActions = ({
                 ...latestData,
                 star: nextStar,
               }),
+              hadPendingApplyBeforePreview: hasPendingAiPolishApply(cardId),
             });
             return next;
           });
@@ -1153,7 +1193,13 @@ const usePolishActions = ({
       next.delete(cardId);
       return next;
     });
-  }, [clearCardSnapshots, previewStates, updateCardData]);
+    if (preview.hadPendingApplyBeforePreview) {
+      markPendingAiPolishApply(cardId);
+    } else {
+      clearPendingAiPolishApply(cardId);
+    }
+    trackAiPolishUndone({ source: POLISH_SOURCE, field: 'all', category });
+  }, [category, clearCardSnapshots, clearPendingAiPolishApply, markPendingAiPolishApply, previewStates, updateCardData]);
 
   const clearPreviewState = useCallback((cardId: string) => {
     clearCardSnapshots(cardId);
@@ -1168,8 +1214,12 @@ const usePolishActions = ({
   }, [clearCardSnapshots]);
 
   const handleConfirmPolishPreview = useCallback((cardId: string) => {
+    if (!previewStates.has(cardId)) {
+      return;
+    }
+    markPendingAiPolishApply(cardId);
     clearPreviewState(cardId);
-  }, [clearPreviewState]);
+  }, [clearPreviewState, markPendingAiPolishApply, previewStates]);
 
   const handleOpenAssistant = useCallback((cardId: string) => {
     const current = cardDataRef.current.get(cardId);
@@ -1322,6 +1372,8 @@ const useExperienceSectionModel = ({
   const { setCardRef, scrollToCard, highlightCard } = useCardRefs();
   const store = useCardDataStore();
   const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
+  const trackedPendingAssistantApplyRef = useRef(new Set<string>());
+  const pendingAiPolishApplyRef = useRef(new Set<string>());
   const { ensureCardState } = useCardInitializer(experiences, store.setCardData, store.setOriginalCardData);
   const { updateCardField, updateCardStar, updateCardData, resetCard } = useCardEditors(
     store.originalCardData,
@@ -1330,6 +1382,7 @@ const useExperienceSectionModel = ({
   );
   const registerPendingAssistantApply = useCallback((cardId: string, meta: AssistantDraftApplyMeta) => {
     pendingAssistantApplyRef.current.set(cardId, meta.persistApplied);
+    trackedPendingAssistantApplyRef.current.delete(cardId);
   }, []);
   const movePendingAssistantApply = useCallback((fromCardId: string, toCardId: string) => {
     const pending = pendingAssistantApplyRef.current.get(fromCardId);
@@ -1338,17 +1391,41 @@ const useExperienceSectionModel = ({
     }
     pendingAssistantApplyRef.current.delete(fromCardId);
     pendingAssistantApplyRef.current.set(toCardId, pending);
+    if (trackedPendingAssistantApplyRef.current.has(fromCardId)) {
+      trackedPendingAssistantApplyRef.current.delete(fromCardId);
+      trackedPendingAssistantApplyRef.current.add(toCardId);
+    }
   }, []);
   const consumePendingAssistantApply = useCallback(async (cardId: string) => {
     const pending = pendingAssistantApplyRef.current.get(cardId);
     if (!pending) {
-      return;
+      return { shouldTrack: false as const };
     }
-    await pending();
-    pendingAssistantApplyRef.current.delete(cardId);
+    const shouldTrack = !trackedPendingAssistantApplyRef.current.has(cardId);
+    try {
+      await pending();
+      pendingAssistantApplyRef.current.delete(cardId);
+      trackedPendingAssistantApplyRef.current.delete(cardId);
+      return { shouldTrack };
+    } catch (error) {
+      if (shouldTrack) {
+        trackedPendingAssistantApplyRef.current.add(cardId);
+      }
+      return { shouldTrack, error };
+    }
+  }, []);
+  const markPendingAiPolishApply = useCallback((cardId: string) => {
+    pendingAiPolishApplyRef.current.add(cardId);
+  }, []);
+  const hasPendingAiPolishApply = useCallback((cardId: string) => {
+    return pendingAiPolishApplyRef.current.has(cardId);
+  }, []);
+  const clearPendingAiPolishApply = useCallback((cardId: string) => {
+    pendingAiPolishApplyRef.current.delete(cardId);
   }, []);
   const clearPendingAssistantApply = useCallback((cardId: string) => {
     pendingAssistantApplyRef.current.delete(cardId);
+    trackedPendingAssistantApplyRef.current.delete(cardId);
   }, []);
   const { removeCardState } = useCardRemoval(store.setCardData, store.setModifiedCards, store.setOriginalCardData);
   const expansion = useCardExpansionState(ensureCardState, scrollToCard, highlightCard);
@@ -1387,10 +1464,13 @@ const useExperienceSectionModel = ({
     category,
     onLaunchAssistant,
     registerPendingAssistantApply,
+    hasPendingAiPolishApply,
+    markPendingAiPolishApply,
+    clearPendingAiPolishApply,
   });
   const { savingCardId, handleSaveCard } = useExperienceSave({
     category, cardData: store.cardData, emptyTitleError, toast, refreshExperiences,
-    toggleCard: expansion.toggleCard, clearPreviewState, movePendingAssistantApply, consumePendingAssistantApply, setExperiences,
+    toggleCard: expansion.toggleCard, clearPreviewState, hasPendingAiPolishApply, clearPendingAiPolishApply, movePendingAssistantApply, consumePendingAssistantApply, setExperiences,
     setCardData: store.setCardData,
     setOriginalCardData: store.setOriginalCardData,
     setModifiedCards: store.setModifiedCards,
@@ -1412,6 +1492,7 @@ const useExperienceSectionModel = ({
 
   const handleCancel = useCallback((cardId: string) => {
     clearPendingAssistantApply(cardId);
+    clearPendingAiPolishApply(cardId);
     clearPreviewState(cardId);
     if (isTempId(cardId)) {
       setExperiences(prev => prev.filter(item => item.master.id !== cardId));
@@ -1434,7 +1515,7 @@ const useExperienceSectionModel = ({
     } else {
       resetCard(cardId);
     }
-  }, [clearPendingAssistantApply, clearPreviewState, resetCard, expansion, setExperiences, store]);
+  }, [clearPendingAiPolishApply, clearPendingAssistantApply, clearPreviewState, resetCard, expansion, setExperiences, store]);
 
   return buildSectionModel({
     experiences,

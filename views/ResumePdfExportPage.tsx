@@ -144,14 +144,12 @@ const ResumePdfExportPage: React.FC = () => {
         if (cancelled) {
           return;
         }
-        const pageElement = previewRef.current;
-        const contentElement = previewContentRef.current;
-        if (!pageElement || !contentElement) {
+        if (!previewRef.current || !previewContentRef.current) {
           throw new Error('导出页面排版初始化失败。');
         }
         const measurement = measureResumePrintLayout(
-          pageElement,
-          contentElement,
+          previewRef.current,
+          previewContentRef.current,
           PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX
         );
         if (!measurement.fits) {

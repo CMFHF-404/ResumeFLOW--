@@ -40,6 +40,12 @@ type AiPolishPayload = {
   durationMs?: number;
 };
 
+type AIAssistantDraftAppliedPayload = {
+  source: 'direct' | 'experience_bank' | 'resume_editor';
+  cardType: 'experience' | 'certification' | 'skill_group';
+  callbackOnly?: boolean;
+};
+
 type JDAnalysisPayload = {
   resumeId?: string | null;
   matchScore?: number | null;
@@ -165,6 +171,36 @@ export const trackAiPolishResult = ({
     ...(category ? { [ANALYTICS_PROPERTIES.CATEGORY]: category } : {}),
     ...(action ? { [ANALYTICS_PROPERTIES.ACTION]: action } : {}),
     ...(typeof durationMs === 'number' ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs } : {}),
+  });
+};
+
+export const trackAiPolishApplied = ({ source, field, category }: AiPolishPayload) => {
+  trackEvent(ANALYTICS_EVENTS.AI_POLISH_APPLIED, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+    [ANALYTICS_PROPERTIES.FIELD]: field,
+    ...(category ? { [ANALYTICS_PROPERTIES.CATEGORY]: category } : {}),
+  });
+};
+
+export const trackAiPolishUndone = ({ source, field, category }: AiPolishPayload) => {
+  trackEvent(ANALYTICS_EVENTS.AI_POLISH_UNDONE, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+    [ANALYTICS_PROPERTIES.FIELD]: field,
+    ...(category ? { [ANALYTICS_PROPERTIES.CATEGORY]: category } : {}),
+  });
+};
+
+export const trackAiAssistantDraftApplied = ({
+  source,
+  cardType,
+  callbackOnly,
+}: AIAssistantDraftAppliedPayload) => {
+  trackEvent(ANALYTICS_EVENTS.AI_ASSISTANT_DRAFT_APPLIED, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+    [ANALYTICS_PROPERTIES.CARD_TYPE]: cardType,
+    ...(typeof callbackOnly === 'boolean'
+      ? { [ANALYTICS_PROPERTIES.CALLBACK_ONLY]: callbackOnly }
+      : {}),
   });
 };
 

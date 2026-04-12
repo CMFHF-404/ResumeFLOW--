@@ -28,7 +28,12 @@ import { skillsService, type UserSkill } from '../services/skillsService';
 import type { MatchTrend } from '../types/analysis';
 import { normalizeAiRichText } from '../utils/richText';
 import { extractThoughtHeadline } from '../utils/aiThought';
-import { trackAiPolishResult, trackAiPolishStart, trackResumeCardChecked } from '../utils/analyticsTracker';
+import {
+    trackAiPolishApplied,
+    trackAiPolishResult,
+    trackAiPolishStart,
+    trackResumeCardChecked,
+} from '../utils/analyticsTracker';
 import type {
     CertificationEditDraft,
     CertificationView,
@@ -249,6 +254,7 @@ type UseExperienceActionsOptions = {
     toast: ToastApi;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
     onExperienceDraftPersisted?: (draftMasterId: string, savedMasterId: string) => void;
+    onExperienceAiPolishPrepared?: (masterId: string) => void;
     onExperienceSaveSuccess?: (masterId: string) => Promise<void>;
     onExperienceEditDiscarded?: (masterId: string | null) => void;
     experience: ExperienceDomain;
@@ -1096,6 +1102,7 @@ const createExperienceSaveHandlers = (
     draftHandlers: ExperienceDraftHandlers,
     applyResumeDetail: (detail: ResumeDetail | null) => void,
     onExperienceDraftPersisted?: (draftMasterId: string, savedMasterId: string) => void,
+    onExperienceAiPolishPrepared?: (masterId: string) => void,
     onExperienceSaveSuccess?: (masterId: string) => Promise<void>,
 ): ExperienceSaveHandlers => {
     const handleSaveExperience = async () => {
@@ -1174,6 +1181,7 @@ const createExperienceSaveHandlers = (
                 return;
             }
             state.setEditingDraft((prev) => (prev ? outcome.nextDraft ?? prev : prev));
+            onExperienceAiPolishPrepared?.(outcome.nextDraft.masterId);
         } finally {
             state.setIsPolishing(false);
         }
@@ -1218,6 +1226,7 @@ const createExperienceSaveHandlers = (
                 toast.error(JD_POLISH_TOAST_MESSAGES.error, JD_POLISH_TOAST_ERROR_DURATION_MS);
                 return false;
             }
+            trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             toast.success(JD_POLISH_TOAST_MESSAGES.success, JD_POLISH_TOAST_DURATION_MS);
             return true;
         } finally {
@@ -2257,6 +2266,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         draftHandlers,
         options.applyResumeDetail,
         options.onExperienceDraftPersisted,
+        options.onExperienceAiPolishPrepared,
         options.onExperienceSaveSuccess,
     );
     const deleteHandlers = createExperienceDeleteHandlers(

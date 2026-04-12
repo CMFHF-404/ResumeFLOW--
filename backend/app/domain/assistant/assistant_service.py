@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timezone
+import math
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -225,6 +226,35 @@ def _resolve_bound_experience_master_id(
     return target_master_id
 
 
+def _coerce_proficiency_to_int(raw: Any) -> int | None:
+    """将 AI 返回的 proficiency 值规范化为整数或 None。
+
+    AI 偶尔会返回字符串（如 'expert'）而非整数，此处做防御性转换：
+    - 已经是 int：直接返回
+    - 是值为整数的 float：转为 int
+    - 是值为整数的数字字符串（如 '4'、'4.0'）：转为 int
+    - 其他类型（包括非数字字符串）：返回 None，避免 Pydantic 抛出 ValidationError
+    """
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        if math.isfinite(raw) and raw.is_integer():
+            return int(raw)
+        return None
+    if isinstance(raw, str):
+        normalized = raw.strip()
+        if not normalized:
+            return None
+        try:
+            parsed = float(normalized)
+        except ValueError:
+            return None
+        if math.isfinite(parsed) and parsed.is_integer():
+            return int(parsed)
+        return None
+    return None
+
+
 async def _get_or_create_skill(
     session: AsyncSession,
     *,
@@ -324,7 +354,7 @@ async def _apply_direct_draft_card(
                 {
                     "name": raw_skill.get("name"),
                     "category": data.get("category") or None,
-                    "proficiency": raw_skill.get("proficiency"),
+                    "proficiency": _coerce_proficiency_to_int(raw_skill.get("proficiency")),
                 }
             )
             skill = await _get_or_create_skill(
