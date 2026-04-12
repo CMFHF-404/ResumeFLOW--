@@ -51,6 +51,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
     hasBlockingPolishState,
     polishToolbar,
     onClosePolishToolbar,
+    onDismissPolishToolbar,
     onResetSort,
 }) => {
     const themeStyles = EXPERIENCE_THEME_STYLES[theme];
@@ -111,6 +112,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     isDeleteLocked={hasBlockingPolishState && activePolishItemId === item.id}
                     polishToolbar={activePolishItemId === item.id ? polishToolbar : undefined}
                     onClosePolishToolbar={activePolishItemId === item.id ? onClosePolishToolbar : undefined}
+                    onDismissPolishToolbar={activePolishItemId === item.id ? onDismissPolishToolbar : undefined}
                 />
             ))}
         </div>

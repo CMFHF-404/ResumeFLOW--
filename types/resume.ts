@@ -72,6 +72,7 @@ export type ExperienceListSectionProps = {
   hasBlockingPolishState?: boolean;
   polishToolbar?: ReactNode;
   onClosePolishToolbar?: () => void;
+  onDismissPolishToolbar?: () => void;
   onResetSort?: () => void;
 };
 
@@ -92,6 +93,7 @@ export type ExperienceCardProps = {
   isDeleteLocked?: boolean;
   polishToolbar?: ReactNode;
   onClosePolishToolbar?: () => void;
+  onDismissPolishToolbar?: () => void;
   dragItemKey?: string;
   onDragStart?: (event: DragEvent, itemKey: string) => void;
   onDragEnd?: () => void;
@@ -395,6 +397,7 @@ export type ExperienceTabProps = {
   hasBlockingPolishState?: boolean;
   polishToolbar?: ReactNode;
   onClosePolishExperienceToolbar?: () => void;
+  onDismissPolishExperienceToolbar?: () => void;
   onResetWorkSort?: () => void;
   onResetProjectSort?: () => void;
   onResetCertificationSort?: () => void;

@@ -48,9 +48,9 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
 }) => {
   if (isPreviewing) {
     return (
-      <div
-        className={`flex min-h-[240px] max-h-[min(68vh,34rem)] flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] ${className ?? ''}`}
-      >
+        <div
+          className={`flex min-h-[240px] max-h-[min(68vh,34rem)] flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] md:h-full md:min-h-0 md:max-h-full ${className ?? ''}`}
+        >
         <div className="border-b border-emerald-200/80 px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
           <div className="mt-1 text-sm leading-6 text-emerald-900">
@@ -70,13 +70,13 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             </div>
           </div>
         </div>
-        <div className="border-t border-emerald-200/80 bg-white/92 px-4 py-3 backdrop-blur">
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <div className="shrink-0 border-t border-emerald-200/80 bg-white/92 px-4 py-3 backdrop-blur">
+          <div className="flex items-center gap-3 md:justify-end">
             <button
               type="button"
               onClick={onUndo}
               disabled={isRunning}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
             >
               <RotateCcw className="h-4 w-4" />
               撤销
@@ -85,7 +85,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
               type="button"
               onClick={onConfirm}
               disabled={isRunning}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
             >
               <Check className="h-4 w-4" />
               {isRunning ? '处理中...' : '确认'}
