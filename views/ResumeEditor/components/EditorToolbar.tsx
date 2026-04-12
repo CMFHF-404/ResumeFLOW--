@@ -20,6 +20,7 @@ type EditorToolbarProps = {
     onResumeNameChange: (name: string) => void;
     onExportPdf: () => void;
     isExportingPdf: boolean;
+    isPreviewOverflowing?: boolean;
     onOpenTemplateSelector: () => void;
 };
 
@@ -63,6 +64,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     onResumeNameChange,
     onExportPdf,
     isExportingPdf,
+    isPreviewOverflowing = false,
     onOpenTemplateSelector,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -124,6 +126,9 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
         : canCreateResume
             ? '新增简历'
             : '当前简历加载中';
+    const exportButtonTitle = isPreviewOverflowing
+        ? '当前预览已超出单页 A4，导出时可能失败'
+        : (isExportingPdf ? '导出中...' : '导出 PDF');
 
     return (
         <header className="bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:px-6">
@@ -236,6 +241,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         onClick={onExportPdf}
                         type="button"
                         disabled={isExportingPdf}
+                        title={exportButtonTitle}
                     >
                         <Download className="w-4 h-4" />
                         {isExportingPdf ? '导出中...' : '导出 PDF'}

@@ -69,11 +69,11 @@ export const EDITING_SUGGESTION_NAV_CLASS =
     'border-t border-border-light dark:border-border-dark bg-white dark:bg-surface-dark px-4 py-2';
 
 export const SMART_PAGE_MIN_SCALE = 0.86;
-export const SMART_PAGE_HEIGHT_TOLERANCE = 12;
 export const SMART_PAGE_ADJUSTING_TOAST_DURATION_MS = 800;
 export const A4_HEIGHT_MM = 297;
 export const PREVIEW_PADDING_MM = 20;
 export const SMART_PAGE_BOTTOM_GAP_MM = PREVIEW_PADDING_MM;
+export const PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX = 2;
 export const LINE_HEIGHT_DEFAULT = 1.6;
 export const LINE_HEIGHT_MIN = 1.35;
 export const LINE_HEIGHT_STEP = 0.05;

@@ -33,6 +33,7 @@ export type MobileEditorHeaderProps = {
     onAnalyze: () => void;
     onExportPdf: () => void;
     isExportingPdf: boolean;
+    isPreviewOverflowing?: boolean;
     onAutoAssemble: () => void;
     isAutoAssembling: boolean;
     onCreateResume: () => void;
@@ -81,6 +82,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onAnalyze,
     onExportPdf,
     isExportingPdf,
+    isPreviewOverflowing = false,
     onAutoAssemble,
     isAutoAssembling,
     onCreateResume,
@@ -223,6 +225,9 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         : canCreateResume
             ? (hasSourceResume ? '创建副本' : '新建简历')
             : '当前简历加载中';
+    const exportButtonTitle = isPreviewOverflowing
+        ? '当前预览已超出单页 A4，导出时可能失败'
+        : (isExportingPdf ? '导出中...' : '导出 PDF');
 
     const handleStartEdit = () => {
         setDraftName(resumeName);
@@ -389,6 +394,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                     onClick={onExportPdf}
                                     disabled={isExportingPdf}
                                     className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60"
+                                    title={exportButtonTitle}
                                 >
                                     <Download className="h-4 w-4" />
                                     {isExportingPdf ? '导出中' : '导出'}
@@ -628,6 +634,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 onClick={onExportPdf}
                                 disabled={isExportingPdf}
                                 className="inline-flex h-10 justify-self-end items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60"
+                                title={exportButtonTitle}
                             >
                                 <Download className="h-4 w-4" />
                                 {isExportingPdf ? '导出中' : '导出'}
