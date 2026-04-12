@@ -47,6 +47,24 @@ import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../service
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const PENDING_RESUME_UPLOAD_KEY = 'yuanzijianli.pendingResumeUpload';
+const SUMMARY_PREVIEW_CHAR_LIMIT = 100;
+
+const buildSummaryPreview = (value: string, limit: number) => {
+  const normalized = value.trim();
+  const characters = Array.from(normalized);
+
+  if (characters.length <= limit) {
+    return {
+      text: normalized,
+      isTruncated: false,
+    };
+  }
+
+  return {
+    text: `${characters.slice(0, limit).join('')}...`,
+    isTruncated: true,
+  };
+};
 
 const readPendingResumeUpload = () => {
   if (typeof window === 'undefined') {
@@ -295,6 +313,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const isLoadingProfileRef = useRef(false);
   const hasHydratedProfileRef = useRef(false);
   const summaryGenerationRequestIdRef = useRef(0);
@@ -327,6 +346,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     summary,
     profileSocialLinks,
   };
+
+  const summaryText = useMemo(() => summary.trim(), [summary]);
+  const summaryPreview = useMemo(
+    () => buildSummaryPreview(summaryText, SUMMARY_PREVIEW_CHAR_LIMIT),
+    [summaryText]
+  );
+
+  useEffect(() => {
+    setIsSummaryExpanded(false);
+  }, [summaryText, isEditingProfile]);
 
   const buildDraftProfileSnapshot = useCallback((profile: Profile | null): Profile | null => {
     if (!profile) {
@@ -1027,7 +1056,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
               {/*
                 布局策略：
                 - PC (md+)：flex-row，头像固定列在左，字段网格在右
-                - Mobile：头像浮在右上角（与姓名同行），电话/邮箱互换顺序
+                - Mobile：头像浮在右上角，姓名/电话在左侧纵向排列，与头像平行
               */}
               <div className="flex gap-5 md:gap-6">
 
@@ -1044,18 +1073,31 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                 {/* 右侧（或全宽）信息区 */}
                 <div className="flex-1 min-w-0">
 
-                  {/* ── 移动端首行：姓名（左）+ 头像（右）─────────────────── */}
+                  {/* ── 移动端首行：姓名/电话（左）+ 头像（右）────────────── */}
                   <div className="flex items-start gap-3 mb-5 md:hidden">
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                        <User className="w-3 h-3" /> 姓名
-                      </label>
-                      <input
-                        className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
-                        value={name}
-                        onChange={(e) => handleNameChange(e.target.value)}
-                        disabled={!isEditingProfile || isLoadingProfile}
-                      />
+                    <div className="flex-1 min-w-0 space-y-5">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                          <User className="w-3 h-3" /> 姓名
+                        </label>
+                        <input
+                          className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                          value={name}
+                          onChange={(e) => handleNameChange(e.target.value)}
+                          disabled={!isEditingProfile || isLoadingProfile}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                          <Phone className="w-3 h-3" /> 电话
+                        </label>
+                        <input
+                          className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                          value={phone}
+                          onChange={(e) => handlePhoneChange(e.target.value)}
+                          disabled={!isEditingProfile || isLoadingProfile}
+                        />
+                      </div>
                     </div>
                     <div className="shrink-0 mt-1">
                       <ProfileAvatarZone
@@ -1071,10 +1113,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                     ── 字段网格 ─────────────────────────────────────────────
                     Mobile (grid-cols-1) 显示顺序（通过 order）：
                       姓名（hidden md:block → mobile不渲染）
-                      电话 order-1  → 排第1
-                      邮箱 order-2  → 排第2
-                      地点 order-3  → 排第3
-                      链接 order-4  → 排第4
+                      电话（mobile 已在上方单独渲染）
+                      邮箱 order-1  → 排第1
+                      地点 order-2  → 排第2
+                      链接 order-3  → 排第3
                     PC (md+) 所有 order 重置为 0，按 DOM 顺序流动
                   */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1092,8 +1134,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                       />
                     </div>
 
-                    {/* 邮箱 - mobile 排第2，PC 正常流 */}
-                    <div className="order-2 md:order-none space-y-1">
+                    {/* 邮箱 - mobile 排第1，PC 正常流 */}
+                    <div className="order-1 md:order-none space-y-1">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <Mail className="w-3 h-3" /> 邮箱
                       </label>
@@ -1105,8 +1147,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                       />
                     </div>
 
-                    {/* 电话 - mobile 排第1（在邮箱前），PC 正常流 */}
-                    <div className="order-1 md:order-none space-y-1">
+                    {/* 电话 - 仅 PC（mobile 已在上方与头像平行显示） */}
+                    <div className="hidden md:block md:order-none space-y-1">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <Phone className="w-3 h-3" /> 电话
                       </label>
@@ -1119,7 +1161,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                     </div>
 
                     {/* 地点 */}
-                    <div className="order-3 md:order-none space-y-1">
+                    <div className="order-2 md:order-none space-y-1">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <MapPin className="w-3 h-3" /> 地点
                       </label>
@@ -1132,7 +1174,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                     </div>
 
                     {/* 链接 */}
-                    <div className="order-4 md:order-none md:col-span-2 space-y-1">
+                    <div className="order-3 md:order-none md:col-span-2 space-y-1">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <LinkIcon className="w-3 h-3" /> 链接 (LinkedIn/Portfolio)
                       </label>
@@ -1178,8 +1220,21 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                   />
                 ) : (
                   <div className="min-h-[132px] rounded-lg border border-gray-100 bg-gray-50/70 px-4 py-3 text-sm leading-8 text-gray-700 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
-                    {summary.trim() ? (
-                      <p className="whitespace-pre-wrap break-words">{summary.trim()}</p>
+                    {summaryText ? (
+                      <p className="whitespace-pre-wrap break-words">
+                        {isSummaryExpanded || !summaryPreview.isTruncated
+                          ? summaryText
+                          : summaryPreview.text}
+                        {summaryPreview.isTruncated ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsSummaryExpanded((prev) => !prev)}
+                            className="ml-2 inline text-primary hover:text-primary/80"
+                          >
+                            {isSummaryExpanded ? '收起' : '查看更多'}
+                          </button>
+                        ) : null}
+                      </p>
                     ) : (
                       <p className="text-gray-400 dark:text-gray-500">
                         填写适合展示在简历中的个人评价，或AI自动基于个人经历生成。
