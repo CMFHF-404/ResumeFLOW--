@@ -133,8 +133,8 @@ export const AssistantDraftCardView: React.FC<{
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mt-3 transition-all duration-300">
-      <div className="flex items-center justify-between gap-4">
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 border border-emerald-100">
@@ -156,7 +156,7 @@ export const AssistantDraftCardView: React.FC<{
           </h4>
         </div>
         
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex shrink-0 items-center justify-between gap-1.5 sm:justify-end">
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}

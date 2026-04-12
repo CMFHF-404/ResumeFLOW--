@@ -23,8 +23,8 @@ const EXPERIENCE_ICON = {
 export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content, attachment, selectedExperiences = [] }) => {
   if (isUser) {
     return (
-      <div className="flex justify-end mb-4">
-        <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-slate-100 px-5 py-3 text-slate-800">
+      <div className="mb-4 flex w-full min-w-0 justify-end">
+        <div className="w-fit max-w-[88%] min-w-0 rounded-2xl rounded-tr-sm bg-slate-100 px-4 py-3 text-slate-800 sm:max-w-[80%] sm:px-5">
           {selectedExperiences.length > 0 ? (
             <div className="mb-3 flex flex-col gap-2">
               {selectedExperiences.map((item) => {
@@ -52,7 +52,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content, attac
             </div>
           ) : null}
           {content ? (
-            <div className="whitespace-pre-wrap text-sm leading-7">{content}</div>
+            <div className="whitespace-pre-wrap break-words text-[13px] leading-6 sm:text-sm sm:leading-7">{content}</div>
           ) : null}
           {attachment ? (
             <div className={`${content ? 'mt-3' : ''} inline-flex max-w-full items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-xs text-slate-600`}>
@@ -69,12 +69,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isUser, content, attac
   }
 
   return (
-    <div className="flex justify-start mb-6 w-full">
-      <div className="mr-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-        <Bot className="h-5 w-5" />
+    <div className="mb-6 flex w-full min-w-0 justify-start gap-3 sm:gap-4">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 sm:h-8 sm:w-8">
+        <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
       </div>
-      <div className="flex-1 max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm bg-white border border-slate-100 px-5 py-4 text-slate-800 shadow-sm">
+      <div className="min-w-0 flex-1 max-w-full sm:max-w-[85%]">
+        <div className="overflow-hidden rounded-2xl rounded-tl-sm border border-slate-100 bg-white px-4 py-3 text-slate-800 shadow-sm sm:px-5 sm:py-4">
           <div className="text-sm leading-7 space-y-3 break-words overflow-hidden">
             <ReactMarkdown
               components={{
@@ -106,11 +106,11 @@ export const ActiveThoughtBlock: React.FC<{ thought: string }> = ({ thought }) =
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <div className="flex justify-start mb-6">
-      <div className="mr-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100/50 text-emerald-600 opacity-50">
-        <Bot className="h-5 w-5" />
+    <div className="mb-6 flex w-full min-w-0 justify-start gap-3 sm:gap-4">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100/50 text-emerald-600 opacity-50 sm:h-8 sm:w-8">
+        <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
       </div>
-      <div className="max-w-[85%]">
+      <div className="min-w-0 max-w-full sm:max-w-[85%]">
         <div className="mb-2">
           <button
             onClick={() => setExpanded(!expanded)}
@@ -129,7 +129,7 @@ export const ActiveThoughtBlock: React.FC<{ thought: string }> = ({ thought }) =
         </div>
         
         {expanded && (
-          <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-500 border-l-2 border-slate-200 pl-4 ml-1.5 py-1">
+          <div className="mt-2 ml-1.5 border-l-2 border-slate-200 py-1 pl-4 text-sm leading-6 text-slate-500 whitespace-pre-wrap">
             {thought}
           </div>
         )}

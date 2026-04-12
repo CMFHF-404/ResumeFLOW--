@@ -116,14 +116,12 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           />
         ) : null}
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs leading-5 text-slate-500">
-            生成后不会立即保存，只会先进入可撤销的预览态。
-          </p>
+          <p className="text-xs leading-5 text-slate-500">执行后生成预览</p>
           <button
             type="button"
             onClick={onRun}
             disabled={isRunning || (activeMode === 'custom' && !customPrompt.trim())}
-            className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Sparkles className={`h-4 w-4 ${isRunning ? 'animate-pulse' : ''}`} />
             {isRunning ? '生成中...' : '执行'}
