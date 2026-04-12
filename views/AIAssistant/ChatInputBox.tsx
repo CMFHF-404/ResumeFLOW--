@@ -73,9 +73,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="relative flex flex-col overflow-visible rounded-[32px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-lg transition-all focus-within:bg-white/90 focus-within:shadow-xl">
+      <div className="relative flex flex-col overflow-visible rounded-[24px] border border-white/60 bg-white/70 shadow-lg backdrop-blur-xl transition-all focus-within:bg-white/90 focus-within:shadow-xl sm:rounded-[32px]">
         {attachmentPreview ? (
-          <div className="px-5 pt-5">
+          <div className="px-4 pt-4 sm:px-5 sm:pt-5">
             <div className="relative flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
               {attachmentPreview.previewUrl ? (
                 <img
@@ -107,12 +107,12 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
         ) : null}
 
         {selectedExperiences.length > 0 ? (
-          <div className="px-5 pt-5">
+          <div className="px-4 pt-4 sm:px-5 sm:pt-5">
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               {selectedExperiences.map((item) => (
                 <div
                   key={item.masterId}
-                  className="flex w-[420px] max-w-[80vw] shrink-0 items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2"
+                  className="flex w-[280px] max-w-[78vw] shrink-0 items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 sm:w-[420px] sm:max-w-[80vw]"
                 >
                   <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 ring-1 ring-emerald-100">
                     <Briefcase className="h-3.5 w-3.5" />
@@ -148,11 +148,11 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
-          className="min-h-[60px] max-h-[160px] w-full resize-none overflow-y-auto border-0 bg-transparent px-6 py-5 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
+          className="min-h-[56px] max-h-[160px] w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-4 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0 sm:min-h-[60px] sm:px-6 sm:py-5"
         />
 
-        <div className="flex items-center justify-between px-3 py-3">
-          <div className="flex min-w-0 items-center gap-2 pl-2">
+        <div className="flex items-center justify-between px-2 py-2 sm:px-3 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2 pl-1 sm:pl-2">
              <div ref={plusMenuRef} className="relative shrink-0">
                <button
                  type="button"
@@ -201,7 +201,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           </div>
         </div>
       </div>
-      <div className="mt-3 text-center text-xs text-slate-400">
+      <div className="mt-3 px-1 text-center text-xs text-slate-400">
         AI 可能会犯错。请核对重要信息。
       </div>
     </div>

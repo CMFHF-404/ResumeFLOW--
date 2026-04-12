@@ -238,15 +238,17 @@ const App: React.FC = () => {
 
   return (
     <AuthGuard>
-      <div key={viewScopeKey} className="flex min-h-screen w-full flex-col md:h-screen md:flex-row">
+      <div key={viewScopeKey} className="flex h-[100dvh] min-h-[100dvh] w-full flex-col md:h-screen md:min-h-screen md:flex-row">
         <GlobalSidebar
           currentView={currentView}
           setView={handleSetView}
           onOpenFeedback={handleOpenFeedback}
         />
-        <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
-          {renderView()}
-        </ViewErrorBoundary>
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
+            {renderView()}
+          </ViewErrorBoundary>
+        </div>
         <FeedbackModal
           isOpen={isFeedbackOpen}
           context={feedbackContext}

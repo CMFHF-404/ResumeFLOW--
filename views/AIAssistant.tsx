@@ -6,10 +6,12 @@ import {
   FileBadge2,
   Lightbulb,
   MessageSquarePlus,
+  PanelLeft,
   Sparkles,
   Wrench,
   Trash2,
   Edit2,
+  X,
 } from 'lucide-react';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
@@ -471,6 +473,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [pickerExperiences, setPickerExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [isExperiencePickerOpen, setIsExperiencePickerOpen] = useState(false);
   const [isLoadingPickerExperiences, setIsLoadingPickerExperiences] = useState(false);
+  const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -485,7 +488,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const deletedSessionSeqsRef = useRef<Map<string, number>>(new Map());
   const sessionMutationCounterRef = useRef(0);
   const messageMutationSeqRef = useRef(0);
-  const [composerViewportOffset, setComposerViewportOffset] = useState(220);
+  const composerHeightRef = useRef<number | null>(null);
   const lastMirroredDraftInputRef = useRef(draftInput);
 
   const selectedSession = useMemo(
@@ -701,6 +704,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [selectedSessionId]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsMobileHistoryOpen(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
     composerAttachmentRef.current = composerAttachment;
   }, [composerAttachment]);
 
@@ -719,32 +728,47 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   useEffect(() => {
     const composer = composerContainerRef.current;
-    if (!composer) {
+    const viewport = messageViewportRef.current;
+    if (!composer || !viewport) {
       return;
     }
 
-    const syncComposerOffset = () => {
-      setComposerViewportOffset(composer.offsetHeight);
+    const syncComposerResize = () => {
+      const previousHeight = composerHeightRef.current;
+      const nextHeight = composer.offsetHeight;
+      composerHeightRef.current = nextHeight;
+
+      if (previousHeight === null || nextHeight === previousHeight) {
+        return;
+      }
+
+      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      const growthAllowance = Math.max(24, nextHeight - previousHeight + 24);
+      if (distanceFromBottom <= growthAllowance) {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+        });
+      }
     };
 
-    syncComposerOffset();
+    syncComposerResize();
 
     if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', syncComposerOffset);
-      return () => window.removeEventListener('resize', syncComposerOffset);
+      window.addEventListener('resize', syncComposerResize);
+      return () => window.removeEventListener('resize', syncComposerResize);
     }
 
     const observer = new ResizeObserver(() => {
-      syncComposerOffset();
+      syncComposerResize();
     });
     observer.observe(composer);
-    window.addEventListener('resize', syncComposerOffset);
+    window.addEventListener('resize', syncComposerResize);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', syncComposerOffset);
+      window.removeEventListener('resize', syncComposerResize);
     };
-  }, []);
+  }, [scrollToBottom]);
 
   useEffect(() => {
     scrollToBottom();
@@ -1183,11 +1207,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     try {
       const session = await handleCreateSession({ mode, entrySource: 'direct' });
       setSelectedSessionId(session.id);
+      setIsMobileHistoryOpen(false);
     } catch (createError) {
       console.error('[AIAssistant] Failed to create session:', createError);
       error('创建新会话失败，请稍后重试');
     }
   }, [error, handleCreateSession]);
+
+  const handleSelectSession = useCallback((sessionId: string) => {
+    setSelectedSessionId(sessionId);
+    setIsMobileHistoryOpen(false);
+  }, []);
 
   const handleDeleteSession = useCallback((e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
@@ -1252,7 +1282,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const historyEmpty = !isLoadingSessions && sessions.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden bg-slate-50">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50">
       <ToastContainer toasts={toasts} onClose={closeToast} />
       <ConfirmDialog
         isOpen={deleteConfirmId !== null}
@@ -1356,80 +1386,128 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             </div>
           </aside>
 
-          <main className="relative flex min-h-0 flex-1 flex-col">
-            <div className="border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.26em] text-emerald-600">AI Assistant</div>
-                  <div className="truncate text-sm font-semibold text-slate-900">
-                    {selectedSession ? selectedSession.title : 'AI 助理'}
+          <>
+            <button
+              type="button"
+              aria-label="关闭对话记录"
+              onClick={() => setIsMobileHistoryOpen(false)}
+              className={`fixed inset-0 z-[70] bg-slate-950/45 backdrop-blur-[1px] transition-opacity duration-300 md:hidden ${
+                isMobileHistoryOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+            />
+            <aside
+              className={`fixed inset-y-0 left-0 z-[71] flex w-[82vw] max-w-[320px] flex-col border-r border-white/12 bg-slate-950 text-slate-100 transition-all duration-300 ease-out md:hidden ${
+                isMobileHistoryOpen
+                  ? 'translate-x-0 opacity-100 shadow-[24px_0_70px_-28px_rgba(15,23,42,0.95)]'
+                  : 'pointer-events-none -translate-x-[calc(100%+64px)] opacity-0 shadow-none'
+              }`}
+            >
+              <div className="border-b border-white/10 px-4 pb-4 pt-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.28em] text-emerald-300/80">对话记录</div>
+                    <div className="mt-2 text-lg font-semibold text-white">AI 助理</div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileHistoryOpen(false)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/12 bg-white/6 text-white transition hover:bg-white/12"
+                    title="关闭对话记录"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
                 <button
                   type="button"
                   onClick={() => void handleNewChat('general')}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-                  title="新建综合会话"
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-28px_rgba(16,185,129,0.85)] transition hover:bg-emerald-400"
                 >
                   <MessageSquarePlus className="h-4 w-4" />
+                  新建对话
                 </button>
               </div>
-              {sessions.length > 0 ? (
-                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                  {sessions.map((session) => (
-                    <div
-                      key={session.id}
-                      className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-2 text-sm transition ${
-                        selectedSessionId === session.id
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSessionId(session.id)}
-                        className="max-w-[140px] truncate text-left"
-                        title={session.title}
-                      >
-                        {session.title}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleRenameSession(e, session)}
-                        className={`rounded-full p-1 transition ${
+              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+                {historyEmpty ? (
+                  <div className="rounded-3xl border border-dashed border-white/12 px-4 py-6 text-center text-sm leading-6 text-slate-400">
+                    还没有历史会话。新建一个对话，AI 助理就会开始帮你整理素材。
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {sessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className={`group relative flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition ${
                           selectedSessionId === session.id
-                            ? 'text-white/80 hover:bg-white/15 hover:text-white'
-                            : 'text-slate-400 hover:bg-slate-200 hover:text-slate-700'
+                            ? 'bg-white text-slate-950 shadow-lg'
+                            : 'bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'
                         }`}
-                        title="重命名对话"
                       >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleDeleteSession(e, session.id)}
-                        className={`rounded-full p-1 transition ${
-                          selectedSessionId === session.id
-                            ? 'text-white/80 hover:bg-white/15 hover:text-white'
-                            : 'text-slate-400 hover:bg-red-50 hover:text-red-500'
-                        }`}
-                        title="删除对话"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSession(session.id)}
+                          className="flex-1 truncate pr-16 text-left text-sm font-semibold outline-none"
+                          title={session.title}
+                        >
+                          {session.title}
+                        </button>
+                        <div className="absolute right-3 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => void handleRenameSession(e, session)}
+                            className={`rounded-md p-1.5 transition ${
+                              selectedSessionId === session.id
+                                ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                : 'text-slate-400 hover:bg-white/20 hover:text-white'
+                            }`}
+                            title="重命名对话"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => void handleDeleteSession(e, session.id)}
+                            className={`rounded-md p-1.5 transition ${
+                              selectedSessionId === session.id
+                                ? 'text-slate-400 hover:bg-red-50 hover:text-red-500'
+                                : 'text-slate-400 hover:bg-red-500/20 hover:text-red-400'
+                            }`}
+                            title="删除对话"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </aside>
+          </>
+
+          <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur md:hidden">
+              <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsMobileHistoryOpen(true)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                  title="打开对话记录"
+                >
+                  <PanelLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 truncate text-center text-sm font-semibold text-slate-900">
+                  {selectedSession ? selectedSession.title : 'AI 助理'}
                 </div>
-              ) : null}
+                <div className="h-10 w-10" aria-hidden="true" />
+              </div>
             </div>
             <div
               ref={messageViewportRef}
-              className="flex-1 overflow-y-auto px-4 pt-6 md:px-7"
-              style={{ paddingBottom: composerViewportOffset }}
+              className="min-w-0 flex-1 overflow-y-auto px-3 pt-4 sm:px-4 md:px-7 md:pt-6"
             >
               {!selectedSessionId && !isLoadingSessions ? (
-                <div className="mx-auto flex max-w-3xl flex-col gap-6 mt-10">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                <div className="mx-auto mt-6 flex w-full max-w-3xl min-w-0 flex-col gap-6 md:mt-10">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
                     <div className="flex items-start gap-4">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                         <Bot className="h-6 w-6" />
@@ -1444,13 +1522,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="mx-auto flex max-w-3xl flex-col pt-4 pb-8">
+                <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4">
                   {messages.map((message) => {
                     if (message.message_type === 'draft_card') {
                       const draftCard = message.content_json as unknown as AssistantDraftCard;
                       return (
                         <div key={message.id} className="w-full self-center flex justify-center mb-6">
-                           <div className="flex-1 max-w-2xl">
+                           <div className="flex-1 min-w-0 max-w-2xl">
                              <AssistantDraftCardView
                                card={draftCard}
                                onApply={() => void handleApplyDraft(message.id, draftCard)}
@@ -1487,9 +1565,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
             <div
               ref={composerContainerRef}
-              className="absolute inset-x-0 bottom-0 px-4 pb-6 pt-10 md:px-7 bg-gradient-to-t from-slate-50/95 via-slate-50/80 to-transparent pointer-events-none"
+              className="shrink-0 border-t border-slate-200/80 bg-slate-50/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur md:px-7 md:pb-6"
             >
-              <div className="pointer-events-auto">
+              <div className="mx-auto w-full max-w-3xl">
                 <input
                   ref={attachmentInputRef}
                   type="file"
