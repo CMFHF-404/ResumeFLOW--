@@ -372,7 +372,8 @@ const ExperienceCardFooter: React.FC<{
               <button
                 onClick={onSave}
                 className={`flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-medium shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${getThemeClasses(themeColor).button}`}
-                disabled={isSaving}
+                disabled={isSaving || isPolishPreviewing}
+                title={isPolishPreviewing ? '请先确认或撤销当前润色预览' : undefined}
                 type="button"
               >
                 {isSaving ? '保存中...' : '保存'}

@@ -60,6 +60,11 @@ import {
     stripRichTextToText,
 } from '../../utils/richText';
 import {
+    trackAiAssistantDraftApplied,
+    trackAiPolishApplied,
+    trackAiPolishResult,
+    trackAiPolishStart,
+    trackAiPolishUndone,
     trackBossGreetingResult,
     trackBossGreetingStart,
     trackLayoutModeChange,
@@ -1530,6 +1535,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         [analysisResult, isOutdated, jdText]
     );
     const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
+    const trackedPendingAssistantApplyRef = useRef(new Set<string>());
+    const pendingAiPolishApplyRef = useRef(new Set<string>());
     const movePendingExperienceAssistantApply = useCallback((draftMasterId: string, savedMasterId: string) => {
         const pending = pendingAssistantApplyRef.current.get(draftMasterId);
         if (!pending || draftMasterId === savedMasterId) {
@@ -1537,25 +1544,56 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         pendingAssistantApplyRef.current.delete(draftMasterId);
         pendingAssistantApplyRef.current.set(savedMasterId, pending);
+        if (trackedPendingAssistantApplyRef.current.has(draftMasterId)) {
+            trackedPendingAssistantApplyRef.current.delete(draftMasterId);
+            trackedPendingAssistantApplyRef.current.add(savedMasterId);
+        }
+    }, []);
+    const movePendingExperienceAiPolishApply = useCallback((draftMasterId: string, savedMasterId: string) => {
+        if (draftMasterId === savedMasterId || !pendingAiPolishApplyRef.current.has(draftMasterId)) {
+            return;
+        }
+        pendingAiPolishApplyRef.current.delete(draftMasterId);
+        pendingAiPolishApplyRef.current.add(savedMasterId);
+    }, []);
+    const markPendingExperienceAiPolishApply = useCallback((masterId: string) => {
+        pendingAiPolishApplyRef.current.add(masterId);
     }, []);
     const handleExperienceSaveSuccess = useCallback(async (masterId: string) => {
         const pending = pendingAssistantApplyRef.current.get(masterId);
-        if (!pending) {
-            return;
+        if (pending) {
+            const shouldTrackAssistantApply = !trackedPendingAssistantApplyRef.current.has(masterId);
+            try {
+                await pending();
+                pendingAssistantApplyRef.current.delete(masterId);
+                trackedPendingAssistantApplyRef.current.delete(masterId);
+            } catch (error) {
+                if (shouldTrackAssistantApply) {
+                    trackedPendingAssistantApplyRef.current.add(masterId);
+                }
+                console.error('[ResumeEditor] 同步 AI 草稿状态失败:', error);
+                showToastError('已保存，但 AI 草稿状态同步失败，请稍后重试');
+            }
+            if (shouldTrackAssistantApply) {
+                trackAiAssistantDraftApplied({
+                    source: 'resume_editor',
+                    cardType: 'experience',
+                    callbackOnly: true,
+                });
+            }
         }
-        try {
-            await pending();
-            pendingAssistantApplyRef.current.delete(masterId);
-        } catch (error) {
-            console.error('[ResumeEditor] 同步 AI 草稿状态失败:', error);
-            showToastError('已保存，但 AI 草稿状态同步失败，请稍后重试');
+        if (pendingAiPolishApplyRef.current.has(masterId)) {
+            trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
+            pendingAiPolishApplyRef.current.delete(masterId);
         }
     }, [showToastError]);
-    const clearPendingExperienceAssistantApply = useCallback((masterId: string | null) => {
+    const clearPendingExperienceState = useCallback((masterId: string | null) => {
         if (!masterId) {
             return;
         }
         pendingAssistantApplyRef.current.delete(masterId);
+        trackedPendingAssistantApplyRef.current.delete(masterId);
+        pendingAiPolishApplyRef.current.delete(masterId);
     }, []);
     const {
         confirmDialog,
@@ -1577,9 +1615,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             closeToast,
         },
         applyResumeDetail,
-        onExperienceDraftPersisted: movePendingExperienceAssistantApply,
+        onExperienceDraftPersisted: (draftMasterId, savedMasterId) => {
+            movePendingExperienceAssistantApply(draftMasterId, savedMasterId);
+            movePendingExperienceAiPolishApply(draftMasterId, savedMasterId);
+        },
+        onExperienceAiPolishPrepared: markPendingExperienceAiPolishApply,
         onExperienceSaveSuccess: handleExperienceSaveSuccess,
-        onExperienceEditDiscarded: clearPendingExperienceAssistantApply,
+        onExperienceEditDiscarded: clearPendingExperienceState,
         experience: {
             items: experienceItems,
             setItems: setExperienceItems,
@@ -1731,10 +1773,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const toastId = showToastLoading('正在基于 JD 生成预览...');
         let hasError = false;
         let applied = false;
+        let action: 'applied' | 'discarded' = 'discarded';
+        const startTime = Date.now();
 
         try {
             editingExperiencePolishRunningRef.current = true;
             setIsEditingExperiencePolishRunning(true);
+            trackAiPolishStart({ source: 'resume_editor', field: 'all' });
             const draft = experience.editingDraft;
             const result = await aiService.polishExperienceStream({
                 content: {
@@ -1786,8 +1831,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     customPrompt: experiencePolishMode === 'custom' ? experienceCustomPrompt.trim() : undefined,
                     before: draft,
                     after: nextDraft,
+                    hadPendingApplyBeforePreview: pendingAiPolishApplyRef.current.has(draft.masterId),
                 });
                 applied = true;
+                action = 'applied';
+                pendingAiPolishApplyRef.current.add(draft.masterId);
             }
         } catch (error) {
             hasError = true;
@@ -1800,6 +1848,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             } else {
                 updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
             }
+            trackAiPolishResult({
+                source: 'resume_editor',
+                field: 'all',
+                action,
+                durationMs: Date.now() - startTime,
+            });
             editingExperiencePolishRunningRef.current = false;
             setIsEditingExperiencePolishRunning(false);
         }
@@ -1832,12 +1886,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 starTouched: prev.starTouched || experiencePolishPreview.before.starTouched,
             };
         });
+        if (experience.editingDraft?.masterId && !experiencePolishPreview.hadPendingApplyBeforePreview) {
+            pendingAiPolishApplyRef.current.delete(experience.editingDraft.masterId);
+        }
         setExperiencePolishPreview(null);
+        trackAiPolishUndone({ source: 'resume_editor', field: 'all' });
     }, [experience, experiencePolishPreview]);
 
     const handleConfirmEditingExperiencePolish = useCallback(() => {
+        if (!experiencePolishPreview) {
+            return;
+        }
         setExperiencePolishPreview(null);
-    }, []);
+    }, [experiencePolishPreview]);
 
     const buildExperienceViewFromDraft = useCallback((
         baseItem: ResumeExperienceView,
@@ -1993,10 +2054,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const toastId = showToastLoading('正在为简历预览生成润色结果...');
         let hasError = false;
         let applied = false;
+        let action: 'applied' | 'discarded' = 'discarded';
+        const startTime = Date.now();
 
         try {
             floatingExperiencePolishRunningRef.current = true;
             setIsFloatingExperiencePolishRunning(true);
+            trackAiPolishStart({ source: 'resume_editor', field: 'all' });
             const result = await aiService.polishExperienceStream({
                 content: {
                     company: draft.company,
@@ -2039,6 +2103,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 starTouched: true,
             };
             applied = applyFloatingPolishPreview(activeFloatingPolishExperienceId, nextDraft, draft);
+            if (applied) {
+                action = 'applied';
+            }
         } catch (error) {
             hasError = true;
             console.error('[ResumeEditor] 浮动润色预览失败:', error);
@@ -2050,6 +2117,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             } else {
                 updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
             }
+            trackAiPolishResult({
+                source: 'resume_editor',
+                field: 'all',
+                action,
+                durationMs: Date.now() - startTime,
+            });
             floatingExperiencePolishRunningRef.current = false;
             setIsFloatingExperiencePolishRunning(false);
         }
@@ -2083,6 +2156,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         setFloatingPolishPreview(null);
         setActiveFloatingPolishExperienceId(null);
+        trackAiPolishUndone({ source: 'resume_editor', field: 'all' });
     }, [floatingPolishPreview]);
 
     const ensureFloatingPolishResumeLink = useCallback(async (
@@ -2184,6 +2258,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             });
             setFloatingPolishPreview(null);
             setActiveFloatingPolishExperienceId(null);
+            trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             updateToast(toastId, { message: '润色结果已保存到当前简历', type: 'success', duration: 2500 });
         } catch (error) {
             console.error('[ResumeEditor] 保存浮动润色结果失败:', error);
@@ -2235,6 +2310,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     return false;
                 }
                 pendingAssistantApplyRef.current.set(draft.masterId, meta.persistApplied);
+                trackedPendingAssistantApplyRef.current.delete(draft.masterId);
                 experience.setEditingDraft((prev) => {
                     if (!prev) {
                         return prev;
@@ -5150,6 +5226,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             onPolishExperience: handlePolishExperienceFromCard,
                             activePolishExperienceId: activeFloatingPolishExperienceId,
                             hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
+                            isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
                             polishToolbar: floatingPolishToolbar,
                             onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
                             onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
@@ -5426,12 +5503,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                     isAutoAssembling,
                                     onAutoAssemble: handleAutoAssemble,
                                     onResetRenamingCategory: resetRenamingCategory,
-                                    onPolishExperience: handlePolishExperienceFromCard,
-                                    activePolishExperienceId: activeFloatingPolishExperienceId,
-                                    hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
-                                    polishToolbar: floatingPolishToolbar,
-                                    onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
-                                    onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
+                            onPolishExperience: handlePolishExperienceFromCard,
+                            activePolishExperienceId: activeFloatingPolishExperienceId,
+                            hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
+                            isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
+                            polishToolbar: floatingPolishToolbar,
+                            onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
+                            onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
                                     onResetWorkSort: () => handleResetSort('work'),
                                     onResetProjectSort: () => handleResetSort('project'),
                                     onResetCertificationSort: handleResetCertificationSort,

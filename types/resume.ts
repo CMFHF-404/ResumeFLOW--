@@ -261,6 +261,7 @@ export type PolishPreviewState<T> = {
   before: T;
   after: T;
   customPrompt?: string;
+  hadPendingApplyBeforePreview?: boolean;
 };
 
 export type AssistantLinkedDraftState = {
@@ -395,6 +396,7 @@ export type ExperienceTabProps = {
   onPolishExperience: (id: string) => void;
   activePolishExperienceId?: string | null;
   hasBlockingPolishState?: boolean;
+  isEditingExperiencePolishPreviewing?: boolean;
   polishToolbar?: ReactNode;
   onClosePolishExperienceToolbar?: () => void;
   onDismissPolishExperienceToolbar?: () => void;

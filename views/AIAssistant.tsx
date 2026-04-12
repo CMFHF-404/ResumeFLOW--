@@ -22,6 +22,7 @@ import { resumeService } from '../services/resumeService';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { stripRichTextToText } from '../utils/richText';
+import { trackAiAssistantDraftApplied } from '../utils/analyticsTracker';
 
 import { AssistantDraftCardView } from './AIAssistant/AssistantDraftCardView';
 import ExperiencePicker from './AIAssistant/ExperiencePicker';
@@ -1164,6 +1165,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       }
 
       if (applied) {
+        if (!callbackOnly) {
+          trackAiAssistantDraftApplied({
+            source: selectedSession.entry_source,
+            cardType: card.type,
+            callbackOnly,
+          });
+        }
         if (!shouldPersistAppliedMarker) {
           success('草稿已回填到编辑区，保存后才会正式生效');
           return;

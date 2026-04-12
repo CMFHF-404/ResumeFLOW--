@@ -98,6 +98,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onPolishExperience,
     activePolishExperienceId,
     hasBlockingPolishState,
+    isEditingExperiencePolishPreviewing = false,
     polishToolbar,
     onClosePolishExperienceToolbar,
     onDismissPolishExperienceToolbar,
@@ -619,7 +620,8 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
                 <button
                     onClick={experience.handleSaveExperience}
                     className="text-xs font-semibold text-white bg-primary hover:bg-primary-dark px-4 py-1.5 rounded-md transition-colors disabled:opacity-60"
-                    disabled={experience.isSavingExperience}
+                    disabled={experience.isSavingExperience || isEditingExperiencePolishPreviewing}
+                    title={isEditingExperiencePolishPreviewing ? '请先确认或撤销当前润色预览' : undefined}
                 >
                     {experience.isSavingExperience ? '保存中...' : '保存'}
                 </button>
