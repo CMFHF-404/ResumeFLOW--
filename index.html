@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -289,36 +289,10 @@
                 animation: none;
             }
         }
-        /* AI Assistant 流光效果 */
-        @keyframes aiStreamer {
-            0% { transform: translateX(-150%) skewX(-25deg); }
-            100% { transform: translateX(150%) skewX(-25deg); }
-        }
-
+        /* AI 按钮渐变绿背景（无流光动画） */
         .ai-active-gradient {
             background: linear-gradient(135deg, #10B981 0%, #059669 40%, #0D9488 100%) !important;
-            position: relative;
-            overflow: hidden;
             border: none !important;
-        }
-
-        .ai-active-gradient::after {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-                to right,
-                transparent 0%,
-                rgba(255, 255, 255, 0) 30%,
-                rgba(255, 255, 255, 0.4) 50%,
-                rgba(255, 255, 255, 0) 70%,
-                transparent 100%
-            );
-            animation: aiStreamer 3s infinite linear;
-            pointer-events: none;
         }
 
         .dark .ai-active-gradient {
