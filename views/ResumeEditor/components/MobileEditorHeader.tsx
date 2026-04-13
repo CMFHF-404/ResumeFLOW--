@@ -222,9 +222,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     const isCreateResumeDisabled = isCreatingResume || !canCreateResume;
     const canRestoreDefault = isLayoutModified || isSmartPageApplied;
     const hasSourceResume = Boolean(resumeId);
-    const createResumeLabel = isCreatingResume
-        ? (hasSourceResume ? '副本中' : '新建中')
-        : (hasSourceResume ? '副本' : '新建');
     const createResumeTitle = isCreatingResume
         ? (hasSourceResume ? '副本中...' : '新建中...')
         : canCreateResume
@@ -306,8 +303,19 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                     onClick={handleStartEdit}
                                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary dark:text-gray-500"
                                     aria-label="编辑简历名称"
+                                    title="编辑简历名称"
                                 >
                                     <Edit2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onCreateResume}
+                                    disabled={isCreateResumeDisabled}
+                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-500"
+                                    aria-label={createResumeTitle}
+                                    title={createResumeTitle}
+                                >
+                                    <CopyPlus className="h-4 w-4" />
                                 </button>
                             </div>
                         )}
@@ -377,7 +385,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                     type="button"
                                     onClick={onLaunchAssistant}
                                     disabled={!canLaunchAssistant}
-                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                    className="ai-active-gradient inline-flex h-10 items-center justify-center gap-1.5 rounded-xl px-3 text-[11px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                     aria-label="打开 AI 助理"
                                     title={canLaunchAssistant ? '带着当前简历打开 AI 助理' : '当前简历加载中'}
                                 >
@@ -393,17 +401,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 >
                                     <LayoutTemplate className="h-4 w-4" />
                                     模板
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={onCreateResume}
-                                    disabled={isCreateResumeDisabled}
-                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                    aria-label={createResumeTitle}
-                                    title={createResumeTitle}
-                                >
-                                    <CopyPlus className="h-4 w-4" />
-                                    {createResumeLabel}
                                 </button>
                                 <button
                                     type="button"
@@ -617,9 +614,21 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 pb-1 pt-1.5">
                             <div className="min-w-0 justify-self-start px-1">
                                 {isOutdated ? (
-                                    <span className="text-[12px] font-semibold text-amber-500 dark:text-amber-300">
-                                        待更新
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[12px] font-semibold text-amber-500 dark:text-amber-300">
+                                            待更新
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={onAnalyze}
+                                            disabled={isAnalyzing}
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                            aria-label="刷新 JD 分析"
+                                            title="刷新 JD 分析"
+                                        >
+                                            <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                        </button>
+                                    </div>
                                 ) : analysisResult ? (
                                     <div className="leading-none text-emerald-600 dark:text-emerald-400">
                                         <span className="text-[24px] font-black tracking-tight">

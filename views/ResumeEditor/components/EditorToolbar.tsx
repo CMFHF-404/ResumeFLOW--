@@ -204,7 +204,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         type="button"
                         onClick={onLaunchAssistant}
                         disabled={!canLaunchAssistant}
-                        className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                        className="ai-active-gradient flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                         title={canLaunchAssistant ? '带着当前简历打开 AI 助理' : '当前简历加载中'}
                     >
                         <Sparkles className="w-4 h-4" />
