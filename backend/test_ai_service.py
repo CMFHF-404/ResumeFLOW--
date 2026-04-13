@@ -135,11 +135,19 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AiServicePolishPromptTests(unittest.TestCase):
-    def test_default_mode_uses_highlight_prompt_without_rewrite(self) -> None:
-        prompt = ai_service._build_polish_prompt(None, mode="default")
+    def test_default_mode_with_jd_uses_highlight_prompt_without_rewrite(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="default", jd_text="产品经理 JD")
 
         self.assertIn("Do not rewrite", prompt)
         self.assertIn("no more than 5", prompt)
+        self.assertIn("most JD-relevant existing phrases", prompt)
+
+    def test_default_mode_without_jd_uses_role_based_highlight_fallback(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="default", jd_text=None)
+
+        self.assertIn("infer the likely role focus", prompt)
+        self.assertIn("general strengths for that role", prompt)
+        self.assertIn("Do not rewrite", prompt)
 
     def test_shorten_mode_keeps_rewrite_prompt(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="shorten")

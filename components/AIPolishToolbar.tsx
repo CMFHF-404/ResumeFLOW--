@@ -48,32 +48,39 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   className,
   compact = false,
 }) => {
+  const hasPreviewContent = Boolean(previewContent);
+  const previewMessage = previewDescription ?? '请预览更改';
+
   if (isPreviewing) {
     return (
         <div
-          className={`flex min-h-[240px] max-h-[min(68vh,34rem)] flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] md:h-full md:min-h-0 md:max-h-full ${className ?? ''}`}
+          className={`flex ${hasPreviewContent ? 'min-h-[240px] max-h-[min(68vh,34rem)]' : ''} flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] ${hasPreviewContent ? 'md:h-full md:min-h-0 md:max-h-full' : ''} ${className ?? ''}`}
         >
-        <div className="border-b border-emerald-200/80 px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
-          <div className="mt-1 text-sm leading-6 text-emerald-900">
-            {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <div className="flex min-h-full items-center justify-center">
-            <div className="w-full max-w-[560px]">
-              {previewContent ? (
-                previewContent
-              ) : (
-                <div className="rounded-[20px] border border-emerald-100 bg-white/85 px-4 py-5 text-center text-sm leading-6 text-emerald-900 shadow-[0_14px_40px_rgba(16,185,129,0.08)]">
-                  {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
-                </div>
-              )}
+        {hasPreviewContent ? (
+          <div className="border-b border-emerald-200/80 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
+            <div className="mt-1 text-sm leading-6 text-emerald-900">
+              {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
             </div>
           </div>
-        </div>
-        <div className="shrink-0 border-t border-emerald-200/80 bg-white/92 px-4 py-3 backdrop-blur">
-          <div className="flex items-center gap-3 md:justify-end">
+        ) : null}
+        {hasPreviewContent ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div className="flex min-h-full items-center justify-center">
+              <div className="w-full max-w-[560px]">
+                {previewContent}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div className={`shrink-0 bg-white/92 px-4 py-3 backdrop-blur ${hasPreviewContent ? 'border-t border-emerald-200/80' : ''}`}>
+          <div className={`flex flex-col gap-3 md:flex-row md:items-center ${hasPreviewContent ? 'md:justify-end' : 'md:justify-between'}`}>
+            {!hasPreviewContent ? (
+              <p className="text-xs font-medium leading-5 text-emerald-900">
+                {previewMessage}
+              </p>
+            ) : null}
+            <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onUndo}
@@ -92,6 +99,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
               <Check className="h-4 w-4" />
               {isRunning ? '处理中...' : '确认'}
             </button>
+            </div>
           </div>
         </div>
       </div>
