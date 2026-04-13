@@ -21,7 +21,7 @@ from ...models import (
     UserSkill,
 )
 from ...utils.time_utils import utc_now
-from ..ai.ai_service import _normalize_selected_experiences
+from ..ai.ai_service import _normalize_selected_experiences, _normalize_selected_resume
 from ..certifications.schemas import CertificationCreate
 from ..experience.schemas import ExperienceCreate, ExperienceVersionPayload
 from ..skills.schemas import UserSkillCreate
@@ -559,11 +559,15 @@ async def mark_message_applied(
         content = message.content_json or {}
         data = content.get("data")
         if content.get("type") == "experience" and isinstance(data, dict):
-            _resolve_bound_experience_master_id(
-                assistant_session,
-                data,
-                allow_unbound_target=False,
+            context_master_id = _read_context_string(
+                assistant_session.context_json or {}, "masterId"
             )
+            if context_master_id:
+                _resolve_bound_experience_master_id(
+                    assistant_session,
+                    data,
+                    allow_unbound_target=False,
+                )
 
     previous_content = dict(message.content_json or {})
     next_content = dict(previous_content)
@@ -609,6 +613,7 @@ async def persist_assistant_turn(
     display_message: str | None = None,
     user_attachment: dict | None = None,
     user_selected_experiences: list[dict] | None = None,
+    user_selected_resume: dict | None = None,
     assistant_text: str,
     draft_card: dict | None,
     title: str | None = None,
@@ -619,6 +624,9 @@ async def persist_assistant_turn(
     normalized_selected_experiences = _normalize_selected_experiences(user_selected_experiences)
     if normalized_selected_experiences:
         user_content_json["selected_experiences"] = normalized_selected_experiences
+    normalized_selected_resume = _normalize_selected_resume(user_selected_resume)
+    if normalized_selected_resume:
+        user_content_json["selected_resume"] = normalized_selected_resume
 
     created_messages: list[AIAssistantMessage] = []
     created_messages.append(

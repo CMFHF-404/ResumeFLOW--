@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Plus, Mic, ArrowUp, Sparkles, Paperclip, X, Briefcase, ChevronUp } from 'lucide-react';
-import type { AssistantSelectedExperience } from '../../services/aiService';
+import { Plus, Mic, ArrowUp, Paperclip, X, Briefcase, ChevronUp, FileText } from 'lucide-react';
+import type { AssistantSelectedExperience, AssistantSelectedResume } from '../../services/aiService';
 
 export type ChatInputBoxProps = {
   value: string;
@@ -18,6 +18,8 @@ export type ChatInputBoxProps = {
   onRemoveAttachment?: () => void;
   selectedExperiences?: AssistantSelectedExperience[];
   onRemoveSelectedExperience?: (masterId: string) => void;
+  selectedResume?: AssistantSelectedResume | null;
+  onRemoveSelectedResume?: () => void;
 };
 
 export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
@@ -31,6 +33,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onRemoveAttachment,
   selectedExperiences = [],
   onRemoveSelectedExperience,
+  selectedResume,
+  onRemoveSelectedResume,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusMenuRef = useRef<HTMLDivElement>(null);
@@ -65,7 +69,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isSending && (value.trim() || attachmentPreview || selectedExperiences.length > 0)) {
+      if (!isSending && (value.trim() || attachmentPreview || selectedExperiences.length > 0 || selectedResume)) {
         onSubmit();
       }
     }
@@ -102,6 +106,34 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
               >
                 <X className="h-4 w-4" />
               </button>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedResume ? (
+          <div className="px-4 pt-4 sm:px-5 sm:pt-5">
+            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <div className="flex w-[280px] max-w-[78vw] shrink-0 items-start gap-2 rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-2 sm:w-[420px] sm:max-w-[80vw]">
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white text-sky-600 ring-1 ring-sky-100">
+                  <FileText className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-700">
+                    {selectedResume.resumeName || '未命名简历'}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-slate-500">
+                    {selectedResume.jdContext?.trim() ? '已关联 JD' : '未关联 JD'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onRemoveSelectedResume}
+                  className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
+                  title="移除简历"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -189,9 +221,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
              <button
                type="button"
                onClick={onSubmit}
-               disabled={isSending || (!value.trim() && !attachmentPreview && selectedExperiences.length === 0)}
+               disabled={isSending || (!value.trim() && !attachmentPreview && selectedExperiences.length === 0 && !selectedResume)}
                className={`flex h-9 w-9 items-center justify-center rounded-full text-white transition disabled:cursor-not-allowed ${
-                 (value.trim() || attachmentPreview || selectedExperiences.length > 0) && !isSending 
+                 (value.trim() || attachmentPreview || selectedExperiences.length > 0 || selectedResume) && !isSending 
                    ? 'bg-slate-900 hover:bg-slate-800 shadow-md' 
                    : 'bg-slate-200 text-slate-400'
                }`}

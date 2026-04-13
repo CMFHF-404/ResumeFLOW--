@@ -8,6 +8,7 @@ import {
 import type { JDAnalysisItemSignatures } from "../types/analysis";
 import type {
   CertificationView,
+  EducationView,
   ResumeExperienceView,
   SkillGroupView,
   SkillItemView,
@@ -37,6 +38,17 @@ export type ResumeAICertificationEntry = {
   issue_date: string;
 };
 
+export type ResumeAIEducationEntry = {
+  id: string;
+  school: string;
+  major: string;
+  degree: string;
+  start_date?: string;
+  end_date?: string;
+  gpa?: string;
+  courses?: string;
+};
+
 export type ResumeAISkillEntry = {
   id: string;
   name: string;
@@ -45,6 +57,7 @@ export type ResumeAISkillEntry = {
 
 export type ResumeAISnapshot = {
   experiences: ResumeAIExperienceEntry[];
+  educations: ResumeAIEducationEntry[];
   certifications: ResumeAICertificationEntry[];
   skills: ResumeAISkillEntry[];
 };
@@ -72,6 +85,12 @@ export const buildStarFields = (star?: Record<string, any>): StarFields => ({
   r: normalizeStarValue(star?.r),
 });
 
+export const normalizeEducationStar = (star?: Record<string, any>) => ({
+  degree: normalizeStarValue(star?.degree),
+  gpa: normalizeStarValue(star?.gpa),
+  courses: normalizeStarValue(star?.courses),
+});
+
 export const buildExperienceAnalyzeEntry = (
   item: ResumeExperienceView
 ): ResumeAIExperienceEntry => ({
@@ -90,6 +109,19 @@ export const buildCertificationAnalyzeEntry = (
   name: cert.name,
   issuer: cert.issuer,
   issue_date: cert.date,
+});
+
+export const buildEducationAnalyzeEntry = (
+  education: EducationView
+): ResumeAIEducationEntry => ({
+  id: education.id,
+  school: education.school,
+  major: education.major,
+  degree: education.degree,
+  start_date: education.startDate || undefined,
+  end_date: education.endDate || undefined,
+  gpa: education.gpa || undefined,
+  courses: education.courses || undefined,
 });
 
 export const buildSkillAnalyzeEntry = (
@@ -111,9 +143,11 @@ export const buildSkillAnalyzePayload = (
 export const buildResumeAISnapshot = (
   experiences: ResumeExperienceView[],
   certifications: CertificationView[],
-  skillGroups: SkillGroupView[]
+  skillGroups: SkillGroupView[],
+  educations: EducationView[] = []
 ): ResumeAISnapshot => ({
   experiences: experiences.map(buildExperienceAnalyzeEntry),
+  educations: educations.map(buildEducationAnalyzeEntry),
   certifications: certifications.map(buildCertificationAnalyzeEntry),
   skills: buildSkillAnalyzePayload(skillGroups),
 });

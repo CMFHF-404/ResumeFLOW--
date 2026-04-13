@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus, SlidersHorizontal } from 'lucide-react';
+import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus, SlidersHorizontal, Sparkles } from 'lucide-react';
 import UnAuthPrompt from '../../../components/UnAuthPrompt';
 
 type EditorToolbarProps = {
@@ -22,6 +22,8 @@ type EditorToolbarProps = {
     isExportingPdf: boolean;
     isPreviewOverflowing?: boolean;
     onOpenTemplateSelector: () => void;
+    onLaunchAssistant?: () => void;
+    canLaunchAssistant?: boolean;
 };
 
 const buildSaveStatusText = (state: EditorToolbarProps['saveState'], lastSavedAt: string | null) => {
@@ -66,6 +68,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     isExportingPdf,
     isPreviewOverflowing = false,
     onOpenTemplateSelector,
+    onLaunchAssistant,
+    canLaunchAssistant = false,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(resumeName);
@@ -196,6 +200,16 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
                     <UnAuthPrompt />
+                    <button
+                        type="button"
+                        onClick={onLaunchAssistant}
+                        disabled={!canLaunchAssistant}
+                        className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                        title={canLaunchAssistant ? '带着当前简历打开 AI 助理' : '当前简历加载中'}
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        AI
+                    </button>
                     <button
                         className="md:hidden flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                         onClick={onCreateResume}

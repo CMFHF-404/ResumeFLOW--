@@ -52,6 +52,7 @@ class AssistantSessionStreamRequest(BaseModel):
     display_message: Optional[str] = None
     mode: Optional[AssistantMode] = None
     selected_experiences: List[Dict[str, Any]] = Field(default_factory=list)
+    selected_resume: Optional[Dict[str, Any]] = None
 
 
 class AssistantMessageApplyRead(BaseModel):

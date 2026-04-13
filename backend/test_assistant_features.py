@@ -398,6 +398,78 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def test_sanitize_message_content_json_normalizes_selected_resume(self) -> None:
+        sanitized = assistant_router._sanitize_message_content_json(  # type: ignore[attr-defined]
+            {
+                "text": "历史消息",
+                "selected_resume": {
+                    "resumeId": "resume-1",
+                    "resumeName": "AI产品经理简历",
+                    "jdContext": "J" * 5000,
+                "snapshot": {
+                    "experiences": [
+                        {
+                            "id": "exp-1",
+                            "title": "产品经理",
+                            "org": "某公司",
+                            "star": {"s": "A" * 600},
+                        },
+                        {"id": "", "title": "bad"},
+                    ],
+                    "educations": [
+                        {
+                            "id": "edu-1",
+                            "school": "某大学",
+                            "major": "计算机科学",
+                            "degree": "本科",
+                            "courses": "C" * 600,
+                        }
+                    ],
+                    "certifications": [
+                        {"id": "cert-1", "name": "PMP", "issue_date": "2024.08"},
+                    ],
+                    "skills": [
+                        {"id": "skill-1", "name": "需求分析", "category": "产品"},
+                        ],
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(
+            sanitized["selected_resume"],
+            {
+                "resume_id": "resume-1",
+                "resume_name": "AI产品经理简历",
+                "jd_context": "J" * 4000 + "...",
+                "snapshot": {
+                    "experiences": [
+                        {
+                            "id": "exp-1",
+                            "title": "产品经理",
+                            "org": "某公司",
+                            "star": {"s": "A" * 500 + "..."},
+                        }
+                    ],
+                    "educations": [
+                        {
+                            "id": "edu-1",
+                            "school": "某大学",
+                            "major": "计算机科学",
+                            "degree": "本科",
+                            "courses": "C" * 500 + "...",
+                        }
+                    ],
+                    "certifications": [
+                        {"id": "cert-1", "name": "PMP", "issue_date": "2024.08"}
+                    ],
+                    "skills": [
+                        {"id": "skill-1", "name": "需求分析", "category": "产品"}
+                    ],
+                },
+            },
+        )
+
     def test_build_assistant_payload_includes_bank_context(self) -> None:
         payload = ai_service._build_assistant_payload(
             mode="general",
@@ -407,6 +479,7 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
             context_json={"resumeId": "resume-1"},
             bank_context={"profile": {"full_name": "Alice"}},
             selected_experiences=None,
+            selected_resume=None,
             history=[],
         )
 
@@ -434,6 +507,7 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                     },
                 }
             ],
+            selected_resume=None,
             history=[
                 {
                     "role": "user",
@@ -477,6 +551,7 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                 }
                 for index in range(ai_service.MAX_SELECTED_EXPERIENCES + 5)
             ],
+            selected_resume=None,
             history=[],
         )
 
@@ -487,6 +562,61 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             payload["selected_experiences"][-1]["masterId"],
             f"master-{ai_service.MAX_SELECTED_EXPERIENCES - 1}",
+        )
+
+    def test_build_assistant_payload_includes_selected_resume(self) -> None:
+        payload = ai_service._build_assistant_payload(
+            mode="general",
+            user_message="请帮我优化简历",
+            session_title="AI 助理",
+            entry_source="resume_editor",
+            context_json={"resumeId": "resume-1"},
+            bank_context=None,
+            selected_experiences=None,
+            selected_resume={
+                "resumeId": "resume-1",
+                "resumeName": "产品经理简历",
+                "snapshot": {
+                    "experiences": [
+                        {"id": "exp-1", "title": "产品经理", "org": "某公司", "star": {"s": "A" * 600}}
+                    ],
+                    "educations": [
+                        {"id": "edu-1", "school": "某大学", "major": "计算机科学", "degree": "本科"}
+                    ],
+                    "certifications": [],
+                    "skills": [],
+                },
+                "jdContext": "关注 AI 产品设计与需求拆解",
+            },
+            history=[
+                {
+                    "role": "user",
+                    "message_type": "user_text",
+                    "content_json": {
+                        "text": "历史消息",
+                        "selected_resume": {
+                            "resume_id": "resume-old",
+                            "resume_name": "旧简历",
+                            "snapshot": {"experiences": [], "educations": [], "certifications": [], "skills": []},
+                        },
+                    },
+                }
+            ],
+        )
+
+        self.assertEqual(payload["selected_resume"]["resume_id"], "resume-1")
+        self.assertEqual(payload["selected_resume"]["resume_name"], "产品经理简历")
+        self.assertLessEqual(
+            len(payload["selected_resume"]["snapshot"]["experiences"][0]["star"]["s"]),
+            503,
+        )
+        self.assertEqual(
+            payload["selected_resume"]["snapshot"]["educations"][0]["school"],
+            "某大学",
+        )
+        self.assertEqual(
+            payload["history"][0]["content_json"]["selected_resume"]["resume_id"],
+            "resume-old",
         )
 
 
@@ -669,6 +799,38 @@ class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
                     message_id=message.id,
                 )
 
+    async def test_mark_message_applied_allows_resume_level_resume_editor_session(self) -> None:
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            entry_source="resume_editor",
+            context_json={"resumeId": "resume-1"},
+            latest_preview={},
+        )
+        message = SimpleNamespace(
+            id=uuid.uuid4(),
+            message_type="draft_card",
+            content_json={
+                "type": "experience",
+                "data": {
+                    "category": "work",
+                    "title": "新标题",
+                },
+            },
+        )
+        session = _FakeAsyncSession([_ExecuteResult(one_or_none=message)])
+
+        with patch.object(assistant_service, "get_session", AsyncMock(return_value=assistant_session)):
+            updated = await assistant_service.mark_message_applied(
+                session,
+                user_id="user-1",
+                session_id=assistant_session.id,
+                message_id=message.id,
+            )
+
+        self.assertIs(updated, message)
+        self.assertIn("applied_at", message.content_json)
+        session.commit.assert_awaited()
+
 
 class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_persist_assistant_turn_sanitizes_selected_experiences(self) -> None:
@@ -744,6 +906,61 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             created[0].content_json["selected_experiences"][-1]["masterId"],
             f"master-{ai_service.MAX_SELECTED_EXPERIENCES - 1}",
+        )
+
+    async def test_persist_assistant_turn_sanitizes_selected_resume(self) -> None:
+        session = _FakeAsyncSession([])
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            latest_preview={},
+            updated_at=None,
+        )
+
+        created = await assistant_service.persist_assistant_turn(
+            session,
+            assistant_session,
+            user_message="帮我优化",
+            user_selected_resume={
+                "resumeId": "resume-1",
+                "resumeName": "AI产品经理简历",
+                "jdContext": "J" * 5000,
+                "snapshot": {
+                    "experiences": [
+                        {"id": "exp-1", "title": "产品经理", "org": "某公司", "star": {"a": "A" * 600}},
+                    ],
+                    "educations": [
+                        {"id": "edu-1", "school": "某大学", "major": "计算机科学", "degree": "本科"}
+                    ],
+                    "certifications": [],
+                    "skills": [{"id": "skill-1", "name": "需求分析", "category": "产品"}],
+                },
+            },
+            assistant_text="好的",
+            draft_card=None,
+        )
+
+        self.assertEqual(
+            created[0].content_json["selected_resume"],
+            {
+                "resume_id": "resume-1",
+                "resume_name": "AI产品经理简历",
+                "jd_context": "J" * 4000 + "...",
+                "snapshot": {
+                    "experiences": [
+                        {
+                            "id": "exp-1",
+                            "title": "产品经理",
+                            "org": "某公司",
+                            "star": {"a": "A" * 500 + "..."},
+                        }
+                    ],
+                    "educations": [
+                        {"id": "edu-1", "school": "某大学", "major": "计算机科学", "degree": "本科"}
+                    ],
+                    "certifications": [],
+                    "skills": [{"id": "skill-1", "name": "需求分析", "category": "产品"}],
+                },
+            },
         )
 
 

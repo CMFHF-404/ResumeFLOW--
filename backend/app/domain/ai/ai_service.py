@@ -39,6 +39,13 @@ MAX_SELECTED_EXPERIENCE_SUMMARY_CHARS = 300
 MAX_SELECTED_EXPERIENCE_STAR_CHARS = 500
 MAX_SELECTED_EXPERIENCES = 20
 VALID_SELECTED_EXPERIENCE_CATEGORIES = {"work", "project", "education"}
+MAX_SELECTED_RESUME_ID_CHARS = 120
+MAX_SELECTED_RESUME_NAME_CHARS = 160
+MAX_SELECTED_RESUME_JD_CONTEXT_CHARS = 4000
+MAX_SELECTED_RESUME_EXPERIENCES = 40
+MAX_SELECTED_RESUME_EDUCATIONS = 20
+MAX_SELECTED_RESUME_CERTIFICATIONS = 30
+MAX_SELECTED_RESUME_SKILLS = 60
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
@@ -180,6 +187,177 @@ def _normalize_selected_experiences(items: Any) -> List[Dict[str, Any]]:
         if len(normalized_items) >= MAX_SELECTED_EXPERIENCES:
             break
     return normalized_items
+
+
+def _normalize_selected_resume_experience_item(item: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    item_id = _clip_optional_text(item.get("id"), MAX_SELECTED_RESUME_ID_CHARS)
+    if not item_id:
+        return None
+
+    normalized: Dict[str, Any] = {
+        "id": item_id,
+        "title": _clip_optional_text(item.get("title"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+        "org": _clip_optional_text(item.get("org"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+        "star": {},
+    }
+    start_date = _clip_optional_text(item.get("start_date"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    if start_date:
+        normalized["start_date"] = start_date
+    end_date = _clip_optional_text(item.get("end_date"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    if end_date:
+        normalized["end_date"] = end_date
+
+    raw_star = item.get("star")
+    if isinstance(raw_star, dict):
+        normalized_star: Dict[str, str] = {}
+        for key in ("s", "t", "a", "r"):
+            clipped = _clip_optional_text(raw_star.get(key), MAX_SELECTED_EXPERIENCE_STAR_CHARS)
+            if clipped:
+                normalized_star[key] = clipped
+        normalized["star"] = normalized_star
+    return normalized
+
+
+def _normalize_selected_resume_certification_item(item: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    item_id = _clip_optional_text(item.get("id"), MAX_SELECTED_RESUME_ID_CHARS)
+    if not item_id:
+        return None
+    normalized: Dict[str, Any] = {
+        "id": item_id,
+        "name": _clip_optional_text(item.get("name"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+        "issue_date": _clip_optional_text(item.get("issue_date"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+    }
+    issuer = _clip_optional_text(item.get("issuer"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    if issuer:
+        normalized["issuer"] = issuer
+    return normalized
+
+
+def _normalize_selected_resume_education_item(item: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    item_id = _clip_optional_text(item.get("id"), MAX_SELECTED_RESUME_ID_CHARS)
+    if not item_id:
+        return None
+    normalized: Dict[str, Any] = {
+        "id": item_id,
+        "school": _clip_optional_text(item.get("school"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+        "major": _clip_optional_text(item.get("major"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+        "degree": _clip_optional_text(item.get("degree"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+    }
+    start_date = _clip_optional_text(item.get("start_date"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    if start_date:
+        normalized["start_date"] = start_date
+    end_date = _clip_optional_text(item.get("end_date"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    if end_date:
+        normalized["end_date"] = end_date
+    gpa = _clip_optional_text(item.get("gpa"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
+    if gpa:
+        normalized["gpa"] = gpa
+    courses = _clip_optional_text(item.get("courses"), MAX_SELECTED_EXPERIENCE_STAR_CHARS)
+    if courses:
+        normalized["courses"] = courses
+    return normalized
+
+
+def _normalize_selected_resume_skill_item(item: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    item_id = _clip_optional_text(item.get("id"), MAX_SELECTED_RESUME_ID_CHARS)
+    if not item_id:
+        return None
+    return {
+        "id": item_id,
+        "name": _clip_optional_text(item.get("name"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+        "category": _clip_optional_text(item.get("category"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS) or "",
+    }
+
+
+def _normalize_selected_resume_snapshot(snapshot: Any) -> Dict[str, Any]:
+    if not isinstance(snapshot, dict):
+        return {
+            "experiences": [],
+            "educations": [],
+            "certifications": [],
+            "skills": [],
+        }
+
+    normalized_experiences: List[Dict[str, Any]] = []
+    for item in snapshot.get("experiences", []):
+        normalized = _normalize_selected_resume_experience_item(item)
+        if normalized:
+            normalized_experiences.append(normalized)
+        if len(normalized_experiences) >= MAX_SELECTED_RESUME_EXPERIENCES:
+            break
+
+    normalized_certifications: List[Dict[str, Any]] = []
+    normalized_educations: List[Dict[str, Any]] = []
+    for item in snapshot.get("educations", []):
+        normalized = _normalize_selected_resume_education_item(item)
+        if normalized:
+            normalized_educations.append(normalized)
+        if len(normalized_educations) >= MAX_SELECTED_RESUME_EDUCATIONS:
+            break
+
+    for item in snapshot.get("certifications", []):
+        normalized = _normalize_selected_resume_certification_item(item)
+        if normalized:
+            normalized_certifications.append(normalized)
+        if len(normalized_certifications) >= MAX_SELECTED_RESUME_CERTIFICATIONS:
+            break
+
+    normalized_skills: List[Dict[str, Any]] = []
+    for item in snapshot.get("skills", []):
+        normalized = _normalize_selected_resume_skill_item(item)
+        if normalized:
+            normalized_skills.append(normalized)
+        if len(normalized_skills) >= MAX_SELECTED_RESUME_SKILLS:
+            break
+
+    return {
+        "experiences": normalized_experiences,
+        "educations": normalized_educations,
+        "certifications": normalized_certifications,
+        "skills": normalized_skills,
+    }
+
+
+def _normalize_selected_resume(item: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    resume_id = _clip_optional_text(
+        item.get("resume_id") or item.get("resumeId"),
+        MAX_SELECTED_RESUME_ID_CHARS,
+    )
+    resume_name = _clip_optional_text(
+        item.get("resume_name") or item.get("resumeName"),
+        MAX_SELECTED_RESUME_NAME_CHARS,
+    )
+    if not resume_id or not resume_name:
+        return None
+
+    normalized: Dict[str, Any] = {
+        "resume_id": resume_id,
+        "resume_name": resume_name,
+        "snapshot": _normalize_selected_resume_snapshot(item.get("snapshot")),
+    }
+    master_id = _clip_optional_text(
+        item.get("master_id") or item.get("masterId"),
+        MAX_SELECTED_RESUME_ID_CHARS,
+    )
+    if master_id:
+        normalized["master_id"] = master_id
+    jd_context = _clip_optional_text(
+        item.get("jd_context") or item.get("jdContext"),
+        MAX_SELECTED_RESUME_JD_CONTEXT_CHARS,
+    )
+    if jd_context:
+        normalized["jd_context"] = jd_context
+    return normalized
 
 
 def _extract_skill_ids(resume_text: Optional[str]) -> List[str]:
@@ -935,11 +1113,13 @@ def _build_assistant_payload(
     context_json: Dict[str, Any],
     bank_context: Optional[Dict[str, Any]],
     selected_experiences: Optional[List[Dict[str, Any]]],
+    selected_resume: Optional[Dict[str, Any]],
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     normalized_history = _normalize_assistant_history(history[-16:], include_attachment_content=False)
     normalized_selected_experiences = _normalize_selected_experiences(selected_experiences)
+    normalized_selected_resume = _normalize_selected_resume(selected_resume)
     payload = {
         "mode": mode,
         "session_title": session_title,
@@ -952,6 +1132,8 @@ def _build_assistant_payload(
         payload["bank_context"] = bank_context
     if normalized_selected_experiences:
         payload["selected_experiences"] = normalized_selected_experiences
+    if normalized_selected_resume:
+        payload["selected_resume"] = normalized_selected_resume
     if attachments:
         attachment_contexts = [
             _build_assistant_attachment_context(item, include_attachment_content=True)
@@ -1019,6 +1201,13 @@ def _normalize_assistant_history(
                 normalized_content_json["selected_experiences"] = selected_experiences
             elif "selected_experiences" in normalized_content_json:
                 normalized_content_json.pop("selected_experiences", None)
+            selected_resume = _normalize_selected_resume(
+                content_json.get("selected_resume")
+            )
+            if selected_resume:
+                normalized_content_json["selected_resume"] = selected_resume
+            elif "selected_resume" in normalized_content_json:
+                normalized_content_json.pop("selected_resume", None)
             normalized_message["content_json"] = normalized_content_json
         normalized_history.append(normalized_message)
     return normalized_history
@@ -1675,6 +1864,7 @@ async def run_assistant_turn(
     context_json: Dict[str, Any],
     bank_context: Optional[Dict[str, Any]] = None,
     selected_experiences: Optional[List[Dict[str, Any]]] = None,
+    selected_resume: Optional[Dict[str, Any]] = None,
     history: List[Dict[str, Any]],
     attachment: Optional[Dict[str, Any]] = None,
     attachment_hydrator: AttachmentHydrator = None,
@@ -1690,6 +1880,7 @@ async def run_assistant_turn(
         context_json=context_json,
         bank_context=bank_context,
         selected_experiences=selected_experiences,
+        selected_resume=selected_resume,
         history=history,
         attachments=resolved_attachments,
     )
@@ -1710,6 +1901,7 @@ async def run_assistant_turn_with_thoughts(
     context_json: Dict[str, Any],
     bank_context: Optional[Dict[str, Any]] = None,
     selected_experiences: Optional[List[Dict[str, Any]]] = None,
+    selected_resume: Optional[Dict[str, Any]] = None,
     history: List[Dict[str, Any]],
     attachment: Optional[Dict[str, Any]] = None,
     thought_callback: ThoughtCallback = None,
@@ -1728,6 +1920,7 @@ async def run_assistant_turn_with_thoughts(
             context_json=context_json,
             bank_context=bank_context,
             selected_experiences=selected_experiences,
+            selected_resume=selected_resume,
             history=history,
             attachment=attachment,
             attachment_hydrator=attachment_hydrator,
@@ -1744,6 +1937,7 @@ async def run_assistant_turn_with_thoughts(
         context_json=context_json,
         bank_context=bank_context,
         selected_experiences=selected_experiences,
+        selected_resume=selected_resume,
         history=history,
         attachments=resolved_attachments,
     )
@@ -1774,6 +1968,7 @@ async def run_assistant_turn_with_thoughts(
             context_json=context_json,
             bank_context=bank_context,
             selected_experiences=selected_experiences,
+            selected_resume=selected_resume,
             history=history,
             attachment=attachment,
             attachment_hydrator=attachment_hydrator,
