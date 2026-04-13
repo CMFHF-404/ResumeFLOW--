@@ -1267,6 +1267,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setItemSpacingEm(nextLayout.itemSpacingEm);
         setLineHeight(nextLayout.lineHeight);
         setFontSize(nextLayout.fontSize);
+        setMeasureLayout(nextLayout);
         setIsSmartPageApplied(nextLayout.isSmartPageApplied);
         const rawTemplateId = config.layout?.templateId;
         const nextTemplateId = normalizeResumeTemplateId(rawTemplateId);
@@ -2750,7 +2751,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         return a4HeightRef.current;
     };
-    const waitForPreviewUpdate = (frames = 1) => new Promise<void>((resolve) => {
+    const waitForPreviewUpdate = useCallback((frames = 1) => new Promise<void>((resolve) => {
         const tick = (remaining: number) => {
             requestAnimationFrame(() => {
                 if (remaining <= 1) {
@@ -2761,7 +2762,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             });
         };
         tick(frames);
-    });
+    }), []);
     const waitForSmartPageIdle = () => new Promise<void>((resolve) => {
         const tick = () => {
             if (!smartPageAdjustingRef.current) {
@@ -3889,33 +3890,32 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }),
         [effectivePersonalSummary, profile]
     );
+    const collectPreviewMeasurement = useCallback(async (): Promise<ResumePrintLayoutMeasurement | null> => {
+        await waitForPreviewUpdate(2);
+        if (typeof document !== 'undefined' && document.fonts?.ready) {
+            await document.fonts.ready;
+            await waitForPreviewUpdate(1);
+        }
+
+        return measureResumeLayout(
+            measurePreviewRef.current,
+            measurePreviewContentRef.current
+        );
+    }, [waitForPreviewUpdate]);
     useEffect(() => {
         let cancelled = false;
-
-        const syncPreviewMeasurement = async () => {
-            await waitForPreviewUpdate(2);
-            if (document.fonts?.ready) {
-                await document.fonts.ready;
-                await waitForPreviewUpdate(1);
-            }
+        void collectPreviewMeasurement().then((measurement) => {
             if (cancelled) {
                 return;
             }
-
-            setPreviewPrintMeasurement(
-                measureResumeLayout(
-                    measurePreviewRef.current,
-                    measurePreviewContentRef.current
-                )
-            );
-        };
-
-        void syncPreviewMeasurement();
+            setPreviewPrintMeasurement(measurement);
+        });
 
         return () => {
             cancelled = true;
         };
     }, [
+        collectPreviewMeasurement,
         measureLayout,
         previewProfile,
         resumeTemplateId,
@@ -3929,6 +3929,81 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedCertIds,
         selectedSkillGroups,
     ]);
+    useEffect(() => {
+        const pageElement = measurePreviewRef.current;
+        const contentElement = measurePreviewContentRef.current;
+        if (!pageElement || !contentElement || typeof window === 'undefined') {
+            return undefined;
+        }
+
+        let cancelled = false;
+        let frameId: number | null = null;
+        const pendingImageListeners = new Set<HTMLImageElement>();
+        const detachImageListeners = () => {
+            pendingImageListeners.forEach((image) => {
+                image.removeEventListener('load', scheduleMeasurement);
+                image.removeEventListener('error', scheduleMeasurement);
+            });
+            pendingImageListeners.clear();
+        };
+        const refreshPendingImages = () => {
+            detachImageListeners();
+            contentElement.querySelectorAll('img').forEach((image) => {
+                if (image.complete) {
+                    return;
+                }
+                image.addEventListener('load', scheduleMeasurement);
+                image.addEventListener('error', scheduleMeasurement);
+                pendingImageListeners.add(image);
+            });
+        };
+        const runMeasurement = () => {
+            frameId = null;
+            void collectPreviewMeasurement().then((measurement) => {
+                if (cancelled) {
+                    return;
+                }
+                setPreviewPrintMeasurement(measurement);
+            });
+        };
+        function scheduleMeasurement() {
+            if (cancelled || frameId !== null) {
+                return;
+            }
+            frameId = window.requestAnimationFrame(runMeasurement);
+        }
+
+        refreshPendingImages();
+        scheduleMeasurement();
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', scheduleMeasurement);
+            return () => {
+                cancelled = true;
+                detachImageListeners();
+                window.removeEventListener('resize', scheduleMeasurement);
+                if (frameId !== null) {
+                    window.cancelAnimationFrame(frameId);
+                }
+            };
+        }
+
+        const observer = new ResizeObserver(() => {
+            refreshPendingImages();
+            scheduleMeasurement();
+        });
+        observer.observe(pageElement);
+        observer.observe(contentElement);
+
+        return () => {
+            cancelled = true;
+            detachImageListeners();
+            observer.disconnect();
+            if (frameId !== null) {
+                window.cancelAnimationFrame(frameId);
+            }
+        };
+    }, [collectPreviewMeasurement]);
     const isPreviewOverflowing = previewPrintMeasurement?.fits === false;
     const overflowingSectionIds = useMemo(
         () => new Set(previewPrintMeasurement?.overflowingSectionIds ?? []),
