@@ -8,7 +8,7 @@ const UNORDERED_LIST_LINE_PATTERN = /^\s*[-*＊•·]\s*(.+)$/;
 const RICH_TEXT_DECODE_PATTERN = /&(lt|gt|amp;lt|amp;gt);/i;
 const MAX_HTML_DECODE_PASSES = 2;
 const RICH_TEXT_HTML_TAG_PATTERN = /<\/?(?:b|strong|i|em|u|a|br|ul|ol|li)\b/i;
-const RICH_TEXT_MARKDOWN_TOKEN_PATTERN = /(\*\*|__|\]\(|\*[^*\r\n]+\*)/;
+const RICH_TEXT_MARKDOWN_TOKEN_PATTERN = /(\*\*|＊＊|__|\]\(|\*[^*\r\n]+\*)/;
 
 export const RICH_TEXT_INLINE_STYLES_CLASS =
     '[&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_a]:text-blue-600 [&_a]:underline';
@@ -44,6 +44,10 @@ const EDGE_WHITESPACE_PATTERN = /^[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]+|[\s\
 
 const normalizeMarkdownToken = (value: string) =>
     value.replace(/[\u00a0\u3000]/g, ' ').replace(EDGE_WHITESPACE_PATTERN, '');
+
+const BOLD_MARKDOWN_PATTERN = /(?:\*\*|＊＊)([^*\r\n＊]+)(?:\*\*|＊＊)/g;
+const UNDERLINE_MARKDOWN_PATTERN = /__([^_\r\n]+)__/g;
+const HTML_TAG_SPLIT_PATTERN = /(<[^>]+>)/g;
 
 const convertMarkdownLinksToHtml = (input: string) => {
     let output = '';
@@ -93,20 +97,30 @@ const convertMarkdownLinksToHtml = (input: string) => {
     return output;
 };
 
-const maybeConvertLegacyMarkdown = (input: string) => {
-    if (!input || /<[^>]+>/.test(input)) {
-        return input;
-    }
-    if (!/(\*\*|__|\]\(|\*[^*\r\n]+\*)/g.test(input)) {
-        return input;
-    }
-    return convertMarkdownLinksToHtml(input)
-        .replace(/\*\*([^*]+)\*\*/g, (_match, text) => `<b>${normalizeMarkdownToken(text)}</b>`)
-        .replace(/__([^_]+)__/g, (_match, text) => `<u>${normalizeMarkdownToken(text)}</u>`)
+const applyLegacyMarkdownFormatting = (input: string) => (
+    convertMarkdownLinksToHtml(input)
+        .replace(BOLD_MARKDOWN_PATTERN, (_match, text) => `<b>${normalizeMarkdownToken(text)}</b>`)
+        .replace(UNDERLINE_MARKDOWN_PATTERN, (_match, text) => `<u>${normalizeMarkdownToken(text)}</u>`)
         // 仅匹配同一行内的 *italic*，避免把 `* item1\n* item2` 误判为斜体。
         .replace(/(^|[^*])\*([^\s*](?:[^*\r\n]*?[^\s*])?)\*(?!\*)/g, (_match, prefix, text) => {
             return `${prefix}<i>${normalizeMarkdownToken(text)}</i>`;
-        });
+        })
+);
+
+const maybeConvertLegacyMarkdown = (input: string) => {
+    if (!input) {
+        return input;
+    }
+    if (!/(\*\*|＊＊|__|\]\(|\*[^*\r\n]+\*)/g.test(input)) {
+        return input;
+    }
+    if (!/<[^>]+>/.test(input)) {
+        return applyLegacyMarkdownFormatting(input);
+    }
+    return input
+        .split(HTML_TAG_SPLIT_PATTERN)
+        .map((segment) => (segment.startsWith('<') && segment.endsWith('>') ? segment : applyLegacyMarkdownFormatting(segment)))
+        .join('');
 };
 
 const isSafeHref = (value: string | null) => {

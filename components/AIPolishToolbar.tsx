@@ -12,6 +12,7 @@ export type AIPolishToolbarProps = {
   disabledAssistant?: boolean;
   previewDescription?: string;
   previewContent?: React.ReactNode;
+  runHint?: string;
   onModeChange: (mode: ToolbarMode) => void;
   onCustomPromptChange: (value: string) => void;
   onRun: () => void;
@@ -23,7 +24,7 @@ export type AIPolishToolbarProps = {
 };
 
 const MODE_OPTIONS: Array<{ value: ToolbarMode; label: string }> = [
-  { value: 'default', label: '默认润色' },
+  { value: 'default', label: '突出重点' },
   { value: 'shorten', label: '精简内容' },
   { value: 'expand', label: '扩写文本' },
   { value: 'custom', label: '自定义 Prompt' },
@@ -37,6 +38,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   disabledAssistant,
   previewDescription,
   previewContent,
+  runHint,
   onModeChange,
   onCustomPromptChange,
   onRun,
@@ -133,7 +135,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           />
         ) : null}
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs leading-5 text-slate-500">执行后生成预览</p>
+          <p className="text-xs leading-5 text-slate-500">{runHint ?? '执行后生成预览'}</p>
           <button
             type="button"
             onClick={onRun}

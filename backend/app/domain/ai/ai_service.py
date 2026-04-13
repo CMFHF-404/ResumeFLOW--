@@ -19,6 +19,7 @@ from .prompts import (
     POLISH_MODE_INSTRUCTIONS,
     PERSONAL_SUMMARY_GENERATION,
     SKILL_ASSISTANT_PROMPT,
+    STAR_HIGHLIGHT,
     STAR_POLISH,
     TAG_GENERATION,
 )
@@ -875,7 +876,10 @@ async def analyze_jd_with_image_thoughts(
     return _ensure_skill_matches(normalized_result, skill_ids)
 
 
-def _resolve_star_prompt(target_field: Optional[str]) -> str:
+def _resolve_star_prompt(target_field: Optional[str], mode: Optional[str] = None) -> str:
+    normalized_mode = (mode or "default").strip().lower()
+    if normalized_mode == "default":
+        return STAR_HIGHLIGHT
     return STAR_POLISH
 
 
@@ -884,7 +888,7 @@ def _build_polish_prompt(
     mode: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
-    base_prompt = _resolve_star_prompt(target_field)
+    base_prompt = _resolve_star_prompt(target_field, mode)
     normalized_mode = (mode or "default").strip().lower()
     mode_instruction = POLISH_MODE_INSTRUCTIONS.get(normalized_mode)
     prompt_parts = [base_prompt]

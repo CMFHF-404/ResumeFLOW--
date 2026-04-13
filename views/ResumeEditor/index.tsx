@@ -1770,7 +1770,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
 
-        const toastId = showToastLoading('正在基于 JD 生成预览...');
+        const toastId = showToastLoading(
+            experiencePolishMode === 'default'
+                ? '正在根据 JD 突出重点...'
+                : '正在基于 JD 润色...'
+        );
         let hasError = false;
         let applied = false;
         let action: 'applied' | 'discarded' = 'discarded';
@@ -1826,25 +1830,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             const hasChange = (['s', 't', 'a', 'r'] as const).some((key) => nextDraft.star[key] !== draft.star[key]);
             if (hasChange) {
                 experience.setEditingDraft(nextDraft);
-                setExperiencePolishPreview({
-                    mode: experiencePolishMode,
-                    customPrompt: experiencePolishMode === 'custom' ? experienceCustomPrompt.trim() : undefined,
-                    before: draft,
-                    after: nextDraft,
-                    hadPendingApplyBeforePreview: pendingAiPolishApplyRef.current.has(draft.masterId),
-                });
                 applied = true;
                 action = 'applied';
                 pendingAiPolishApplyRef.current.add(draft.masterId);
             }
         } catch (error) {
             hasError = true;
-            console.error('[ResumeEditor] JD 润色预览失败:', error);
+            console.error('[ResumeEditor] 编辑态 AI 润色失败:', error);
         } finally {
             if (hasError) {
                 updateToast(toastId, { message: 'JD 润色失败，请稍后重试', type: 'error', duration: 3000 });
             } else if (applied) {
-                updateToast(toastId, { message: '已生成润色预览，请确认或撤销', type: 'success', duration: 2500 });
+                updateToast(toastId, { message: '已应用到当前编辑内容', type: 'success', duration: 2500 });
             } else {
                 updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
             }
@@ -3749,17 +3746,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const editingSuggestionToolbar = editingItem ? (
         <AIPolishToolbar
-            isPreviewing={Boolean(experiencePolishPreview)}
+            isPreviewing={false}
             isRunning={isEditingExperiencePolishRunning}
             activeMode={experiencePolishMode}
             customPrompt={experienceCustomPrompt}
             disabledAssistant={!jdPolishContext.trim()}
             compact
-            previewContent={
-                experiencePolishPreview?.after ? (
-                    <ExperiencePolishPreviewContent draft={experiencePolishPreview.after} />
-                ) : undefined
-            }
+            runHint="执行后直接应用到当前编辑内容"
             onModeChange={setExperiencePolishMode}
             onCustomPromptChange={setExperienceCustomPrompt}
             onRun={() => void handleRunEditingExperiencePolish()}
