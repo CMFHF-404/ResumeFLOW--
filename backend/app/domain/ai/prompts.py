@@ -166,6 +166,17 @@ STAR_POLISH_R = (
     "100 Chinese characters. Return JSON only with key: 'r'."
 )
 
+STAR_HIGHLIGHT = (
+    "You are a Resume Writer. The user input is a JSON object that may include fields like "
+    "company, role, s, t, a, and r. If jd_text is provided, identify the parts that best match the JD "
+    "and emphasize them with Markdown bold (**text**) only. Do not rewrite, paraphrase, reorder, split, merge, "
+    "or expand the original text. Do not change wording, punctuation, hyperlinks, or line breaks except for adding "
+    "Markdown bold markers around existing contiguous phrases. Preserve all original facts exactly as written. "
+    "Highlight no more than 5 distinct phrases across the whole output, and only highlight evidence that clearly fits "
+    "the JD. If jd_text is missing or no phrase clearly fits, return the original text unchanged. Use the same language "
+    "as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
+)
+
 TAG_GENERATION = (
     "You are a resume coach. Given work experience text, return JSON only with key "
     "'tags' as an array of 3-8 short skill tags. Avoid duplicates. Use the same "
@@ -215,7 +226,8 @@ PERSONAL_SUMMARY_GENERATION = (
 
 POLISH_MODE_INSTRUCTIONS = {
     "default": (
-        "Keep the rewrite balanced, concise, factual, and resume-ready."
+        "Do not rewrite the text. Only highlight the most JD-relevant existing phrases, "
+        "with no more than 5 highlights in total."
     ),
     "shorten": (
         "Compress wording aggressively while preserving all key facts. "

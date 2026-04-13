@@ -132,3 +132,17 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"greeting": "hello"})
         standard_mock.assert_awaited_once()
         stream_mock.assert_not_called()
+
+
+class AiServicePolishPromptTests(unittest.TestCase):
+    def test_default_mode_uses_highlight_prompt_without_rewrite(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="default")
+
+        self.assertIn("Do not rewrite", prompt)
+        self.assertIn("no more than 5", prompt)
+
+    def test_shorten_mode_keeps_rewrite_prompt(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="shorten")
+
+        self.assertIn("Rewrite into strong, impact-oriented STAR statements.", prompt)
+        self.assertIn("Compress wording aggressively", prompt)
