@@ -2,6 +2,7 @@ import apiClient, { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
 import { dispatchLoginRequired } from './authRedirect';
 import type { MatchScoreEntry, MatchTrend } from '../types/analysis';
 import type { ExperienceCategory } from './experienceService';
+import type { ResumeAISnapshot } from '../utils/resumeHelpers';
 
 export interface PolishExperiencePayload {
     content: {
@@ -199,6 +200,14 @@ export interface AssistantSelectedExperience {
         a?: string;
         r?: string;
     };
+}
+
+export interface AssistantSelectedResume {
+    resumeId: string;
+    masterId?: string;
+    resumeName: string;
+    snapshot: ResumeAISnapshot;
+    jdContext?: string;
 }
 
 export interface AssistantSessionDetail {
@@ -842,6 +851,7 @@ export const aiService = {
             mode?: AssistantMode;
             attachment?: File | null;
             selectedExperiences?: AssistantSelectedExperience[];
+            selectedResume?: AssistantSelectedResume | null;
         },
         onEvent?: (event: AssistantStreamEvent) => void
     ) {
@@ -855,6 +865,9 @@ export const aiService = {
             if (payload.selectedExperiences?.length) {
                 formData.append('selected_experiences', JSON.stringify(payload.selectedExperiences));
             }
+            if (payload.selectedResume) {
+                formData.append('selected_resume', JSON.stringify(payload.selectedResume));
+            }
             formData.append('file', payload.attachment);
             return streamAssistantRequest(sessionId, formData, {
                 onEvent,
@@ -867,6 +880,7 @@ export const aiService = {
             display_message: payload.displayMessage ?? payload.userMessage,
             ...(payload.mode ? { mode: payload.mode } : {}),
             ...(payload.selectedExperiences?.length ? { selected_experiences: payload.selectedExperiences } : {}),
+            ...(payload.selectedResume ? { selected_resume: payload.selectedResume } : {}),
         }), {
             onEvent,
             contentType: 'application/json',

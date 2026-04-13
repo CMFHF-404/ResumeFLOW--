@@ -16,7 +16,7 @@ from ...database import get_session as get_db_session
 from ...dependencies import get_current_user
 from ...models import AIAssistantImageBlob
 from ..ai import jd_attachment_service
-from ..ai.ai_service import _normalize_selected_experiences, run_assistant_turn_with_thoughts
+from ..ai.ai_service import _normalize_selected_experiences, _normalize_selected_resume, run_assistant_turn_with_thoughts
 from ..certifications.certification_service import list_certifications
 from ..experience.experience_service import list_experiences
 from ..profile.profile_service import get_profile_if_exists
@@ -93,6 +93,11 @@ def _sanitize_message_content_json(content_json: Dict[str, Any] | None) -> Dict[
         sanitized["selected_experiences"] = selected_experiences
     elif "selected_experiences" in sanitized:
         sanitized.pop("selected_experiences", None)
+    selected_resume = _normalize_selected_resume(content_json.get("selected_resume"))
+    if selected_resume:
+        sanitized["selected_resume"] = selected_resume
+    elif "selected_resume" in sanitized:
+        sanitized.pop("selected_resume", None)
     return sanitized
 
 
@@ -294,11 +299,21 @@ async def _parse_stream_payload(
                     selected_experiences = [item for item in parsed_selected_experiences if isinstance(item, dict)]
             except json.JSONDecodeError as exc:
                 raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="所选经历参数不是有效 JSON。") from exc
+        raw_selected_resume = form.get("selected_resume")
+        selected_resume: Dict[str, Any] | None = None
+        if isinstance(raw_selected_resume, str) and raw_selected_resume.strip():
+            try:
+                parsed_selected_resume = json.loads(raw_selected_resume)
+                if isinstance(parsed_selected_resume, dict):
+                    selected_resume = parsed_selected_resume
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="所选简历参数不是有效 JSON。") from exc
         payload_dict = {
             "user_message": str(form.get("user_message") or ""),
             "display_message": str(form.get("display_message") or ""),
             "mode": str(form.get("mode") or "") or None,
             "selected_experiences": selected_experiences,
+            "selected_resume": selected_resume,
         }
     else:
         try:
@@ -313,10 +328,15 @@ async def _parse_stream_payload(
     payload = payload.model_copy(
         update={
             "selected_experiences": _normalize_selected_experiences(payload.selected_experiences),
+            "selected_resume": _normalize_selected_resume(payload.selected_resume),
         }
     )
-    if not payload.user_message.strip() and attachment_file is None:
-        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="请输入消息或上传附件后再发送。")
+    if (
+        not payload.user_message.strip()
+        and attachment_file is None
+        and payload.selected_resume is None
+    ):
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="请输入消息、选择简历或上传附件后再发送。")
     return payload, attachment_file
 
 
@@ -600,6 +620,7 @@ async def stream_assistant_session_turn(
                     context_json=assistant_session.context_json,
                     bank_context=bank_context,
                     selected_experiences=payload.selected_experiences,
+                    selected_resume=payload.selected_resume,
                     history=_build_history_messages(messages),
                     attachment=attachment_payload,
                     thought_callback=emit,
@@ -616,6 +637,7 @@ async def stream_assistant_session_turn(
                     display_message=payload.display_message,
                     user_attachment=persisted_attachment,
                     user_selected_experiences=payload.selected_experiences,
+                    user_selected_resume=payload.selected_resume,
                     assistant_text=result["assistantText"],
                     draft_card=result.get("draftCard"),
                     title=result.get("title"),

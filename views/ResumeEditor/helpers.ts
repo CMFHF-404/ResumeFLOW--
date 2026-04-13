@@ -22,7 +22,7 @@ import type { ResumeDetail, ResumeExperienceItem } from '../../services/resumeSe
 import type { UserSkill } from '../../services/skillsService';
 import type { Profile } from '../../services/profileService';
 import { buildExperienceDate, formatYearMonth, normalizeDateInput } from '../../utils/dateUtils';
-import { buildStarFields, mergeStarFieldsWithSource, normalizeStarValue } from '../../utils/resumeHelpers';
+import { buildStarFields, mergeStarFieldsWithSource, normalizeEducationStar, normalizeStarValue } from '../../utils/resumeHelpers';
 import { parseYearMonthValue } from '../experienceUtils';
 import { resolveLinkedInLink } from '../profileUtils';
 import {
@@ -53,12 +53,6 @@ export const mergeStarFields = (base: StarFields, updates: Partial<StarFields>) 
     t: typeof updates.t === 'string' ? updates.t : base.t,
     a: typeof updates.a === 'string' ? updates.a : base.a,
     r: typeof updates.r === 'string' ? updates.r : base.r,
-});
-
-export const normalizeEducationStar = (star?: Record<string, any>) => ({
-    degree: normalizeStarValue(star?.degree),
-    gpa: normalizeStarValue(star?.gpa),
-    courses: normalizeStarValue(star?.courses),
 });
 
 export const isPresentLabel = (value?: string) => value === '至今' || value === 'Present';

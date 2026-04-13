@@ -16,9 +16,12 @@ import {
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSession, type AssistantStreamEvent } from '../services/aiService';
+import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSession, type AssistantStreamEvent } from '../services/aiService';
+import { certificationsService } from '../services/certificationsService';
 import { experienceService, type ExperienceListItem } from '../services/experienceService';
-import { resumeService } from '../services/resumeService';
+import { resumeService, type Resume } from '../services/resumeService';
+import { skillsService } from '../services/skillsService';
+import { buildSelectedResumeFromResources } from '../utils/assistantResumeContext';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { stripRichTextToText } from '../utils/richText';
@@ -26,6 +29,7 @@ import { trackAiAssistantDraftApplied } from '../utils/analyticsTracker';
 
 import { AssistantDraftCardView } from './AIAssistant/AssistantDraftCardView';
 import ExperiencePicker from './AIAssistant/ExperiencePicker';
+import ResumePicker, { type ResumePickerItem } from './AIAssistant/ResumePicker';
 import { MessageItem, ActiveThoughtBlock } from './AIAssistant/MessageItem';
 import { ChatInputBox } from './AIAssistant/ChatInputBox';
 
@@ -44,6 +48,7 @@ export type AssistantLaunchRequest = {
   requestId?: string;
   context: AssistantEntryContext;
   initialUserMessage?: string;
+  prefillResume?: AssistantSelectedResume;
   applyDraftHandler?: AssistantApplyDraftHandler;
   callbackOnly?: boolean;
 };
@@ -70,6 +75,9 @@ type AssistantComposerAttachment = AssistantAttachmentPreview & {
 const SELECTED_EXPERIENCE_TEXT_LIMIT = 300;
 const SELECTED_EXPERIENCE_SUMMARY_LIMIT = 300;
 const SELECTED_EXPERIENCE_STAR_LIMIT = 500;
+const SELECTED_RESUME_TEXT_LIMIT = 300;
+const SELECTED_RESUME_NAME_LIMIT = 160;
+const SELECTED_RESUME_JD_LIMIT = 4000;
 
 const clipSelectedExperienceText = (value: string, limit: number) => {
   const normalized = value.trim();
@@ -166,6 +174,162 @@ const normalizeSelectedExperienceStar = (value: unknown): AssistantSelectedExper
     return undefined;
   }
   return star;
+};
+
+const clipSelectedResumeText = (value: string, limit: number) => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+};
+
+const normalizeSelectedResumeText = (value: unknown, limit = SELECTED_RESUME_TEXT_LIMIT): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return clipSelectedResumeText(value, limit);
+};
+
+const normalizeSelectedResumeSnapshot = (value: unknown): AssistantSelectedResume['snapshot'] => {
+  if (!value || typeof value !== 'object') {
+    return { experiences: [], educations: [], certifications: [], skills: [] };
+  }
+  const rawSnapshot = value as Record<string, unknown>;
+  const rawExperiences = Array.isArray(rawSnapshot.experiences) ? rawSnapshot.experiences : [];
+  const rawEducations = Array.isArray(rawSnapshot.educations) ? rawSnapshot.educations : [];
+  const rawCertifications = Array.isArray(rawSnapshot.certifications) ? rawSnapshot.certifications : [];
+  const rawSkills = Array.isArray(rawSnapshot.skills) ? rawSnapshot.skills : [];
+
+  return {
+    experiences: rawExperiences.flatMap((item) => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+      const candidate = item as Record<string, unknown>;
+      const id = normalizeSelectedResumeText(candidate.id);
+      if (!id) {
+        return [];
+      }
+      return [{
+        id,
+        title: normalizeSelectedResumeText(candidate.title),
+        org: normalizeSelectedResumeText(candidate.org),
+        start_date: normalizeSelectedResumeText(candidate.start_date) || undefined,
+        end_date: normalizeSelectedResumeText(candidate.end_date) || undefined,
+        star: {
+          s: normalizeSelectedExperienceText((candidate.star as Record<string, unknown> | undefined)?.s, SELECTED_EXPERIENCE_STAR_LIMIT),
+          t: normalizeSelectedExperienceText((candidate.star as Record<string, unknown> | undefined)?.t, SELECTED_EXPERIENCE_STAR_LIMIT),
+          a: normalizeSelectedExperienceText((candidate.star as Record<string, unknown> | undefined)?.a, SELECTED_EXPERIENCE_STAR_LIMIT),
+          r: normalizeSelectedExperienceText((candidate.star as Record<string, unknown> | undefined)?.r, SELECTED_EXPERIENCE_STAR_LIMIT),
+        },
+      }];
+    }),
+    educations: rawEducations.flatMap((item) => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+      const candidate = item as Record<string, unknown>;
+      const id = normalizeSelectedResumeText(candidate.id);
+      if (!id) {
+        return [];
+      }
+      return [{
+        id,
+        school: normalizeSelectedResumeText(candidate.school),
+        major: normalizeSelectedResumeText(candidate.major),
+        degree: normalizeSelectedResumeText(candidate.degree),
+        start_date: normalizeSelectedResumeText(candidate.start_date) || undefined,
+        end_date: normalizeSelectedResumeText(candidate.end_date) || undefined,
+        gpa: normalizeSelectedResumeText(candidate.gpa) || undefined,
+        courses: normalizeSelectedResumeText(candidate.courses) || undefined,
+      }];
+    }),
+    certifications: rawCertifications.flatMap((item) => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+      const candidate = item as Record<string, unknown>;
+      const id = normalizeSelectedResumeText(candidate.id);
+      if (!id) {
+        return [];
+      }
+      return [{
+        id,
+        name: normalizeSelectedResumeText(candidate.name),
+        issuer: normalizeSelectedResumeText(candidate.issuer) || undefined,
+        issue_date: normalizeSelectedResumeText(candidate.issue_date),
+      }];
+    }),
+    skills: rawSkills.flatMap((item) => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+      const candidate = item as Record<string, unknown>;
+      const id = normalizeSelectedResumeText(candidate.id);
+      if (!id) {
+        return [];
+      }
+      return [{
+        id,
+        name: normalizeSelectedResumeText(candidate.name),
+        category: normalizeSelectedResumeText(candidate.category),
+      }];
+    }),
+  };
+};
+
+const normalizeSelectedResume = (value: unknown): AssistantSelectedResume | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const resumeId = normalizeSelectedResumeText(candidate.resumeId ?? candidate.resume_id);
+  const resumeName = normalizeSelectedResumeText(candidate.resumeName ?? candidate.resume_name, SELECTED_RESUME_NAME_LIMIT);
+  if (!resumeId || !resumeName) {
+    return null;
+  }
+  const normalized: AssistantSelectedResume = {
+    resumeId,
+    resumeName,
+    snapshot: normalizeSelectedResumeSnapshot(candidate.snapshot),
+  };
+  const masterId = normalizeSelectedResumeText(candidate.masterId ?? candidate.master_id);
+  if (masterId) {
+    normalized.masterId = masterId;
+  }
+  const jdContext = normalizeSelectedResumeText(candidate.jdContext ?? candidate.jd_context, SELECTED_RESUME_JD_LIMIT);
+  if (jdContext) {
+    normalized.jdContext = jdContext;
+  }
+  return normalized;
+};
+
+const hasResumeJDContext = (resume: Resume) => {
+  const jdAnalysis = resume.config?.jdAnalysis;
+  if (!jdAnalysis || typeof jdAnalysis !== 'object') {
+    return false;
+  }
+  const jdText = typeof jdAnalysis.jdText === 'string' ? jdAnalysis.jdText.trim() : '';
+  if (jdText) {
+    return true;
+  }
+  const result = jdAnalysis.result;
+  if (!result || typeof result !== 'object') {
+    return false;
+  }
+  const extractedJdText = typeof (result as Record<string, unknown>).extractedJdText === 'string'
+    ? (result as Record<string, unknown>).extractedJdText
+    : typeof (result as Record<string, unknown>).extracted_jd_text === 'string'
+      ? (result as Record<string, unknown>).extracted_jd_text
+      : '';
+  const summary = typeof (result as Record<string, unknown>).summary === 'string'
+    ? (result as Record<string, unknown>).summary
+    : '';
+  return Boolean(extractedJdText?.trim() || summary.trim());
 };
 
 const createAttachmentSelectionId = () => {
@@ -304,6 +468,10 @@ const readMessageSelectedExperiences = (message: AssistantMessage): AssistantSel
     };
     return [normalized];
   });
+};
+
+const readMessageSelectedResume = (message: AssistantMessage): AssistantSelectedResume | null => {
+  return normalizeSelectedResume(message.content_json?.selected_resume);
 };
 
 const buildResumeExperienceOverrideOperation = (draft: Extract<AssistantDraftCard, { type: 'experience' }>['data']) => {
@@ -470,10 +638,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [composerAttachment, setComposerAttachment] = useState<AssistantComposerAttachment | null>(null);
+  const [selectedResume, setSelectedResume] = useState<AssistantSelectedResume | null>(null);
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [pickerExperiences, setPickerExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [isExperiencePickerOpen, setIsExperiencePickerOpen] = useState(false);
   const [isLoadingPickerExperiences, setIsLoadingPickerExperiences] = useState(false);
+  const [pickerResumes, setPickerResumes] = useState<ResumePickerItem[]>([]);
+  const [isResumePickerOpen, setIsResumePickerOpen] = useState(false);
+  const [isLoadingPickerResumes, setIsLoadingPickerResumes] = useState(false);
+  const [isApplyingPickerResume, setIsApplyingPickerResume] = useState(false);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
@@ -483,12 +656,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const callbackOnlySessionIdsRef = useRef<Set<string>>(new Set());
   const selectedSessionIdRef = useRef<string | null>(null);
   const preserveComposerAttachmentOnNextSelectionRef = useRef(false);
+  const draftSelectedResumeBySessionRef = useRef<Map<string, AssistantSelectedResume>>(new Map());
+  const draftLaunchRequestRef = useRef<AssistantLaunchRequest | null>(null);
   const detailRequestIdRef = useRef(0);
   const sessionsRef = useRef<AssistantSession[]>([]);
   const sessionMutationSeqsRef = useRef<Map<string, number>>(new Map());
   const deletedSessionSeqsRef = useRef<Map<string, number>>(new Map());
   const sessionMutationCounterRef = useRef(0);
   const messageMutationSeqRef = useRef(0);
+  const suppressAutoSelectSessionRef = useRef(false);
+
+  if (pendingLaunchRequest?.prefillResume && !pendingLaunchRequest.initialUserMessage) {
+    suppressAutoSelectSessionRef.current = true;
+  }
   const composerHeightRef = useRef<number | null>(null);
   const lastMirroredDraftInputRef = useRef(draftInput);
 
@@ -531,6 +711,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const clearSelectedExperiences = useCallback(() => {
     setSelectedExperiences([]);
+  }, []);
+
+  const clearSelectedResume = useCallback(() => {
+    setSelectedResume(null);
+  }, []);
+
+  const persistDraftSelectedResume = useCallback((sessionId: string | null | undefined, resume: AssistantSelectedResume | null) => {
+    if (!sessionId) {
+      return;
+    }
+    if (resume) {
+      draftSelectedResumeBySessionRef.current.set(sessionId, resume);
+      return;
+    }
+    draftSelectedResumeBySessionRef.current.delete(sessionId);
   }, []);
 
   const clearComposerAttachmentIfMatches = useCallback((target: AssistantComposerAttachment | null) => {
@@ -588,6 +783,77 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   }, [error, isLoadingPickerExperiences]);
 
+  const openResumePicker = useCallback(async () => {
+    setIsResumePickerOpen(true);
+    if (isLoadingPickerResumes) {
+      return;
+    }
+    setIsLoadingPickerResumes(true);
+    try {
+      const rows = await resumeService.list();
+      setPickerResumes(rows.map((item) => ({
+        id: item.id,
+        title: item.title || '未命名简历',
+        targetRole: item.target_role || '',
+        updatedAt: item.updated_at,
+        hasJD: hasResumeJDContext(item),
+      })));
+    } catch (loadError) {
+      console.error('[AIAssistant] Failed to load resumes for picker:', loadError);
+      error('加载简历列表失败，请稍后重试');
+    } finally {
+      setIsLoadingPickerResumes(false);
+    }
+  }, [error, isLoadingPickerResumes]);
+
+  const handleConfirmSelectedResume = useCallback(async (resumeId: string) => {
+    setIsApplyingPickerResume(true);
+    try {
+      const resumes = pickerResumes.length > 0 ? pickerResumes : (await resumeService.list()).map((item) => ({
+        id: item.id,
+        title: item.title || '未命名简历',
+        targetRole: item.target_role || '',
+        updatedAt: item.updated_at,
+        hasJD: hasResumeJDContext(item),
+      }));
+      if (pickerResumes.length === 0) {
+        setPickerResumes(resumes);
+      }
+      const resumeList = await resumeService.list();
+      const selectedResumeRecord = resumeList.find((item) => item.id === resumeId);
+      if (!selectedResumeRecord) {
+        throw new Error('resume_not_found');
+      }
+      const [detail, educations, certifications, skills] = await Promise.all([
+        resumeService.get(resumeId),
+        experienceService.listAll('education'),
+        certificationsService.list(),
+        skillsService.list(),
+      ]);
+      const nextSelectedResume = normalizeSelectedResume(
+        buildSelectedResumeFromResources(selectedResumeRecord, detail, educations, certifications, skills),
+      );
+      if (!selectedSessionIdRef.current) {
+        suppressAutoSelectSessionRef.current = true;
+        const draftLaunchRequest = draftLaunchRequestRef.current;
+        if (draftLaunchRequest && nextSelectedResume) {
+          draftLaunchRequestRef.current = {
+            ...draftLaunchRequest,
+            prefillResume: nextSelectedResume,
+          };
+        }
+      }
+      setSelectedResume(nextSelectedResume);
+      persistDraftSelectedResume(selectedSessionIdRef.current, nextSelectedResume);
+      setIsResumePickerOpen(false);
+    } catch (applyError) {
+      console.error('[AIAssistant] Failed to attach selected resume:', applyError);
+      error('带入简历失败，请稍后重试');
+    } finally {
+      setIsApplyingPickerResume(false);
+    }
+  }, [error, pickerResumes, persistDraftSelectedResume]);
+
   const scrollToBottom = useCallback(() => {
     if (!messageViewportRef.current) {
       return;
@@ -608,6 +874,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setSessionsState([]);
       setSelectedSessionId(null);
       setMessages([]);
+      clearSelectedResume();
       return;
     }
     setIsLoadingSessions(true);
@@ -621,20 +888,23 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         sessionMutationSeqsRef.current,
         deletedSessionSeqsRef.current,
       );
-      setSessionsState(nextSessions);
-      setSelectedSessionId((current) => {
-        if (current && nextSessions.some((session) => session.id === current)) {
-          return current;
-        }
-        return nextSessions[0]?.id ?? null;
-      });
-    } catch (loadError) {
-      console.error('[AIAssistant] Failed to load sessions:', loadError);
-      error('加载 AI 助理会话失败，请稍后重试');
+        setSessionsState(nextSessions);
+        setSelectedSessionId((current) => {
+          if (current && nextSessions.some((session) => session.id === current)) {
+            return current;
+          }
+          if (suppressAutoSelectSessionRef.current) {
+            return null;
+          }
+          return nextSessions[0]?.id ?? null;
+        });
+      } catch (loadError) {
+        console.error('[AIAssistant] Failed to load sessions:', loadError);
+        error('加载 AI 助理会话失败，请稍后重试');
     } finally {
       setIsLoadingSessions(false);
     }
-  }, [error, isAuthenticated, setSessionsState]);
+  }, [clearSelectedResume, error, isAuthenticated, setSessionsState]);
 
   const loadSessionDetail = useCallback(async (sessionId: string) => {
     const requestId = ++detailRequestIdRef.current;
@@ -678,9 +948,25 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [loadSessions]);
 
   useEffect(() => {
-    if (!selectedSessionId || !isAuthenticated) {
+    if (!isAuthenticated) {
+      draftLaunchRequestRef.current = null;
+      suppressAutoSelectSessionRef.current = false;
       clearComposerAttachment();
       clearSelectedExperiences();
+      clearSelectedResume();
+      preserveComposerAttachmentOnNextSelectionRef.current = false;
+      markMessagesMutated();
+      setMessages([]);
+      setAppliedMessageIds(new Set());
+      setActiveThought('');
+      return;
+    }
+    if (!selectedSessionId) {
+      clearComposerAttachment();
+      clearSelectedExperiences();
+      if (!suppressAutoSelectSessionRef.current) {
+        clearSelectedResume();
+      }
       preserveComposerAttachmentOnNextSelectionRef.current = false;
       markMessagesMutated();
       setMessages([]);
@@ -693,15 +979,24 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!preserveComposerAttachment) {
       clearComposerAttachment();
     }
+    const draftSelectedResume = draftSelectedResumeBySessionRef.current.get(selectedSessionId) ?? null;
+    if (!draftSelectedResume) {
+      clearSelectedResume();
+    } else {
+      setSelectedResume(draftSelectedResume);
+    }
     markMessagesMutated();
     setMessages([]);
     setAppliedMessageIds(new Set());
     setActiveThought('');
     void loadSessionDetail(selectedSessionId);
-  }, [clearComposerAttachment, clearSelectedExperiences, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
+  }, [clearComposerAttachment, clearSelectedExperiences, clearSelectedResume, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
+    if (selectedSessionId) {
+      suppressAutoSelectSessionRef.current = false;
+    }
   }, [selectedSessionId]);
 
   useEffect(() => {
@@ -783,34 +1078,40 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const commitCreatedSession = useCallback((
     created: AssistantSession,
-    options?: { selectSession?: boolean; preserveAttachment?: boolean },
+    options?: { selectSession?: boolean; preserveAttachment?: boolean; selectedResumeDraft?: AssistantSelectedResume | null },
   ) => {
+    suppressAutoSelectSessionRef.current = false;
+    draftLaunchRequestRef.current = null;
     markSessionMutated(created.id);
     setSessionsState((prev) => mergeAssistantSessions(prev, [created]));
     if (options?.selectSession === false) {
       return;
     }
     preserveComposerAttachmentOnNextSelectionRef.current = Boolean(options?.preserveAttachment);
+    persistDraftSelectedResume(created.id, options?.selectedResumeDraft ?? null);
     if (!options?.preserveAttachment) {
       clearComposerAttachment();
     }
+    setSelectedResume(options?.selectedResumeDraft ?? null);
     clearSelectedExperiences();
     selectedSessionIdRef.current = created.id;
     setSelectedSessionId(created.id);
     markMessagesMutated();
     setMessages([]);
     setInputValue('');
-  }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionMutated, setSessionsState]);
+  }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionMutated, persistDraftSelectedResume, setSessionsState]);
 
   const cleanupSupersededSession = useCallback(async (sessionId: string) => {
     applyHandlerMapRef.current.delete(sessionId);
     callbackOnlySessionIdsRef.current.delete(sessionId);
+    draftSelectedResumeBySessionRef.current.delete(sessionId);
     markSessionDeleted(sessionId);
     setSessionsState((prev) => prev.filter((session) => session.id !== sessionId));
     const wasSelected = selectedSessionIdRef.current === sessionId;
     if (wasSelected) {
       clearComposerAttachment();
       clearSelectedExperiences();
+      clearSelectedResume();
       selectedSessionIdRef.current = null;
       setSelectedSessionId((current) => (current === sessionId ? null : current));
       markMessagesMutated();
@@ -824,7 +1125,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     } catch (cleanupError) {
       console.warn('[AIAssistant] Failed to cleanup superseded launch session:', cleanupError);
     }
-  }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionDeleted, setSessionsState]);
+  }, [clearComposerAttachment, clearSelectedExperiences, clearSelectedResume, markMessagesMutated, markSessionDeleted, setSessionsState]);
 
   const createSessionRecord = useCallback(async (context?: AssistantEntryContext) => {
     const mode = context?.mode ?? 'general';
@@ -838,15 +1139,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleCreateSession = useCallback(async (
     context?: AssistantEntryContext,
-    options?: { seedInput?: boolean; preserveAttachment?: boolean },
+    options?: { seedInput?: boolean; preserveAttachment?: boolean; selectedResumeDraft?: AssistantSelectedResume | null },
   ) => {
     const created = await createSessionRecord(context);
     commitCreatedSession(created, {
       preserveAttachment: options?.preserveAttachment,
+      selectedResumeDraft: options?.selectedResumeDraft,
     });
-    void loadSessions();
     return created;
-  }, [commitCreatedSession, createSessionRecord, loadSessions]);
+  }, [commitCreatedSession, createSessionRecord]);
 
   const persistSessionSnapshot = useCallback((sessionId: string, title?: string, draftCard?: AssistantDraftCard | null) => {
     markSessionMutated(sessionId);
@@ -876,6 +1177,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       userMessage: string;
       attachment?: AssistantComposerAttachment | null;
       selectedExperiences?: AssistantSelectedExperience[];
+      selectedResume?: AssistantSelectedResume | null;
     },
     mode?: AssistantMode,
     options?: { shouldAbort?: () => boolean },
@@ -883,13 +1185,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     const trimmedMessage = payload.userMessage.trim();
     const attachment = payload.attachment ?? null;
     const selectedExperienceItems = payload.selectedExperiences ?? [];
-    if (!trimmedMessage && !attachment && selectedExperienceItems.length === 0) {
+    const selectedResumeItem = payload.selectedResume ?? null;
+    if (!trimmedMessage && !attachment && selectedExperienceItems.length === 0 && !selectedResumeItem) {
       return;
     }
     const effectiveMessage = trimmedMessage
       || (attachment
         ? '请先阅读我上传的附件，并帮我整理其中的信息。'
-        : '请优先参考我选中的经历，并结合当前上下文给出针对性的整理与建议。');
+        : selectedResumeItem
+          ? '请结合我选择的简历和对应 JD，给出针对性的简历修改建议，并可按需生成模拟面试题。'
+          : '请优先参考我选中的经历，并结合当前上下文给出针对性的整理与建议。');
     const now = new Date().toISOString();
     const optimisticMessageId = `local-user-${now}-${Math.random()}`;
     const optimisticUserMessage: AssistantMessage = {
@@ -908,6 +1213,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         ...(selectedExperienceItems.length > 0 ? {
           selected_experiences: selectedExperienceItems,
         } : {}),
+        ...(selectedResumeItem ? {
+          selected_resume: selectedResumeItem,
+        } : {}),
       },
       created_at: now,
     };
@@ -918,6 +1226,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setMessages((prev) => [...prev, optimisticUserMessage]);
       setInputValue((prev) => (prev.trim() === trimmedMessage ? '' : prev));
       setSelectedExperiences([]);
+      persistDraftSelectedResume(sessionId, null);
+      setSelectedResume(null);
     }
     try {
       const result = await aiService.sendAssistantMessage(
@@ -928,6 +1238,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           mode,
           attachment: attachment?.file ?? null,
           selectedExperiences: selectedExperienceItems,
+          selectedResume: selectedResumeItem,
         },
         (event: AssistantStreamEvent) => {
           if (selectedSessionIdRef.current !== sessionId) {
@@ -973,6 +1284,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         setActiveThought('');
         clearComposerAttachmentIfMatches(attachment);
         setSelectedExperiences([]);
+        persistDraftSelectedResume(sessionId, null);
+        setSelectedResume(null);
         void loadSessionDetail(sessionId);
       }
     } catch (sendError) {
@@ -983,12 +1296,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessageId));
         setInputValue((current) => (current.trim() ? current : trimmedMessage));
         setSelectedExperiences((current) => (current.length > 0 ? current : selectedExperienceItems));
+        persistDraftSelectedResume(sessionId, selectedResumeItem);
+        setSelectedResume((current) => current ?? selectedResumeItem);
       }
       error('AI 助理回复失败，请稍后重试');
     } finally {
       setSendingCount((count) => Math.max(0, count - 1));
     }
-  }, [clearComposerAttachmentIfMatches, error, loadSessionDetail, markMessagesMutated, persistSessionSnapshot]);
+  }, [clearComposerAttachmentIfMatches, error, loadSessionDetail, markMessagesMutated, persistDraftSelectedResume, persistSessionSnapshot]);
 
   useEffect(() => {
     if (!pendingLaunchRequest || !isAuthenticated) {
@@ -999,12 +1314,30 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     const bootstrap = async () => {
       try {
         const mode = pendingLaunchRequest.context.mode ?? 'general';
+        const normalizedPrefillResume = normalizeSelectedResume(pendingLaunchRequest.prefillResume);
+        if (!pendingLaunchRequest.initialUserMessage) {
+          draftLaunchRequestRef.current = pendingLaunchRequest;
+          selectedSessionIdRef.current = null;
+          setSelectedSessionId(null);
+          clearComposerAttachment();
+          clearSelectedExperiences();
+          markMessagesMutated();
+          setMessages([]);
+          setAppliedMessageIds(new Set());
+          setActiveThought('');
+          setSelectedResume(normalizedPrefillResume);
+          setInputValue('');
+          return;
+        }
         const created = await createSessionRecord(pendingLaunchRequest.context);
         if (cancelled) {
           await cleanupSupersededSession(created.id);
           return;
         }
-        commitCreatedSession(created, { selectSession: true });
+        commitCreatedSession(created, {
+          selectSession: true,
+          selectedResumeDraft: normalizedPrefillResume,
+        });
         if (cancelled) {
           await cleanupSupersededSession(created.id);
           return;
@@ -1022,7 +1355,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           }
           await sendMessage(
             created.id,
-            { userMessage: pendingLaunchRequest.initialUserMessage },
+            {
+              userMessage: pendingLaunchRequest.initialUserMessage,
+              selectedResume: pendingLaunchRequest.prefillResume ?? null,
+            },
             pendingLaunchRequest.context.mode,
             { shouldAbort: () => cancelled },
           );
@@ -1042,20 +1378,29 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [cleanupSupersededSession, commitCreatedSession, createSessionRecord, error, isAuthenticated, onConsumeLaunchRequest, pendingLaunchRequest, sendMessage]);
+  }, [clearComposerAttachment, clearSelectedExperiences, cleanupSupersededSession, commitCreatedSession, createSessionRecord, error, isAuthenticated, markMessagesMutated, onConsumeLaunchRequest, pendingLaunchRequest, sendMessage]);
 
   const handleSubmit = useCallback(async () => {
     const nextInput = inputValue.trim();
-    if (!nextInput && !composerAttachment && selectedExperiences.length === 0) {
+    if (!nextInput && !composerAttachment && selectedExperiences.length === 0 && !selectedResume) {
       return;
     }
     let activeSessionId = selectedSessionId;
     let activeMode: AssistantMode | undefined = selectedSession?.mode;
     if (!activeSessionId) {
-      const created = await handleCreateSession(undefined, {
+      const draftLaunchRequest = draftLaunchRequestRef.current;
+      const created = await handleCreateSession(draftLaunchRequest?.context, {
         seedInput: false,
         preserveAttachment: Boolean(composerAttachment),
+        selectedResumeDraft: selectedResume,
       });
+      if (draftLaunchRequest?.applyDraftHandler) {
+        applyHandlerMapRef.current.set(created.id, draftLaunchRequest.applyDraftHandler);
+      }
+      if (draftLaunchRequest?.callbackOnly) {
+        callbackOnlySessionIdsRef.current.add(created.id);
+      }
+      draftLaunchRequestRef.current = null;
       activeSessionId = created.id;
       activeMode = created.mode;
     }
@@ -1068,10 +1413,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         userMessage: nextInput,
         attachment: composerAttachment,
         selectedExperiences,
+        selectedResume,
       },
       activeMode,
     );
-  }, [composerAttachment, handleCreateSession, inputValue, selectedExperiences, selectedSession?.mode, selectedSessionId, sendMessage]);
+  }, [composerAttachment, handleCreateSession, inputValue, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleApplyDraft = useCallback(async (messageId: string, card: AssistantDraftCard) => {
     if (!selectedSession) {
@@ -1088,6 +1434,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       let applied = false;
       let appliedMessage: AssistantMessage | null = null;
       let shouldPersistAppliedMarker = true;
+      let handledByCustomApply = false;
       if (
         card.type === 'experience'
         && selectedSession.entry_source === 'resume_editor'
@@ -1110,10 +1457,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             callbackOnly ? { skipApply: true } : undefined,
           ),
         });
-        if (callbackOnly) {
+        handledByCustomApply = applied;
+        if (applied && callbackOnly) {
           shouldPersistAppliedMarker = false;
         }
-      } else if (card.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
+      }
+      if (!handledByCustomApply && card.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
         const context = selectedSession.context_json ?? {};
         const resumeId = readContextString(context, 'resumeId');
         const masterId = readContextString(context, 'masterId');
@@ -1153,13 +1502,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           ],
         });
         applied = true;
-      } else if (card.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
+      } else if (!handledByCustomApply && card.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
         appliedMessage = await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
         applied = true;
-      } else if (callbackOnly) {
+      } else if (!handledByCustomApply && callbackOnly) {
         error('这个草稿需要在原编辑上下文中确认，请从对应入口重新打开会话。');
         return;
-      } else {
+      } else if (!handledByCustomApply) {
         appliedMessage = await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
         applied = true;
       }
@@ -1213,6 +1562,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleNewChat = useCallback(async (mode: AssistantMode = 'general') => {
     try {
+      draftLaunchRequestRef.current = null;
+      suppressAutoSelectSessionRef.current = false;
       const session = await handleCreateSession({ mode, entrySource: 'direct' });
       setSelectedSessionId(session.id);
       setIsMobileHistoryOpen(false);
@@ -1223,6 +1574,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [error, handleCreateSession]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
+    draftLaunchRequestRef.current = null;
+    suppressAutoSelectSessionRef.current = false;
     setSelectedSessionId(sessionId);
     setIsMobileHistoryOpen(false);
   }, []);
@@ -1239,8 +1592,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setIsDeletingSession(true);
     markSessionDeleted(deleteConfirmId);
     setSessionsState((prev) => prev.filter(s => s.id !== deleteConfirmId));
+    draftSelectedResumeBySessionRef.current.delete(deleteConfirmId);
     if (wasSelected) {
       clearComposerAttachment();
+      clearSelectedResume();
       selectedSessionIdRef.current = null;
       setSelectedSessionId(null);
       markMessagesMutated();
@@ -1266,7 +1621,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setIsDeletingSession(false);
       setDeleteConfirmId(null);
     }
-  }, [clearComposerAttachment, deleteConfirmId, error, markMessagesMutated, markSessionDeleted, setSessionsState, success]);
+  }, [clearComposerAttachment, clearSelectedResume, deleteConfirmId, error, markMessagesMutated, markSessionDeleted, setSessionsState, success]);
 
   const handleRenameSession = useCallback(async (e: React.MouseEvent, session: AssistantSession) => {
     e.stopPropagation();
@@ -1312,6 +1667,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           setSelectedExperiences(pickerExperiences.filter((item) => cappedMasterIds.includes(item.masterId)));
           setIsExperiencePickerOpen(false);
         }}
+      />
+      <ResumePicker
+        isOpen={isResumePickerOpen}
+        items={pickerResumes}
+        selectedId={selectedResume?.resumeId ?? null}
+        isLoading={isLoadingPickerResumes}
+        isApplying={isApplyingPickerResume}
+        onClose={() => setIsResumePickerOpen(false)}
+        onConfirm={(resumeId) => void handleConfirmSelectedResume(resumeId)}
       />
       {!isAuthenticated ? (
         <div className="flex flex-1 items-center justify-center p-6">
@@ -1551,6 +1915,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
                     const attachment = readMessageAttachmentPreview(message);
                     const selectedExperiencePreviews = readMessageSelectedExperiences(message);
+                    const selectedResumePreview = readMessageSelectedResume(message);
                     return (
                       <MessageItem
                         key={message.id}
@@ -1558,6 +1923,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                         content={text}
                         attachment={attachment}
                         selectedExperiences={selectedExperiencePreviews}
+                        selectedResume={selectedResumePreview}
                       />
                     );
                   })}
@@ -1590,11 +1956,28 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   isSending={isSending}
                   placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
                   plusActions={[
+                    { key: 'pick-resume', label: '选择简历', onClick: () => void openResumePicker() },
                     { key: 'pick-experience', label: '选择经历', onClick: () => void openExperiencePicker() },
                     { key: 'upload-attachment', label: '上传附件', onClick: openAttachmentPicker },
                   ]}
                   attachmentPreview={composerAttachment}
                   onRemoveAttachment={clearComposerAttachment}
+                  selectedResume={selectedResume}
+                  onRemoveSelectedResume={() => {
+                    if (!selectedSessionIdRef.current) {
+                      const draftLaunchRequest = draftLaunchRequestRef.current;
+                      if (draftLaunchRequest) {
+                        draftLaunchRequestRef.current = {
+                          ...draftLaunchRequest,
+                          prefillResume: null,
+                        };
+                      } else {
+                        suppressAutoSelectSessionRef.current = false;
+                      }
+                    }
+                    persistDraftSelectedResume(selectedSessionIdRef.current, null);
+                    clearSelectedResume();
+                  }}
                   selectedExperiences={selectedExperiences}
                   onRemoveSelectedExperience={(masterId) => {
                     setSelectedExperiences((current) => current.filter((item) => item.masterId !== masterId));

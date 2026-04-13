@@ -16,8 +16,9 @@ import {
     type PolishMode,
     type PersonalSummaryStreamEvent,
 } from '../../services/aiService';
-import type { Certification as CertificationRecord } from '../../services/certificationsService';
-import type { ExperienceListItem } from '../../services/experienceService';
+import { certificationsService, type Certification as CertificationRecord } from '../../services/certificationsService';
+import { experienceService, type ExperienceDetail, type ExperienceListItem } from '../../services/experienceService';
+import { skillsService } from '../../services/skillsService';
 import type {
     CertificationView,
     EducationView,
@@ -52,6 +53,7 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
+import { buildJDPolishContext } from '../../utils/assistantResumeContext';
 import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
     normalizeAiRichText,
@@ -644,6 +646,7 @@ const sortSnapshotEntriesById = <T extends { id: string }>(items: T[]) => (
 
 const buildStableResumeSnapshotText = (snapshot: ReturnType<typeof buildResumeAISnapshot>) => JSON.stringify({
     experiences: sortSnapshotEntriesById(snapshot.experiences),
+    educations: sortSnapshotEntriesById(snapshot.educations),
     certifications: sortSnapshotEntriesById(snapshot.certifications),
     skills: sortSnapshotEntriesById(snapshot.skills),
 });
@@ -725,31 +728,6 @@ const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText: 
     const company = sanitizeAutoNamePart(analysisResult.company)
         || extractFirstMatch(jdText, JD_COMPANY_PATTERNS);
     return buildAutoResumeName(jobTitle, company);
-};
-
-const buildJDPolishContext = (
-    jdText: string,
-    analysisResult: JDAnalysisResult | null,
-    isOutdated: boolean
-) => {
-    const trimmedJdText = jdText.trim();
-    if (trimmedJdText) {
-        return trimmedJdText;
-    }
-    if (!analysisResult || isOutdated) {
-        return '';
-    }
-    if (analysisResult.extractedJdText?.trim()) {
-        return analysisResult.extractedJdText.trim();
-    }
-    const contextLines = [
-        analysisResult.jobTitle?.trim() ? `目标岗位：${analysisResult.jobTitle.trim()}` : '',
-        analysisResult.company?.trim() ? `目标公司：${analysisResult.company.trim()}` : '',
-        analysisResult.summary?.trim() ? `岗位摘要：${analysisResult.summary.trim()}` : '',
-        analysisResult.jobKeywords?.length ? `岗位关键词：${analysisResult.jobKeywords.join('、')}` : '',
-        analysisResult.missingKeywords?.length ? `重点补强：${analysisResult.missingKeywords.join('、')}` : '',
-    ].filter(Boolean);
-    return contextLines.join('\n');
 };
 
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
@@ -3844,14 +3822,286 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => buildResumeAISnapshot(
             [...selectedWorkItems, ...selectedProjectItems],
             selectedCertifications,
-            selectedSkillGroups
+            selectedSkillGroups,
+            selectedEducations,
         ),
-        [selectedCertifications, selectedProjectItems, selectedSkillGroups, selectedWorkItems]
+        [selectedCertifications, selectedEducations, selectedProjectItems, selectedSkillGroups, selectedWorkItems]
     );
     const selectedResumeSnapshotText = useMemo(
         () => buildStableResumeSnapshotText(selectedResumeSnapshot),
         [selectedResumeSnapshot]
     );
+    const handleApplyResumeAssistantDraft = useCallback(async (
+        draftCard: Parameters<NonNullable<AssistantLaunchRequest['applyDraftHandler']>>[0],
+        _meta: AssistantDraftApplyMeta
+    ) => {
+        const applyEducationAssistantDetail = (
+            detail: ExperienceDetail,
+            options?: { replacedId?: string }
+        ) => {
+            const nextItem: ExperienceListItem = {
+                master: detail.master,
+                latest_version: detail.latest_version,
+            };
+            const nextView = buildEducationView(nextItem);
+            setEducationSourceMap((prev) => {
+                const next = new Map(prev);
+                if (options?.replacedId && options.replacedId !== detail.master.id) {
+                    next.delete(options.replacedId);
+                }
+                next.set(detail.master.id, nextItem);
+                return next;
+            });
+            setEducations((prev) => {
+                const matchId = options?.replacedId ?? detail.master.id;
+                const targetIndex = prev.findIndex((item) => item.id === matchId || item.id === detail.master.id);
+                const next = prev.filter((item) => item.id !== detail.master.id && item.id !== options?.replacedId);
+                if (targetIndex >= 0) {
+                    next.splice(targetIndex, 0, nextView);
+                    return next;
+                }
+                return [...next, nextView];
+            });
+            setSelectedEduIds((prev) => {
+                const next = new Set(prev);
+                if (options?.replacedId && options.replacedId !== detail.master.id) {
+                    next.delete(options.replacedId);
+                }
+                next.add(detail.master.id);
+                return next;
+            });
+        };
+
+        if (draftCard.type === 'certification') {
+            const record = await certificationsService.create({
+                name: draftCard.data.name.trim(),
+                issuer: draftCard.data.issuer.trim() || undefined,
+                issue_date: draftCard.data.issueDate.trim() || undefined,
+                expiry_date: draftCard.data.expiryDate.trim() || undefined,
+                credential_id: draftCard.data.credentialId.trim() || undefined,
+                credential_url: draftCard.data.credentialUrl.trim() || undefined,
+                description: draftCard.data.description.trim() || undefined,
+            });
+            const nextCertifications = await certificationsService.list({ force: true });
+            setCertifications(nextCertifications.map(buildCertificationView).sort(compareCertificationByDateDesc));
+            setCertificationSourceMap(new Map(nextCertifications.map((item) => [item.id, item])));
+            setSelectedCertIds((prev) => {
+                const next = new Set(prev);
+                next.add(record.id);
+                return next;
+            });
+            return true;
+        }
+
+        if (draftCard.type === 'skill_group') {
+            const category = draftCard.data.category.trim() || undefined;
+            const skillPayloads = Array.from(
+                draftCard.data.skills.reduce((map, item) => {
+                    const name = item.name.trim();
+                    if (!name || map.has(name)) {
+                        return map;
+                    }
+                    map.set(name, {
+                        name,
+                        category,
+                        proficiency: typeof item.proficiency === 'number' ? item.proficiency : undefined,
+                    });
+                    return map;
+                }, new Map<string, { name: string; category?: string; proficiency?: number }>())
+                    .values()
+            );
+            if (skillPayloads.length === 0) {
+                throw new Error('缺少技能名称，无法录入技能组');
+            }
+            const createdSkills = await Promise.all(
+                skillPayloads.map((payload) => skillsService.create(payload))
+            );
+            const nextSkills = await skillsService.list({ force: true });
+            setSkillGroups(buildSkillGroups(nextSkills));
+            setSelectedSkillIds((prev) => {
+                const next = new Set(prev);
+                createdSkills.forEach((item) => next.add(item.id));
+                return next;
+            });
+            return true;
+        }
+
+        if (draftCard.type === 'experience' && draftCard.data.category === 'education') {
+            const targetMasterId = draftCard.data.targetMasterId?.trim() || null;
+            const educationDraft: EducationEditDraft = {
+                school: draftCard.data.org.trim(),
+                major: draftCard.data.title.trim(),
+                degree: draftCard.data.star.s.trim(),
+                startDate: draftCard.data.startDate.trim(),
+                endDate: draftCard.data.isCurrent ? '至今' : draftCard.data.endDate.trim(),
+                gpa: draftCard.data.star.t.trim(),
+                courses: draftCard.data.star.a.trim(),
+            };
+            if (!educationDraft.major) {
+                throw new Error('缺少教育标题，无法录入教育经历');
+            }
+            const sourceItem = targetMasterId
+                ? (
+                    educationSourceMap.get(targetMasterId)
+                    ?? (() => {
+                        throw new Error('缺少教育经历源数据');
+                    })()
+                )
+                : null;
+            const payload = buildEducationVersionPayload(sourceItem, educationDraft);
+            const detail = targetMasterId
+                ? await experienceService.update(targetMasterId, { version: payload })
+                : await experienceService.create({
+                    category: 'education',
+                    version: payload,
+                });
+            applyEducationAssistantDetail(detail);
+            return true;
+        }
+
+        if (draftCard.type !== 'experience' || !resumeId) {
+            return false;
+        }
+
+        const title = draftCard.data.title.trim();
+        if (!title) {
+            throw new Error('缺少经历标题，无法回填到当前简历');
+        }
+
+        const buildAssemblyOverrideOperation = () => {
+            const overrides: Record<string, unknown> = {
+                star: draftCard.data.star,
+                is_current: Boolean(draftCard.data.isCurrent),
+            };
+            const clearOverrideKeys = new Set<string>();
+            const org = draftCard.data.org.trim();
+            const startDate = draftCard.data.startDate.trim();
+            const endDate = draftCard.data.isCurrent ? '' : draftCard.data.endDate.trim();
+            if (title) {
+                overrides.title = title;
+            }
+            if (org) {
+                overrides.org = org;
+            }
+            if (startDate) {
+                overrides.start_date = startDate;
+            }
+            if (endDate) {
+                overrides.end_date = endDate;
+            } else {
+                clearOverrideKeys.add('end_date');
+            }
+            return {
+                overrides_json: overrides,
+                ...(clearOverrideKeys.size > 0 ? { clear_override_keys: Array.from(clearOverrideKeys) } : {}),
+            };
+        };
+
+        const resolveTargetLinkId = async () => {
+            const targetMasterId = draftCard.data.targetMasterId?.trim();
+            if (targetMasterId) {
+                const targetDetail = await experienceService.get(targetMasterId);
+                const linkId = await ensureFloatingPolishResumeLink(
+                    targetMasterId,
+                    targetDetail.latest_version?.id
+                );
+                if (!linkId) {
+                    throw new Error('无法创建目标经历与当前简历的关联');
+                }
+                return { masterId: targetMasterId, linkId };
+            }
+
+            const created = await experienceService.create({
+                category: draftCard.data.category,
+                version: {
+                    title,
+                    org: draftCard.data.org.trim() || undefined,
+                    start_date: draftCard.data.startDate.trim() || undefined,
+                    end_date: draftCard.data.isCurrent ? undefined : (draftCard.data.endDate.trim() || undefined),
+                    is_current: Boolean(draftCard.data.isCurrent),
+                    star: draftCard.data.star,
+                },
+            });
+            const createdMasterId = created.master.id;
+            const linkId = await ensureFloatingPolishResumeLink(
+                createdMasterId,
+                created.latest_version?.id
+            );
+            if (!linkId) {
+                throw new Error('无法将新经历添加到当前简历');
+            }
+            return { masterId: createdMasterId, linkId };
+        };
+
+        const { masterId, linkId } = await resolveTargetLinkId();
+        const detail = await resumeService.updateAssembly(resumeId, {
+            operations: [
+                {
+                    op: 'override',
+                    resume_experience_id: linkId,
+                    ...buildAssemblyOverrideOperation(),
+                },
+            ],
+        });
+        const nextMap = buildResumeExperienceMap(detail);
+        applyResumeDetail(detail);
+        setResumeExperienceMap(nextMap);
+        if (draftCard.data.category === 'education') {
+            setSelectedEduIds((prev) => {
+                const next = new Set(prev);
+                next.add(masterId);
+                return next;
+            });
+        } else {
+            setSelectedExpIds((prev) => {
+                const next = new Set(prev);
+                next.add(masterId);
+                return next;
+            });
+        }
+        return true;
+    }, [
+        applyResumeDetail,
+        compareCertificationByDateDesc,
+        buildCertificationView,
+        buildEducationView,
+        buildEducationVersionPayload,
+        buildSkillGroups,
+        educationSourceMap,
+        setCertifications,
+        setCertificationSourceMap,
+        setEducationSourceMap,
+        setEducations,
+        setSelectedCertIds,
+        setSelectedEduIds,
+        setSelectedSkillIds,
+        ensureFloatingPolishResumeLink,
+        resumeId,
+        setSkillGroups,
+        setResumeExperienceMap,
+    ]);
+    const handleLaunchResumeAssistant = useCallback(() => {
+        if (!resumeId || !onLaunchAssistant) {
+            return;
+        }
+        onLaunchAssistant({
+            context: {
+                mode: 'general',
+                entrySource: 'resume_editor',
+                title: `${resumeName || '未命名简历'} · AI 助理`,
+                contextJson: {
+                    resumeId,
+                },
+            },
+            prefillResume: {
+                resumeId,
+                resumeName: resumeName || '未命名简历',
+                snapshot: selectedResumeSnapshot,
+                ...(jdPolishContext ? { jdContext: jdPolishContext } : {}),
+            },
+            applyDraftHandler: handleApplyResumeAssistantDraft,
+        });
+    }, [handleApplyResumeAssistantDraft, jdPolishContext, onLaunchAssistant, resumeId, resumeName, selectedResumeSnapshot]);
     const editablePersonalSummary = useMemo(() => {
         if (hasPersonalSummaryOverride) {
             return personalSummary;
@@ -5168,6 +5418,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isExportingPdf={isExportingPdf}
                     isPreviewOverflowing={isPreviewOverflowing}
                     onOpenTemplateSelector={handleOpenTemplateSelector}
+                    onLaunchAssistant={handleLaunchResumeAssistant}
+                    canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
                 />
             </div>
             <div className="md:hidden">
@@ -5209,6 +5461,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     hasMissingAttachmentContext={hasMissingAttachmentContext}
                     isJDCollapsed={isJDCollapsed}
                     onJDCollapseChange={setIsJDCollapsed}
+                    onLaunchAssistant={handleLaunchResumeAssistant}
+                    canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
                 />
             </div>
             <div className="flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
