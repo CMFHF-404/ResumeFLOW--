@@ -167,3 +167,5 @@ async def mark_render_snapshot_consumed(
     record.consumed_at = _utc_now_aware()
     session.add(record)
     await session.commit()
+
+

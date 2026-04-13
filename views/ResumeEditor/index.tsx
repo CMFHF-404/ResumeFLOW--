@@ -3930,6 +3930,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedSkillGroups,
     ]);
     const isPreviewOverflowing = previewPrintMeasurement?.fits === false;
+    const overflowingSectionIds = useMemo(
+        () => new Set(previewPrintMeasurement?.overflowingSectionIds ?? []),
+        [previewPrintMeasurement]
+    );
     const personalSummaryContext = useMemo(
         () => ({
             profile: {
@@ -5287,6 +5291,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         previewContentRef={previewContentRef}
                         previewScope="editor"
                         showOverflowGuide={isPreviewOverflowing}
+                        overflowHighlightSectionIds={overflowingSectionIds}
                         lineHeight={lineHeight}
                         fontSize={fontSize}
                         listSpacingValue={listSpacingValue}
