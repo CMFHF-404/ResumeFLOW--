@@ -26,7 +26,7 @@ const buildFilterHiddenMessage = (
     if (hiddenCount <= 0) {
         return `暂无${label}`;
     }
-    return `当前有 ${hiddenCount}${unit}${label}因匹配度小于 ${matchScoreFilter}% 被隐藏`;
+    return `当前有${hiddenCount}${unit}${label}未满足 ${matchScoreFilter}% 分数要求`;
 };
 
 const formatHiddenSummary = (
@@ -302,10 +302,10 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         );
         const skillHidden = Math.max(0, totalSkillCount - filteredSkillCount);
         const segments = [
-            { label: '条工作经历', count: workHidden },
-            { label: '条项目经历', count: projectHidden },
-            { label: '项证书', count: certificationHidden },
-            { label: '项技能', count: skillHidden },
+            { label: '工作经历', count: workHidden },
+            { label: '项目经历', count: projectHidden },
+            { label: '证书', count: certificationHidden },
+            { label: '技能', count: skillHidden },
         ];
         const hiddenTotal = segments.reduce((sum, segment) => sum + segment.count, 0);
         return {
@@ -373,7 +373,10 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 >
                     <ArrowLeft className="w-3 h-3" /> 返回列表
                 </button>
-                <ExperienceEditor experience={experience} />
+                <ExperienceEditor
+                    experience={experience}
+                    isPolishPreviewing={isEditingExperiencePolishPreviewing}
+                />
             </div>
         );
     }
@@ -382,7 +385,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
             <div className="px-1 flex items-center justify-between gap-3">
                 <p className="text-xs text-gray-400 flex items-center gap-2">
-                    <CheckCircle2 className="w-3 h-3" /> 勾选以添加到简历
+                    <CheckCircle2 className="w-3 h-3" /> 当前可选添加经历项
                 </p>
                 <div className="flex items-center gap-2">
                     <MatchScoreFilter 
@@ -396,7 +399,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                         className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
-                        {isAutoAssembling ? '组装中...' : '一键组装'}
+                    {isAutoAssembling ? '正在生成…' : '一键重排'}
                     </button>
                 </div>
             </div>
@@ -413,9 +416,9 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 <div className="mx-1 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
                     <div className="flex items-start justify-between gap-3">
                         <span>
-                            当前已隐藏匹配度小于 {matchScoreFilter}% 的内容，已隐藏
-                            {hiddenSummary.text ? ` ${hiddenSummary.text}` : '部分内容'}。
-                        </span>
+                            当前匹配分数低于 {matchScoreFilter}% 的项不满足筛选条件
+                            {hiddenSummary.text ? ` ${hiddenSummary.text}` : '全部内容'}
+                    </span>
                         <button
                             type="button"
                             onClick={() => onMatchScoreFilterChange(0)}
@@ -512,9 +515,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
 
 type ExperienceEditorProps = {
     experience: ExperienceActions;
+    /** 当前是否有润色预览未确认，用于禁用保存按钮 */
+    isPolishPreviewing: boolean;
 };
 
-const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
+const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience, isPolishPreviewing }) => (
     <>
         <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2">
             <div className="grid grid-cols-2 gap-2">
@@ -620,8 +625,8 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience }) => (
                 <button
                     onClick={experience.handleSaveExperience}
                     className="text-xs font-semibold text-white bg-primary hover:bg-primary-dark px-4 py-1.5 rounded-md transition-colors disabled:opacity-60"
-                    disabled={experience.isSavingExperience || isEditingExperiencePolishPreviewing}
-                    title={isEditingExperiencePolishPreviewing ? '请先确认或撤销当前润色预览' : undefined}
+                    disabled={experience.isSavingExperience || isPolishPreviewing}
+                    title={isPolishPreviewing ? '请先确认或撤销当前润色预览' : undefined}
                 >
                     {experience.isSavingExperience ? '保存中...' : '保存'}
                 </button>

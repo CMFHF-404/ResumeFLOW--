@@ -32,8 +32,10 @@ export const AssistantDraftCardView: React.FC<{
   onApply: () => void;
 }> = ({ card, disabled, isApplying, onApply }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  // 仅在 experience 类型时读取这两个字段，避免联合类型无法收窄的 TS 报错
+  const hasTargetMaster = card.type === 'experience' && Boolean(card.data.targetMasterId);
   const experienceApplyHint = card.type === 'experience'
-    ? (card.data.targetMasterId ? '将更新现有经历' : '将新建经历')
+    ? (hasTargetMaster ? '将更新现有经历' : '将新建经历')
     : null;
   const experienceCategoryLabel = card.type === 'experience'
     ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
@@ -143,7 +145,7 @@ export const AssistantDraftCardView: React.FC<{
           </div>
           {experienceApplyHint ? (
             <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
-              card.data.targetMasterId
+              hasTargetMaster
                 ? 'border-amber-200 bg-amber-50 text-amber-700'
                 : 'border-sky-200 bg-sky-50 text-sky-700'
             }`}>
