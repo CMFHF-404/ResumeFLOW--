@@ -1219,7 +1219,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                     placeholder="填写适合展示在简历中的个人评价，或AI自动基于个人经历生成。"
                   />
                 ) : (
-                  <div className="min-h-[132px] rounded-lg border border-gray-100 bg-gray-50/70 px-4 py-3 text-sm leading-8 text-gray-700 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+                  <div
+                    className={`rounded-lg border border-gray-100 bg-gray-50/70 px-4 py-3 text-sm leading-8 text-gray-700 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300 ${
+                      summaryText ? '' : 'min-h-[132px]'
+                    }`}
+                  >
                     {summaryText ? (
                       <p className="whitespace-pre-wrap break-words">
                         {isSummaryExpanded || !summaryPreview.isTruncated
