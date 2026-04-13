@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
-import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, ChevronUp, Sparkles, Trash2, X } from 'lucide-react';
 import AIPolishToolbar from '../components/AIPolishToolbar';
 import type { PolishMode } from '../services/aiService';
 import MonthPicker from '../components/MonthPicker';
@@ -297,6 +298,7 @@ const StarSectionList: React.FC<{
 );
 
 const ExperienceCardFooter: React.FC<{
+  data: ExperienceCardData;
   isModified: boolean;
   isSaving: boolean;
   isPolishing: boolean;
@@ -315,6 +317,7 @@ const ExperienceCardFooter: React.FC<{
   onOpenAssistant: () => void;
   themeColor?: string;
 }> = ({
+  data,
   isModified,
   isSaving,
   isPolishing,
@@ -333,30 +336,234 @@ const ExperienceCardFooter: React.FC<{
   onOpenAssistant,
   themeColor,
 }) => {
-  return (
-    <div className="space-y-4 border-t border-gray-100 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800/50">
-      <AIPolishToolbar
-        isPreviewing={isPolishPreviewing}
-        isRunning={isPolishing}
-        activeMode={activePolishMode}
-        customPrompt={customPolishPrompt}
-        onModeChange={onPolishModeChange}
-        onCustomPromptChange={onCustomPolishPromptChange}
-        onRun={onRunPolish}
-        onUndo={onUndoPolishPreview}
-        onConfirm={onConfirmPolishPreview}
-        onOpenAssistant={onOpenAssistant}
-      />
+  const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
+  const [dialogStyle, setDialogStyle] = useState<React.CSSProperties>();
+  const [isDialogMobile, setIsDialogMobile] = useState(false);
+  const polishButtonRef = useRef<HTMLButtonElement | null>(null);
+  const polishDialogRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    if (!isPolishDialogOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsPolishDialogOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPolishDialogOpen]);
+
+  useEffect(() => {
+    if (!isPolishDialogOpen) {
+      setDialogStyle(undefined);
+      setIsDialogMobile(false);
+      return undefined;
+    }
+
+    let finalizeFrameId = 0;
+
+    const getDialogMetrics = () => {
+      if (!polishButtonRef.current || !polishDialogRef.current) {
+        return null;
+      }
+      const margin = 16;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const isMobileViewport = viewportWidth < 768;
+      const preferredWidth = isMobileViewport
+        ? (isPolishPreviewing ? 360 : 320)
+        : (isPolishPreviewing ? 576 : 672);
+      const targetWidth = Math.min(viewportWidth - margin * 2, preferredWidth);
+      const buttonRect = polishButtonRef.current.getBoundingClientRect();
+      const gap = isMobileViewport ? 8 : 12;
+
+      const left = Math.min(
+        Math.max(isMobileViewport ? buttonRect.left - 8 : buttonRect.left - 12, margin),
+        viewportWidth - targetWidth - margin
+      );
+
+      return {
+        buttonRect,
+        gap,
+        isMobileViewport,
+        left,
+        margin,
+        targetWidth,
+        viewportHeight,
+      };
+    };
+
+    const updateDialogPosition = () => {
+      const metrics = getDialogMetrics();
+      if (!metrics) {
+        return;
+      }
+
+      const currentWidth = polishDialogRef.current.offsetWidth;
+      const needsWidthSync = Math.abs(currentWidth - metrics.targetWidth) > 1;
+
+      const getDialogTop = (
+        dialogHeight: number,
+        currentMetrics: typeof metrics
+      ) => {
+        let top = currentMetrics.buttonRect.top - dialogHeight - currentMetrics.gap;
+        if (top < currentMetrics.margin) {
+          top = Math.min(
+            currentMetrics.buttonRect.bottom + currentMetrics.gap,
+            currentMetrics.viewportHeight - dialogHeight - currentMetrics.margin
+          );
+        }
+
+        return Math.max(currentMetrics.margin, top);
+      };
+
+      const applyDialogPosition = (
+        dialogHeight: number,
+        visibility: 'hidden' | 'visible'
+      ) => {
+        setIsDialogMobile(metrics.isMobileViewport);
+        setDialogStyle({
+          left: `${metrics.left}px`,
+          top: `${getDialogTop(dialogHeight, metrics)}px`,
+          visibility,
+          width: `${metrics.targetWidth}px`,
+        });
+      };
+
+      if (!needsWidthSync) {
+        applyDialogPosition(polishDialogRef.current.offsetHeight, 'visible');
+        return;
+      }
+
+      setIsDialogMobile(metrics.isMobileViewport);
+      setDialogStyle({
+        left: `${metrics.left}px`,
+        top: `${metrics.margin}px`,
+        visibility: 'hidden',
+        width: `${metrics.targetWidth}px`,
+      });
+
+      window.cancelAnimationFrame(finalizeFrameId);
+      finalizeFrameId = window.requestAnimationFrame(() => {
+        const nextMetrics = getDialogMetrics();
+        if (!nextMetrics || !polishDialogRef.current) {
+          return;
+        }
+
+        const dialogHeight = polishDialogRef.current.offsetHeight;
+        setIsDialogMobile(nextMetrics.isMobileViewport);
+        setDialogStyle({
+          left: `${nextMetrics.left}px`,
+          top: `${getDialogTop(dialogHeight, nextMetrics)}px`,
+          visibility: 'visible',
+          width: `${nextMetrics.targetWidth}px`,
+        });
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(updateDialogPosition);
+    window.addEventListener('resize', updateDialogPosition);
+    window.addEventListener('scroll', updateDialogPosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.cancelAnimationFrame(finalizeFrameId);
+      window.removeEventListener('resize', updateDialogPosition);
+      window.removeEventListener('scroll', updateDialogPosition, true);
+    };
+  }, [activePolishMode, customPolishPrompt, isPolishDialogOpen, isPolishPreviewing]);
+
+  return (
+    <div className="relative border-t border-gray-100 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800/50">
+      {isPolishDialogOpen && typeof document !== 'undefined'
+        ? createPortal(
+          <>
+            {isDialogMobile ? (
+              <div
+                className="fixed inset-0 z-[55] bg-slate-950/18 backdrop-blur-[1px]"
+                onClick={() => setIsPolishDialogOpen(false)}
+              />
+            ) : null}
+            <div
+              className="fixed z-[60]"
+              style={dialogStyle ?? { visibility: 'hidden' }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div ref={polishDialogRef} className={`flex w-full flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur ${isPolishPreviewing ? 'max-h-[min(70vh,26rem)]' : ''}`}>
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                      AI 润色工具栏
+                    </div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">
+                      {data.title || '未填写职位'}
+                    </div>
+                    {data.org ? (
+                      <div className="mt-0.5 truncate text-xs text-slate-500">
+                        {data.org}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsPolishDialogOpen(false)}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                    title="关闭润色工具栏"
+                    aria-label="关闭润色工具栏"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className={isPolishPreviewing ? 'min-h-0 flex flex-1 flex-col overflow-hidden p-3' : 'p-3'}>
+                  <AIPolishToolbar
+                    isPreviewing={isPolishPreviewing}
+                    isRunning={isPolishing}
+                    activeMode={activePolishMode}
+                    customPrompt={customPolishPrompt}
+                    onModeChange={onPolishModeChange}
+                    onCustomPromptChange={onCustomPolishPromptChange}
+                    onRun={onRunPolish}
+                    onUndo={onUndoPolishPreview}
+                    onConfirm={onConfirmPolishPreview}
+                    onOpenAssistant={onOpenAssistant}
+                    className="border-0 bg-transparent p-0 shadow-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </>,
+          document.body
+        )
+        : null}
       <div className="flex items-center justify-between">
-        <button
-          onClick={onDelete}
-          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
-          title="删除"
-          type="button"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onDelete}
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+            title="删除"
+            type="button"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            ref={polishButtonRef}
+            onClick={() => setIsPolishDialogOpen((prev) => !prev)}
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
+              isPolishDialogOpen
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700'
+            }`}
+            title="打开 AI 润色工具栏"
+            aria-label="打开 AI 润色工具栏"
+            type="button"
+          >
+            <Sparkles className={`h-4 w-4 ${isPolishing ? 'animate-pulse' : ''}`} />
+          </button>
+        </div>
 
         <div className="flex items-center gap-2">
           {isModified ? (
@@ -458,6 +665,7 @@ const ExpandedExperienceCard: React.FC<{
         />
       </div>
       <ExperienceCardFooter
+        data={data}
         isModified={isModified}
         isSaving={isSaving}
         isPolishing={isPolishing}

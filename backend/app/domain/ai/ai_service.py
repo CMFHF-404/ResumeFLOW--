@@ -16,6 +16,7 @@ from .prompts import (
     BOSS_GREETING_GENERATION,
     JD_ANALYSIS,
     JD_ANALYSIS_IMAGE,
+    POLISH_MODE_DEFAULT_NO_JD_INSTRUCTION,
     POLISH_MODE_INSTRUCTIONS,
     PERSONAL_SUMMARY_GENERATION,
     SKILL_ASSISTANT_PROMPT,
@@ -1064,11 +1065,16 @@ def _resolve_star_prompt(target_field: Optional[str], mode: Optional[str] = None
 def _build_polish_prompt(
     target_field: Optional[str],
     mode: Optional[str] = None,
+    jd_text: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
     base_prompt = _resolve_star_prompt(target_field, mode)
     normalized_mode = (mode or "default").strip().lower()
-    mode_instruction = POLISH_MODE_INSTRUCTIONS.get(normalized_mode)
+    has_jd_text = bool(jd_text and jd_text.strip())
+    if normalized_mode == "default" and not has_jd_text:
+        mode_instruction = POLISH_MODE_DEFAULT_NO_JD_INSTRUCTION
+    else:
+        mode_instruction = POLISH_MODE_INSTRUCTIONS.get(normalized_mode)
     prompt_parts = [base_prompt]
     if mode_instruction:
         prompt_parts.append(mode_instruction)
@@ -1802,7 +1808,7 @@ async def polish_experience(
     mode: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
-    prompt = _build_polish_prompt(target_field, mode, custom_prompt)
+    prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
     content_payload = {**content}
     if jd_text:
         content_payload["jd_text"] = jd_text
@@ -1828,7 +1834,7 @@ async def polish_experience_with_thoughts(
     if not settings.gemini_api_key:
         return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
 
-    prompt = _build_polish_prompt(target_field, mode, custom_prompt)
+    prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
     content_payload = {**content}
     if jd_text:
         content_payload["jd_text"] = jd_text

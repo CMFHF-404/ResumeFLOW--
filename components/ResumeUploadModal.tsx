@@ -1021,14 +1021,20 @@ const ThinkingTraceCard: React.FC<{
   const animationKey = latestNode ? `${latestNode.id}-${latestHeadline}` : `idle-${stage}`;
   const isWorking = stage === 'uploading' || stage === 'parsing' || stage === 'analyzing';
   const isError = stage === 'error' || latestNode?.status === 'error';
+  const renderedTitle = isWorking ? `思考中 · ${displayText}` : displayText;
   const iconClassName = isError
     ? 'text-red-500'
     : isWorking
-      ? 'text-emerald-500'
+      ? 'text-violet-600'
       : 'text-emerald-600';
+  const cardClassName = isError
+    ? 'border-red-100/80 bg-gradient-to-r from-red-50/95 via-white to-rose-50/80 shadow-[0_12px_30px_rgba(239,68,68,0.08)]'
+    : isWorking
+      ? 'border-violet-200/80 bg-[linear-gradient(120deg,rgba(245,243,255,0.96),rgba(255,255,255,0.92),rgba(237,233,254,0.95),rgba(224,231,255,0.92))] bg-[length:220%_220%] shadow-[0_16px_40px_rgba(124,58,237,0.16)]'
+      : 'border-emerald-100/80 bg-gradient-to-r from-emerald-50/95 via-white to-teal-50/80 shadow-[0_12px_30px_rgba(16,185,129,0.08)]';
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-emerald-100/80 bg-gradient-to-r from-emerald-50/95 via-white to-teal-50/80 px-4 py-3 shadow-[0_12px_30px_rgba(16,185,129,0.08)]">
+    <div className={`relative overflow-hidden rounded-2xl border px-4 py-3 ${cardClassName}`}>
       <style>{`
         @keyframes thinkingRollIn {
           0% {
@@ -1040,9 +1046,27 @@ const ThinkingTraceCard: React.FC<{
             transform: translateY(0);
           }
         }
+        @keyframes thinkingCardGradient {
+          0% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+          100% {
+            background-position: 0% 50%;
+          }
+        }
       `}</style>
-      <div className="flex min-h-[44px] items-center gap-3">
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/85 shadow-sm ${iconClassName}`}>
+      {isWorking ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(196,181,253,0.32),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(129,140,248,0.24),transparent_42%)] opacity-90"
+          style={{ animation: 'thinkingCardGradient 5s ease-in-out infinite' }}
+        />
+      ) : null}
+      <div className="relative flex min-h-[44px] items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/85 shadow-sm ring-1 ${isWorking ? 'ring-violet-200/80' : 'ring-white/60'} ${iconClassName}`}>
           {isError ? (
             <AlertTriangle className="h-4.5 w-4.5" />
           ) : isWorking ? (
@@ -1054,11 +1078,15 @@ const ThinkingTraceCard: React.FC<{
         <div className="min-w-0 flex-1 overflow-hidden">
           <div
             key={animationKey}
-            className={`min-w-0 ${isError ? 'text-red-600' : 'text-gray-900'}`}
-            style={{ animation: 'thinkingRollIn 360ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+            className={`min-w-0 ${isError ? 'text-red-600' : isWorking ? 'bg-gradient-to-r from-violet-700 via-fuchsia-600 to-indigo-600 bg-[length:200%_auto] bg-clip-text text-transparent' : 'text-gray-900'}`}
+            style={{
+              animation: isWorking
+                ? 'thinkingRollIn 360ms cubic-bezier(0.22, 1, 0.36, 1), thinkingCardGradient 3s linear infinite'
+                : 'thinkingRollIn 360ms cubic-bezier(0.22, 1, 0.36, 1)',
+            }}
           >
             <p className="truncate text-sm font-semibold">
-              {displayText}
+              {renderedTitle}
             </p>
           </div>
         </div>

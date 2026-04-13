@@ -172,8 +172,11 @@ STAR_HIGHLIGHT = (
     "and emphasize them with Markdown bold (**text**) only. Do not rewrite, paraphrase, reorder, split, merge, "
     "or expand the original text. Do not change wording, punctuation, hyperlinks, or line breaks except for adding "
     "Markdown bold markers around existing contiguous phrases. Preserve all original facts exactly as written. "
-    "Highlight no more than 5 distinct phrases across the whole output, and only highlight evidence that clearly fits "
-    "the JD. If jd_text is missing or no phrase clearly fits, return the original text unchanged. Use the same language "
+    "Highlight no more than 5 distinct phrases across the whole output. When jd_text is present, only highlight evidence "
+    "that clearly fits the JD. When jd_text is missing, infer the likely role focus conservatively from role/title and the "
+    "experience text itself, and only highlight existing phrases that represent broadly valuable evidence for that role "
+    "(for example ownership scope, core actions, business object, collaboration scope, tools/methods, or measurable outcomes). "
+    "If neither JD signals nor clear role-relevant evidence exists, return the original text unchanged. Use the same language "
     "as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
@@ -238,6 +241,13 @@ POLISH_MODE_INSTRUCTIONS = {
         "Do not invent new facts, numbers, tools, or responsibilities."
     ),
 }
+
+POLISH_MODE_DEFAULT_NO_JD_INSTRUCTION = (
+    "Do not rewrite the text. When jd_text is missing, infer the likely role focus from the existing role/title "
+    "and the provided experience text, then selectively highlight no more than 5 existing phrases that best represent "
+    "general strengths for that role. Stay conservative, prefer concrete ownership, execution, collaboration, domain, "
+    "tooling, or measurable outcome evidence already present in the text, and leave the text unchanged if the evidence is weak."
+)
 
 ASSISTANT_COMMON_RULES = (
     "You are an AI resume assistant for Chinese users. Your job is to help the user organize messy facts "
