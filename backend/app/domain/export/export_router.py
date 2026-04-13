@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 import json
 import logging
 import os
 import re
+import time
 import unicodedata
 import zlib
 from typing import TypeVar
@@ -22,7 +25,7 @@ from starlette.status import (
     HTTP_504_GATEWAY_TIMEOUT,
 )
 
-from ...database import get_session
+from ...database import AsyncSessionFactory, get_session
 from ...dependencies import get_current_user
 from .browser_pdf_service import (
     BrowserPdfRenderError,
@@ -53,6 +56,18 @@ from .snapshot_service import (
 router = APIRouter(prefix="/exports", tags=["exports"])
 logger = logging.getLogger(__name__)
 ExportRequestModelT = TypeVar("ExportRequestModelT", bound=BaseModel)
+RECENT_RENDERED_PDF_TTL_SECONDS = 15
+
+
+@dataclass(frozen=True)
+class RecentRenderedPdf:
+    pdf_bytes: bytes
+    expires_at_monotonic: float
+
+
+_recent_rendered_pdf_by_key: dict[str, RecentRenderedPdf] = {}
+_rendered_pdf_tasks_by_key: dict[str, asyncio.Task[bytes]] = {}
+_rendered_pdf_cache_lock = asyncio.Lock()
 
 
 def _build_export_request_openapi(model_name: str) -> dict:
@@ -122,6 +137,61 @@ def _build_pdf_download_response(pdf_bytes: bytes, file_name: str | None) -> Res
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
+def _build_rendered_pdf_cache_key(snapshot_id: str, token: str) -> str:
+    return f"{snapshot_id}:{token}"
+
+
+def _prune_recent_rendered_pdfs_locked() -> None:
+    now_monotonic = time.monotonic()
+    expired_keys = [
+        key
+        for key, cached_pdf in _recent_rendered_pdf_by_key.items()
+        if cached_pdf.expires_at_monotonic <= now_monotonic
+    ]
+    for key in expired_keys:
+        _recent_rendered_pdf_by_key.pop(key, None)
+
+
+async def _get_recent_rendered_pdf(cache_key: str) -> bytes | None:
+    async with _rendered_pdf_cache_lock:
+        _prune_recent_rendered_pdfs_locked()
+        cached_pdf = _recent_rendered_pdf_by_key.get(cache_key)
+        if not cached_pdf:
+            return None
+        return cached_pdf.pdf_bytes
+
+
+async def _cache_recent_rendered_pdf(cache_key: str, pdf_bytes: bytes) -> None:
+    async with _rendered_pdf_cache_lock:
+        _prune_recent_rendered_pdfs_locked()
+        _recent_rendered_pdf_by_key[cache_key] = RecentRenderedPdf(
+            pdf_bytes=pdf_bytes,
+            expires_at_monotonic=time.monotonic() + RECENT_RENDERED_PDF_TTL_SECONDS,
+        )
+
+
+def _cleanup_rendered_pdf_task(cache_key: str, task: asyncio.Task[bytes]) -> None:
+    if _rendered_pdf_tasks_by_key.get(cache_key) is task:
+        _rendered_pdf_tasks_by_key.pop(cache_key, None)
+
+
+async def _get_or_create_rendered_pdf_task(
+    cache_key: str,
+    render_pdf: Callable[[], Awaitable[bytes]],
+) -> asyncio.Task[bytes]:
+    async with _rendered_pdf_cache_lock:
+        existing_task = _rendered_pdf_tasks_by_key.get(cache_key)
+        if existing_task is not None:
+            return existing_task
+
+        task = asyncio.create_task(render_pdf())
+        task.add_done_callback(
+            lambda completed_task, key=cache_key: _cleanup_rendered_pdf_task(key, completed_task)
+        )
+        _rendered_pdf_tasks_by_key[cache_key] = task
+        return task
+
+
 async def _render_snapshot_pdf_response(
     session: AsyncSession,
     user_id: str,
@@ -182,39 +252,52 @@ async def _create_download_link_response(
 
 
 async def _render_snapshot_pdf_download_response(
-    session: AsyncSession,
     snapshot_id: str,
     token: str,
     snapshot_model: type[ResumePdfRenderSnapshot] | type[ExperienceBankPdfRenderSnapshot],
     renderer: Callable[[str, str], Awaitable[bytes]],
     file_name: str | None,
 ):
-    try:
-        record, _ = await get_render_snapshot_by_token(
-            session,
-            snapshot_id,
-            token,
-            snapshot_model,
-        )
-    except SnapshotTokenError as exc:
-        raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except SnapshotConsumedError as exc:
-        raise HTTPException(status_code=HTTP_410_GONE, detail=str(exc)) from exc
-    except SnapshotExpiredError as exc:
-        raise HTTPException(status_code=HTTP_410_GONE, detail=str(exc)) from exc
-    except SnapshotPayloadError as exc:
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except SnapshotNotFoundError as exc:
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    cache_key = _build_rendered_pdf_cache_key(snapshot_id, token)
+    cached_pdf = await _get_recent_rendered_pdf(cache_key)
+    if cached_pdf is not None:
+        return _build_pdf_download_response(cached_pdf, file_name)
 
-    try:
-        pdf_bytes = await renderer(str(record.id), token)
-    except BrowserPdfRenderTimeoutError as exc:
-        raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
-    except BrowserPdfRenderError as exc:
-        raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    async def render_pdf() -> bytes:
+        async with AsyncSessionFactory() as task_session:
+            try:
+                record, _ = await get_render_snapshot_by_token(
+                    task_session,
+                    snapshot_id,
+                    token,
+                    snapshot_model,
+                )
+            except SnapshotTokenError as exc:
+                raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            except SnapshotConsumedError as exc:
+                raise HTTPException(status_code=HTTP_410_GONE, detail=str(exc)) from exc
+            except SnapshotExpiredError as exc:
+                raise HTTPException(status_code=HTTP_410_GONE, detail=str(exc)) from exc
+            except SnapshotPayloadError as exc:
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            except SnapshotNotFoundError as exc:
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    await mark_render_snapshot_consumed(session, record)
+            try:
+                pdf_bytes = await renderer(str(record.id), token)
+            except BrowserPdfRenderTimeoutError as exc:
+                raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+            except BrowserPdfRenderError as exc:
+                raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+            await mark_render_snapshot_consumed(task_session, record)
+            await _cache_recent_rendered_pdf(cache_key, pdf_bytes)
+            return pdf_bytes
+
+    render_task = await _get_or_create_rendered_pdf_task(cache_key, render_pdf)
+
+    pdf_bytes = await asyncio.shield(render_task)
+
     return _build_pdf_download_response(pdf_bytes, file_name)
 
 
@@ -381,10 +464,8 @@ async def download_resume_pdf(
     snapshot_id: str,
     token: str = Query(..., min_length=1),
     fileName: str | None = Query(default=None),
-    session: AsyncSession = Depends(get_session),
 ):
     return await _render_snapshot_pdf_download_response(
-        session,
         snapshot_id,
         token,
         ResumePdfRenderSnapshot,
@@ -401,10 +482,8 @@ async def download_experience_bank_pdf(
     snapshot_id: str,
     token: str = Query(..., min_length=1),
     fileName: str | None = Query(default=None),
-    session: AsyncSession = Depends(get_session),
 ):
     return await _render_snapshot_pdf_download_response(
-        session,
         snapshot_id,
         token,
         ExperienceBankPdfRenderSnapshot,

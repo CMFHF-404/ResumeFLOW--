@@ -5,6 +5,7 @@ import { dispatchLoginRequired } from './authRedirect';
 const LOGTO_STORAGE_PREFIX = 'logto';
 const LOGTO_ACCESS_TOKEN_ITEM = 'accessToken';
 const TOKEN_EXPIRY_SKEW_SECONDS = 30;
+const DEFAULT_ACCESS_TOKEN_REQUEST_KEY = '__default__';
 
 type LogtoAccessTokenEntry = {
     token?: string;
@@ -94,6 +95,13 @@ const getLogtoAccessToken = (resource?: string): string | null => {
     return pickLogtoAccessToken(tokenMap, resource);
 };
 
+const accessTokenRequestInFlight = new Map<string, Promise<string | null>>();
+
+const buildAccessTokenRequestKey = (resource?: string): string => {
+    const normalizedResource = resource?.trim();
+    return normalizedResource || DEFAULT_ACCESS_TOKEN_REQUEST_KEY;
+};
+
 const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
     const segments = token.split('.');
     if (segments.length < 2) {
@@ -126,11 +134,34 @@ export const readAuthUserKeyFromCachedAccessToken = (): string | null => {
 };
 
 const resolveAccessTokenFromActiveSession = async (resource?: string): Promise<string | null> => {
-    const providerToken = await requestAccessToken(resource);
-    return providerToken ?? null;
+    const requestKey = buildAccessTokenRequestKey(resource);
+    const inFlightRequest = accessTokenRequestInFlight.get(requestKey);
+    if (inFlightRequest) {
+        return inFlightRequest;
+    }
+
+    const requestPromise = (async () => {
+        const providerToken = await requestAccessToken(resource);
+        return providerToken ?? null;
+    })();
+
+    accessTokenRequestInFlight.set(requestKey, requestPromise);
+
+    try {
+        return await requestPromise;
+    } finally {
+        if (accessTokenRequestInFlight.get(requestKey) === requestPromise) {
+            accessTokenRequestInFlight.delete(requestKey);
+        }
+    }
 };
 
 const resolveAccessToken = async (resource?: string): Promise<string | null> => {
+    const cachedToken = getLogtoAccessToken(resource);
+    if (cachedToken) {
+        return cachedToken;
+    }
+
     const providerToken = await resolveAccessTokenFromActiveSession(resource);
     if (providerToken) {
         return providerToken;
