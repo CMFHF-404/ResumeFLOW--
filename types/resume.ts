@@ -297,6 +297,7 @@ export type ResumePrintLayoutMeasurement = {
   printableTop: number;
   printableBottom: number;
   contentBottom: number;
+  overflowingSectionIds: string[];
 };
 
 export type ExperienceActions = {

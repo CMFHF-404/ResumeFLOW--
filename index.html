@@ -107,13 +107,21 @@
         }
 
         @media print {
+            html,
             body {
                 background: white !important;
+                height: auto !important;
+                overflow: visible !important;
             }
 
             .a4-preview {
                 box-shadow: none !important;
                 margin: 0 auto !important;
+            }
+
+            .a4-preview[data-rf-preview-scope="print"] {
+                height: auto !important;
+                min-height: 297mm !important;
             }
 
             .rf-print-preview,
@@ -147,6 +155,13 @@
             }
 
             .rf-break-avoid {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .rf-print-preview-shell #basic-info,
+            .rf-print-preview-shell [data-rf-section-id],
+            .rf-print-preview-shell [data-rf-item-id] {
                 break-inside: avoid;
                 page-break-inside: avoid;
             }

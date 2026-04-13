@@ -1,8 +1,6 @@
 import React from 'react';
 import { exportService } from '../services/exportService';
 import type { ResumePdfRenderSnapshot } from '../types/resume';
-import { measureResumePrintLayout } from '../utils/resumePrintLayout';
-import { PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX } from './ResumeEditor/constants';
 import ResumePdfDocument from './ResumeEditor/components/ResumePdfDocument';
 
 const waitForNextFrame = () => new Promise<void>((resolve) => {
@@ -146,16 +144,6 @@ const ResumePdfExportPage: React.FC = () => {
         }
         if (!previewRef.current || !previewContentRef.current) {
           throw new Error('导出页面排版初始化失败。');
-        }
-        const measurement = measureResumePrintLayout(
-          previewRef.current,
-          previewContentRef.current,
-          PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX
-        );
-        if (!measurement.fits) {
-          throw new Error(
-            `导出失败：当前简历内容已超出单页 A4 范围，请返回编辑器继续调整（超出 ${measurement.overflowPx.toFixed(1)}px）。`
-          );
         }
         document.title = `${snapshot.resumeName} PDF Export`;
         clearExportErrorState();

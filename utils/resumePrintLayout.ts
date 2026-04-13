@@ -54,6 +54,25 @@ const findDeepestVisibleDirectChildBottom = (root: HTMLElement): number | null =
   return maxBottom;
 };
 
+const findOverflowingSectionIds = (
+  root: HTMLElement,
+  printableBottom: number,
+  tolerancePx: number
+): string[] => {
+  const sectionElements = Array.from(
+    root.querySelectorAll<HTMLElement>('[data-rf-section-id]')
+  );
+
+  return sectionElements
+    .filter((element) => isElementVisiblyRendered(element))
+    .filter((element) => {
+      const bottom = element.getBoundingClientRect().bottom + resolveMarginBottom(element);
+      return bottom - printableBottom > tolerancePx;
+    })
+    .map((element) => element.dataset.rfSectionId || '')
+    .filter(Boolean);
+};
+
 export const measureResumePrintLayout = (
   pageElement: HTMLElement,
   contentRoot: HTMLElement,
@@ -69,6 +88,11 @@ export const measureResumePrintLayout = (
   const directChildBottom = findDeepestVisibleDirectChildBottom(contentRoot) ?? printableTop;
   const contentBottom = Math.max(deepestContentBottom, directChildBottom);
   const overflowPx = Math.max(0, contentBottom - printableBottom);
+  const overflowingSectionIds = findOverflowingSectionIds(
+    contentRoot,
+    printableBottom,
+    tolerancePx
+  );
 
   return {
     fits: overflowPx <= tolerancePx,
@@ -76,5 +100,6 @@ export const measureResumePrintLayout = (
     printableTop,
     printableBottom,
     contentBottom,
+    overflowingSectionIds,
   };
 };

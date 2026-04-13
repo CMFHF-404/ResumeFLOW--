@@ -127,7 +127,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
             ? '新增简历'
             : '当前简历加载中';
     const exportButtonTitle = isPreviewOverflowing
-        ? '当前预览已超出单页 A4，导出时可能失败'
+        ? '当前预览已超出单页 A4，导出时将自动分页'
         : (isExportingPdf ? '导出中...' : '导出 PDF');
 
     return (

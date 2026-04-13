@@ -271,6 +271,7 @@ export type ResumePreviewProps = {
     previewContentRef: React.RefObject<HTMLDivElement>;
     previewScope: string;
     showOverflowGuide?: boolean;
+    overflowHighlightSectionIds?: Set<string>;
     lineHeight: number;
     fontSize: number;
     listSpacingValue: string;
@@ -315,6 +316,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     previewContentRef,
     previewScope,
     showOverflowGuide = false,
+    overflowHighlightSectionIds,
     lineHeight,
     fontSize,
     listSpacingValue,
@@ -355,6 +357,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 }) => {
     const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal';
     const isDashboardModalPreview = previewScope === 'dashboard-modal';
+    const isPrintPreview = previewScope === 'print';
     const previewScrollRef = React.useRef<HTMLElement | null>(null);
     const previewViewportRef = React.useRef<HTMLDivElement | null>(null);
     const touchSessionRef = React.useRef<TouchDragSession | null>(null);
@@ -1312,7 +1315,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         const baseStyle = {
             boxSizing: 'border-box',
             width: `${A4_PAGE_WIDTH_MM}mm`,
-            height: `${A4_PAGE_HEIGHT_MM}mm`,
+            height: isPrintPreview ? 'auto' : `${A4_PAGE_HEIGHT_MM}mm`,
             minHeight: `${A4_PAGE_HEIGHT_MM}mm`,
             lineHeight,
             fontSize: `${fontSize}px`,
@@ -1344,6 +1347,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [
         bulletSpacingValue,
         fontSize,
+        isPrintPreview,
         isScaledEditorPreview,
         isSplitTemplate,
         lineHeight,
@@ -1374,10 +1378,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const splitTemplateBackgroundStyle = React.useMemo(
         () => (isSplitTemplate
             ? {
-                height: `${A4_PAGE_HEIGHT_MM}mm`,
+                height: isPrintPreview ? '100%' : `${A4_PAGE_HEIGHT_MM}mm`,
             } as React.CSSProperties
             : undefined),
-        [isSplitTemplate]
+        [isPrintPreview, isSplitTemplate]
     );
     const splitSidebarColumnStyle = React.useMemo(
         () => ({
@@ -1392,37 +1396,54 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         } as React.CSSProperties),
         []
     );
+    const overflowHighlightStyle = React.useMemo(
+        () => ({
+            position: 'relative',
+            outline: '2px dashed #dc2626',
+            outlineOffset: '2px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(254, 242, 242, 0.55)',
+        } as React.CSSProperties),
+        []
+    );
     const overflowGuideStyle = React.useMemo(
         () => ({
             left: `${PREVIEW_PADDING_MM}mm`,
             right: `${PREVIEW_PADDING_MM}mm`,
             bottom: `${PREVIEW_PADDING_MM}mm`,
-            borderTop: '2px dashed #dc2626',
+            borderTop: '2px dashed #16a34a',
             boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.82)',
         } as React.CSSProperties),
         []
     );
-    const overflowGuideLabelStyle = React.useMemo(
-        () => (useMobileEditorInteraction
-            ? {
-                left: `${PREVIEW_PADDING_MM}mm`,
-                bottom: `calc(${PREVIEW_PADDING_MM}mm + 6px)`,
-                transform: 'none',
-                border: '2px solid #dc2626',
-                color: '#dc2626',
-                backgroundColor: '#ffffff',
-                boxShadow: '0 8px 24px rgba(220, 38, 38, 0.12)',
-            } as React.CSSProperties
-            : {
-                left: '-12px',
-                bottom: `${PREVIEW_PADDING_MM}mm`,
-                transform: 'translate(-100%, 50%)',
-                border: '2px solid #dc2626',
-                color: '#dc2626',
-                backgroundColor: '#ffffff',
-                boxShadow: '0 8px 24px rgba(220, 38, 38, 0.12)',
-            } as React.CSSProperties),
-        [useMobileEditorInteraction]
+    const isSectionOverflowHighlighted = React.useCallback(
+        (sectionId: string) => Boolean(showOverflowGuide && overflowHighlightSectionIds?.has(sectionId)),
+        [overflowHighlightSectionIds, showOverflowGuide]
+    );
+    const getSectionOverflowHighlightStyle = React.useCallback(
+        (sectionId: string) => (
+            isSectionOverflowHighlighted(sectionId)
+                ? overflowHighlightStyle
+                : undefined
+        ),
+        [isSectionOverflowHighlighted, overflowHighlightStyle]
+    );
+    const renderOverflowMarker = React.useCallback(
+        (sectionId: string) => {
+            if (!isSectionOverflowHighlighted(sectionId)) {
+                return null;
+            }
+
+            return (
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-3 right-3 z-[45] whitespace-nowrap rounded-full border border-red-300 bg-white px-2.5 py-1 text-[10px] font-semibold tracking-[0.08em] text-red-600 shadow-sm"
+                >
+                    超出A4纸
+                </div>
+            );
+        },
+        [isSectionOverflowHighlighted]
     );
     const getTemplateSectionWrapperStyle = React.useCallback((sectionId: string) => {
         return sectionWrapperStyle;
@@ -1593,8 +1614,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 <div
                     data-rf-section-surface={sectionId}
                     className={getSectionSurfaceClass(sectionId)}
-                    style={sectionSurfaceStyle}
+                    style={{
+                        ...sectionSurfaceStyle,
+                        ...getSectionOverflowHighlightStyle(sectionId),
+                    }}
                 >
+                    {renderOverflowMarker(sectionId)}
                     {renderSectionHeading(title, sectionId)}
                     <div
                         className={listSpacingClass}
@@ -1758,8 +1783,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 <div
                     data-rf-section-surface="summary"
                     className={getSectionSurfaceClass('summary')}
-                    style={sectionSurfaceStyle}
+                    style={{
+                        ...sectionSurfaceStyle,
+                        ...getSectionOverflowHighlightStyle('summary'),
+                    }}
                 >
+                    {renderOverflowMarker('summary')}
                     {renderSectionHeading('个人评价', 'summary')}
                     <div
                         className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
@@ -1780,11 +1809,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
+                    data-rf-section-id="basic-info"
                     className={`scroll-mt-8 ${HEADER_EXTRA_TOP_SPACING_CLASS}`}
                     style={{
                         ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
                     }}
                 >
+                    {renderOverflowMarker('basic-info')}
                     <div className="mb-5 flex items-start justify-between gap-5">
                         <div className="min-w-0 flex-1">
                             <div className="mb-2 h-1.5 w-14 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
@@ -1809,9 +1841,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
+                    data-rf-section-id="basic-info"
                     className={`pb-5 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
-                    style={{ ...commonHeaderStyle, borderBottom: 'none' }}
+                    style={{
+                        ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
+                        borderBottom: 'none',
+                    }}
                 >
+                    {renderOverflowMarker('basic-info')}
                     <div className="mb-2 flex items-start justify-between gap-8">
                         <div className="min-w-0 flex-1">
                             <h1 className="text-[36px] font-bold uppercase tracking-[0.12em] text-gray-900 leading-none">
@@ -1836,9 +1874,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
+                    data-rf-section-id="basic-info"
                     className={`pb-5 text-center ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
-                    style={commonHeaderStyle}
+                    style={{
+                        ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
+                    }}
                 >
+                    {renderOverflowMarker('basic-info')}
                     <h1 className="text-[32px] font-semibold tracking-[0.1em] text-gray-900 mt-2">
                         {profile.name}
                     </h1>
@@ -1857,13 +1900,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return (
                 <div
                     id="basic-info"
+                    data-rf-section-id="basic-info"
                     className={`scroll-mt-8 mb-8 flex flex-col`}
                     style={{
                         ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
                         paddingBottom: 0,
                         borderBottom: 'none',
                     }}
                 >
+                    {renderOverflowMarker('basic-info')}
                     <div className="flex items-center mb-4 mt-2">
                         <h1 
                             className="text-[34px] font-bold tracking-[0.12em] text-gray-900 pl-4"
@@ -1894,9 +1940,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         return (
             <div
                 id="basic-info"
+                data-rf-section-id="basic-info"
                 className={`border-b pb-4 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
-                style={commonHeaderStyle}
+                style={{
+                    ...commonHeaderStyle,
+                    ...getSectionOverflowHighlightStyle('basic-info'),
+                }}
             >
+                {renderOverflowMarker('basic-info')}
                 <div className="flex items-start justify-between gap-6">
                     <div className="min-w-0 flex-1">
                         <div className="mb-3 h-1.5 w-20 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
@@ -2457,20 +2508,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         style={previewStyle}
                     >
                 {showOverflowGuide ? (
-                    <>
-                        <div
-                            aria-hidden="true"
-                            className="pointer-events-none absolute z-[40]"
-                            style={overflowGuideStyle}
-                        />
-                        <div
-                            aria-hidden="true"
-                            className="pointer-events-none absolute z-[41] whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold tracking-[0.08em]"
-                            style={overflowGuideLabelStyle}
-                        >
-                            超出A4纸
-                        </div>
-                    </>
+                    <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute z-[40]"
+                        style={overflowGuideStyle}
+                    />
                 ) : null}
                 {isSplitTemplate ? (
                     <div
@@ -2592,8 +2634,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     <div
                                         data-rf-section-surface="education"
                                         className={getSectionSurfaceClass('education')}
-                                        style={sectionSurfaceStyle}
+                                        style={{
+                                            ...sectionSurfaceStyle,
+                                            ...getSectionOverflowHighlightStyle('education'),
+                                        }}
                                     >
+                                        {renderOverflowMarker('education')}
                                         {renderSectionHeading('教育背景', 'education')}
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
@@ -2765,8 +2811,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     <div
                                         data-rf-section-surface="certifications"
                                         className={getSectionSurfaceClass('certifications')}
-                                        style={sectionSurfaceStyle}
+                                        style={{
+                                            ...sectionSurfaceStyle,
+                                            ...getSectionOverflowHighlightStyle('certifications'),
+                                        }}
                                     >
+                                        {renderOverflowMarker('certifications')}
                                         {renderSectionHeading('证书资质', 'certifications')}
                                         <div
                                             className={`${listSpacingClass} ${LIST_GAP_CLASS}`}
@@ -2928,8 +2978,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     <div
                                         data-rf-section-surface="skills"
                                         className={getSectionSurfaceClass('skills')}
-                                        style={sectionSurfaceStyle}
+                                        style={{
+                                            ...sectionSurfaceStyle,
+                                            ...getSectionOverflowHighlightStyle('skills'),
+                                        }}
                                     >
+                                        {renderOverflowMarker('skills')}
                                         {renderSectionHeading('专业技能', 'skills')}
                                         <div
                                             className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"
