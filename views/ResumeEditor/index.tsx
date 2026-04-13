@@ -240,11 +240,6 @@ type SmartPageLayout = {
     fontSize: number;
 };
 
-type SmartPageBaseLayout = Pick<
-    SmartPageLayout,
-    'topPaddingPx' | 'sectionSpacingKey' | 'itemSpacingEm'
->;
-
 const buildTopPaddingSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
     for (let value = start; value >= min; value -= step) {
@@ -2799,61 +2794,197 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         return null;
     };
 
-    const findFirstFittingLineHeight = async (
-        a4Height: number,
-        baseLayout: SmartPageBaseLayout,
-        currentFontSize: number
-    ): Promise<SmartPageResult> => {
-        let low = 0;
-        let high = LINE_HEIGHT_STEPS.length - 1;
-        let candidateLayout: SmartPageResult = null;
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            const fitLayout = await tryMeasureLayout(a4Height, {
-                ...baseLayout,
-                lineHeight: LINE_HEIGHT_STEPS[mid],
-                fontSize: currentFontSize,
-            });
-            if (fitLayout) {
-                candidateLayout = fitLayout;
-                high = mid - 1;
-            } else {
-                low = mid + 1;
+    const resolveNearestStepIndex = (steps: number[], value: number) => steps.reduce(
+        (nearestIndex, step, index) => (
+            Math.abs(step - value) < Math.abs(steps[nearestIndex] - value)
+                ? index
+                : nearestIndex
+        ),
+        0
+    );
+
+    const resolveStepByOffset = (steps: number[], value: number, offset: number) => {
+        const baseIndex = resolveNearestStepIndex(steps, value);
+        const nextIndex = Math.min(Math.max(baseIndex + offset, 0), steps.length - 1);
+        return steps[nextIndex];
+    };
+
+    const resolveStageFontSize = (reduction: number) => (
+        FONT_SIZE_STEPS[Math.min(
+            Math.round(reduction / FONT_SIZE_STEP),
+            FONT_SIZE_STEPS.length - 1
+        )]
+    );
+
+    const resolveStageLineHeight = (reduction: number) => (
+        LINE_HEIGHT_STEPS[Math.min(
+            Math.round(reduction / LINE_HEIGHT_STEP),
+            LINE_HEIGHT_STEPS.length - 1
+        )]
+    );
+
+    const resolveLayoutScore = (
+        layout: SmartPageLayout,
+        defaultLayout: SmartPageLayout,
+        topPaddingSteps: number[],
+        itemSpacingSteps: number[]
+    ) => {
+        const minTopPaddingPx = topPaddingSteps[topPaddingSteps.length - 1];
+        const minSectionSpacingKey = SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1];
+        const minItemSpacingEm = itemSpacingSteps[itemSpacingSteps.length - 1];
+
+        const fontSizeLoss = (defaultLayout.fontSize - layout.fontSize) / FONT_SIZE_STEP;
+        const lineHeightLoss = (defaultLayout.lineHeight - layout.lineHeight) / LINE_HEIGHT_STEP;
+        const topPaddingLoss = (
+            defaultLayout.topPaddingPx - layout.topPaddingPx
+        ) / SMART_PAGE_TOP_PADDING_STEP_PX;
+        const sectionSpacingLoss = Math.max(
+            0,
+            resolveNearestStepIndex(SECTION_SPACING_KEYS, layout.sectionSpacingKey)
+            - resolveNearestStepIndex(SECTION_SPACING_KEYS, defaultLayout.sectionSpacingKey)
+        );
+        const itemSpacingLoss = (
+            defaultLayout.itemSpacingEm - layout.itemSpacingEm
+        ) / SMART_PAGE_ITEM_SPACING_STEP;
+
+        let penalty = 0;
+        penalty += fontSizeLoss * 5;
+        penalty += lineHeightLoss * 3;
+        penalty += sectionSpacingLoss * 2;
+        penalty += topPaddingLoss * 2;
+        penalty += itemSpacingLoss * 1.5;
+
+        if (Math.abs(layout.fontSize - FONT_SIZE_MIN) < 0.001) {
+            if (layout.sectionSpacingKey !== minSectionSpacingKey) {
+                penalty += 6;
+            }
+            if (layout.topPaddingPx - minTopPaddingPx > 0.001) {
+                penalty += 6;
             }
         }
-        return candidateLayout;
-    };
 
-    const tryFitAtFontSize = async (
-        a4Height: number,
-        baseLayout: SmartPageBaseLayout,
-        currentFontSize: number
-    ): Promise<SmartPageResult> => {
-        return findFirstFittingLineHeight(a4Height, baseLayout, currentFontSize);
-    };
+        const resolveCompressionRatio = (value: number, minValue: number, maxValue: number) => {
+            if (Math.abs(maxValue - minValue) < 0.001) {
+                return 0;
+            }
+            return Math.max(0, Math.min(1, (maxValue - value) / (maxValue - minValue)));
+        };
 
-    const tryFitAtBestFontSize = async (
-        a4Height: number,
-        baseLayout: SmartPageBaseLayout
-    ): Promise<SmartPageResult> => {
-        let low = 0;
-        let high = FONT_SIZE_STEPS.length - 1;
-        let candidateLayout: SmartPageResult = null;
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            const fitLayout = await tryFitAtFontSize(
-                a4Height,
-                baseLayout,
-                FONT_SIZE_STEPS[mid]
+        const defaultSectionIndex = resolveNearestStepIndex(
+            SECTION_SPACING_KEYS,
+            defaultLayout.sectionSpacingKey
+        );
+        const currentSectionIndex = resolveNearestStepIndex(
+            SECTION_SPACING_KEYS,
+            layout.sectionSpacingKey
+        );
+        const maxSectionIndex = SECTION_SPACING_KEYS.length - 1;
+        const sectionCompressionRatio = maxSectionIndex === defaultSectionIndex
+            ? 0
+            : Math.max(
+                0,
+                Math.min(
+                    1,
+                    (currentSectionIndex - defaultSectionIndex)
+                    / (maxSectionIndex - defaultSectionIndex)
+                )
             );
-            if (fitLayout) {
-                candidateLayout = fitLayout;
-                high = mid - 1;
-            } else {
-                low = mid + 1;
+
+        const ratios = [
+            resolveCompressionRatio(layout.fontSize, FONT_SIZE_MIN, defaultLayout.fontSize),
+            resolveCompressionRatio(layout.lineHeight, LINE_HEIGHT_MIN, defaultLayout.lineHeight),
+            sectionCompressionRatio,
+            resolveCompressionRatio(layout.topPaddingPx, minTopPaddingPx, defaultLayout.topPaddingPx),
+            resolveCompressionRatio(layout.itemSpacingEm, minItemSpacingEm, defaultLayout.itemSpacingEm),
+        ];
+        const averageRatio = ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
+        penalty += ratios.reduce(
+            (sum, ratio) => sum + Math.abs(ratio - averageRatio),
+            0
+        ) * 2;
+
+        const maxRatio = Math.max(...ratios);
+        const minRatio = Math.min(...ratios);
+        if (maxRatio - minRatio > 0.35) {
+            penalty += (maxRatio - minRatio - 0.35) * 8;
+        }
+
+        return 100 - penalty;
+    };
+
+    const findBestFitWithinStage = async (
+        a4Height: number,
+        targetLayout: SmartPageLayout,
+        defaultLayout: SmartPageLayout,
+        topPaddingSteps: number[],
+        itemSpacingSteps: number[]
+    ): Promise<SmartPageResult> => {
+        const fontStartIndex = resolveNearestStepIndex(FONT_SIZE_STEPS, targetLayout.fontSize);
+        const lineHeightStartIndex = resolveNearestStepIndex(LINE_HEIGHT_STEPS, targetLayout.lineHeight);
+        let bestFitLayout: SmartPageResult = null;
+        let bestFitScore = Number.NEGATIVE_INFINITY;
+
+        for (let fontIndex = fontStartIndex; fontIndex < FONT_SIZE_STEPS.length; fontIndex += 1) {
+            const relaxedLineHeightStartIndex = Math.max(
+                0,
+                lineHeightStartIndex - (fontIndex - fontStartIndex)
+            );
+            for (
+                let lineHeightIndex = relaxedLineHeightStartIndex;
+                lineHeightIndex < LINE_HEIGHT_STEPS.length;
+                lineHeightIndex += 1
+            ) {
+                const fitLayout = await tryMeasureLayout(a4Height, {
+                    ...targetLayout,
+                    fontSize: FONT_SIZE_STEPS[fontIndex],
+                    lineHeight: LINE_HEIGHT_STEPS[lineHeightIndex],
+                });
+                if (fitLayout) {
+                    const score = resolveLayoutScore(
+                        fitLayout,
+                        defaultLayout,
+                        topPaddingSteps,
+                        itemSpacingSteps
+                    );
+                    if (score > bestFitScore) {
+                        bestFitLayout = fitLayout;
+                        bestFitScore = score;
+                    }
+                }
             }
         }
-        return candidateLayout;
+
+        return bestFitLayout;
+    };
+
+    const reboundTypographyIfPossible = async (
+        a4Height: number,
+        layout: SmartPageLayout
+    ): Promise<SmartPageLayout> => {
+        let candidate = layout;
+        const fontIndex = resolveNearestStepIndex(FONT_SIZE_STEPS, candidate.fontSize);
+        if (fontIndex > 0) {
+            const reboundFontLayout = await tryMeasureLayout(a4Height, {
+                ...candidate,
+                fontSize: FONT_SIZE_STEPS[fontIndex - 1],
+            });
+            if (reboundFontLayout) {
+                candidate = reboundFontLayout;
+            }
+        }
+
+        const lineHeightIndex = resolveNearestStepIndex(LINE_HEIGHT_STEPS, candidate.lineHeight);
+        if (lineHeightIndex > 0) {
+            const reboundLineHeightLayout = await tryMeasureLayout(a4Height, {
+                ...candidate,
+                lineHeight: LINE_HEIGHT_STEPS[lineHeightIndex - 1],
+            });
+            if (reboundLineHeightLayout) {
+                candidate = reboundLineHeightLayout;
+            }
+        }
+
+        return candidate;
     };
 
     const executeSmartPageAdjustment = async (
@@ -2907,141 +3038,131 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 SMART_PAGE_TOP_PADDING_MIN_PX,
                 SMART_PAGE_TOP_PADDING_STEP_PX
             );
-            const sectionSpacingSteps = [
-                defaultLayout.sectionSpacingKey,
-                ...SMART_PAGE_SECTION_SPACING_STEPS.filter(
-                    (step) => step < defaultLayout.sectionSpacingKey
-                ),
-            ];
             const itemSpacingSteps = buildReductionStepsFromCurrent(
                 defaultLayout.itemSpacingEm,
                 SMART_PAGE_ITEM_SPACING_MIN,
                 SMART_PAGE_ITEM_SPACING_STEP
             );
-            const fitCache = new Map<string, SmartPageResult>();
-            const itemIndexCache = new Map<string, number | null>();
-            const sectionIndexCache = new Map<number, number | null>();
-            const resolveBaseLayoutKey = (baseLayout: SmartPageBaseLayout) => (
-                `${baseLayout.topPaddingPx}|${baseLayout.sectionSpacingKey}|${baseLayout.itemSpacingEm}`
-            );
-            const resolveFitForBaseLayout = async (
-                baseLayout: SmartPageBaseLayout
-            ): Promise<SmartPageResult> => {
-                const cacheKey = resolveBaseLayoutKey(baseLayout);
-                if (fitCache.has(cacheKey)) {
-                    return fitCache.get(cacheKey) ?? null;
-                }
-                const fitLayout = await tryFitAtBestFontSize(a4Height, baseLayout);
-                fitCache.set(cacheKey, fitLayout);
-                return fitLayout;
-            };
-            const findFirstFittingItemIndex = async (
-                topPaddingPx: number,
-                sectionSpacingKey: SectionSpacingKey
-            ) => {
-                const cacheKey = `${topPaddingPx}|${sectionSpacingKey}`;
-                if (itemIndexCache.has(cacheKey)) {
-                    return itemIndexCache.get(cacheKey) ?? null;
-                }
-                let low = 0;
-                let high = itemSpacingSteps.length - 1;
-                let candidateIndex: number | null = null;
-                while (low <= high) {
-                    const mid = Math.floor((low + high) / 2);
-                    const fitLayout = await resolveFitForBaseLayout({
-                        topPaddingPx,
-                        sectionSpacingKey,
-                        itemSpacingEm: itemSpacingSteps[mid],
-                    });
-                    if (fitLayout) {
-                        candidateIndex = mid;
-                        high = mid - 1;
-                    } else {
-                        low = mid + 1;
-                    }
-                }
-                itemIndexCache.set(cacheKey, candidateIndex);
-                return candidateIndex;
-            };
-            const findFirstFittingSectionIndex = async (topPaddingPx: number) => {
-                if (sectionIndexCache.has(topPaddingPx)) {
-                    return sectionIndexCache.get(topPaddingPx) ?? null;
-                }
-                let low = 0;
-                let high = sectionSpacingSteps.length - 1;
-                let candidateIndex: number | null = null;
-                while (low <= high) {
-                    const mid = Math.floor((low + high) / 2);
-                    const itemIndex = await findFirstFittingItemIndex(
-                        topPaddingPx,
-                        sectionSpacingSteps[mid]
-                    );
-                    if (itemIndex !== null) {
-                        candidateIndex = mid;
-                        high = mid - 1;
-                    } else {
-                        low = mid + 1;
-                    }
-                }
-                sectionIndexCache.set(topPaddingPx, candidateIndex);
-                return candidateIndex;
-            };
-            const maximallyCompressedBaseLayout: SmartPageBaseLayout = {
+            const hardFallbackLayout: SmartPageLayout = {
                 topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
-                sectionSpacingKey: sectionSpacingSteps[sectionSpacingSteps.length - 1],
+                sectionSpacingKey: SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1],
                 itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
+                lineHeight: LINE_HEIGHT_STEPS[LINE_HEIGHT_STEPS.length - 1],
+                fontSize: FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1],
             };
-            const maximallyCompressedFit = await resolveFitForBaseLayout(
-                maximallyCompressedBaseLayout
-            );
-            if (!maximallyCompressedFit) {
-                return finalizeOverflow({
-                    ...maximallyCompressedBaseLayout,
-                    lineHeight: LINE_HEIGHT_STEPS[LINE_HEIGHT_STEPS.length - 1],
-                    fontSize: FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1],
+
+            const stageLayouts: Array<{ key: string; layout: SmartPageLayout }> = [
+                {
+                    key: 'mild',
+                    layout: {
+                        topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 1),
+                        sectionSpacingKey: resolveStepByOffset(
+                            SECTION_SPACING_KEYS,
+                            defaultLayout.sectionSpacingKey,
+                            1
+                        ) as SectionSpacingKey,
+                        itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 1),
+                        lineHeight: resolveStageLineHeight(0.05),
+                        fontSize: resolveStageFontSize(0.5),
+                    },
+                },
+                {
+                    key: 'medium',
+                    layout: {
+                        topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 2),
+                        sectionSpacingKey: resolveStepByOffset(
+                            SECTION_SPACING_KEYS,
+                            defaultLayout.sectionSpacingKey,
+                            2
+                        ) as SectionSpacingKey,
+                        itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 2),
+                        lineHeight: resolveStageLineHeight(0.1),
+                        fontSize: resolveStageFontSize(1),
+                    },
+                },
+                {
+                    key: 'strong',
+                    layout: {
+                        topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 3),
+                        sectionSpacingKey: resolveStepByOffset(
+                            SECTION_SPACING_KEYS,
+                            defaultLayout.sectionSpacingKey,
+                            3
+                        ) as SectionSpacingKey,
+                        itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 3),
+                        lineHeight: resolveStageLineHeight(0.15),
+                        fontSize: resolveStageFontSize(1.5),
+                    },
+                },
+                {
+                    key: 'max-balanced',
+                    layout: {
+                        topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
+                        sectionSpacingKey: SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1],
+                        itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
+                        lineHeight: resolveStageLineHeight(0.2),
+                        fontSize: resolveStageFontSize(2),
+                    },
+                },
+                {
+                    key: 'hard-fallback',
+                    layout: hardFallbackLayout,
+                },
+            ];
+
+            const dedupedStageLayouts = stageLayouts.filter((stage, index, stages) => {
+                const currentKey = JSON.stringify(stage.layout);
+                return stages.findIndex((candidate) => JSON.stringify(candidate.layout) === currentKey) === index;
+            });
+
+            const fittingCandidates: Array<{ key: string; layout: SmartPageLayout; score: number }> = [];
+            for (const stage of dedupedStageLayouts) {
+                const fitLayout = stage.key === 'hard-fallback'
+                    ? await tryMeasureLayout(a4Height, stage.layout)
+                    : await findBestFitWithinStage(
+                        a4Height,
+                        stage.layout,
+                        defaultLayout,
+                        topPaddingSteps,
+                        itemSpacingSteps
+                    );
+                if (!fitLayout) {
+                    continue;
+                }
+                fittingCandidates.push({
+                    key: stage.key,
+                    layout: fitLayout,
+                    score: resolveLayoutScore(
+                        fitLayout,
+                        defaultLayout,
+                        topPaddingSteps,
+                        itemSpacingSteps
+                    ),
                 });
             }
 
-            let topPaddingLow = 0;
-            let topPaddingHigh = topPaddingSteps.length - 1;
-            let candidateTopPaddingIndex: number | null = null;
-            while (topPaddingLow <= topPaddingHigh) {
-                const mid = Math.floor((topPaddingLow + topPaddingHigh) / 2);
-                const sectionIndex = await findFirstFittingSectionIndex(topPaddingSteps[mid]);
-                if (sectionIndex !== null) {
-                    candidateTopPaddingIndex = mid;
-                    topPaddingHigh = mid - 1;
-                } else {
-                    topPaddingLow = mid + 1;
-                }
-            }
-            if (candidateTopPaddingIndex !== null) {
-                const topPaddingPx = topPaddingSteps[candidateTopPaddingIndex];
-                const sectionIndex = await findFirstFittingSectionIndex(topPaddingPx);
-                if (sectionIndex !== null) {
-                    const sectionSpacingKey = sectionSpacingSteps[sectionIndex];
-                    const itemIndex = await findFirstFittingItemIndex(
-                        topPaddingPx,
-                        sectionSpacingKey
-                    );
-                    if (itemIndex !== null) {
-                        const fitLayout = await resolveFitForBaseLayout({
-                            topPaddingPx,
-                            sectionSpacingKey,
-                            itemSpacingEm: itemSpacingSteps[itemIndex],
-                        });
-                        if (fitLayout) {
-                            return finalizeFit(fitLayout);
-                        }
+            const bestFitCandidate = fittingCandidates.reduce<typeof fittingCandidates[number] | null>(
+                (bestCandidate, currentCandidate) => {
+                    if (!bestCandidate) {
+                        return currentCandidate;
                     }
-                }
+                    if (currentCandidate.score > bestCandidate.score) {
+                        return currentCandidate;
+                    }
+                    return bestCandidate;
+                },
+                null
+            );
+
+            if (bestFitCandidate) {
+                const reboundLayout = await reboundTypographyIfPossible(
+                    a4Height,
+                    bestFitCandidate.layout
+                );
+                return finalizeFit(reboundLayout);
             }
 
-            return finalizeOverflow({
-                ...maximallyCompressedBaseLayout,
-                lineHeight: LINE_HEIGHT_STEPS[LINE_HEIGHT_STEPS.length - 1],
-                fontSize: FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1],
-            });
+            return finalizeOverflow(hardFallbackLayout);
         } finally {
             smartPageAdjustingRef.current = false;
             setIsAutoSavePaused(false);
