@@ -136,57 +136,26 @@ export const AssistantDraftCardView: React.FC<{
 
   return (
     <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="flex min-w-0 flex-col gap-3">
         <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 border border-emerald-100">
-            <Sparkles className="h-3 w-3" />
-            可确认草稿
-          </div>
-          {experienceApplyHint ? (
-            <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
-              hasTargetMaster
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-sky-200 bg-sky-50 text-sky-700'
-            }`}>
-              {experienceApplyHint}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+              <Sparkles className="h-3 w-3" />
+              可确认草稿
             </div>
-          ) : null}
-        </div>
+            {experienceApplyHint ? (
+              <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+                hasTargetMaster
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-sky-200 bg-sky-50 text-sky-700'
+              }`}>
+                {experienceApplyHint}
+              </div>
+            ) : null}
+          </div>
           <h4 className="mt-1 text-sm font-semibold text-slate-800 truncate" title={card.summary}>
             {card.summary || 'AI 已整理出可录入初稿'}
           </h4>
-        </div>
-        
-        <div className="flex shrink-0 items-center justify-between gap-1.5 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1"
-            title={isExpanded ? '折叠' : '展开'}
-          >
-            {isExpanded ? (
-              <>
-                <span className="text-[11px]">收起</span>
-                <ChevronUp className="h-3.5 w-3.5" />
-              </>
-            ) : (
-              <>
-                <span className="text-[11px]">展开</span>
-                <ChevronDown className="h-3.5 w-3.5" />
-              </>
-            )}
-          </button>
-          
-          <button
-            type="button"
-            onClick={onApply}
-            disabled={disabled || isApplying}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55"
-          >
-            <Check className="h-3.5 w-3.5" />
-            {isApplying ? '录入中...' : '确认录入'}
-          </button>
         </div>
       </div>
       
@@ -198,6 +167,32 @@ export const AssistantDraftCardView: React.FC<{
           </p>
         </div>
       )}
+
+      <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          title={isExpanded ? '折叠' : '展开'}
+        >
+          <span className="text-[11px]">{isExpanded ? '收起' : '展开'}</span>
+          {isExpanded ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={disabled || isApplying}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          <Check className="h-3.5 w-3.5" />
+          {isApplying ? '录入中...' : '确认录入'}
+        </button>
+      </div>
     </div>
   );
 };
