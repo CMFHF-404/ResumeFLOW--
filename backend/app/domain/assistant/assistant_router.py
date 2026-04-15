@@ -80,14 +80,33 @@ def _sanitize_message_content_json(content_json: Dict[str, Any] | None) -> Dict[
         return {}
 
     sanitized = {**content_json}
-    attachment = content_json.get("attachment")
-    if isinstance(attachment, dict):
-        sanitized_attachment = {
-            key: value
-            for key, value in attachment.items()
+    def _sanitize_attachment_preview(value: Any) -> Dict[str, Any] | None:
+        if not isinstance(value, dict):
+            return None
+        return {
+            key: payload
+            for key, payload in value.items()
             if key not in {"imageB64", "text"}
         }
-        sanitized["attachment"] = sanitized_attachment
+
+    attachment = _sanitize_attachment_preview(content_json.get("attachment"))
+    if attachment:
+        sanitized["attachment"] = attachment
+    elif "attachment" in sanitized:
+        sanitized.pop("attachment", None)
+
+    raw_attachments = content_json.get("attachments")
+    if isinstance(raw_attachments, list):
+        sanitized_attachments = [
+            preview
+            for preview in (_sanitize_attachment_preview(item) for item in raw_attachments)
+            if preview
+        ]
+        if sanitized_attachments:
+            sanitized["attachments"] = sanitized_attachments
+            sanitized["attachment"] = sanitized_attachments[0]
+        elif "attachments" in sanitized:
+            sanitized.pop("attachments", None)
     selected_experiences = _normalize_selected_experiences(content_json.get("selected_experiences"))
     if selected_experiences:
         sanitized["selected_experiences"] = selected_experiences
@@ -115,6 +134,14 @@ def _clip_text(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
     return f"{value[:limit].rstrip()}\n...(内容已截断)"
+
+
+def _format_attachment_size(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
 
 
 def _normalize_bank_text(value: Any, limit: int) -> str | None:
@@ -279,17 +306,22 @@ async def _build_bank_context(
 
 async def _parse_stream_payload(
     request: Request,
-) -> tuple[AssistantSessionStreamRequest, UploadFile | None]:
+) -> tuple[AssistantSessionStreamRequest, list[UploadFile]]:
     content_type = (request.headers.get("content-type") or "").lower()
-    attachment_file: UploadFile | None = None
+    attachment_files: list[UploadFile] = []
 
     if "multipart/form-data" in content_type:
         form = await request.form()
-        candidate = form.get("file")
-        if isinstance(candidate, UploadFile) and candidate.filename:
-            attachment_file = candidate
-        elif hasattr(candidate, "filename") and hasattr(candidate, "read") and getattr(candidate, "filename", None):
-            attachment_file = candidate
+        raw_candidates = []
+        if hasattr(form, "getlist"):
+            raw_candidates.extend(form.getlist("files"))
+        if not raw_candidates:
+            raw_candidates.append(form.get("file"))
+        for candidate in raw_candidates:
+            if isinstance(candidate, UploadFile) and candidate.filename:
+                attachment_files.append(candidate)
+            elif hasattr(candidate, "filename") and hasattr(candidate, "read") and getattr(candidate, "filename", None):
+                attachment_files.append(candidate)
         raw_selected_experiences = form.get("selected_experiences")
         selected_experiences: list[Dict[str, Any]] = []
         if isinstance(raw_selected_experiences, str) and raw_selected_experiences.strip():
@@ -333,11 +365,12 @@ async def _parse_stream_payload(
     )
     if (
         not payload.user_message.strip()
-        and attachment_file is None
+        and not attachment_files
+        and not payload.selected_experiences
         and payload.selected_resume is None
     ):
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="请输入消息、选择简历或上传附件后再发送。")
-    return payload, attachment_file
+    return payload, attachment_files
 
 
 async def _persist_image_blob(
@@ -434,6 +467,7 @@ async def _build_attachment_payload(
         "name": attachment_name,
         "kind": prompt_payload["kind"],
         "contentType": prompt_payload["contentType"],
+        "sizeLabel": _format_attachment_size(getattr(file, "size", 0) or 0),
     }
 
     if attachment.is_image:
@@ -461,6 +495,30 @@ async def _build_attachment_payload(
     persisted_payload["text"] = full_text_content
     persisted_payload["textExcerpt"] = _clip_text(full_text_content, MAX_ASSISTANT_ATTACHMENT_EXCERPT_CHARS)
     return prompt_payload, persisted_payload
+
+
+async def _build_attachment_payloads(
+    session: AsyncSession,
+    *,
+    assistant_session_id: UUID,
+    files: list[UploadFile],
+    prepared_attachments: list[Any] | None = None,
+) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]]]:
+    prompt_payloads: list[Dict[str, Any]] = []
+    persisted_payloads: list[Dict[str, Any]] = []
+    prepared_items = prepared_attachments or []
+    for index, file in enumerate(files):
+        prompt_payload, persisted_payload = await _build_attachment_payload(
+            session,
+            assistant_session_id=assistant_session_id,
+            file=file,
+            prepared_attachment=prepared_items[index] if index < len(prepared_items) else None,
+        )
+        prompt_payload["id"] = prompt_payload.get("id") or f"{assistant_session_id}-{index}"
+        persisted_payload["id"] = persisted_payload.get("id") or prompt_payload["id"]
+        prompt_payloads.append(prompt_payload)
+        persisted_payloads.append(persisted_payload)
+    return prompt_payloads, persisted_payloads
 
 
 async def _validate_attachment_file(file: UploadFile) -> None:
@@ -584,7 +642,12 @@ async def stream_assistant_session_turn(
     session: AsyncSession = Depends(get_db_session),
     current_user=Depends(get_current_user),
 ):
-    payload, attachment_file = await _parse_stream_payload(request)
+    payload, raw_attachment_files = await _parse_stream_payload(request)
+    attachment_files = (
+        raw_attachment_files
+        if isinstance(raw_attachment_files, list)
+        else [raw_attachment_files] if raw_attachment_files is not None else []
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -596,20 +659,21 @@ async def stream_assistant_session_turn(
             try:
                 assistant_session = await get_assistant_session(session, current_user.id, session_id)
                 messages = (await get_session_detail(session, current_user.id, session_id))[1]
-                attachment_payload: Dict[str, Any] | None = None
-                persisted_attachment: Dict[str, Any] | None = None
-                prepared_attachment: Any | None = None
-                if attachment_file is not None:
+                attachment_payloads: list[Dict[str, Any]] = []
+                persisted_attachments: list[Dict[str, Any]] = []
+                prepared_attachments: list[Any] = []
+                if attachment_files:
                     await emit({"type": "progress", "node": "read_attachment", "title": "解析对话附件"})
-                    prepared_attachment = await _prepare_attachment_result(attachment_file)
+                    for attachment_file in attachment_files:
+                        prepared_attachments.append(await _prepare_attachment_result(attachment_file))
                 await emit({"type": "progress", "node": "prepare_context", "title": "准备对话上下文"})
                 bank_context = await _build_bank_context(session, user_id=current_user.id)
-                if attachment_file is not None:
-                    attachment_payload, persisted_attachment = await _build_attachment_payload(
+                if attachment_files:
+                    attachment_payloads, persisted_attachments = await _build_attachment_payloads(
                         session,
                         assistant_session_id=assistant_session.id,
-                        file=attachment_file,
-                        prepared_attachment=prepared_attachment,
+                        files=attachment_files,
+                        prepared_attachments=prepared_attachments,
                     )
                 await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
                 result = await run_assistant_turn_with_thoughts(
@@ -622,7 +686,7 @@ async def stream_assistant_session_turn(
                     selected_experiences=payload.selected_experiences,
                     selected_resume=payload.selected_resume,
                     history=_build_history_messages(messages),
-                    attachment=attachment_payload,
+                    attachments=attachment_payloads,
                     thought_callback=emit,
                     attachment_hydrator=lambda attachments: _hydrate_attachment_payloads(
                         session,
@@ -635,7 +699,7 @@ async def stream_assistant_session_turn(
                     assistant_session,
                     user_message=payload.user_message,
                     display_message=payload.display_message,
-                    user_attachment=persisted_attachment,
+                    user_attachments=persisted_attachments,
                     user_selected_experiences=payload.selected_experiences,
                     user_selected_resume=payload.selected_resume,
                     assistant_text=result["assistantText"],

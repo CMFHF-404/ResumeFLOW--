@@ -849,13 +849,13 @@ export const aiService = {
             userMessage: string;
             displayMessage?: string;
             mode?: AssistantMode;
-            attachment?: File | null;
+            attachments?: File[];
             selectedExperiences?: AssistantSelectedExperience[];
             selectedResume?: AssistantSelectedResume | null;
         },
         onEvent?: (event: AssistantStreamEvent) => void
     ) {
-        if (payload.attachment) {
+        if ((payload.attachments?.length ?? 0) > 0) {
             const formData = new FormData();
             formData.append('user_message', payload.userMessage);
             formData.append('display_message', payload.displayMessage ?? payload.userMessage);
@@ -868,7 +868,9 @@ export const aiService = {
             if (payload.selectedResume) {
                 formData.append('selected_resume', JSON.stringify(payload.selectedResume));
             }
-            formData.append('file', payload.attachment);
+            payload.attachments?.forEach((attachment) => {
+                formData.append('files', attachment);
+            });
             return streamAssistantRequest(sessionId, formData, {
                 onEvent,
                 contentType: null,

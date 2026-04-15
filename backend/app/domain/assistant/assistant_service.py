@@ -36,6 +36,16 @@ class InvalidMessageError(Exception):
     pass
 
 
+def _sanitize_attachment_preview(attachment: Any) -> dict | None:
+    if not isinstance(attachment, dict):
+        return None
+    return {
+        key: value
+        for key, value in attachment.items()
+        if key not in {"imageB64", "text"}
+    }
+
+
 def _is_message_applied(message: AIAssistantMessage) -> bool:
     applied_at = (message.content_json or {}).get("applied_at")
     return isinstance(applied_at, str) and bool(applied_at.strip())
@@ -611,7 +621,7 @@ async def persist_assistant_turn(
     *,
     user_message: str,
     display_message: str | None = None,
-    user_attachment: dict | None = None,
+    user_attachments: list[dict] | None = None,
     user_selected_experiences: list[dict] | None = None,
     user_selected_resume: dict | None = None,
     assistant_text: str,
@@ -619,8 +629,15 @@ async def persist_assistant_turn(
     title: str | None = None,
 ) -> list[AIAssistantMessage]:
     user_content_json = {"text": display_message if display_message is not None else user_message}
-    if user_attachment:
-        user_content_json["attachment"] = user_attachment
+    normalized_attachments = [
+        preview
+        for preview in (_sanitize_attachment_preview(attachment) for attachment in (user_attachments or []))
+        if preview
+    ]
+    if normalized_attachments:
+        user_content_json["attachment"] = normalized_attachments[0]
+        if len(normalized_attachments) > 1:
+            user_content_json["attachments"] = normalized_attachments
     normalized_selected_experiences = _normalize_selected_experiences(user_selected_experiences)
     if normalized_selected_experiences:
         user_content_json["selected_experiences"] = normalized_selected_experiences

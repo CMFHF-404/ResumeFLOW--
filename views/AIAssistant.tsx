@@ -61,6 +61,7 @@ type AIAssistantProps = {
 };
 
 type AssistantAttachmentPreview = {
+  id: string;
   name: string;
   type?: string;
   sizeLabel?: string;
@@ -69,7 +70,6 @@ type AssistantAttachmentPreview = {
 
 type AssistantComposerAttachment = AssistantAttachmentPreview & {
   file: File;
-  selectionId: string;
 };
 
 const SELECTED_EXPERIENCE_TEXT_LIMIT = 300;
@@ -78,6 +78,17 @@ const SELECTED_EXPERIENCE_STAR_LIMIT = 500;
 const SELECTED_RESUME_TEXT_LIMIT = 300;
 const SELECTED_RESUME_NAME_LIMIT = 160;
 const SELECTED_RESUME_JD_LIMIT = 4000;
+const ASSISTANT_ATTACHMENT_ACCEPT_ATTR = '.pdf,.docx,.jpg,.jpeg,.png,.webp';
+const ASSISTANT_ATTACHMENT_ACCEPTED_EXTENSIONS = new Set(['.pdf', '.docx', '.jpg', '.jpeg', '.png', '.webp']);
+const COMPOSER_OVERLAY_MIN_CLEARANCE = 72;
+const COMPOSER_OVERLAY_VISIBLE_OVERLAP = 36;
+const ASSISTANT_ATTACHMENT_MIME_TO_EXTENSION: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+};
 
 const clipSelectedExperienceText = (value: string, limit: number) => {
   const normalized = value.trim();
@@ -339,14 +350,52 @@ const createAttachmentSelectionId = () => {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
-const isSameComposerAttachment = (
-  left: AssistantComposerAttachment | null | undefined,
-  right: AssistantComposerAttachment | null | undefined,
+const buildAttachmentFileKey = (file: File) => `${file.name}::${file.size}::${file.lastModified}::${file.type}`;
+
+const isAcceptedAssistantAttachmentFile = (file: File) => {
+  const normalizedName = file.name.trim().toLowerCase();
+  const extension = normalizedName.includes('.') ? normalizedName.slice(normalizedName.lastIndexOf('.')) : '';
+  if (extension && ASSISTANT_ATTACHMENT_ACCEPTED_EXTENSIONS.has(extension)) {
+    return true;
+  }
+  return Object.prototype.hasOwnProperty.call(ASSISTANT_ATTACHMENT_MIME_TO_EXTENSION, file.type);
+};
+
+const buildFallbackAttachmentName = (file: File, prefix = '附件') => {
+  const extension = ASSISTANT_ATTACHMENT_MIME_TO_EXTENSION[file.type] ?? '';
+  return `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}${extension}`;
+};
+
+const normalizeIncomingAttachmentFile = (file: File, prefix = '附件') => {
+  const trimmedName = file.name.trim();
+  if (trimmedName) {
+    return file;
+  }
+  return new File([file], buildFallbackAttachmentName(file, prefix), {
+    type: file.type,
+    lastModified: file.lastModified || Date.now(),
+  });
+};
+
+const buildComposerAttachment = (file: File): AssistantComposerAttachment => ({
+  id: createAttachmentSelectionId(),
+  file,
+  name: file.name.trim() || buildFallbackAttachmentName(file),
+  type: file.type || '附件',
+  sizeLabel: formatFileSize(file.size),
+  previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+});
+
+const isSameComposerAttachmentList = (
+  left: AssistantComposerAttachment[] | null | undefined,
+  right: AssistantComposerAttachment[] | null | undefined,
 ) => {
-  if (!left || !right) {
+  const leftItems = left ?? [];
+  const rightItems = right ?? [];
+  if (leftItems.length !== rightItems.length) {
     return false;
   }
-  return left.selectionId === right.selectionId;
+  return leftItems.every((item, index) => item.id === rightItems[index]?.id);
 };
 
 const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: React.ReactNode }> = {
@@ -408,6 +457,13 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const computeComposerReservedHeight = (composerHeight: number) => {
+  if (!Number.isFinite(composerHeight) || composerHeight <= 0) {
+    return 160;
+  }
+  return Math.max(composerHeight - COMPOSER_OVERLAY_VISIBLE_OVERLAP, COMPOSER_OVERLAY_MIN_CLEARANCE);
+};
+
 const resolveAssistantStreamThought = (event: AssistantStreamEvent) => {
   if (event.type === 'thought') {
     return extractThoughtHeadline(event.summary) || event.summary;
@@ -418,18 +474,20 @@ const resolveAssistantStreamThought = (event: AssistantStreamEvent) => {
   return '';
 };
 
-const readMessageAttachmentPreview = (message: AssistantMessage): AssistantAttachmentPreview | null => {
-  const rawAttachment = message.content_json?.attachment;
-  if (!rawAttachment || typeof rawAttachment !== 'object') {
+const normalizeMessageAttachmentPreview = (
+  value: unknown,
+  fallbackId: string,
+): AssistantAttachmentPreview | null => {
+  if (!value || typeof value !== 'object') {
     return null;
   }
-  // 断言为字典类型以便安全读取各字段（content_json 是非结构化 JSON）
-  const attachment = rawAttachment as Record<string, unknown>;
+  const attachment = value as Record<string, unknown>;
   const name = typeof attachment['name'] === 'string' ? attachment['name'].trim() : '';
   if (!name) {
     return null;
   }
   return {
+    id: typeof attachment['id'] === 'string' && attachment['id'].trim() ? attachment['id'].trim() : fallbackId,
     name,
     type: typeof attachment['type'] === 'string'
       ? attachment['type']
@@ -438,6 +496,29 @@ const readMessageAttachmentPreview = (message: AssistantMessage): AssistantAttac
         : undefined,
     sizeLabel: typeof attachment['sizeLabel'] === 'string' ? attachment['sizeLabel'] : undefined,
   };
+};
+
+const readMessageAttachmentPreviews = (message: AssistantMessage): AssistantAttachmentPreview[] => {
+  const previews: AssistantAttachmentPreview[] = [];
+  const seenIds = new Set<string>();
+  const pushPreview = (value: unknown, fallbackId: string) => {
+    const preview = normalizeMessageAttachmentPreview(value, fallbackId);
+    if (!preview || seenIds.has(preview.id)) {
+      return;
+    }
+    seenIds.add(preview.id);
+    previews.push(preview);
+  };
+
+  const rawAttachments = message.content_json?.attachments;
+  if (Array.isArray(rawAttachments)) {
+    rawAttachments.forEach((item, index) => {
+      pushPreview(item, `${message.id}-attachment-${index}`);
+    });
+  }
+
+  pushPreview(message.content_json?.attachment, `${message.id}-attachment-primary`);
+  return previews;
 };
 
 const readMessageSelectedExperiences = (message: AssistantMessage): AssistantSelectedExperience[] => {
@@ -637,7 +718,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
-  const [composerAttachment, setComposerAttachment] = useState<AssistantComposerAttachment | null>(null);
+  const [composerAttachments, setComposerAttachments] = useState<AssistantComposerAttachment[]>([]);
   const [selectedResume, setSelectedResume] = useState<AssistantSelectedResume | null>(null);
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [pickerExperiences, setPickerExperiences] = useState<AssistantSelectedExperience[]>([]);
@@ -648,10 +729,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [isLoadingPickerResumes, setIsLoadingPickerResumes] = useState(false);
   const [isApplyingPickerResume, setIsApplyingPickerResume] = useState(false);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
+  const [composerReservedHeight, setComposerReservedHeight] = useState(160);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
-  const composerAttachmentRef = useRef<AssistantComposerAttachment | null>(null);
+  const composerAttachmentsRef = useRef<AssistantComposerAttachment[]>([]);
   const applyHandlerMapRef = useRef<Map<string, AssistantApplyDraftHandler>>(new Map());
   const callbackOnlySessionIdsRef = useRef<Set<string>>(new Set());
   const selectedSessionIdRef = useRef<string | null>(null);
@@ -697,17 +779,23 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     return messageMutationSeqRef.current;
   }, []);
 
-  const clearComposerAttachment = useCallback(() => {
-    setComposerAttachment((current) => {
-      if (current?.previewUrl) {
-        URL.revokeObjectURL(current.previewUrl);
+  const revokeComposerAttachmentPreviews = useCallback((attachments: AssistantComposerAttachment[]) => {
+    attachments.forEach((attachment) => {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
       }
-      return null;
+    });
+  }, []);
+
+  const clearComposerAttachments = useCallback(() => {
+    setComposerAttachments((current) => {
+      revokeComposerAttachmentPreviews(current);
+      return [];
     });
     if (attachmentInputRef.current) {
       attachmentInputRef.current.value = '';
     }
-  }, []);
+  }, [revokeComposerAttachmentPreviews]);
 
   const clearSelectedExperiences = useCallback(() => {
     setSelectedExperiences([]);
@@ -728,35 +816,75 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     draftSelectedResumeBySessionRef.current.delete(sessionId);
   }, []);
 
-  const clearComposerAttachmentIfMatches = useCallback((target: AssistantComposerAttachment | null) => {
-    if (!target || !isSameComposerAttachment(composerAttachmentRef.current, target)) {
+  const clearComposerAttachmentsIfMatches = useCallback((target: AssistantComposerAttachment[]) => {
+    if (!target.length || !isSameComposerAttachmentList(composerAttachmentsRef.current, target)) {
       return;
     }
-    clearComposerAttachment();
-  }, [clearComposerAttachment]);
+    clearComposerAttachments();
+  }, [clearComposerAttachments]);
+
+  const appendComposerAttachments = useCallback((incomingFiles: File[], source: 'picker' | 'drop' | 'paste' = 'picker') => {
+    if (incomingFiles.length === 0) {
+      return;
+    }
+
+    const rejectedFiles = incomingFiles.filter((file) => !isAcceptedAssistantAttachmentFile(file));
+    if (rejectedFiles.length > 0) {
+      error('仅支持上传图片、PDF 或 DOCX 附件');
+    }
+
+    const normalizedFiles = incomingFiles
+      .filter((file) => isAcceptedAssistantAttachmentFile(file))
+      .map((file) => normalizeIncomingAttachmentFile(file, source === 'paste' ? '粘贴图片' : '附件'));
+
+    if (normalizedFiles.length === 0) {
+      return;
+    }
+
+    setComposerAttachments((current) => {
+      const existingKeys = new Set(current.map((attachment) => buildAttachmentFileKey(attachment.file)));
+      const nextAttachments = normalizedFiles
+        .filter((file) => {
+          const fileKey = buildAttachmentFileKey(file);
+          if (existingKeys.has(fileKey)) {
+            return false;
+          }
+          existingKeys.add(fileKey);
+          return true;
+        })
+        .map((file) => buildComposerAttachment(file));
+
+      return nextAttachments.length > 0 ? [...current, ...nextAttachments] : current;
+    });
+
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
+  }, [error]);
+
+  const removeComposerAttachment = useCallback((attachmentId: string) => {
+    setComposerAttachments((current) => {
+      const target = current.find((item) => item.id === attachmentId);
+      if (!target) {
+        return current;
+      }
+      if (target.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return current.filter((item) => item.id !== attachmentId);
+    });
+  }, []);
 
   const handleAttachmentSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (files.length === 0) {
       return;
     }
-    setComposerAttachment((current) => {
-      if (current?.previewUrl) {
-        URL.revokeObjectURL(current.previewUrl);
-      }
-      return {
-        file,
-        selectionId: createAttachmentSelectionId(),
-        name: file.name,
-        type: file.type || '附件',
-        sizeLabel: formatFileSize(file.size),
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-      };
-    });
+    appendComposerAttachments(files, 'picker');
     if (event.target) {
       event.target.value = '';
     }
-  }, []);
+  }, [appendComposerAttachments]);
 
   const openAttachmentPicker = useCallback(() => {
     attachmentInputRef.current?.click();
@@ -951,7 +1079,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!isAuthenticated) {
       draftLaunchRequestRef.current = null;
       suppressAutoSelectSessionRef.current = false;
-      clearComposerAttachment();
+      clearComposerAttachments();
       clearSelectedExperiences();
       clearSelectedResume();
       preserveComposerAttachmentOnNextSelectionRef.current = false;
@@ -962,7 +1090,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       return;
     }
     if (!selectedSessionId) {
-      clearComposerAttachment();
+      clearComposerAttachments();
       clearSelectedExperiences();
       if (!suppressAutoSelectSessionRef.current) {
         clearSelectedResume();
@@ -977,7 +1105,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     const preserveComposerAttachment = preserveComposerAttachmentOnNextSelectionRef.current;
     preserveComposerAttachmentOnNextSelectionRef.current = false;
     if (!preserveComposerAttachment) {
-      clearComposerAttachment();
+      clearComposerAttachments();
     }
     const draftSelectedResume = draftSelectedResumeBySessionRef.current.get(selectedSessionId) ?? null;
     if (!draftSelectedResume) {
@@ -990,7 +1118,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setAppliedMessageIds(new Set());
     setActiveThought('');
     void loadSessionDetail(selectedSessionId);
-  }, [clearComposerAttachment, clearSelectedExperiences, clearSelectedResume, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
+  }, [clearComposerAttachments, clearSelectedExperiences, clearSelectedResume, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -1006,8 +1134,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [isAuthenticated]);
 
   useEffect(() => {
-    composerAttachmentRef.current = composerAttachment;
-  }, [composerAttachment]);
+    composerAttachmentsRef.current = composerAttachments;
+  }, [composerAttachments]);
 
   useEffect(() => {
     if (draftInput === lastMirroredDraftInputRef.current) {
@@ -1033,6 +1161,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       const previousHeight = composerHeightRef.current;
       const nextHeight = composer.offsetHeight;
       composerHeightRef.current = nextHeight;
+      const nextReservedHeight = computeComposerReservedHeight(nextHeight);
+      setComposerReservedHeight((current) => (current === nextReservedHeight ? current : nextReservedHeight));
 
       if (previousHeight === null || nextHeight === previousHeight) {
         return;
@@ -1071,10 +1201,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [messages, activeThought, scrollToBottom]);
 
   useEffect(() => () => {
-    if (composerAttachment?.previewUrl) {
-      URL.revokeObjectURL(composerAttachment.previewUrl);
-    }
-  }, [composerAttachment]);
+    revokeComposerAttachmentPreviews(composerAttachmentsRef.current);
+  }, [revokeComposerAttachmentPreviews]);
 
   const commitCreatedSession = useCallback((
     created: AssistantSession,
@@ -1090,7 +1218,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     preserveComposerAttachmentOnNextSelectionRef.current = Boolean(options?.preserveAttachment);
     persistDraftSelectedResume(created.id, options?.selectedResumeDraft ?? null);
     if (!options?.preserveAttachment) {
-      clearComposerAttachment();
+      clearComposerAttachments();
     }
     setSelectedResume(options?.selectedResumeDraft ?? null);
     clearSelectedExperiences();
@@ -1099,7 +1227,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     markMessagesMutated();
     setMessages([]);
     setInputValue('');
-  }, [clearComposerAttachment, clearSelectedExperiences, markMessagesMutated, markSessionMutated, persistDraftSelectedResume, setSessionsState]);
+  }, [clearComposerAttachments, clearSelectedExperiences, markMessagesMutated, markSessionMutated, persistDraftSelectedResume, setSessionsState]);
 
   const cleanupSupersededSession = useCallback(async (sessionId: string) => {
     applyHandlerMapRef.current.delete(sessionId);
@@ -1109,7 +1237,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setSessionsState((prev) => prev.filter((session) => session.id !== sessionId));
     const wasSelected = selectedSessionIdRef.current === sessionId;
     if (wasSelected) {
-      clearComposerAttachment();
+      clearComposerAttachments();
       clearSelectedExperiences();
       clearSelectedResume();
       selectedSessionIdRef.current = null;
@@ -1125,7 +1253,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     } catch (cleanupError) {
       console.warn('[AIAssistant] Failed to cleanup superseded launch session:', cleanupError);
     }
-  }, [clearComposerAttachment, clearSelectedExperiences, clearSelectedResume, markMessagesMutated, markSessionDeleted, setSessionsState]);
+  }, [clearComposerAttachments, clearSelectedExperiences, clearSelectedResume, markMessagesMutated, markSessionDeleted, setSessionsState]);
 
   const createSessionRecord = useCallback(async (context?: AssistantEntryContext) => {
     const mode = context?.mode ?? 'general';
@@ -1175,7 +1303,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     sessionId: string,
     payload: {
       userMessage: string;
-      attachment?: AssistantComposerAttachment | null;
+      attachments?: AssistantComposerAttachment[];
       selectedExperiences?: AssistantSelectedExperience[];
       selectedResume?: AssistantSelectedResume | null;
     },
@@ -1183,15 +1311,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     options?: { shouldAbort?: () => boolean },
   ) => {
     const trimmedMessage = payload.userMessage.trim();
-    const attachment = payload.attachment ?? null;
+    const attachments = payload.attachments ?? [];
     const selectedExperienceItems = payload.selectedExperiences ?? [];
     const selectedResumeItem = payload.selectedResume ?? null;
-    if (!trimmedMessage && !attachment && selectedExperienceItems.length === 0 && !selectedResumeItem) {
+    if (!trimmedMessage && attachments.length === 0 && selectedExperienceItems.length === 0 && !selectedResumeItem) {
       return;
     }
     const effectiveMessage = trimmedMessage
-      || (attachment
-        ? '请先阅读我上传的附件，并帮我整理其中的信息。'
+      || (attachments.length > 0
+        ? attachments.length > 1
+          ? '请先阅读我上传的这些附件，并帮我整理其中的关键信息。'
+          : '请先阅读我上传的附件，并帮我整理其中的信息。'
         : selectedResumeItem
           ? '请结合我选择的简历和对应 JD，给出针对性的简历修改建议，并可按需生成模拟面试题。'
           : '请优先参考我选中的经历，并结合当前上下文给出针对性的整理与建议。');
@@ -1203,12 +1333,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       message_type: 'user_text',
       content_json: {
         text: trimmedMessage,
-        ...(attachment ? {
+        ...(attachments.length > 0 ? {
           attachment: {
-            name: attachment.name,
-            type: attachment.type,
-            sizeLabel: attachment.sizeLabel,
+            id: attachments[0].id,
+            name: attachments[0].name,
+            type: attachments[0].type,
+            sizeLabel: attachments[0].sizeLabel,
           },
+          ...(attachments.length > 1 ? {
+            attachments: attachments.map((attachment) => ({
+              id: attachment.id,
+              name: attachment.name,
+              type: attachment.type,
+              sizeLabel: attachment.sizeLabel,
+            })),
+          } : {}),
         } : {}),
         ...(selectedExperienceItems.length > 0 ? {
           selected_experiences: selectedExperienceItems,
@@ -1236,7 +1375,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           userMessage: effectiveMessage,
           displayMessage: trimmedMessage,
           mode,
-          attachment: attachment?.file ?? null,
+          attachments: attachments.map((attachment) => attachment.file),
           selectedExperiences: selectedExperienceItems,
           selectedResume: selectedResumeItem,
         },
@@ -1282,7 +1421,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           ]);
         }
         setActiveThought('');
-        clearComposerAttachmentIfMatches(attachment);
+        clearComposerAttachmentsIfMatches(attachments);
         setSelectedExperiences([]);
         persistDraftSelectedResume(sessionId, null);
         setSelectedResume(null);
@@ -1295,6 +1434,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         markMessagesMutated();
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessageId));
         setInputValue((current) => (current.trim() ? current : trimmedMessage));
+        setComposerAttachments((current) => {
+          if (current.length > 0) {
+            return current;
+          }
+          return attachments;
+        });
         setSelectedExperiences((current) => (current.length > 0 ? current : selectedExperienceItems));
         persistDraftSelectedResume(sessionId, selectedResumeItem);
         setSelectedResume((current) => current ?? selectedResumeItem);
@@ -1303,7 +1448,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     } finally {
       setSendingCount((count) => Math.max(0, count - 1));
     }
-  }, [clearComposerAttachmentIfMatches, error, loadSessionDetail, markMessagesMutated, persistDraftSelectedResume, persistSessionSnapshot]);
+  }, [clearComposerAttachmentsIfMatches, error, loadSessionDetail, markMessagesMutated, persistDraftSelectedResume, persistSessionSnapshot]);
 
   useEffect(() => {
     if (!pendingLaunchRequest || !isAuthenticated) {
@@ -1319,7 +1464,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           draftLaunchRequestRef.current = pendingLaunchRequest;
           selectedSessionIdRef.current = null;
           setSelectedSessionId(null);
-          clearComposerAttachment();
+          clearComposerAttachments();
           clearSelectedExperiences();
           markMessagesMutated();
           setMessages([]);
@@ -1378,11 +1523,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [clearComposerAttachment, clearSelectedExperiences, cleanupSupersededSession, commitCreatedSession, createSessionRecord, error, isAuthenticated, markMessagesMutated, onConsumeLaunchRequest, pendingLaunchRequest, sendMessage]);
+  }, [clearComposerAttachments, clearSelectedExperiences, cleanupSupersededSession, commitCreatedSession, createSessionRecord, error, isAuthenticated, markMessagesMutated, onConsumeLaunchRequest, pendingLaunchRequest, sendMessage]);
 
   const handleSubmit = useCallback(async () => {
     const nextInput = inputValue.trim();
-    if (!nextInput && !composerAttachment && selectedExperiences.length === 0 && !selectedResume) {
+    if (!nextInput && composerAttachments.length === 0 && selectedExperiences.length === 0 && !selectedResume) {
       return;
     }
     let activeSessionId = selectedSessionId;
@@ -1391,7 +1536,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       const draftLaunchRequest = draftLaunchRequestRef.current;
       const created = await handleCreateSession(draftLaunchRequest?.context, {
         seedInput: false,
-        preserveAttachment: Boolean(composerAttachment),
+        preserveAttachment: composerAttachments.length > 0,
         selectedResumeDraft: selectedResume,
       });
       if (draftLaunchRequest?.applyDraftHandler) {
@@ -1411,13 +1556,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       activeSessionId,
       {
         userMessage: nextInput,
-        attachment: composerAttachment,
+        attachments: composerAttachments,
         selectedExperiences,
         selectedResume,
       },
       activeMode,
     );
-  }, [composerAttachment, handleCreateSession, inputValue, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
+  }, [composerAttachments, handleCreateSession, inputValue, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleApplyDraft = useCallback(async (messageId: string, card: AssistantDraftCard) => {
     if (!selectedSession) {
@@ -1594,7 +1739,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setSessionsState((prev) => prev.filter(s => s.id !== deleteConfirmId));
     draftSelectedResumeBySessionRef.current.delete(deleteConfirmId);
     if (wasSelected) {
-      clearComposerAttachment();
+      clearComposerAttachments();
       clearSelectedResume();
       selectedSessionIdRef.current = null;
       setSelectedSessionId(null);
@@ -1621,7 +1766,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setIsDeletingSession(false);
       setDeleteConfirmId(null);
     }
-  }, [clearComposerAttachment, clearSelectedResume, deleteConfirmId, error, markMessagesMutated, markSessionDeleted, setSessionsState, success]);
+  }, [clearComposerAttachments, clearSelectedResume, deleteConfirmId, error, markMessagesMutated, markSessionDeleted, setSessionsState, success]);
 
   const handleRenameSession = useCallback(async (e: React.MouseEvent, session: AssistantSession) => {
     e.stopPropagation();
@@ -1876,6 +2021,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             <div
               ref={messageViewportRef}
               className="min-w-0 flex-1 overflow-y-auto px-3 pt-4 sm:px-4 md:px-7 md:pt-6"
+              style={{ paddingBottom: `${composerReservedHeight}px` }}
             >
               {!selectedSessionId && !isLoadingSessions ? (
                 <div className="mx-auto mt-6 flex w-full max-w-3xl min-w-0 flex-col gap-6 md:mt-10">
@@ -1913,7 +2059,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     }
                     const isUser = message.role === 'user';
                     const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
-                    const attachment = readMessageAttachmentPreview(message);
+                    const attachments = readMessageAttachmentPreviews(message);
                     const selectedExperiencePreviews = readMessageSelectedExperiences(message);
                     const selectedResumePreview = readMessageSelectedResume(message);
                     return (
@@ -1921,7 +2067,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                         key={message.id}
                         isUser={isUser}
                         content={text}
-                        attachment={attachment}
+                        attachments={attachments}
                         selectedExperiences={selectedExperiencePreviews}
                         selectedResume={selectedResumePreview}
                       />
@@ -1939,14 +2085,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
             <div
               ref={composerContainerRef}
-              className="shrink-0 border-t border-slate-200/80 bg-slate-50/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur md:px-7 md:pb-6"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-4 md:px-7 md:pb-6 md:pt-5"
             >
-              <div className="mx-auto w-full max-w-3xl">
+              <div className="pointer-events-auto relative z-10 mx-auto w-full max-w-3xl">
                 <input
                   ref={attachmentInputRef}
                   type="file"
                   className="hidden"
-                  accept=".pdf,.docx,.jpg,.jpeg,.png,.webp"
+                  accept={ASSISTANT_ATTACHMENT_ACCEPT_ATTR}
+                  multiple
                   onChange={handleAttachmentSelect}
                 />
                 <ChatInputBox
@@ -1960,8 +2107,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     { key: 'pick-experience', label: '选择经历', onClick: () => void openExperiencePicker() },
                     { key: 'upload-attachment', label: '上传附件', onClick: openAttachmentPicker },
                   ]}
-                  attachmentPreview={composerAttachment}
-                  onRemoveAttachment={clearComposerAttachment}
+                  attachments={composerAttachments}
+                  onAddAttachments={(files) => appendComposerAttachments(files, 'drop')}
+                  onRemoveAttachment={removeComposerAttachment}
                   selectedResume={selectedResume}
                   onRemoveSelectedResume={() => {
                     if (!selectedSessionIdRef.current) {

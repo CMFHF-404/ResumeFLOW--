@@ -1194,12 +1194,34 @@ def _normalize_assistant_history(
         content_json = message.get("content_json")
         if isinstance(content_json, dict):
             normalized_content_json = {**content_json}
+            attachment_signatures: set[tuple[str, str, str, str]] = set()
+            raw_attachments = content_json.get("attachments")
+            if isinstance(raw_attachments, list):
+                attachment_contexts = [
+                    _build_assistant_attachment_context(
+                        attachment,
+                        include_attachment_content=include_attachment_content,
+                    )
+                    for attachment in raw_attachments
+                    if isinstance(attachment, dict)
+                ]
+                attachment_signatures = {
+                    _attachment_signature(attachment)
+                    for attachment in raw_attachments
+                    if isinstance(attachment, dict)
+                }
+                if attachment_contexts:
+                    normalized_content_json["attachments"] = attachment_contexts
+                elif "attachments" in normalized_content_json:
+                    normalized_content_json.pop("attachments", None)
             attachment = content_json.get("attachment")
-            if isinstance(attachment, dict):
+            if isinstance(attachment, dict) and _attachment_signature(attachment) not in attachment_signatures:
                 normalized_content_json["attachment"] = _build_assistant_attachment_context(
                     attachment,
                     include_attachment_content=include_attachment_content,
                 )
+            elif "attachment" in normalized_content_json and attachment_signatures:
+                normalized_content_json.pop("attachment", None)
             selected_experiences = _normalize_selected_experiences(
                 content_json.get("selected_experiences")
             )
@@ -1576,8 +1598,16 @@ def _collect_history_attachments(history: List[Dict[str, Any]]) -> List[Dict[str
         content_json = message.get("content_json")
         if not isinstance(content_json, dict):
             continue
+        raw_attachments = content_json.get("attachments")
+        message_signatures: set[tuple[str, str, str, str]] = set()
+        if isinstance(raw_attachments, list):
+            for attachment in raw_attachments:
+                if not isinstance(attachment, dict):
+                    continue
+                attachments.append(attachment)
+                message_signatures.add(_attachment_signature(attachment))
         attachment = content_json.get("attachment")
-        if isinstance(attachment, dict):
+        if isinstance(attachment, dict) and _attachment_signature(attachment) not in message_signatures:
             attachments.append(attachment)
     return attachments
 
@@ -1648,24 +1678,27 @@ def _complete_multi_attachment_selection(
 
 def _resolve_relevant_attachments(
     history: List[Dict[str, Any]],
-    current_attachment: Optional[Dict[str, Any]] = None,
+    current_attachments: Optional[List[Dict[str, Any]]] = None,
     user_message: str = "",
 ) -> List[Dict[str, Any]]:
     history_attachments = _collect_history_attachments(history)
+    normalized_current_attachments = _unique_attachments(
+        [attachment for attachment in (current_attachments or []) if isinstance(attachment, dict)]
+    )
     requested_attachment_count = min(
         _infer_requested_attachment_count(user_message),
         MAX_ASSISTANT_REUSED_ATTACHMENTS,
     )
-    if current_attachment:
+    if normalized_current_attachments:
         if _message_requests_multi_attachment_context(user_message):
-            companion_count = max(requested_attachment_count - 1, 0)
+            companion_count = max(requested_attachment_count - len(normalized_current_attachments), 0)
             explicit_history_matches = [
                 attachment
                 for attachment in history_attachments
                 if _message_explicitly_references_attachment(user_message, attachment)
             ]
-            if companion_count <= 0:
-                return [current_attachment]
+            if companion_count <= 0 or len(normalized_current_attachments) >= requested_attachment_count:
+                return normalized_current_attachments[-requested_attachment_count:]
             if explicit_history_matches:
                 selected_history = _complete_multi_attachment_selection(
                     history_attachments,
@@ -1673,10 +1706,10 @@ def _resolve_relevant_attachments(
                     companion_count,
                     user_message,
                 )
-                return _unique_attachments([*selected_history, current_attachment])[-requested_attachment_count:]
+                return _unique_attachments([*selected_history, *normalized_current_attachments])[-requested_attachment_count:]
             recent_history = history_attachments[-companion_count:]
-            return _unique_attachments([*recent_history, current_attachment])[-requested_attachment_count:]
-        return [current_attachment]
+            return _unique_attachments([*recent_history, *normalized_current_attachments])[-requested_attachment_count:]
+        return normalized_current_attachments
 
     if not history_attachments:
         return []
@@ -1872,10 +1905,10 @@ async def run_assistant_turn(
     selected_experiences: Optional[List[Dict[str, Any]]] = None,
     selected_resume: Optional[Dict[str, Any]] = None,
     history: List[Dict[str, Any]],
-    attachment: Optional[Dict[str, Any]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
-    resolved_attachments = _resolve_relevant_attachments(history, attachment, user_message=user_message)
+    resolved_attachments = _resolve_relevant_attachments(history, attachments, user_message=user_message)
     if attachment_hydrator:
         resolved_attachments = await attachment_hydrator(resolved_attachments)
     payload = _build_assistant_payload(
@@ -1909,7 +1942,7 @@ async def run_assistant_turn_with_thoughts(
     selected_experiences: Optional[List[Dict[str, Any]]] = None,
     selected_resume: Optional[Dict[str, Any]] = None,
     history: List[Dict[str, Any]],
-    attachment: Optional[Dict[str, Any]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
     thought_callback: ThoughtCallback = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
@@ -1928,11 +1961,11 @@ async def run_assistant_turn_with_thoughts(
             selected_experiences=selected_experiences,
             selected_resume=selected_resume,
             history=history,
-            attachment=attachment,
+            attachments=attachments,
             attachment_hydrator=attachment_hydrator,
         )
 
-    resolved_attachments = _resolve_relevant_attachments(history, attachment, user_message=user_message)
+    resolved_attachments = _resolve_relevant_attachments(history, attachments, user_message=user_message)
     if attachment_hydrator:
         resolved_attachments = await attachment_hydrator(resolved_attachments)
     payload = _build_assistant_payload(
@@ -1976,7 +2009,7 @@ async def run_assistant_turn_with_thoughts(
             selected_experiences=selected_experiences,
             selected_resume=selected_resume,
             history=history,
-            attachment=attachment,
+            attachments=attachments,
             attachment_hydrator=attachment_hydrator,
         )
     return _normalize_assistant_result(result)
