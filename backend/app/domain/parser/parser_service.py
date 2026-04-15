@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import base64
 import asyncio
+import base64
 import io
 import inspect
 import json
@@ -49,7 +49,7 @@ CHUNK_MAX_CHARS = 3_200
 CHUNK_MIN_CHARS = 800
 MAX_MERGE_PAYLOAD_CHARS = 10_000
 DUPLICATE_SIMILARITY_THRESHOLD = 0.86
-THOUGHT_NODE_TIMEOUT_SECONDS = 60.0
+THOUGHT_PAYLOAD_TIMEOUT_SECONDS = 180.0
 DEFAULT_WORK_TITLE = "未命名经历"
 DEFAULT_WORK_ORG = "未知机构"
 DEFAULT_EDU_TITLE = "未命名专业"
@@ -803,9 +803,13 @@ def _build_gemini_timeout() -> httpx.Timeout:
     return httpx.Timeout(
         connect=GEMINI_CONNECT_TIMEOUT_SECONDS,
         write=float(settings.ai_timeout_seconds),
-        read=THOUGHT_NODE_TIMEOUT_SECONDS,
+        read=float(settings.ai_timeout_seconds),
         pool=GEMINI_POOL_TIMEOUT_SECONDS,
     )
+
+
+def _build_gemini_payload_timeout_seconds() -> float:
+    return min(float(settings.ai_timeout_seconds), THOUGHT_PAYLOAD_TIMEOUT_SECONDS)
 
 
 def _build_resume_thinking_request(cleaned_text: str) -> Dict[str, Any]:
@@ -914,13 +918,13 @@ async def _stream_resume_thinking_parse(
                     try:
                         payload = await asyncio.wait_for(
                             payload_iter.__anext__(),
-                            timeout=THOUGHT_NODE_TIMEOUT_SECONDS,
+                            timeout=_build_gemini_payload_timeout_seconds(),
                         )
                     except StopAsyncIteration:
                         break
                     except asyncio.TimeoutError as exc:
                         raise ValueError(
-                            "Gemini Thinking 超时：连续 1 分钟未收到新的思考节点，请稍后重试。"
+                            "Gemini Thinking 长时间未收到新的解析流数据，请稍后重试。"
                         ) from exc
                     candidates = payload.get("candidates") or []
                     if not candidates:
@@ -1623,8 +1627,9 @@ async def parse_resume_with_thoughts(
         )
     except Exception as exc:
         logger.warning(
-            "[ResumeParse] Gemini Thinking unavailable, fallback to standard parser request_id=%s error=%s",
+            "[ResumeParse] Gemini fallback request_id=%s error_type=%s error=%s",
             request_id,
+            type(exc).__name__,
             str(exc),
         )
         await _emit_thought(thought_callback, {"type": "thought_reset"})

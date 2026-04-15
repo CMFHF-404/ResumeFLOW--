@@ -62,7 +62,10 @@ const STAGE_PROGRESS: Record<ParseStage, number> = {
   ready: 100,
   error: 0,
 };
-const PARSE_TIMEOUT_MS = 120_000;
+// Keep the client-side timeout above backend AI_TIMEOUT_SECONDS (300s),
+// so the backend can return the real parser/Gemini error instead of the
+// browser aborting the stream first.
+const PARSE_TIMEOUT_MS = 360_000;
 const TIMEOUT_ERROR_NAME = 'ResumeParseTimeout';
 const LONG_PARSE_NOTICE_DELAY_MS = 4000;
 const LONG_PARSE_NOTICE_DURATION_MS = 8000;
@@ -72,6 +75,7 @@ const REPEATED_PARSE_ERROR_HINT =
   '如果简历文本过长或者含有图片（如模板）可能造成简历无法解析，请使用其他AI助手整理出干净文本再解析';
 const THINKING_NODE_BREAK_REGEX = /[\n\r]|[。！？.!?；;]\s*$/;
 const THINKING_TITLE_REGEX = /\*\*([^*\n]+?)(?:\*\*|$)/;
+const THINKING_CARD_MAX_TEXT_LENGTH = 28;
 
 type ToastHandlers = {
   success: (message: string, duration?: number) => void;
@@ -195,6 +199,14 @@ const extractThinkingHeadline = (text: string) => {
     .map((line) => line.replace(/\*/g, '').trim())
     .find(Boolean);
   return firstLine || '';
+};
+
+const clampThinkingText = (value: string, maxLength = THINKING_CARD_MAX_TEXT_LENGTH) => {
+  const normalized = normalizeCjkSpacing(value);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
 };
 
 const CJK_CHAR_PATTERN = '\\u4e00-\\u9fff\\u3400-\\u4dbf';
@@ -1018,10 +1030,11 @@ const ThinkingTraceCard: React.FC<{
       : stage === 'ready'
         ? '解析已完成'
         : '等待模型思考...');
+  const clampedDisplayText = clampThinkingText(displayText);
   const animationKey = latestNode ? `${latestNode.id}-${latestHeadline}` : `idle-${stage}`;
   const isWorking = stage === 'uploading' || stage === 'parsing' || stage === 'analyzing';
   const isError = stage === 'error' || latestNode?.status === 'error';
-  const renderedTitle = isWorking ? `思考中 · ${displayText}` : displayText;
+  const renderedPrefix = isWorking ? '思考中 ·' : '';
   const iconClassName = isError
     ? 'text-red-500'
     : isWorking
@@ -1034,7 +1047,7 @@ const ThinkingTraceCard: React.FC<{
       : 'border-emerald-100/80 bg-gradient-to-r from-emerald-50/95 via-white to-teal-50/80 shadow-[0_12px_30px_rgba(16,185,129,0.08)]';
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border px-4 py-3 ${cardClassName}`}>
+    <div className={`relative h-[70px] overflow-hidden rounded-2xl border px-4 py-3 ${cardClassName}`}>
       <style>{`
         @keyframes thinkingRollIn {
           0% {
@@ -1065,7 +1078,7 @@ const ThinkingTraceCard: React.FC<{
           style={{ animation: 'thinkingCardGradient 5s ease-in-out infinite' }}
         />
       ) : null}
-      <div className="relative flex min-h-[44px] items-center gap-3">
+      <div className="relative flex h-[44px] items-center gap-3">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/85 shadow-sm ring-1 ${isWorking ? 'ring-violet-200/80' : 'ring-white/60'} ${iconClassName}`}>
           {isError ? (
             <AlertTriangle className="h-4.5 w-4.5" />
@@ -1085,8 +1098,15 @@ const ThinkingTraceCard: React.FC<{
                 : 'thinkingRollIn 360ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
-            <p className="truncate text-sm font-semibold">
-              {renderedTitle}
+            <p className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-sm font-semibold">
+              {renderedPrefix ? (
+                <span className="shrink-0">
+                  {renderedPrefix}
+                </span>
+              ) : null}
+              <span className="min-w-0 truncate">
+                {clampedDisplayText}
+              </span>
             </p>
           </div>
         </div>
