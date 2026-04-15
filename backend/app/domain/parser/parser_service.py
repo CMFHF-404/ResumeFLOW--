@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import asyncio
 import io
 import inspect
 import json
@@ -48,6 +49,7 @@ CHUNK_MAX_CHARS = 3_200
 CHUNK_MIN_CHARS = 800
 MAX_MERGE_PAYLOAD_CHARS = 10_000
 DUPLICATE_SIMILARITY_THRESHOLD = 0.86
+THOUGHT_NODE_TIMEOUT_SECONDS = 60.0
 DEFAULT_WORK_TITLE = "未命名经历"
 DEFAULT_WORK_ORG = "未知机构"
 DEFAULT_EDU_TITLE = "未命名专业"
@@ -801,7 +803,7 @@ def _build_gemini_timeout() -> httpx.Timeout:
     return httpx.Timeout(
         connect=GEMINI_CONNECT_TIMEOUT_SECONDS,
         write=float(settings.ai_timeout_seconds),
-        read=float(settings.ai_timeout_seconds),
+        read=THOUGHT_NODE_TIMEOUT_SECONDS,
         pool=GEMINI_POOL_TIMEOUT_SECONDS,
     )
 
@@ -907,7 +909,19 @@ async def _stream_resume_thinking_parse(
                     raise ValueError(
                         "Gemini 中转站返回了非流式响应，请检查 GEMINI_BASE_URL 是否需要包含 /v1beta。"
                     )
-                async for payload in _iter_sse_json_payloads(response):
+                payload_iter = _iter_sse_json_payloads(response).__aiter__()
+                while True:
+                    try:
+                        payload = await asyncio.wait_for(
+                            payload_iter.__anext__(),
+                            timeout=THOUGHT_NODE_TIMEOUT_SECONDS,
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError as exc:
+                        raise ValueError(
+                            "Gemini Thinking 超时：连续 1 分钟未收到新的思考节点，请稍后重试。"
+                        ) from exc
                     candidates = payload.get("candidates") or []
                     if not candidates:
                         continue
