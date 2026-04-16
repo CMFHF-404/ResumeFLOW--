@@ -18,6 +18,7 @@ import type {
     ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeExperienceView,
+    SectionSpacingKey,
     SkillGroupView,
 } from '../../../types/resume';
 import { experienceService } from '../../../services/experienceService';
@@ -46,7 +47,6 @@ import {
     PREVIEW_PADDING_MM,
     SMART_PAGE_ITEM_SPACING_DEFAULT,
     SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY,
-    SECTION_SPACING_CLASS_BY_DENSITY,
 } from '../../ResumeEditor/constants';
 
 export type ResumePreviewModalProps = {
@@ -71,7 +71,7 @@ type PreviewState = {
     fontSize: number;
     topPaddingPx: number;
     itemSpacingEm: number;
-    sectionSpacingKey: 2 | 3 | 4 | 5 | 6 | 8;
+    sectionSpacingKey: SectionSpacingKey;
     templateId: ResumeTemplateId;
     themeColorPresetId: ResumeThemeColorPresetId;
 };
@@ -84,9 +84,9 @@ type PreviewSnapshot = {
 const DEFAULT_TITLE = '简历预览';
 const LOADING_TEXT = '正在加载简历预览...';
 const ERROR_TEXT = '加载简历预览失败，请稍后重试';
-const DEFAULT_SPACING_CLASS = SECTION_SPACING_CLASS_BY_DENSITY.standard;
+const DEFAULT_SECTION_SPACING_KEY: SectionSpacingKey = 6;
+const DEFAULT_SPACING_CLASS = SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[DEFAULT_SECTION_SPACING_KEY];
 const DEFAULT_TOP_PADDING_PX = PREVIEW_PADDING_MM * (96 / 25.4);
-const DEFAULT_SECTION_SPACING_KEY = 6;
 
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
     const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
@@ -174,9 +174,6 @@ const buildSelectedSkillGroups = (groups: SkillGroupView[], selectedIds: Set<str
 };
 
 const resolveSpacingClass = (sectionSpacingKey?: PreviewState['sectionSpacingKey']) => {
-    if (sectionSpacingKey === 8) {
-        return SECTION_SPACING_CLASS_BY_DENSITY.spacious;
-    }
     return SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[sectionSpacingKey ?? DEFAULT_SECTION_SPACING_KEY]
         ?? DEFAULT_SPACING_CLASS;
 };

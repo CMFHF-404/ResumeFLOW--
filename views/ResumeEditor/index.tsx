@@ -32,6 +32,7 @@ import type {
     ResumeLayoutOrders,
     ResumePrintLayoutMeasurement,
     ResumeExperienceView,
+    SectionSpacingKey,
     SkillGroupView,
 } from '../../types/resume';
 import type { Resume as DashboardResume } from '../../types';
@@ -106,9 +107,11 @@ import {
     EDUCATION_DRAFT_PREFIX,
     EXPERIENCE_DRAFT_PREFIX,
     FONT_SIZE_DEFAULT,
+    FONT_SIZE_MAX,
     FONT_SIZE_MIN,
     FONT_SIZE_STEP,
     LINE_HEIGHT_DEFAULT,
+    LINE_HEIGHT_MAX,
     LINE_HEIGHT_MIN,
     LINE_HEIGHT_STEP,
     LIST_SPACING_BY_DENSITY,
@@ -118,11 +121,13 @@ import {
     SIDEBAR_WIDTH_CLASS,
     SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
     SMART_PAGE_ITEM_SPACING_DEFAULT,
+    SMART_PAGE_ITEM_SPACING_MAX,
     SMART_PAGE_ITEM_SPACING_MIN,
     SMART_PAGE_ITEM_SPACING_STEP,
     SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY,
     SMART_PAGE_SECTION_SPACING_STEPS,
     SMART_PAGE_TOP_PADDING_MIN_PX,
+    SMART_PAGE_TOP_PADDING_MAX_OFFSET_PX,
     SMART_PAGE_TOP_PADDING_STEP_PX,
     PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX,
     SMART_PAGE_TOAST_MESSAGES,
@@ -191,46 +196,87 @@ import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from '../AIAssis
 
 const buildLineHeightSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
-    for (let value = start; value >= min; value -= step) {
+    const direction = start <= min ? 1 : -1;
+    for (
+        let value = start;
+        direction > 0 ? value <= min : value >= min;
+        value += step * direction
+    ) {
         steps.push(Number(value.toFixed(2)));
     }
-    if (steps[steps.length - 1] !== min) {
-        steps.push(min);
+    const normalizedEnd = Number(min.toFixed(2));
+    if (steps[steps.length - 1] !== normalizedEnd) {
+        steps.push(normalizedEnd);
     }
     return steps;
 };
 
-const LINE_HEIGHT_STEPS = buildLineHeightSteps(LINE_HEIGHT_DEFAULT, LINE_HEIGHT_MIN, LINE_HEIGHT_STEP);
+const LINE_HEIGHT_SHRINK_STEPS = buildLineHeightSteps(
+    LINE_HEIGHT_DEFAULT,
+    LINE_HEIGHT_MIN,
+    LINE_HEIGHT_STEP
+);
+const LINE_HEIGHT_OPTION_VALUES = buildLineHeightSteps(
+    LINE_HEIGHT_MAX,
+    LINE_HEIGHT_MIN,
+    LINE_HEIGHT_STEP
+);
 
 // 字号调整步骤（用于智能一页算法）
 const buildFontSizeSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
-    for (let value = start; value >= min; value -= step) {
+    const direction = start <= min ? 1 : -1;
+    for (
+        let value = start;
+        direction > 0 ? value <= min : value >= min;
+        value += step * direction
+    ) {
         steps.push(Number(value.toFixed(1)));
     }
-    if (steps[steps.length - 1] !== min) {
-        steps.push(min);
+    const normalizedEnd = Number(min.toFixed(1));
+    if (steps[steps.length - 1] !== normalizedEnd) {
+        steps.push(normalizedEnd);
     }
     return steps;
 };
 
-const FONT_SIZE_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
+const buildDiscreteStepsFromCurrent = <T extends number>(
+    steps: readonly T[],
+    start: T,
+    direction: 'shrink' | 'expand'
+) => {
+    const exactIndex = steps.findIndex((candidate) => candidate === start);
+    const startIndex = exactIndex >= 0
+        ? exactIndex
+        : steps.reduce(
+            (nearestIndex, step, index) => (
+                Math.abs(step - start) < Math.abs(steps[nearestIndex] - start)
+                    ? index
+                    : nearestIndex
+            ),
+            0
+        );
+    return direction === 'shrink'
+        ? [...steps].slice(startIndex)
+        : [...steps].slice(0, startIndex + 1).reverse();
+};
+
+const FONT_SIZE_SHRINK_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
+const FONT_SIZE_OPTION_VALUES = buildFontSizeSteps(FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SIZE_STEP);
 const CSS_PX_PER_MM = 96 / 25.4;
 const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
 const TEMPLATE_PRESET_SYNC_TIMEOUT_MS = 1500;
 const formatOptionNumberLabel = (value: number, maxDecimals = 2) => (
     value.toFixed(maxDecimals).replace(/\.?0+$/, '')
 );
-const LINE_HEIGHT_OPTIONS = LINE_HEIGHT_STEPS.map((value) => ({
+const LINE_HEIGHT_OPTIONS = LINE_HEIGHT_OPTION_VALUES.map((value) => ({
     value,
     label: formatOptionNumberLabel(value),
 }));
-const FONT_SIZE_OPTIONS = FONT_SIZE_STEPS.map((value) => ({
+const FONT_SIZE_OPTIONS = FONT_SIZE_OPTION_VALUES.map((value) => ({
     value,
     label: `${formatOptionNumberLabel(value, 1)} px`,
 }));
-
-type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8;
 
 type SmartPageLayout = {
     topPaddingPx: number;
@@ -242,22 +288,34 @@ type SmartPageLayout = {
 
 const buildTopPaddingSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
-    for (let value = start; value >= min; value -= step) {
+    const direction = start <= min ? 1 : -1;
+    for (
+        let value = start;
+        direction > 0 ? value <= min : value >= min;
+        value += step * direction
+    ) {
         steps.push(Number(value.toFixed(2)));
     }
-    if (steps[steps.length - 1] !== min) {
-        steps.push(min);
+    const normalizedEnd = Number(min.toFixed(2));
+    if (steps[steps.length - 1] !== normalizedEnd) {
+        steps.push(normalizedEnd);
     }
     return steps;
 };
 
 const buildItemSpacingSteps = (start: number, min: number, step: number) => {
     const steps: number[] = [];
-    for (let value = start; value >= min; value -= step) {
+    const direction = start <= min ? 1 : -1;
+    for (
+        let value = start;
+        direction > 0 ? value <= min : value >= min;
+        value += step * direction
+    ) {
         steps.push(Number(value.toFixed(2)));
     }
-    if (steps[steps.length - 1] !== min) {
-        steps.push(min);
+    const normalizedEnd = Number(min.toFixed(2));
+    if (steps[steps.length - 1] !== normalizedEnd) {
+        steps.push(normalizedEnd);
     }
     return steps;
 };
@@ -269,8 +327,8 @@ const buildReductionStepsFromCurrent = (start: number, min: number, step: number
     return buildItemSpacingSteps(start, min, step);
 };
 
-const SECTION_SPACING_KEYS: SectionSpacingKey[] = [8, 6, 5, 4, 3, 2];
-const MAX_ITEM_SPACING_EM = Math.max(...Object.values(LIST_SPACING_BY_DENSITY));
+const SECTION_SPACING_KEYS: SectionSpacingKey[] = [...SMART_PAGE_SECTION_SPACING_STEPS];
+const MAX_ITEM_SPACING_EM = SMART_PAGE_ITEM_SPACING_MAX;
 const ITEM_SPACING_OPTIONS = Array.from(new Set([
     ...buildItemSpacingSteps(
         MAX_ITEM_SPACING_EM,
@@ -311,7 +369,10 @@ const resolveDefaultTopPaddingPx = (a4Height?: number) => {
     const pxPerMm = a4Height ? a4Height / A4_HEIGHT_MM : CSS_PX_PER_MM;
     return Number((pxPerMm * PREVIEW_PADDING_MM).toFixed(2));
 };
-const TOP_PADDING_MAX_PX = resolveDefaultTopPaddingPx();
+const resolveMaxTopPaddingPx = (a4Height?: number) => Number(
+    (resolveDefaultTopPaddingPx(a4Height) + SMART_PAGE_TOP_PADDING_MAX_OFFSET_PX).toFixed(2)
+);
+const TOP_PADDING_MAX_PX = resolveMaxTopPaddingPx();
 const TOP_PADDING_MIN_PX = SMART_PAGE_TOP_PADDING_MIN_PX;
 const TOP_PADDING_OPTIONS = buildTopPaddingSteps(
     TOP_PADDING_MAX_PX,
@@ -322,7 +383,7 @@ const TOP_PADDING_SELECT_OPTIONS = TOP_PADDING_OPTIONS.map((value) => ({
     value,
     label: `${formatOptionNumberLabel(value)} px`,
 }));
-const TOP_PADDING_SLIDER_MAX = TOP_PADDING_OPTIONS[0] ?? TOP_PADDING_MAX_PX;
+const TOP_PADDING_SLIDER_MAX = TOP_PADDING_MAX_PX;
 
 const resolveDefaultSectionSpacingKey = (
     density: 'compact' | 'standard' | 'spacious'
@@ -344,10 +405,8 @@ const resolveDefaultItemSpacingEm = (density: 'compact' | 'standard' | 'spacious
 };
 
 const resolveSectionSpacingClass = (spacingKey: SectionSpacingKey) => {
-    if (spacingKey === 8) {
-        return SECTION_SPACING_CLASS_BY_DENSITY.spacious;
-    }
-    return SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[spacingKey];
+    return SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[spacingKey]
+        ?? SECTION_SPACING_CLASS_BY_DENSITY.standard;
 };
 
 type ModuleReorderContext = {
@@ -2809,67 +2868,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         return steps[nextIndex];
     };
 
-    const resolveStageFontSize = (reduction: number) => (
-        FONT_SIZE_STEPS[Math.min(
-            Math.round(reduction / FONT_SIZE_STEP),
-            FONT_SIZE_STEPS.length - 1
-        )]
-    );
-
-    const resolveStageLineHeight = (reduction: number) => (
-        LINE_HEIGHT_STEPS[Math.min(
-            Math.round(reduction / LINE_HEIGHT_STEP),
-            LINE_HEIGHT_STEPS.length - 1
-        )]
-    );
-
     const resolveLayoutScore = (
         layout: SmartPageLayout,
         defaultLayout: SmartPageLayout,
         topPaddingSteps: number[],
-        itemSpacingSteps: number[]
+        itemSpacingSteps: number[],
+        mode: 'shrink' | 'expand'
     ) => {
-        const minTopPaddingPx = topPaddingSteps[topPaddingSteps.length - 1];
+        const topPaddingMinPx = Math.min(...topPaddingSteps);
+        const topPaddingMaxPx = Math.max(...topPaddingSteps);
+        const itemSpacingMinEm = Math.min(...itemSpacingSteps);
+        const itemSpacingMaxEm = Math.max(...itemSpacingSteps);
         const minSectionSpacingKey = SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1];
-        const minItemSpacingEm = itemSpacingSteps[itemSpacingSteps.length - 1];
-
-        const fontSizeLoss = (defaultLayout.fontSize - layout.fontSize) / FONT_SIZE_STEP;
-        const lineHeightLoss = (defaultLayout.lineHeight - layout.lineHeight) / LINE_HEIGHT_STEP;
-        const topPaddingLoss = (
-            defaultLayout.topPaddingPx - layout.topPaddingPx
-        ) / SMART_PAGE_TOP_PADDING_STEP_PX;
-        const sectionSpacingLoss = Math.max(
-            0,
-            resolveNearestStepIndex(SECTION_SPACING_KEYS, layout.sectionSpacingKey)
-            - resolveNearestStepIndex(SECTION_SPACING_KEYS, defaultLayout.sectionSpacingKey)
-        );
-        const itemSpacingLoss = (
-            defaultLayout.itemSpacingEm - layout.itemSpacingEm
-        ) / SMART_PAGE_ITEM_SPACING_STEP;
-
-        let penalty = 0;
-        penalty += fontSizeLoss * 5;
-        penalty += lineHeightLoss * 3;
-        penalty += sectionSpacingLoss * 2;
-        penalty += topPaddingLoss * 2;
-        penalty += itemSpacingLoss * 1.5;
-
-        if (Math.abs(layout.fontSize - FONT_SIZE_MIN) < 0.001) {
-            if (layout.sectionSpacingKey !== minSectionSpacingKey) {
-                penalty += 6;
-            }
-            if (layout.topPaddingPx - minTopPaddingPx > 0.001) {
-                penalty += 6;
-            }
-        }
-
-        const resolveCompressionRatio = (value: number, minValue: number, maxValue: number) => {
-            if (Math.abs(maxValue - minValue) < 0.001) {
-                return 0;
-            }
-            return Math.max(0, Math.min(1, (maxValue - value) / (maxValue - minValue)));
-        };
-
+        const maxSectionSpacingKey = SECTION_SPACING_KEYS[0];
         const defaultSectionIndex = resolveNearestStepIndex(
             SECTION_SPACING_KEYS,
             defaultLayout.sectionSpacingKey
@@ -2878,24 +2889,93 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             SECTION_SPACING_KEYS,
             layout.sectionSpacingKey
         );
-        const maxSectionIndex = SECTION_SPACING_KEYS.length - 1;
-        const sectionCompressionRatio = maxSectionIndex === defaultSectionIndex
-            ? 0
-            : Math.max(
-                0,
-                Math.min(
-                    1,
-                    (currentSectionIndex - defaultSectionIndex)
-                    / (maxSectionIndex - defaultSectionIndex)
+        const fontSizeDelta = Math.abs(layout.fontSize - defaultLayout.fontSize) / FONT_SIZE_STEP;
+        const lineHeightDelta = Math.abs(layout.lineHeight - defaultLayout.lineHeight) / LINE_HEIGHT_STEP;
+        const topPaddingDelta = Math.abs(layout.topPaddingPx - defaultLayout.topPaddingPx)
+            / SMART_PAGE_TOP_PADDING_STEP_PX;
+        const itemSpacingDelta = Math.abs(layout.itemSpacingEm - defaultLayout.itemSpacingEm)
+            / SMART_PAGE_ITEM_SPACING_STEP;
+        const sectionSpacingDelta = Math.abs(currentSectionIndex - defaultSectionIndex);
+
+        const weightedDelta = (
+            (fontSizeDelta * 5)
+            + (lineHeightDelta * 3)
+            + (sectionSpacingDelta * 2)
+            + (topPaddingDelta * 2)
+            + (itemSpacingDelta * 1.5)
+        );
+
+        let penalty = mode === 'shrink' ? weightedDelta : 0;
+
+        if (mode === 'shrink' && Math.abs(layout.fontSize - FONT_SIZE_MIN) < 0.001) {
+            if (layout.sectionSpacingKey !== minSectionSpacingKey) {
+                penalty += 6;
+            }
+            if (layout.topPaddingPx - topPaddingMinPx > 0.001) {
+                penalty += 6;
+            }
+        }
+
+        if (mode === 'expand' && Math.abs(layout.fontSize - FONT_SIZE_MAX) < 0.001) {
+            if (layout.sectionSpacingKey !== maxSectionSpacingKey) {
+                penalty += 6;
+            }
+            if (topPaddingMaxPx - layout.topPaddingPx > 0.001) {
+                penalty += 6;
+            }
+        }
+
+        const resolveAdjustmentRatio = (
+            value: number,
+            baselineValue: number,
+            minValue: number,
+            maxValue: number
+        ) => {
+            const denominator = mode === 'shrink'
+                ? baselineValue - minValue
+                : maxValue - baselineValue;
+            if (Math.abs(denominator) < 0.001) {
+                return 0;
+            }
+            return mode === 'shrink'
+                ? Math.max(0, Math.min(1, (baselineValue - value) / denominator))
+                : Math.max(0, Math.min(1, (value - baselineValue) / denominator));
+        };
+
+        const sectionAdjustmentRatio = mode === 'shrink'
+            ? defaultSectionIndex >= SECTION_SPACING_KEYS.length - 1
+                ? 0
+                : Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        (currentSectionIndex - defaultSectionIndex)
+                        / ((SECTION_SPACING_KEYS.length - 1) - defaultSectionIndex)
+                    )
                 )
-            );
+            : defaultSectionIndex <= 0
+                ? 0
+                : Math.max(
+                    0,
+                    Math.min(1, (defaultSectionIndex - currentSectionIndex) / defaultSectionIndex)
+                );
 
         const ratios = [
-            resolveCompressionRatio(layout.fontSize, FONT_SIZE_MIN, defaultLayout.fontSize),
-            resolveCompressionRatio(layout.lineHeight, LINE_HEIGHT_MIN, defaultLayout.lineHeight),
-            sectionCompressionRatio,
-            resolveCompressionRatio(layout.topPaddingPx, minTopPaddingPx, defaultLayout.topPaddingPx),
-            resolveCompressionRatio(layout.itemSpacingEm, minItemSpacingEm, defaultLayout.itemSpacingEm),
+            resolveAdjustmentRatio(layout.fontSize, defaultLayout.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX),
+            resolveAdjustmentRatio(layout.lineHeight, defaultLayout.lineHeight, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX),
+            sectionAdjustmentRatio,
+            resolveAdjustmentRatio(
+                layout.topPaddingPx,
+                defaultLayout.topPaddingPx,
+                topPaddingMinPx,
+                topPaddingMaxPx
+            ),
+            resolveAdjustmentRatio(
+                layout.itemSpacingEm,
+                defaultLayout.itemSpacingEm,
+                itemSpacingMinEm,
+                itemSpacingMaxEm
+            ),
         ];
         const averageRatio = ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
         penalty += ratios.reduce(
@@ -2909,7 +2989,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             penalty += (maxRatio - minRatio - 0.35) * 8;
         }
 
-        return 100 - penalty;
+        return mode === 'shrink'
+            ? 100 - penalty
+            : weightedDelta - penalty;
     };
 
     const findBestFitWithinStage = async (
@@ -2917,39 +2999,71 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         targetLayout: SmartPageLayout,
         defaultLayout: SmartPageLayout,
         topPaddingSteps: number[],
-        itemSpacingSteps: number[]
+        itemSpacingSteps: number[],
+        mode: 'shrink' | 'expand',
+        fontSizeSteps: number[],
+        lineHeightSteps: number[]
     ): Promise<SmartPageResult> => {
-        const fontStartIndex = resolveNearestStepIndex(FONT_SIZE_STEPS, targetLayout.fontSize);
-        const lineHeightStartIndex = resolveNearestStepIndex(LINE_HEIGHT_STEPS, targetLayout.lineHeight);
+        const fontStartIndex = resolveNearestStepIndex(fontSizeSteps, targetLayout.fontSize);
+        const lineHeightStartIndex = resolveNearestStepIndex(lineHeightSteps, targetLayout.lineHeight);
         let bestFitLayout: SmartPageResult = null;
         let bestFitScore = Number.NEGATIVE_INFINITY;
 
-        for (let fontIndex = fontStartIndex; fontIndex < FONT_SIZE_STEPS.length; fontIndex += 1) {
-            const relaxedLineHeightStartIndex = Math.max(
-                0,
-                lineHeightStartIndex - (fontIndex - fontStartIndex)
-            );
-            for (
-                let lineHeightIndex = relaxedLineHeightStartIndex;
-                lineHeightIndex < LINE_HEIGHT_STEPS.length;
-                lineHeightIndex += 1
-            ) {
-                const fitLayout = await tryMeasureLayout(a4Height, {
-                    ...targetLayout,
-                    fontSize: FONT_SIZE_STEPS[fontIndex],
-                    lineHeight: LINE_HEIGHT_STEPS[lineHeightIndex],
-                });
-                if (fitLayout) {
+        if (mode === 'shrink') {
+            for (let fontIndex = fontStartIndex; fontIndex < fontSizeSteps.length; fontIndex += 1) {
+                const relaxedLineHeightStartIndex = Math.max(
+                    0,
+                    lineHeightStartIndex - (fontIndex - fontStartIndex)
+                );
+                for (
+                    let lineHeightIndex = relaxedLineHeightStartIndex;
+                    lineHeightIndex < lineHeightSteps.length;
+                    lineHeightIndex += 1
+                ) {
+                    const fitLayout = await tryMeasureLayout(a4Height, {
+                        ...targetLayout,
+                        fontSize: fontSizeSteps[fontIndex],
+                        lineHeight: lineHeightSteps[lineHeightIndex],
+                    });
+                    if (!fitLayout) {
+                        continue;
+                    }
                     const score = resolveLayoutScore(
                         fitLayout,
                         defaultLayout,
                         topPaddingSteps,
-                        itemSpacingSteps
+                        itemSpacingSteps,
+                        mode
                     );
                     if (score > bestFitScore) {
                         bestFitLayout = fitLayout;
                         bestFitScore = score;
                     }
+                }
+            }
+            return bestFitLayout;
+        }
+
+        for (let fontIndex = fontStartIndex; fontIndex >= 0; fontIndex -= 1) {
+            for (let lineHeightIndex = lineHeightStartIndex; lineHeightIndex >= 0; lineHeightIndex -= 1) {
+                const fitLayout = await tryMeasureLayout(a4Height, {
+                    ...targetLayout,
+                    fontSize: fontSizeSteps[fontIndex],
+                    lineHeight: lineHeightSteps[lineHeightIndex],
+                });
+                if (!fitLayout) {
+                    continue;
+                }
+                const score = resolveLayoutScore(
+                    fitLayout,
+                    defaultLayout,
+                    topPaddingSteps,
+                    itemSpacingSteps,
+                    mode
+                );
+                if (score > bestFitScore) {
+                    bestFitLayout = fitLayout;
+                    bestFitScore = score;
                 }
             }
         }
@@ -2962,22 +3076,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         layout: SmartPageLayout
     ): Promise<SmartPageLayout> => {
         let candidate = layout;
-        const fontIndex = resolveNearestStepIndex(FONT_SIZE_STEPS, candidate.fontSize);
+        const fontIndex = resolveNearestStepIndex(FONT_SIZE_SHRINK_STEPS, candidate.fontSize);
         if (fontIndex > 0) {
             const reboundFontLayout = await tryMeasureLayout(a4Height, {
                 ...candidate,
-                fontSize: FONT_SIZE_STEPS[fontIndex - 1],
+                fontSize: FONT_SIZE_SHRINK_STEPS[fontIndex - 1],
             });
             if (reboundFontLayout) {
                 candidate = reboundFontLayout;
             }
         }
 
-        const lineHeightIndex = resolveNearestStepIndex(LINE_HEIGHT_STEPS, candidate.lineHeight);
+        const lineHeightIndex = resolveNearestStepIndex(LINE_HEIGHT_SHRINK_STEPS, candidate.lineHeight);
         if (lineHeightIndex > 0) {
             const reboundLineHeightLayout = await tryMeasureLayout(a4Height, {
                 ...candidate,
-                lineHeight: LINE_HEIGHT_STEPS[lineHeightIndex - 1],
+                lineHeight: LINE_HEIGHT_SHRINK_STEPS[lineHeightIndex - 1],
             });
             if (reboundLineHeightLayout) {
                 candidate = reboundLineHeightLayout;
@@ -3030,7 +3144,127 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             const defaultLayout = resolveDefaultLayoutParams(a4Height);
             const initialFit = await tryMeasureLayout(a4Height, defaultLayout);
             if (initialFit) {
-                return finalizeFit(initialFit);
+                const topPaddingExpandSteps = buildTopPaddingSteps(
+                    defaultLayout.topPaddingPx,
+                    resolveMaxTopPaddingPx(a4Height),
+                    SMART_PAGE_TOP_PADDING_STEP_PX
+                );
+                const itemSpacingExpandSteps = buildItemSpacingSteps(
+                    defaultLayout.itemSpacingEm,
+                    SMART_PAGE_ITEM_SPACING_MAX,
+                    SMART_PAGE_ITEM_SPACING_STEP
+                );
+                const fontSizeExpandSteps = buildFontSizeSteps(
+                    defaultLayout.fontSize,
+                    FONT_SIZE_MAX,
+                    FONT_SIZE_STEP
+                );
+                const lineHeightExpandSteps = buildLineHeightSteps(
+                    defaultLayout.lineHeight,
+                    LINE_HEIGHT_MAX,
+                    LINE_HEIGHT_STEP
+                );
+                const sectionSpacingExpandSteps = buildDiscreteStepsFromCurrent(
+                    SECTION_SPACING_KEYS,
+                    defaultLayout.sectionSpacingKey,
+                    'expand'
+                );
+
+                const expansionStageLayouts: Array<{ key: string; layout: SmartPageLayout }> = [
+                    {
+                        key: 'mild',
+                        layout: {
+                            topPaddingPx: resolveStepByOffset(topPaddingExpandSteps, defaultLayout.topPaddingPx, 1),
+                            sectionSpacingKey: resolveStepByOffset(
+                                sectionSpacingExpandSteps,
+                                defaultLayout.sectionSpacingKey,
+                                1
+                            ) as SectionSpacingKey,
+                            itemSpacingEm: resolveStepByOffset(itemSpacingExpandSteps, defaultLayout.itemSpacingEm, 1),
+                            lineHeight: resolveStepByOffset(lineHeightExpandSteps, defaultLayout.lineHeight, 1),
+                            fontSize: resolveStepByOffset(fontSizeExpandSteps, defaultLayout.fontSize, 1),
+                        },
+                    },
+                    {
+                        key: 'medium',
+                        layout: {
+                            topPaddingPx: resolveStepByOffset(topPaddingExpandSteps, defaultLayout.topPaddingPx, 2),
+                            sectionSpacingKey: resolveStepByOffset(
+                                sectionSpacingExpandSteps,
+                                defaultLayout.sectionSpacingKey,
+                                2
+                            ) as SectionSpacingKey,
+                            itemSpacingEm: resolveStepByOffset(itemSpacingExpandSteps, defaultLayout.itemSpacingEm, 2),
+                            lineHeight: resolveStepByOffset(lineHeightExpandSteps, defaultLayout.lineHeight, 2),
+                            fontSize: resolveStepByOffset(fontSizeExpandSteps, defaultLayout.fontSize, 2),
+                        },
+                    },
+                    {
+                        key: 'strong',
+                        layout: {
+                            topPaddingPx: resolveStepByOffset(topPaddingExpandSteps, defaultLayout.topPaddingPx, 3),
+                            sectionSpacingKey: resolveStepByOffset(
+                                sectionSpacingExpandSteps,
+                                defaultLayout.sectionSpacingKey,
+                                3
+                            ) as SectionSpacingKey,
+                            itemSpacingEm: resolveStepByOffset(itemSpacingExpandSteps, defaultLayout.itemSpacingEm, 3),
+                            lineHeight: resolveStepByOffset(lineHeightExpandSteps, defaultLayout.lineHeight, 3),
+                            fontSize: resolveStepByOffset(fontSizeExpandSteps, defaultLayout.fontSize, 3),
+                        },
+                    },
+                    {
+                        key: 'max-balanced',
+                        layout: {
+                            topPaddingPx: topPaddingExpandSteps[topPaddingExpandSteps.length - 1],
+                            sectionSpacingKey: sectionSpacingExpandSteps[sectionSpacingExpandSteps.length - 1],
+                            itemSpacingEm: itemSpacingExpandSteps[itemSpacingExpandSteps.length - 1],
+                            lineHeight: lineHeightExpandSteps[lineHeightExpandSteps.length - 1],
+                            fontSize: fontSizeExpandSteps[fontSizeExpandSteps.length - 1],
+                        },
+                    },
+                ];
+                const dedupedExpansionStages = expansionStageLayouts.filter((stage, index, stages) => {
+                    const currentKey = JSON.stringify(stage.layout);
+                    return stages.findIndex((candidate) => JSON.stringify(candidate.layout) === currentKey) === index;
+                });
+                const expansionCandidates: Array<{ key: string; layout: SmartPageLayout; score: number }> = [];
+                for (const stage of dedupedExpansionStages) {
+                    const fitLayout = await findBestFitWithinStage(
+                        a4Height,
+                        stage.layout,
+                        defaultLayout,
+                        topPaddingExpandSteps,
+                        itemSpacingExpandSteps,
+                        'expand',
+                        fontSizeExpandSteps,
+                        lineHeightExpandSteps
+                    );
+                    if (!fitLayout || areLayoutValuesEqual(fitLayout, defaultLayout)) {
+                        continue;
+                    }
+                    expansionCandidates.push({
+                        key: stage.key,
+                        layout: fitLayout,
+                        score: resolveLayoutScore(
+                            fitLayout,
+                            defaultLayout,
+                            topPaddingExpandSteps,
+                            itemSpacingExpandSteps,
+                            'expand'
+                        ),
+                    });
+                }
+                const bestExpansionCandidate = expansionCandidates.reduce<typeof expansionCandidates[number] | null>(
+                    (bestCandidate, currentCandidate) => {
+                        if (!bestCandidate || currentCandidate.score > bestCandidate.score) {
+                            return currentCandidate;
+                        }
+                        return bestCandidate;
+                    },
+                    null
+                );
+                return finalizeFit(bestExpansionCandidate?.layout ?? initialFit);
             }
 
             const topPaddingSteps = buildTopPaddingSteps(
@@ -3047,8 +3281,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
                 sectionSpacingKey: SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1],
                 itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
-                lineHeight: LINE_HEIGHT_STEPS[LINE_HEIGHT_STEPS.length - 1],
-                fontSize: FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1],
+                lineHeight: LINE_HEIGHT_SHRINK_STEPS[LINE_HEIGHT_SHRINK_STEPS.length - 1],
+                fontSize: FONT_SIZE_SHRINK_STEPS[FONT_SIZE_SHRINK_STEPS.length - 1],
             };
 
             const stageLayouts: Array<{ key: string; layout: SmartPageLayout }> = [
@@ -3062,8 +3296,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             1
                         ) as SectionSpacingKey,
                         itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 1),
-                        lineHeight: resolveStageLineHeight(0.05),
-                        fontSize: resolveStageFontSize(0.5),
+                        lineHeight: resolveStepByOffset(LINE_HEIGHT_SHRINK_STEPS, defaultLayout.lineHeight, 1),
+                        fontSize: resolveStepByOffset(FONT_SIZE_SHRINK_STEPS, defaultLayout.fontSize, 1),
                     },
                 },
                 {
@@ -3076,8 +3310,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             2
                         ) as SectionSpacingKey,
                         itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 2),
-                        lineHeight: resolveStageLineHeight(0.1),
-                        fontSize: resolveStageFontSize(1),
+                        lineHeight: resolveStepByOffset(LINE_HEIGHT_SHRINK_STEPS, defaultLayout.lineHeight, 2),
+                        fontSize: resolveStepByOffset(FONT_SIZE_SHRINK_STEPS, defaultLayout.fontSize, 2),
                     },
                 },
                 {
@@ -3090,8 +3324,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             3
                         ) as SectionSpacingKey,
                         itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 3),
-                        lineHeight: resolveStageLineHeight(0.15),
-                        fontSize: resolveStageFontSize(1.5),
+                        lineHeight: resolveStepByOffset(LINE_HEIGHT_SHRINK_STEPS, defaultLayout.lineHeight, 3),
+                        fontSize: resolveStepByOffset(FONT_SIZE_SHRINK_STEPS, defaultLayout.fontSize, 3),
                     },
                 },
                 {
@@ -3100,8 +3334,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
                         sectionSpacingKey: SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1],
                         itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
-                        lineHeight: resolveStageLineHeight(0.2),
-                        fontSize: resolveStageFontSize(2),
+                        lineHeight: resolveStepByOffset(
+                            LINE_HEIGHT_SHRINK_STEPS,
+                            defaultLayout.lineHeight,
+                            Math.round(0.2 / LINE_HEIGHT_STEP)
+                        ),
+                        fontSize: resolveStepByOffset(
+                            FONT_SIZE_SHRINK_STEPS,
+                            defaultLayout.fontSize,
+                            Math.round(2 / FONT_SIZE_STEP)
+                        ),
                     },
                 },
                 {
@@ -3124,7 +3366,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         stage.layout,
                         defaultLayout,
                         topPaddingSteps,
-                        itemSpacingSteps
+                        itemSpacingSteps,
+                        'shrink',
+                        FONT_SIZE_SHRINK_STEPS,
+                        LINE_HEIGHT_SHRINK_STEPS
                     );
                 if (!fitLayout) {
                     continue;
@@ -3136,7 +3381,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         fitLayout,
                         defaultLayout,
                         topPaddingSteps,
-                        itemSpacingSteps
+                        itemSpacingSteps,
+                        'shrink'
                     ),
                 });
             }
@@ -5703,12 +5949,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             itemSpacingOptions={ITEM_SPACING_SELECT_OPTIONS}
                             lineHeightSlider={{
                                 min: LINE_HEIGHT_MIN,
-                                max: LINE_HEIGHT_DEFAULT,
+                                max: LINE_HEIGHT_MAX,
                                 step: LINE_HEIGHT_STEP,
                             }}
                             fontSizeSlider={{
                                 min: FONT_SIZE_MIN,
-                                max: FONT_SIZE_DEFAULT,
+                                max: FONT_SIZE_MAX,
                                 step: FONT_SIZE_STEP,
                             }}
                             topPaddingSlider={{
@@ -5718,7 +5964,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             }}
                             sectionSpacingSlider={{
                                 min: 2,
-                                max: 8,
+                                max: 12,
                                 step: 1,
                             }}
                             itemSpacingSlider={{

@@ -2,6 +2,7 @@ import type {
     ProfileSyncMode,
     ResumeEditorProfile,
     ResumeExperienceView,
+    SectionSpacingKey,
 } from '../../types/resume';
 import { MATCH_BADGE_STYLES } from '../../constants/resumeConstants';
 
@@ -75,11 +76,13 @@ export const PREVIEW_PADDING_MM = 20;
 export const SMART_PAGE_BOTTOM_GAP_MM = PREVIEW_PADDING_MM;
 export const PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX = 2;
 export const LINE_HEIGHT_DEFAULT = 1.6;
+export const LINE_HEIGHT_MAX = 1.75;
 export const LINE_HEIGHT_MIN = 1.35;
 export const LINE_HEIGHT_STEP = 0.05;
 
 // 字号配置（支持智能一页动态调整）
 export const FONT_SIZE_DEFAULT = 16; // px - 默认基线
+export const FONT_SIZE_MAX = 18; // px - 手动 / 反算上限
 export const FONT_SIZE_MIN = 13; // px - 智能一页极限
 export const FONT_SIZE_STEP = 0.5; // px
 
@@ -101,17 +104,22 @@ export const SECTION_SPACING_CLASS_BY_DENSITY = {
 
 export const SMART_PAGE_TOP_PADDING_MIN_PX = 15;
 export const SMART_PAGE_TOP_PADDING_STEP_PX = 5;
+export const SMART_PAGE_TOP_PADDING_MAX_OFFSET_PX = 10;
 
-export const SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY = {
+export const SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY: Record<SectionSpacingKey, string> = {
+    12: 'mb-12',
+    10: 'mb-10',
+    8: 'mb-8',
     6: 'mb-6',
     5: 'mb-5',
     4: 'mb-4',
     3: 'mb-3',
     2: 'mb-2',
-} as const;
+};
 
-export const SMART_PAGE_SECTION_SPACING_STEPS = [6, 5, 4, 3, 2] as const;
+export const SMART_PAGE_SECTION_SPACING_STEPS = [12, 10, 8, 6, 5, 4, 3, 2] as const;
 export const SMART_PAGE_ITEM_SPACING_DEFAULT = 1;
+export const SMART_PAGE_ITEM_SPACING_MAX = 2;
 export const SMART_PAGE_ITEM_SPACING_MIN = 0.25;
 export const SMART_PAGE_ITEM_SPACING_STEP = 0.25;
 

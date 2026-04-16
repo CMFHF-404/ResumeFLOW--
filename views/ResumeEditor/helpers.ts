@@ -12,6 +12,7 @@ import type {
     ResumeExperienceView,
     ResumeJDAnalysis,
     ResumeLayoutOrders,
+    SectionSpacingKey,
     SkillGroupView,
     StarFields,
 } from '../../types/resume';
@@ -431,7 +432,7 @@ export const buildResumeConfigSnapshot = (
     sectionOrder: string[],
     density: 'compact' | 'standard' | 'spacious',
     topPaddingPx: number,
-    sectionSpacingKey: 2 | 3 | 4 | 5 | 6 | 8,
+    sectionSpacingKey: SectionSpacingKey,
     itemSpacingEm: number,
     lineHeight: number,
     fontSize: number,

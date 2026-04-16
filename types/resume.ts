@@ -110,6 +110,7 @@ export type ResumeEditorProfile = {
 };
 
 export type ProfileSyncMode = "global" | "local";
+export type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12;
 
 export type ResumeJDAnalysis = {
   jdText: string;
@@ -144,7 +145,7 @@ export type ResumeEditorConfig = {
     sectionOrder?: string[];
     density?: "compact" | "standard" | "spacious";
     topPaddingPx?: number;
-    sectionSpacingKey?: 2 | 3 | 4 | 5 | 6 | 8;
+    sectionSpacingKey?: SectionSpacingKey;
     itemSpacingEm?: number;
     lineHeight?: number;
     fontSize?: number;
