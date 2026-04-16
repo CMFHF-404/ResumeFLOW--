@@ -5,18 +5,18 @@ import { type AssistantDraftCard } from '../../services/aiService';
 
 const markdownComponents = {
   p: ({node, ...props}: any) => <p className="m-0 whitespace-pre-wrap" {...props} />,
-  strong: ({node, ...props}: any) => <strong className="font-bold text-slate-900" {...props} />,
-  ul: ({node, ...props}: any) => <ul className="list-disc pl-5 m-0 space-y-1.5 marker:text-slate-400" {...props} />,
-  ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 m-0 space-y-1.5 marker:text-slate-400 marker:font-medium" {...props} />,
+  strong: ({node, ...props}: any) => <strong className="font-bold text-slate-900 dark:text-slate-100" {...props} />,
+  ul: ({node, ...props}: any) => <ul className="list-disc pl-5 m-0 space-y-1.5 marker:text-slate-400 dark:marker:text-slate-500" {...props} />,
+  ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 m-0 space-y-1.5 marker:text-slate-400 marker:font-medium dark:marker:text-slate-500" {...props} />,
   li: ({node, ...props}: any) => <li className="pl-1 whitespace-pre-wrap" {...props} />,
-  a: ({node, ...props}: any) => <a className="text-emerald-600 hover:underline hover:text-emerald-700 font-medium transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
-  h1: ({node, ...props}: any) => <h1 className="text-lg font-bold text-slate-900 mt-4 mb-2" {...props} />,
-  h2: ({node, ...props}: any) => <h2 className="text-base font-bold text-slate-900 mt-4 mb-2" {...props} />,
-  h3: ({node, ...props}: any) => <h3 className="text-sm font-bold text-slate-900 mt-3 mb-1.5" {...props} />,
-  blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-slate-200 pl-4 italic text-slate-600 my-2 whitespace-pre-wrap" {...props} />,
+  a: ({node, ...props}: any) => <a className="text-emerald-600 hover:underline hover:text-emerald-700 font-medium transition-colors dark:text-emerald-300 dark:hover:text-emerald-200" target="_blank" rel="noopener noreferrer" {...props} />,
+  h1: ({node, ...props}: any) => <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-4 mb-2" {...props} />,
+  h2: ({node, ...props}: any) => <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-4 mb-2" {...props} />,
+  h3: ({node, ...props}: any) => <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-3 mb-1.5" {...props} />,
+  blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-slate-200 pl-4 italic text-slate-600 my-2 whitespace-pre-wrap dark:border-slate-700 dark:text-slate-300" {...props} />,
   code: ({node, inline, ...props}: any) => inline 
-    ? <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[13px] font-mono" {...props} />
-    : <code className="block bg-slate-50 border border-slate-100 text-slate-800 p-3 rounded-lg text-[13px] font-mono overflow-x-auto whitespace-pre my-2 shadow-inner" {...props} />,
+    ? <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[13px] font-mono dark:bg-slate-800 dark:text-slate-100" {...props} />
+    : <code className="block bg-slate-50 border border-slate-100 text-slate-800 p-3 rounded-lg text-[13px] font-mono overflow-x-auto whitespace-pre my-2 shadow-inner dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-100" {...props} />,
 };
 
 const EXPERIENCE_CATEGORY_LABELS = {
@@ -46,25 +46,25 @@ export const AssistantDraftCardView: React.FC<{
       return (
         <div className="space-y-3 mt-4">
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wider text-slate-400">类别</div>
-              <div className="mt-1 text-sm font-medium text-slate-800">{experienceCategoryLabel}</div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">类别</div>
+              <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">{experienceCategoryLabel}</div>
             </div>
-            <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wider text-slate-400">时间</div>
-              <div className="mt-1 text-sm font-medium text-slate-800">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">时间</div>
+              <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">
                 {card.data.startDate || '待补充'} - {card.data.isCurrent ? '至今' : (card.data.endDate || '待补充')}
               </div>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">主体</div>
-            <div className="mt-1 text-base font-medium text-slate-800">{card.data.org || '待补充组织'} / {card.data.title || '待补充角色'}</div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">主体</div>
+            <div className="mt-1 text-base font-medium text-slate-800 dark:text-slate-100">{card.data.org || '待补充组织'} / {card.data.title || '待补充角色'}</div>
           </div>
           {!card.data.targetMasterId ? (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wider text-slate-500">录入方式</div>
-              <div className="mt-1 text-sm font-medium text-slate-800">{experienceApplyHint}</div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-950/30">
+              <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">录入方式</div>
+              <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">{experienceApplyHint}</div>
             </div>
           ) : null}
           <div className="grid gap-3">
@@ -74,9 +74,9 @@ export const AssistantDraftCardView: React.FC<{
               ['A', card.data.star.a],
               ['R', card.data.star.r],
             ] as const).map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
-                <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden">
+              <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
+                <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden dark:text-slate-300">
                   <ReactMarkdown components={markdownComponents}>
                     {value || '待补充'}
                   </ReactMarkdown>
@@ -99,14 +99,14 @@ export const AssistantDraftCardView: React.FC<{
             ['证书编号', card.data.credentialId],
             ['证书链接', card.data.credentialUrl],
           ].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
-              <div className="mt-1 break-all text-sm font-medium text-slate-800">{value || '待补充'}</div>
+            <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
+              <div className="mt-1 break-all text-sm font-medium text-slate-800 dark:text-slate-100">{value || '待补充'}</div>
             </div>
           ))}
-          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 md:col-span-2">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400">描述</div>
-            <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 md:col-span-2 dark:border-slate-700 dark:bg-slate-900/80">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">描述</div>
+            <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden dark:text-slate-300">
               <ReactMarkdown components={markdownComponents}>
                 {card.data.description || '待补充'}
               </ReactMarkdown>
@@ -118,13 +118,13 @@ export const AssistantDraftCardView: React.FC<{
 
     return (
       <div className="space-y-3 mt-4">
-        <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-          <div className="text-[11px] uppercase tracking-wider text-slate-400">技能分类</div>
-          <div className="mt-1 text-base font-medium text-slate-800">{card.data.category || '待补充'}</div>
+        <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+          <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">技能分类</div>
+          <div className="mt-1 text-base font-medium text-slate-800 dark:text-slate-100">{card.data.category || '待补充'}</div>
         </div>
         <div className="flex flex-wrap gap-2">
           {card.data.skills.map((skill) => (
-            <div key={`${card.data.category}-${skill.name}`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700">
+            <div key={`${card.data.category}-${skill.name}`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
               {skill.name}
               {typeof skill.proficiency === 'number' ? ` · ${skill.proficiency}` : ''}
             </div>
@@ -135,25 +135,25 @@ export const AssistantDraftCardView: React.FC<{
   };
 
   return (
-    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300">
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-950 dark:shadow-[0_20px_60px_-30px_rgba(2,6,23,0.95)]">
       <div className="flex min-w-0 flex-col gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300">
               <Sparkles className="h-3 w-3" />
               可确认草稿
             </div>
             {experienceApplyHint ? (
               <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
                 hasTargetMaster
-                  ? 'border-amber-200 bg-amber-50 text-amber-700'
-                  : 'border-sky-200 bg-sky-50 text-sky-700'
+                  ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300'
+                  : 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-950/40 dark:text-sky-300'
               }`}>
                 {experienceApplyHint}
               </div>
             ) : null}
           </div>
-          <h4 className="mt-1 text-sm font-semibold text-slate-800 truncate" title={card.summary}>
+          <h4 className="mt-1 truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={card.summary}>
             {card.summary || 'AI 已整理出可录入初稿'}
           </h4>
         </div>
@@ -162,17 +162,17 @@ export const AssistantDraftCardView: React.FC<{
       {isExpanded && (
         <div className="animate-in fade-in slide-in-from-top-2 duration-300">
           {renderContent()}
-          <p className="mt-4 text-[11px] text-slate-400 border-t border-slate-50 pt-3">
+          <p className="mt-4 border-t border-slate-50 pt-3 text-[11px] text-slate-400 dark:border-slate-800 dark:text-slate-500">
             如果还想调整，直接继续聊天描述你要修改的部分即可。
           </p>
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+      <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
           title={isExpanded ? '折叠' : '展开'}
         >
           <span className="text-[11px]">{isExpanded ? '收起' : '展开'}</span>
@@ -187,7 +187,7 @@ export const AssistantDraftCardView: React.FC<{
           type="button"
           onClick={onApply}
           disabled={disabled || isApplying}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-emerald-950/60"
         >
           <Check className="h-3.5 w-3.5" />
           {isApplying ? '录入中...' : '确认录入'}

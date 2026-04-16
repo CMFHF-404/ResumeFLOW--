@@ -1790,7 +1790,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const historyEmpty = !isLoadingSessions && sessions.length === 0;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">
       <ToastContainer toasts={toasts} onClose={closeToast} />
       <ConfirmDialog
         isOpen={deleteConfirmId !== null}
@@ -1824,13 +1824,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       />
       {!isAuthenticated ? (
         <div className="flex flex-1 items-center justify-center p-6">
-          <div className="w-full max-w-3xl rounded-[32px] border border-white/70 bg-white/80 p-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] backdrop-blur">
+          <div className="w-full max-w-3xl rounded-[32px] border border-white/70 bg-white/80 p-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] backdrop-blur dark:border-slate-700 dark:bg-slate-950/90 dark:shadow-[0_28px_90px_-38px_rgba(2,6,23,0.95)]">
             <div className="mx-auto max-w-2xl text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-900 text-white shadow-lg">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-900 text-white shadow-lg dark:bg-emerald-500/15 dark:text-emerald-300">
                 <Bot className="h-8 w-8" />
               </div>
-              <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900">AI 助理</h1>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
+              <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">AI 助理</h1>
+              <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
                 这里会一步步追问你的经历、证书和技能，并默认参考你的经历库，优先建议复用或优化已有内容。
               </p>
               <div className="mt-6 flex justify-center">
@@ -2002,17 +2002,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           </>
 
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur md:hidden">
+            <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 md:hidden">
               <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsMobileHistoryOpen(true)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white"
                   title="打开对话记录"
                 >
                   <PanelLeft className="h-4 w-4" />
                 </button>
-                <div className="min-w-0 truncate text-center text-sm font-semibold text-slate-900">
+                <div className="min-w-0 truncate text-center text-sm font-semibold text-slate-900 dark:text-slate-100">
                   {selectedSession ? selectedSession.title : 'AI 助理'}
                 </div>
                 <div className="h-10 w-10" aria-hidden="true" />
@@ -2025,14 +2025,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             >
               {!selectedSessionId && !isLoadingSessions ? (
                 <div className="mx-auto mt-6 flex w-full max-w-3xl min-w-0 flex-col gap-6 md:mt-10">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_60px_-30px_rgba(2,6,23,0.95)] md:p-8">
                     <div className="flex items-start gap-4">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
                         <Bot className="h-6 w-6" />
                       </div>
                       <div>
-                        <h2 className="text-xl font-semibold text-slate-800">开始一个整理任务</h2>
-                        <p className="mt-2 text-sm leading-7 text-slate-600">
+                        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">开始一个整理任务</h2>
+                        <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-400">
                           你可以让我帮你把混乱的经历梳成 STAR，也可以整理证书与技能。AI 会默认参考你的经历库，优先建议复用或优化已有内容，最后输出一张可确认录入的结构化卡片。
                         </p>
                       </div>
@@ -2074,7 +2074,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     );
                   })}
                   {isLoadingDetail ? (
-                    <div className="text-center py-4 text-sm text-slate-400">正在加载会话...</div>
+                    <div className="py-4 text-center text-sm text-slate-400 dark:text-slate-500">正在加载会话...</div>
                   ) : null}
                   {activeThought ? (
                      <ActiveThoughtBlock thought={activeThought} />
