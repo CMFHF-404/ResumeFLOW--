@@ -399,7 +399,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                         className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
-                    {isAutoAssembling ? '正在生成…' : '一键重排'}
+                    {isAutoAssembling ? '正在生成…' : '一键组装'}
                     </button>
                 </div>
             </div>
