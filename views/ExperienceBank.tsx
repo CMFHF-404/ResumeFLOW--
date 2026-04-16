@@ -5,6 +5,8 @@ import {
   Briefcase,
   FolderKanban,
   Wrench,
+  Bot,
+  Sparkles,
   User,
   Mail,
   Phone,
@@ -47,6 +49,7 @@ import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../service
 import { trackExperienceBankExported } from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const PENDING_RESUME_UPLOAD_KEY = 'yuanzijianli.pendingResumeUpload';
+const PENDING_ASSISTANT_LAUNCH_KEY = 'yuanzijianli.pendingExperienceBankAssistantLaunch';
 const SUMMARY_PREVIEW_CHAR_LIMIT = 100;
 
 const buildSummaryPreview = (value: string, limit: number) => {
@@ -87,6 +90,32 @@ const writePendingResumeUpload = (shouldPersist: boolean) => {
       return;
     }
     window.sessionStorage.removeItem(PENDING_RESUME_UPLOAD_KEY);
+  } catch (error) {
+    // ignore storage errors (private mode, etc.)
+  }
+};
+
+const readPendingAssistantLaunch = () => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    return window.sessionStorage.getItem(PENDING_ASSISTANT_LAUNCH_KEY) === '1';
+  } catch (error) {
+    return false;
+  }
+};
+
+const writePendingAssistantLaunch = (shouldPersist: boolean) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    if (shouldPersist) {
+      window.sessionStorage.setItem(PENDING_ASSISTANT_LAUNCH_KEY, '1');
+      return;
+    }
+    window.sessionStorage.removeItem(PENDING_ASSISTANT_LAUNCH_KEY);
   } catch (error) {
     // ignore storage errors (private mode, etc.)
   }
@@ -286,6 +315,24 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     writePendingResumeUpload(false);
     setIsResumeModalOpen(true);
   }, [isAuthenticated, signIn]);
+
+  const launchEmptyStateAssistant = useCallback(() => {
+    if (!onLaunchAssistant) {
+      return;
+    }
+
+    onLaunchAssistant({
+      context: {
+        mode: 'general',
+        entrySource: 'experience_bank',
+        title: '经历库 · AI 从 0 到 1 写简历',
+        contextJson: {
+          origin: 'experience_bank_empty_state',
+        },
+      },
+      initialUserMessage: '我还没有现成简历，请作为简历教练一步步引导我从 0 到 1 梳理教育、项目、实习或工作经历，并最终帮我产出可录入经历库和继续编辑简历的内容。',
+    });
+  }, [onLaunchAssistant]);
 
   // Personal Info State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -529,6 +576,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     setIsResumeModalOpen(true);
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !readPendingAssistantLaunch()) {
+      return;
+    }
+    console.log('[ExperienceBank] 恢复待执行的 AI 助手启动动作');
+    writePendingAssistantLaunch(false);
+    launchEmptyStateAssistant();
+  }, [isAuthenticated, launchEmptyStateAssistant]);
+
   // 开始编辑个人信息
   const handleEditProfile = () => {
     if (isLoadingProfile) {
@@ -613,6 +669,18 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [workExperienceCount, setWorkExperienceCount] = useState<number | null>(() => {
+    const cached = experienceService.peekList('work');
+    return cached ? cached.length : null;
+  });
+  const [projectExperienceCount, setProjectExperienceCount] = useState<number | null>(() => {
+    const cached = experienceService.peekList('project');
+    return cached ? cached.length : null;
+  });
+  const [educationExperienceCount, setEducationExperienceCount] = useState<number | null>(() => {
+    const cached = experienceService.peekList('education');
+    return cached ? cached.length : null;
+  });
 
   const toastApi = useMemo(
     () => ({ success, error: toastError, info, loading, updateToast }),
@@ -666,6 +734,20 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     setExperienceRefreshSignal((prev) => prev + 1);
     await refreshEducation();
   }, [applyProfileSnapshot, refreshEducation, resolveCurrentProfileSnapshot]);
+
+  const handleLaunchEmptyStateAssistant = useCallback(async () => {
+    if (!isAuthenticated) {
+      writePendingAssistantLaunch(true);
+      await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
+      return;
+    }
+    writePendingAssistantLaunch(false);
+    launchEmptyStateAssistant();
+  }, [isAuthenticated, launchEmptyStateAssistant, signIn]);
+
+  const isExperienceBankEmpty = workExperienceCount === 0
+    && projectExperienceCount === 0
+    && educationExperienceCount === 0;
 
   const handleExportAll = useCallback(async () => {
     if (isExportingPdf) {
@@ -1005,6 +1087,46 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             </button>
           </div>
 
+          {isExperienceBankEmpty && (
+            <section className="rounded-2xl border-2 border-dashed border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-6 shadow-sm dark:border-blue-800 dark:from-blue-900/20 dark:to-indigo-900/20">
+              <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+                <div className="flex-1">
+                  <h2 className="mb-2 flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white">
+                    <UploadCloud className="h-6 w-6 text-primary" />
+                    快速开始，从导入简历开始
+                  </h2>
+                  <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                    <p>
+                      当前经历库还没有内容，导入您的简历可快速构建工作、项目和教育经历。
+                    </p>
+                    <p className="flex items-start gap-2 text-gray-500 dark:text-gray-300">
+                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                      <span>如果您还没有简历，也可以借助 AI 助手从 0 到 1 梳理经历、撰写简历。</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex w-full flex-col gap-3 md:w-auto md:min-w-[220px]">
+                  <button
+                    className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-primary-dark hover:shadow-xl"
+                    onClick={handleImportResumeClick}
+                    type="button"
+                  >
+                    <UploadCloud className="h-5 w-5" />
+                    导入简历
+                  </button>
+                  <button
+                    className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-indigo-200 bg-white/90 px-6 py-3 font-semibold text-indigo-600 transition-all hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-700/70 dark:bg-slate-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/20"
+                    onClick={() => void handleLaunchEmptyStateAssistant()}
+                    type="button"
+                  >
+                    <Bot className="h-5 w-5" />
+                    AI 助手写简历
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Personal Info Section */}
           <section className="space-y-6">
             <div className="flex items-center justify-between">
@@ -1270,6 +1392,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
             onLaunchAssistant={onLaunchAssistant}
+            onCountChange={setWorkExperienceCount}
           />
 
           <ExperienceSection
@@ -1293,9 +1416,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             toast={toastApi}
             themeColor="indigo"
             onLaunchAssistant={onLaunchAssistant}
+            onCountChange={setProjectExperienceCount}
           />
 
-          <EducationSection model={education} />
+          <EducationSection
+            model={education}
+            onCountChange={setEducationExperienceCount}
+          />
 
           <CertificationSection refreshSignal={experienceRefreshSignal} toast={toastApi} />
 

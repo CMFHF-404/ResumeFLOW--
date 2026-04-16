@@ -192,6 +192,7 @@ const App: React.FC = () => {
             cachedResumesOwnerKey={cachedResumesOwnerKey}
             authUserKey={authUserKey}
             onResumesUpdate={handleResumesUpdate}
+            onLaunchAssistant={handleLaunchAssistant}
           />
         );
       case ViewState.EXPERIENCE_BANK:
@@ -230,6 +231,7 @@ const App: React.FC = () => {
             cachedResumesOwnerKey={cachedResumesOwnerKey}
             authUserKey={authUserKey}
             onResumesUpdate={handleResumesUpdate}
+            onLaunchAssistant={handleLaunchAssistant}
           />
         );
     }

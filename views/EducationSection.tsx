@@ -6,6 +6,7 @@ import type { EducationManager } from '../hooks/useEducationManager';
 
 type EducationSectionProps = {
     model: EducationManager;
+    onCountChange?: (count: number | null) => void;
 };
 
 const EducationSectionHeader: React.FC<{
@@ -97,8 +98,12 @@ const DeleteDialog: React.FC<{
     />
 );
 
-const EducationSection: React.FC<EducationSectionProps> = ({ model }) => {
+const EducationSection: React.FC<EducationSectionProps> = ({ model, onCountChange }) => {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+    React.useEffect(() => {
+        onCountChange?.(model.isLoading ? null : model.educations.length);
+    }, [model.educations.length, model.isLoading, onCountChange]);
 
     return (
         <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">
