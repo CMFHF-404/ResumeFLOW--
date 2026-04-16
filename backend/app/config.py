@@ -49,12 +49,24 @@ DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
 DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS = 300
 DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS = 45
 ENV_FILE_NAME = ".env"
+ASYNC_POSTGRES_SCHEME = "postgresql+asyncpg://"
+POSTGRES_SCHEMES = ("postgresql://", "postgres://")
 
 
 def _require_env(name: str) -> str:
     value = os.getenv(name)
     if not value:
         raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def _normalize_database_url(value: str) -> str:
+    """兼容托管平台注入的标准 PostgreSQL URL，统一转换为 asyncpg 方言。"""
+    if value.startswith(ASYNC_POSTGRES_SCHEME):
+        return value
+    for scheme in POSTGRES_SCHEMES:
+        if value.startswith(scheme):
+            return f"{ASYNC_POSTGRES_SCHEME}{value[len(scheme):]}"
     return value
 
 
@@ -147,7 +159,7 @@ def load_settings() -> Settings:
         return _settings
 
     _load_env()
-    database_url = _require_env(ENV_DATABASE_URL)
+    database_url = _normalize_database_url(_require_env(ENV_DATABASE_URL))
     logto_issuer = _normalize_issuer(_require_env(ENV_LOGTO_ISSUER))
     logto_audience = _require_env(ENV_LOGTO_AUDIENCE)
     jwks_url = f"{logto_issuer}{DEFAULT_JWKS_PATH}"
