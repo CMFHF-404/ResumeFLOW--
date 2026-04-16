@@ -211,6 +211,8 @@ const resolveSectionSpacingPx = (spacingClass: string) => {
         'mb-5': 20,
         'mb-6': 24,
         'mb-8': 32,
+        'mb-10': 40,
+        'mb-12': 48,
     };
     return spacingMap[spacingClass] ?? 24;
 };
