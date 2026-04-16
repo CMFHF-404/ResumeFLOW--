@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn } from 'lucide-react';
+import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
 import { resolveAuthUserKeyFromActiveSession } from '../services/apiClient';
@@ -22,6 +22,7 @@ import { trackResumeDuplicated } from '../utils/analyticsTracker';
 import { formatRelativeTime } from '../utils/timeUtils';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { buildPreferredResumeCreateConfig } from './resumeTemplateStorage';
+import type { AssistantLaunchRequest } from './AIAssistant';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -29,6 +30,7 @@ interface DashboardProps {
   cachedResumesOwnerKey?: string | null;
   authUserKey?: string | null;
   onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
+  onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
 }
 
 const DELETE_CONFIRM_TITLE = '删除简历';
@@ -169,6 +171,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   cachedResumesOwnerKey = null,
   authUserKey = null,
   onResumesUpdate,
+  onLaunchAssistant,
 }) => {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
@@ -753,6 +756,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     clearLongPressTimer();
   };
 
+  const handleLaunchResumeAssistant = useCallback(() => {
+    if (!onLaunchAssistant) {
+      return;
+    }
+
+    onLaunchAssistant({
+      context: {
+        mode: 'general',
+        entrySource: 'direct',
+        title: 'AI 助手 · 从 0 到 1 写简历',
+        contextJson: {
+          origin: 'dashboard_empty_state',
+        },
+      },
+      initialUserMessage: '我还没有现成简历，请作为简历教练一步步引导我从 0 到 1 梳理经历、提炼亮点，并最终产出一份可继续编辑的简历内容。',
+    });
+  }, [onLaunchAssistant]);
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
       {/* Header */}
@@ -787,17 +808,33 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <UploadCloud className="w-6 h-6 text-primary" />
                       快速开始，从导入简历开始
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      暂无经历数据，导入您的简历快速构建经历库，让原子简历为您智能分析和优化
-                    </p>
+                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                      <p>
+                        暂无经历数据，导入您的简历可快速构建经历库，让原子简历为您智能分析和优化。
+                      </p>
+                      <p className="flex items-start gap-2 text-gray-500 dark:text-gray-300">
+                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                        <span>如果您还没有简历，也可以借助 AI 助手从 0 到 1 梳理经历、撰写简历。</span>
+                      </p>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
-                    className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
-                  >
-                    <UploadCloud className="w-5 h-5" />
-                    导入简历
-                  </button>
+                  <div className="flex w-full flex-col gap-3 md:w-auto md:min-w-[220px]">
+                    <button
+                      onClick={() => setView(ViewState.EXPERIENCE_BANK, { shouldOpenResumeUpload: true })}
+                      className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
+                    >
+                      <UploadCloud className="w-5 h-5" />
+                      导入简历
+                    </button>
+                    <button
+                      onClick={handleLaunchResumeAssistant}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white/90 px-6 py-3 font-semibold text-indigo-600 transition-all hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-700/70 dark:bg-slate-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/20 whitespace-nowrap"
+                      type="button"
+                    >
+                      <Bot className="h-5 w-5" />
+                      AI 助手写简历
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

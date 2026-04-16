@@ -39,6 +39,7 @@ type ExperienceSectionProps = {
   toast: ToastApi;
   themeColor?: string;
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
+  onCountChange?: (count: number | null) => void;
 };
 
 type ExperienceSectionModel = {
@@ -1723,6 +1724,10 @@ const ExperienceSectionView: React.FC<{
 const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
   const model = useExperienceSectionModel(props);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    props.onCountChange?.(model.isLoading ? null : model.experiences.length);
+  }, [model.experiences.length, model.isLoading, props.onCountChange]);
 
   return (
     <ExperienceSectionView
