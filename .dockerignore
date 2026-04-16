@@ -17,7 +17,6 @@ node_modules/
 dist/
 dist-ssr/
 .env.local
-.env.production
 
 # Python caches / local environments
 **/__pycache__/
