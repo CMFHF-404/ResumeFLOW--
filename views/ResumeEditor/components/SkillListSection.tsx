@@ -20,6 +20,7 @@ type SkillListSectionProps = {
     onToggleSelection: (id: string) => void;
     onToggleGroupSelection: (groupName: string, skillIds?: string[]) => void;
     onResetRenamingCategory: () => void;
+    disabled?: boolean;
 };
 
 const getSkillVisualUnits = (value: string) => Array.from(value.trim()).reduce((sum, char) => (
@@ -46,7 +47,8 @@ const resolveDraftGroupName = (skill: SkillActions) => {
 
 const SkillTypeEditor: React.FC<{
     skill: SkillActions;
-}> = ({ skill }) => (
+    disabled?: boolean;
+}> = ({ skill, disabled = false }) => (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2">
         <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30">
             <input
@@ -55,6 +57,7 @@ const SkillTypeEditor: React.FC<{
                 placeholder="输入新分类名称..."
                 value={skill.skillDraft?.category || ''}
                 onChange={(event) => skill.updateSkillDraft('category', event.target.value)}
+                disabled={disabled}
             />
         </div>
         <div className="p-3 bg-white dark:bg-gray-800/50">
@@ -70,18 +73,21 @@ const SkillTypeEditor: React.FC<{
                             if (event.key === 'Enter') skill.handleSaveSkill();
                             if (event.key === 'Escape') skill.cancelSkillEdit();
                         }}
+                        disabled={disabled}
                     />
                 </div>
                 <div className="flex items-center gap-2 ml-auto">
                     <button
                         onClick={skill.cancelSkillEdit}
                         className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1"
+                        disabled={disabled}
                     >
                         取消
                     </button>
                     <button
                         onClick={skill.handleSaveSkill}
                         className="text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 px-3 py-1 rounded"
+                        disabled={disabled}
                     >
                         保存
                     </button>
@@ -94,9 +100,10 @@ const SkillTypeEditor: React.FC<{
 const SkillHeader: React.FC<{
     title: string;
     onCreateType: () => void;
+    disabled?: boolean;
     isCollapsed: boolean;
     onToggle: () => void;
-}> = ({ title, onCreateType, isCollapsed, onToggle }) => (
+}> = ({ title, onCreateType, disabled = false, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
             <button
@@ -117,9 +124,10 @@ const SkillHeader: React.FC<{
         </div>
         <button
             onClick={onCreateType}
-            title={ADD_SKILL_TYPE_LABEL}
+            title={disabled ? '请先确认或撤销当前润色结果' : ADD_SKILL_TYPE_LABEL}
             aria-label={ADD_SKILL_TYPE_LABEL}
-            className="flex items-center justify-center text-gray-500 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50"
+            disabled={disabled}
+            className="flex items-center justify-center text-gray-500 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
         >
             <Plus className="w-3.5 h-3.5" />
         </button>
@@ -141,6 +149,7 @@ const SkillTag: React.FC<{
     deletingIds: Set<string>;
     draftName: string;
     isSaving: boolean;
+    disabled?: boolean;
 }> = ({
     skill,
     isSelected,
@@ -156,6 +165,7 @@ const SkillTag: React.FC<{
     deletingIds,
     draftName,
     isSaving,
+    disabled = false,
 }) => (
         isEditing ? (
             <div
@@ -185,12 +195,12 @@ const SkillTag: React.FC<{
                             onCancelEdit();
                         }
                     }}
-                    disabled={isSaving}
+                    disabled={isSaving || disabled}
                 />
             </div>
         ) : (
             <label
-                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-all select-none ${isSelected
+                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'} ${isSelected
                     ? 'border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none'
                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300 dark:hover:border-rose-700 bg-gray-50 dark:bg-gray-800'
                     }`}
@@ -200,6 +210,7 @@ const SkillTag: React.FC<{
                     checked={isSelected}
                     onChange={() => onToggleSelection(skill.id)}
                     className="hidden"
+                    disabled={disabled}
                 />
                 {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
                 <span>{skill.name}</span>
@@ -218,7 +229,7 @@ const SkillTag: React.FC<{
                             event.stopPropagation();
                             onDelete(skill.id);
                         }}
-                        disabled={deletingIds.has(skill.id)}
+                        disabled={deletingIds.has(skill.id) || disabled}
                         title="删除技能"
                         aria-label="删除技能"
                     >
@@ -235,6 +246,7 @@ const SkillTag: React.FC<{
                             event.stopPropagation();
                             onEdit(skill.id);
                         }}
+                        disabled={disabled}
                         title="编辑技能"
                         aria-label="编辑技能"
                     >
@@ -252,13 +264,15 @@ const SkillGroupHeader: React.FC<{
     isAllSelected: boolean;
     isIndeterminate: boolean;
     onToggleSelectAll: () => void;
+    disabled?: boolean;
 }> = ({
     groupName,
     skill,
     onResetRenamingCategory,
     isAllSelected,
     isIndeterminate,
-    onToggleSelectAll
+    onToggleSelectAll,
+    disabled = false,
 }) => (
         <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30 flex items-center justify-between">
             {skill.renamingCategoryTarget === groupName ? (
@@ -279,16 +293,20 @@ const SkillGroupHeader: React.FC<{
                             onResetRenamingCategory();
                         }
                     }}
+                    disabled={disabled}
                 />
             ) : (
                 <div className="flex items-center gap-2 group/title">
                     <div
-                        className="flex items-center justify-center p-1 cursor-pointer text-gray-400 hover:text-rose-500 transition-colors"
+                        className={`flex items-center justify-center p-1 transition-colors ${disabled ? 'cursor-not-allowed text-gray-300' : 'cursor-pointer text-gray-400 hover:text-rose-500'}`}
                         onClick={(e) => {
+                            if (disabled) {
+                                return;
+                            }
                             e.stopPropagation();
                             onToggleSelectAll();
                         }}
-                        title={isAllSelected ? "取消全选" : "全选"}
+                        title={disabled ? '请先确认或撤销当前润色结果' : (isAllSelected ? '取消全选' : '全选')}
                     >
                         <div className={`w-3.5 h-3.5 rounded-[3px] border transition-all flex items-center justify-center ${isAllSelected || isIndeterminate
                             ? 'bg-rose-500 border-rose-500'
@@ -306,7 +324,8 @@ const SkillGroupHeader: React.FC<{
                             skill.setRenamingCategoryTarget(groupName);
                             skill.setRenamingCategoryDraft(groupName);
                         }}
-                        className="opacity-0 group-hover/title:opacity-100 p-0.5 text-rose-300 hover:text-rose-500 transition-all"
+                        disabled={disabled}
+                        className="opacity-0 group-hover/title:opacity-100 p-0.5 text-rose-300 hover:text-rose-500 transition-all disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-rose-300"
                     >
                         <Edit3 className="w-3 h-3" />
                     </button>
@@ -319,7 +338,7 @@ const SkillGroupHeader: React.FC<{
                     title={DELETE_SKILL_CATEGORY_LABEL}
                     aria-label={DELETE_SKILL_CATEGORY_LABEL}
                     className="p-0.5 text-rose-300 hover:text-red-500 transition-all rounded hover:bg-red-50"
-                    disabled={skill.deletingSkillCategories.has(groupName)}
+                    disabled={skill.deletingSkillCategories.has(groupName) || disabled}
                 >
                     <Trash2 className="w-3 h-3" />
                 </button>
@@ -344,7 +363,8 @@ const SkillGroupBody: React.FC<{
     matchScores: Map<string, number>;
     matchTrends: Map<string, MatchTrend>;
     onToggleSelection: (id: string) => void;
-}> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection }) => (
+    disabled?: boolean;
+}> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection, disabled = false }) => (
     <div className="p-3 bg-white dark:bg-gray-800/50">
         <div className="flex flex-wrap gap-2">
             {group.skills.map((item) => (
@@ -364,6 +384,7 @@ const SkillGroupBody: React.FC<{
                     deletingIds={skill.deletingSkillIds}
                     draftName={skill.skillDraft?.name || ''}
                     isSaving={skill.isSavingSkill}
+                    disabled={disabled}
                 />
             ))}
             {skill.skillDraftContext?.mode === 'group'
@@ -384,12 +405,14 @@ const SkillGroupBody: React.FC<{
                                 skill.cancelSkillEdit();
                             }
                         }}
+                        disabled={disabled}
                     />
                 </div>
             ) : (
                 <button
                     onClick={() => skill.beginCreateSkillInGroup(group.name)}
-                    className="flex items-center justify-center p-1.5 rounded-lg border border-dashed border-gray-300 hover:border-rose-400 text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                    disabled={disabled}
+                    className="flex items-center justify-center p-1.5 rounded-lg border border-dashed border-gray-300 hover:border-rose-400 text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-gray-300 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
                 >
                     <Plus className="w-3.5 h-3.5" />
                 </button>
@@ -407,6 +430,7 @@ const SkillGroupCard: React.FC<{
     onToggleSelection: (id: string) => void;
     onToggleGroupSelection: (groupName: string, skillIds?: string[]) => void;
     onResetRenamingCategory: () => void;
+    disabled?: boolean;
 }> = ({
     group,
     skill,
@@ -415,7 +439,8 @@ const SkillGroupCard: React.FC<{
     matchTrends,
     onToggleSelection,
     onToggleGroupSelection,
-    onResetRenamingCategory
+    onResetRenamingCategory,
+    disabled = false,
 }) => {
         const selectedCount = group.skills.filter(s => selectedIds.has(s.id)).length;
         const totalCount = group.skills.length;
@@ -432,6 +457,7 @@ const SkillGroupCard: React.FC<{
                     isAllSelected={isAllSelected}
                     isIndeterminate={isIndeterminate}
                     onToggleSelectAll={() => onToggleGroupSelection(group.name, visibleSkillIds)}
+                    disabled={disabled}
                 />
                 <SkillGroupBody
                     group={group}
@@ -440,6 +466,7 @@ const SkillGroupCard: React.FC<{
                     matchScores={matchScores}
                     matchTrends={matchTrends}
                     onToggleSelection={onToggleSelection}
+                    disabled={disabled}
                 />
             </div>
         );
@@ -456,6 +483,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
     onToggleSelection,
     onToggleGroupSelection,
     onResetRenamingCategory,
+    disabled = false,
 }) => {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
     const draftGroupName = resolveDraftGroupName(skill);
@@ -470,12 +498,13 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
             <SkillHeader
                 title={title}
                 onCreateType={skill.beginCreateSkillType}
+                disabled={disabled}
                 isCollapsed={isCollapsed}
                 onToggle={() => setIsCollapsed(!isCollapsed)}
             />
             {!isCollapsed && (
                 <>
-                    {shouldShowTypeEditor ? <SkillTypeEditor skill={skill} /> : null}
+                    {shouldShowTypeEditor ? <SkillTypeEditor skill={skill} disabled={disabled} /> : null}
                     {!shouldShowTypeEditor && groups.length === 0 ? (
                         <p className="text-xs text-gray-400">
                             {emptyMessage ?? '暂无技能'}
@@ -492,6 +521,7 @@ const SkillListSection: React.FC<SkillListSectionProps> = ({
                                 onToggleSelection={onToggleSelection}
                                 onToggleGroupSelection={onToggleGroupSelection}
                                 onResetRenamingCategory={onResetRenamingCategory}
+                                disabled={disabled}
                             />
                         </div>
                     ))}

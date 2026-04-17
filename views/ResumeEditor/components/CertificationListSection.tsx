@@ -25,6 +25,7 @@ type CertificationListSectionProps = {
     deletingIds: Set<string>;
     isSaving: boolean;
     onResetSort?: () => void;
+    disabled?: boolean;
 };
 
 const resolveCertificationMatchRate = (
@@ -44,9 +45,10 @@ const CertificationHeader: React.FC<{
     title: string;
     onCreate: () => void;
     onResetSort?: () => void;
+    disabled?: boolean;
     isCollapsed: boolean;
     onToggle: () => void;
-}> = ({ title, onCreate, onResetSort, isCollapsed, onToggle }) => (
+}> = ({ title, onCreate, onResetSort, disabled = false, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
             <button
@@ -69,18 +71,20 @@ const CertificationHeader: React.FC<{
             {onResetSort ? (
                 <button
                     onClick={onResetSort}
-                    title="重置为时间倒序"
+                    title={disabled ? '请先确认或撤销当前润色结果' : '重置为时间倒序'}
                     aria-label="重置排序"
-                    className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50"
+                    disabled={disabled}
+                    className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
                 >
                     <ArrowUpDown className="w-3.5 h-3.5" />
                 </button>
             ) : null}
             <button
                 onClick={onCreate}
-                title={ADD_CERTIFICATION_LABEL}
+                title={disabled ? '请先确认或撤销当前润色结果' : ADD_CERTIFICATION_LABEL}
                 aria-label={ADD_CERTIFICATION_LABEL}
-                className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50"
+                disabled={disabled}
+                className="flex items-center justify-center text-gray-500 hover:text-amber-600 p-1 rounded-md hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
             >
                 <Plus className="w-3.5 h-3.5" />
             </button>
@@ -91,7 +95,8 @@ const CertificationHeader: React.FC<{
 const CertificationForm: React.FC<{
     draft: CertificationEditDraft;
     onUpdate: (field: keyof CertificationEditDraft, value: string) => void;
-}> = ({ draft, onUpdate }) => (
+    disabled?: boolean;
+}> = ({ draft, onUpdate, disabled = false }) => (
     <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
             <div>
@@ -100,6 +105,7 @@ const CertificationForm: React.FC<{
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
                     value={draft.name}
                     onChange={(event) => onUpdate('name', event.target.value)}
+                    disabled={disabled}
                 />
             </div>
             <div>
@@ -108,6 +114,7 @@ const CertificationForm: React.FC<{
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
                     value={draft.issuer}
                     onChange={(event) => onUpdate('issuer', event.target.value)}
+                    disabled={disabled}
                 />
             </div>
         </div>
@@ -120,6 +127,7 @@ const CertificationForm: React.FC<{
                     placeholder="2026.07"
                     className="w-full h-full text-xs bg-white dark:bg-gray-900"
                     portalId={DEFAULT_DATE_PICKER_PORTAL_ID}
+                    disabled={disabled}
                 />
             </div>
         </div>
@@ -132,21 +140,22 @@ const CertificationEditCard: React.FC<{
     onCancelEdit: () => void;
     onSave: () => void;
     isSaving: boolean;
-}> = ({ draft, onUpdateDraft, onCancelEdit, onSave, isSaving }) => (
+    disabled?: boolean;
+}> = ({ draft, onUpdateDraft, onCancelEdit, onSave, isSaving, disabled = false }) => (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-amber-200/60 dark:border-amber-800/40 p-3 space-y-2">
-        {draft ? <CertificationForm draft={draft} onUpdate={onUpdateDraft} /> : null}
+        {draft ? <CertificationForm draft={draft} onUpdate={onUpdateDraft} disabled={disabled} /> : null}
         <div className="flex items-center justify-end gap-2">
             <button
                 onClick={onCancelEdit}
                 className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded"
-                disabled={isSaving}
+                disabled={isSaving || disabled}
             >
                 取消
             </button>
             <button
                 onClick={onSave}
                 className="text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded disabled:opacity-60"
-                disabled={isSaving}
+                disabled={isSaving || disabled}
             >
                 {isSaving ? '保存中...' : '保存'}
             </button>
@@ -169,6 +178,7 @@ const CertificationItem: React.FC<{
     onUpdateDraft: (field: keyof CertificationEditDraft, value: string) => void;
     deletingIds: Set<string>;
     isSaving: boolean;
+    disabled?: boolean;
 }> = ({
     cert,
     isSelected,
@@ -184,6 +194,7 @@ const CertificationItem: React.FC<{
     deletingIds,
     isSaving,
     matchTrend,
+    disabled = false,
 }) => {
         if (isEditing) {
             return (
@@ -193,6 +204,7 @@ const CertificationItem: React.FC<{
                     onCancelEdit={onCancelEdit}
                     onSave={onSave}
                     isSaving={isSaving}
+                    disabled={disabled}
                 />
             );
         }
@@ -207,6 +219,7 @@ const CertificationItem: React.FC<{
                 onBeginEdit={onBeginEdit}
                 onDelete={onDelete}
                 deletingIds={deletingIds}
+                disabled={disabled}
             />
         );
     };
@@ -220,6 +233,7 @@ const CertificationDisplayCard: React.FC<{
     onBeginEdit: (id: string) => void;
     onDelete: (id: string) => void;
     deletingIds: Set<string>;
+    disabled?: boolean;
 }> = ({
     cert,
     isSelected,
@@ -229,13 +243,19 @@ const CertificationDisplayCard: React.FC<{
     onBeginEdit,
     onDelete,
     deletingIds,
+    disabled = false,
 }) => (
         <div
-            className={`bg-white dark:bg-gray-800 rounded-xl border p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected
+            className={`bg-white dark:bg-gray-800 rounded-xl border p-3 shadow-sm transition-all group relative ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'} ${isSelected
                 ? 'border-amber-500 ring-1 ring-amber-500/20'
                 : 'border-amber-500/30 hover:shadow-md'
                 }`}
-            onClick={() => onToggleSelection(cert.id)}
+            onClick={() => {
+                if (disabled) {
+                    return;
+                }
+                onToggleSelection(cert.id);
+            }}
         >
             <div className="flex items-start gap-3 group/card">
                 <div className="flex flex-col items-center pt-1 shrink-0">
@@ -245,6 +265,7 @@ const CertificationDisplayCard: React.FC<{
                         onChange={() => onToggleSelection(cert.id)}
                         className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                         onClick={(event) => event.stopPropagation()}
+                        disabled={disabled}
                     />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -261,7 +282,7 @@ const CertificationDisplayCard: React.FC<{
                                     event.stopPropagation();
                                     onDelete(cert.id);
                                 }}
-                                disabled={deletingIds.has(cert.id)}
+                                disabled={deletingIds.has(cert.id) || disabled}
                                 title="删除证书"
                                 aria-label="删除证书"
                             >
@@ -273,6 +294,7 @@ const CertificationDisplayCard: React.FC<{
                                     event.stopPropagation();
                                     onBeginEdit(cert.id);
                                 }}
+                                disabled={disabled}
                                 title="编辑证书"
                                 aria-label="编辑证书"
                             >
@@ -313,6 +335,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
     deletingIds,
     isSaving,
     onResetSort,
+    disabled = false,
 }) => {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
 
@@ -323,6 +346,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
                     title={title}
                     onCreate={onBeginCreate}
                     onResetSort={onResetSort}
+                    disabled={disabled}
                     isCollapsed={isCollapsed}
                     onToggle={() => setIsCollapsed(!isCollapsed)}
                 />
@@ -341,6 +365,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
                 title={title}
                 onCreate={onBeginCreate}
                 onResetSort={onResetSort}
+                disabled={disabled}
                 isCollapsed={isCollapsed}
                 onToggle={() => setIsCollapsed(!isCollapsed)}
             />
@@ -361,6 +386,7 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
                         onUpdateDraft={onUpdateDraft}
                         deletingIds={deletingIds}
                         isSaving={isSaving}
+                        disabled={disabled}
                     />
                 </div>
             ))}

@@ -9,6 +9,7 @@ const ExperienceSectionHeader: React.FC<ExperienceSectionHeaderProps> = ({
     actionLabel,
     isAdding,
     onResetSort,
+    isResetSortDisabled,
     isCollapsed,
     onToggle,
 }) => (
@@ -36,9 +37,10 @@ const ExperienceSectionHeader: React.FC<ExperienceSectionHeaderProps> = ({
             {onResetSort && (
                 <button
                     onClick={onResetSort}
-                    title="重置为时间倒序"
+                    disabled={isResetSortDisabled}
+                    title={isResetSortDisabled ? '请先确认或撤销当前润色结果' : '重置为时间倒序'}
                     aria-label="重置排序"
-                    className="flex items-center justify-center text-gray-500 hover:text-primary p-1 rounded-md hover:bg-primary/5"
+                    className="flex items-center justify-center rounded-md p-1 text-gray-500 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     <ArrowUpDown className="w-3.5 h-3.5" />
                 </button>

@@ -293,7 +293,9 @@ export type ResumePreviewProps = {
     previewContentRef: React.RefObject<HTMLDivElement>;
     previewScope: string;
     showOverflowGuide?: boolean;
+    suppressOverflowIndicators?: boolean;
     overflowHighlightSectionIds?: Set<string>;
+    polishHighlightItemIds?: Set<string>;
     lineHeight: number;
     fontSize: number;
     listSpacingValue: string;
@@ -340,7 +342,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     previewContentRef,
     previewScope,
     showOverflowGuide = false,
+    suppressOverflowIndicators = false,
     overflowHighlightSectionIds,
+    polishHighlightItemIds,
     lineHeight,
     fontSize,
     listSpacingValue,
@@ -1452,9 +1456,17 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         } as React.CSSProperties),
         []
     );
+    const polishHighlightStyle = React.useMemo(
+        () => ({
+            backgroundColor: 'rgba(220, 252, 231, 0.72)',
+            boxShadow: '0 0 0 1px rgba(34, 197, 94, 0.22), 0 12px 28px rgba(34, 197, 94, 0.12)',
+        } as React.CSSProperties),
+        []
+    );
+    const shouldShowOverflowIndicators = showOverflowGuide && !suppressOverflowIndicators;
     const isSectionOverflowHighlighted = React.useCallback(
-        (sectionId: string) => Boolean(showOverflowGuide && overflowHighlightSectionIds?.has(sectionId)),
-        [overflowHighlightSectionIds, showOverflowGuide]
+        (sectionId: string) => Boolean(shouldShowOverflowIndicators && overflowHighlightSectionIds?.has(sectionId)),
+        [overflowHighlightSectionIds, shouldShowOverflowIndicators]
     );
     const getSectionOverflowHighlightStyle = React.useCallback(
         (sectionId: string) => (
@@ -1463,6 +1475,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 : undefined
         ),
         [isSectionOverflowHighlighted, overflowHighlightStyle]
+    );
+    const getItemPolishHighlightStyle = React.useCallback(
+        (itemKey: string) => (
+            polishHighlightItemIds?.has(itemKey)
+                ? polishHighlightStyle
+                : undefined
+        ),
+        [polishHighlightItemIds, polishHighlightStyle]
     );
     const renderOverflowMarker = React.useCallback(
         (sectionId: string) => {
@@ -1745,7 +1765,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         <div
                                             data-rf-item-surface={itemKey}
                                             className={getItemSurfaceClass(itemKey)}
-                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                             onTouchStart={
                                             isReadOnly
                                                 ? undefined
@@ -2158,7 +2178,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         <div
                                             data-rf-item-surface={itemKey}
                                             className={getItemSurfaceClass(itemKey)}
-                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                             onTouchStart={
                                                 isReadOnly
                                                     ? undefined
@@ -2328,7 +2348,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         <div
                                             data-rf-item-surface={itemKey}
                                             className={getItemSurfaceClass(itemKey)}
-                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                             onTouchStart={
                                                 isReadOnly
                                                     ? undefined
@@ -2491,7 +2511,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         <div
                                             data-rf-item-surface={itemKey}
                                             className={getItemSurfaceClass(itemKey)}
-                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                             onTouchStart={
                                                 isReadOnly
                                                     ? undefined
@@ -2542,7 +2562,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         data-rf-preview-scope={previewScope}
                         style={previewStyle}
                     >
-                {showOverflowGuide ? (
+                {shouldShowOverflowIndicators ? (
                     <div
                         aria-hidden="true"
                         className="pointer-events-none absolute z-[40]"
@@ -2768,7 +2788,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         <div
                                                             data-rf-item-surface={itemKey}
                                                             className={getItemSurfaceClass(itemKey)}
-                                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                                             onTouchStart={
                                                                 isReadOnly
                                                                     ? undefined
@@ -2940,7 +2960,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         <div
                                                             data-rf-item-surface={itemKey}
                                                             className={getItemSurfaceClass(itemKey)}
-                                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                                             onTouchStart={
                                                                 isReadOnly
                                                                     ? undefined
@@ -3111,7 +3131,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                         <div
                                                             data-rf-item-surface={itemKey}
                                                             className={getItemSurfaceClass(itemKey)}
-                                                            style={{ ...itemSurfaceStyle, ...touchHandleStyle }}
+                                                            style={{ ...itemSurfaceStyle, ...getItemPolishHighlightStyle(itemKey), ...touchHandleStyle }}
                                                             onTouchStart={
                                                                 isReadOnly
                                                                     ? undefined

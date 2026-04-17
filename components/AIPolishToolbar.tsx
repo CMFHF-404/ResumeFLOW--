@@ -10,9 +10,14 @@ export type AIPolishToolbarProps = {
   activeMode: ToolbarMode;
   customPrompt: string;
   disabledAssistant?: boolean;
+  previewTitle?: string;
   previewDescription?: string;
   previewContent?: React.ReactNode;
   runHint?: string;
+  runButtonLabel?: string;
+  runningLabel?: string;
+  undoLabel?: string;
+  confirmLabel?: string;
   onModeChange: (mode: ToolbarMode) => void;
   onCustomPromptChange: (value: string) => void;
   onRun: () => void;
@@ -36,9 +41,14 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   activeMode,
   customPrompt,
   disabledAssistant,
+  previewTitle,
   previewDescription,
   previewContent,
   runHint,
+  runButtonLabel,
+  runningLabel,
+  undoLabel,
+  confirmLabel,
   onModeChange,
   onCustomPromptChange,
   onRun,
@@ -49,21 +59,24 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   compact = false,
 }) => {
   const hasPreviewContent = Boolean(previewContent);
-  const previewMessage = previewDescription ?? '请预览更改';
+  const previewHeading = previewTitle ?? 'AI 润色结果';
+  const previewMessage = previewDescription ?? '结果已同步到右侧简历预览，请确认是否保存到当前简历。';
+  const resolvedRunButtonLabel = runButtonLabel ?? '执行';
+  const resolvedRunningLabel = runningLabel ?? '生成中...';
+  const resolvedUndoLabel = undoLabel ?? '撤销';
+  const resolvedConfirmLabel = confirmLabel ?? '确认';
 
   if (isPreviewing) {
     return (
         <div
           className={`flex ${hasPreviewContent ? 'min-h-[240px] max-h-[min(68vh,34rem)]' : ''} flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] ${hasPreviewContent ? 'md:h-full md:min-h-0 md:max-h-full' : ''} ${className ?? ''}`}
         >
-        {hasPreviewContent ? (
-          <div className="border-b border-emerald-200/80 px-4 py-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">AI 预览已生成</div>
+          <div className={`${hasPreviewContent ? 'border-b border-emerald-200/80' : ''} px-4 py-3`}>
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">{previewHeading}</div>
             <div className="mt-1 text-sm leading-6 text-emerald-900">
-              {previewDescription ?? '现在可以撤销恢复原文，或确认采用到当前编辑态。'}
+              {previewMessage}
             </div>
           </div>
-        ) : null}
         {hasPreviewContent ? (
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             <div className="flex min-h-full items-center justify-center">
@@ -74,12 +87,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           </div>
         ) : null}
         <div className={`shrink-0 bg-white/92 px-4 py-3 backdrop-blur ${hasPreviewContent ? 'border-t border-emerald-200/80' : ''}`}>
-          <div className={`flex flex-col gap-3 md:flex-row md:items-center ${hasPreviewContent ? 'md:justify-end' : 'md:justify-between'}`}>
-            {!hasPreviewContent ? (
-              <p className="text-xs font-medium leading-5 text-emerald-900">
-                {previewMessage}
-              </p>
-            ) : null}
+          <div className={`flex flex-col gap-3 md:flex-row md:items-center ${hasPreviewContent ? 'md:justify-end' : 'md:justify-end'}`}>
             <div className="flex items-center gap-3">
             <button
               type="button"
@@ -88,7 +96,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
             >
               <RotateCcw className="h-4 w-4" />
-              撤销
+              {resolvedUndoLabel}
             </button>
             <button
               type="button"
@@ -97,7 +105,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
             >
               <Check className="h-4 w-4" />
-              {isRunning ? '处理中...' : '确认'}
+              {isRunning ? '处理中...' : resolvedConfirmLabel}
             </button>
             </div>
           </div>
@@ -151,7 +159,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Sparkles className={`h-4 w-4 ${isRunning ? 'animate-pulse' : ''}`} />
-            {isRunning ? '生成中...' : '执行'}
+            {isRunning ? resolvedRunningLabel : resolvedRunButtonLabel}
           </button>
         </div>
       </div>

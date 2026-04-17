@@ -10,6 +10,7 @@ type RichTextEditorProps = {
     ariaLabel?: string;
     enableList?: boolean;
     onUndo?: () => boolean;
+    readOnly?: boolean;
 };
 
 type ToolbarState = {
@@ -861,6 +862,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     ariaLabel,
     enableList = true,
     onUndo,
+    readOnly = false,
 }) => {
     const editorRef = useRef<HTMLDivElement | null>(null);
     const [isFocused, setIsFocused] = useState(false);
@@ -1043,23 +1045,33 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
     const isEmpty = !stripRichTextToText(value).trim();
 
+    useEffect(() => {
+        if (!readOnly) {
+            return;
+        }
+        hideToolbar();
+        closeLinkPopover();
+        setIsFocused(false);
+    }, [closeLinkPopover, hideToolbar, readOnly]);
+
     return (
         <div className="relative">
             <div
                 ref={editorRef}
                 className={editorClassName}
-                contentEditable
+                contentEditable={!readOnly}
                 role="textbox"
                 aria-label={ariaLabel}
+                aria-readonly={readOnly}
                 data-placeholder={placeholder}
-                onInput={handleInput}
-                onPaste={handlePaste}
-                onKeyDown={handleKeyDown}
-                onMouseUp={updateSelectionState}
-                onKeyUp={updateSelectionState}
+                onInput={readOnly ? undefined : handleInput}
+                onPaste={readOnly ? undefined : handlePaste}
+                onKeyDown={readOnly ? undefined : handleKeyDown}
+                onMouseUp={readOnly ? undefined : updateSelectionState}
+                onKeyUp={readOnly ? undefined : updateSelectionState}
                 onScroll={hideToolbar}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
+                onFocus={readOnly ? undefined : handleFocus}
+                onBlur={readOnly ? undefined : handleBlur}
                 suppressContentEditableWarning
             />
             {isEmpty && !isFocused && placeholder ? (
@@ -1067,15 +1079,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                     {placeholder}
                 </div>
             ) : null}
-            <RichTextToolbar state={toolbar} buttons={toolbarButtons} />
-            <RichTextLinkPopover
-                state={linkPopover}
-                onClose={closeLinkPopover}
-                onSubmit={applyLinkFromPopover}
-                onRemove={removeLinkFromPopover}
-                onUrlChange={(value) => updateLinkPopover({ url: value })}
-                onTextChange={(value) => updateLinkPopover({ text: value })}
-            />
+            {!readOnly ? <RichTextToolbar state={toolbar} buttons={toolbarButtons} /> : null}
+            {!readOnly ? (
+                <RichTextLinkPopover
+                    state={linkPopover}
+                    onClose={closeLinkPopover}
+                    onSubmit={applyLinkFromPopover}
+                    onRemove={removeLinkFromPopover}
+                    onUrlChange={(value) => updateLinkPopover({ url: value })}
+                    onTextChange={(value) => updateLinkPopover({ text: value })}
+                />
+            ) : null}
         </div>
     );
 };

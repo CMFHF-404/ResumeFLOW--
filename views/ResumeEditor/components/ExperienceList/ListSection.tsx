@@ -69,6 +69,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     actionLabel={actionLabel}
                     isAdding={isAdding}
                     onResetSort={onResetSort}
+                    isResetSortDisabled={hasBlockingPolishState}
                     isCollapsed={isCollapsed}
                     onToggle={toggleCollapse}
                 />
@@ -90,6 +91,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                 actionLabel={actionLabel}
                 isAdding={isAdding}
                 onResetSort={onResetSort}
+                isResetSortDisabled={hasBlockingPolishState}
                 isCollapsed={isCollapsed}
                 onToggle={toggleCollapse}
             />
@@ -107,9 +109,9 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
                     staleExperienceIds={staleExperienceIds}
                     isPolishing={isPolishing}
                     isPolishToolbarOpen={activePolishItemId === item.id}
-                    isSelectionLocked={hasBlockingPolishState && activePolishItemId === item.id}
+                    isSelectionLocked={hasBlockingPolishState}
                     isPolishActionLocked={hasBlockingPolishState}
-                    isDeleteLocked={hasBlockingPolishState && activePolishItemId === item.id}
+                    isDeleteLocked={hasBlockingPolishState}
                     polishToolbar={activePolishItemId === item.id ? polishToolbar : undefined}
                     onClosePolishToolbar={activePolishItemId === item.id ? onClosePolishToolbar : undefined}
                     onDismissPolishToolbar={activePolishItemId === item.id ? onDismissPolishToolbar : undefined}
