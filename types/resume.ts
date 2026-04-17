@@ -43,15 +43,16 @@ export type ExperienceListThemeStyles = {
 };
 
 export type ExperienceSectionHeaderProps = {
-  title: string;
-  icon?: ReactNode;
-  onAddItem: () => void;
-  actionLabel: string;
-  isAdding: boolean;
-  onResetSort?: () => void;
-  isCollapsed?: boolean;
-  onToggle?: () => void;
-};
+    title: string;
+    icon?: ReactNode;
+    onAddItem: () => void;
+    actionLabel: string;
+    isAdding: boolean;
+    onResetSort?: () => void;
+    isResetSortDisabled?: boolean;
+    isCollapsed?: boolean;
+    onToggle?: () => void;
+  };
 
 export type ExperienceListSectionProps = {
   title: string;
@@ -398,7 +399,11 @@ export type ExperienceTabProps = {
   selectedSkillIds: Set<string>;
   skillMatchScores: Map<string, number>;
   skillMatchTrends: Map<string, MatchTrend>;
+  selectedExperienceCount: number;
+  canBatchPolish: boolean;
+  isBatchPolishing: boolean;
   isAutoAssembling: boolean;
+  onBatchPolish: () => void;
   onAutoAssemble: () => void;
   onResetRenamingCategory: () => void;
   onPolishExperience: (id: string) => void;
@@ -406,8 +411,11 @@ export type ExperienceTabProps = {
   hasBlockingPolishState?: boolean;
   isEditingExperiencePolishPreviewing?: boolean;
   polishToolbar?: ReactNode;
+  batchPolishToolbar?: ReactNode;
   onClosePolishExperienceToolbar?: () => void;
   onDismissPolishExperienceToolbar?: () => void;
+  onCloseBatchPolishToolbar?: () => void;
+  onDismissBatchPolishToolbar?: () => void;
   onResetWorkSort?: () => void;
   onResetProjectSort?: () => void;
   onResetCertificationSort?: () => void;

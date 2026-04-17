@@ -8,7 +8,11 @@ import { useResumeData } from '../../hooks/useResumeData';
 import { resolveAuthUserKeyFromActiveSession } from '../../services/apiClient';
 import { exportService } from '../../services/exportService';
 import { profileService, type Profile } from '../../services/profileService';
-import { resumeService, type Resume as ResumeRecord } from '../../services/resumeService';
+import {
+    resumeService,
+    type Resume as ResumeRecord,
+    type ResumeExperienceItem,
+} from '../../services/resumeService';
 import {
     aiService,
     type BossGreetingStreamEvent,
@@ -60,8 +64,6 @@ import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
     normalizeAiRichText,
-    RICH_TEXT_INLINE_STYLES_CLASS,
-    sanitizeRichTextHtml,
     stripRichTextToText,
 } from '../../utils/richText';
 import {
@@ -139,7 +141,7 @@ import {
     JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
     DEFAULT_MATCH_SCORE_FILTER,
 } from './constants';
-import { parseDragItemKey, type DragItemType } from './dragKeys';
+import { buildDragItemKey, parseDragItemKey, type DragItemType } from './dragKeys';
 import {
     buildCertificationDraft,
     buildCertificationPayload,
@@ -823,7 +825,7 @@ type ResumeEditorProps = {
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
 const DEFAULT_RESUME_POLISH_MODE: ResumePolishMode = 'default';
-type FloatingExperiencePolishPreviewState = {
+type FloatingExperiencePolishSessionItem = {
     targetId: string;
     beforeDraft: ExperienceEditDraft;
     afterDraft: ExperienceEditDraft;
@@ -831,64 +833,10 @@ type FloatingExperiencePolishPreviewState = {
     afterItem: ResumeExperienceView;
     wasSelected: boolean;
 };
-
-const EXPERIENCE_PREVIEW_FIELD_LABELS: Array<{ key: keyof ExperienceEditDraft['star']; label: string }> = [
-    { key: 's', label: '背景（S）' },
-    { key: 't', label: '任务（T）' },
-    { key: 'a', label: '行动（A）' },
-    { key: 'r', label: '结果（R）' },
-];
-const EXPERIENCE_PREVIEW_LIST_CLASS = '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1';
-
-const buildPreviewHtml = (value: string) => sanitizeRichTextHtml(value).trim();
-
-const ExperiencePolishPreviewContent: React.FC<{ draft: ExperienceEditDraft }> = ({ draft }) => {
-    const dateLabel = buildExperienceDate(
-        draft.startDate,
-        draft.isCurrent ? '' : draft.endDate,
-        Boolean(draft.isCurrent)
-    ) || '未填写时间';
-
-    return (
-        <div className="space-y-4 text-left">
-            <div className="rounded-[22px] border border-emerald-100 bg-white/92 px-4 py-4 shadow-[0_18px_48px_rgba(16,185,129,0.08)]">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                    润色后预览
-                </div>
-                <div className="mt-2 text-lg font-semibold text-slate-900">
-                    {draft.title.trim() || '未填写职位'}
-                </div>
-                <div className="mt-1 text-sm text-slate-500">
-                    {draft.company.trim() || '未填写公司'}
-                </div>
-                <div className="mt-2 text-xs font-medium tracking-[0.18em] text-slate-400">
-                    {dateLabel}
-                </div>
-            </div>
-            <div className="space-y-3">
-                {EXPERIENCE_PREVIEW_FIELD_LABELS.map(({ key, label }) => {
-                    const html = buildPreviewHtml(draft.star[key]);
-                    if (!html) {
-                        return null;
-                    }
-                    return (
-                        <section
-                            key={key}
-                            className="rounded-[20px] border border-slate-200/80 bg-white/88 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.05)]"
-                        >
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                {label}
-                            </div>
-                            <div
-                                className={`mt-2 break-words text-sm leading-6 text-slate-700 ${EXPERIENCE_PREVIEW_LIST_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
-                                dangerouslySetInnerHTML={{ __html: html }}
-                            />
-                        </section>
-                    );
-                })}
-            </div>
-        </div>
-    );
+type FloatingExperiencePolishSession = {
+    mode: 'single' | 'batch';
+    items: FloatingExperiencePolishSessionItem[];
+    failedIds: string[];
 };
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({
@@ -1804,11 +1752,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isEditingExperiencePolishRunning, setIsEditingExperiencePolishRunning] = useState(false);
     const editingExperiencePolishRunningRef = useRef(false);
     const [activeFloatingPolishExperienceId, setActiveFloatingPolishExperienceId] = useState<string | null>(null);
+    const [isBatchPolishToolbarOpen, setIsBatchPolishToolbarOpen] = useState(false);
     const [floatingPolishMode, setFloatingPolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
     const [floatingPolishCustomPrompt, setFloatingPolishCustomPrompt] = useState('');
-    const [floatingPolishPreview, setFloatingPolishPreview] = useState<FloatingExperiencePolishPreviewState | null>(null);
+    const [floatingPolishSession, setFloatingPolishSession] = useState<FloatingExperiencePolishSession | null>(null);
     const [isFloatingExperiencePolishRunning, setIsFloatingExperiencePolishRunning] = useState(false);
     const floatingExperiencePolishRunningRef = useRef(false);
+    const singleFloatingPolishPreview = floatingPolishSession?.mode === 'single'
+        ? floatingPolishSession.items[0] ?? null
+        : null;
+    const batchFloatingPolishPreview = floatingPolishSession?.mode === 'batch'
+        ? floatingPolishSession
+        : null;
 
     useEffect(() => {
         setExperiencePolishMode(DEFAULT_RESUME_POLISH_MODE);
@@ -1819,11 +1774,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [experience.editingExpId]);
 
     useEffect(() => {
-        if (!experience.editingExpId || floatingPolishPreview) {
+        if (!experience.editingExpId || floatingPolishSession) {
             return;
         }
         setActiveFloatingPolishExperienceId(null);
-    }, [experience.editingExpId, floatingPolishPreview]);
+    }, [experience.editingExpId, floatingPolishSession]);
 
     useEffect(() => {
         if (!activeFloatingPolishExperienceId) {
@@ -1832,7 +1787,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const targetExists = experienceItems.some((item) => item.id === activeFloatingPolishExperienceId);
         if (!targetExists) {
             setActiveFloatingPolishExperienceId(null);
-            setFloatingPolishPreview(null);
+            setFloatingPolishSession((prev) => {
+                if (!prev || prev.mode !== 'single') {
+                    return prev;
+                }
+                return prev.items.some((item) => item.targetId === activeFloatingPolishExperienceId) ? null : prev;
+            });
             floatingExperiencePolishRunningRef.current = false;
             setIsFloatingExperiencePolishRunning(false);
         }
@@ -2005,110 +1965,174 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         };
     }, []);
 
-    const applyFloatingPolishPreview = useCallback((
-        targetId: string,
+    const buildFloatingPolishSessionItem = useCallback((
+        baseItem: ResumeExperienceView,
         nextDraft: ExperienceEditDraft,
         beforeDraft?: ExperienceEditDraft
-    ) => {
-        const targetItem = experienceItems.find((item) => item.id === targetId);
-        if (!targetItem) {
-            return false;
-        }
-        const previousDraft = beforeDraft ?? buildExperienceEditDraft(targetItem);
-        const nextItem = buildExperienceViewFromDraft(targetItem, nextDraft);
+    ): FloatingExperiencePolishSessionItem | null => {
+        const previousDraft = beforeDraft ?? buildExperienceEditDraft(baseItem);
+        const nextItem = buildExperienceViewFromDraft(baseItem, nextDraft);
         const hasChange = (
-            nextItem.title !== targetItem.title
-            || nextItem.company !== targetItem.company
-            || nextItem.startDate !== targetItem.startDate
-            || nextItem.endDate !== targetItem.endDate
-            || nextItem.isCurrent !== targetItem.isCurrent
-            || nextItem.star.s !== targetItem.star.s
-            || nextItem.star.t !== targetItem.star.t
-            || nextItem.star.a !== targetItem.star.a
-            || nextItem.star.r !== targetItem.star.r
+            nextItem.title !== baseItem.title
+            || nextItem.company !== baseItem.company
+            || nextItem.startDate !== baseItem.startDate
+            || nextItem.endDate !== baseItem.endDate
+            || nextItem.isCurrent !== baseItem.isCurrent
+            || nextItem.star.s !== baseItem.star.s
+            || nextItem.star.t !== baseItem.star.t
+            || nextItem.star.a !== baseItem.star.a
+            || nextItem.star.r !== baseItem.star.r
         );
         if (!hasChange) {
-            return false;
+            return null;
         }
 
-        const wasSelected = selectedExpIds.has(targetId);
-        setExperienceItems((prev) =>
-            prev.map((item) => (item.id === targetId ? nextItem : item))
-        );
-        if (!wasSelected) {
-            setSelectedExpIds((prev) => {
-                const next = new Set(prev);
-                next.add(targetId);
-                return next;
-            });
-        }
-        setFloatingPolishPreview({
-            targetId,
+        return {
+            targetId: baseItem.id,
             beforeDraft: previousDraft,
             afterDraft: nextDraft,
-            beforeItem: targetItem,
+            beforeItem: baseItem,
             afterItem: nextItem,
-            wasSelected,
-        });
-        setActiveFloatingPolishExperienceId(targetId);
-        return true;
+            wasSelected: selectedExpIds.has(baseItem.id),
+        };
     }, [
         buildExperienceViewFromDraft,
-        experienceItems,
         selectedExpIds,
     ]);
+
+    const applyFloatingPolishSessionItems = useCallback((items: FloatingExperiencePolishSessionItem[]) => {
+        if (!items.length) {
+            return;
+        }
+        const nextItemMap = new Map(items.map((item) => [item.targetId, item.afterItem]));
+        setExperienceItems((prev) =>
+            prev.map((item) => nextItemMap.get(item.id) ?? item)
+        );
+        setSelectedExpIds((prev) => {
+            const next = new Set(prev);
+            items.forEach((item) => {
+                next.add(item.targetId);
+            });
+            return next;
+        });
+    }, []);
+
+    const restoreFloatingPolishSessionItems = useCallback((session: FloatingExperiencePolishSession) => {
+        const previousItemMap = new Map(session.items.map((item) => [item.targetId, item.beforeItem]));
+        setExperienceItems((prev) =>
+            prev.map((item) => previousItemMap.get(item.id) ?? item)
+        );
+        setSelectedExpIds((prev) => {
+            const next = new Set(prev);
+            session.items.forEach((item) => {
+                if (item.wasSelected) {
+                    next.add(item.targetId);
+                } else {
+                    next.delete(item.targetId);
+                }
+            });
+            return next;
+        });
+    }, []);
+
+    const applyFloatingPolishPreview = useCallback((
+        mode: FloatingExperiencePolishSession['mode'],
+        items: FloatingExperiencePolishSessionItem[],
+        failedIds: string[] = []
+    ) => {
+        if (!items.length) {
+            return false;
+        }
+        applyFloatingPolishSessionItems(items);
+        setFloatingPolishSession({ mode, items, failedIds });
+        if (mode === 'single') {
+            setActiveFloatingPolishExperienceId(items[0]?.targetId ?? null);
+            setIsBatchPolishToolbarOpen(false);
+        } else {
+            setActiveFloatingPolishExperienceId(null);
+            setIsBatchPolishToolbarOpen(true);
+        }
+        return true;
+    }, [applyFloatingPolishSessionItems]);
 
     const handleCloseFloatingPolishToolbar = useCallback(() => {
         if (isFloatingExperiencePolishRunning) {
             showToastError('请等待当前润色完成后再继续操作');
             return;
         }
-        if (floatingPolishPreview) {
-            setExperienceItems((prev) =>
-                prev.map((item) => (
-                    item.id === floatingPolishPreview.targetId ? floatingPolishPreview.beforeItem : item
-                ))
-            );
-            if (!floatingPolishPreview.wasSelected) {
-                setSelectedExpIds((prev) => {
-                    const next = new Set(prev);
-                    next.delete(floatingPolishPreview.targetId);
-                    return next;
-                });
-            }
-            setFloatingPolishPreview(null);
+        if (floatingPolishSession?.mode === 'single') {
+            restoreFloatingPolishSessionItems(floatingPolishSession);
+            setFloatingPolishSession(null);
             setActiveFloatingPolishExperienceId(null);
             return;
         }
         setActiveFloatingPolishExperienceId(null);
-    }, [floatingPolishPreview, isFloatingExperiencePolishRunning, showToastError]);
+    }, [floatingPolishSession, isFloatingExperiencePolishRunning, restoreFloatingPolishSessionItems, showToastError]);
 
     const handleDismissFloatingPolishToolbar = useCallback(() => {
         if (isFloatingExperiencePolishRunning) {
             showToastError('请等待当前润色完成后再继续操作');
             return;
         }
-        if (floatingPolishPreview) {
-            showToastError('请先确认或撤销当前润色预览');
+        if (floatingPolishSession?.mode === 'single') {
+            showToastError('请先确认或撤销当前润色结果');
             return;
         }
         setActiveFloatingPolishExperienceId(null);
-    }, [floatingPolishPreview, isFloatingExperiencePolishRunning, showToastError]);
+    }, [floatingPolishSession, isFloatingExperiencePolishRunning, showToastError]);
+
+    const handleCloseBatchPolishToolbar = useCallback(() => {
+        if (isFloatingExperiencePolishRunning) {
+            showToastError('请等待当前润色完成后再继续操作');
+            return;
+        }
+        if (floatingPolishSession?.mode === 'batch') {
+            restoreFloatingPolishSessionItems(floatingPolishSession);
+            setFloatingPolishSession(null);
+        }
+        setIsBatchPolishToolbarOpen(false);
+    }, [floatingPolishSession, isFloatingExperiencePolishRunning, restoreFloatingPolishSessionItems, showToastError]);
+
+    const handleDismissBatchPolishToolbar = useCallback(() => {
+        if (isFloatingExperiencePolishRunning) {
+            showToastError('请等待当前润色完成后再继续操作');
+            return;
+        }
+        if (floatingPolishSession?.mode === 'batch') {
+            showToastError('请先确认或撤销当前批量润色结果');
+            return;
+        }
+        setIsBatchPolishToolbarOpen(false);
+    }, [floatingPolishSession, isFloatingExperiencePolishRunning, showToastError]);
 
     const handlePolishExperienceFromCard = useCallback((id: string) => {
         if (isFloatingExperiencePolishRunning) {
             showToastError('请等待当前润色完成后再继续操作');
             return;
         }
-        if (floatingPolishPreview && floatingPolishPreview.targetId !== id) {
-            showToastError('请先确认或撤销当前润色预览');
+        if (floatingPolishSession) {
+            const isSameSingleTarget = floatingPolishSession.mode === 'single'
+                && floatingPolishSession.items[0]?.targetId === id;
+            if (!isSameSingleTarget) {
+                showToastError('请先确认或撤销当前润色结果');
+                return;
+            }
+        }
+        if (isBatchPolishToolbarOpen) {
+            showToastError('请先关闭当前批量润色弹窗');
             return;
         }
         setSidebarTab('experience');
         setActiveFloatingPolishExperienceId((prev) => (
-            prev === id && !floatingPolishPreview ? null : id
+            prev === id && !singleFloatingPolishPreview ? null : id
         ));
-    }, [floatingPolishPreview, isFloatingExperiencePolishRunning, showToastError]);
+    }, [
+        floatingPolishSession,
+        isBatchPolishToolbarOpen,
+        isFloatingExperiencePolishRunning,
+        showToastError,
+        singleFloatingPolishPreview,
+    ]);
 
     const handleRunFloatingExperiencePolish = useCallback(async () => {
         if (!activeFloatingPolishExperienceId || floatingExperiencePolishRunningRef.current) {
@@ -2177,7 +2201,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 },
                 starTouched: true,
             };
-            applied = applyFloatingPolishPreview(activeFloatingPolishExperienceId, nextDraft, draft);
+            const sessionItem = buildFloatingPolishSessionItem(targetItem, nextDraft, draft);
+            applied = sessionItem ? applyFloatingPolishPreview('single', [sessionItem]) : false;
             if (applied) {
                 action = 'applied';
             }
@@ -2204,6 +2229,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [
         activeFloatingPolishExperienceId,
         applyFloatingPolishPreview,
+        buildFloatingPolishSessionItem,
         experienceItems,
         floatingPolishCustomPrompt,
         floatingPolishMode,
@@ -2214,25 +2240,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     ]);
 
     const handleUndoFloatingExperiencePolish = useCallback(() => {
-        if (!floatingPolishPreview) {
+        if (!singleFloatingPolishPreview || !floatingPolishSession || floatingPolishSession.mode !== 'single') {
             return;
         }
-        setExperienceItems((prev) =>
-            prev.map((item) => (
-                item.id === floatingPolishPreview.targetId ? floatingPolishPreview.beforeItem : item
-            ))
-        );
-        if (!floatingPolishPreview.wasSelected) {
-            setSelectedExpIds((prev) => {
-                const next = new Set(prev);
-                next.delete(floatingPolishPreview.targetId);
-                return next;
-            });
-        }
-        setFloatingPolishPreview(null);
+        restoreFloatingPolishSessionItems(floatingPolishSession);
+        setFloatingPolishSession(null);
         setActiveFloatingPolishExperienceId(null);
         trackAiPolishUndone({ source: 'resume_editor', field: 'all' });
-    }, [floatingPolishPreview]);
+    }, [floatingPolishSession, restoreFloatingPolishSessionItems, singleFloatingPolishPreview]);
 
     const ensureFloatingPolishResumeLink = useCallback(async (
         masterId: string,
@@ -2262,66 +2277,139 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         return nextMap.get(masterId)?.id ?? null;
     }, [applyResumeDetail, resumeExperienceMap, resumeId, setResumeExperienceMap]);
 
+    const ensureFloatingPolishResumeLinks = useCallback(async (
+        sessionItems: FloatingExperiencePolishSessionItem[]
+    ) => {
+        if (!resumeId) {
+            throw new Error('当前简历不存在');
+        }
+        const pendingAddMap = new Map<string, string>();
+        sessionItems.forEach((item) => {
+            if (resumeExperienceMap.get(item.targetId)?.id) {
+                return;
+            }
+            const versionId = item.afterItem.experienceVersionId;
+            if (versionId) {
+                pendingAddMap.set(item.targetId, versionId);
+            }
+        });
+        if (!pendingAddMap.size) {
+            return {
+                nextMap: resumeExperienceMap,
+                addedLinkIds: [] as string[],
+            };
+        }
+
+        const detail = await resumeService.updateAssembly(resumeId, {
+            operations: Array.from(pendingAddMap.values()).map((versionId) => ({
+                op: 'add',
+                experience_version_id: versionId,
+            })),
+        });
+        const nextMap = buildResumeExperienceMap(detail);
+        const addedLinkIds = Array.from(pendingAddMap.keys())
+            .map((targetId) => nextMap.get(targetId)?.id ?? null)
+            .filter((linkId): linkId is string => Boolean(linkId));
+        applyResumeDetail(detail);
+        setResumeExperienceMap(nextMap);
+        return {
+            nextMap,
+            addedLinkIds,
+        };
+    }, [applyResumeDetail, resumeExperienceMap, resumeId, setResumeExperienceMap]);
+
+    const rollbackFloatingPolishResumeLinks = useCallback(async (linkIds: string[]) => {
+        if (!resumeId || !linkIds.length) {
+            return;
+        }
+        const detail = await resumeService.updateAssembly(resumeId, {
+            operations: linkIds.map((linkId) => ({
+                op: 'remove',
+                resume_experience_id: linkId,
+            })),
+        });
+        const nextMap = buildResumeExperienceMap(detail);
+        applyResumeDetail(detail);
+        setResumeExperienceMap(nextMap);
+    }, [applyResumeDetail, resumeId, setResumeExperienceMap]);
+
+    const buildExperiencePolishOverrideOperation = useCallback((
+        sessionItem: FloatingExperiencePolishSessionItem,
+        linkMap: Map<string, ResumeExperienceItem> = resumeExperienceMap
+    ) => {
+        const targetId = sessionItem.targetId;
+        const currentItem = sessionItem.afterItem;
+        const draft = sessionItem.afterDraft;
+        const resumeItem = linkMap.get(targetId);
+        const hasStarOverride = Boolean(
+            resumeItem?.overrides_json
+            && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
+        );
+        const sourceStar = experienceSourceMap.get(targetId)?.latest_version?.star;
+        const resolvedStar = (
+            draft.starTouched || hasStarOverride
+                ? draft.star
+                : mergeStarFieldsWithSource(draft.star, sourceStar)
+        );
+        const linkId = resumeItem?.id;
+        if (!linkId) {
+            throw new Error('无法创建简历经历关联');
+        }
+
+        const dates = resolveExperienceDatePayload(draft, {
+            start_date: currentItem.startDate,
+            end_date: currentItem.endDate,
+            is_current: currentItem.isCurrent,
+        });
+        const overrides: Record<string, unknown> = {
+            star: resolvedStar,
+            is_current: dates.isCurrent,
+        };
+        if (dates.startDate) {
+            overrides.start_date = dates.startDate;
+        }
+        if (dates.endDate) {
+            overrides.end_date = dates.endDate;
+        }
+        const title = draft.title.trim();
+        const org = draft.company.trim();
+        if (title) {
+            overrides.title = title;
+        }
+        if (org) {
+            overrides.org = org;
+        }
+
+        return {
+            op: 'override',
+            resume_experience_id: linkId,
+            overrides_json: overrides,
+        };
+    }, [
+        experienceSourceMap,
+        mergeStarFieldsWithSource,
+        resolveExperienceDatePayload,
+        resumeExperienceMap,
+    ]);
+
     const handleConfirmFloatingExperiencePolish = useCallback(async () => {
-        if (!floatingPolishPreview || floatingExperiencePolishRunningRef.current || !resumeId) {
+        if (!singleFloatingPolishPreview || floatingExperiencePolishRunningRef.current || !resumeId) {
             return;
         }
 
         const toastId = showToastLoading('正在保存润色结果...');
+        let addedLinkIds: string[] = [];
         try {
             floatingExperiencePolishRunningRef.current = true;
             setIsFloatingExperiencePolishRunning(true);
-            const targetId = floatingPolishPreview.targetId;
-            const currentItem = floatingPolishPreview.afterItem;
-            const draft = floatingPolishPreview.afterDraft;
-            const resumeItem = resumeExperienceMap.get(targetId);
-            const hasStarOverride = Boolean(
-                resumeItem?.overrides_json
-                && Object.prototype.hasOwnProperty.call(resumeItem.overrides_json, 'star')
-            );
-            const sourceStar = experienceSourceMap.get(targetId)?.latest_version?.star;
-            const resolvedStar = (
-                draft.starTouched || hasStarOverride
-                    ? draft.star
-                    : mergeStarFieldsWithSource(draft.star, sourceStar)
-            );
-            const linkId = await ensureFloatingPolishResumeLink(targetId, currentItem.experienceVersionId);
-            if (!linkId) {
-                throw new Error('无法创建简历经历关联');
-            }
-
-            const dates = resolveExperienceDatePayload(draft, {
-                start_date: currentItem.startDate,
-                end_date: currentItem.endDate,
-                is_current: currentItem.isCurrent,
-            });
-            const overrides: Record<string, unknown> = {
-                star: resolvedStar,
-                is_current: dates.isCurrent,
-            };
-            if (dates.startDate) {
-                overrides.start_date = dates.startDate;
-            }
-            if (dates.endDate) {
-                overrides.end_date = dates.endDate;
-            }
-            const title = draft.title.trim();
-            const org = draft.company.trim();
-            if (title) {
-                overrides.title = title;
-            }
-            if (org) {
-                overrides.org = org;
-            }
-
+            const targetId = singleFloatingPolishPreview.targetId;
+            const { nextMap: workingResumeMap, addedLinkIds: createdLinkIds } = await ensureFloatingPolishResumeLinks([
+                singleFloatingPolishPreview,
+            ]);
+            addedLinkIds = createdLinkIds;
+            const operation = buildExperiencePolishOverrideOperation(singleFloatingPolishPreview, workingResumeMap);
             const detail = await resumeService.updateAssembly(resumeId, {
-                operations: [
-                    {
-                        op: 'override',
-                        resume_experience_id: linkId,
-                        overrides_json: overrides,
-                    },
-                ],
+                operations: [operation],
             });
             const nextMap = buildResumeExperienceMap(detail);
             applyResumeDetail(detail);
@@ -2331,12 +2419,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 next.add(targetId);
                 return next;
             });
-            setFloatingPolishPreview(null);
+            setFloatingPolishSession(null);
             setActiveFloatingPolishExperienceId(null);
             trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             updateToast(toastId, { message: '润色结果已保存到当前简历', type: 'success', duration: 2500 });
         } catch (error) {
             console.error('[ResumeEditor] 保存浮动润色结果失败:', error);
+            if (addedLinkIds.length > 0) {
+                try {
+                    await rollbackFloatingPolishResumeLinks(addedLinkIds);
+                } catch (rollbackError) {
+                    console.error('[ResumeEditor] 回滚浮动润色关联失败:', rollbackError);
+                }
+            }
             updateToast(toastId, { message: '保存润色结果失败，请稍后重试', type: 'error', duration: 3000 });
         } finally {
             floatingExperiencePolishRunningRef.current = false;
@@ -2344,13 +2439,248 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [
         applyResumeDetail,
-        ensureFloatingPolishResumeLink,
-        experienceSourceMap,
-        floatingPolishPreview,
-        mergeStarFieldsWithSource,
-        resolveExperienceDatePayload,
-        resumeExperienceMap,
+        buildExperiencePolishOverrideOperation,
+        ensureFloatingPolishResumeLinks,
         resumeId,
+        rollbackFloatingPolishResumeLinks,
+        setResumeExperienceMap,
+        showToastLoading,
+        singleFloatingPolishPreview,
+        updateToast,
+    ]);
+
+    const handleOpenBatchPolishToolbar = useCallback(() => {
+        if (isFloatingExperiencePolishRunning) {
+            showToastError('请等待当前润色完成后再继续操作');
+            return;
+        }
+        if (floatingPolishSession) {
+            showToastError('请先确认或撤销当前润色结果');
+            return;
+        }
+        if (activeFloatingPolishExperienceId) {
+            showToastError('请先关闭当前润色工具栏');
+            return;
+        }
+        setSidebarTab('experience');
+        setIsBatchPolishToolbarOpen(true);
+    }, [
+        activeFloatingPolishExperienceId,
+        floatingPolishSession,
+        isFloatingExperiencePolishRunning,
+        showToastError,
+    ]);
+
+    const handleRunBatchExperiencePolish = useCallback(async () => {
+        if (floatingExperiencePolishRunningRef.current) {
+            return;
+        }
+        const trimmedJd = jdPolishContext.trim();
+        if (!trimmedJd) {
+            showToastError('请先填写 JD 再润色');
+            return;
+        }
+        const targetItems = experienceItems.filter((item) => selectedExpIds.has(item.id));
+        if (!targetItems.length) {
+            showToastError('请先至少选中一条经历');
+            return;
+        }
+
+        const toastId = showToastLoading('正在批量润色中……');
+        let hasError = false;
+        let action: 'applied' | 'discarded' = 'discarded';
+        const startTime = Date.now();
+
+        try {
+            floatingExperiencePolishRunningRef.current = true;
+            setIsFloatingExperiencePolishRunning(true);
+            trackAiPolishStart({ source: 'resume_editor', field: 'all' });
+
+            const normalizeField = (value?: string) => {
+                if (!value) {
+                    return undefined;
+                }
+                const normalized = normalizeAiRichText(value, { allowList: false });
+                return normalized.trim() ? normalized : undefined;
+            };
+
+            const results = await Promise.allSettled(targetItems.map(async (item) => {
+                const draft = buildExperienceEditDraft(item);
+                const result = await aiService.polishExperienceStream({
+                    content: {
+                        company: draft.company,
+                        role: draft.title,
+                        s: draft.star.s,
+                        t: draft.star.t,
+                        a: draft.star.a,
+                        r: draft.star.r,
+                    },
+                    jdText: trimmedJd,
+                    mode: floatingPolishMode,
+                    customPrompt: floatingPolishMode === 'custom' ? floatingPolishCustomPrompt.trim() : undefined,
+                    entrySource: 'resume_editor',
+                });
+
+                const nextDraft: ExperienceEditDraft = {
+                    ...draft,
+                    star: {
+                        s: normalizeField(result?.s) ?? draft.star.s,
+                        t: normalizeField(result?.t) ?? draft.star.t,
+                        a: normalizeField(result?.a) ?? draft.star.a,
+                        r: normalizeField(result?.r) ?? draft.star.r,
+                    },
+                    starTouched: true,
+                };
+                return buildFloatingPolishSessionItem(item, nextDraft, draft);
+            }));
+
+            const sessionItems: FloatingExperiencePolishSessionItem[] = [];
+            const failedIds: string[] = [];
+            const unchangedIds: string[] = [];
+
+            results.forEach((result, index) => {
+                const targetId = targetItems[index]?.id;
+                if (!targetId) {
+                    return;
+                }
+                if (result.status === 'fulfilled') {
+                    if (result.value) {
+                        sessionItems.push(result.value);
+                    } else {
+                        unchangedIds.push(targetId);
+                    }
+                    return;
+                }
+                failedIds.push(targetId);
+            });
+
+            if (sessionItems.length > 0) {
+                applyFloatingPolishPreview('batch', sessionItems, failedIds);
+                action = 'applied';
+                updateToast(toastId, {
+                    message: failedIds.length > 0
+                        ? `已完成 ${sessionItems.length} 条，${failedIds.length} 条失败，请确认可用结果`
+                        : '批量润色完成，请确认是否保存',
+                    type: 'success',
+                    duration: 2500,
+                });
+            } else if (unchangedIds.length > 0 && failedIds.length === 0) {
+                updateToast(toastId, {
+                    message: 'AI 已完成批量润色，但没有生成可用调整',
+                    type: 'success',
+                    duration: 2500,
+                });
+            } else {
+                hasError = true;
+                updateToast(toastId, {
+                    message: '批量润色失败，请稍后重试',
+                    type: 'error',
+                    duration: 3000,
+                });
+            }
+        } catch (error) {
+            hasError = true;
+            console.error('[ResumeEditor] 批量润色失败:', error);
+            updateToast(toastId, {
+                message: '批量润色失败，请稍后重试',
+                type: 'error',
+                duration: 3000,
+            });
+        } finally {
+            if (!hasError) {
+                trackAiPolishResult({
+                    source: 'resume_editor',
+                    field: 'all',
+                    action,
+                    durationMs: Date.now() - startTime,
+                });
+            } else {
+                trackAiPolishResult({
+                    source: 'resume_editor',
+                    field: 'all',
+                    action: 'discarded',
+                    durationMs: Date.now() - startTime,
+                });
+            }
+            floatingExperiencePolishRunningRef.current = false;
+            setIsFloatingExperiencePolishRunning(false);
+        }
+    }, [
+        applyFloatingPolishPreview,
+        buildFloatingPolishSessionItem,
+        experienceItems,
+        floatingPolishCustomPrompt,
+        floatingPolishMode,
+        jdPolishContext,
+        selectedExpIds,
+        showToastError,
+        showToastLoading,
+        updateToast,
+    ]);
+
+    const handleUndoBatchExperiencePolish = useCallback(() => {
+        if (!batchFloatingPolishPreview) {
+            return;
+        }
+        restoreFloatingPolishSessionItems(batchFloatingPolishPreview);
+        setFloatingPolishSession(null);
+        setIsBatchPolishToolbarOpen(false);
+        trackAiPolishUndone({ source: 'resume_editor', field: 'all' });
+    }, [batchFloatingPolishPreview, restoreFloatingPolishSessionItems]);
+
+    const handleConfirmBatchExperiencePolish = useCallback(async () => {
+        if (!batchFloatingPolishPreview || floatingExperiencePolishRunningRef.current || !resumeId) {
+            return;
+        }
+
+        const toastId = showToastLoading('正在保存批量润色结果...');
+        let addedLinkIds: string[] = [];
+        try {
+            floatingExperiencePolishRunningRef.current = true;
+            setIsFloatingExperiencePolishRunning(true);
+            const { nextMap: workingResumeMap, addedLinkIds: createdLinkIds } = await ensureFloatingPolishResumeLinks(
+                batchFloatingPolishPreview.items
+            );
+            addedLinkIds = createdLinkIds;
+            const operations = [];
+            for (const item of batchFloatingPolishPreview.items) {
+                operations.push(buildExperiencePolishOverrideOperation(item, workingResumeMap));
+            }
+            const detail = await resumeService.updateAssembly(resumeId, { operations });
+            const nextMap = buildResumeExperienceMap(detail);
+            applyResumeDetail(detail);
+            setResumeExperienceMap(nextMap);
+            setFloatingPolishSession(null);
+            setIsBatchPolishToolbarOpen(false);
+            trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
+            updateToast(toastId, {
+                message: batchFloatingPolishPreview.failedIds.length > 0
+                    ? `批量润色已保存 ${batchFloatingPolishPreview.items.length} 条可用结果`
+                    : '批量润色结果已保存到当前简历',
+                type: 'success',
+                duration: 2500,
+            });
+        } catch (error) {
+            console.error('[ResumeEditor] 保存批量润色结果失败:', error);
+            if (addedLinkIds.length > 0) {
+                try {
+                    await rollbackFloatingPolishResumeLinks(addedLinkIds);
+                } catch (rollbackError) {
+                    console.error('[ResumeEditor] 回滚批量润色关联失败:', rollbackError);
+                }
+            }
+            updateToast(toastId, { message: '保存批量润色结果失败，请稍后重试', type: 'error', duration: 3000 });
+        } finally {
+            floatingExperiencePolishRunningRef.current = false;
+            setIsFloatingExperiencePolishRunning(false);
+        }
+    }, [
+        applyResumeDetail,
+        batchFloatingPolishPreview,
+        buildExperiencePolishOverrideOperation,
+        ensureFloatingPolishResumeLinks,
+        resumeId,
+        rollbackFloatingPolishResumeLinks,
         setResumeExperienceMap,
         showToastLoading,
         updateToast,
@@ -2462,13 +2792,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     },
                     starTouched: true,
                 };
-                return applyFloatingPolishPreview(activeFloatingPolishExperienceId, nextDraft, draft);
+                if (!activeFloatingPolishExperienceId) {
+                    return false;
+                }
+                const currentItem = experienceItems.find((item) => item.id === activeFloatingPolishExperienceId);
+                if (!currentItem) {
+                    return false;
+                }
+                const sessionItem = buildFloatingPolishSessionItem(currentItem, nextDraft, draft);
+                return sessionItem ? applyFloatingPolishPreview('single', [sessionItem]) : false;
             },
             callbackOnly: true,
         });
     }, [
         activeFloatingPolishExperienceId,
         applyFloatingPolishPreview,
+        buildFloatingPolishSessionItem,
         experienceItems,
         jdPolishContext,
         onLaunchAssistant,
@@ -4156,17 +4495,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     ) : null;
     const floatingPolishToolbar = activeFloatingPolishExperienceId ? (
         <AIPolishToolbar
-            isPreviewing={Boolean(floatingPolishPreview)}
+            isPreviewing={Boolean(singleFloatingPolishPreview)}
             isRunning={isFloatingExperiencePolishRunning}
             activeMode={floatingPolishMode}
             customPrompt={floatingPolishCustomPrompt}
             disabledAssistant={!jdPolishContext.trim()}
+            previewTitle="AI 润色结果"
             previewDescription="润色结果已同步到右侧简历预览，确认后会保存到当前简历。"
-            previewContent={
-                floatingPolishPreview?.afterDraft ? (
-                    <ExperiencePolishPreviewContent draft={floatingPolishPreview.afterDraft} />
-                ) : undefined
-            }
+            runHint="执行后同步到右侧简历预览，确认后保存到当前简历"
             onModeChange={setFloatingPolishMode}
             onCustomPromptChange={setFloatingPolishCustomPrompt}
             onRun={() => void handleRunFloatingExperiencePolish()}
@@ -4175,6 +4511,41 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             onOpenAssistant={handleOpenFloatingExperienceAssistant}
         />
     ) : null;
+    const batchPolishToolbar = isBatchPolishToolbarOpen ? (
+        <AIPolishToolbar
+            isPreviewing={Boolean(batchFloatingPolishPreview)}
+            isRunning={isFloatingExperiencePolishRunning}
+            activeMode={floatingPolishMode}
+            customPrompt={floatingPolishCustomPrompt}
+            disabledAssistant
+            previewTitle="AI 批量润色结果"
+            previewDescription={
+                batchFloatingPolishPreview
+                    ? `已同步 ${batchFloatingPolishPreview.items.length} 条经历到右侧简历预览，请确认是否统一保存。${batchFloatingPolishPreview.failedIds.length > 0 ? ` 本次有 ${batchFloatingPolishPreview.failedIds.length} 条未成功。` : ''}`
+                    : '执行后会并发润色当前已选经历，并同步到右侧简历预览等待统一确认。'
+            }
+            runHint="执行后同步到右侧简历预览，确认后统一保存到当前简历"
+            runButtonLabel="开始批量润色"
+            runningLabel="批量润色中..."
+            undoLabel="撤销全部"
+            confirmLabel="确认全部"
+            onModeChange={setFloatingPolishMode}
+            onCustomPromptChange={setFloatingPolishCustomPrompt}
+            onRun={() => void handleRunBatchExperiencePolish()}
+            onUndo={handleUndoBatchExperiencePolish}
+            onConfirm={() => void handleConfirmBatchExperiencePolish()}
+            onOpenAssistant={() => {}}
+        />
+    ) : null;
+    const floatingPolishHighlightItemIds = useMemo(
+        () => new Set(
+            (floatingPolishSession?.items ?? []).map((item) => buildDragItemKey('experience', item.targetId))
+        ),
+        [floatingPolishSession]
+    );
+    const isPreviewInteractionLocked = Boolean(floatingPolishSession)
+        || isFloatingExperiencePolishRunning
+        || isBatchPolishToolbarOpen;
     const listSpacingValue = useMemo(() => {
         return buildSpacingValue(itemSpacingEm, lineHeight);
     }, [itemSpacingEm, lineHeight]);
@@ -4214,6 +4585,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const selectedProjectItems = useMemo(
         () => projectItems.filter((item) => selectedExpIds.has(item.id)),
         [projectItems, selectedExpIds]
+    );
+    const selectedExperienceCount = selectedWorkItems.length + selectedProjectItems.length;
+    const canBatchPolish = Boolean(
+        jdPolishContext.trim()
+        && selectedExperienceCount > 0
+        && !isFloatingExperiencePolishRunning
+        && !floatingPolishSession
     );
     const selectedEducations = useMemo(
         () => educations.filter((item) => selectedEduIds.has(item.id)),
@@ -4976,6 +5354,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         if (isAutoAssembling) {
             return;
         }
+        if (isFloatingExperiencePolishRunning) {
+            showToastError('请等待当前润色完成后再继续操作');
+            return;
+        }
+        if (floatingPolishSession) {
+            showToastError('请先确认或撤销当前润色结果');
+            return;
+        }
+        if (isBatchPolishToolbarOpen) {
+            showToastError('请先关闭当前批量润色弹窗');
+            return;
+        }
         if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
             trackSmartAssemblyResult({
                 resumeId,
@@ -5129,8 +5519,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [
         analysisResult,
         buildAutoAssemblySelection,
+        floatingPolishSession,
         handleAnalyzeWithAutoName,
         isAutoAssembling,
+        isBatchPolishToolbarOpen,
+        isFloatingExperiencePolishRunning,
         isOutdated,
         jdFile,
         jdText,
@@ -5651,12 +6044,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('请等待当前润色完成后再继续操作');
             return true;
         }
-        if (floatingPolishPreview) {
-            showToastError('请先确认或撤销当前润色预览');
+        if (floatingPolishSession) {
+            showToastError('请先确认或撤销当前润色结果');
+            return true;
+        }
+        if (isBatchPolishToolbarOpen) {
+            showToastError('请先关闭当前批量润色弹窗');
             return true;
         }
         return false;
-    }, [floatingPolishPreview, isFloatingExperiencePolishRunning, showToastError]);
+    }, [floatingPolishSession, isBatchPolishToolbarOpen, isFloatingExperiencePolishRunning, showToastError]);
 
     const handleEditExperience = (id: string) => {
         if (hasFloatingPolishBlockingState()) {
@@ -5965,16 +6362,23 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             selectedSkillIds,
                             skillMatchScores,
                             skillMatchTrends,
+                            selectedExperienceCount,
+                            canBatchPolish,
+                            isBatchPolishing: isFloatingExperiencePolishRunning,
                             isAutoAssembling,
+                            onBatchPolish: handleOpenBatchPolishToolbar,
                             onAutoAssemble: handleAutoAssemble,
                             onResetRenamingCategory: resetRenamingCategory,
                             onPolishExperience: handlePolishExperienceFromCard,
                             activePolishExperienceId: activeFloatingPolishExperienceId,
-                            hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
+                            hasBlockingPolishState: Boolean(floatingPolishSession) || isFloatingExperiencePolishRunning || isBatchPolishToolbarOpen,
                             isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
                             polishToolbar: floatingPolishToolbar,
+                            batchPolishToolbar,
                             onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
                             onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
+                            onCloseBatchPolishToolbar: handleCloseBatchPolishToolbar,
+                            onDismissBatchPolishToolbar: handleDismissBatchPolishToolbar,
                             onResetWorkSort: () => handleResetSort('work'),
                             onResetProjectSort: () => handleResetSort('project'),
                             onResetCertificationSort: handleResetCertificationSort,
@@ -6040,6 +6444,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         previewScope="editor"
                         showOverflowGuide={isPreviewOverflowing}
                         overflowHighlightSectionIds={overflowingSectionIds}
+                        polishHighlightItemIds={floatingPolishHighlightItemIds}
+                        readOnly={isPreviewInteractionLocked}
                         lineHeight={lineHeight}
                         fontSize={fontSize}
                         listSpacingValue={listSpacingValue}
@@ -6252,16 +6658,23 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                     selectedSkillIds,
                                     skillMatchScores,
                                     skillMatchTrends,
+                                    selectedExperienceCount,
+                                    canBatchPolish,
+                                    isBatchPolishing: isFloatingExperiencePolishRunning,
                                     isAutoAssembling,
+                                    onBatchPolish: handleOpenBatchPolishToolbar,
                                     onAutoAssemble: handleAutoAssemble,
                                     onResetRenamingCategory: resetRenamingCategory,
                             onPolishExperience: handlePolishExperienceFromCard,
                             activePolishExperienceId: activeFloatingPolishExperienceId,
-                            hasBlockingPolishState: Boolean(floatingPolishPreview) || isFloatingExperiencePolishRunning,
+                            hasBlockingPolishState: Boolean(floatingPolishSession) || isFloatingExperiencePolishRunning || isBatchPolishToolbarOpen,
                             isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
                             polishToolbar: floatingPolishToolbar,
+                            batchPolishToolbar,
                             onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
                             onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
+                            onCloseBatchPolishToolbar: handleCloseBatchPolishToolbar,
+                            onDismissBatchPolishToolbar: handleDismissBatchPolishToolbar,
                                     onResetWorkSort: () => handleResetSort('work'),
                                     onResetProjectSort: () => handleResetSort('project'),
                                     onResetCertificationSort: handleResetCertificationSort,

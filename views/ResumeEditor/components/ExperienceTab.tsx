@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Wand2 } from 'lucide-react';
+import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Sparkles, Wand2, X } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
 import type { ExperienceActions, ExperienceTabProps, StarFieldKey } from '../../../types/resume';
@@ -92,7 +92,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     selectedSkillIds,
     skillMatchScores,
     skillMatchTrends,
+    selectedExperienceCount,
+    canBatchPolish,
+    isBatchPolishing,
     isAutoAssembling,
+    onBatchPolish,
     onAutoAssemble,
     onResetRenamingCategory,
     onPolishExperience,
@@ -100,8 +104,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     hasBlockingPolishState,
     isEditingExperiencePolishPreviewing = false,
     polishToolbar,
+    batchPolishToolbar,
     onClosePolishExperienceToolbar,
     onDismissPolishExperienceToolbar,
+    onCloseBatchPolishToolbar,
+    onDismissBatchPolishToolbar,
     onResetWorkSort,
     onResetProjectSort,
     onResetCertificationSort,
@@ -116,17 +123,25 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         shouldRestoreScrollRef.current = true;
     }, [scrollContainerRef]);
 
+    const dismissBlockingPolishUi = useCallback(() => {
+        if (batchPolishToolbar) {
+            onDismissBatchPolishToolbar?.();
+            return;
+        }
+        onDismissPolishExperienceToolbar?.();
+    }, [batchPolishToolbar, onDismissBatchPolishToolbar, onDismissPolishExperienceToolbar]);
+
     const handleEditExperienceFromList = useCallback((id: string) => {
         if (hasBlockingPolishState) {
-            onDismissPolishExperienceToolbar?.();
+            dismissBlockingPolishUi();
             return;
         }
         recordListScroll();
         experience.startEditingExperience(id);
     }, [
+        dismissBlockingPolishUi,
         experience.startEditingExperience,
         hasBlockingPolishState,
-        onDismissPolishExperienceToolbar,
         recordListScroll,
     ]);
 
@@ -139,9 +154,23 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         if (!hasBlockingPolishState) {
             return false;
         }
-        onDismissPolishExperienceToolbar?.();
+        dismissBlockingPolishUi();
         return true;
-    }, [hasBlockingPolishState, onDismissPolishExperienceToolbar]);
+    }, [dismissBlockingPolishUi, hasBlockingPolishState]);
+
+    const handleBatchPolishClick = useCallback(() => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        onBatchPolish();
+    }, [guardBlockedSidebarAction, onBatchPolish]);
+
+    const handleAutoAssembleClick = useCallback(() => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        onAutoAssemble();
+    }, [guardBlockedSidebarAction, onAutoAssemble]);
 
     const handleAddWorkExperience = useCallback(() => {
         if (guardBlockedSidebarAction()) {
@@ -171,6 +200,41 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         certification.beginEditCertification(id);
     }, [certification, guardBlockedSidebarAction]);
 
+    const handleToggleCertificationSelection = useCallback((id: string) => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        selection.toggleCertificationSelection(id);
+    }, [guardBlockedSidebarAction, selection]);
+
+    const handleDeleteCertification = useCallback((id: string) => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        certification.requestDeleteCertification(id);
+    }, [certification, guardBlockedSidebarAction]);
+
+    const handleResetCertificationSort = useCallback(() => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        onResetCertificationSort?.();
+    }, [guardBlockedSidebarAction, onResetCertificationSort]);
+
+    const handleToggleSkillSelection = useCallback((id: string) => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        selection.toggleSkillSelection(id);
+    }, [guardBlockedSidebarAction, selection]);
+
+    const handleToggleSkillGroupSelection = useCallback((groupName: string, skillIds?: string[]) => {
+        if (guardBlockedSidebarAction()) {
+            return;
+        }
+        selection.toggleSkillGroupSelection(groupName, skillIds);
+    }, [guardBlockedSidebarAction, selection]);
+
     const guardedSkill = useMemo(() => ({
         ...skill,
         beginCreateSkillType: () => {
@@ -190,6 +254,48 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 return;
             }
             skill.beginEditSkill(id);
+        },
+        cancelSkillEdit: () => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.cancelSkillEdit();
+        },
+        handleSaveSkill: async () => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            await skill.handleSaveSkill();
+        },
+        handleRenameCategory: async (oldName: string, newName: string) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            await skill.handleRenameCategory(oldName, newName);
+        },
+        requestDeleteSkill: (id: string) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.requestDeleteSkill(id);
+        },
+        requestDeleteSkillCategory: (categoryName: string) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.requestDeleteSkillCategory(categoryName);
+        },
+        setRenamingCategoryTarget: (value: React.SetStateAction<string | null>) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.setRenamingCategoryTarget(value);
+        },
+        setRenamingCategoryDraft: (value: React.SetStateAction<string>) => {
+            if (guardBlockedSidebarAction()) {
+                return;
+            }
+            skill.setRenamingCategoryDraft(value);
         },
     }), [guardBlockedSidebarAction, skill]);
 
@@ -383,31 +489,100 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
 
     return (
         <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
-            <div className="px-1 flex items-center justify-between gap-3">
-                <p className="text-xs text-gray-400 flex items-center gap-2">
-                    <CheckCircle2 className="w-3 h-3" /> 当前可选添加经历项
-                </p>
-                <div className="flex items-center gap-2">
-                    <MatchScoreFilter 
-                        value={matchScoreFilter}
-                        onChange={onMatchScoreFilterChange}
-                    />
-                    <button
-                        type="button"
-                        onClick={onAutoAssemble}
-                        disabled={isAutoAssembling}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
-                    {isAutoAssembling ? '正在生成…' : '一键组装'}
-                    </button>
+            <div className="relative z-20 px-1">
+                <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-gray-400 flex items-center gap-2">
+                        <CheckCircle2 className="w-3 h-3" /> 当前可选添加经历项
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <MatchScoreFilter 
+                            value={matchScoreFilter}
+                            onChange={onMatchScoreFilterChange}
+                            disabled={hasBlockingPolishState}
+                        />
+                        <button
+                            type="button"
+                            onClick={handleBatchPolishClick}
+                            disabled={!canBatchPolish || isBatchPolishing || hasBlockingPolishState}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            title={
+                                hasBlockingPolishState
+                                    ? '请先确认或撤销当前润色结果'
+                                    : canBatchPolish
+                                    ? `批量润色当前已选中的 ${selectedExperienceCount} 条经历`
+                                    : '请先填写 JD 并至少选中一条经历'
+                            }
+                        >
+                            <Sparkles className={`w-3 h-3 ${isBatchPolishing ? 'animate-spin' : ''}`} />
+                            {isBatchPolishing ? '润色中…' : '一键润色'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleAutoAssembleClick}
+                            disabled={isAutoAssembling || hasBlockingPolishState}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            title={hasBlockingPolishState ? '请先确认或撤销当前润色结果' : '一键组装当前简历'}
+                        >
+                            <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
+                        {isAutoAssembling ? '正在生成…' : '一键组装'}
+                        </button>
+                    </div>
                 </div>
+                {batchPolishToolbar ? (
+                    <>
+                        <div
+                            className="fixed inset-0 z-[55] bg-slate-950/18 md:hidden"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDismissBatchPolishToolbar?.();
+                            }}
+                        />
+                        <div
+                            className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:left-auto md:right-0 md:top-[calc(100%+12px)] md:bottom-auto md:z-30 md:mt-0 md:block md:w-[560px] md:max-h-[48vh]"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.18)] md:max-h-[48vh]">
+                                <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
+                                    <div className="min-w-0">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                                            AI 批量润色
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-slate-900">
+                                            当前已选 {selectedExperienceCount} 条经历
+                                        </div>
+                                        <div className="mt-0.5 text-xs text-slate-500">
+                                            结果会先同步到右侧简历预览，确认后统一保存到当前简历。
+                                        </div>
+                                    </div>
+                                    {onCloseBatchPolishToolbar ? (
+                                        <button
+                                            type="button"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onCloseBatchPolishToolbar();
+                                            }}
+                                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                                            title="关闭批量润色弹窗"
+                                            aria-label="关闭批量润色弹窗"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    ) : null}
+                                </div>
+                                <div className="min-h-0 flex flex-1 flex-col overflow-hidden p-3">
+                                    {batchPolishToolbar}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                ) : null}
             </div>
             <PersonalSummaryPanel
                 value={personalSummary}
                 isVisible={isSummaryVisible}
                 isGenerating={isGeneratingPersonalSummary}
                 canGenerate={canGeneratePersonalSummary}
+                disabled={hasBlockingPolishState}
                 onChange={onPersonalSummaryChange}
                 onVisibilityChange={onSummaryVisibilityChange}
                 onGenerate={onGeneratePersonalSummary}
@@ -421,8 +596,16 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                     </span>
                         <button
                             type="button"
-                            onClick={() => onMatchScoreFilterChange(0)}
-                            className="shrink-0 rounded-md border border-amber-300 px-2 py-0.5 font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-900/30"
+                            onClick={() => {
+                                if (hasBlockingPolishState) {
+                                    dismissBlockingPolishUi();
+                                    return;
+                                }
+                                onMatchScoreFilterChange(0);
+                            }}
+                            disabled={hasBlockingPolishState}
+                            className="shrink-0 rounded-md border border-amber-300 px-2 py-0.5 font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-900/30"
+                            title={hasBlockingPolishState ? '请先确认或撤销当前润色结果' : '显示全部'}
                         >
                             显示全部
                         </button>
@@ -484,18 +667,19 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 selectedIds={selectedCertIds}
                 matchScores={certificationMatchScores}
                 matchTrends={certificationMatchTrends}
-                onToggleSelection={selection.toggleCertificationSelection}
+                onToggleSelection={handleToggleCertificationSelection}
                 onBeginCreate={handleBeginCreateCertification}
                 onBeginEdit={handleBeginEditCertification}
                 onCancelEdit={certification.cancelCertificationEdit}
                 onSave={certification.handleSaveCertification}
-                onDelete={certification.requestDeleteCertification}
+                onDelete={handleDeleteCertification}
                 onUpdateDraft={certification.updateCertificationDraft}
                 draft={certification.certificationDraft}
                 editingId={certification.editingCertificationId}
                 deletingIds={certification.deletingCertificationIds}
                 isSaving={certification.isSavingCertification}
-                onResetSort={onResetCertificationSort}
+                onResetSort={handleResetCertificationSort}
+                disabled={hasBlockingPolishState}
             />
             <SkillListSection
                 title="专业技能"
@@ -505,9 +689,10 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 matchScores={skillMatchScores}
                 matchTrends={skillMatchTrends}
                 skill={guardedSkill}
-                onToggleSelection={selection.toggleSkillSelection}
-                onToggleGroupSelection={selection.toggleSkillGroupSelection}
+                onToggleSelection={handleToggleSkillSelection}
+                onToggleGroupSelection={handleToggleSkillGroupSelection}
                 onResetRenamingCategory={onResetRenamingCategory}
+                disabled={hasBlockingPolishState}
             />
         </div>
     );
