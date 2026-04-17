@@ -154,3 +154,101 @@ class AiServicePolishPromptTests(unittest.TestCase):
 
         self.assertIn("Rewrite into strong, impact-oriented STAR statements.", prompt)
         self.assertIn("Compress wording aggressively", prompt)
+
+
+class AiServiceAssistantNormalizationTests(unittest.TestCase):
+    def test_normalize_assistant_result_strips_action_numbering_from_draft_card(self) -> None:
+        result = ai_service._normalize_assistant_result(
+            {
+                "assistantText": " 已整理好项目经历草稿 ",
+                "title": " 项目经历 ",
+                "draftCard": {
+                    "type": "experience",
+                    "status": "draft_ready",
+                    "summary": "原子简历/独立开发者",
+                    "data": {
+                        "category": "project",
+                        "org": "原子简历",
+                        "title": "独立开发者",
+                        "startDate": "2026-02-01",
+                        "endDate": "",
+                        "isCurrent": True,
+                        "star": {
+                            "s": "场景",
+                            "t": "任务",
+                            "a": "1. **AI内核与润色算法升级**：上线 V1.2 版本。 2. 视觉与交互重构：优化登录链路。 3. 数据驱动迭代：缓解登录拦截痛点。",
+                            "r": "结果",
+                        },
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(result["assistantText"], "已整理好项目经历草稿")
+        self.assertEqual(result["title"], "项目经历")
+        self.assertEqual(
+            result["draftCard"]["data"]["star"]["a"],
+            "**AI内核与润色算法升级**：上线 V1.2 版本。\n视觉与交互重构：优化登录链路。\n数据驱动迭代：缓解登录拦截痛点。",
+        )
+
+    def test_assistant_prompts_require_action_lines_without_prefixes(self) -> None:
+        self.assertIn("For work or project experience cards, data.star.a must contain concise action points", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertIn("For education cards, use data.star.a for courses or core coursework text", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertIn("When category is 'work' or 'project', star.a must be concise action points", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+        self.assertIn("When category is 'education', use star.a for courses or core coursework text", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+
+    def test_normalize_assistant_result_keeps_date_prefixed_action_text(self) -> None:
+        result = ai_service._normalize_assistant_result(
+            {
+                "assistantText": "已整理",
+                "draftCard": {
+                    "type": "experience",
+                    "status": "draft_ready",
+                    "summary": "项目经历",
+                    "data": {
+                        "category": "project",
+                        "org": "原子简历",
+                        "title": "独立开发者",
+                        "startDate": "2026-02-01",
+                        "endDate": "",
+                        "isCurrent": True,
+                        "star": {
+                            "s": "场景",
+                            "t": "任务",
+                            "a": "2024.05 完成灰度发布",
+                            "r": "结果",
+                        },
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(result["draftCard"]["data"]["star"]["a"], "2024.05 完成灰度发布")
+
+    def test_normalize_assistant_result_keeps_education_courses_text(self) -> None:
+        result = ai_service._normalize_assistant_result(
+            {
+                "assistantText": "已整理",
+                "draftCard": {
+                    "type": "experience",
+                    "status": "draft_ready",
+                    "summary": "教育经历",
+                    "data": {
+                        "category": "education",
+                        "org": "某大学",
+                        "title": "计算机科学",
+                        "startDate": "2022-09-01",
+                        "endDate": "2026-06-01",
+                        "isCurrent": False,
+                        "star": {
+                            "s": "本科",
+                            "t": "GPA 3.8",
+                            "a": "高等数学\n数据结构",
+                            "r": "",
+                        },
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(result["draftCard"]["data"]["star"]["a"], "高等数学\n数据结构")

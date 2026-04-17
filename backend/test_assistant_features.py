@@ -964,5 +964,40 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class AssistantStarNormalizationTests(unittest.TestCase):
+    def test_merge_star_payload_strips_action_numbering_before_persist(self) -> None:
+        merged = assistant_service._merge_star_payload(
+            {
+                "a": "1. 搭建智能润色链路 2. 重构登录转化流程 3. 基于埋点持续迭代",
+            },
+            ExperienceCategory.PROJECT,
+        )
+
+        self.assertEqual(
+            merged["a"],
+            "搭建智能润色链路\n重构登录转化流程\n基于埋点持续迭代",
+        )
+
+    def test_merge_star_payload_keeps_version_prefixed_action_text(self) -> None:
+        merged = assistant_service._merge_star_payload(
+            {
+                "a": "2.0 版本重构登录转化流程",
+            },
+            ExperienceCategory.PROJECT,
+        )
+
+        self.assertEqual(merged["a"], "2.0 版本重构登录转化流程")
+
+    def test_merge_star_payload_keeps_education_courses_text(self) -> None:
+        merged = assistant_service._merge_star_payload(
+            {
+                "a": "高等数学\n数据结构",
+            },
+            ExperienceCategory.EDUCATION,
+        )
+
+        self.assertEqual(merged["a"], "高等数学\n数据结构")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -238,6 +238,12 @@ type RichTextListData = {
     listType: RichTextListType;
 };
 
+type TextOffsetSegment = {
+    node: Text;
+    start: number;
+    end: number;
+};
+
 const isIgnorableRootNode = (node: ChildNode) => {
     if (node.nodeType === Node.TEXT_NODE) {
         return !(node.textContent ?? '').trim();
@@ -260,6 +266,100 @@ const resolveRootListElement = (container: HTMLElement) => {
     return null;
 };
 
+const collectTextOffsetSegments = (root: HTMLElement) => {
+    const segments: TextOffsetSegment[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let currentOffset = 0;
+    let node = walker.nextNode() as Text | null;
+
+    while (node) {
+        const value = node.textContent ?? '';
+        if (value.length > 0) {
+            segments.push({
+                node,
+                start: currentOffset,
+                end: currentOffset + value.length,
+            });
+            currentOffset += value.length;
+        }
+        node = walker.nextNode() as Text | null;
+    }
+
+    return { segments, text: root.textContent ?? '' };
+};
+
+const resolveTextPositionAtOffset = (segments: TextOffsetSegment[], offset: number) => {
+    for (const segment of segments) {
+        if (offset <= segment.end) {
+            return {
+                node: segment.node,
+                offset: Math.max(0, Math.min(segment.node.textContent?.length ?? 0, offset - segment.start)),
+            };
+        }
+    }
+    const lastSegment = segments[segments.length - 1];
+    if (!lastSegment) {
+        return null;
+    }
+    return {
+        node: lastSegment.node,
+        offset: lastSegment.node.textContent?.length ?? 0,
+    };
+};
+
+const splitRichTextHtmlLine = (lineHtml: string) => {
+    const trimmedLine = lineHtml.trim();
+    if (!trimmedLine) {
+        return [];
+    }
+
+    if (typeof document === 'undefined') {
+        const plainText = decodeHtmlEntities(trimmedLine.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ''));
+        const parts = splitInlineOrderedList(plainText.trim());
+        return parts ? parts.map((part) => sanitizeRichTextHtml(part)) : [trimmedLine];
+    }
+
+    const container = document.createElement('div');
+    container.innerHTML = trimmedLine;
+    const { segments, text } = collectTextOffsetSegments(container);
+    if (!segments.length) {
+        return [trimmedLine];
+    }
+
+    const textStartOffset = text.search(/\S/);
+    if (textStartOffset < 0) {
+        return [trimmedLine];
+    }
+    const inlineParts = splitInlineOrderedList(text.slice(textStartOffset).trim());
+    if (!inlineParts) {
+        return [trimmedLine];
+    }
+
+    const markerPattern = /\d+[.、)）]\s+/g;
+    const markerOffsets = Array.from(text.slice(textStartOffset).matchAll(markerPattern))
+        .map((match) => textStartOffset + (match.index ?? 0));
+    if (markerOffsets.length <= 1 || markerOffsets[0] !== textStartOffset) {
+        return [trimmedLine];
+    }
+
+    const htmlParts = markerOffsets.map((startOffset, index) => {
+        const endOffset = index + 1 < markerOffsets.length ? markerOffsets[index + 1] : text.length;
+        const range = document.createRange();
+        const start = resolveTextPositionAtOffset(segments, startOffset);
+        const end = resolveTextPositionAtOffset(segments, endOffset);
+        if (!start || !end) {
+            return '';
+        }
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+        const wrapper = document.createElement('div');
+        wrapper.appendChild(range.cloneContents());
+        return wrapper.innerHTML.trim();
+    }).filter(Boolean);
+
+    return htmlParts.length > 1 ? htmlParts : [trimmedLine];
+};
+
 const extractListData = (sanitized: string): RichTextListData | null => {
     if (typeof document !== 'undefined') {
         const container = document.createElement('div');
@@ -276,7 +376,7 @@ const extractListData = (sanitized: string): RichTextListData | null => {
         return {
             listType,
             lines: items
-                .map((item) => item.innerHTML.trim())
+                .flatMap((item) => splitRichTextHtmlLine(item.innerHTML.trim()))
                 .filter(Boolean),
         };
     }
@@ -293,7 +393,7 @@ const extractListData = (sanitized: string): RichTextListData | null => {
         return null;
     }
     const lines = matches
-        .map((match) => match.replace(/<\/?li[^>]*>/gi, '').trim())
+        .flatMap((match) => splitRichTextHtmlLine(match.replace(/<\/?li[^>]*>/gi, '').trim()))
         .filter(Boolean);
     if (!lines.length) {
         return null;
@@ -345,6 +445,7 @@ export const splitRichTextLines = (input: string) => {
     }
     return sanitized
         .split(/<br\s*\/?>/i)
+        .flatMap((line) => splitRichTextHtmlLine(line))
         .map((line) => line.trim())
         .filter(Boolean);
 };

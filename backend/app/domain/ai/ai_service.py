@@ -2,6 +2,7 @@ import hashlib
 import inspect
 import json
 import logging
+import re
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
@@ -47,6 +48,13 @@ MAX_SELECTED_RESUME_EXPERIENCES = 40
 MAX_SELECTED_RESUME_EDUCATIONS = 20
 MAX_SELECTED_RESUME_CERTIFICATIONS = 30
 MAX_SELECTED_RESUME_SKILLS = 60
+ASSISTANT_ACTION_ORDERED_PREFIX_PATTERN = re.compile(r"^\s*\d+[.、)）]\s*(.+)$")
+ASSISTANT_ACTION_UNORDERED_PREFIX_PATTERN = re.compile(r"^\s*[-*＊•·]\s*(.+)$")
+ASSISTANT_ACTION_INLINE_ORDERED_PATTERN = re.compile(r"^\s*\d+[.、)）]\s*.+$")
+ASSISTANT_ACTION_INLINE_ORDERED_SPLIT_PATTERN = re.compile(r"(?=\d+[.、)）]\s+)")
+ASSISTANT_ACTION_ORDERED_LINE_PATTERN = re.compile(r"^\s*(\d+)([.、)）])\s*(.+)$")
+ASSISTANT_ACTION_UNORDERED_LINE_PATTERN = re.compile(r"^\s*([-*＊•·])\s*(.+)$")
+ASSISTANT_PLAIN_ITALIC_MARKDOWN_PATTERN = re.compile(r"^\*[^*\r\n]+\*$")
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
@@ -139,6 +147,114 @@ def _clip_optional_text(value: Any, limit: int) -> str | None:
     if len(normalized) <= limit:
         return normalized
     return f"{normalized[:limit].rstrip()}..."
+
+
+def _split_inline_ordered_action_lines(line: str) -> List[str] | None:
+    if not ASSISTANT_ACTION_INLINE_ORDERED_PATTERN.match(line):
+        return None
+    parts = [
+        segment.strip()
+        for segment in ASSISTANT_ACTION_INLINE_ORDERED_SPLIT_PATTERN.split(line.strip())
+        if segment.strip()
+    ]
+    if len(parts) <= 1:
+        return None
+    if any(not _is_likely_ordered_action_line(part) for part in parts):
+        return None
+    return parts
+
+
+def _is_plain_italic_markdown(value: str) -> bool:
+    return bool(ASSISTANT_PLAIN_ITALIC_MARKDOWN_PATTERN.fullmatch(value.strip()))
+
+
+def _is_likely_ordered_action_line(value: str) -> bool:
+    match = ASSISTANT_ACTION_ORDERED_LINE_PATTERN.match(value)
+    if not match:
+        return False
+    number_part = match.group(1)
+    content = (match.group(3) or "").strip()
+    if not content:
+        return False
+    if len(number_part) >= 3:
+        return False
+    if content.startswith(tuple("0123456789")):
+        return False
+    return True
+
+
+def _is_likely_unordered_action_line(value: str) -> bool:
+    match = ASSISTANT_ACTION_UNORDERED_LINE_PATTERN.match(value)
+    if not match:
+        return False
+    bullet = match.group(1)
+    content = (match.group(2) or "").strip()
+    if not content:
+        return False
+    if bullet in {"*", "＊"} and _is_plain_italic_markdown(value):
+        return False
+    if bullet == "-" and content.startswith(tuple("0123456789")):
+        return False
+    return True
+
+
+def _strip_action_list_prefix(line: str) -> str:
+    ordered_match = ASSISTANT_ACTION_ORDERED_PREFIX_PATTERN.match(line)
+    if ordered_match and _is_likely_ordered_action_line(line):
+        return ordered_match.group(1).strip()
+    unordered_match = ASSISTANT_ACTION_UNORDERED_PREFIX_PATTERN.match(line)
+    if unordered_match and _is_likely_unordered_action_line(line):
+        return unordered_match.group(1).strip()
+    return line.strip()
+
+
+def _normalize_assistant_action_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+
+    lines = [line.strip() for line in re.split(r"\r?\n+", trimmed) if line.strip()]
+    if len(lines) == 1:
+        inline_lines = _split_inline_ordered_action_lines(lines[0])
+        if inline_lines:
+            lines = inline_lines
+
+    normalized_lines = [_strip_action_list_prefix(line) for line in lines]
+    normalized_lines = [line for line in normalized_lines if line]
+    if not normalized_lines:
+        return None
+    return "\n".join(normalized_lines)
+
+
+def _normalize_assistant_draft_card(card: Any) -> Dict[str, Any] | None:
+    if not isinstance(card, dict):
+        return None
+
+    normalized_card = dict(card)
+    if normalized_card.get("type") != "experience":
+        return normalized_card
+
+    data = normalized_card.get("data")
+    if not isinstance(data, dict):
+        return normalized_card
+    if data.get("category") == "education":
+        return normalized_card
+
+    star = data.get("star")
+    if not isinstance(star, dict):
+        return normalized_card
+
+    normalized_star = dict(star)
+    raw_action = normalized_star.get("a")
+    if isinstance(raw_action, str):
+        normalized_star["a"] = _normalize_assistant_action_text(raw_action) or ""
+
+    normalized_data = dict(data)
+    normalized_data["star"] = normalized_star
+    normalized_card["data"] = normalized_data
+    return normalized_card
 
 
 def _normalize_selected_experience_item(item: Any) -> Optional[Dict[str, Any]]:
@@ -1824,7 +1940,7 @@ def _normalize_assistant_result(result: Dict[str, Any]) -> Dict[str, Any]:
     draft_card = result.get("draftCard")
     normalized_text = assistant_text.strip() if isinstance(assistant_text, str) else ""
     normalized_title = title.strip() if isinstance(title, str) and title.strip() else "AI 助理"
-    normalized_card = draft_card if isinstance(draft_card, dict) else None
+    normalized_card = _normalize_assistant_draft_card(draft_card)
     if not normalized_text:
         raise ValueError("AI 助理未返回有效回复。")
     return {
