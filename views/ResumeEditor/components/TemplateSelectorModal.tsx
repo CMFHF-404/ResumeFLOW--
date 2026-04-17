@@ -16,6 +16,13 @@ import {
   type ResumeThemeColorPresetId,
   type ResumeTemplateId,
 } from '../../../constants/resumeTemplates';
+import type { ResumeExperienceListMarkerStyle } from '../../../types/resume';
+import {
+  DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
+  DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
+  normalizeResumeExperienceListMarkerStyle,
+  normalizeResumeSkillTagSeparator,
+} from '../../../utils/resumeCustomization';
 import type { ResumeTemplatePresetMap } from '../../resumeTemplateStorage';
 import { DEFAULT_SECTION_ORDER, RESUME_SECTION_IDS } from '../constants';
 
@@ -24,6 +31,8 @@ type TemplateSelectorModalProps = {
   selectedTemplateId: ResumeTemplateId;
   themeColorPresetId: ResumeThemeColorPresetId;
   sectionOrder: string[];
+  experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+  skillTagSeparator: string;
   templatePresetMap: ResumeTemplatePresetMap;
   isPresetMapReady: boolean;
   isPresetSyncFallbackAvailable: boolean;
@@ -34,8 +43,20 @@ type TemplateSelectorModalProps = {
     templateId: ResumeTemplateId;
     sectionOrder: string[];
     themeColorPresetId: ResumeThemeColorPresetId;
+    experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+    skillTagSeparator: string;
   }) => Promise<void>;
 };
+
+const EXPERIENCE_LIST_MARKER_STYLE_OPTIONS: Array<{
+  value: ResumeExperienceListMarkerStyle;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'unordered', label: '无序', hint: '使用圆点项目符号' },
+  { value: 'ordered', label: '有序', hint: '按 1. 2. 3. 展示' },
+  { value: 'none', label: '无', hint: '仅保留纯文本分段' },
+];
 
 const TEMPLATE_SECTION_META: Record<string, { label: string; hint: string }> = {
   summary: { label: '个人评价', hint: '简历开场和优势概述' },
@@ -249,6 +270,8 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   selectedTemplateId,
   themeColorPresetId,
   sectionOrder,
+  experienceListMarkerStyle,
+  skillTagSeparator,
   templatePresetMap,
   isPresetMapReady,
   isPresetSyncFallbackAvailable,
@@ -262,6 +285,9 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   const [editingThemeColorPresetId, setEditingThemeColorPresetId] = React.useState<ResumeThemeColorPresetId>(
     resolveDefaultResumeThemeColorPresetId(DEFAULT_RESUME_TEMPLATE_ID)
   );
+  const [editingExperienceListMarkerStyle, setEditingExperienceListMarkerStyle] =
+    React.useState<ResumeExperienceListMarkerStyle>(DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE);
+  const [editingSkillTagSeparator, setEditingSkillTagSeparator] = React.useState(DEFAULT_RESUME_SKILL_TAG_SEPARATOR);
   const [isSavingPreset, setIsSavingPreset] = React.useState(false);
   const [presetError, setPresetError] = React.useState('');
   const [draggingSectionId, setDraggingSectionId] = React.useState<string | null>(null);
@@ -280,11 +306,27 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     const draftThemeColorPresetId = templateId === selectedTemplateId
       ? themeColorPresetId
       : (preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId));
+    const draftExperienceListMarkerStyle = templateId === selectedTemplateId
+      ? experienceListMarkerStyle
+      : normalizeResumeExperienceListMarkerStyle(preset?.experienceListMarkerStyle);
+    const draftSkillTagSeparator = templateId === selectedTemplateId
+      ? skillTagSeparator
+      : normalizeResumeSkillTagSeparator(preset?.skillTagSeparator);
     setEditingTemplateId(templateId);
     setEditingSectionOrder(draftSectionOrder);
     setEditingThemeColorPresetId(draftThemeColorPresetId);
+    setEditingExperienceListMarkerStyle(draftExperienceListMarkerStyle);
+    setEditingSkillTagSeparator(draftSkillTagSeparator);
     setPresetError('');
-  }, [isPresetMapReady, sectionOrder, selectedTemplateId, templatePresetMap, themeColorPresetId]);
+  }, [
+    experienceListMarkerStyle,
+    isPresetMapReady,
+    sectionOrder,
+    selectedTemplateId,
+    skillTagSeparator,
+    templatePresetMap,
+    themeColorPresetId,
+  ]);
 
   const closeTemplatePresetEditor = React.useCallback(() => {
     if (isSavingPreset) {
@@ -390,6 +432,8 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
         templateId: editingTemplateId,
         sectionOrder: editingSectionOrder,
         themeColorPresetId: editingThemeColorPresetId,
+        experienceListMarkerStyle: editingExperienceListMarkerStyle,
+        skillTagSeparator: editingSkillTagSeparator,
       });
       setEditingTemplateId(null);
     } catch {
@@ -399,8 +443,10 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     }
   }, [
     editingSectionOrder,
+    editingExperienceListMarkerStyle,
     editingTemplateId,
     editingThemeColorPresetId,
+    editingSkillTagSeparator,
     isSavingPreset,
     onSaveTemplatePreset,
   ]);
@@ -583,6 +629,57 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                           </button>
                         );
                       })}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-950/70">
+                        <div className="mb-3">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">段落样式</div>
+                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">控制经历内容中 Action 段落的排序符号。</div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {EXPERIENCE_LIST_MARKER_STYLE_OPTIONS.map((option) => {
+                            const isActive = option.value === editingExperienceListMarkerStyle;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setEditingExperienceListMarkerStyle(option.value)}
+                                className={`rounded-xl border px-3 py-3 text-left transition ${
+                                  isActive
+                                    ? 'border-primary bg-primary/5 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-600 dark:hover:bg-gray-800'
+                                }`}
+                              >
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white">{option.label}</div>
+                                <div className="mt-1 text-[11px] leading-4 text-gray-500 dark:text-gray-400">{option.hint}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-950/70">
+                        <div className="mb-3">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">技能样式</div>
+                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">自定义技能 TAG 之间的连接符号，默认使用逗号。</div>
+                        </div>
+                        <label className="block">
+                          <span className="mb-2 block text-xs font-medium text-gray-600 dark:text-gray-300">TAG 连接符</span>
+                          <input
+                            type="text"
+                            value={editingSkillTagSeparator}
+                            onChange={(event) => setEditingSkillTagSeparator(event.target.value)}
+                            placeholder={DEFAULT_RESUME_SKILL_TAG_SEPARATOR}
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                          />
+                        </label>
+                        <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-white/70 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400">
+                          示例：React{normalizeResumeSkillTagSeparator(editingSkillTagSeparator)}TypeScript{normalizeResumeSkillTagSeparator(editingSkillTagSeparator)}Node.js
+                        </div>
+                      </div>
                     </div>
                   </section>
 

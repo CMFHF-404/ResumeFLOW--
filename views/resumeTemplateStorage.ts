@@ -9,6 +9,12 @@ import {
 } from '../constants/resumeTemplates';
 import { profileService } from '../services/profileService';
 import type { ResumeEditorConfig } from '../types/resume';
+import {
+  DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
+  DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
+  normalizeResumeExperienceListMarkerStyle,
+  normalizeResumeSkillTagSeparator,
+} from '../utils/resumeCustomization';
 import { DEFAULT_SECTION_ORDER, RESUME_SECTION_IDS } from './ResumeEditor/constants';
 
 const PREFERRED_RESUME_TEMPLATE_STORAGE_KEY = 'yuanzijianli.preferredResumeTemplate';
@@ -22,6 +28,8 @@ type StoredPreferredResumeTemplate = {
 type RawResumeTemplatePreset = {
   sectionOrder?: string[];
   themeColorPresetId?: string;
+  experienceListMarkerStyle?: string;
+  skillTagSeparator?: string;
   updatedAt?: string;
 };
 
@@ -31,6 +39,8 @@ export type ResumeTemplatePreset = {
   templateId: ResumeTemplateId;
   sectionOrder: string[];
   themeColorPresetId: ResumeThemeColorPresetId;
+  experienceListMarkerStyle: ReturnType<typeof normalizeResumeExperienceListMarkerStyle>;
+  skillTagSeparator: string;
   updatedAt: string;
 };
 
@@ -90,6 +100,10 @@ const normalizeResumeTemplatePreset = (
       resolvedTemplateId,
       preset?.themeColorPresetId
     ),
+    experienceListMarkerStyle: normalizeResumeExperienceListMarkerStyle(
+      preset?.experienceListMarkerStyle
+    ),
+    skillTagSeparator: normalizeResumeSkillTagSeparator(preset?.skillTagSeparator),
     updatedAt: resolveUpdatedAt(preset?.updatedAt),
   };
 };
@@ -116,6 +130,8 @@ const serializeResumeTemplatePresetMap = (presetMap: ResumeTemplatePresetMap): R
     result[preset.templateId] = {
       sectionOrder: [...preset.sectionOrder],
       themeColorPresetId: preset.themeColorPresetId,
+      experienceListMarkerStyle: preset.experienceListMarkerStyle,
+      skillTagSeparator: preset.skillTagSeparator,
       updatedAt: preset.updatedAt,
     };
     return result;
@@ -280,11 +296,16 @@ export const resolveResumeTemplatePreset = (
 };
 
 export const saveResumeTemplatePreset = async (
-  preset: Pick<ResumeTemplatePreset, 'templateId' | 'sectionOrder' | 'themeColorPresetId'>
+  preset: Pick<
+    ResumeTemplatePreset,
+    'templateId' | 'sectionOrder' | 'themeColorPresetId' | 'experienceListMarkerStyle' | 'skillTagSeparator'
+  >
 ): Promise<ResumeTemplatePreset> => {
   const normalizedPreset = normalizeResumeTemplatePreset(preset.templateId, {
     sectionOrder: preset.sectionOrder,
     themeColorPresetId: preset.themeColorPresetId,
+    experienceListMarkerStyle: preset.experienceListMarkerStyle,
+    skillTagSeparator: preset.skillTagSeparator,
     updatedAt: new Date().toISOString(),
   });
   if (!normalizedPreset) {
@@ -315,6 +336,9 @@ export const buildPreferredResumeCreateConfig = (
     layout: {
       templateId,
       themeColorPresetId: preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId),
+      experienceListMarkerStyle:
+        preset?.experienceListMarkerStyle ?? DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
+      skillTagSeparator: preset?.skillTagSeparator ?? DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
       ...(preset ? { sectionOrder: [...preset.sectionOrder] } : {}),
     },
   };

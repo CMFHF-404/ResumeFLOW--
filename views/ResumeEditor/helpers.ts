@@ -9,6 +9,7 @@ import type {
     ResumeEditorConfig,
     ResumeEditorProfile,
     ResumeBossGreeting,
+    ResumeExperienceListMarkerStyle,
     ResumeExperienceView,
     ResumeJDAnalysis,
     ResumeLayoutOrders,
@@ -441,6 +442,8 @@ export const buildResumeConfigSnapshot = (
     orders: ResumeLayoutOrders,
     templateId: ResumeTemplateId,
     themeColorPresetId: ResumeThemeColorPresetId,
+    experienceListMarkerStyle: ResumeExperienceListMarkerStyle,
+    skillTagSeparator: string,
     jdAnalysis?: ResumeJDAnalysis | null
 ): ResumeEditorConfig => ({
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
@@ -466,6 +469,8 @@ export const buildResumeConfigSnapshot = (
         orders: { ...orders },
         templateId,
         themeColorPresetId,
+        experienceListMarkerStyle,
+        skillTagSeparator,
     },
     ...(jdAnalysis ? { jdAnalysis } : {}),
 });

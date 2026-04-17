@@ -13,6 +13,8 @@ export type StarFields = {
 
 export type StarFieldKey = keyof StarFields;
 
+export type ResumeExperienceListMarkerStyle = "ordered" | "unordered" | "none";
+
 export type ResumeExperienceView = {
   id: string;
   title: string;
@@ -154,6 +156,8 @@ export type ResumeEditorConfig = {
     orders?: ResumeLayoutOrders;
     templateId?: ResumeTemplateId;
     themeColorPresetId?: ResumeThemeColorPresetId;
+    experienceListMarkerStyle?: ResumeExperienceListMarkerStyle;
+    skillTagSeparator?: string;
   };
   jdAnalysis?: ResumeJDAnalysis;
 };
@@ -290,6 +294,8 @@ export type ResumePdfRenderSnapshot = {
   selectedSkillGroups: SkillGroupView[];
   templateId: ResumeTemplateId;
   themeColorPresetId: ResumeThemeColorPresetId;
+  experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+  skillTagSeparator: string;
 };
 
 export type ResumePrintLayoutMeasurement = {
