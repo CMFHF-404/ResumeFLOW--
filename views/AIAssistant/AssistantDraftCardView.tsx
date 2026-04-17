@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { type AssistantDraftCard } from '../../services/aiService';
+import { getAssistantActionPreviewLines } from '../../utils/assistantDraft';
 
 const markdownComponents = {
   p: ({node, ...props}: any) => <p className="m-0 whitespace-pre-wrap" {...props} />,
@@ -40,6 +41,7 @@ export const AssistantDraftCardView: React.FC<{
   const experienceCategoryLabel = card.type === 'experience'
     ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
     : null;
+  const actionPreviewLines = getAssistantActionPreviewLines(card);
 
   const renderContent = () => {
     if (card.type === 'experience') {
@@ -77,9 +79,23 @@ export const AssistantDraftCardView: React.FC<{
               <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
                 <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
                 <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden dark:text-slate-300">
-                  <ReactMarkdown components={markdownComponents}>
-                    {value || '待补充'}
-                  </ReactMarkdown>
+                  {label === 'A' && actionPreviewLines.length > 0 ? (
+                    <div className="space-y-2">
+                      {actionPreviewLines.map((line, index) => (
+                        <div key={`action-${index}`} className="flex items-start gap-2.5">
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
+                          <div
+                            className="min-w-0 flex-1 whitespace-pre-wrap"
+                            dangerouslySetInnerHTML={{ __html: line }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <ReactMarkdown components={markdownComponents}>
+                      {value || '待补充'}
+                    </ReactMarkdown>
+                  )}
                 </div>
               </div>
             ))}

@@ -21,7 +21,11 @@ from ...models import (
     UserSkill,
 )
 from ...utils.time_utils import utc_now
-from ..ai.ai_service import _normalize_selected_experiences, _normalize_selected_resume
+from ..ai.ai_service import (
+    _normalize_assistant_action_text,
+    _normalize_selected_experiences,
+    _normalize_selected_resume,
+)
 from ..certifications.schemas import CertificationCreate
 from ..experience.schemas import ExperienceCreate, ExperienceVersionPayload
 from ..skills.schemas import UserSkillCreate
@@ -118,6 +122,7 @@ async def _get_latest_experience_version(
 
 def _merge_star_payload(
     incoming_star: Any,
+    category: ExperienceCategory,
     latest_version: Optional[ExperienceVersion] = None,
 ) -> Dict[str, Any]:
     resolved_star = latest_version.star.copy() if latest_version and isinstance(latest_version.star, dict) else {}
@@ -125,16 +130,22 @@ def _merge_star_payload(
         return resolved_star
     for key in ("s", "t", "a", "r"):
         value = incoming_star.get(key)
+        normalized_value = (
+            _normalize_assistant_action_text(value)
+            if key == "a" and category != ExperienceCategory.EDUCATION
+            else value
+        )
         if isinstance(value, str) and value.strip():
-            resolved_star[key] = value
+            resolved_star[key] = normalized_value
         elif key not in resolved_star and isinstance(value, str):
-            resolved_star[key] = value
+            resolved_star[key] = normalized_value
     return resolved_star
 
 
 def _build_experience_version_payload(
     data: Dict[str, Any],
     *,
+    category: ExperienceCategory,
     latest_version: Optional[ExperienceVersion] = None,
 ) -> ExperienceVersionPayload:
     title = (data.get("title") or "").strip() if isinstance(data.get("title"), str) else ""
@@ -177,7 +188,7 @@ def _build_experience_version_payload(
             "summary": latest_version.summary if latest_version else None,
             "highlights": latest_version.highlights if latest_version else [],
             "tags": latest_version.tags if latest_version else [],
-            "star": _merge_star_payload(data.get("star"), latest_version),
+            "star": _merge_star_payload(data.get("star"), category, latest_version),
         }
     )
 
@@ -314,7 +325,11 @@ async def _apply_direct_draft_card(
             if master.category != requested_category:
                 raise InvalidMessageError("Draft target category does not match the existing experience")
             latest_version = await _get_latest_experience_version(session, master=master)
-            payload = _build_experience_version_payload(data, latest_version=latest_version)
+            payload = _build_experience_version_payload(
+                data,
+                category=requested_category,
+                latest_version=latest_version,
+            )
             await _create_experience_version(
                 session,
                 master=master,
@@ -325,7 +340,10 @@ async def _apply_direct_draft_card(
         payload = ExperienceCreate.model_validate(
             {
                 "category": requested_category,
-                "version": _build_experience_version_payload(data).model_dump(),
+                "version": _build_experience_version_payload(
+                    data,
+                    category=requested_category,
+                ).model_dump(),
             }
         )
         master = MasterExperience(user_id=user_id, category=payload.category)
@@ -415,7 +433,11 @@ async def _apply_experience_bank_draft_card(
     if master.category != requested_category:
         raise InvalidMessageError("Draft category does not match the current experience context")
     latest_version = await _get_latest_experience_version(session, master=master)
-    payload = _build_experience_version_payload(data, latest_version=latest_version)
+    payload = _build_experience_version_payload(
+        data,
+        category=requested_category,
+        latest_version=latest_version,
+    )
     await _create_experience_version(
         session,
         master=master,

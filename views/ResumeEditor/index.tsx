@@ -56,6 +56,7 @@ import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
 import { buildJDPolishContext } from '../../utils/assistantResumeContext';
+import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
     normalizeAiRichText,
@@ -2380,7 +2381,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             },
             initialUserMessage: `请基于这段经历和目标 JD 与我继续互动调整，等我确认初稿后输出一张可确认的经历卡片。\n\n目标 JD：${jdPolishContext || '未填写'}\n\n组织/项目：${draft.company || '未填写'}\n角色：${draft.title || '未填写'}\n时间：${draft.startDate || '未填写'} - ${draft.endDate || (draft.isCurrent ? '至今' : '未填写')}\nS：${stripRichTextToText(draft.star.s) || '未填写'}\nT：${stripRichTextToText(draft.star.t) || '未填写'}\nA：${stripRichTextToText(draft.star.a) || '未填写'}\nR：${stripRichTextToText(draft.star.r) || '未填写'}`,
             applyDraftHandler: async (draftCard, meta) => {
-                if (draftCard.type !== 'experience') {
+                const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
+                if (normalizedDraftCard.type !== 'experience') {
                     return false;
                 }
                 pendingAssistantApplyRef.current.set(draft.masterId, meta.persistApplied);
@@ -2391,16 +2393,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     }
                     return {
                         ...prev,
-                        company: draftCard.data.org,
-                        title: draftCard.data.title,
-                        startDate: draftCard.data.startDate || '',
-                        endDate: draftCard.data.isCurrent ? '' : (draftCard.data.endDate || ''),
-                        isCurrent: Boolean(draftCard.data.isCurrent),
+                        company: normalizedDraftCard.data.org,
+                        title: normalizedDraftCard.data.title,
+                        startDate: normalizedDraftCard.data.startDate || '',
+                        endDate: normalizedDraftCard.data.isCurrent ? '' : (normalizedDraftCard.data.endDate || ''),
+                        isCurrent: Boolean(normalizedDraftCard.data.isCurrent),
                         star: {
-                            s: draftCard.data.star.s,
-                            t: draftCard.data.star.t,
-                            a: draftCard.data.star.a,
-                            r: draftCard.data.star.r,
+                            s: normalizedDraftCard.data.star.s,
+                            t: normalizedDraftCard.data.star.t,
+                            a: normalizedDraftCard.data.star.a,
+                            r: normalizedDraftCard.data.star.r,
                         },
                         starTouched: true,
                     };
@@ -2441,21 +2443,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             },
             initialUserMessage: `请基于这段经历和目标 JD 与我继续互动调整，等我确认初稿后输出一张可确认的经历卡片。\n\n目标 JD：${jdPolishContext || '未填写'}\n\n组织/项目：${draft.company || '未填写'}\n角色：${draft.title || '未填写'}\n时间：${draft.startDate || '未填写'} - ${draft.endDate || (draft.isCurrent ? '至今' : '未填写')}\nS：${stripRichTextToText(draft.star.s) || '未填写'}\nT：${stripRichTextToText(draft.star.t) || '未填写'}\nA：${stripRichTextToText(draft.star.a) || '未填写'}\nR：${stripRichTextToText(draft.star.r) || '未填写'}`,
             applyDraftHandler: async (draftCard) => {
-                if (draftCard.type !== 'experience') {
+                const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
+                if (normalizedDraftCard.type !== 'experience') {
                     return false;
                 }
                 const nextDraft: ExperienceEditDraft = {
                     ...draft,
-                    company: draftCard.data.org,
-                    title: draftCard.data.title,
-                    startDate: draftCard.data.startDate || '',
-                    endDate: draftCard.data.isCurrent ? '' : (draftCard.data.endDate || ''),
-                    isCurrent: Boolean(draftCard.data.isCurrent),
+                    company: normalizedDraftCard.data.org,
+                    title: normalizedDraftCard.data.title,
+                    startDate: normalizedDraftCard.data.startDate || '',
+                    endDate: normalizedDraftCard.data.isCurrent ? '' : (normalizedDraftCard.data.endDate || ''),
+                    isCurrent: Boolean(normalizedDraftCard.data.isCurrent),
                     star: {
-                        s: draftCard.data.star.s,
-                        t: draftCard.data.star.t,
-                        a: draftCard.data.star.a,
-                        r: draftCard.data.star.r,
+                        s: normalizedDraftCard.data.star.s,
+                        t: normalizedDraftCard.data.star.t,
+                        a: normalizedDraftCard.data.star.a,
+                        r: normalizedDraftCard.data.star.r,
                     },
                     starTouched: true,
                 };
@@ -4246,6 +4249,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         draftCard: Parameters<NonNullable<AssistantLaunchRequest['applyDraftHandler']>>[0],
         _meta: AssistantDraftApplyMeta
     ) => {
+        const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
         const applyEducationAssistantDetail = (
             detail: ExperienceDetail,
             options?: { replacedId?: string }
@@ -4283,15 +4287,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             });
         };
 
-        if (draftCard.type === 'certification') {
+        if (normalizedDraftCard.type === 'certification') {
             const record = await certificationsService.create({
-                name: draftCard.data.name.trim(),
-                issuer: draftCard.data.issuer.trim() || undefined,
-                issue_date: draftCard.data.issueDate.trim() || undefined,
-                expiry_date: draftCard.data.expiryDate.trim() || undefined,
-                credential_id: draftCard.data.credentialId.trim() || undefined,
-                credential_url: draftCard.data.credentialUrl.trim() || undefined,
-                description: draftCard.data.description.trim() || undefined,
+                name: normalizedDraftCard.data.name.trim(),
+                issuer: normalizedDraftCard.data.issuer.trim() || undefined,
+                issue_date: normalizedDraftCard.data.issueDate.trim() || undefined,
+                expiry_date: normalizedDraftCard.data.expiryDate.trim() || undefined,
+                credential_id: normalizedDraftCard.data.credentialId.trim() || undefined,
+                credential_url: normalizedDraftCard.data.credentialUrl.trim() || undefined,
+                description: normalizedDraftCard.data.description.trim() || undefined,
             });
             const nextCertifications = await certificationsService.list({ force: true });
             setCertifications(nextCertifications.map(buildCertificationView).sort(compareCertificationByDateDesc));
@@ -4304,10 +4308,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return true;
         }
 
-        if (draftCard.type === 'skill_group') {
-            const category = draftCard.data.category.trim() || undefined;
+        if (normalizedDraftCard.type === 'skill_group') {
+            const category = normalizedDraftCard.data.category.trim() || undefined;
             const skillPayloads = Array.from(
-                draftCard.data.skills.reduce((map, item) => {
+                normalizedDraftCard.data.skills.reduce((map, item) => {
                     const name = item.name.trim();
                     if (!name || map.has(name)) {
                         return map;
@@ -4337,16 +4341,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return true;
         }
 
-        if (draftCard.type === 'experience' && draftCard.data.category === 'education') {
-            const targetMasterId = draftCard.data.targetMasterId?.trim() || null;
+        if (normalizedDraftCard.type === 'experience' && normalizedDraftCard.data.category === 'education') {
+            const targetMasterId = normalizedDraftCard.data.targetMasterId?.trim() || null;
             const educationDraft: EducationEditDraft = {
-                school: draftCard.data.org.trim(),
-                major: draftCard.data.title.trim(),
-                degree: draftCard.data.star.s.trim(),
-                startDate: draftCard.data.startDate.trim(),
-                endDate: draftCard.data.isCurrent ? '至今' : draftCard.data.endDate.trim(),
-                gpa: draftCard.data.star.t.trim(),
-                courses: draftCard.data.star.a.trim(),
+                school: normalizedDraftCard.data.org.trim(),
+                major: normalizedDraftCard.data.title.trim(),
+                degree: normalizedDraftCard.data.star.s.trim(),
+                startDate: normalizedDraftCard.data.startDate.trim(),
+                endDate: normalizedDraftCard.data.isCurrent ? '至今' : normalizedDraftCard.data.endDate.trim(),
+                gpa: normalizedDraftCard.data.star.t.trim(),
+                courses: normalizedDraftCard.data.star.a.trim(),
             };
             if (!educationDraft.major) {
                 throw new Error('缺少教育标题，无法录入教育经历');
@@ -4370,24 +4374,24 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return true;
         }
 
-        if (draftCard.type !== 'experience' || !resumeId) {
+        if (normalizedDraftCard.type !== 'experience' || !resumeId) {
             return false;
         }
 
-        const title = draftCard.data.title.trim();
+        const title = normalizedDraftCard.data.title.trim();
         if (!title) {
             throw new Error('缺少经历标题，无法回填到当前简历');
         }
 
         const buildAssemblyOverrideOperation = () => {
             const overrides: Record<string, unknown> = {
-                star: draftCard.data.star,
-                is_current: Boolean(draftCard.data.isCurrent),
+                star: normalizedDraftCard.data.star,
+                is_current: Boolean(normalizedDraftCard.data.isCurrent),
             };
             const clearOverrideKeys = new Set<string>();
-            const org = draftCard.data.org.trim();
-            const startDate = draftCard.data.startDate.trim();
-            const endDate = draftCard.data.isCurrent ? '' : draftCard.data.endDate.trim();
+            const org = normalizedDraftCard.data.org.trim();
+            const startDate = normalizedDraftCard.data.startDate.trim();
+            const endDate = normalizedDraftCard.data.isCurrent ? '' : normalizedDraftCard.data.endDate.trim();
             if (title) {
                 overrides.title = title;
             }
@@ -4409,7 +4413,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         };
 
         const resolveTargetLinkId = async () => {
-            const targetMasterId = draftCard.data.targetMasterId?.trim();
+            const targetMasterId = normalizedDraftCard.data.targetMasterId?.trim();
             if (targetMasterId) {
                 const targetDetail = await experienceService.get(targetMasterId);
                 const linkId = await ensureFloatingPolishResumeLink(
@@ -4423,14 +4427,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
 
             const created = await experienceService.create({
-                category: draftCard.data.category,
+                category: normalizedDraftCard.data.category,
                 version: {
                     title,
-                    org: draftCard.data.org.trim() || undefined,
-                    start_date: draftCard.data.startDate.trim() || undefined,
-                    end_date: draftCard.data.isCurrent ? undefined : (draftCard.data.endDate.trim() || undefined),
-                    is_current: Boolean(draftCard.data.isCurrent),
-                    star: draftCard.data.star,
+                    org: normalizedDraftCard.data.org.trim() || undefined,
+                    start_date: normalizedDraftCard.data.startDate.trim() || undefined,
+                    end_date: normalizedDraftCard.data.isCurrent ? undefined : (normalizedDraftCard.data.endDate.trim() || undefined),
+                    is_current: Boolean(normalizedDraftCard.data.isCurrent),
+                    star: normalizedDraftCard.data.star,
                 },
             });
             const createdMasterId = created.master.id;
@@ -4457,7 +4461,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const nextMap = buildResumeExperienceMap(detail);
         applyResumeDetail(detail);
         setResumeExperienceMap(nextMap);
-        if (draftCard.data.category === 'education') {
+        if (normalizedDraftCard.data.category === 'education') {
             setSelectedEduIds((prev) => {
                 const next = new Set(prev);
                 next.add(masterId);

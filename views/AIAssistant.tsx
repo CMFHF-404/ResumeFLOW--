@@ -22,6 +22,7 @@ import { experienceService, type ExperienceListItem } from '../services/experien
 import { resumeService, type Resume } from '../services/resumeService';
 import { skillsService } from '../services/skillsService';
 import { buildSelectedResumeFromResources } from '../utils/assistantResumeContext';
+import { normalizeAssistantDraftCard } from '../utils/assistantDraft';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { stripRichTextToText } from '../utils/richText';
@@ -332,15 +333,15 @@ const hasResumeJDContext = (resume: Resume) => {
   if (!result || typeof result !== 'object') {
     return false;
   }
-  const extractedJdText = typeof (result as Record<string, unknown>).extractedJdText === 'string'
+  const extractedJdText = (typeof (result as Record<string, unknown>).extractedJdText === 'string'
     ? (result as Record<string, unknown>).extractedJdText
     : typeof (result as Record<string, unknown>).extracted_jd_text === 'string'
       ? (result as Record<string, unknown>).extracted_jd_text
-      : '';
-  const summary = typeof (result as Record<string, unknown>).summary === 'string'
+      : '') as string;
+  const summary = (typeof (result as Record<string, unknown>).summary === 'string'
     ? (result as Record<string, unknown>).summary
-    : '';
-  return Boolean(extractedJdText?.trim() || summary.trim());
+    : '') as string;
+  return Boolean(extractedJdText.trim() || summary.trim());
 };
 
 const createAttachmentSelectionId = () => {
@@ -1280,8 +1281,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const persistSessionSnapshot = useCallback((sessionId: string, title?: string, draftCard?: AssistantDraftCard | null) => {
     markSessionMutated(sessionId);
     setSessionsState((prev) => {
-      const nextPreview = draftCard && typeof draftCard === 'object'
-        ? draftCard as unknown as Record<string, unknown>
+      const normalizedDraftCard = draftCard && typeof draftCard === 'object'
+        ? normalizeAssistantDraftCard(draftCard)
+        : null;
+      const nextPreview = normalizedDraftCard
+        ? normalizedDraftCard as unknown as Record<string, unknown>
         : {};
       return sortSessionsByUpdatedAt(
         prev.map((item) => {
@@ -1573,6 +1577,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
     const applyHandler = applyHandlerMapRef.current.get(selectedSession.id);
     const callbackOnly = callbackOnlySessionIdsRef.current.has(selectedSession.id);
+    const normalizedCard = normalizeAssistantDraftCard(card);
 
     setApplyingMessageIds((prev) => new Set(prev).add(messageId));
     try {
@@ -1581,19 +1586,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       let shouldPersistAppliedMarker = true;
       let handledByCustomApply = false;
       if (
-        card.type === 'experience'
+        normalizedCard.type === 'experience'
         && selectedSession.entry_source === 'resume_editor'
       ) {
         const contextMasterId = readContextString(selectedSession.context_json ?? {}, 'masterId');
-        const targetMasterId = typeof card.data.targetMasterId === 'string' && card.data.targetMasterId.trim()
-          ? card.data.targetMasterId.trim()
+        const targetMasterId = typeof normalizedCard.data.targetMasterId === 'string' && normalizedCard.data.targetMasterId.trim()
+          ? normalizedCard.data.targetMasterId.trim()
           : null;
         if (contextMasterId && targetMasterId && targetMasterId !== contextMasterId) {
           throw new Error('AI 草稿目标经历与当前编辑上下文不一致，请重新生成或回到对应经历中处理。');
         }
       }
       if (applyHandler) {
-        applied = await applyHandler(card, {
+        applied = await applyHandler(normalizedCard, {
           sessionId: selectedSession.id,
           messageId,
           persistApplied: () => aiService.markAssistantMessageApplied(
@@ -1607,7 +1612,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           shouldPersistAppliedMarker = false;
         }
       }
-      if (!handledByCustomApply && card.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
+      if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
         const context = selectedSession.context_json ?? {};
         const resumeId = readContextString(context, 'resumeId');
         const masterId = readContextString(context, 'masterId');
@@ -1642,12 +1647,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             {
               op: 'override',
               resume_experience_id: resumeItem.id,
-              ...buildResumeExperienceOverrideOperation(card.data),
+              ...buildResumeExperienceOverrideOperation(normalizedCard.data),
             },
           ],
         });
         applied = true;
-      } else if (!handledByCustomApply && card.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
+      } else if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
         appliedMessage = await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
         applied = true;
       } else if (!handledByCustomApply && callbackOnly) {
@@ -1662,7 +1667,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         if (!callbackOnly) {
           trackAiAssistantDraftApplied({
             source: selectedSession.entry_source,
-            cardType: card.type,
+            cardType: normalizedCard.type,
             callbackOnly,
           });
         }
@@ -1683,7 +1688,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         setAppliedMessageIds((prev) => new Set(prev).add(messageId));
         markSessionMutated(selectedSession.id);
         setSessionsState((prev) => prev.map((session) => {
-          if (session.id !== selectedSession.id || !isSameDraftCard(session.latest_preview, card)) {
+          if (session.id !== selectedSession.id || !isSameDraftCard(session.latest_preview, normalizedCard)) {
             return session;
           }
           return {
@@ -2043,7 +2048,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4">
                   {messages.map((message) => {
                     if (message.message_type === 'draft_card') {
-                      const draftCard = message.content_json as unknown as AssistantDraftCard;
+                      const draftCard = normalizeAssistantDraftCard(message.content_json as unknown as AssistantDraftCard);
                       return (
                         <div key={message.id} className="w-full self-center flex justify-center mb-6">
                            <div className="flex-1 min-w-0 max-w-2xl">
