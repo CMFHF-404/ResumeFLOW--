@@ -28,6 +28,7 @@ import type {
     ResumeBossGreeting,
     ResumeEditorConfig,
     ResumeEditorProfile,
+    ResumeExperienceListMarkerStyle,
     ResumeJDAnalysis,
     ResumeLayoutOrders,
     ResumePrintLayoutMeasurement,
@@ -170,6 +171,12 @@ import {
     sortByCategory,
 } from './helpers';
 import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
+import {
+    DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
+    DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
+    normalizeResumeExperienceListMarkerStyle,
+    normalizeResumeSkillTagSeparator,
+} from '../../utils/resumeCustomization';
 import {
     DEFAULT_RESUME_TEMPLATE_ID,
     RESUME_THEME_COLOR_PRESETS,
@@ -1219,6 +1226,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [themeColorPresetId, setThemeColorPresetId] = useState<ResumeThemeColorPresetId>(
         resolveDefaultResumeThemeColorPresetId(DEFAULT_RESUME_TEMPLATE_ID)
     );
+    const [experienceListMarkerStyle, setExperienceListMarkerStyle] = useState<ResumeExperienceListMarkerStyle>(
+        DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE
+    );
+    const [skillTagSeparator, setSkillTagSeparator] = useState(DEFAULT_RESUME_SKILL_TAG_SEPARATOR);
 
     const layoutOrders: ResumeLayoutOrders = useMemo(
         () => ({
@@ -1265,6 +1276,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 layoutOrders,
                 resumeTemplateId,
                 themeColorPresetId,
+                experienceListMarkerStyle,
+                skillTagSeparator,
                 persistedJDAnalysisSnapshot
             ),
         [
@@ -1283,6 +1296,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             profileSyncMode,
             resumeTemplateId,
             themeColorPresetId,
+            experienceListMarkerStyle,
             sectionOrder,
             sectionSpacingKey,
             selectedCertIds,
@@ -1290,6 +1304,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedExpIds,
             topPaddingPx,
             selectedSkillIds,
+            skillTagSeparator,
         ]
     );
     const applyLayoutConfig = useCallback((config: ResumeEditorConfig) => {
@@ -1308,6 +1323,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             config.layout?.themeColorPresetId
             ?? resolveDefaultResumeThemeColorPresetId(rawTemplateId ?? nextTemplateId)
         );
+        setExperienceListMarkerStyle(
+            normalizeResumeExperienceListMarkerStyle(config.layout?.experienceListMarkerStyle)
+        );
+        setSkillTagSeparator(normalizeResumeSkillTagSeparator(config.layout?.skillTagSeparator));
     }, []);
     const {
         resumeId,
@@ -1379,12 +1398,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         const preset = templatePresetMap[templateId];
         const nextThemeColorPresetId = preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId);
+        const nextExperienceListMarkerStyle = normalizeResumeExperienceListMarkerStyle(
+            preset?.experienceListMarkerStyle
+        );
+        const nextSkillTagSeparator = normalizeResumeSkillTagSeparator(preset?.skillTagSeparator);
         const shouldUpdateSectionOrder = Boolean(preset);
         const isSameSectionOrder = !preset
             || JSON.stringify(sectionOrder) === JSON.stringify(preset.sectionOrder);
         if (
             templateId === resumeTemplateId
             && themeColorPresetId === nextThemeColorPresetId
+            && experienceListMarkerStyle === nextExperienceListMarkerStyle
+            && skillTagSeparator === nextSkillTagSeparator
             && isSameSectionOrder
         ) {
             setIsTemplateSelectorOpen(false);
@@ -1392,16 +1417,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         setResumeTemplateId(templateId);
         setThemeColorPresetId(nextThemeColorPresetId);
+        setExperienceListMarkerStyle(nextExperienceListMarkerStyle);
+        setSkillTagSeparator(nextSkillTagSeparator);
         if (shouldUpdateSectionOrder) {
             setSectionOrder([...preset.sectionOrder]);
         }
         setIsTemplateSelectorOpen(false);
-    }, [isTemplatePresetMapReady, resumeTemplateId, sectionOrder, showToastInfo, templatePresetMap, themeColorPresetId]);
+    }, [
+        experienceListMarkerStyle,
+        isTemplatePresetMapReady,
+        resumeTemplateId,
+        sectionOrder,
+        showToastInfo,
+        skillTagSeparator,
+        templatePresetMap,
+        themeColorPresetId,
+    ]);
     const handleSaveTemplatePreset = useCallback(async (
         preset: {
             templateId: ResumeTemplateId;
             sectionOrder: string[];
             themeColorPresetId: ResumeThemeColorPresetId;
+            experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+            skillTagSeparator: string;
         }
     ) => {
         try {
@@ -1413,6 +1451,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             if (savedPreset.templateId === resumeTemplateId) {
                 setThemeColorPresetId(savedPreset.themeColorPresetId);
                 setSectionOrder([...savedPreset.sectionOrder]);
+                setExperienceListMarkerStyle(savedPreset.experienceListMarkerStyle);
+                setSkillTagSeparator(savedPreset.skillTagSeparator);
             }
             showToastSuccess('模板预设已保存');
         } catch (error) {
@@ -1493,12 +1533,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             layoutOrders,
             resumeTemplateId,
             themeColorPresetId,
+            experienceListMarkerStyle,
+            skillTagSeparator,
             committedPersistedJDAnalysisSnapshot
         );
     }, [
         bossGreetingSnapshot,
         committedPersistedJDAnalysisSnapshot,
         density,
+        experienceListMarkerStyle,
         fontSize,
         isEditingProfile,
         isSmartPageApplied,
@@ -1520,6 +1563,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedEduIds,
         selectedExpIds,
         selectedSkillIds,
+        skillTagSeparator,
         topPaddingPx,
     ]);
     // 将 resumeId 同步到 ref，供不可在 render 阶段读取的异步回调使用。
@@ -5538,6 +5582,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedSkillGroups,
             templateId: resumeTemplateId,
             themeColorPresetId,
+            experienceListMarkerStyle,
+            skillTagSeparator,
         });
         const exportTitle = buildResumeExportTitle(resumeName);
         const toastId = showToastLoading('正在生成 PDF...');
@@ -5572,6 +5618,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         authUserKey,
         bulletSpacingValue,
         educations,
+        experienceListMarkerStyle,
         fontSize,
         isExportingPdf,
         lineHeight,
@@ -5588,6 +5635,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedSkillGroups,
         selectedWorkItems,
         showToastLoading,
+        skillTagSeparator,
         sortedCertifications,
         themeColorPresetId,
         topPaddingPx,
@@ -5995,6 +6043,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         topPaddingPx={topPaddingPx}
                         templateId={resumeTemplateId}
                         themeColorPresetId={themeColorPresetId}
+                        experienceListMarkerStyle={experienceListMarkerStyle}
+                        skillTagSeparator={skillTagSeparator}
                         profile={previewProfile}
                         sectionSpacingClass={sectionSpacingClass}
                         listSpacingClass={listSpacingClass}
@@ -6032,6 +6082,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 selectedTemplateId={resumeTemplateId}
                 themeColorPresetId={themeColorPresetId}
                 sectionOrder={sectionOrder}
+                experienceListMarkerStyle={experienceListMarkerStyle}
+                skillTagSeparator={skillTagSeparator}
                 templatePresetMap={templatePresetMap}
                 isPresetMapReady={isTemplatePresetMapReady}
                 isPresetSyncFallbackAvailable={isTemplatePresetFallbackAvailable}
@@ -6068,6 +6120,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     topPaddingPx={measureLayout.topPaddingPx}
                     templateId={resumeTemplateId}
                     themeColorPresetId={themeColorPresetId}
+                    experienceListMarkerStyle={experienceListMarkerStyle}
+                    skillTagSeparator={skillTagSeparator}
                     profile={previewProfile}
                     sectionSpacingClass={measureSectionSpacingClass}
                     listSpacingClass={listSpacingClass}

@@ -11,6 +11,7 @@ import type {
     CertificationView,
     EducationView,
     ResumeEditorProfile,
+    ResumeExperienceListMarkerStyle,
     ResumeExperienceView,
     SkillGroupView,
     StarFields,
@@ -30,6 +31,7 @@ import {
     type ResumeTemplateId,
     type ResumeThemeColorPresetId,
 } from '../../../constants/resumeTemplates';
+import { normalizeResumeSkillTagSeparator } from '../../../utils/resumeCustomization';
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
@@ -222,19 +224,25 @@ const buildContextText = (star?: StarFields) => {
     return parts.join(STAR_CONTEXT_SEPARATOR);
 };
 
-const resolveActionList = (value?: string) => {
-    // Action部分始终显示为无序列表
+const resolveActionList = (
+    value?: string,
+    listType: ResumeExperienceListMarkerStyle = 'unordered'
+) => {
     const lines = splitRichTextLines(value ?? '');
-    return { lines, listType: 'unordered' as const };
+    return { lines, listType };
 };
 
 const renderRichText = (value: string) => ({
     __html: sanitizeRichTextHtml(value),
 });
 
-const renderStarBlocks = (star: StarFields, itemId: string) => {
+const renderStarBlocks = (
+    star: StarFields,
+    itemId: string,
+    experienceListMarkerStyle: ResumeExperienceListMarkerStyle
+) => {
     const contextText = buildContextText(star);
-    const actionList = resolveActionList(star.a);
+    const actionList = resolveActionList(star.a, experienceListMarkerStyle);
     const resultText = normalizeStarText(star.r);
 
     if (!contextText && actionList.lines.length === 0 && !resultText) {
@@ -250,13 +258,25 @@ const renderStarBlocks = (star: StarFields, itemId: string) => {
                 />
             ) : null}
             {actionList.lines.length > 0 ? (
-                <ul
-                    className={`list-disc list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
-                >
-                    {actionList.lines.map((line, index) => (
-                        <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
-                    ))}
-                </ul>
+                actionList.listType === 'none' ? (
+                    <div
+                        className={`space-y-[var(--rf-bullet-spacing)] text-xs text-gray-900 leading-[var(--rf-line-height)] ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                    >
+                        {actionList.lines.map((line, index) => (
+                            <div key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                        ))}
+                    </div>
+                ) : (
+                    React.createElement(
+                        actionList.listType === 'ordered' ? 'ol' : 'ul',
+                        {
+                            className: `${actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'} list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`,
+                        },
+                        actionList.lines.map((line, index) => (
+                            <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                        ))
+                    )
+                )
             ) : null}
             {resultText ? (
                 <div
@@ -281,6 +301,8 @@ export type ResumePreviewProps = {
     topPaddingPx: number;
     templateId?: ResumeTemplateId;
     themeColorPresetId?: ResumeThemeColorPresetId;
+    experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+    skillTagSeparator: string;
     profile: ResumeEditorProfile;
     sectionSpacingClass: string;
     listSpacingClass: string;
@@ -326,6 +348,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     topPaddingPx,
     templateId = 'modern-slate',
     themeColorPresetId,
+    experienceListMarkerStyle,
+    skillTagSeparator,
     profile,
     sectionSpacingClass,
     listSpacingClass,
@@ -457,6 +481,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         () => resolveResumeThemeColor(templateId, themeColorPresetId),
         [templateId, themeColorPresetId]
     );
+    const resolvedSkillTagSeparator = React.useMemo(
+        () => normalizeResumeSkillTagSeparator(skillTagSeparator),
+        [skillTagSeparator]
+    );
     const isSplitTemplate = activeTemplate.layoutKind === 'split';
     const isSplitSidebarEligibleSection = React.useCallback(
         (sectionId: string) => (
@@ -512,6 +540,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         () => profile.avatarDataUrl?.trim() ?? '',
         [profile.avatarDataUrl]
     );
+    const renderSkillGroupLine = React.useCallback((group: SkillGroupView) => (
+        <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
+            <span className="font-bold text-gray-900">{group.name}:</span>
+            <span>{group.skills.map((skill) => skill.name).join(resolvedSkillTagSeparator)}</span>
+        </div>
+    ), [resolvedSkillTagSeparator]);
     const [hasAvatarLoadError, setHasAvatarLoadError] = React.useState(false);
 
     React.useEffect(() => {
@@ -1732,7 +1766,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             {item.title}
                                         </p>
 
-                                        {renderStarBlocks(item.star, item.id)}
+                                        {renderStarBlocks(item.star, item.id, experienceListMarkerStyle)}
                                     </div>
                                 </div>
                             );
@@ -2464,10 +2498,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                             }
                                         >
-                                            <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
-                                                <span className="font-bold text-gray-900">{group.name}:</span>
-                                                <span>{group.skills.map((skill) => skill.name).join(', ')}</span>
-                                            </div>
+                                            {renderSkillGroupLine(group)}
                                         </div>
                                     </div>
                                 );
@@ -3087,10 +3118,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                                                     : (event) => handleItemCardTouchStart(event, itemKey)
                                                             }
                                                         >
-                                                            <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
-                                                                <span className="font-bold text-gray-900">{group.name}:</span>
-                                                                <span>{group.skills.map((skill) => skill.name).join(', ')}</span>
-                                                            </div>
+                                                            {renderSkillGroupLine(group)}
                                                         </div>
                                                     </div>
                                                 );

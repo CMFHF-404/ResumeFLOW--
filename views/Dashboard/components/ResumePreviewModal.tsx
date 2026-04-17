@@ -17,6 +17,7 @@ import type {
     EducationView,
     ResumeEditorConfig,
     ResumeEditorProfile,
+    ResumeExperienceListMarkerStyle,
     ResumeExperienceView,
     SectionSpacingKey,
     SkillGroupView,
@@ -27,6 +28,12 @@ import { skillsService } from '../../../services/skillsService';
 import { profileService } from '../../../services/profileService';
 import { resumeService } from '../../../services/resumeService';
 import ResumePreview, { type ResumePreviewProps } from '../../ResumeEditor/components/ResumePreview';
+import {
+    DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
+    DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
+    normalizeResumeExperienceListMarkerStyle,
+    normalizeResumeSkillTagSeparator,
+} from '../../../utils/resumeCustomization';
 import {
     buildCertificationView,
     buildEducationView,
@@ -74,6 +81,8 @@ type PreviewState = {
     sectionSpacingKey: SectionSpacingKey;
     templateId: ResumeTemplateId;
     themeColorPresetId: ResumeThemeColorPresetId;
+    experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+    skillTagSeparator: string;
 };
 
 type PreviewSnapshot = {
@@ -256,6 +265,14 @@ const buildPreviewState = (
         templateId,
         themeColorPresetId: config.layout?.themeColorPresetId
             ?? resolveDefaultResumeThemeColorPresetId(rawTemplateId ?? templateId ?? DEFAULT_RESUME_TEMPLATE_ID),
+        experienceListMarkerStyle: normalizeResumeExperienceListMarkerStyle(
+            config.layout?.experienceListMarkerStyle
+                ?? DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE
+        ),
+        skillTagSeparator: normalizeResumeSkillTagSeparator(
+            config.layout?.skillTagSeparator
+                ?? DEFAULT_RESUME_SKILL_TAG_SEPARATOR
+        ),
     };
 };
 
@@ -424,6 +441,8 @@ const buildResumePreviewProps = (
     topPaddingPx: previewState.topPaddingPx,
     templateId: previewState.templateId,
     themeColorPresetId: previewState.themeColorPresetId,
+    experienceListMarkerStyle: previewState.experienceListMarkerStyle,
+    skillTagSeparator: previewState.skillTagSeparator,
     profile: previewState.profile,
     sectionSpacingClass: spacingClass,
     listSpacingClass: 'space-y-[var(--rf-list-spacing)]',

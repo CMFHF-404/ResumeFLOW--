@@ -2,6 +2,7 @@ import type {
   CertificationView,
   EducationView,
   ResumeEditorProfile,
+  ResumeExperienceListMarkerStyle,
   ResumeExperienceView,
   ResumePdfRenderSnapshot,
   SkillGroupView,
@@ -32,6 +33,8 @@ type ResumePdfSnapshotInput = {
   selectedSkillGroups: SkillGroupView[];
   templateId: ResumeTemplateId;
   themeColorPresetId: ResumeThemeColorPresetId;
+  experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
+  skillTagSeparator: string;
 };
 
 const cloneExperience = (item: ResumeExperienceView) => ({
@@ -68,6 +71,8 @@ export const buildResumePdfRenderSnapshot = ({
   selectedSkillGroups,
   templateId,
   themeColorPresetId,
+  experienceListMarkerStyle,
+  skillTagSeparator,
 }: ResumePdfSnapshotInput): ResumePdfRenderSnapshot => ({
   resumeName,
   profile: { ...profile },
@@ -88,4 +93,6 @@ export const buildResumePdfRenderSnapshot = ({
   selectedSkillGroups: selectedSkillGroups.map(cloneSkillGroup),
   templateId,
   themeColorPresetId,
+  experienceListMarkerStyle,
+  skillTagSeparator,
 });

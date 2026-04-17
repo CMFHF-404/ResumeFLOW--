@@ -92,6 +92,8 @@ class ResumePdfRenderSnapshot(BaseModel):
     selectedSkillGroups: List[SkillGroupViewSnapshot] = Field(default_factory=list)
     templateId: str = "modern-slate"
     themeColorPresetId: str = "slate"
+    experienceListMarkerStyle: str = "unordered"
+    skillTagSeparator: str = "，"
 
 
 class ResumePdfExportRequest(BaseModel):
