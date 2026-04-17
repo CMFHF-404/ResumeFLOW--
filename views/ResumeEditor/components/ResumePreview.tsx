@@ -1504,6 +1504,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         sectionId: string
     ) => {
         const isAccent = activeTemplate.layoutKind === 'accent';
+        const isAccentEmerald = activeTemplate.id === 'accent-emerald';
         const isAvatar = activeTemplate.layoutKind === 'avatar';
         const isClassic = activeTemplate.layoutKind === 'classic';
         const isModernAvatar = activeTemplate.id === 'modern-slate-avatar';
@@ -1513,7 +1514,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             <h2
                 className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar ? 'flex items-center' : ''} ${isAccent ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''}`}
                 style={{
-                    ...(isAccent ? {} : sectionTitleStyle),
+                    ...(isAccentEmerald || !isAccent ? sectionTitleStyle : {}),
                     ...touchHandleStyle,
                     color: isAvatar ? 'var(--rf-accent-color)'
                         : 'var(--rf-accent-text)',
@@ -1544,6 +1545,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             </h2>
         );
     }, [
+        activeTemplate.id,
         activeTemplate.layoutKind,
         isReadOnly,
         sectionHeadingBorderClassName,
