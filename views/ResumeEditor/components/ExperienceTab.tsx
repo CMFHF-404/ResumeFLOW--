@@ -66,6 +66,7 @@ const resolveSkillGroupTarget = (
 };
 
 const ExperienceTab: React.FC<ExperienceTabProps> = ({
+    layoutMode = 'inline',
     experience,
     certification,
     skill,
@@ -113,6 +114,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetProjectSort,
     onResetCertificationSort,
 }) => {
+    const isDrawerLayout = layoutMode === 'drawer';
     const listScrollSnapshotRef = useRef<number | null>(null);
     const shouldRestoreScrollRef = useRef(false);
     const prevEditingExpIdRef = useRef<string | null>(experience.editingExpId);
@@ -487,6 +489,55 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         );
     }
 
+    const desktopBatchPolishOverlay = batchPolishToolbar && !isDrawerLayout ? (
+        <>
+            <div
+                className="fixed inset-0 z-[55] bg-slate-950/18 md:hidden"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onDismissBatchPolishToolbar?.();
+                }}
+            />
+            <div
+                className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:left-auto md:right-0 md:top-[calc(100%+12px)] md:bottom-auto md:z-30 md:mt-0 md:block md:w-[560px] md:max-h-[48vh]"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.18)] md:max-h-[48vh]">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                                AI 批量润色
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">
+                                当前已选 {selectedExperienceCount} 条经历
+                            </div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                                结果会先同步到右侧简历预览，确认后统一保存到当前简历。
+                            </div>
+                        </div>
+                        {onCloseBatchPolishToolbar ? (
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onCloseBatchPolishToolbar();
+                                }}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                                title="关闭批量润色弹窗"
+                                aria-label="关闭批量润色弹窗"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        ) : null}
+                    </div>
+                    <div className="min-h-0 flex flex-1 flex-col overflow-hidden p-3">
+                        {batchPolishToolbar}
+                    </div>
+                </div>
+            </div>
+        </>
+    ) : null;
+
     return (
         <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
             <div className="relative z-20 px-1">
@@ -495,87 +546,44 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                         <CheckCircle2 className="w-3 h-3" /> 当前可选添加经历项
                     </p>
                     <div className="flex items-center gap-2">
-                        <MatchScoreFilter 
+                        <MatchScoreFilter
                             value={matchScoreFilter}
                             onChange={onMatchScoreFilterChange}
                             disabled={hasBlockingPolishState}
                         />
-                        <button
-                            type="button"
-                            onClick={handleBatchPolishClick}
-                            disabled={!canBatchPolish || isBatchPolishing || hasBlockingPolishState}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            title={
-                                hasBlockingPolishState
-                                    ? '请先确认或撤销当前润色结果'
-                                    : canBatchPolish
-                                    ? `批量润色当前已选中的 ${selectedExperienceCount} 条经历`
-                                    : '请先填写 JD 并至少选中一条经历'
-                            }
-                        >
-                            <Sparkles className={`w-3 h-3 ${isBatchPolishing ? 'animate-spin' : ''}`} />
-                            {isBatchPolishing ? '润色中…' : '一键润色'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleAutoAssembleClick}
-                            disabled={isAutoAssembling || hasBlockingPolishState}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            title={hasBlockingPolishState ? '请先确认或撤销当前润色结果' : '一键组装当前简历'}
-                        >
-                            <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
-                        {isAutoAssembling ? '正在生成…' : '一键组装'}
-                        </button>
+                        {!isDrawerLayout ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleBatchPolishClick}
+                                    disabled={!canBatchPolish || isBatchPolishing || hasBlockingPolishState}
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-violet-500 bg-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-400 dark:bg-violet-500 dark:hover:bg-violet-400"
+                                    title={
+                                        hasBlockingPolishState
+                                            ? '请先确认或撤销当前润色结果'
+                                            : canBatchPolish
+                                            ? `批量润色当前已选中的 ${selectedExperienceCount} 条经历`
+                                            : '请先填写 JD 并至少选中一条经历'
+                                    }
+                                >
+                                    <Sparkles className={`w-3 h-3 ${isBatchPolishing ? 'animate-spin' : ''}`} />
+                                    {isBatchPolishing ? '润色中…' : '一键润色'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleAutoAssembleClick}
+                                    disabled={isAutoAssembling || hasBlockingPolishState}
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    title={hasBlockingPolishState ? '请先确认或撤销当前润色结果' : '一键组装当前简历'}
+                                >
+                                    <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />
+                                    {isAutoAssembling ? '正在生成…' : '一键组装'}
+                                </button>
+                            </>
+                        ) : null}
                     </div>
                 </div>
-                {batchPolishToolbar ? (
-                    <>
-                        <div
-                            className="fixed inset-0 z-[55] bg-slate-950/18 md:hidden"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onDismissBatchPolishToolbar?.();
-                            }}
-                        />
-                        <div
-                            className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:left-auto md:right-0 md:top-[calc(100%+12px)] md:bottom-auto md:z-30 md:mt-0 md:block md:w-[560px] md:max-h-[48vh]"
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.18)] md:max-h-[48vh]">
-                                <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
-                                    <div className="min-w-0">
-                                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                                            AI 批量润色
-                                        </div>
-                                        <div className="mt-1 text-sm font-semibold text-slate-900">
-                                            当前已选 {selectedExperienceCount} 条经历
-                                        </div>
-                                        <div className="mt-0.5 text-xs text-slate-500">
-                                            结果会先同步到右侧简历预览，确认后统一保存到当前简历。
-                                        </div>
-                                    </div>
-                                    {onCloseBatchPolishToolbar ? (
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onCloseBatchPolishToolbar();
-                                            }}
-                                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-                                            title="关闭批量润色弹窗"
-                                            aria-label="关闭批量润色弹窗"
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </button>
-                                    ) : null}
-                                </div>
-                                <div className="min-h-0 flex flex-1 flex-col overflow-hidden p-3">
-                                    {batchPolishToolbar}
-                                </div>
-                            </div>
-                        </div>
-                    </>
-                ) : null}
+                {desktopBatchPolishOverlay}
             </div>
             <PersonalSummaryPanel
                 value={personalSummary}

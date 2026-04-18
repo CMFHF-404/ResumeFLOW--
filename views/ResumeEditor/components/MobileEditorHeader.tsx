@@ -35,6 +35,13 @@ export type MobileEditorHeaderProps = {
     onExportPdf: () => void;
     isExportingPdf: boolean;
     isPreviewOverflowing?: boolean;
+    canBatchPolish: boolean;
+    selectedExperienceCount: number;
+    isBatchPolishing: boolean;
+    hasBlockingPolishState?: boolean;
+    batchPolishToolbar?: React.ReactNode;
+    onBatchPolish: () => void;
+    onCloseBatchPolishToolbar?: () => void;
     onAutoAssemble: () => void;
     isAutoAssembling: boolean;
     onCreateResume: () => void;
@@ -74,6 +81,8 @@ const SUMMARY_CLAMP_STYLE: React.CSSProperties = {
 };
 
 const ANALYSIS_CARD_TRANSITION = 'cubic-bezier(0.22, 1, 0.36, 1)';
+const MOBILE_POLISH_CARD_OPEN_DURATION_MS = 420;
+const MOBILE_POLISH_CARD_CLOSE_DURATION_MS = 240;
 
 const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     resumeId,
@@ -86,6 +95,13 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onExportPdf,
     isExportingPdf,
     isPreviewOverflowing = false,
+    canBatchPolish,
+    selectedExperienceCount,
+    isBatchPolishing,
+    hasBlockingPolishState = false,
+    batchPolishToolbar,
+    onBatchPolish,
+    onCloseBatchPolishToolbar,
     onAutoAssemble,
     isAutoAssembling,
     onCreateResume,
@@ -121,9 +137,28 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     const [isEditingJd, setIsEditingJd] = useState(false);
     const [isAnalysisCollapsed, setIsAnalysisCollapsed] = useState(false);
     const [analysisCardHeight, setAnalysisCardHeight] = useState<number | null>(null);
+    const [isBatchPolishCardOpen, setIsBatchPolishCardOpen] = useState(false);
     const analysisCardContentRef = useRef<HTMLDivElement | null>(null);
+    const summaryCardRef = useRef<HTMLDivElement | null>(null);
+    const batchPolishCardRef = useRef<HTMLDivElement | null>(null);
+    const batchPolishCloseTimerRef = useRef<number | null>(null);
+    const [analysisFlipCardHeight, setAnalysisFlipCardHeight] = useState<number | null>(null);
 
     const showJdInput = !isJDCollapsed;
+    const isBatchPolishCardVisible = Boolean(batchPolishToolbar) && isBatchPolishCardOpen;
+    const analysisFlipDurationMs = isBatchPolishCardVisible
+        ? MOBILE_POLISH_CARD_OPEN_DURATION_MS
+        : MOBILE_POLISH_CARD_CLOSE_DURATION_MS;
+
+    const updateAnalysisFlipCardHeight = useCallback(() => {
+        if (showJdInput) {
+            setAnalysisFlipCardHeight(null);
+            return;
+        }
+        const activeCard = isBatchPolishCardVisible ? batchPolishCardRef.current : summaryCardRef.current;
+        const nextHeight = activeCard?.scrollHeight ?? null;
+        setAnalysisFlipCardHeight(nextHeight);
+    }, [isBatchPolishCardVisible, showJdInput]);
 
     useEffect(() => {
         if (isJDCollapsed) {
@@ -135,6 +170,31 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         setIsEditingJd(false);
         setIsAnalysisCollapsed(false);
     }, [resumeId]);
+
+    useEffect(() => {
+        if (batchPolishToolbar) {
+            const frameId = window.requestAnimationFrame(() => {
+                setIsBatchPolishCardOpen(true);
+            });
+            return () => window.cancelAnimationFrame(frameId);
+        }
+        setIsBatchPolishCardOpen(false);
+        if (batchPolishCloseTimerRef.current !== null) {
+            window.clearTimeout(batchPolishCloseTimerRef.current);
+            batchPolishCloseTimerRef.current = null;
+        }
+        return undefined;
+    }, [batchPolishToolbar]);
+
+    useEffect(() => () => {
+        if (batchPolishCloseTimerRef.current !== null) {
+            window.clearTimeout(batchPolishCloseTimerRef.current);
+        }
+    }, []);
+
+    useEffect(() => {
+        updateAnalysisFlipCardHeight();
+    }, [updateAnalysisFlipCardHeight]);
 
     useEffect(() => {
         const element = analysisCardContentRef.current;
@@ -164,6 +224,40 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
             observer.disconnect();
         };
     }, [showJdInput]);
+
+    useEffect(() => {
+        if (showJdInput) {
+            return;
+        }
+
+        const updateHeight = () => {
+            updateAnalysisFlipCardHeight();
+        };
+
+        updateHeight();
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', updateHeight);
+            return () => {
+                window.removeEventListener('resize', updateHeight);
+            };
+        }
+
+        const observer = new ResizeObserver(() => {
+            updateHeight();
+        });
+
+        if (summaryCardRef.current) {
+            observer.observe(summaryCardRef.current);
+        }
+        if (batchPolishCardRef.current) {
+            observer.observe(batchPolishCardRef.current);
+        }
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [batchPolishToolbar, showJdInput, updateAnalysisFlipCardHeight]);
 
     useEffect(() => {
         if (showJdInput || isAnalyzing || isGeneratingBossGreeting || isEditingJd) {
@@ -258,6 +352,27 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         }
     };
 
+    const handleBatchPolishClick = useCallback(() => {
+        if (showJdInput) {
+            setIsEditingJd(false);
+            onJDCollapseChange(true);
+        }
+        onBatchPolish();
+    }, [onBatchPolish, onJDCollapseChange, showJdInput]);
+
+    const handleCloseBatchPolishCard = useCallback(() => {
+        const summaryHeight = summaryCardRef.current?.scrollHeight ?? null;
+        setAnalysisFlipCardHeight(summaryHeight);
+        setIsBatchPolishCardOpen(false);
+        if (batchPolishCloseTimerRef.current !== null) {
+            window.clearTimeout(batchPolishCloseTimerRef.current);
+        }
+        batchPolishCloseTimerRef.current = window.setTimeout(() => {
+            onCloseBatchPolishToolbar?.();
+            batchPolishCloseTimerRef.current = null;
+        }, MOBILE_POLISH_CARD_CLOSE_DURATION_MS + 20);
+    }, [onCloseBatchPolishToolbar]);
+
     return (
         <div className="border-b border-border-light bg-surface-light px-4 py-4 dark:border-border-dark dark:bg-surface-dark md:hidden">
             <div className="space-y-3">
@@ -331,7 +446,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                         <div
                             ref={analysisCardContentRef}
                             id="mobile-analysis-card"
-                            className="rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80"
+                            className="rounded-2xl border border-gray-200 bg-white/90 p-3 dark:border-gray-800 dark:bg-gray-900/80"
                         >
                     <div className="flex flex-col">
                         <div className="flex items-start justify-between gap-2 px-1 mb-3">
@@ -455,116 +570,174 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 )}
                             </div>
                         ) : (
-                            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 dark:border-emerald-800/30 dark:bg-emerald-900/10 mb-3">
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                                            评价
-                                        </span>
-                                        <div className="flex items-center gap-0.5">
-                                            {/* 编辑 JD 图标按钮，位于刷新按钮左侧 */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setIsEditingJd(true);
-                                                    onJDCollapseChange(false);
-                                                }}
-                                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary"
-                                                aria-label="编辑 JD"
-                                                title="编辑 JD"
-                                            >
-                                                <Edit2 className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={onAnalyze}
-                                                disabled={isAnalyzing}
-                                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
-                                                aria-label="刷新 JD 分析"
-                                            >
-                                                <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <p
-                                        className="text-[12.5px] leading-5 text-emerald-800 dark:text-emerald-300/80"
-                                        style={isBossGreetingVisible ? undefined : SUMMARY_CLAMP_STYLE}
+                            <div className="mb-3 [perspective:1600px]">
+                                <div
+                                    className="grid items-start overflow-hidden transition-[height] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                                    style={{
+                                        ...(analysisFlipCardHeight ? { height: `${analysisFlipCardHeight}px` } : {}),
+                                        transitionDuration: `${analysisFlipDurationMs}ms`,
+                                    }}
+                                >
+                                    <div
+                                        ref={summaryCardRef}
+                                        className={[
+                                            'col-start-1 row-start-1 w-full self-start rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-emerald-800/30 dark:bg-emerald-900/10 [backface-visibility:hidden] [transform-style:preserve-3d] [will-change:transform,opacity]',
+                                            isBatchPolishCardVisible
+                                                ? 'pointer-events-none opacity-0 [transform:rotateY(-180deg)_scale(0.985)]'
+                                                : 'opacity-100 [transform:rotateY(0deg)_scale(1)]',
+                                        ].join(' ')}
+                                        style={{ transitionDuration: `${analysisFlipDurationMs}ms` }}
                                     >
-                                        {summaryText}
-                                    </p>
-                                    {hasSummary ? (
-                                        <div className="space-y-2">
-                                            <button
-                                                type="button"
-                                                onClick={onGenerateBossGreeting}
-                                                disabled={isGeneratingBossGreeting}
-                                                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                                                    评价
+                                                </span>
+                                                <div className="flex items-center gap-0.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setIsEditingJd(true);
+                                                            onJDCollapseChange(false);
+                                                        }}
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary"
+                                                        aria-label="编辑 JD"
+                                                        title="编辑 JD"
+                                                    >
+                                                        <Edit2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={onAnalyze}
+                                                        disabled={isAnalyzing}
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                                                        aria-label="刷新 JD 分析"
+                                                    >
+                                                        <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p
+                                                className="text-[12.5px] leading-5 text-emerald-800 dark:text-emerald-300/80"
+                                                style={isBossGreetingVisible ? undefined : SUMMARY_CLAMP_STYLE}
                                             >
-                                                <MessageSquare className={`h-3.5 w-3.5 ${isGeneratingBossGreeting ? 'animate-pulse' : ''}`} />
-                                                {bossGreetingButtonLabel}
-                                            </button>
-                                            {isBossGreetingVisible ? (
-                                                <div className="rounded-lg border border-emerald-200 bg-white/90 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-gray-900/70">
-                                                    <div className="mb-2 flex items-center justify-between gap-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-                                                                BOSS 招呼语
-                                                            </span>
-                                                            {isBossGreetingOutdated && bossGreeting ? (
-                                                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                                                                    已过期
-                                                                </span>
-                                                            ) : null}
+                                                {summaryText}
+                                            </p>
+                                            {hasSummary ? (
+                                                <div className="space-y-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={onGenerateBossGreeting}
+                                                        disabled={isGeneratingBossGreeting}
+                                                        className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    >
+                                                        <MessageSquare className={`h-3.5 w-3.5 ${isGeneratingBossGreeting ? 'animate-pulse' : ''}`} />
+                                                        {bossGreetingButtonLabel}
+                                                    </button>
+                                                    {isBossGreetingVisible ? (
+                                                        <div className="rounded-lg border border-emerald-200 bg-white/90 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-gray-900/70">
+                                                            <div className="mb-2 flex items-center justify-between gap-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                                                        BOSS 招呼语
+                                                                    </span>
+                                                                    {isBossGreetingOutdated && bossGreeting ? (
+                                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                                                            已过期
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={onRefreshBossGreeting}
+                                                                        disabled={isGeneratingBossGreeting}
+                                                                        aria-label="刷新 BOSS 招呼语"
+                                                                        className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-emerald-300"
+                                                                    >
+                                                                        <RefreshCw className={`h-3.5 w-3.5 ${isGeneratingBossGreeting ? 'animate-spin' : ''}`} />
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={onCollapseBossGreeting}
+                                                                        className="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+                                                                    >
+                                                                        收起
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-3">
+                                                                {isGeneratingBossGreeting && !bossGreeting ? (
+                                                                    <p className="text-[11.5px] leading-relaxed text-gray-500 dark:text-gray-400">
+                                                                        正在根据 JD 分析与已选经历生成招呼语...
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-[11.5px] leading-relaxed text-gray-700 dark:text-gray-200">
+                                                                        {bossGreeting || '暂无可用招呼语'}
+                                                                    </p>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={onCopyBossGreeting}
+                                                                    disabled={!bossGreeting.trim()}
+                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                                                                >
+                                                                    <Copy className="h-3 w-3" />
+                                                                    一键复制
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                type="button"
-                                                                onClick={onRefreshBossGreeting}
-                                                                disabled={isGeneratingBossGreeting}
-                                                                aria-label="刷新 BOSS 招呼语"
-                                                                className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-emerald-300"
-                                                            >
-                                                                <RefreshCw className={`h-3.5 w-3.5 ${isGeneratingBossGreeting ? 'animate-spin' : ''}`} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={onCollapseBossGreeting}
-                                                                className="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
-                                                            >
-                                                                收起
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-3">
-                                                        {isGeneratingBossGreeting && !bossGreeting ? (
-                                                            <p className="text-[11.5px] leading-relaxed text-gray-500 dark:text-gray-400">
-                                                                正在根据 JD 分析与已选经历生成招呼语...
-                                                            </p>
-                                                        ) : (
-                                                            <p className="text-[11.5px] leading-relaxed text-gray-700 dark:text-gray-200">
-                                                                {bossGreeting || '暂无可用招呼语'}
-                                                            </p>
-                                                        )}
-                                                        <button
-                                                            type="button"
-                                                            onClick={onCopyBossGreeting}
-                                                            disabled={!bossGreeting.trim()}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                                                        >
-                                                            <Copy className="h-3 w-3" />
-                                                            一键复制
-                                                        </button>
-                                                    </div>
+                                                    ) : null}
                                                 </div>
                                             ) : null}
+                                        </div>
+                                    </div>
+                                    {batchPolishToolbar ? (
+                                        <div
+                                            ref={batchPolishCardRef}
+                                            className={[
+                                                'col-start-1 row-start-1 w-full self-start rounded-xl border border-violet-200/80 bg-[linear-gradient(180deg,rgba(248,245,255,0.98),rgba(255,255,255,0.98))] px-3 py-3 shadow-[0_18px_42px_rgba(124,58,237,0.12)] transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-violet-500/20 dark:bg-[linear-gradient(180deg,rgba(46,16,101,0.32),rgba(17,24,39,0.92))] [backface-visibility:hidden] [transform-style:preserve-3d] [will-change:transform,opacity]',
+                                                isBatchPolishCardVisible
+                                                    ? 'opacity-100 [transform:rotateY(0deg)_scale(1)]'
+                                                    : 'pointer-events-none opacity-0 [transform:rotateY(180deg)_scale(0.985)]',
+                                            ].join(' ')}
+                                            style={{ transitionDuration: `${analysisFlipDurationMs}ms` }}
+                                        >
+                                            <div className="space-y-3">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-700 dark:text-violet-300">
+                                                            AI 批量润色
+                                                        </div>
+                                                        <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                                                            当前已选 {selectedExperienceCount} 条经历
+                                                        </div>
+                                                        <div className="mt-1 text-[12.5px] leading-5 text-slate-500 dark:text-slate-300">
+                                                            结果会先同步到右侧简历预览，确认后统一保存到当前简历。
+                                                        </div>
+                                                    </div>
+                                                    {onCloseBatchPolishToolbar ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCloseBatchPolishCard}
+                                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100 bg-white/90 text-slate-500 transition hover:border-violet-200 hover:text-slate-900 dark:border-violet-400/20 dark:bg-white/10 dark:text-slate-300 dark:hover:border-violet-300/30 dark:hover:text-white"
+                                                            aria-label="关闭批量润色卡片"
+                                                            title="关闭批量润色卡片"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                                {batchPolishToolbar}
+                                            </div>
                                         </div>
                                     ) : null}
                                 </div>
                             </div>
                         )}
 
-                        <div className={`flex gap-2 w-full ${showJdInput ? 'mt-4' : ''}`}>
-                            <div className="flex min-w-[132px] flex-[1.18]">
+                        <div className={`flex w-full items-stretch gap-2 ${showJdInput ? 'mt-4' : ''}`}>
+                            <div className="flex min-w-[112px] flex-[1.08]">
                                 <button
                                     type="button"
                                     onClick={onToggleLayoutAdjustToolbar}
@@ -595,12 +768,32 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             </div>
                             <button
                                 type="button"
-                                onClick={onAutoAssemble}
-                                disabled={isAutoAssembling}
+                                onClick={handleBatchPolishClick}
+                                disabled={!canBatchPolish || isBatchPolishing || hasBlockingPolishState}
                                 className={[
-                                    'flex min-w-[138px] flex-[1.42] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2.5 text-[11.5px] font-semibold whitespace-nowrap transition-colors',
+                                    'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-[11.5px] font-semibold whitespace-nowrap transition-colors disabled:opacity-60',
+                                    'border-violet-500 bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed dark:border-violet-400 dark:bg-violet-500 dark:hover:bg-violet-400',
+                                ].join(' ')}
+                                title={
+                                    hasBlockingPolishState
+                                        ? '请先确认或撤销当前润色结果'
+                                        : canBatchPolish
+                                        ? '批量润色当前已选经历'
+                                        : '请先填写 JD 并至少选中一条经历'
+                                }
+                            >
+                                <Sparkles className={`h-4 w-4 ${isBatchPolishing ? 'animate-spin' : ''}`} />
+                                {isBatchPolishing ? '润色中' : '一键润色'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onAutoAssemble}
+                                disabled={isAutoAssembling || hasBlockingPolishState}
+                                className={[
+                                    'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-[11.5px] font-semibold whitespace-nowrap transition-colors',
                                     'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400',
                                 ].join(' ')}
+                                title={hasBlockingPolishState ? '请先确认或撤销当前润色结果' : '一键组装当前简历'}
                             >
                                 <Wand2 className={`h-4 w-4 ${isAutoAssembling ? 'animate-pulse' : ''}`} />
                                 {isAutoAssembling ? '组装中' : '一键组装'}
