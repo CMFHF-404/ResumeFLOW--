@@ -713,7 +713,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                                             当前已选 {selectedExperienceCount} 条经历
                                                         </div>
                                                         <div className="mt-1 text-[12.5px] leading-5 text-slate-500 dark:text-slate-300">
-                                                            结果会先同步到右侧简历预览，确认后统一保存到当前简历。
+                                                            结果会先同步到简历预览，确认后统一保存到当前简历。
                                                         </div>
                                                     </div>
                                                     {onCloseBatchPolishToolbar ? (

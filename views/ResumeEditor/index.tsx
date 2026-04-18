@@ -4502,7 +4502,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             hasJdContext
             disabledAssistant={!jdPolishContext.trim()}
             previewTitle="AI 润色结果"
-            previewDescription="润色结果已同步到右侧简历预览，确认后会保存到当前简历。"
+            previewDescription="润色结果已同步到简历预览，确认后会保存到当前简历。"
             onModeChange={setFloatingPolishMode}
             onCustomPromptChange={setFloatingPolishCustomPrompt}
             onRun={() => void handleRunFloatingExperiencePolish()}
@@ -4522,8 +4522,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             previewTitle="AI 批量润色结果"
             previewDescription={
                 batchFloatingPolishPreview
-                    ? `已同步 ${batchFloatingPolishPreview.items.length} 条经历到右侧简历预览，请确认是否统一保存。${batchFloatingPolishPreview.failedIds.length > 0 ? ` 本次有 ${batchFloatingPolishPreview.failedIds.length} 条未成功。` : ''}`
-                    : '执行后会并发润色当前已选经历，并同步到右侧简历预览等待统一确认。'
+                    ? `已同步 ${batchFloatingPolishPreview.items.length} 条经历到简历预览，请确认是否统一保存。${batchFloatingPolishPreview.failedIds.length > 0 ? ` 本次有 ${batchFloatingPolishPreview.failedIds.length} 条未成功。` : ''}`
+                    : '执行后会并发润色当前已选经历，并同步到简历预览等待统一确认。'
             }
             runButtonLabel="开始批量润色"
             runningLabel="批量润色中..."
