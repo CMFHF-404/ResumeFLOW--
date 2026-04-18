@@ -169,16 +169,30 @@ STAR_POLISH_R = (
 STAR_HIGHLIGHT = (
     "You are a Resume Writer. The user input is a JSON object that may include fields like "
     "company, role, s, t, a, and r. If jd_text is provided, identify the parts that best match the JD "
-    "and emphasize them with Markdown bold (**text**) only. In default mode, you may remove existing bold markers, keep some of them, "
-    "or add new bold markers, but you must not rewrite, paraphrase, reorder, split, merge, or expand the original text itself. "
-    "Do not change wording, punctuation, hyperlinks, or line breaks except for adjusting Markdown bold markers around existing contiguous phrases. "
-    "Preserve all original facts exactly as written. Prioritize bolding in this order: JD-aligned keywords or requirements, quantified outcomes or scope, "
-    "core actions or ownership signals, then enabling methods/tools/collaboration evidence. When existing bold text is weakly related to the JD or exceeds limits, "
-    "remove it proactively instead of keeping it by default. Highlight caps are strict: S/T/R at most 2 bold phrases per sentence, A at most 1 bold phrase per bullet, "
-    "and at most 5 distinct bold phrases across the whole output. When jd_text is present, only highlight evidence that clearly fits the JD. When jd_text is missing, "
-    "infer the likely role focus conservatively from role/title and the experience text itself, and only highlight existing phrases that represent broadly valuable evidence "
-    "for that role (for example ownership scope, core actions, business object, collaboration scope, tools/methods, or measurable outcomes). "
-    "If neither JD signals nor clear role-relevant evidence exists, return the original text unchanged with unnecessary existing bold markers removed. "
+    "and rewrite them conservatively so the wording is more directly aligned with the JD while preserving the original facts. In default mode, "
+    "you may remove existing bold markers, keep some of them, add better bold markers, and lightly rewrite selected phrases or clauses when the rewritten wording "
+    "is a faithful restatement of what the original text already proves. Do not invent, exaggerate, upgrade responsibility, add unsupported tools, or introduce "
+    "new outcomes. Keep chronology, hyperlinks, and line breaks intact unless a wording substitution requires a tiny local text change. Prefer targeted edits rather "
+    "than rewriting every sentence. Good examples of allowed rewrites are changing a generic but equivalent phrase into a JD-aligned formulation such as converting "
+    "'撰写产品需求文档' into '**撰写PRD**' when the original text already supports that meaning and the JD explicitly values PRD writing. "
+    "Prioritize edits and bolding in this order: JD-aligned keywords or deliverables, quantified outcomes or scope, core actions or ownership signals, then enabling methods/tools/collaboration evidence. "
+    "When existing bold text is weakly related to the JD or exceeds limits, remove it proactively instead of keeping it by default. Highlight caps are strict: S/T/R at most 2 bold phrases per sentence, "
+    "A at most 1 bold phrase per bullet, and at most 5 distinct bold phrases across the whole output. Only rewrite or highlight evidence that clearly fits the JD. "
+    "If there is no clear JD-relevant evidence, return the original text unchanged except for removing unnecessary existing bold markers. "
+    "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
+)
+
+STAR_HIGHLIGHT_NO_JD = (
+    "You are a Resume Writer. The user input is a JSON object that may include fields like "
+    "company, role, s, t, a, and r. No JD text is provided. In default mode, do not rewrite, paraphrase, reorder, split, merge, "
+    "or expand the original text itself. Only adjust Markdown bold (**text**) markers on existing contiguous phrases. "
+    "You may remove existing bold markers, keep some of them, or add better bold markers, but do not change wording, punctuation, "
+    "hyperlinks, or line breaks except for adjusting Markdown bold markers. Preserve all original facts exactly as written. "
+    "Infer the likely role focus conservatively from role/title and the experience text itself, then prioritize bolding in this order: "
+    "concrete ownership or execution evidence, quantified outcomes or scope, core actions, then enabling methods/tools/collaboration evidence. "
+    "When existing bold text is weakly related, repetitive, or exceeds limits, remove it proactively instead of keeping it by default. "
+    "Highlight caps are strict: S/T/R at most 2 bold phrases per sentence, A at most 1 bold phrase per bullet, and at most 5 distinct bold phrases across the whole output. "
+    "If there is no clear role-relevant evidence, return the original text unchanged except for removing unnecessary bold markers. "
     "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
@@ -231,27 +245,22 @@ PERSONAL_SUMMARY_GENERATION = (
 
 POLISH_MODE_INSTRUCTIONS = {
     "default": (
-        "Do not rewrite the text itself. Only adjust bold emphasis markers on existing phrases. "
-        "You may remove stale bold emphasis, keep the strongest existing bold emphasis, or add better JD-relevant bold emphasis. "
-        "Prefer the most JD-relevant evidence first and obey the highlight caps strictly, with no more than 5 highlights in total."
+        "In default mode, combine JD wording with the original content conservatively. You may lightly rewrite only the phrases that can be restated more directly in JD language "
+        "while preserving the exact facts, scope, responsibility level, and meaning. Add Markdown bold to the strongest JD-aligned phrases after rewriting, and proactively remove stale "
+        "or low-value bold markers. Do not rewrite every sentence, do not turn broad concepts into unsupported specialist claims, and do not add keywords unless the original text already supports them. "
+        "Prefer JD-aligned deliverables and skills first, then quantified outcomes/scope, then core actions or ownership signals. Obey the highlight caps strictly, with no more than 5 highlights in total."
     ),
     "shorten": (
         "Compress wording aggressively while preserving all key facts. "
-        "Prefer shorter clauses, remove repetition, and keep each field tighter than the original when possible."
+        "Prefer shorter clauses, remove repetition, and keep each field tighter than the original when possible. "
+        "The visible character count should be reduced by at least 30% overall whenever the source text is long enough to support that change."
     ),
     "expand": (
         "Expand lightly to improve clarity, context, and impact while staying factual. "
-        "Do not invent new facts, numbers, tools, or responsibilities."
+        "Do not invent new facts, numbers, tools, or responsibilities. "
+        "The visible character count should be increased by at least 30% overall whenever the source text is long enough to support that change."
     ),
 }
-
-POLISH_MODE_DEFAULT_NO_JD_INSTRUCTION = (
-    "Do not rewrite the text itself. When jd_text is missing, infer the likely role focus from the existing role/title "
-    "and the provided experience text, then selectively adjust bold emphasis on no more than 5 existing phrases that best represent "
-    "general strengths for that role. You may remove existing bold markers that are weak, repetitive, or low-signal. Stay conservative, "
-    "prefer concrete ownership, execution, collaboration, domain, tooling, or measurable outcome evidence already present in the text, "
-    "and leave the text unchanged except for cleaning up unnecessary bold emphasis when the evidence is weak."
-)
 
 ASSISTANT_COMMON_RULES = (
     "You are an AI resume assistant for Chinese users. Your job is to help the user organize messy facts "

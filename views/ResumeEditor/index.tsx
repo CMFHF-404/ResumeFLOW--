@@ -4482,9 +4482,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isRunning={isEditingExperiencePolishRunning}
             activeMode={experiencePolishMode}
             customPrompt={experienceCustomPrompt}
+            hasJdContext
             disabledAssistant={!jdPolishContext.trim()}
             compact
-            runHint="执行后直接应用到当前编辑内容"
             onModeChange={setExperiencePolishMode}
             onCustomPromptChange={setExperienceCustomPrompt}
             onRun={() => void handleRunEditingExperiencePolish()}
@@ -4499,10 +4499,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isRunning={isFloatingExperiencePolishRunning}
             activeMode={floatingPolishMode}
             customPrompt={floatingPolishCustomPrompt}
+            hasJdContext
             disabledAssistant={!jdPolishContext.trim()}
             previewTitle="AI 润色结果"
             previewDescription="润色结果已同步到右侧简历预览，确认后会保存到当前简历。"
-            runHint="执行后同步到右侧简历预览，确认后保存到当前简历"
             onModeChange={setFloatingPolishMode}
             onCustomPromptChange={setFloatingPolishCustomPrompt}
             onRun={() => void handleRunFloatingExperiencePolish()}
@@ -4517,6 +4517,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isRunning={isFloatingExperiencePolishRunning}
             activeMode={floatingPolishMode}
             customPrompt={floatingPolishCustomPrompt}
+            hasJdContext
             disabledAssistant
             previewTitle="AI 批量润色结果"
             previewDescription={
@@ -4524,7 +4525,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     ? `已同步 ${batchFloatingPolishPreview.items.length} 条经历到右侧简历预览，请确认是否统一保存。${batchFloatingPolishPreview.failedIds.length > 0 ? ` 本次有 ${batchFloatingPolishPreview.failedIds.length} 条未成功。` : ''}`
                     : '执行后会并发润色当前已选经历，并同步到右侧简历预览等待统一确认。'
             }
-            runHint="执行后同步到右侧简历预览，确认后统一保存到当前简历"
             runButtonLabel="开始批量润色"
             runningLabel="批量润色中..."
             undoLabel="撤销全部"

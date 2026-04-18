@@ -17,11 +17,11 @@ from .prompts import (
     BOSS_GREETING_GENERATION,
     JD_ANALYSIS,
     JD_ANALYSIS_IMAGE,
-    POLISH_MODE_DEFAULT_NO_JD_INSTRUCTION,
     POLISH_MODE_INSTRUCTIONS,
     PERSONAL_SUMMARY_GENERATION,
     SKILL_ASSISTANT_PROMPT,
     STAR_HIGHLIGHT,
+    STAR_HIGHLIGHT_NO_JD,
     STAR_POLISH,
     TAG_GENERATION,
 )
@@ -1171,10 +1171,16 @@ async def analyze_jd_with_image_thoughts(
     return _ensure_skill_matches(normalized_result, skill_ids)
 
 
-def _resolve_star_prompt(target_field: Optional[str], mode: Optional[str] = None) -> str:
+def _resolve_star_prompt(
+    target_field: Optional[str],
+    mode: Optional[str] = None,
+    has_jd_text: bool = False,
+) -> str:
     normalized_mode = (mode or "default").strip().lower()
     if normalized_mode == "default":
-        return STAR_HIGHLIGHT
+        if has_jd_text:
+            return STAR_HIGHLIGHT
+        return STAR_HIGHLIGHT_NO_JD
     return STAR_POLISH
 
 
@@ -1184,11 +1190,11 @@ def _build_polish_prompt(
     jd_text: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
-    base_prompt = _resolve_star_prompt(target_field, mode)
-    normalized_mode = (mode or "default").strip().lower()
     has_jd_text = bool(jd_text and jd_text.strip())
+    base_prompt = _resolve_star_prompt(target_field, mode, has_jd_text=has_jd_text)
+    normalized_mode = (mode or "default").strip().lower()
     if normalized_mode == "default" and not has_jd_text:
-        mode_instruction = POLISH_MODE_DEFAULT_NO_JD_INSTRUCTION
+        mode_instruction = None
     else:
         mode_instruction = POLISH_MODE_INSTRUCTIONS.get(normalized_mode)
     prompt_parts = [base_prompt]

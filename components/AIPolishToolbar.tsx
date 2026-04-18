@@ -9,6 +9,7 @@ export type AIPolishToolbarProps = {
   isRunning: boolean;
   activeMode: ToolbarMode;
   customPrompt: string;
+  hasJdContext?: boolean;
   disabledAssistant?: boolean;
   previewTitle?: string;
   previewDescription?: string;
@@ -35,11 +36,26 @@ const MODE_OPTIONS: Array<{ value: ToolbarMode; label: string }> = [
   { value: 'custom', label: '自定义 Prompt' },
 ];
 
+const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
+  default: '结合 JD，保真改写并加粗匹配内容。',
+  shorten: '保留关键信息，字数压缩 30% 以上。',
+  expand: '补充必要上下文，字数扩写 30% 以上。',
+  custom: '按你的 Prompt 定向润色，仍以事实为准。',
+};
+
+const MODE_DESCRIPTIONS_NO_JD: Record<ToolbarMode, string> = {
+  default: '保留原文，仅调整重点内容的强调。',
+  shorten: '保留关键信息，字数压缩 30% 以上。',
+  expand: '补充必要上下文，字数扩写 30% 以上。',
+  custom: '按你的 Prompt 定向润色，仍以事实为准。',
+};
+
 const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   isPreviewing,
   isRunning,
   activeMode,
   customPrompt,
+  hasJdContext = false,
   disabledAssistant,
   previewTitle,
   previewDescription,
@@ -65,6 +81,8 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   const resolvedRunningLabel = runningLabel ?? '生成中...';
   const resolvedUndoLabel = undoLabel ?? '撤销';
   const resolvedConfirmLabel = confirmLabel ?? '确认';
+  const modeDescriptions = hasJdContext ? MODE_DESCRIPTIONS_WITH_JD : MODE_DESCRIPTIONS_NO_JD;
+  const modeDescription = runHint ?? modeDescriptions[activeMode];
 
   if (isPreviewing) {
     return (
@@ -151,7 +169,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           />
         ) : null}
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs leading-5 text-slate-500">{runHint ?? '执行后生成预览'}</p>
+          <p className="max-w-[16rem] text-xs leading-5 text-slate-500">{modeDescription}</p>
           <button
             type="button"
             onClick={onRun}

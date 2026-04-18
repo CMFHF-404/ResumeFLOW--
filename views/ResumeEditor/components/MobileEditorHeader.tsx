@@ -696,7 +696,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                         <div
                                             ref={batchPolishCardRef}
                                             className={[
-                                                'col-start-1 row-start-1 w-full self-start rounded-xl border border-violet-200/80 bg-[linear-gradient(180deg,rgba(248,245,255,0.98),rgba(255,255,255,0.98))] px-3 py-3 shadow-[0_18px_42px_rgba(124,58,237,0.12)] transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-violet-500/20 dark:bg-[linear-gradient(180deg,rgba(46,16,101,0.32),rgba(17,24,39,0.92))] [backface-visibility:hidden] [transform-style:preserve-3d] [will-change:transform,opacity]',
+                                                'col-start-1 row-start-1 w-full self-start rounded-xl border border-violet-200/80 bg-[linear-gradient(180deg,rgba(248,245,255,0.98),rgba(255,255,255,0.98))] px-3 py-3 transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-violet-500/20 dark:bg-[linear-gradient(180deg,rgba(46,16,101,0.32),rgba(17,24,39,0.92))] [backface-visibility:hidden] [transform-style:preserve-3d] [will-change:transform,opacity]',
                                                 isBatchPolishCardVisible
                                                     ? 'opacity-100 [transform:rotateY(0deg)_scale(1)]'
                                                     : 'pointer-events-none opacity-0 [transform:rotateY(180deg)_scale(0.985)]',
@@ -728,7 +728,9 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                                         </button>
                                                     ) : null}
                                                 </div>
-                                                {batchPolishToolbar}
+                                                <div className="[&>div]:shadow-none">
+                                                    {batchPolishToolbar}
+                                                </div>
                                             </div>
                                         </div>
                                     ) : null}
