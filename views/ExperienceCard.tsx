@@ -524,6 +524,7 @@ const ExperienceCardFooter: React.FC<{
                     isRunning={isPolishing}
                     activeMode={activePolishMode}
                     customPrompt={customPolishPrompt}
+                    hasJdContext={false}
                     onModeChange={onPolishModeChange}
                     onCustomPromptChange={onCustomPolishPromptChange}
                     onRun={onRunPolish}
