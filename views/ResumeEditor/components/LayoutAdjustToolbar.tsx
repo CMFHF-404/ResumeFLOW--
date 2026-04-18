@@ -352,7 +352,7 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
                 <div className="mb-3 flex items-center justify-between gap-4">
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">手动调节工具栏</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">调整后会立即同步到右侧简历预览</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">调整后会立即同步到简历预览</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-6 gap-3">
