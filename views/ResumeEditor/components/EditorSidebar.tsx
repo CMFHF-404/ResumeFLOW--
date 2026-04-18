@@ -130,6 +130,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
                 ) : (
                     <ExperienceTab
                         {...experienceTabProps}
+                        layoutMode={layoutMode}
                         scrollContainerRef={scrollContainerRef}
                     />
                 )}

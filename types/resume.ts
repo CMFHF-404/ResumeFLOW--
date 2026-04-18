@@ -373,6 +373,7 @@ export type SelectionActions = {
 };
 
 export type ExperienceTabProps = {
+  layoutMode?: 'inline' | 'drawer';
   experience: ExperienceActions;
   certification: CertificationActions;
   skill: SkillActions;
