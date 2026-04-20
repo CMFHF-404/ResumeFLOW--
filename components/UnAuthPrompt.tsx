@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
+import { trackLoginStart } from '../utils/analyticsTracker';
 
 const UnAuthPrompt: React.FC = () => {
     const { isAuthenticated, signIn } = useLogto();
@@ -9,6 +10,7 @@ const UnAuthPrompt: React.FC = () => {
     }
 
     const handleSignIn = async () => {
+        await trackLoginStart('unauth_prompt');
         await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
     };
 

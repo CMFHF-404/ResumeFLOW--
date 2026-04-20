@@ -13,6 +13,7 @@ import {
 const FIRST_EXPERIENCE_ONCE_KEY = 'first_experience_created';
 const TRACK_ONCE_PREFIX = 'yuanzijianli.analytics.once';
 const SIGN_UP_EVENT_TIMEOUT_MS = 1200;
+const JUST_LOGGED_IN_SESSION_KEY = 'yuanzijianli.analytics.just_logged_in';
 
 const resolveOnceKey = (key: string) => `${TRACK_ONCE_PREFIX}.${key}`;
 
@@ -27,6 +28,26 @@ const hasTracked = (key: string) => {
 const markTracked = (key: string) => {
   try {
     localStorage.setItem(resolveOnceKey(key), new Date().toISOString());
+  } catch (error) {
+    // ignore storage errors
+  }
+};
+
+const readSessionStorage = (key: string) => {
+  try {
+    return sessionStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+};
+
+const writeSessionStorage = (key: string, value: string | null) => {
+  try {
+    if (value === null) {
+      sessionStorage.removeItem(key);
+      return;
+    }
+    sessionStorage.setItem(key, value);
   } catch (error) {
     // ignore storage errors
   }
@@ -135,6 +156,45 @@ export const trackSignUpSuccessImmediate = () => {
     waitForCallback: true,
     transport: 'beacon',
     timeoutMs: SIGN_UP_EVENT_TIMEOUT_MS,
+  });
+};
+
+export const trackLoginStart = (source: string) => {
+  return trackEventImmediate(ANALYTICS_EVENTS.LOGIN_START, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+  });
+};
+
+export const markJustLoggedIn = () => {
+  writeSessionStorage(JUST_LOGGED_IN_SESSION_KEY, new Date().toISOString());
+};
+
+export const consumeJustLoggedIn = () => {
+  const didJustLogIn = Boolean(readSessionStorage(JUST_LOGGED_IN_SESSION_KEY));
+  if (didJustLogIn) {
+    writeSessionStorage(JUST_LOGGED_IN_SESSION_KEY, null);
+  }
+  return didJustLogIn;
+};
+
+export const trackLoginSuccessImmediate = (source = 'callback') => {
+  return trackEventImmediate(ANALYTICS_EVENTS.LOGIN_SUCCESS, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+  }, {
+    waitForCallback: true,
+    transport: 'beacon',
+    timeoutMs: SIGN_UP_EVENT_TIMEOUT_MS,
+  });
+};
+
+export const trackAuthenticatedVisit = (
+  authUserKey: string,
+  source: 'post_login' | 'session_restore',
+  view?: string
+) => {
+  trackEvent(ANALYTICS_EVENTS.AUTHENTICATED_VISIT, {
+    [ANALYTICS_PROPERTIES.SOURCE]: source,
+    ...(view ? { [ANALYTICS_PROPERTIES.VIEW]: view } : {}),
   });
 };
 

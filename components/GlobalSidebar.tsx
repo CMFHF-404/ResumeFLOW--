@@ -4,6 +4,7 @@ import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, B
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
+import { trackLoginStart } from '../utils/analyticsTracker';
 
 interface GlobalSidebarProps {
   currentView: ViewState;
@@ -69,6 +70,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
   const handleSignIn = async () => {
     setIsAvatarMenuOpen(false);
+    await trackLoginStart('sidebar');
     await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
   };
 

@@ -2,6 +2,7 @@ import { useLogto } from '@logto/react';
 import { useEffect, ReactNode, useMemo, useRef, useState } from 'react';
 import { clearAccessTokenProvider, setAccessTokenProvider } from '../services/authTokenProvider';
 import { subscribeLoginRequired } from '../services/authRedirect';
+import { trackLoginStart } from '../utils/analyticsTracker';
 
 interface AuthGuardProps {
     children: ReactNode;
@@ -39,7 +40,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             }
             console.log('[AuthGuard] Login required:', reason || 'unknown');
             isSigningInRef.current = true;
-            signIn(redirectUri || import.meta.env.VITE_LOGTO_REDIRECT_URI);
+            void (async () => {
+                await trackLoginStart(shouldForceReauth ? 'auth_guard_reauth' : 'auth_guard');
+                await signIn(redirectUri || import.meta.env.VITE_LOGTO_REDIRECT_URI);
+            })();
         });
 
         return unsubscribe;

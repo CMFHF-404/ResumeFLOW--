@@ -1,6 +1,9 @@
 import { useHandleSignInCallback } from '@logto/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { trackSignUpSuccessImmediate } from '../utils/analyticsTracker';
+import {
+    markJustLoggedIn,
+    trackLoginSuccessImmediate,
+} from '../utils/analyticsTracker';
 
 const CALLBACK_STUCK_TIMEOUT_MS = 3000;
 
@@ -22,11 +25,12 @@ export default function Callback() {
         }
 
         redirectStartedRef.current = true;
+        markJustLoggedIn();
 
         try {
-            await trackSignUpSuccessImmediate();
+            await trackLoginSuccessImmediate('callback');
         } catch (trackingError) {
-            console.warn('[Callback] Failed to track sign-up success before redirect', trackingError);
+            console.warn('[Callback] Failed to track login success before redirect', trackingError);
         }
 
         redirectToHome();

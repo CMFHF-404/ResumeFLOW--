@@ -46,7 +46,10 @@ import { downloadUrlFile } from '../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { stripRichTextToText } from '../utils/richText';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
-import { trackExperienceBankExported } from '../utils/analyticsTracker';
+import {
+  trackExperienceBankExported,
+  trackLoginStart,
+} from '../utils/analyticsTracker';
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const PENDING_RESUME_UPLOAD_KEY = 'yuanzijianli.pendingResumeUpload';
 const PENDING_ASSISTANT_LAUNCH_KEY = 'yuanzijianli.pendingExperienceBankAssistantLaunch';
@@ -309,6 +312,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const handleImportResumeClick = useCallback(async () => {
     if (!isAuthenticated) {
       writePendingResumeUpload(true);
+      await trackLoginStart('experience_bank_upload');
       await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
       return;
     }
@@ -738,6 +742,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const handleLaunchEmptyStateAssistant = useCallback(async () => {
     if (!isAuthenticated) {
       writePendingAssistantLaunch(true);
+      await trackLoginStart('experience_bank_empty_state');
       await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
       return;
     }

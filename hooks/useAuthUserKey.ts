@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLogto } from '@logto/react';
 import {
-  readAuthUserKeyFromCachedAccessToken,
   resolveAuthUserKeyFromActiveSession,
 } from '../services/apiClient';
 
@@ -38,9 +37,7 @@ const resolveUserKey = (claims: unknown): string | null => {
 
 export const useAuthUserKey = () => {
   const { isAuthenticated, isLoading, getIdTokenClaims } = useLogto();
-  const [userKey, setUserKey] = useState<string | null>(() => (
-    readAuthUserKeyFromCachedAccessToken()
-  ));
+  const [userKey, setUserKey] = useState<string | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
