@@ -17,7 +17,7 @@ import {
 import { resumeService } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
-import { clearActiveResumeId } from './views/resumeStorage';
+import { clearActiveResumeId, setActiveResumeId } from './views/resumeStorage';
 import {
   readStoredAuthUserKey,
   useAuthUserKey,
@@ -137,6 +137,14 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const handleJumpToResumeEditor = useCallback((resumeId?: string) => {
+    if (resumeId) {
+      setActiveResumeId(resumeId);
+    }
+    setCurrentView(ViewState.EDITOR);
+    localStorage.setItem(VIEW_STORAGE_KEY, ViewState.EDITOR);
+  }, []);
+
   useEffect(() => {
     trackPageView(currentView);
   }, [currentView]);
@@ -247,6 +255,7 @@ const App: React.FC = () => {
           <AIAssistant
             pendingLaunchRequest={assistantLaunchRequest}
             onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
+            onJumpToResumeEditor={handleJumpToResumeEditor}
             draftInput={assistantDraftInput}
             onDraftInputChange={setAssistantDraftInput}
           />
