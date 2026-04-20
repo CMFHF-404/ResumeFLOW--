@@ -18,7 +18,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
-import { trackResumeDuplicated } from '../utils/analyticsTracker';
+import { trackLoginStart, trackResumeDuplicated } from '../utils/analyticsTracker';
 import { formatRelativeTime } from '../utils/timeUtils';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { buildPreferredResumeCreateConfig } from './resumeTemplateStorage';
@@ -176,6 +176,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
   const { signIn, isAuthenticated } = useLogto();
+  const handleSignIn = useCallback(async () => {
+    await trackLoginStart('dashboard_cta');
+    await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
+  }, [signIn]);
   const isCacheOwnerMatched = Boolean(
     cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
   );
@@ -850,7 +854,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </p>
                   </div>
                   <button
-                    onClick={() => signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href)}
+                    onClick={() => {
+                      void handleSignIn();
+                    }}
                     className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap"
                   >
                     <LogIn className="w-5 h-5 -scale-x-100" />

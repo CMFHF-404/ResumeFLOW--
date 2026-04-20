@@ -9,7 +9,11 @@ import ResumeEditor from './views/ResumeEditor';
 import AIAssistant, { type AssistantLaunchRequest } from './views/AIAssistant';
 import Callback from './views/Callback';
 import { ViewState, Resume } from './types';
-import { trackPageView } from './utils/analyticsTracker';
+import {
+  consumeJustLoggedIn,
+  trackAuthenticatedVisit,
+  trackPageView,
+} from './utils/analyticsTracker';
 import { resumeService } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
@@ -67,6 +71,8 @@ const App: React.FC = () => {
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const authUserKey = useAuthUserKey();
   const authUserKeyRef = useRef<string | null>(null);
+  const authVisitSourceRef = useRef<'post_login' | 'session_restore'>('session_restore');
+  const authVisitAwaitingResetRef = useRef(false);
   const assistantLaunchRequestIdRef = useRef(0);
 
   const resetUserScopedState = useCallback(() => {
@@ -146,10 +152,14 @@ const App: React.FC = () => {
         (storedKey && storedKey !== authUserKey) ||
         (previousKey && previousKey !== authUserKey);
       if (shouldReset) {
+        authVisitAwaitingResetRef.current = true;
         resetUserScopedState();
+      } else {
+        authVisitAwaitingResetRef.current = false;
       }
       authUserKeyRef.current = authUserKey;
       writeStoredAuthUserKey(authUserKey);
+      authVisitSourceRef.current = consumeJustLoggedIn() ? 'post_login' : 'session_restore';
       return;
     }
 
@@ -159,8 +169,26 @@ const App: React.FC = () => {
 
     resetUserScopedState();
     authUserKeyRef.current = null;
+    authVisitSourceRef.current = 'session_restore';
+    authVisitAwaitingResetRef.current = false;
     writeStoredAuthUserKey(null);
   }, [authUserKey, resetUserScopedState]);
+
+  useEffect(() => {
+    if (!authUserKey) {
+      return;
+    }
+    if (authVisitAwaitingResetRef.current) {
+      if (currentView !== ViewState.DASHBOARD) {
+        return;
+      }
+      authVisitAwaitingResetRef.current = false;
+    }
+    trackAuthenticatedVisit(authUserKey, authVisitSourceRef.current, currentView);
+    if (authVisitSourceRef.current === 'post_login') {
+      authVisitSourceRef.current = 'session_restore';
+    }
+  }, [authUserKey, currentView]);
 
   // 处理简历数据更新的回调
   const handleResumesUpdate = useCallback((resumes: Resume[]) => {

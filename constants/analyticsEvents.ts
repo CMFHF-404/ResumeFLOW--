@@ -1,6 +1,9 @@
 export const ANALYTICS_EVENTS = {
   PAGE_VIEW: 'page_view',
   SIGN_UP_SUCCESS: 'sign_up_success',
+  LOGIN_START: 'login_start',
+  LOGIN_SUCCESS: 'login_success',
+  AUTHENTICATED_VISIT: 'authenticated_visit',
   FIRST_EXPERIENCE_CREATED: 'first_experience_created',
   RESUME_EXPORTED: 'resume_exported',
   RESUME_CARD_CHECKED: 'resume_card_checked',
