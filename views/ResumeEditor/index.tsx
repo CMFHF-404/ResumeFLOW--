@@ -54,6 +54,11 @@ import {
     normalizeJDAnalysisPersistence,
     selectPreferredPersistedJDAnalysis,
 } from '../jdAnalysisStorage';
+import {
+    clearPendingAssistantManualSaveDraft,
+    type PendingAssistantManualSaveDraft,
+    readPendingAssistantManualSaveDrafts,
+} from '../assistantManualSaveStorage';
 import { type DropPosition, moveItemWithDropPosition } from '../../utils/dragSort';
 import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
@@ -792,6 +797,67 @@ const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText: 
         || extractFirstMatch(jdText, JD_COMPANY_PATTERNS);
     return buildAutoResumeName(jobTitle, company);
 };
+
+const applyAssistantExperienceDraftToEditingDraft = (
+    draft: ExperienceEditDraft,
+    assistantDraft: {
+        org: string;
+        title: string;
+        startDate: string;
+        endDate: string;
+        isCurrent?: boolean;
+        star: {
+            s: string;
+            t: string;
+            a: string;
+            r: string;
+        };
+    }
+): ExperienceEditDraft => {
+    const nextDraft: ExperienceEditDraft = {
+        ...draft,
+        company: assistantDraft.org,
+        title: assistantDraft.title,
+        startDate: assistantDraft.startDate || '',
+        endDate: assistantDraft.isCurrent ? '' : (assistantDraft.endDate || ''),
+        isCurrent: Boolean(assistantDraft.isCurrent),
+        star: {
+            s: assistantDraft.star.s,
+            t: assistantDraft.star.t,
+            a: assistantDraft.star.a,
+            r: assistantDraft.star.r,
+        },
+        starTouched: true,
+    };
+    return (
+        nextDraft.company === draft.company
+        && nextDraft.title === draft.title
+        && nextDraft.startDate === draft.startDate
+        && nextDraft.endDate === draft.endDate
+        && nextDraft.isCurrent === draft.isCurrent
+        && nextDraft.star.s === draft.star.s
+        && nextDraft.star.t === draft.star.t
+        && nextDraft.star.a === draft.star.a
+        && nextDraft.star.r === draft.star.r
+        && nextDraft.starTouched === draft.starTouched
+    )
+        ? draft
+        : nextDraft;
+};
+
+const buildPendingAssistantManualSaveDraftKey = (
+    draft: Pick<PendingAssistantManualSaveDraft, 'sessionId' | 'messageId' | 'resumeId' | 'masterId' | 'createdAt'>
+) => [
+    draft.sessionId,
+    draft.messageId,
+    draft.resumeId,
+    draft.masterId,
+    String(draft.createdAt),
+].join(':');
+
+const readErrorStatus = (error: unknown): number | undefined => (
+    (error as { response?: { status?: number } } | null)?.response?.status
+);
 
 const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
     const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
@@ -1562,6 +1628,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
     const trackedPendingAssistantApplyRef = useRef(new Set<string>());
     const pendingAiPolishApplyRef = useRef(new Set<string>());
+    const activeManualSaveDraftRef = useRef<PendingAssistantManualSaveDraft | null>(null);
+    const appliedManualSaveDraftKeyRef = useRef<string | null>(null);
     const movePendingExperienceAssistantApply = useCallback((draftMasterId: string, savedMasterId: string) => {
         const pending = pendingAssistantApplyRef.current.get(draftMasterId);
         if (!pending || draftMasterId === savedMasterId) {
@@ -1585,6 +1653,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         pendingAiPolishApplyRef.current.add(masterId);
     }, []);
     const handleExperienceSaveSuccess = useCallback(async (masterId: string) => {
+        let hasTrackedAssistantApply = false;
         const pending = pendingAssistantApplyRef.current.get(masterId);
         if (pending) {
             const shouldTrackAssistantApply = !trackedPendingAssistantApplyRef.current.has(masterId);
@@ -1605,13 +1674,65 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     cardType: 'experience',
                     callbackOnly: true,
                 });
+                hasTrackedAssistantApply = true;
+            }
+        }
+        const activeManualSaveDraft = activeManualSaveDraftRef.current;
+        const pendingManualSaveDraft = (
+            activeManualSaveDraft
+            && activeManualSaveDraft.resumeId === resumeId
+            && activeManualSaveDraft.masterId === masterId
+        )
+            ? activeManualSaveDraft
+            : null;
+        if (pendingManualSaveDraft) {
+            try {
+                await aiService.markAssistantMessageApplied(
+                    pendingManualSaveDraft.sessionId,
+                    pendingManualSaveDraft.messageId,
+                    { skipApply: true },
+                );
+                clearPendingAssistantManualSaveDraft({
+                    sessionId: pendingManualSaveDraft.sessionId,
+                    messageId: pendingManualSaveDraft.messageId,
+                });
+                activeManualSaveDraftRef.current = null;
+                appliedManualSaveDraftKeyRef.current = null;
+                if (!hasTrackedAssistantApply) {
+                    trackAiAssistantDraftApplied({
+                        source: 'resume_editor',
+                        cardType: 'experience',
+                        callbackOnly: true,
+                    });
+                }
+            } catch (error) {
+                const status = readErrorStatus(error);
+                if (status === 404) {
+                    clearPendingAssistantManualSaveDraft({
+                        sessionId: pendingManualSaveDraft.sessionId,
+                        messageId: pendingManualSaveDraft.messageId,
+                    });
+                    activeManualSaveDraftRef.current = null;
+                    appliedManualSaveDraftKeyRef.current = null;
+                    if (!hasTrackedAssistantApply) {
+                        trackAiAssistantDraftApplied({
+                            source: 'resume_editor',
+                            cardType: 'experience',
+                            callbackOnly: true,
+                        });
+                    }
+                    return;
+                }
+                console.error('[ResumeEditor] 同步 AI 草稿状态失败:', error);
+                showToastError('已保存，但 AI 草稿状态同步失败，请稍后重试');
+                activeManualSaveDraftRef.current = pendingManualSaveDraft;
             }
         }
         if (pendingAiPolishApplyRef.current.has(masterId)) {
             trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             pendingAiPolishApplyRef.current.delete(masterId);
         }
-    }, [showToastError]);
+    }, [resumeId, showToastError]);
     const clearPendingExperienceState = useCallback((masterId: string | null) => {
         if (!masterId) {
             return;
@@ -1619,7 +1740,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         pendingAssistantApplyRef.current.delete(masterId);
         trackedPendingAssistantApplyRef.current.delete(masterId);
         pendingAiPolishApplyRef.current.delete(masterId);
-    }, []);
+        const activeManualSaveDraft = activeManualSaveDraftRef.current;
+        if (
+            activeManualSaveDraft
+            && activeManualSaveDraft.resumeId === resumeId
+            && activeManualSaveDraft.masterId === masterId
+        ) {
+            activeManualSaveDraftRef.current = null;
+            appliedManualSaveDraftKeyRef.current = buildPendingAssistantManualSaveDraftKey(activeManualSaveDraft);
+        }
+    }, [resumeId]);
     const {
         confirmDialog,
         handleConfirmDelete,
@@ -1745,6 +1875,65 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             certification: CERTIFICATION_DRAFT_PREFIX,
         },
     });
+    useEffect(() => {
+        if (!resumeId) {
+            return;
+        }
+        if (isLoadingExperiences) {
+            return;
+        }
+        const pendingManualSaveDrafts = readPendingAssistantManualSaveDrafts({ resumeId })
+            .filter((draft) => draft.source === 'resume_editor');
+        if (pendingManualSaveDrafts.length === 0) {
+            activeManualSaveDraftRef.current = null;
+            appliedManualSaveDraftKeyRef.current = null;
+            return;
+        }
+        const [pendingManualSaveDraft, staleManualSaveDrafts] = pendingManualSaveDrafts.reduce<
+            [PendingAssistantManualSaveDraft | null, PendingAssistantManualSaveDraft[]]
+        >((result, draft) => {
+            const [currentDraft, staleDrafts] = result;
+            const targetExists = experienceItems.some((item) => item.id === draft.masterId);
+            if (targetExists) {
+                return currentDraft ? result : [draft, staleDrafts];
+            }
+            staleDrafts.push(draft);
+            return [currentDraft, staleDrafts];
+        }, [null, []]);
+        staleManualSaveDrafts.forEach((draft) => {
+            clearPendingAssistantManualSaveDraft({
+                sessionId: draft.sessionId,
+                messageId: draft.messageId,
+            });
+        });
+        if (!pendingManualSaveDraft) {
+            activeManualSaveDraftRef.current = null;
+            appliedManualSaveDraftKeyRef.current = null;
+            return;
+        }
+        const draftKey = buildPendingAssistantManualSaveDraftKey(pendingManualSaveDraft);
+        activeManualSaveDraftRef.current = pendingManualSaveDraft;
+        if (experience.editingExpId !== pendingManualSaveDraft.masterId) {
+            if (appliedManualSaveDraftKeyRef.current === draftKey) {
+                return;
+            }
+            experience.startEditingExperience(pendingManualSaveDraft.masterId);
+            return;
+        }
+        if (!experience.editingDraft || experience.editingDraft.masterId !== pendingManualSaveDraft.masterId) {
+            return;
+        }
+        if (appliedManualSaveDraftKeyRef.current === draftKey) {
+            return;
+        }
+        appliedManualSaveDraftKeyRef.current = draftKey;
+        experience.setEditingDraft((prev) => {
+            if (!prev || prev.masterId !== pendingManualSaveDraft.masterId) {
+                return prev;
+            }
+            return applyAssistantExperienceDraftToEditingDraft(prev, pendingManualSaveDraft.draft);
+        });
+    }, [experience, experienceItems, isLoadingExperiences, resumeId]);
     const [experiencePolishMode, setExperiencePolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
     const [experienceCustomPrompt, setExperienceCustomPrompt] = useState('');
     const [experiencePolishPreview, setExperiencePolishPreview] = useState<PolishPreviewState<ExperienceEditDraft> | null>(null);

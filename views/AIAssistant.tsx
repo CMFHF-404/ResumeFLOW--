@@ -27,6 +27,11 @@ import { formatRelativeTime } from '../utils/timeUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { stripRichTextToText } from '../utils/richText';
 import { trackAiAssistantDraftApplied } from '../utils/analyticsTracker';
+import {
+  clearPendingAssistantManualSaveDraft,
+  readPendingAssistantManualSaveDrafts,
+  writePendingAssistantManualSaveDraft,
+} from './assistantManualSaveStorage';
 
 import { AssistantDraftCardView } from './AIAssistant/AssistantDraftCardView';
 import ExperiencePicker from './AIAssistant/ExperiencePicker';
@@ -57,6 +62,7 @@ export type AssistantLaunchRequest = {
 type AIAssistantProps = {
   pendingLaunchRequest?: AssistantLaunchRequest | null;
   onConsumeLaunchRequest?: (requestId?: string) => void;
+  onJumpToResumeEditor?: (resumeId?: string) => void;
   draftInput?: string;
   onDraftInputChange?: (value: string) => void;
 };
@@ -445,6 +451,18 @@ const readContextString = (context: Record<string, unknown>, key: string) => {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 };
 
+const isPersistedCallbackOnlySession = (session: AssistantSession | null) => {
+  if (!session) {
+    return false;
+  }
+  const applyMode = readContextString(session.context_json ?? {}, 'assistantApplyMode');
+  if (applyMode === 'manual_save') {
+    return true;
+  }
+  return session.entry_source === 'resume_editor'
+    && Boolean(readContextString(session.context_json ?? {}, 'masterId'));
+};
+
 const formatFileSize = (size: number) => {
   if (!Number.isFinite(size) || size <= 0) {
     return '';
@@ -702,6 +720,7 @@ const reconcileAssistantSessions = (
 const AIAssistant: React.FC<AIAssistantProps> = ({
   pendingLaunchRequest,
   onConsumeLaunchRequest,
+  onJumpToResumeEditor,
   draftInput = '',
   onDraftInputChange,
 }) => {
@@ -717,6 +736,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [activeThought, setActiveThought] = useState<string>('');
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
+  const [manualSaveMessageIds, setManualSaveMessageIds] = useState<Set<string>>(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [composerAttachments, setComposerAttachments] = useState<AssistantComposerAttachment[]>([]);
@@ -758,6 +778,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
     [selectedSessionId, sessions]
+  );
+  const selectedSessionIsCallbackOnly = useMemo(
+    () => (
+      selectedSession
+        ? callbackOnlySessionIdsRef.current.has(selectedSession.id) || isPersistedCallbackOnlySession(selectedSession)
+        : false
+    ),
+    [selectedSession]
   );
   const isSending = sendingCount > 0;
 
@@ -1201,6 +1229,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     scrollToBottom();
   }, [messages, activeThought, scrollToBottom]);
 
+  useEffect(() => {
+    if (!selectedSessionId) {
+      setManualSaveMessageIds(new Set());
+      return;
+    }
+    const pendingManualSaveDrafts = readPendingAssistantManualSaveDrafts({ sessionId: selectedSessionId });
+    setManualSaveMessageIds(new Set(pendingManualSaveDrafts.map((draft) => draft.messageId)));
+  }, [messages, selectedSessionId]);
+
   useEffect(() => () => {
     revokeComposerAttachmentPreviews(composerAttachmentsRef.current);
   }, [revokeComposerAttachmentPreviews]);
@@ -1256,21 +1293,25 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   }, [clearComposerAttachments, clearSelectedExperiences, clearSelectedResume, markMessagesMutated, markSessionDeleted, setSessionsState]);
 
-  const createSessionRecord = useCallback(async (context?: AssistantEntryContext) => {
+  const createSessionRecord = useCallback(async (context?: AssistantEntryContext, options?: { callbackOnly?: boolean }) => {
     const mode = context?.mode ?? 'general';
+    const contextJson = {
+      ...(context?.contextJson ?? {}),
+      ...(options?.callbackOnly ? { assistantApplyMode: 'manual_save' } : {}),
+    };
     return aiService.createAssistantSession({
       mode,
       title: context?.title,
       entrySource: context?.entrySource ?? 'direct',
-      contextJson: context?.contextJson ?? {},
+      contextJson,
     });
   }, []);
 
   const handleCreateSession = useCallback(async (
     context?: AssistantEntryContext,
-    options?: { seedInput?: boolean; preserveAttachment?: boolean; selectedResumeDraft?: AssistantSelectedResume | null },
+    options?: { seedInput?: boolean; preserveAttachment?: boolean; selectedResumeDraft?: AssistantSelectedResume | null; callbackOnly?: boolean },
   ) => {
-    const created = await createSessionRecord(context);
+    const created = await createSessionRecord(context, { callbackOnly: options?.callbackOnly });
     commitCreatedSession(created, {
       preserveAttachment: options?.preserveAttachment,
       selectedResumeDraft: options?.selectedResumeDraft,
@@ -1478,7 +1519,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           setInputValue('');
           return;
         }
-        const created = await createSessionRecord(pendingLaunchRequest.context);
+        const created = await createSessionRecord(pendingLaunchRequest.context, {
+          callbackOnly: pendingLaunchRequest.callbackOnly,
+        });
         if (cancelled) {
           await cleanupSupersededSession(created.id);
           return;
@@ -1542,6 +1585,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         seedInput: false,
         preserveAttachment: composerAttachments.length > 0,
         selectedResumeDraft: selectedResume,
+        callbackOnly: draftLaunchRequest?.callbackOnly,
       });
       if (draftLaunchRequest?.applyDraftHandler) {
         applyHandlerMapRef.current.set(created.id, draftLaunchRequest.applyDraftHandler);
@@ -1572,12 +1616,20 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!selectedSession) {
       return;
     }
-    if (applyingMessageIds.has(messageId) || appliedMessageIds.has(messageId)) {
+    if (applyingMessageIds.has(messageId) || appliedMessageIds.has(messageId) || manualSaveMessageIds.has(messageId)) {
       return;
     }
     const applyHandler = applyHandlerMapRef.current.get(selectedSession.id);
-    const callbackOnly = callbackOnlySessionIdsRef.current.has(selectedSession.id);
+    const callbackOnly = (
+      callbackOnlySessionIdsRef.current.has(selectedSession.id)
+      || isPersistedCallbackOnlySession(selectedSession)
+    );
     const normalizedCard = normalizeAssistantDraftCard(card);
+    const isResumeEditorManualSaveMode = (
+      callbackOnly
+      && normalizedCard.type === 'experience'
+      && selectedSession.entry_source === 'resume_editor'
+    );
 
     setApplyingMessageIds((prev) => new Set(prev).add(messageId));
     try {
@@ -1612,7 +1664,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           shouldPersistAppliedMarker = false;
         }
       }
-      if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
+      if (!handledByCustomApply && isResumeEditorManualSaveMode) {
+        applied = true;
+        shouldPersistAppliedMarker = false;
+      } else if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
         const context = selectedSession.context_json ?? {};
         const resumeId = readContextString(context, 'resumeId');
         const masterId = readContextString(context, 'masterId');
@@ -1672,6 +1727,29 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           });
         }
         if (!shouldPersistAppliedMarker) {
+          if (normalizedCard.type === 'experience' && selectedSession.entry_source === 'resume_editor') {
+            const context = selectedSession.context_json ?? {};
+            const resumeId = readContextString(context, 'resumeId');
+            const masterId =
+              readContextString(context, 'masterId')
+              || (typeof normalizedCard.data.targetMasterId === 'string' && normalizedCard.data.targetMasterId.trim()
+                ? normalizedCard.data.targetMasterId.trim()
+                : null);
+            if (resumeId && masterId) {
+              writePendingAssistantManualSaveDraft({
+                source: 'resume_editor',
+                sessionId: selectedSession.id,
+                messageId,
+                resumeId,
+                masterId,
+                draft: normalizedCard.data,
+                createdAt: Date.now(),
+              });
+            }
+            setManualSaveMessageIds((prev) => new Set(prev).add(messageId));
+            success('草稿已同步到编辑区，请前往编辑区保存');
+            return;
+          }
           success('草稿已回填到编辑区，保存后才会正式生效');
           return;
         }
@@ -1755,6 +1833,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
     try {
       await aiService.deleteAssistantSession(deleteConfirmId);
+      clearPendingAssistantManualSaveDraft({ sessionId: deleteConfirmId });
       success('会话已删除');
     } catch {
       deletedSessionSeqsRef.current.delete(deleteConfirmId);
@@ -2049,14 +2128,46 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   {messages.map((message) => {
                     if (message.message_type === 'draft_card') {
                       const draftCard = normalizeAssistantDraftCard(message.content_json as unknown as AssistantDraftCard);
+                      const isManualSaveMode = (
+                        selectedSessionIsCallbackOnly
+                        && selectedSession?.entry_source === 'resume_editor'
+                        && draftCard.type === 'experience'
+                      );
+                      const jumpToEditor = isManualSaveMode
+                        ? () => {
+                          const context = selectedSession?.context_json ?? {};
+                          const resumeId = readContextString(context, 'resumeId');
+                          const masterId =
+                            readContextString(context, 'masterId')
+                            || (typeof draftCard.data.targetMasterId === 'string' && draftCard.data.targetMasterId.trim()
+                              ? draftCard.data.targetMasterId.trim()
+                              : null);
+                          if (resumeId && masterId) {
+                            writePendingAssistantManualSaveDraft({
+                              source: 'resume_editor',
+                              sessionId: selectedSession?.id ?? '',
+                              messageId: message.id,
+                              resumeId,
+                              masterId,
+                              draft: draftCard.data,
+                              createdAt: Date.now(),
+                            });
+                            setManualSaveMessageIds((prev) => new Set(prev).add(message.id));
+                          }
+                          onJumpToResumeEditor?.(resumeId ?? undefined);
+                        }
+                        : undefined;
                       return (
                         <div key={message.id} className="w-full self-center flex justify-center mb-6">
                            <div className="flex-1 min-w-0 max-w-2xl">
                              <AssistantDraftCardView
                                card={draftCard}
                                onApply={() => void handleApplyDraft(message.id, draftCard)}
-                               disabled={appliedMessageIds.has(message.id)}
+                               disabled={appliedMessageIds.has(message.id) || manualSaveMessageIds.has(message.id)}
                                isApplying={applyingMessageIds.has(message.id)}
+                               isManualSaveMode={isManualSaveMode}
+                               showManualSaveHint={manualSaveMessageIds.has(message.id)}
+                               onJumpToEditor={jumpToEditor}
                              />
                            </div>
                         </div>

@@ -30,8 +30,11 @@ export const AssistantDraftCardView: React.FC<{
   card: AssistantDraftCard;
   disabled?: boolean;
   isApplying?: boolean;
+  isManualSaveMode?: boolean;
+  showManualSaveHint?: boolean;
+  onJumpToEditor?: () => void;
   onApply: () => void;
-}> = ({ card, disabled, isApplying, onApply }) => {
+}> = ({ card, disabled, isApplying, isManualSaveMode, showManualSaveHint, onJumpToEditor, onApply }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   // 仅在 experience 类型时读取这两个字段，避免联合类型无法收窄的 TS 报错
   const hasTargetMaster = card.type === 'experience' && Boolean(card.data.targetMasterId);
@@ -159,6 +162,11 @@ export const AssistantDraftCardView: React.FC<{
               <Sparkles className="h-3 w-3" />
               可确认草稿
             </div>
+            {isManualSaveMode ? (
+              <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300">
+                单独保存
+              </div>
+            ) : null}
             {experienceApplyHint ? (
               <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
                 hasTargetMaster
@@ -184,30 +192,47 @@ export const AssistantDraftCardView: React.FC<{
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
-          title={isExpanded ? '折叠' : '展开'}
-        >
-          <span className="text-[11px]">{isExpanded ? '收起' : '展开'}</span>
-          {isExpanded ? (
-            <ChevronUp className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" />
-          )}
-        </button>
+      <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+        {showManualSaveHint ? (
+          <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2 text-[11px] leading-5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200">
+            这张草稿已经同步到编辑区，仍需在编辑区点击保存后才会正式生效。
+            {onJumpToEditor ? (
+              <button
+                type="button"
+                onClick={onJumpToEditor}
+                className="ml-1 font-medium underline underline-offset-2 transition-colors hover:text-amber-800 dark:hover:text-amber-100"
+              >
+                点击前往
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
-        <button
-          type="button"
-          onClick={onApply}
-          disabled={disabled || isApplying}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-emerald-950/60"
-        >
-          <Check className="h-3.5 w-3.5" />
-          {isApplying ? '录入中...' : '确认录入'}
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+            title={isExpanded ? '折叠' : '展开'}
+          >
+            <span className="text-[11px]">{isExpanded ? '收起' : '展开'}</span>
+            {isExpanded ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onApply}
+            disabled={disabled || isApplying}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-emerald-950/60"
+          >
+            <Check className="h-3.5 w-3.5" />
+            {isApplying ? '录入中...' : '确认录入'}
+          </button>
+        </div>
       </div>
     </div>
   );
