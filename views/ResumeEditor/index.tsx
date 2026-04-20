@@ -76,7 +76,6 @@ import {
     trackBossGreetingStart,
     trackLayoutModeChange,
     trackModuleReordered,
-    trackResumeDuplicated,
     trackResumeExported,
     trackSmartAssemblyResult,
     trackSmartAssemblyStart,
@@ -509,8 +508,8 @@ type DashboardResumesSyncResult =
 type CreateResumeFlowResult =
     | { status: 'success'; resumeId: string }
     | { status: 'warning'; stage: 'sync'; resumeId: string; error: unknown }
-    | { status: 'partial'; stage: 'rename' | 'load'; resumeId: string; error?: unknown }
-    | { status: 'failed'; stage: 'create' | 'duplicate'; error: unknown };
+    | { status: 'partial'; stage: 'load'; resumeId: string; error?: unknown }
+    | { status: 'failed'; stage: 'create'; error: unknown };
 
 const buildDefaultSmartPageLayout = (
     density: 'compact' | 'standard' | 'spacious',
@@ -3929,82 +3928,31 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     ]);
     const runCreateResumeFlow = useCallback(async (): Promise<CreateResumeFlowResult> => {
         let nextResume: ResumeRecord;
-        let duplicateStartedAt: number | null = null;
-        if (!resumeId) {
-            try {
-                const profileForCreate = await profileService.getProfile().catch(() => profileService.peekProfileForCurrentUser());
-                const ownerId = profileForCreate?.user_id ?? authUserKey ?? await resolveAuthUserKeyFromActiveSession();
-                nextResume = await resumeService.create({
-                    title: UNTITLED_RESUME_TITLE,
-                    config: buildPreferredResumeCreateConfig(
-                        profileForCreate?.extra_json,
-                        ownerId
-                    ),
-                });
-            } catch (error) {
-                console.error('[ResumeEditor] 创建空白简历失败:', error);
-                return {
-                    status: 'failed',
-                    stage: 'create',
-                    error,
-                };
-            }
-        } else {
-            duplicateStartedAt = Date.now();
+        if (resumeId) {
             await flushResumeConfig(buildCommittedResumeConfigSnapshot());
-
-            let duplicated: ResumeRecord;
-            try {
-                duplicated = await resumeService.duplicate(resumeId);
-            } catch (error) {
-                console.error('[ResumeEditor] 创建副本失败:', error);
-                trackResumeDuplicated({
-                    source: 'editor',
-                    action: 'error',
-                    sourceResumeId: resumeId,
-                    durationMs: Date.now() - duplicateStartedAt,
-                });
-                return {
-                    status: 'failed',
-                    stage: 'duplicate',
-                    error,
-                };
-            }
-
-            nextResume = duplicated;
-            try {
-                nextResume = await resumeService.update(duplicated.id, { title: UNTITLED_RESUME_TITLE });
-            } catch (error) {
-                console.error('[ResumeEditor] 新副本重命名失败:', error);
-                await refreshDashboardResumesFromServer();
-                trackResumeDuplicated({
-                    source: 'editor',
-                    action: 'partial',
-                    sourceResumeId: resumeId,
-                    duplicatedResumeId: duplicated.id,
-                    durationMs: Date.now() - duplicateStartedAt,
-                });
-                return {
-                    status: 'partial',
-                    stage: 'rename',
-                    resumeId: duplicated.id,
-                    error,
-                };
-            }
+        }
+        try {
+            const profileForCreate = await profileService.getProfile().catch(() => profileService.peekProfileForCurrentUser());
+            const ownerId = profileForCreate?.user_id ?? authUserKey ?? await resolveAuthUserKeyFromActiveSession();
+            nextResume = await resumeService.create({
+                title: UNTITLED_RESUME_TITLE,
+                config: buildPreferredResumeCreateConfig(
+                    profileForCreate?.extra_json,
+                    ownerId
+                ),
+            });
+        } catch (error) {
+            console.error('[ResumeEditor] 创建空白简历失败:', error);
+            return {
+                status: 'failed',
+                stage: 'create',
+                error,
+            };
         }
 
         const reloadResult = await reloadResumeContext(nextResume.id);
         if (reloadResult.status !== 'success') {
             await refreshDashboardResumesFromServer();
-            if (resumeId && duplicateStartedAt !== null) {
-                trackResumeDuplicated({
-                    source: 'editor',
-                    action: 'partial',
-                    sourceResumeId: resumeId,
-                    duplicatedResumeId: nextResume.id,
-                    durationMs: Date.now() - duplicateStartedAt,
-                });
-            }
             return {
                 status: 'partial',
                 stage: 'load',
@@ -4021,31 +3969,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
         const syncResult = await refreshDashboardResumesFromServer();
         if (syncResult.status === 'failed') {
-            if (resumeId && duplicateStartedAt !== null) {
-                trackResumeDuplicated({
-                    source: 'editor',
-                    action: 'warning',
-                    sourceResumeId: resumeId,
-                    duplicatedResumeId: nextResume.id,
-                    durationMs: Date.now() - duplicateStartedAt,
-                });
-            }
             return {
                 status: 'warning',
                 stage: 'sync',
                 resumeId: nextResume.id,
                 error: syncResult.error,
             };
-        }
-
-        if (resumeId && duplicateStartedAt !== null) {
-            trackResumeDuplicated({
-                source: 'editor',
-                action: 'success',
-                sourceResumeId: resumeId,
-                duplicatedResumeId: nextResume.id,
-                durationMs: Date.now() - duplicateStartedAt,
-            });
         }
 
         return {
@@ -4093,7 +4022,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
             if (result.status === 'partial') {
                 updateToast(toastId, {
-                    message: '副本已创建，但未完成切换，请从仪表盘打开',
+                    message: '新简历已创建，但未完成切换，请从仪表盘打开',
                     type: 'error',
                     duration: 4000,
                 });
@@ -6239,10 +6168,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 />
             </div>
             <div className="md:hidden">
-                <MobileEditorHeader
-                    resumeId={resumeId}
-                    resumeName={resumeName}
-                    onResumeNameChange={handleResumeNameChange}
+                    <MobileEditorHeader
+                        resumeId={resumeId}
+                        resumeName={resumeName}
+                        onResumeNameChange={handleResumeNameChange}
                     analysisResult={analysisResult}
                     isOutdated={isOutdated}
                     isAnalyzing={isAnalyzing}

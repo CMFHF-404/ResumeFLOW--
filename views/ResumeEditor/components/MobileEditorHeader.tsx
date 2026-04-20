@@ -5,11 +5,11 @@ import {
     ChevronLeft,
     ChevronUp,
     Copy,
-    CopyPlus,
     Download,
     Edit2,
     LayoutTemplate,
     MessageSquare,
+    Plus,
     RefreshCw,
     SlidersHorizontal,
     Sparkles,
@@ -315,11 +315,10 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
             : '生成 BOSS 招呼语';
     const isCreateResumeDisabled = isCreatingResume || !canCreateResume;
     const canRestoreDefault = isLayoutModified || isSmartPageApplied;
-    const hasSourceResume = Boolean(resumeId);
     const createResumeTitle = isCreatingResume
-        ? (hasSourceResume ? '副本中...' : '新建中...')
+        ? '新增中...'
         : canCreateResume
-            ? (hasSourceResume ? '创建副本' : '新建简历')
+            ? '新增简历'
             : '当前简历加载中';
     const exportButtonTitle = isPreviewOverflowing
         ? '当前预览已超出单页 A4，导出时可能失败'
@@ -430,7 +429,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                     aria-label={createResumeTitle}
                                     title={createResumeTitle}
                                 >
-                                    <CopyPlus className="h-4 w-4" />
+                                    <Plus className="h-4 w-4" />
                                 </button>
                             </div>
                         )}
