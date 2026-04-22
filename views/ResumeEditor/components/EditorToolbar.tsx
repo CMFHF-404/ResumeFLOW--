@@ -139,7 +139,11 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
             <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
                 <div className="flex min-w-0 flex-wrap items-center gap-3 md:gap-4">
                     <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
-                        <FileText className="w-8 h-8" />
+                        <img
+                            src="/logo-mark-128.png"
+                            alt="原子简历 favicon"
+                            className="h-8 w-8 object-contain"
+                        />
                         <span className="font-bold text-lg tracking-tight text-gray-900 dark:text-white md:text-xl">原子简历</span>
                     </div>
                     <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
