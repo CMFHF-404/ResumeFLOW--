@@ -211,6 +211,37 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
             {str(first_master.id), str(second_master.id)},
         )
 
+    async def test_hydrate_selected_experiences_for_ai_reads_full_latest_star(self) -> None:
+        master_id = str(uuid.uuid4())
+        full_action = "完整动作" * 200
+        latest_version = SimpleNamespace(
+            star={
+                "s": "<p>完整背景</p>",
+                "a": full_action,
+            },
+        )
+
+        with patch.object(
+            assistant_router,
+            "get_experience_detail",
+            AsyncMock(return_value=(SimpleNamespace(id=master_id), latest_version, [latest_version])),
+        ):
+            result = await assistant_router._hydrate_selected_experiences_for_ai(  # type: ignore[attr-defined]
+                AsyncMock(),
+                user_id="user-1",
+                selected_experiences=[
+                    {
+                        "masterId": master_id,
+                        "category": "work",
+                        "title": "产品经理",
+                        "star": {"s": "完整背景", "a": "完整动作..."},
+                    }
+                ],
+            )
+
+        self.assertEqual(result[0]["star"]["s"], "完整背景")
+        self.assertEqual(result[0]["star"]["a"], full_action)
+
     async def test_build_bank_context_keeps_profile_empty_when_user_has_no_profile(self) -> None:
         user_skill = SimpleNamespace(id=uuid.uuid4(), proficiency=3)
         skill = SimpleNamespace(name="数据分析" * 120, category=None)
@@ -485,6 +516,27 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(payload["context"], {"resumeId": "resume-1"})
         self.assertEqual(payload["bank_context"], {"profile": {"full_name": "Alice"}})
+
+    def test_assistant_stream_request_accepts_skill_id(self) -> None:
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="请模拟面试",
+            display_message="请模拟面试",
+            mode=None,
+            skill_id="mock_interview",
+            selected_experiences=[],
+        )
+
+        self.assertEqual(payload.skill_id, "mock_interview")
+
+    def test_assistant_stream_request_rejects_unknown_skill_id(self) -> None:
+        with self.assertRaises(Exception):
+            assistant_router.AssistantSessionStreamRequest(
+                user_message="请模拟面试",
+                display_message="请模拟面试",
+                mode=None,
+                skill_id="unknown_skill",
+                selected_experiences=[],
+            )
 
     def test_build_assistant_payload_clips_selected_experiences(self) -> None:
         payload = ai_service._build_assistant_payload(

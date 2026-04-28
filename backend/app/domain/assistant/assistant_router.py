@@ -18,7 +18,11 @@ from ...models import AIAssistantImageBlob
 from ..ai import jd_attachment_service
 from ..ai.ai_service import _normalize_selected_experiences, _normalize_selected_resume, run_assistant_turn_with_thoughts
 from ..certifications.certification_service import list_certifications
-from ..experience.experience_service import list_experiences
+from ..experience.experience_service import (
+    NotFoundError as ExperienceNotFoundError,
+    get_experience_detail,
+    list_experiences,
+)
 from ..profile.profile_service import get_profile_if_exists
 from ..skills.skill_service import list_user_skills
 from .assistant_service import (
@@ -184,6 +188,54 @@ def _build_star_snapshot(raw_star: Any) -> Dict[str, str]:
     return snapshot
 
 
+def _normalize_full_experience_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    normalized = re.sub(r"(?i)<br\s*/?>", "\n", normalized)
+    normalized = re.sub(r"(?i)</p\s*>", "\n", normalized)
+    normalized = re.sub(r"<[^>]+>", " ", normalized)
+    normalized = html.unescape(normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or None
+
+
+def _build_full_star_snapshot(raw_star: Any) -> Dict[str, str]:
+    if not isinstance(raw_star, dict):
+        return {}
+    snapshot: Dict[str, str] = {}
+    for key in ("s", "t", "a", "r"):
+        normalized = _normalize_full_experience_text(raw_star.get(key))
+        if normalized:
+            snapshot[key] = normalized
+    return snapshot
+
+
+async def _hydrate_selected_experiences_for_ai(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    selected_experiences: list[Dict[str, Any]],
+) -> list[Dict[str, Any]]:
+    hydrated_items: list[Dict[str, Any]] = []
+    for item in selected_experiences:
+        hydrated = dict(item)
+        master_id = str(item.get("masterId") or "").strip()
+        if master_id:
+            try:
+                _, latest_version, _ = await get_experience_detail(session, user_id, master_id)
+            except ExperienceNotFoundError:
+                latest_version = None
+            if latest_version is not None:
+                full_star = _build_full_star_snapshot(getattr(latest_version, "star", None))
+                if full_star:
+                    hydrated["star"] = full_star
+        hydrated_items.append(hydrated)
+    return hydrated_items
+
+
 async def _build_bank_context(
     session: AsyncSession,
     *,
@@ -344,6 +396,7 @@ async def _parse_stream_payload(
             "user_message": str(form.get("user_message") or ""),
             "display_message": str(form.get("display_message") or ""),
             "mode": str(form.get("mode") or "") or None,
+            "skill_id": str(form.get("skill_id") or "") or None,
             "selected_experiences": selected_experiences,
             "selected_resume": selected_resume,
         }
@@ -675,6 +728,11 @@ async def stream_assistant_session_turn(
                         files=attachment_files,
                         prepared_attachments=prepared_attachments,
                     )
+                selected_experiences_for_ai = await _hydrate_selected_experiences_for_ai(
+                    session,
+                    user_id=current_user.id,
+                    selected_experiences=payload.selected_experiences,
+                )
                 await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
                 result = await run_assistant_turn_with_thoughts(
                     mode=payload.mode or assistant_session.mode,
@@ -683,8 +741,9 @@ async def stream_assistant_session_turn(
                     entry_source=assistant_session.entry_source,
                     context_json=assistant_session.context_json,
                     bank_context=bank_context,
-                    selected_experiences=payload.selected_experiences,
+                    selected_experiences=selected_experiences_for_ai,
                     selected_resume=payload.selected_resume,
+                    skill_id=payload.skill_id,
                     history=_build_history_messages(messages),
                     attachments=attachment_payloads,
                     thought_callback=emit,
@@ -702,6 +761,7 @@ async def stream_assistant_session_turn(
                     user_attachments=persisted_attachments,
                     user_selected_experiences=payload.selected_experiences,
                     user_selected_resume=payload.selected_resume,
+                    user_skill_id=payload.skill_id,
                     assistant_text=result["assistantText"],
                     draft_card=result.get("draftCard"),
                     title=result.get("title"),

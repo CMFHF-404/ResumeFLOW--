@@ -30,14 +30,16 @@ export type AIPolishToolbarProps = {
 };
 
 const MODE_OPTIONS: Array<{ value: ToolbarMode; label: string }> = [
-  { value: 'default', label: '突出重点' },
+  { value: 'default', label: 'AI 润色' },
+  { value: 'highlight', label: '匹配高亮' },
   { value: 'shorten', label: '精简内容' },
   { value: 'expand', label: '扩写文本' },
   { value: 'custom', label: '自定义 Prompt' },
 ];
 
 const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
-  default: '结合 JD，保真改写并加粗匹配内容。',
+  default: '结合 JD，改写成更接近简历成稿的表达。',
+  highlight: '保守轻改，只加粗最匹配 JD 的证据。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
   expand: '补充必要上下文，字数扩写 30% 以上。',
   custom: '按你的 Prompt 定向润色，仍以事实为准。',
@@ -45,6 +47,7 @@ const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
 
 const MODE_DESCRIPTIONS_NO_JD: Record<ToolbarMode, string> = {
   default: '保留原文，仅调整重点内容的强调。',
+  highlight: '保留原文，仅调整重点内容的强调。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
   expand: '补充必要上下文，字数扩写 30% 以上。',
   custom: '按你的 Prompt 定向润色，仍以事实为准。',

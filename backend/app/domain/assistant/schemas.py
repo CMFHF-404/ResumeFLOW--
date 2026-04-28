@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 AssistantMode = Literal["general", "experience", "certification", "skill"]
+AssistantSkillId = Literal["star_guidance", "experience_completion", "mock_interview"]
 AssistantEntrySource = Literal["direct", "experience_bank", "resume_editor"]
 AssistantMessageRole = Literal["user", "assistant"]
 AssistantMessageType = Literal["user_text", "assistant_text", "draft_card"]
@@ -51,6 +52,7 @@ class AssistantSessionStreamRequest(BaseModel):
     user_message: str = ""
     display_message: Optional[str] = None
     mode: Optional[AssistantMode] = None
+    skill_id: Optional[AssistantSkillId] = None
     selected_experiences: List[Dict[str, Any]] = Field(default_factory=list)
     selected_resume: Optional[Dict[str, Any]] = None
 
