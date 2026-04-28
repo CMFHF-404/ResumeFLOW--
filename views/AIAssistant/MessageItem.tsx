@@ -35,6 +35,21 @@ const EXPERIENCE_ICON = {
   education: GraduationCap,
 } as const;
 
+const normalizeAssistantMarkdown = (value: string) => value
+  .replace(/\r\n/g, '\n')
+  .replace(/^[ \t]*[-*][ \t]*\n[ \t]*\n(?=[ \t]*\*\*)/gm, '')
+  .replace(/^[ \t]*[-*][ \t]*\n(?=[ \t]*\*\*)/gm, '');
+
+const MarkdownParagraph: React.FC<React.HTMLAttributes<HTMLParagraphElement>> = (props) => (
+  <p className="m-0 whitespace-pre-wrap leading-7 text-slate-700 dark:text-slate-200" {...props} />
+);
+
+const MarkdownListItem: React.FC<React.LiHTMLAttributes<HTMLLIElement>> = ({ children, ...props }) => (
+  <li className="pl-1 leading-7 text-slate-700 dark:text-slate-200" {...props}>
+    <div className="min-w-0 space-y-1.5 [&>p]:m-0">{children}</div>
+  </li>
+);
+
 const AttachmentRail: React.FC<{
   attachments: MessageAttachmentPreview[];
   selectedExperiences: AssistantSelectedExperience[];
@@ -161,11 +176,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           <div className="space-y-3 overflow-hidden break-words text-sm leading-7">
             <ReactMarkdown
               components={{
-                p: ({ node, ...props }) => <p className="m-0 whitespace-pre-wrap" {...props} />,
+                p: ({ node, ...props }) => <MarkdownParagraph {...props} />,
                 strong: ({ node, ...props }) => <strong className="font-bold text-slate-900 dark:text-slate-100" {...props} />,
-                ul: ({ node, ...props }) => <ul className="m-0 list-disc space-y-1.5 pl-5 marker:text-slate-400 dark:marker:text-slate-500" {...props} />,
-                ol: ({ node, ...props }) => <ol className="m-0 list-decimal space-y-1.5 pl-5 marker:font-medium marker:text-slate-400 dark:marker:text-slate-500" {...props} />,
-                li: ({ node, ...props }) => <li className="whitespace-pre-wrap pl-1" {...props} />,
+                ul: ({ node, ...props }) => <ul className="m-0 list-disc space-y-2 pl-5 marker:text-slate-300 dark:marker:text-slate-600" {...props} />,
+                ol: ({ node, ...props }) => <ol className="m-0 list-decimal space-y-2 pl-5 marker:text-xs marker:font-semibold marker:text-slate-400 dark:marker:text-slate-500" {...props} />,
+                li: ({ node, ...props }) => <MarkdownListItem {...props} />,
                 a: ({ node, ...props }) => (
                   <a
                     className="font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline dark:text-emerald-300 dark:hover:text-emerald-200"
@@ -177,13 +192,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 h1: ({ node, ...props }) => <h1 className="mb-2 mt-4 text-lg font-bold text-slate-900 dark:text-slate-100" {...props} />,
                 h2: ({ node, ...props }) => <h2 className="mb-2 mt-4 text-base font-bold text-slate-900 dark:text-slate-100" {...props} />,
                 h3: ({ node, ...props }) => <h3 className="mb-1.5 mt-3 text-sm font-bold text-slate-900 dark:text-slate-100" {...props} />,
-                blockquote: ({ node, ...props }) => <blockquote className="my-2 whitespace-pre-wrap border-l-4 border-slate-200 pl-4 italic text-slate-600 dark:border-slate-700 dark:text-slate-300" {...props} />,
+                blockquote: ({ node, ...props }) => (
+                  <blockquote
+                    className="my-2 rounded-r-xl border-l-2 border-slate-200 bg-slate-50/70 py-2.5 pl-4 pr-3 text-slate-600 dark:border-slate-700 dark:bg-slate-800/45 dark:text-slate-300 [&>p]:m-0 [&>p]:whitespace-normal"
+                    {...props}
+                  />
+                ),
                 code: ({ node, inline, ...props }: any) => inline
                   ? <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px] text-slate-800 dark:bg-slate-800 dark:text-slate-100" {...props} />
                   : <code className="my-2 block overflow-x-auto whitespace-pre rounded-lg border border-slate-100 bg-slate-50 p-3 font-mono text-[13px] text-slate-800 shadow-inner dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" {...props} />,
               }}
             >
-              {content}
+              {normalizeAssistantMarkdown(content)}
             </ReactMarkdown>
           </div>
         </div>
