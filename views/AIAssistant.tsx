@@ -16,7 +16,7 @@ import {
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSession, type AssistantStreamEvent } from '../services/aiService';
+import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSession, type AssistantSkillId, type AssistantStreamEvent } from '../services/aiService';
 import { certificationsService } from '../services/certificationsService';
 import { experienceService, type ExperienceListItem } from '../services/experienceService';
 import { resumeService, type Resume } from '../services/resumeService';
@@ -95,6 +95,50 @@ const ASSISTANT_ATTACHMENT_MIME_TO_EXTENSION: Record<string, string> = {
   'image/webp': '.webp',
   'application/pdf': '.pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+};
+
+const ASSISTANT_SKILL_PRESETS: Array<{
+  id: AssistantSkillId;
+  title: string;
+  prompt: string;
+  Icon: React.ComponentType<{ className?: string }>;
+}> = [
+  {
+    id: 'star_guidance',
+    title: 'STAR 引导助手',
+    prompt: '请用 STAR 引导我补全这段经历，先追问缺失信息，不要急着生成成稿。',
+    Icon: Sparkles,
+  },
+  {
+    id: 'experience_completion',
+    title: '经历补全助手',
+    prompt: '请检查我选中的经历缺少哪些岗位价值证据，并按重要性追问我补全职责、方法和结果。',
+    Icon: Wrench,
+  },
+  {
+    id: 'mock_interview',
+    title: '模拟面试教练',
+    prompt: '请结合我选择的简历/JD，模拟面试官追问，并指出我的回答如何更贴合岗位价值。',
+    Icon: Lightbulb,
+  },
+];
+
+const ASSISTANT_SKILL_FOLLOWUPS: Record<AssistantSkillId, Array<{ label: string; prompt: string; skillId: AssistantSkillId }>> = {
+  star_guidance: [
+    { label: '继续追问成果', prompt: '请继续追问我最缺的结果、数据或影响证据。', skillId: 'star_guidance' },
+    { label: '生成成稿', prompt: '现在请基于已有信息生成一版可保存的 STAR 经历卡片。', skillId: 'star_guidance' },
+    { label: '切换到模拟面试', prompt: '请基于这段经历模拟面试官追问，并指出回答重点。', skillId: 'mock_interview' },
+  ],
+  experience_completion: [
+    { label: '继续补全职责', prompt: '请继续追问我职责边界、协作对象和具体方法。', skillId: 'experience_completion' },
+    { label: '提炼岗位价值', prompt: '请把当前经历里最能打动目标岗位的证据按优先级列出来。', skillId: 'experience_completion' },
+    { label: '生成成稿', prompt: '请把已补全的信息整理成一版可保存的 STAR 经历卡片。', skillId: 'star_guidance' },
+  ],
+  mock_interview: [
+    { label: '继续追问', prompt: '请继续像面试官一样追问我的薄弱点。', skillId: 'mock_interview' },
+    { label: '优化回答', prompt: '请根据岗位价值，帮我优化上一题的回答结构。', skillId: 'mock_interview' },
+    { label: '补全经历', prompt: '请指出这段经历为了应对面试还缺哪些事实证据。', skillId: 'experience_completion' },
+  ],
 };
 
 const clipSelectedExperienceText = (value: string, limit: number) => {
@@ -733,6 +777,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [sendingCount, setSendingCount] = useState(0);
   const [inputValue, setInputValue] = useState(draftInput);
+  const [activeComposerSkillId, setActiveComposerSkillId] = useState<AssistantSkillId | null>(null);
+  const [lastAssistantSkillId, setLastAssistantSkillId] = useState<AssistantSkillId | null>(null);
   const [activeThought, setActiveThought] = useState<string>('');
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
@@ -788,6 +834,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     [selectedSession]
   );
   const isSending = sendingCount > 0;
+  const shouldShowSkillPresetPanel = !isLoadingSessions
+    && !isLoadingDetail
+    && messages.length === 0
+    && !activeThought
+    && !isSending;
 
   const markSessionMutated = useCallback((sessionId: string) => {
     const nextSeq = sessionMutationCounterRef.current + 1;
@@ -1116,6 +1167,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setMessages([]);
       setAppliedMessageIds(new Set());
       setActiveThought('');
+      setLastAssistantSkillId(null);
       return;
     }
     if (!selectedSessionId) {
@@ -1129,6 +1181,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setMessages([]);
       setAppliedMessageIds(new Set());
       setActiveThought('');
+      setLastAssistantSkillId(null);
       return;
     }
     const preserveComposerAttachment = preserveComposerAttachmentOnNextSelectionRef.current;
@@ -1146,6 +1199,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setMessages([]);
     setAppliedMessageIds(new Set());
     setActiveThought('');
+    setLastAssistantSkillId(null);
     void loadSessionDetail(selectedSessionId);
   }, [clearComposerAttachments, clearSelectedExperiences, clearSelectedResume, isAuthenticated, loadSessionDetail, markMessagesMutated, selectedSessionId]);
 
@@ -1348,6 +1402,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     sessionId: string,
     payload: {
       userMessage: string;
+      skillId?: AssistantSkillId | null;
       attachments?: AssistantComposerAttachment[];
       selectedExperiences?: AssistantSelectedExperience[];
       selectedResume?: AssistantSelectedResume | null;
@@ -1356,6 +1411,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     options?: { shouldAbort?: () => boolean },
   ) => {
     const trimmedMessage = payload.userMessage.trim();
+    const skillId = payload.skillId ?? null;
     const attachments = payload.attachments ?? [];
     const selectedExperienceItems = payload.selectedExperiences ?? [];
     const selectedResumeItem = payload.selectedResume ?? null;
@@ -1400,12 +1456,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         ...(selectedResumeItem ? {
           selected_resume: selectedResumeItem,
         } : {}),
+        ...(skillId ? { skill_id: skillId } : {}),
       },
       created_at: now,
     };
     setSendingCount((count) => count + 1);
     if (selectedSessionIdRef.current === sessionId) {
       setActiveThought('');
+      setLastAssistantSkillId(null);
       markMessagesMutated();
       setMessages((prev) => [...prev, optimisticUserMessage]);
       setInputValue((prev) => (prev.trim() === trimmedMessage ? '' : prev));
@@ -1420,6 +1478,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           userMessage: effectiveMessage,
           displayMessage: trimmedMessage,
           mode,
+          skillId,
           attachments: attachments.map((attachment) => attachment.file),
           selectedExperiences: selectedExperienceItems,
           selectedResume: selectedResumeItem,
@@ -1466,8 +1525,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           ]);
         }
         setActiveThought('');
+        setLastAssistantSkillId(skillId);
         clearComposerAttachmentsIfMatches(attachments);
         setSelectedExperiences([]);
+        setActiveComposerSkillId(null);
         persistDraftSelectedResume(sessionId, null);
         setSelectedResume(null);
         void loadSessionDetail(sessionId);
@@ -1604,13 +1665,24 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       activeSessionId,
       {
         userMessage: nextInput,
+        skillId: activeComposerSkillId,
         attachments: composerAttachments,
         selectedExperiences,
         selectedResume,
       },
       activeMode,
     );
-  }, [composerAttachments, handleCreateSession, inputValue, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
+  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
+
+  const handleSelectSkillPreset = useCallback((skillId: AssistantSkillId, prompt: string) => {
+    setActiveComposerSkillId(skillId);
+    setInputValue(prompt);
+  }, []);
+
+  const handleSelectSkillFollowup = useCallback((skillId: AssistantSkillId, prompt: string) => {
+    setActiveComposerSkillId(skillId);
+    setInputValue(prompt);
+  }, []);
 
   const handleApplyDraft = useCallback(async (messageId: string, card: AssistantDraftCard) => {
     if (!selectedSession) {
@@ -1792,6 +1864,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     try {
       draftLaunchRequestRef.current = null;
       suppressAutoSelectSessionRef.current = false;
+      setActiveComposerSkillId(null);
+      setLastAssistantSkillId(null);
       const session = await handleCreateSession({ mode, entrySource: 'direct' });
       setSelectedSessionId(session.id);
       setIsMobileHistoryOpen(false);
@@ -1804,6 +1878,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const handleSelectSession = useCallback((sessionId: string) => {
     draftLaunchRequestRef.current = null;
     suppressAutoSelectSessionRef.current = false;
+    setActiveComposerSkillId(null);
+    setLastAssistantSkillId(null);
     setSelectedSessionId(sessionId);
     setIsMobileHistoryOpen(false);
   }, []);
@@ -2107,7 +2183,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               className="min-w-0 flex-1 overflow-y-auto px-3 pt-4 sm:px-4 md:px-7 md:pt-6"
               style={{ paddingBottom: `${composerReservedHeight}px` }}
             >
-              {!selectedSessionId && !isLoadingSessions ? (
+              {shouldShowSkillPresetPanel ? (
                 <div className="mx-auto mt-6 flex w-full max-w-3xl min-w-0 flex-col gap-6 md:mt-10">
                   <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_60px_-30px_rgba(2,6,23,0.95)] md:p-8">
                     <div className="flex items-start gap-4">
@@ -2115,11 +2191,40 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                         <Bot className="h-6 w-6" />
                       </div>
                       <div>
-                        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">开始一个整理任务</h2>
+                        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">选择 AI 助手定位</h2>
                         <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-400">
-                          你可以让我帮你把混乱的经历梳成 STAR，也可以整理证书与技能。AI 会默认参考你的经历库，优先建议复用或优化已有内容，最后输出一张可确认录入的结构化卡片。
+                          先选一个工作方式，我会把对应提示放进输入框。你可以继续修改，再决定是否发送。
                         </p>
                       </div>
+                    </div>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                      {ASSISTANT_SKILL_PRESETS.map(({ id, title, prompt, Icon }) => {
+                        const isActive = activeComposerSkillId === id;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => handleSelectSkillPreset(id, prompt)}
+                            className={`min-h-[124px] rounded-2xl border px-4 py-4 text-left transition ${
+                              isActive
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-950 shadow-sm dark:border-emerald-500/60 dark:bg-emerald-950/35 dark:text-emerald-100'
+                                : 'border-slate-200 bg-slate-50/80 text-slate-800 hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-900'
+                            }`}
+                          >
+                            <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${
+                              isActive
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-white text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700'
+                            }`}>
+                              <Icon className="h-4 w-4" />
+                            </span>
+                            <span className="mt-3 block text-sm font-semibold leading-5">{title}</span>
+                            <span className="mt-2 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                              {prompt}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -2194,6 +2299,20 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   ) : null}
                   {activeThought ? (
                      <ActiveThoughtBlock thought={activeThought} />
+                  ) : null}
+                  {!activeThought && lastAssistantSkillId ? (
+                    <div className="mb-6 flex flex-wrap justify-center gap-2">
+                      {ASSISTANT_SKILL_FOLLOWUPS[lastAssistantSkillId].map((item) => (
+                        <button
+                          key={`${item.skillId}-${item.label}`}
+                          type="button"
+                          onClick={() => handleSelectSkillFollowup(item.skillId, item.prompt)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
               )}

@@ -646,11 +646,14 @@ async def persist_assistant_turn(
     user_attachments: list[dict] | None = None,
     user_selected_experiences: list[dict] | None = None,
     user_selected_resume: dict | None = None,
+    user_skill_id: str | None = None,
     assistant_text: str,
     draft_card: dict | None,
     title: str | None = None,
 ) -> list[AIAssistantMessage]:
     user_content_json = {"text": display_message if display_message is not None else user_message}
+    if user_skill_id:
+        user_content_json["skill_id"] = user_skill_id
     normalized_attachments = [
         preview
         for preview in (_sanitize_attachment_preview(attachment) for attachment in (user_attachments or []))

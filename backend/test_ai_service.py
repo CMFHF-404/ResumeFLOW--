@@ -135,25 +135,83 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AiServicePolishPromptTests(unittest.TestCase):
-    def test_default_mode_with_jd_uses_highlight_prompt_without_rewrite(self) -> None:
+    def test_default_mode_with_jd_uses_resume_ready_rewrite_prompt(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="default", jd_text="产品经理 JD")
 
-        self.assertIn("Do not rewrite", prompt)
+        self.assertIn("Rewrite the provided STAR content into resume-ready statements", prompt)
+        self.assertIn("stronger than light highlighting", prompt)
         self.assertIn("no more than 5", prompt)
-        self.assertIn("most JD-relevant existing phrases", prompt)
 
     def test_default_mode_without_jd_uses_role_based_highlight_fallback(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="default", jd_text=None)
 
-        self.assertIn("infer the likely role focus", prompt)
-        self.assertIn("general strengths for that role", prompt)
-        self.assertIn("Do not rewrite", prompt)
+        self.assertIn("Infer the likely role focus", prompt)
+        self.assertIn("concrete ownership or execution evidence", prompt)
+        self.assertIn("do not rewrite", prompt)
 
     def test_shorten_mode_keeps_rewrite_prompt(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="shorten")
 
         self.assertIn("Rewrite into strong, impact-oriented STAR statements.", prompt)
         self.assertIn("Compress wording aggressively", prompt)
+
+    def test_match_highlight_mode_keeps_conservative_jd_highlight_prompt(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="highlight", jd_text="产品经理 JD")
+
+        self.assertIn("Prefer targeted edits", prompt)
+        self.assertIn("Highlight caps are strict", prompt)
+        self.assertIn("Do not invent", prompt)
+
+
+class AiServiceAssistantSkillTests(unittest.TestCase):
+    def test_get_assistant_prompt_for_mock_interview_does_not_default_to_draft_card(self) -> None:
+        prompt = ai_service._get_assistant_prompt("general", skill_id="mock_interview")
+
+        self.assertIn("模拟面试教练", prompt)
+        self.assertIn("draftCard must be null", prompt)
+        self.assertIn("面试官追问", prompt)
+
+    def test_get_assistant_prompt_for_star_guidance_allows_draft_only_when_ready(self) -> None:
+        prompt = ai_service._get_assistant_prompt("general", skill_id="star_guidance")
+
+        self.assertIn("STAR 引导助手", prompt)
+        self.assertIn("ask exactly one focused follow-up question", prompt)
+        self.assertIn("return a draftCard only when", prompt)
+
+    def test_build_assistant_payload_keeps_selected_experience_full_text_for_tools(self) -> None:
+        long_action = "执行动作" * 160
+
+        payload = ai_service._build_assistant_payload(
+            mode="general",
+            user_message="帮我补全经历",
+            session_title="AI 助理",
+            entry_source="direct",
+            context_json={},
+            bank_context=None,
+            selected_experiences=[
+                {
+                    "masterId": "master-1",
+                    "category": "work",
+                    "org": "某公司",
+                    "title": "产品经理",
+                    "summary": "摘要",
+                    "star": {"a": long_action},
+                }
+            ],
+            selected_resume=None,
+            history=[],
+            skill_id="experience_completion",
+        )
+
+        selected = payload["selected_experiences"][0]
+        self.assertEqual(payload["skill_id"], "experience_completion")
+        self.assertLess(len(selected["star"]["a"]), len(long_action))
+        self.assertEqual(selected["full_text"]["star"]["a"], long_action)
+
+    def test_personal_summary_prompt_requires_company_value_evidence(self) -> None:
+        self.assertIn("company or role can use", ai_service.PERSONAL_SUMMARY_GENERATION)
+        self.assertIn("Do not use unsupported personality praise", ai_service.PERSONAL_SUMMARY_GENERATION)
+        self.assertIn("1-2 concrete evidence points", ai_service.PERSONAL_SUMMARY_GENERATION)
 
 
 class AiServiceAssistantNormalizationTests(unittest.TestCase):
@@ -224,6 +282,24 @@ class AiServiceAssistantNormalizationTests(unittest.TestCase):
         )
 
         self.assertEqual(result["draftCard"]["data"]["star"]["a"], "2024.05 完成灰度发布")
+
+    def test_normalize_assistant_result_drops_mock_interview_draft_card(self) -> None:
+        result = ai_service._normalize_assistant_result(
+            {
+                "assistantText": "这里是模拟面试追问。",
+                "title": "模拟面试",
+                "draftCard": {
+                    "type": "experience",
+                    "status": "draft_ready",
+                    "summary": "不应返回",
+                    "data": {"category": "project", "star": {"a": "行动"}},
+                },
+            },
+            skill_id="mock_interview",
+        )
+
+        self.assertEqual(result["assistantText"], "这里是模拟面试追问。")
+        self.assertIsNone(result["draftCard"])
 
     def test_normalize_assistant_result_keeps_education_courses_text(self) -> None:
         result = ai_service._normalize_assistant_result(
