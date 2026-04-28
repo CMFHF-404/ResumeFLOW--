@@ -1,3 +1,4 @@
+import json
 import os
 import unittest
 from types import SimpleNamespace
@@ -58,6 +59,29 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "thinkingBudget": -1,
             },
         )
+
+    def test_build_generation_config_omits_json_mime_for_gemini3_to_preserve_thoughts(self) -> None:
+        config = ai_service._build_gemini_generation_config(
+            1024,
+            model="gemini-3-flash-preview",
+        )
+
+        self.assertNotIn("responseMimeType", config)
+        self.assertEqual(
+            config["thinkingConfig"],
+            {
+                "includeThoughts": True,
+                "thinkingBudget": 1024,
+            },
+        )
+
+    def test_build_generation_config_keeps_json_mime_for_gemini25(self) -> None:
+        config = ai_service._build_gemini_generation_config(
+            1024,
+            model="gemini-2.5-flash",
+        )
+
+        self.assertEqual(config["responseMimeType"], "application/json")
 
     def test_load_settings_reads_thinking_budget_envs(self) -> None:
         with patch.dict(
@@ -208,6 +232,58 @@ class AiServiceAssistantSkillTests(unittest.TestCase):
         self.assertLess(len(selected["star"]["a"]), len(long_action))
         self.assertEqual(selected["full_text"]["star"]["a"], long_action)
 
+    def test_build_assistant_payload_can_omit_full_text_for_gemini_streaming(self) -> None:
+        long_action = "执行动作" * 160
+
+        payload = ai_service._build_assistant_payload(
+            mode="general",
+            user_message="帮我补全经历",
+            session_title="AI 助理",
+            entry_source="direct",
+            context_json={},
+            bank_context=None,
+            selected_experiences=[
+                {
+                    "masterId": "master-1",
+                    "category": "work",
+                    "org": "某公司",
+                    "title": "产品经理",
+                    "summary": "摘要",
+                    "star": {"a": long_action},
+                }
+            ],
+            selected_resume=None,
+            history=[],
+            include_selected_experience_full_text=False,
+            preserve_selected_experience_star_text=True,
+        )
+
+        selected = payload["selected_experiences"][0]
+        self.assertNotIn("full_text", selected)
+        self.assertEqual(selected["star"]["a"], long_action)
+
+    def test_build_assistant_payload_keeps_user_message_last(self) -> None:
+        payload = ai_service._build_assistant_payload(
+            mode="general",
+            user_message="帮我补全经历",
+            session_title="AI 助理",
+            entry_source="direct",
+            context_json={},
+            bank_context={"profile": {}},
+            selected_experiences=[
+                {
+                    "masterId": "master-1",
+                    "category": "work",
+                    "org": "某公司",
+                    "title": "产品经理",
+                }
+            ],
+            selected_resume=None,
+            history=[],
+        )
+
+        self.assertEqual(list(payload.keys())[-1], "user_message")
+
     def test_personal_summary_prompt_requires_company_value_evidence(self) -> None:
         self.assertIn("company or role can use", ai_service.PERSONAL_SUMMARY_GENERATION)
         self.assertIn("Do not use unsupported personality praise", ai_service.PERSONAL_SUMMARY_GENERATION)
@@ -328,3 +404,54 @@ class AiServiceAssistantNormalizationTests(unittest.TestCase):
         )
 
         self.assertEqual(result["draftCard"]["data"]["star"]["a"], "高等数学\n数据结构")
+
+
+class AiServiceAssistantStreamingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_assistant_turn_with_thoughts_emits_initial_thought_before_streaming(self) -> None:
+        long_action = "执行动作" * 160
+        fake_settings = SimpleNamespace(
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_polish=1024,
+        )
+        stream_mock = AsyncMock(
+            return_value={
+                "assistantText": "已整理好。",
+                "draftCard": None,
+                "title": "AI 助理",
+            }
+        )
+        thought_callback = AsyncMock()
+
+        with patch.object(ai_service, "settings", fake_settings):
+            with patch.object(ai_service, "_stream_gemini_json_response", stream_mock):
+                result = await ai_service.run_assistant_turn_with_thoughts(
+                    mode="general",
+                    user_message="帮我补全经历",
+                    session_title="AI 助理",
+                    entry_source="direct",
+                    context_json={},
+                    bank_context=None,
+                    selected_experiences=[
+                        {
+                            "masterId": "master-1",
+                            "category": "work",
+                            "org": "某公司",
+                            "title": "产品经理",
+                            "star": {"a": long_action},
+                        }
+                    ],
+                    selected_resume=None,
+                    history=[],
+                    attachments=None,
+                    thought_callback=thought_callback,
+                )
+
+        self.assertEqual(result["assistantText"], "已整理好。")
+        thought_callback.assert_awaited_once_with(
+            {"type": "thought", "summary": "正在分析上下文并组织回复"}
+        )
+        stream_mock.assert_awaited_once()
+        payload = json.loads(stream_mock.await_args.kwargs["user_parts"][-1]["text"])
+        selected = payload["selected_experiences"][0]
+        self.assertNotIn("full_text", selected)
+        self.assertEqual(selected["star"]["a"], long_action)

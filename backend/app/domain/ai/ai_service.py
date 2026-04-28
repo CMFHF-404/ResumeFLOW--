@@ -303,6 +303,7 @@ def _normalize_selected_experience_item(
     item: Any,
     *,
     include_full_text: bool = False,
+    preserve_star_text: bool = False,
 ) -> Optional[Dict[str, Any]]:
     if not isinstance(item, dict):
         return None
@@ -334,11 +335,16 @@ def _normalize_selected_experience_item(
         full_star: Dict[str, str] = {}
         for key in ("s", "t", "a", "r"):
             raw_value = raw_star.get(key)
-            clipped = _clip_optional_text(raw_star.get(key), MAX_SELECTED_EXPERIENCE_STAR_CHARS)
-            if clipped:
-                normalized_star[key] = clipped
-            if include_full_text and isinstance(raw_value, str) and raw_value.strip():
-                full_star[key] = raw_value.strip()
+            raw_text = raw_value.strip() if isinstance(raw_value, str) else None
+            if preserve_star_text:
+                if raw_text:
+                    normalized_star[key] = raw_text
+            else:
+                clipped = _clip_optional_text(raw_value, MAX_SELECTED_EXPERIENCE_STAR_CHARS)
+                if clipped:
+                    normalized_star[key] = clipped
+            if include_full_text and raw_text:
+                full_star[key] = raw_text
         if normalized_star:
             normalized["star"] = normalized_star
         if full_star:
@@ -352,12 +358,17 @@ def _normalize_selected_experiences(
     items: Any,
     *,
     include_full_text: bool = False,
+    preserve_star_text: bool = False,
 ) -> List[Dict[str, Any]]:
     if not isinstance(items, list):
         return []
     normalized_items: List[Dict[str, Any]] = []
     for item in items:
-        normalized = _normalize_selected_experience_item(item, include_full_text=include_full_text)
+        normalized = _normalize_selected_experience_item(
+            item,
+            include_full_text=include_full_text,
+            preserve_star_text=preserve_star_text,
+        )
         if normalized:
             normalized_items.append(normalized)
         if len(normalized_items) >= MAX_SELECTED_EXPERIENCES:
@@ -773,14 +784,18 @@ async def _iter_sse_json_payloads(response: httpx.Response):
 
 def _build_gemini_generation_config(
     budget_tokens: Optional[int] = None,
+    *,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     config: Dict[str, Any] = {
         "temperature": 0.2,
-        "responseMimeType": "application/json",
         "thinkingConfig": {
             "includeThoughts": True,
         },
     }
+    normalized_model = (model or "").strip().lower()
+    if not normalized_model.startswith("gemini-3"):
+        config["responseMimeType"] = "application/json"
     if budget_tokens is None:
         return config
 
@@ -793,6 +808,7 @@ def _build_gemini_request_body(
     system_prompt: str,
     user_parts: List[Dict[str, Any]],
     budget_tokens: Optional[int] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         "systemInstruction": {
@@ -804,7 +820,10 @@ def _build_gemini_request_body(
                 "parts": user_parts,
             }
         ],
-        "generationConfig": _build_gemini_generation_config(budget_tokens),
+        "generationConfig": _build_gemini_generation_config(
+            budget_tokens,
+            model=model,
+        ),
     }
 
 
@@ -817,12 +836,13 @@ async def _stream_gemini_json_response(
     budget_tokens: Optional[int] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
+    model = settings.gemini_model
     request_body = _build_gemini_request_body(
         system_prompt=system_prompt,
         user_parts=user_parts,
         budget_tokens=budget_tokens,
+        model=model,
     )
-    model = settings.gemini_model
     url = _build_gemini_stream_url(model)
     answer_parts: List[str] = []
     answer_snapshots: List[str] = []
@@ -1440,11 +1460,14 @@ def _build_assistant_payload(
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
     skill_id: Optional[str] = None,
+    include_selected_experience_full_text: bool = True,
+    preserve_selected_experience_star_text: bool = False,
 ) -> Dict[str, Any]:
     normalized_history = _normalize_assistant_history(history[-16:], include_attachment_content=False)
     normalized_selected_experiences = _normalize_selected_experiences(
         selected_experiences,
-        include_full_text=True,
+        include_full_text=include_selected_experience_full_text,
+        preserve_star_text=preserve_selected_experience_star_text,
     )
     normalized_selected_resume = _normalize_selected_resume(selected_resume)
     normalized_skill_id = _normalize_assistant_skill_id(skill_id)
@@ -1454,7 +1477,6 @@ def _build_assistant_payload(
         "entry_source": entry_source,
         "context": context_json,
         "history": normalized_history,
-        "user_message": user_message,
     }
     if normalized_skill_id:
         payload["skill_id"] = normalized_skill_id
@@ -1477,6 +1499,7 @@ def _build_assistant_payload(
             payload["attachment"] = attachment_contexts[0]
         else:
             payload["attachments"] = attachment_contexts
+    payload["user_message"] = user_message
     return payload
 
 
@@ -2324,6 +2347,12 @@ async def run_assistant_turn_with_thoughts(
         skill_id=skill_id,
         history=history,
         attachments=resolved_attachments,
+        include_selected_experience_full_text=False,
+        preserve_selected_experience_star_text=True,
+    )
+    await _emit_thought(
+        thought_callback,
+        {"type": "thought", "summary": "正在分析上下文并组织回复"},
     )
     try:
         result = await _stream_gemini_json_response(
