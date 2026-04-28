@@ -23,6 +23,7 @@ from .prompts import (
     STAR_HIGHLIGHT,
     STAR_HIGHLIGHT_NO_JD,
     STAR_POLISH,
+    STAR_RESUME_READY_REWRITE,
     TAG_GENERATION,
 )
 
@@ -58,6 +59,47 @@ ASSISTANT_PLAIN_ITALIC_MARKDOWN_PATTERN = re.compile(r"^\*[^*\r\n]+\*$")
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
+
+ASSISTANT_SKILL_PROMPTS: Dict[str, Dict[str, str]] = {
+    "star_guidance": {
+        "title": "STAR 引导助手",
+        "prompt": (
+            "Current assistant skill: STAR 引导助手. Your primary job is to guide the user to complete "
+            "a factual STAR experience. First inspect selected_experiences, selected_resume, attachments, "
+            "and bank_context. If information is insufficient, ask exactly one focused follow-up question "
+            "about the most important missing STAR detail and set draftCard to null. Do not rush to produce "
+            "a finished draft. You may return a draftCard only when the user explicitly asks for a draft, "
+            "confirms the information is enough, or the supplied facts already cover S/T/A/R with concrete "
+            "actions and results. When returning draftCard, follow the experience card schema exactly."
+        ),
+    },
+    "experience_completion": {
+        "title": "经历补全助手",
+        "prompt": (
+            "Current assistant skill: 经历补全助手. Diagnose what employer-useful evidence is missing from "
+            "the selected experience or resume: business goal, candidate ownership, methods/tools, "
+            "collaboration boundary, measurable result, and JD/company value. Do not merely rewrite. "
+            "assistantText must point out the strongest reusable facts, likely gaps, and one next question "
+            "ranked by importance. Default draftCard to null unless the user asks to generate or save a card."
+        ),
+    },
+    "mock_interview": {
+        "title": "模拟面试教练",
+        "prompt": (
+            "Current assistant skill: 模拟面试教练. Act as an interviewer and coach. Use selected_resume, "
+            "selected_experiences, JD context, and bank_context to generate role-fit interview questions, "
+            "面试官追问, answer-improvement advice, and JD/company value gaps. draftCard must be null unless "
+            "the user explicitly switches back to resume drafting. Do not output an experience card by default."
+        ),
+    },
+}
+
+
+def _normalize_assistant_skill_id(skill_id: Optional[str]) -> Optional[str]:
+    if not isinstance(skill_id, str):
+        return None
+    normalized = skill_id.strip()
+    return normalized if normalized in ASSISTANT_SKILL_PROMPTS else None
 
 
 def _hash_text(text: str) -> str:
@@ -257,7 +299,11 @@ def _normalize_assistant_draft_card(card: Any) -> Dict[str, Any] | None:
     return normalized_card
 
 
-def _normalize_selected_experience_item(item: Any) -> Optional[Dict[str, Any]]:
+def _normalize_selected_experience_item(
+    item: Any,
+    *,
+    include_full_text: bool = False,
+) -> Optional[Dict[str, Any]]:
     if not isinstance(item, dict):
         return None
     master_id = _clip_optional_text(item.get("masterId"), MAX_SELECTED_EXPERIENCE_TEXT_CHARS)
@@ -281,24 +327,37 @@ def _normalize_selected_experience_item(item: Any) -> Optional[Dict[str, Any]]:
         if clipped:
             normalized[source_key] = clipped
 
+    full_text: Dict[str, Any] = {}
     raw_star = item.get("star")
     if isinstance(raw_star, dict):
         normalized_star: Dict[str, str] = {}
+        full_star: Dict[str, str] = {}
         for key in ("s", "t", "a", "r"):
+            raw_value = raw_star.get(key)
             clipped = _clip_optional_text(raw_star.get(key), MAX_SELECTED_EXPERIENCE_STAR_CHARS)
             if clipped:
                 normalized_star[key] = clipped
+            if include_full_text and isinstance(raw_value, str) and raw_value.strip():
+                full_star[key] = raw_value.strip()
         if normalized_star:
             normalized["star"] = normalized_star
+        if full_star:
+            full_text["star"] = full_star
+    if include_full_text and full_text:
+        normalized["full_text"] = full_text
     return normalized
 
 
-def _normalize_selected_experiences(items: Any) -> List[Dict[str, Any]]:
+def _normalize_selected_experiences(
+    items: Any,
+    *,
+    include_full_text: bool = False,
+) -> List[Dict[str, Any]]:
     if not isinstance(items, list):
         return []
     normalized_items: List[Dict[str, Any]] = []
     for item in items:
-        normalized = _normalize_selected_experience_item(item)
+        normalized = _normalize_selected_experience_item(item, include_full_text=include_full_text)
         if normalized:
             normalized_items.append(normalized)
         if len(normalized_items) >= MAX_SELECTED_EXPERIENCES:
@@ -876,6 +935,131 @@ async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> D
     return {"content": content}
 
 
+def _extract_message(response_data: Dict[str, Any]) -> Dict[str, Any]:
+    choices = response_data.get("choices") or []
+    if not choices:
+        raise ValueError("LLM response missing choices")
+    message = choices[0].get("message") or {}
+    if not isinstance(message, dict):
+        raise ValueError("LLM response missing message")
+    return message
+
+
+async def _post_chat_completion(payload: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{settings.ai_base_url}/chat/completions"
+    async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
+        response = await client.post(url, headers=_build_headers(), json=payload)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            _log_http_error(response)
+            raise
+        data = response.json()
+        _log_http_success(response, payload["model"], len(payload.get("messages") or []))
+        return data
+
+
+async def _call_llm_with_tools(
+    messages: List[Dict[str, Any]],
+    *,
+    tools: List[Dict[str, Any]],
+    tool_executor: Callable[[str, Dict[str, Any]], Dict[str, Any]],
+    json_mode: bool = True,
+) -> Dict[str, Any]:
+    payload = {
+        "model": settings.ai_model,
+        "messages": messages,
+        "temperature": 0.3,
+        "tools": tools,
+        "tool_choice": "auto",
+    }
+    try:
+        data = await _post_chat_completion(payload)
+        message = _extract_message(data)
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            follow_up_messages = [*messages, message]
+            for tool_call in tool_calls:
+                function_call = tool_call.get("function") if isinstance(tool_call, dict) else None
+                if not isinstance(function_call, dict):
+                    continue
+                tool_name = str(function_call.get("name") or "")
+                raw_arguments = function_call.get("arguments")
+                try:
+                    arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) and raw_arguments.strip() else {}
+                except json.JSONDecodeError:
+                    arguments = {}
+                tool_result = tool_executor(tool_name, arguments if isinstance(arguments, dict) else {})
+                follow_up_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.get("id"),
+                        "name": tool_name,
+                        "content": json.dumps(tool_result, ensure_ascii=False),
+                    }
+                )
+            return await _call_llm(follow_up_messages, json_mode=json_mode)
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("LLM response missing content")
+        return _parse_json_content(content) if json_mode else {"content": content}
+    except Exception:
+        logger.warning("[AI Tools] tool calling unavailable; falling back to standard assistant generation.", exc_info=True)
+        return await _call_llm(messages, json_mode=json_mode)
+
+
+def _build_assistant_context_tools() -> List[Dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_selected_experience_full_text",
+                "description": "Return full, untruncated STAR text for the selected experience by masterId.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"masterId": {"type": "string"}},
+                    "required": ["masterId"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_selected_resume_context",
+                "description": "Return the selected resume snapshot and linked JD context available in the current assistant turn.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_bank_context",
+                "description": "Return the user's experience library, certifications, skills, and profile context already loaded for this turn.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+    ]
+
+
+def _build_assistant_context_tool_executor(
+    payload: Dict[str, Any],
+) -> Callable[[str, Dict[str, Any]], Dict[str, Any]]:
+    def execute(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        if tool_name == "get_selected_experience_full_text":
+            master_id = str(arguments.get("masterId") or "").strip()
+            for item in payload.get("selected_experiences") or []:
+                if isinstance(item, dict) and item.get("masterId") == master_id:
+                    return {"experience": item.get("full_text") or item}
+            return {"experience": None}
+        if tool_name == "get_selected_resume_context":
+            return {"selected_resume": payload.get("selected_resume")}
+        if tool_name == "get_bank_context":
+            return {"bank_context": payload.get("bank_context")}
+        return {"error": f"Unknown tool: {tool_name}"}
+
+    return execute
+
+
 MAX_ASSISTANT_REUSED_ATTACHMENTS = 3
 
 
@@ -1179,6 +1363,10 @@ def _resolve_star_prompt(
     normalized_mode = (mode or "default").strip().lower()
     if normalized_mode == "default":
         if has_jd_text:
+            return STAR_RESUME_READY_REWRITE
+        return STAR_HIGHLIGHT_NO_JD
+    if normalized_mode in {"highlight", "match_highlight"}:
+        if has_jd_text:
             return STAR_HIGHLIGHT
         return STAR_HIGHLIGHT_NO_JD
     return STAR_POLISH
@@ -1193,7 +1381,9 @@ def _build_polish_prompt(
     has_jd_text = bool(jd_text and jd_text.strip())
     base_prompt = _resolve_star_prompt(target_field, mode, has_jd_text=has_jd_text)
     normalized_mode = (mode or "default").strip().lower()
-    if normalized_mode == "default" and not has_jd_text:
+    if normalized_mode in {"highlight", "match_highlight"}:
+        mode_instruction = None
+    elif normalized_mode == "default" and not has_jd_text:
         mode_instruction = None
     else:
         mode_instruction = POLISH_MODE_INSTRUCTIONS.get(normalized_mode)
@@ -1208,28 +1398,33 @@ def _build_polish_prompt(
     return " ".join(prompt_parts)
 
 
-def _get_assistant_prompt(mode: str) -> str:
+def _get_assistant_prompt(mode: str, skill_id: Optional[str] = None) -> str:
+    normalized_skill_id = _normalize_assistant_skill_id(skill_id)
     if mode == "general":
-        return GENERAL_ASSISTANT_PROMPT
+        prompt = GENERAL_ASSISTANT_PROMPT
     if mode == "experience":
-        return (
+        prompt = (
             GENERAL_ASSISTANT_PROMPT
             + " Current preferred topic: experience. Start by focusing on experience organization, but do not refuse other topics. "
             + "When 'context.masterId' exists, treat that record as the primary optimization target. "
             + "When 'bank_context' clearly matches an existing experience and the user wants to optimize it, return an experience draftCard with data.targetMasterId set to that masterId. "
             + "The experience draft data may include optional key 'targetMasterId' (string or null). Never fabricate a targetMasterId."
         )
-    if mode == "certification":
-        return (
+    elif mode == "certification":
+        prompt = (
             GENERAL_ASSISTANT_PROMPT
             + " Current preferred topic: certification. Start by focusing on certification organization, but do not refuse other topics."
         )
-    if mode == "skill":
-        return (
+    elif mode == "skill":
+        prompt = (
             GENERAL_ASSISTANT_PROMPT
             + " Current preferred topic: skill. Start by focusing on skill organization, but do not refuse other topics."
         )
-    raise ValueError(f"Unsupported assistant mode: {mode}")
+    elif mode != "general":
+        raise ValueError(f"Unsupported assistant mode: {mode}")
+    if normalized_skill_id:
+        prompt = f"{prompt} {ASSISTANT_SKILL_PROMPTS[normalized_skill_id]['prompt']}"
+    return prompt
 
 
 def _build_assistant_payload(
@@ -1244,10 +1439,15 @@ def _build_assistant_payload(
     selected_resume: Optional[Dict[str, Any]],
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
+    skill_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     normalized_history = _normalize_assistant_history(history[-16:], include_attachment_content=False)
-    normalized_selected_experiences = _normalize_selected_experiences(selected_experiences)
+    normalized_selected_experiences = _normalize_selected_experiences(
+        selected_experiences,
+        include_full_text=True,
+    )
     normalized_selected_resume = _normalize_selected_resume(selected_resume)
+    normalized_skill_id = _normalize_assistant_skill_id(skill_id)
     payload = {
         "mode": mode,
         "session_title": session_title,
@@ -1256,6 +1456,12 @@ def _build_assistant_payload(
         "history": normalized_history,
         "user_message": user_message,
     }
+    if normalized_skill_id:
+        payload["skill_id"] = normalized_skill_id
+        payload["skill"] = {
+            "id": normalized_skill_id,
+            "title": ASSISTANT_SKILL_PROMPTS[normalized_skill_id]["title"],
+        }
     if bank_context is not None:
         payload["bank_context"] = bank_context
     if normalized_selected_experiences:
@@ -1940,13 +2146,17 @@ def _build_assistant_user_parts(
     return [{"text": payload_text}]
 
 
-def _normalize_assistant_result(result: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_assistant_result(
+    result: Dict[str, Any],
+    *,
+    skill_id: Optional[str] = None,
+) -> Dict[str, Any]:
     assistant_text = result.get("assistantText")
     title = result.get("title")
     draft_card = result.get("draftCard")
     normalized_text = assistant_text.strip() if isinstance(assistant_text, str) else ""
     normalized_title = title.strip() if isinstance(title, str) and title.strip() else "AI 助理"
-    normalized_card = _normalize_assistant_draft_card(draft_card)
+    normalized_card = None if _normalize_assistant_skill_id(skill_id) == "mock_interview" else _normalize_assistant_draft_card(draft_card)
     if not normalized_text:
         raise ValueError("AI 助理未返回有效回复。")
     return {
@@ -2026,6 +2236,7 @@ async def run_assistant_turn(
     bank_context: Optional[Dict[str, Any]] = None,
     selected_experiences: Optional[List[Dict[str, Any]]] = None,
     selected_resume: Optional[Dict[str, Any]] = None,
+    skill_id: Optional[str] = None,
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_hydrator: AttachmentHydrator = None,
@@ -2042,15 +2253,24 @@ async def run_assistant_turn(
         bank_context=bank_context,
         selected_experiences=selected_experiences,
         selected_resume=selected_resume,
+        skill_id=skill_id,
         history=history,
         attachments=resolved_attachments,
     )
     messages = [
-        {"role": "system", "content": _get_assistant_prompt(mode)},
+        {"role": "system", "content": _get_assistant_prompt(mode, skill_id=skill_id)},
         _build_assistant_user_message(payload, resolved_attachments),
     ]
-    result = await _call_llm(messages, json_mode=True)
-    return _normalize_assistant_result(result)
+    if _normalize_assistant_skill_id(skill_id):
+        result = await _call_llm_with_tools(
+            messages,
+            tools=_build_assistant_context_tools(),
+            tool_executor=_build_assistant_context_tool_executor(payload),
+            json_mode=True,
+        )
+    else:
+        result = await _call_llm(messages, json_mode=True)
+    return _normalize_assistant_result(result, skill_id=skill_id)
 
 
 async def run_assistant_turn_with_thoughts(
@@ -2063,6 +2283,7 @@ async def run_assistant_turn_with_thoughts(
     bank_context: Optional[Dict[str, Any]] = None,
     selected_experiences: Optional[List[Dict[str, Any]]] = None,
     selected_resume: Optional[Dict[str, Any]] = None,
+    skill_id: Optional[str] = None,
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
     thought_callback: ThoughtCallback = None,
@@ -2082,6 +2303,7 @@ async def run_assistant_turn_with_thoughts(
             bank_context=bank_context,
             selected_experiences=selected_experiences,
             selected_resume=selected_resume,
+            skill_id=skill_id,
             history=history,
             attachments=attachments,
             attachment_hydrator=attachment_hydrator,
@@ -2099,12 +2321,13 @@ async def run_assistant_turn_with_thoughts(
         bank_context=bank_context,
         selected_experiences=selected_experiences,
         selected_resume=selected_resume,
+        skill_id=skill_id,
         history=history,
         attachments=resolved_attachments,
     )
     try:
         result = await _stream_gemini_json_response(
-            system_prompt=_get_assistant_prompt(mode),
+            system_prompt=_get_assistant_prompt(mode, skill_id=skill_id),
             user_parts=_build_assistant_user_parts(payload, resolved_attachments),
             error_message="AI 助理整理失败，请稍后重试。",
             request_label=f"assistant_{mode}",
@@ -2130,11 +2353,12 @@ async def run_assistant_turn_with_thoughts(
             bank_context=bank_context,
             selected_experiences=selected_experiences,
             selected_resume=selected_resume,
+            skill_id=skill_id,
             history=history,
             attachments=attachments,
             attachment_hydrator=attachment_hydrator,
         )
-    return _normalize_assistant_result(result)
+    return _normalize_assistant_result(result, skill_id=skill_id)
 
 
 async def generate_tags(text: str) -> Dict[str, Any]:

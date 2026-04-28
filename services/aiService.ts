@@ -99,9 +99,10 @@ export interface GeneratePersonalSummaryResponse {
     summary: string;
 }
 
-export type PolishMode = 'default' | 'shorten' | 'expand' | 'custom' | 'assistant';
+export type PolishMode = 'default' | 'highlight' | 'shorten' | 'expand' | 'custom' | 'assistant';
 
 export type AssistantMode = 'general' | 'experience' | 'certification' | 'skill';
+export type AssistantSkillId = 'star_guidance' | 'experience_completion' | 'mock_interview';
 export type AssistantEntrySource = 'direct' | 'experience_bank' | 'resume_editor';
 export type AssistantMessageType = 'user_text' | 'assistant_text' | 'draft_card';
 export type AssistantDraftCardType = 'experience' | 'certification' | 'skill_group';
@@ -849,6 +850,7 @@ export const aiService = {
             userMessage: string;
             displayMessage?: string;
             mode?: AssistantMode;
+            skillId?: AssistantSkillId | null;
             attachments?: File[];
             selectedExperiences?: AssistantSelectedExperience[];
             selectedResume?: AssistantSelectedResume | null;
@@ -861,6 +863,9 @@ export const aiService = {
             formData.append('display_message', payload.displayMessage ?? payload.userMessage);
             if (payload.mode) {
                 formData.append('mode', payload.mode);
+            }
+            if (payload.skillId) {
+                formData.append('skill_id', payload.skillId);
             }
             if (payload.selectedExperiences?.length) {
                 formData.append('selected_experiences', JSON.stringify(payload.selectedExperiences));
@@ -881,6 +886,7 @@ export const aiService = {
             user_message: payload.userMessage,
             display_message: payload.displayMessage ?? payload.userMessage,
             ...(payload.mode ? { mode: payload.mode } : {}),
+            ...(payload.skillId ? { skill_id: payload.skillId } : {}),
             ...(payload.selectedExperiences?.length ? { selected_experiences: payload.selectedExperiences } : {}),
             ...(payload.selectedResume ? { selected_resume: payload.selectedResume } : {}),
         }), {
