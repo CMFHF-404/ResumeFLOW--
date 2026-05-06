@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AuthGuard from './components/AuthGuard';
 import FeedbackModal from './components/FeedbackModal';
+import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import Dashboard from './views/Dashboard';
@@ -67,6 +68,7 @@ const App: React.FC = () => {
   // 标记是否需要在ExperienceBank中自动打开简历上传弹窗
   const [shouldOpenResumeUpload, setShouldOpenResumeUpload] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const authUserKey = useAuthUserKey();
@@ -86,6 +88,7 @@ const App: React.FC = () => {
     setProfileCache(null);
     setShouldOpenResumeUpload(false);
     setIsFeedbackOpen(false);
+    setIsAgentPluginConfigOpen(false);
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
     setCurrentView(ViewState.DASHBOARD);
@@ -216,6 +219,12 @@ const App: React.FC = () => {
   const handleCloseFeedback = useCallback(() => {
     setIsFeedbackOpen(false);
   }, []);
+  const handleOpenAgentPluginConfig = useCallback(() => {
+    setIsAgentPluginConfigOpen(true);
+  }, []);
+  const handleCloseAgentPluginConfig = useCallback(() => {
+    setIsAgentPluginConfigOpen(false);
+  }, []);
   const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);
 
   const renderView = () => {
@@ -282,6 +291,7 @@ const App: React.FC = () => {
           currentView={currentView}
           setView={handleSetView}
           onOpenFeedback={handleOpenFeedback}
+          onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
@@ -292,6 +302,10 @@ const App: React.FC = () => {
           isOpen={isFeedbackOpen}
           context={feedbackContext}
           onClose={handleCloseFeedback}
+        />
+        <AgentApiPluginConfigModal
+          isOpen={isAgentPluginConfigOpen}
+          onClose={handleCloseAgentPluginConfig}
         />
       </div>
     </AuthGuard>
