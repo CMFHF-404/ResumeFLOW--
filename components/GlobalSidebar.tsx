@@ -10,6 +10,7 @@ interface GlobalSidebarProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
   onOpenFeedback: () => void;
+  onOpenAgentPluginConfig: () => void;
 }
 
 const DEFAULT_PROFILE_NAME = '即刻开始';
@@ -19,6 +20,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   currentView,
   setView,
   onOpenFeedback,
+  onOpenAgentPluginConfig,
 }) => {
   const { signOut, signIn, isAuthenticated } = useLogto();
   const { profile } = useProfile();
@@ -162,6 +164,18 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         >
           <MessageSquare className="h-4 w-4" />
           <span>反馈</span>
+        </button>
+        <button
+          className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
+          onClick={() => {
+            setIsAvatarMenuOpen(false);
+            onOpenAgentPluginConfig();
+          }}
+          type="button"
+          role="menuitem"
+        >
+          <Bot className="h-4 w-4" />
+          <span>Agent API 插件配置</span>
         </button>
         {isAuthenticated ? (
           <button
