@@ -192,6 +192,61 @@ async def ensure_ai_assistant_tables() -> None:
         )
 
 
+async def ensure_agent_api_keys_table() -> None:
+    """确保 Agent API Key 与插件配置表存在，兼容老环境升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS agent_api_keys (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    key_prefix TEXT NOT NULL,
+                    key_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    last_used_at TIMESTAMPTZ,
+                    revoked_at TIMESTAMPTZ
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_agent_api_keys_user_id
+                ON agent_api_keys(user_id)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_agent_api_keys_key_prefix
+                ON agent_api_keys(key_prefix)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS agent_plugin_configs (
+                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    selected_template_id TEXT NOT NULL DEFAULT 'modern-slate',
+                    polish_before_output BOOLEAN NOT NULL DEFAULT true,
+                    polish_level TEXT NOT NULL DEFAULT '标准',
+                    force_one_page BOOLEAN NOT NULL DEFAULT true,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+
+
 async def ensure_feedback_images_column() -> None:
     """确保 feedback.image_base64_list 列存在，兼容老环境升级。"""
     if engine.dialect.name != "postgresql":
@@ -258,5 +313,6 @@ async def ensure_dev_schema() -> None:
     await ensure_experience_version_tags_column()
     await ensure_export_render_snapshots_table()
     await ensure_ai_assistant_tables()
+    await ensure_agent_api_keys_table()
     await ensure_feedback_contact_type_column()
     await ensure_feedback_images_column()

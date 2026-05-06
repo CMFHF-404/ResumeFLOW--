@@ -27,6 +27,9 @@ PUBLIC_GET_PATH_PREFIXES = (
     "/exports/download/resume-pdf/",
     "/exports/download/experience-bank-pdf/",
 )
+PUBLIC_PATH_PREFIXES = (
+    "/agent/v1/",
+)
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,8 @@ def _extract_token(request: Request) -> Optional[str]:
 def _is_public_request(request: Request) -> bool:
     path = request.url.path
     if path in PUBLIC_PATHS or request.method == "OPTIONS":
+        return True
+    if any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
         return True
     return request.method == "GET" and any(
         path.startswith(prefix) for prefix in PUBLIC_GET_PATH_PREFIXES
