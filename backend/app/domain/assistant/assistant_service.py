@@ -419,10 +419,16 @@ async def _apply_experience_bank_draft_card(
     master_id = _resolve_bound_experience_master_id(
         assistant_session,
         data,
-        allow_unbound_target=False,
+        allow_unbound_target=True,
     )
     if not master_id:
-        raise InvalidMessageError("Assistant session is missing experience context")
+        await _apply_direct_draft_card(
+            session,
+            user_id=user_id,
+            assistant_session=assistant_session,
+            message=message,
+        )
+        return
 
     master = await _get_user_master_experience(
         session,

@@ -202,6 +202,16 @@ class AiServiceAssistantSkillTests(unittest.TestCase):
         self.assertIn("ask exactly one focused follow-up question", prompt)
         self.assertIn("return a draftCard only when", prompt)
 
+    def test_get_assistant_prompt_does_not_force_card_for_polish_turns(self) -> None:
+        prompt = ai_service._get_assistant_prompt("general")
+
+        self.assertIn("Do not return a draftCard merely because facts are sufficient", prompt)
+        self.assertIn("For polish, adjustment, critique, interview, or planning turns", prompt)
+
+    def test_assistant_prompts_keep_task_field_method_focused(self) -> None:
+        self.assertIn("Task (T) must focus on the concrete challenge and needed approach", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertIn("Do not write dates or time ranges into Task (T)", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+
     def test_build_assistant_payload_keeps_selected_experience_full_text_for_tools(self) -> None:
         long_action = "执行动作" * 160
 

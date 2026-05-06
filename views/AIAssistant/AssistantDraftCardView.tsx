@@ -29,13 +29,23 @@ const EXPERIENCE_CATEGORY_LABELS = {
 export const AssistantDraftCardView: React.FC<{
   card: AssistantDraftCard;
   disabled?: boolean;
+  defaultExpanded?: boolean;
+  expanded?: boolean;
   isApplying?: boolean;
   isManualSaveMode?: boolean;
   showManualSaveHint?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onJumpToEditor?: () => void;
   onApply: () => void;
-}> = ({ card, disabled, isApplying, isManualSaveMode, showManualSaveHint, onJumpToEditor, onApply }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+}> = ({ card, disabled, defaultExpanded = true, expanded, isApplying, isManualSaveMode, showManualSaveHint, onExpandedChange, onJumpToEditor, onApply }) => {
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
+  const isExpanded = expanded ?? uncontrolledExpanded;
+  const setIsExpanded = (nextExpanded: boolean) => {
+    if (expanded === undefined) {
+      setUncontrolledExpanded(nextExpanded);
+    }
+    onExpandedChange?.(nextExpanded);
+  };
   // 仅在 experience 类型时读取这两个字段，避免联合类型无法收窄的 TS 报错
   const hasTargetMaster = card.type === 'experience' && Boolean(card.data.targetMasterId);
   const experienceApplyHint = card.type === 'experience'
@@ -50,21 +60,27 @@ export const AssistantDraftCardView: React.FC<{
     if (card.type === 'experience') {
       return (
         <div className="space-y-3 mt-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
               <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">类别</div>
-              <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">{experienceCategoryLabel}</div>
+              <div className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-slate-100">{experienceCategoryLabel}</div>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
               <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">时间</div>
-              <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">
+              <div className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
                 {card.data.startDate || '待补充'} - {card.data.isCurrent ? '至今' : (card.data.endDate || '待补充')}
               </div>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">主体</div>
-            <div className="mt-1 text-base font-medium text-slate-800 dark:text-slate-100">{card.data.org || '待补充组织'} / {card.data.title || '待补充角色'}</div>
+          <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)] gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">项目/公司名称</div>
+              <div className="mt-1 break-words text-base font-medium text-slate-800 dark:text-slate-100">{card.data.org || '待补充组织'}</div>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">岗位/身份</div>
+              <div className="mt-1 break-words text-base font-medium text-slate-800 dark:text-slate-100">{card.data.title || '待补充角色'}</div>
+            </div>
           </div>
           {!card.data.targetMasterId ? (
             <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-950/30">
@@ -186,9 +202,6 @@ export const AssistantDraftCardView: React.FC<{
       {isExpanded && (
         <div className="animate-in fade-in slide-in-from-top-2 duration-300">
           {renderContent()}
-          <p className="mt-4 border-t border-slate-50 pt-3 text-[11px] text-slate-400 dark:border-slate-800 dark:text-slate-500">
-            如果还想调整，直接继续聊天描述你要修改的部分即可。
-          </p>
         </div>
       )}
 
@@ -208,7 +221,11 @@ export const AssistantDraftCardView: React.FC<{
           </div>
         ) : null}
 
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="m-0 min-w-0 flex-1 text-[11px] leading-5 text-slate-400 dark:text-slate-500">
+            如果还想调整，直接继续聊天描述你要修改的部分即可。
+          </p>
+          <div className="flex shrink-0 items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -232,6 +249,7 @@ export const AssistantDraftCardView: React.FC<{
             <Check className="h-3.5 w-3.5" />
             {isApplying ? '录入中...' : '确认录入'}
           </button>
+          </div>
         </div>
       </div>
     </div>

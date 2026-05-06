@@ -883,6 +883,52 @@ class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("applied_at", message.content_json)
         session.commit.assert_awaited()
 
+    async def test_mark_message_applied_creates_experience_from_unbound_experience_bank_session(self) -> None:
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            entry_source="experience_bank",
+            context_json={"origin": "experience_bank_empty_state"},
+            latest_preview={},
+        )
+        message = SimpleNamespace(
+            id=uuid.uuid4(),
+            message_type="draft_card",
+            content_json={
+                "type": "experience",
+                "data": {
+                    "category": "project",
+                    "title": "新项目",
+                    "org": "个人作品",
+                    "startDate": "2025-01-01",
+                    "endDate": "2025-03-01",
+                    "isCurrent": False,
+                    "star": {"s": "背景", "t": "目标", "a": "执行", "r": "结果"},
+                },
+            },
+        )
+        session = _FakeAsyncSession([
+            _ExecuteResult(one_or_none=message),
+            _ExecuteResult(first=None),
+        ])
+
+        with patch.object(assistant_service, "get_session", AsyncMock(return_value=assistant_session)):
+            updated = await assistant_service.mark_message_applied(
+                session,
+                user_id="user-1",
+                session_id=assistant_session.id,
+                message_id=message.id,
+            )
+
+        self.assertIs(updated, message)
+        created_masters = [item for item in session.added if isinstance(item, MasterExperience)]
+        created_versions = [item for item in session.added if isinstance(item, ExperienceVersion)]
+        self.assertEqual(len({item.id for item in created_masters}), 1)
+        self.assertEqual(created_masters[0].category, ExperienceCategory.PROJECT)
+        self.assertEqual(len(created_versions), 1)
+        self.assertEqual(created_versions[0].title, "新项目")
+        self.assertIn("applied_at", message.content_json)
+        session.commit.assert_awaited()
+
 
 class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_persist_assistant_turn_sanitizes_selected_experiences(self) -> None:

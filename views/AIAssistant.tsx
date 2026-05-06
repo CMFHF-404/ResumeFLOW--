@@ -2,11 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogto } from '@logto/react';
 import {
   Bot,
-  ChevronsUpDown,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
   FileBadge2,
   Lightbulb,
   MessageSquarePlus,
   PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
   Sparkles,
   Wrench,
   Trash2,
@@ -77,6 +83,19 @@ type AssistantAttachmentPreview = {
 
 type AssistantComposerAttachment = AssistantAttachmentPreview & {
   file: File;
+};
+
+type AssistantDraftMessageItem = {
+  message: AssistantMessage;
+  card: AssistantDraftCard;
+  isManualSaveMode: boolean;
+  onJumpToEditor?: () => void;
+};
+
+type AssistantDraftGroup = {
+  id: string;
+  items: AssistantDraftMessageItem[];
+  latestItem: AssistantDraftMessageItem;
 };
 
 const SELECTED_EXPERIENCE_TEXT_LIMIT = 300;
@@ -705,6 +724,40 @@ const isSameDraftCard = (preview: Record<string, unknown> | undefined, card: Ass
   }
 };
 
+const resolveDraftGroupId = (item: AssistantDraftMessageItem) => {
+  if (item.card.type !== 'experience') {
+    return `message:${item.message.id}`;
+  }
+  const targetMasterId = item.card.data.targetMasterId?.trim();
+  if (targetMasterId) {
+    return `master:${targetMasterId}`;
+  }
+  const category = item.card.data.category;
+  const org = item.card.data.org.trim();
+  const title = item.card.data.title.trim();
+  if (org || title) {
+    return `draft:${category}:${org}:${title}`;
+  }
+  return `message:${item.message.id}`;
+};
+
+const groupDraftItems = (items: AssistantDraftMessageItem[]): AssistantDraftGroup[] => {
+  const groupsById = new Map<string, AssistantDraftMessageItem[]>();
+  items.forEach((item) => {
+    const groupId = resolveDraftGroupId(item);
+    const current = groupsById.get(groupId) ?? [];
+    current.push(item);
+    groupsById.set(groupId, current);
+  });
+  return Array.from(groupsById.entries())
+    .map(([id, groupItems]) => ({
+      id,
+      items: groupItems,
+      latestItem: groupItems[groupItems.length - 1],
+    }))
+    .sort((left, right) => items.lastIndexOf(right.latestItem) - items.lastIndexOf(left.latestItem));
+};
+
 const sortSessionsByUpdatedAt = (items: AssistantSession[]) => {
   return [...items].sort(
     (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
@@ -796,6 +849,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [isLoadingPickerResumes, setIsLoadingPickerResumes] = useState(false);
   const [isApplyingPickerResume, setIsApplyingPickerResume] = useState(false);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
+  const [isDesktopHistoryCollapsed, setIsDesktopHistoryCollapsed] = useState(false);
+  const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(true);
+  const [isMobileDraftTrayOpen, setIsMobileDraftTrayOpen] = useState(false);
+  const [desktopDraftVersionByGroupId, setDesktopDraftVersionByGroupId] = useState<Record<string, number>>({});
+  const [mobileDraftVersionByGroupId, setMobileDraftVersionByGroupId] = useState<Record<string, number>>({});
+  const [draftExpandedByGroupId, setDraftExpandedByGroupId] = useState<Record<string, boolean>>({});
   const [composerReservedHeight, setComposerReservedHeight] = useState(160);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
@@ -814,6 +873,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const sessionMutationCounterRef = useRef(0);
   const messageMutationSeqRef = useRef(0);
   const suppressAutoSelectSessionRef = useRef(false);
+  const previousDraftCountRef = useRef(0);
+  const autoOpenedDraftSessionIdsRef = useRef<Set<string>>(new Set());
 
   if (pendingLaunchRequest?.prefillResume && !pendingLaunchRequest.initialUserMessage) {
     suppressAutoSelectSessionRef.current = true;
@@ -833,12 +894,117 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     ),
     [selectedSession]
   );
+  const draftMessageItems = useMemo<AssistantDraftMessageItem[]>(() => (
+    messages.flatMap((message) => {
+      if (message.message_type !== 'draft_card') {
+        return [];
+      }
+      const card = normalizeAssistantDraftCard(message.content_json as unknown as AssistantDraftCard);
+      const isManualSaveMode = (
+        selectedSessionIsCallbackOnly
+        && selectedSession?.entry_source === 'resume_editor'
+        && card.type === 'experience'
+      );
+      const onJumpToEditor = isManualSaveMode
+        ? () => {
+          const context = selectedSession?.context_json ?? {};
+          const resumeId = readContextString(context, 'resumeId');
+          const masterId =
+            readContextString(context, 'masterId')
+            || (card.type === 'experience' && typeof card.data.targetMasterId === 'string' && card.data.targetMasterId.trim()
+              ? card.data.targetMasterId.trim()
+              : null);
+          if (resumeId && masterId && card.type === 'experience') {
+            writePendingAssistantManualSaveDraft({
+              source: 'resume_editor',
+              sessionId: selectedSession?.id ?? '',
+              messageId: message.id,
+              resumeId,
+              masterId,
+              draft: card.data,
+              createdAt: Date.now(),
+            });
+            setManualSaveMessageIds((prev) => new Set(prev).add(message.id));
+          }
+          onJumpToResumeEditor?.(resumeId ?? undefined);
+        }
+        : undefined;
+      return [{ message, card, isManualSaveMode, onJumpToEditor }];
+    })
+  ), [messages, onJumpToResumeEditor, selectedSession, selectedSessionIsCallbackOnly]);
+  const draftGroups = useMemo(
+    () => groupDraftItems(draftMessageItems),
+    [draftMessageItems]
+  );
+  const draftCardCount = draftGroups.length;
   const isSending = sendingCount > 0;
   const shouldShowSkillPresetPanel = !isLoadingSessions
     && !isLoadingDetail
     && messages.length === 0
     && !activeThought
     && !isSending;
+
+  useEffect(() => {
+    const previousDraftCount = previousDraftCountRef.current;
+    const draftSessionKey = selectedSessionId ?? '__pending__';
+    const hasAutoOpened = autoOpenedDraftSessionIdsRef.current.has(draftSessionKey);
+    if (draftCardCount === 1 && previousDraftCount === 0 && !hasAutoOpened) {
+      setIsDraftPanelOpen(true);
+      setIsMobileDraftTrayOpen(true);
+      autoOpenedDraftSessionIdsRef.current.add(draftSessionKey);
+    }
+    previousDraftCountRef.current = draftCardCount;
+  }, [draftCardCount, selectedSessionId]);
+
+  useEffect(() => {
+    const groupIds = new Set(draftGroups.map((group) => group.id));
+    setDesktopDraftVersionByGroupId((current) => {
+      let hasChange = false;
+      const next: Record<string, number> = {};
+      draftGroups.forEach((group) => {
+        const fallbackIndex = group.items.length - 1;
+        next[group.id] = fallbackIndex;
+        if (current[group.id] !== fallbackIndex) {
+          hasChange = true;
+        }
+      });
+      Object.keys(current).forEach((id) => {
+        if (!groupIds.has(id)) {
+          hasChange = true;
+        }
+      });
+      return hasChange ? next : current;
+    });
+    setMobileDraftVersionByGroupId((current) => {
+      let hasChange = false;
+      const next: Record<string, number> = {};
+      draftGroups.forEach((group) => {
+        const fallbackIndex = group.items.length - 1;
+        next[group.id] = fallbackIndex;
+        if (current[group.id] !== fallbackIndex) {
+          hasChange = true;
+        }
+      });
+      Object.keys(current).forEach((id) => {
+        if (!groupIds.has(id)) {
+          hasChange = true;
+        }
+      });
+      return hasChange ? next : current;
+    });
+    setDraftExpandedByGroupId((current) => {
+      let hasChange = false;
+      const next: Record<string, boolean> = {};
+      Object.entries(current).forEach(([id, expanded]) => {
+        if (groupIds.has(id)) {
+          next[id] = expanded;
+        } else {
+          hasChange = true;
+        }
+      });
+      return hasChange ? next : current;
+    });
+  }, [draftGroups]);
 
   const markSessionMutated = useCallback((sessionId: string) => {
     const nextSeq = sessionMutationCounterRef.current + 1;
@@ -1948,6 +2114,76 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [error, markSessionMutated, setSessionsState, success]);
 
   const historyEmpty = !isLoadingSessions && sessions.length === 0;
+  const visibleDraftGroups = draftGroups;
+  const renderDraftGroup = (
+    group: AssistantDraftGroup,
+    index: number,
+    surface: 'desktop' | 'mobile' = 'desktop',
+  ) => {
+    const latestVersionIndex = group.items.length - 1;
+    const versionByGroupId = surface === 'mobile' ? mobileDraftVersionByGroupId : desktopDraftVersionByGroupId;
+    const setVersionByGroupId = surface === 'mobile' ? setMobileDraftVersionByGroupId : setDesktopDraftVersionByGroupId;
+    const versionIndex = Math.min(
+      Math.max(versionByGroupId[group.id] ?? latestVersionIndex, 0),
+      latestVersionIndex,
+    );
+    const item = group.items[versionIndex] ?? group.latestItem;
+    const isExpanded = draftExpandedByGroupId[group.id] ?? index === 0;
+    const setVersionIndex = (nextIndex: number) => {
+      setVersionByGroupId((current) => ({
+        ...current,
+        [group.id]: Math.min(Math.max(nextIndex, 0), latestVersionIndex),
+      }));
+    };
+    return (
+      <div key={group.id} className="transition-all duration-300 ease-out">
+        <div className="relative">
+          {group.items.length > 1 ? (
+            <div className="absolute right-4 top-5 z-10 flex items-center rounded-2xl bg-slate-100/95 p-1 shadow-sm backdrop-blur dark:bg-slate-900/95">
+              <button
+                type="button"
+                onClick={() => setVersionIndex(versionIndex - 1)}
+                disabled={versionIndex <= 0}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="上一版"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-10 text-center text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {versionIndex + 1}/{group.items.length}
+              </div>
+              <button
+                type="button"
+                onClick={() => setVersionIndex(versionIndex + 1)}
+                disabled={versionIndex >= latestVersionIndex}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="下一版"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
+          <AssistantDraftCardView
+            key={item.message.id}
+            card={item.card}
+            expanded={isExpanded}
+            onExpandedChange={(expanded) => {
+              setDraftExpandedByGroupId((current) => ({
+                ...current,
+                [group.id]: expanded,
+              }));
+            }}
+            onApply={() => void handleApplyDraft(item.message.id, item.card)}
+            disabled={appliedMessageIds.has(item.message.id) || manualSaveMessageIds.has(item.message.id)}
+            isApplying={applyingMessageIds.has(item.message.id)}
+            isManualSaveMode={item.isManualSaveMode}
+            showManualSaveHint={manualSaveMessageIds.has(item.message.id)}
+            onJumpToEditor={item.onJumpToEditor}
+          />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">
@@ -2001,66 +2237,103 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         </div>
       ) : (
         <>
-          <aside className="hidden w-[320px] shrink-0 border-r border-white/60 bg-slate-950 text-slate-100 shadow-[18px_0_50px_-34px_rgba(15,23,42,0.85)] md:flex md:flex-col">
-            <div className="border-b border-white/10 px-5 pb-5 pt-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.32em] text-emerald-300/80">AI Assistant</div>
-                  <div className="mt-2 text-xl font-semibold text-white">对话工作台</div>
-                </div>
+          <aside
+            className={`hidden shrink-0 border-r border-white/60 bg-slate-950 text-slate-100 shadow-[18px_0_50px_-34px_rgba(15,23,42,0.85)] transition-[width] duration-300 md:flex md:flex-col ${
+              isDesktopHistoryCollapsed ? 'w-[68px]' : 'w-[320px]'
+            }`}
+          >
+            {isDesktopHistoryCollapsed ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center gap-3 px-2 py-5">
+                <button
+                  type="button"
+                  onClick={() => setIsDesktopHistoryCollapsed(false)}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
+                  title="展开对话记录"
+                >
+                  <PanelLeftOpen className="h-5 w-5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => void handleNewChat('general')}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 bg-white/6 text-white transition hover:bg-white/12"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
                   title="新建综合会话"
                 >
                   <MessageSquarePlus className="h-5 w-5" />
                 </button>
               </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-              {historyEmpty ? (
-                <div className="rounded-3xl border border-dashed border-white/12 px-4 py-6 text-center text-sm leading-6 text-slate-400">
-                  还没有历史会话。新建一个对话，AI 助理就会开始帮你整理素材。
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {sessions.map((session) => (
-                    <div
-                      key={session.id}
-                      className={`group relative flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${selectedSessionId === session.id ? 'bg-white text-slate-950 shadow-lg' : 'bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'}`}
-                    >
+            ) : (
+              <>
+                <div className="border-b border-white/10 px-5 pb-5 pt-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-xs uppercase tracking-[0.32em] text-emerald-300/80">AI Assistant</div>
+                      <div className="mt-2 truncate text-xl font-semibold text-white">AI 助理</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedSessionId(session.id)}
-                        className="flex-1 truncate text-sm font-semibold text-left outline-none pr-8"
-                        title={session.title}
+                        onClick={() => void handleNewChat('general')}
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
+                        title="新建综合会话"
                       >
-                        {session.title}
+                        <MessageSquarePlus className="h-5 w-5" />
                       </button>
-                      <div className="absolute right-3 flex items-center gap-1 md:pointer-events-none md:opacity-0 md:transition md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100">
-                        <button
-                          type="button"
-                          onClick={(e) => void handleRenameSession(e, session)}
-                          className={`p-1.5 rounded-md transition ${selectedSessionId === session.id ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-600' : 'text-slate-400 hover:bg-white/20 hover:text-white'}`}
-                          title="重命名对话"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => void handleDeleteSession(e, session.id)}
-                          className={`p-1.5 rounded-md transition ${selectedSessionId === session.id ? 'text-slate-400 hover:bg-red-50 hover:text-red-500' : 'text-slate-400 hover:bg-red-500/20 hover:text-red-400'}`}
-                          title="删除对话"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsDesktopHistoryCollapsed(true)}
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
+                        title="收起对话记录"
+                      >
+                        <PanelLeftClose className="h-5 w-5" />
+                      </button>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              )}
-            </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+                  {historyEmpty ? (
+                    <div className="rounded-3xl border border-dashed border-white/12 px-4 py-6 text-center text-sm leading-6 text-slate-400">
+                      还没有历史会话。新建一个对话，AI 助理就会开始帮你整理素材。
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {sessions.map((session) => (
+                        <div
+                          key={session.id}
+                          className={`group relative flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${selectedSessionId === session.id ? 'bg-white text-slate-950 shadow-lg' : 'bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSessionId(session.id)}
+                            className="flex-1 truncate text-left text-sm font-semibold outline-none pr-8"
+                            title={session.title}
+                          >
+                            {session.title}
+                          </button>
+                          <div className="absolute right-3 flex items-center gap-1 md:pointer-events-none md:opacity-0 md:transition md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100">
+                            <button
+                              type="button"
+                              onClick={(e) => void handleRenameSession(e, session)}
+                              className={`p-1.5 rounded-md transition ${selectedSessionId === session.id ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-600' : 'text-slate-400 hover:bg-white/20 hover:text-white'}`}
+                              title="重命名对话"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => void handleDeleteSession(e, session.id)}
+                              className={`p-1.5 rounded-md transition ${selectedSessionId === session.id ? 'text-slate-400 hover:bg-red-50 hover:text-red-500' : 'text-slate-400 hover:bg-red-500/20 hover:text-red-400'}`}
+                              title="删除对话"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </aside>
 
           <>
@@ -2232,51 +2505,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4">
                   {messages.map((message) => {
                     if (message.message_type === 'draft_card') {
-                      const draftCard = normalizeAssistantDraftCard(message.content_json as unknown as AssistantDraftCard);
-                      const isManualSaveMode = (
-                        selectedSessionIsCallbackOnly
-                        && selectedSession?.entry_source === 'resume_editor'
-                        && draftCard.type === 'experience'
-                      );
-                      const jumpToEditor = isManualSaveMode
-                        ? () => {
-                          const context = selectedSession?.context_json ?? {};
-                          const resumeId = readContextString(context, 'resumeId');
-                          const masterId =
-                            readContextString(context, 'masterId')
-                            || (typeof draftCard.data.targetMasterId === 'string' && draftCard.data.targetMasterId.trim()
-                              ? draftCard.data.targetMasterId.trim()
-                              : null);
-                          if (resumeId && masterId) {
-                            writePendingAssistantManualSaveDraft({
-                              source: 'resume_editor',
-                              sessionId: selectedSession?.id ?? '',
-                              messageId: message.id,
-                              resumeId,
-                              masterId,
-                              draft: draftCard.data,
-                              createdAt: Date.now(),
-                            });
-                            setManualSaveMessageIds((prev) => new Set(prev).add(message.id));
-                          }
-                          onJumpToResumeEditor?.(resumeId ?? undefined);
-                        }
-                        : undefined;
-                      return (
-                        <div key={message.id} className="w-full self-center flex justify-center mb-6">
-                           <div className="flex-1 min-w-0 max-w-2xl">
-                             <AssistantDraftCardView
-                               card={draftCard}
-                               onApply={() => void handleApplyDraft(message.id, draftCard)}
-                               disabled={appliedMessageIds.has(message.id) || manualSaveMessageIds.has(message.id)}
-                               isApplying={applyingMessageIds.has(message.id)}
-                               isManualSaveMode={isManualSaveMode}
-                               showManualSaveHint={manualSaveMessageIds.has(message.id)}
-                               onJumpToEditor={jumpToEditor}
-                             />
-                           </div>
-                        </div>
-                      );
+                      return null;
                     }
                     const isUser = message.role === 'user';
                     const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
@@ -2331,6 +2560,43 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   multiple
                   onChange={handleAttachmentSelect}
                 />
+                {draftCardCount > 0 ? (
+                  <div className="mb-2 md:hidden">
+                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.55)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+                      <button
+                        type="button"
+                        onClick={() => setIsMobileDraftTrayOpen((current) => !current)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                        title={isMobileDraftTrayOpen ? '收起草稿' : '展开草稿'}
+                      >
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">草稿</span>
+                          <span className="inline-flex min-w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 px-2 text-xs font-semibold leading-6 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/20">
+                            {draftCardCount}
+                          </span>
+                        </span>
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                          {isMobileDraftTrayOpen ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4" />
+                          )}
+                        </span>
+                      </button>
+                      <div
+                        className={`grid transition-all duration-300 ease-out ${
+                          isMobileDraftTrayOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                        }`}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div className="max-h-[44vh] space-y-3 overflow-y-auto border-t border-slate-100 px-3 pb-3 dark:border-slate-800">
+                            {visibleDraftGroups.map((group, index) => renderDraftGroup(group, index, 'mobile'))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <ChatInputBox
                   value={inputValue}
                   onChange={setInputValue}
@@ -2369,6 +2635,53 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               </div>
             </div>
           </main>
+          {draftCardCount > 0 && !isDraftPanelOpen ? (
+            <button
+              type="button"
+              onClick={() => setIsDraftPanelOpen(true)}
+              className="fixed right-5 top-5 z-40 hidden h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white/95 text-slate-600 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.45)] backdrop-blur transition hover:border-slate-300 hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white md:inline-flex"
+              title="展开草稿"
+            >
+              <FileBadge2 className="h-5 w-5" />
+              <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-semibold leading-5 text-white">
+                {draftCardCount}
+              </span>
+            </button>
+          ) : null}
+          {draftCardCount > 0 ? (
+            <aside
+              aria-hidden={!isDraftPanelOpen}
+              className={`hidden shrink-0 overflow-hidden bg-white/95 text-slate-900 shadow-[-18px_0_50px_-36px_rgba(15,23,42,0.32)] transition-[width,opacity,transform,border-color] duration-300 ease-out dark:bg-slate-950/95 dark:text-slate-100 md:flex md:flex-col ${
+                isDraftPanelOpen
+                  ? 'w-[400px] translate-x-0 border-l border-slate-200/90 opacity-100 dark:border-slate-800'
+                  : 'pointer-events-none w-0 translate-x-8 border-l-0 opacity-0'
+              }`}
+            >
+              <div className="flex h-full w-[400px] min-w-[400px] flex-col">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-500">Drafts</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      草稿
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsDraftPanelOpen(false)}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      title="收起草稿"
+                    >
+                      <PanelRightClose className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-6 pt-1">
+                  {visibleDraftGroups.map((group, index) => renderDraftGroup(group, index))}
+                </div>
+              </div>
+            </aside>
+          ) : null}
         </>
       )}
     </div>
