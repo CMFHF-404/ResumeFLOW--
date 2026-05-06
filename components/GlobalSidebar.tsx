@@ -29,6 +29,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   );
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = React.useState(false);
   const mobileAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const desktopAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
   const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
   const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
 
@@ -101,9 +102,12 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
     const handlePointerDown = (event: PointerEvent) => {
       const targetNode = event.target as Node;
-      const isInsideMobileMenu = mobileAvatarMenuRef.current?.contains(targetNode);
+      const isInsideMenu = Boolean(
+        mobileAvatarMenuRef.current?.contains(targetNode)
+        || desktopAvatarMenuRef.current?.contains(targetNode)
+      );
 
-      if (!isInsideMobileMenu) {
+      if (!isInsideMenu) {
         setIsAvatarMenuOpen(false);
       }
     };
@@ -131,14 +135,21 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     onOpenFeedback();
   };
 
+  const handleOpenAgentPluginConfig = () => {
+    setIsAvatarMenuOpen(false);
+    onOpenAgentPluginConfig();
+  };
+
   const handleSetView = (view: ViewState) => {
     setIsAvatarMenuOpen(false);
     setView(view);
   };
 
-  const renderMobileAvatarMenu = () => (
+  const renderAvatarMenu = (placement: 'mobile' | 'desktop') => (
     <div
-      className="absolute left-0 top-full z-[60] mt-3 min-w-[176px] overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/40 backdrop-blur"
+      className={`absolute z-[60] min-w-[208px] overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/40 backdrop-blur ${
+        placement === 'mobile' ? 'left-0 top-full mt-3' : 'left-full top-0 ml-3'
+      }`}
       role="menu"
       aria-label="头像工具栏"
     >
@@ -167,10 +178,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </button>
         <button
           className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
-          onClick={() => {
-            setIsAvatarMenuOpen(false);
-            onOpenAgentPluginConfig();
-          }}
+          onClick={handleOpenAgentPluginConfig}
           type="button"
           role="menuitem"
         >
@@ -217,7 +225,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             >
               {avatarInitial}
             </button>
-            {isAvatarMenuOpen ? renderMobileAvatarMenu() : null}
+            {isAvatarMenuOpen ? renderAvatarMenu('mobile') : null}
           </div>
 
           <div className="flex min-w-0 flex-1 gap-2">
@@ -247,15 +255,20 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
       </div>
 
       <div className="hidden h-full w-full flex-col items-center px-0 py-6 md:flex">
-        <div className="relative">
-          <div
+        <div ref={desktopAvatarMenuRef} className="relative">
+          <button
             className="group relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold shadow-lg ring-2 ring-slate-800 transition-all hover:ring-slate-700"
             aria-label="当前用户头像"
+            aria-expanded={isAvatarMenuOpen}
+            aria-haspopup="menu"
+            onClick={handleAvatarClick}
             title={displayName}
+            type="button"
           >
             {avatarInitial}
             <div className="nav-tooltip hidden md:block">{displayName}</div>
-          </div>
+          </button>
+          {isAvatarMenuOpen ? renderAvatarMenu('desktop') : null}
         </div>
 
         <div className="mt-8 flex w-full flex-1 flex-col items-center gap-6">
@@ -308,15 +321,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           >
             {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             <div className="nav-tooltip hidden md:block">{isDarkMode ? '切换浅色' : '切换深色'}</div>
-          </button>
-
-          <button
-            className={desktopUtilityButtonClass}
-            onClick={handleOpenFeedback}
-            type="button"
-          >
-            <MessageSquare className="h-5 w-5" />
-            <div className="nav-tooltip hidden md:block">反馈</div>
           </button>
 
           {isAuthenticated ? (

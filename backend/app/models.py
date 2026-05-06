@@ -170,6 +170,30 @@ class Feedback(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
+class AgentApiKey(SQLModel, table=True):
+    __tablename__ = "agent_api_keys"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    name: str
+    key_prefix: str = Field(index=True)
+    key_hash: str = Field(sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    last_used_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+
+
+class AgentPluginConfig(SQLModel, table=True):
+    __tablename__ = "agent_plugin_configs"
+
+    user_id: str = Field(primary_key=True, foreign_key="users.id")
+    selected_template_id: str = Field(default="modern-slate")
+    polish_before_output: bool = Field(default=True, nullable=False)
+    polish_level: str = Field(default="标准")
+    force_one_page: bool = Field(default=True, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 class ExportRenderSnapshot(SQLModel, table=True):
     __tablename__ = "export_render_snapshots"
 

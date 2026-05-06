@@ -2488,6 +2488,7 @@ async def generate_personal_summary(
     certifications: Optional[List[Dict[str, Any]]] = None,
     skills: Optional[List[Dict[str, Any]]] = None,
     jd_text: Optional[str] = None,
+    polish_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     payload = {
         "mode": mode,
@@ -2498,6 +2499,7 @@ async def generate_personal_summary(
         "certifications": certifications or [],
         "skills": skills or [],
         "jd_text": jd_text or "",
+        "polish_level": polish_level or "标准",
     }
     messages = [
         {"role": "system", "content": PERSONAL_SUMMARY_GENERATION},
@@ -2516,6 +2518,7 @@ async def generate_personal_summary_with_thoughts(
     certifications: Optional[List[Dict[str, Any]]] = None,
     skills: Optional[List[Dict[str, Any]]] = None,
     jd_text: Optional[str] = None,
+    polish_level: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
     if not settings.gemini_api_key:
@@ -2528,6 +2531,7 @@ async def generate_personal_summary_with_thoughts(
             certifications=certifications,
             skills=skills,
             jd_text=jd_text,
+            polish_level=polish_level,
         )
 
     payload = {
@@ -2539,6 +2543,7 @@ async def generate_personal_summary_with_thoughts(
         "certifications": certifications or [],
         "skills": skills or [],
         "jd_text": jd_text or "",
+        "polish_level": polish_level or "标准",
     }
     try:
         result = await _stream_gemini_json_response(
@@ -2562,6 +2567,7 @@ async def generate_personal_summary_with_thoughts(
             certifications=certifications,
             skills=skills,
             jd_text=jd_text,
+            polish_level=polish_level,
         )
     return _normalize_summary_result(result)
 

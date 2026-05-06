@@ -46,6 +46,7 @@ type TemplateSelectorModalProps = {
     experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
     skillTagSeparator: string;
   }) => Promise<void>;
+  initialEditingTemplateId?: ResumeTemplateId | null;
 };
 
 const EXPERIENCE_LIST_MARKER_STYLE_OPTIONS: Array<{
@@ -111,7 +112,7 @@ const reorderSectionOrder = (
 const MOBILE_LONG_PRESS_DURATION_MS = 260;
 const TOUCH_DRAG_CANCEL_DISTANCE_PX = 10;
 
-const TemplateThumbnail: React.FC<{
+export const TemplateThumbnail: React.FC<{
   templateId: ResumeTemplateId;
   themeColorPresetId?: string;
 }> = ({ templateId, themeColorPresetId }) => {
@@ -279,6 +280,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   onUseLocalPresetFallback,
   onSelectTemplate,
   onSaveTemplatePreset,
+  initialEditingTemplateId = null,
 }) => {
   const [editingTemplateId, setEditingTemplateId] = React.useState<ResumeTemplateId | null>(null);
   const [editingSectionOrder, setEditingSectionOrder] = React.useState<string[]>(() => [...DEFAULT_SECTION_ORDER]);
@@ -294,6 +296,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   const touchLongPressTimerRef = React.useRef<number | null>(null);
   const touchDragStartPointRef = React.useRef<{ x: number; y: number } | null>(null);
   const bodyScrollLockRef = React.useRef<{ scrollY: number; bodyStyle: string | null; htmlStyle: string | null } | null>(null);
+  const initialEditingTemplateIdRef = React.useRef<ResumeTemplateId | null>(null);
 
   const openTemplatePresetEditor = React.useCallback((templateId: ResumeTemplateId) => {
     if (!isPresetMapReady) {
@@ -463,9 +466,18 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
       setEditingTemplateId(null);
       setPresetError('');
       setDraggingSectionId(null);
+      initialEditingTemplateIdRef.current = null;
       clearTouchLongPressTimer();
     }
   }, [clearTouchLongPressTimer, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen || !initialEditingTemplateId || !isPresetMapReady || initialEditingTemplateIdRef.current === initialEditingTemplateId) {
+      return;
+    }
+    initialEditingTemplateIdRef.current = initialEditingTemplateId;
+    openTemplatePresetEditor(initialEditingTemplateId);
+  }, [initialEditingTemplateId, isOpen, isPresetMapReady, openTemplatePresetEditor]);
 
   React.useEffect(() => {
     if (isPresetMapReady || isSavingPreset) {
@@ -556,7 +568,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   const editingTemplate = editingTemplateId ? resolveResumeTemplate(editingTemplateId) : null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 px-4" onClick={handleModalClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4" onClick={handleModalClose}>
       <div
         className="relative flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900"
         onClick={(event) => event.stopPropagation()}
