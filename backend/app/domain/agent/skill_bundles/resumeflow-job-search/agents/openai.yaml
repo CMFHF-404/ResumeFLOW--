@@ -1,0 +1,4 @@
+interface:
+  display_name: "ResumeFLOW Job Search"
+  short_description: "Analyze JDs, generate resumes, and archive job materials."
+  default_prompt: "Use $resumeflow-job-search to screen jobs with ResumeFLOW, generate tailored resumes for high-match JDs, and archive the job materials locally."

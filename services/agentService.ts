@@ -18,7 +18,6 @@ export type AgentPluginConfig = {
   selected_template_id: string;
   polish_before_output: boolean;
   polish_level: string;
-  force_one_page: boolean;
 };
 
 export const resolveAgentApiBaseUrl = () => {

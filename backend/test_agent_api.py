@@ -44,6 +44,7 @@ class _FakeSession:
     def __init__(self, execute_results=None):
         self.execute = AsyncMock(side_effect=execute_results or [])
         self.commit = AsyncMock()
+        self.flush = AsyncMock()
         self.refresh = AsyncMock()
         self.added = []
 
@@ -80,7 +81,7 @@ class AgentPluginConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.added), 1)
         session.commit.assert_awaited_once()
 
-    async def test_resolve_generate_options_uses_server_config_when_payload_omits_values(self) -> None:
+    async def test_resolve_generate_options_uses_server_config_but_always_enables_smart_one_page(self) -> None:
         record = SimpleNamespace(
             user_id="user-1",
             selected_template_id="avatar-split",
@@ -102,7 +103,7 @@ class AgentPluginConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.template_id, "avatar-split")
         self.assertFalse(result.polish_before_output)
         self.assertEqual(result.polish_level, "增强")
-        self.assertFalse(result.force_one_page)
+        self.assertTrue(result.force_one_page)
 
 
 class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -122,9 +123,90 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored.user_id, "user-1")
         self.assertEqual(stored.key_prefix, result.read.key_prefix)
         self.assertNotEqual(stored.key_hash, result.plaintext_key)
+        self.assertIsNone(getattr(stored, "key_plaintext", None))
+        self.assertNotIn("key", result.read.model_dump())
         self.assertTrue(agent_service.verify_agent_api_key_hash(result.plaintext_key, stored.key_hash))
         session.commit.assert_awaited_once()
         session.refresh.assert_awaited_once_with(stored)
+
+    async def test_list_keys_never_returns_plaintext_key(self) -> None:
+        record = SimpleNamespace(
+            id="key-1",
+            name="Agent",
+            key_prefix="rfag_abc",
+            key_plaintext="rfag_abc-secret",
+            created_at=datetime(2026, 5, 6, tzinfo=timezone.utc),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        session = _FakeSession([_ExecuteResult(all_values=[record])])
+
+        result = await agent_service.list_agent_api_keys(session, "user-1")
+
+        self.assertNotIn("key", result[0].model_dump())
+
+    async def test_persist_generated_resume_does_not_copy_links_when_snapshot_empty(self) -> None:
+        session = _FakeSession()
+        source_resume = SimpleNamespace(config={})
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_前端实习_90",
+        )
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_前端实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.35,
+            fontSize=11,
+            listSpacingValue="0.2em",
+            bulletSpacingValue="0.2em",
+            topPaddingPx=15,
+            sectionSpacingClass="mb-2",
+            listSpacingClass="space-y-1",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+        resume_items = [
+            SimpleNamespace(
+                experience=SimpleNamespace(master_experience_id="master-hidden"),
+                experience_version_id=str(agent_service.uuid.uuid4()),
+                overrides_json={},
+                display_order=0,
+            )
+        ]
+
+        await agent_service._persist_agent_generated_resume(
+            session,
+            "user-1",
+            source_resume=source_resume,
+            resume_items=resume_items,
+            snapshot=snapshot,
+            payload=payload,
+            analysis=analysis,
+        )
+
+        self.assertEqual(len(session.added), 1)
+
+    def test_skill_bundle_returns_server_side_skill_files(self) -> None:
+        result = agent_service.build_agent_skill_bundle()
+
+        self.assertEqual(result.name, "resumeflow-job-search")
+        paths = {item.path for item in result.files}
+        self.assertIn("SKILL.md", paths)
+        self.assertIn("references/api.md", paths)
+        self.assertIn("agents/openai.yaml", paths)
 
     async def test_verify_key_rejects_revoked_or_wrong_key(self) -> None:
         key = "rfag_test-secret"
@@ -804,13 +886,18 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                             "create_render_snapshot",
                             AsyncMock(return_value=(SimpleNamespace(id="snapshot-1"), "token")),
                         ):
-                            await agent_service.build_agent_resume_pdf(
-                                SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
-                                SimpleNamespace(),
-                                "user-1",
-                                payload,
-                                analysis,
-                            )
+                            with patch.object(
+                                agent_service,
+                                "_persist_agent_generated_resume",
+                                AsyncMock(return_value=SimpleNamespace(id="generated-resume-1", title="岗位简历")),
+                            ):
+                                await agent_service.build_agent_resume_pdf(
+                                    SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                    SimpleNamespace(),
+                                    "user-1",
+                                    payload,
+                                    analysis,
+                                )
 
         self.assertEqual(
             [item["title"] for item in mocked_summary.await_args.kwargs["work_experiences"]],
@@ -1428,13 +1515,18 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                             "create_render_snapshot",
                             AsyncMock(return_value=(SimpleNamespace(id="snapshot-1"), "token")),
                         ) as mocked_snapshot:
-                            await agent_service.build_agent_resume_pdf(
-                                SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
-                                SimpleNamespace(),
-                                "user-1",
-                                payload,
-                                analysis,
-                            )
+                            with patch.object(
+                                agent_service,
+                                "_persist_agent_generated_resume",
+                                AsyncMock(return_value=SimpleNamespace(id="generated-resume-1", title="岗位简历")),
+                            ):
+                                await agent_service.build_agent_resume_pdf(
+                                    SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                    SimpleNamespace(),
+                                    "user-1",
+                                    payload,
+                                    analysis,
+                                )
 
         snapshot = mocked_snapshot.await_args.args[2]
         self.assertEqual([item.id for item in snapshot.selectedWorkItems], ["archived-master"])
