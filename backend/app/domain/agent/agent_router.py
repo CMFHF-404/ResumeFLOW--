@@ -15,6 +15,7 @@ from .agent_service import (
     build_agent_job_analysis,
     build_agent_job_metadata,
     build_agent_resume_pdf,
+    build_agent_skill_bundle,
     create_agent_api_key,
     get_agent_plugin_config,
     list_agent_api_keys,
@@ -28,6 +29,7 @@ from .schemas import (
     AgentApiKeyRevokeResponse,
     AgentPluginConfigRead,
     AgentPluginConfigUpdate,
+    AgentSkillBundleResponse,
     AgentJobAnalysisResponse,
     AgentJobGenerateRequest,
     AgentJobGenerateResponse,
@@ -91,6 +93,13 @@ async def revoke_agent_key(
 ):
     record = await revoke_agent_api_key(session, current_user.id, api_key_id)
     return AgentApiKeyRevokeResponse(id=str(record.id), revoked_at=record.revoked_at)
+
+
+@router.get("/v1/skills/resumeflow-job-search", response_model=AgentSkillBundleResponse)
+async def get_agent_skill_bundle(
+    agent_user: AgentAuthenticatedUser = Depends(get_agent_user),
+):
+    return build_agent_skill_bundle()
 
 
 @router.post("/v1/jobs/analyze", response_model=AgentJobAnalysisResponse)

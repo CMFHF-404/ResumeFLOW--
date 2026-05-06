@@ -21,7 +21,7 @@ import {
 } from '../views/resumeTemplateStorage';
 import type { ResumeExperienceListMarkerStyle } from '../types/resume';
 
-type TabKey = 'basic' | 'template' | 'polish';
+type TabKey = 'template' | 'polish';
 
 type PolishLevel = '保守' | '标准' | '增强' | '强匹配';
 
@@ -29,7 +29,6 @@ export interface AgentApiPluginConfig {
   selectedTemplateId: ResumeTemplateId;
   polishBeforeOutput: boolean;
   polishLevel: PolishLevel;
-  forceOnePage: boolean;
 }
 
 interface AgentApiPluginConfigModalProps {
@@ -38,19 +37,12 @@ interface AgentApiPluginConfigModalProps {
 }
 
 const STORAGE_KEY = 'resumeflow.agentPluginConfig';
-const STORED_AGENT_API_KEYS_KEY = 'resumeflow.agentApiKeys';
 
 const DEFAULT_CONFIG: AgentApiPluginConfig = {
   selectedTemplateId: DEFAULT_RESUME_TEMPLATE_ID,
   polishBeforeOutput: true,
   polishLevel: '标准',
-  forceOnePage: true,
 };
-
-const getPluginDownloadUrl = () => (
-  import.meta.env.VITE_AGENT_PLUGIN_DOWNLOAD_URL
-    || 'https://github.com/CMFHF-404/ResumeFLOW'
-);
 
 const loadConfig = (): AgentApiPluginConfig => {
   try {
@@ -58,8 +50,12 @@ const loadConfig = (): AgentApiPluginConfig => {
     if (!raw) return DEFAULT_CONFIG;
     const parsed = JSON.parse(raw) as Partial<AgentApiPluginConfig>;
     return {
-      ...DEFAULT_CONFIG,
-      ...parsed,
+      polishBeforeOutput: typeof parsed.polishBeforeOutput === 'boolean'
+        ? parsed.polishBeforeOutput
+        : DEFAULT_CONFIG.polishBeforeOutput,
+      polishLevel: ['保守', '标准', '增强', '强匹配'].includes(String(parsed.polishLevel))
+        ? parsed.polishLevel as PolishLevel
+        : DEFAULT_CONFIG.polishLevel,
       selectedTemplateId: RESUME_TEMPLATE_DEFINITIONS.some((item) => item.id === parsed.selectedTemplateId)
         ? parsed.selectedTemplateId as ResumeTemplateId
         : DEFAULT_RESUME_TEMPLATE_ID,
@@ -77,7 +73,6 @@ const toServerConfig = (config: AgentApiPluginConfig): ServerAgentPluginConfig =
   selected_template_id: config.selectedTemplateId,
   polish_before_output: config.polishBeforeOutput,
   polish_level: config.polishLevel,
-  force_one_page: config.forceOnePage,
 });
 
 const fromServerConfig = (config: ServerAgentPluginConfig): AgentApiPluginConfig => ({
@@ -88,32 +83,7 @@ const fromServerConfig = (config: ServerAgentPluginConfig): AgentApiPluginConfig
   polishLevel: ['保守', '标准', '增强', '强匹配'].includes(config.polish_level)
     ? config.polish_level as PolishLevel
     : DEFAULT_CONFIG.polishLevel,
-  forceOnePage: config.force_one_page,
 });
-
-const readStoredPlainKeys = (): Record<string, string> => {
-  try {
-    const raw = localStorage.getItem(STORED_AGENT_API_KEYS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
-  } catch {
-    return {};
-  }
-};
-
-const storePlainKey = (id: string, key: string) => {
-  localStorage.setItem(STORED_AGENT_API_KEYS_KEY, JSON.stringify({
-    ...readStoredPlainKeys(),
-    [id]: key,
-  }));
-};
-
-const resolveStoredPlainKey = (apiKeys: AgentApiKey[]) => {
-  const stored = readStoredPlainKeys();
-  const activeKey = apiKeys.find((key) => !key.revoked_at && stored[key.id]);
-  return activeKey ? stored[activeKey.id] : '';
-};
 
 const maskApiKey = (key: string) => {
   if (!key) return '未生成';
@@ -127,21 +97,50 @@ const resolveDisplayApiKey = (revealedKey: string, apiKeys: AgentApiKey[]) => {
   return activeKey ? `${activeKey.key_prefix}...` : '未生成';
 };
 
+const getAgentSkillBundleUrl = () => `${resolveAgentApiBaseUrl()}/agent/v1/skills/resumeflow-job-search`;
+
+const copyTextToClipboard = async (text: string) => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Continue to the DOM fallback below for embedded browsers with blocked clipboard permission.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error('clipboard_unavailable');
+  }
+};
+
 const buildAgentInstruction = (displayApiKey: string) => {
   const apiBaseUrl = resolveAgentApiBaseUrl();
+  const skillBundleUrl = getAgentSkillBundleUrl();
   return [
-    '请安装并配置 ResumeFLOW 求职插件。',
-    `插件下载链接：${getPluginDownloadUrl()}`,
-    `ResumeFLOW API：${apiBaseUrl}/agent/v1/jobs/generate`,
+    '请安装并使用 ResumeFLOW 求职 SKILL 集。',
+    `获取地址：GET ${skillBundleUrl}`,
+    '鉴权：Authorization: Bearer <API Key>',
+    `ResumeFLOW API Base：${apiBaseUrl}`,
     `API Key：${displayApiKey}`,
-    'ResumeFLOW 会使用我已保存在服务端的 Agent 插件配置：简历模板、润色设置和强制一页设置。',
-    '之后你在求职网站获取 JD 后，请将职位名称、公司名称、JD 原文和岗位链接发送给 ResumeFLOW，由平台根据我的简历模板、润色设置和工作流生成定制简历，再由你用于投递。',
+    '安装后请按 SKILL.md 与 references/api.md 执行求职筛选、分析、生成和归档流程。',
   ].join('\n');
 };
 
 const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ isOpen, onClose }) => {
   const authUserKey = useAuthUserKey();
-  const [activeTab, setActiveTab] = React.useState<TabKey>('basic');
+  const [activeTab, setActiveTab] = React.useState<TabKey>('template');
   const [config, setConfig] = React.useState<AgentApiPluginConfig>(DEFAULT_CONFIG);
   const [tip, setTip] = React.useState('');
   const [apiKeys, setApiKeys] = React.useState<AgentApiKey[]>([]);
@@ -150,6 +149,11 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
   const [isMutatingKey, setIsMutatingKey] = React.useState(false);
   const [templatePresetMap, setTemplatePresetMap] = React.useState<ResumeTemplatePresetMap>({});
   const [customizingTemplateId, setCustomizingTemplateId] = React.useState<ResumeTemplateId | null>(null);
+  const latestConfigRef = React.useRef<AgentApiPluginConfig>(DEFAULT_CONFIG);
+  const hasLoadedServerConfigRef = React.useRef(false);
+  const hasPendingLocalChangeRef = React.useRef(false);
+  const configSaveTimerRef = React.useRef<number | null>(null);
+  const configSaveVersionRef = React.useRef(0);
   const displayApiKey = React.useMemo(
     () => resolveDisplayApiKey(revealedKey, apiKeys),
     [apiKeys, revealedKey]
@@ -158,42 +162,115 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
     () => buildAgentInstruction(displayApiKey),
     [displayApiKey]
   );
-  const copyableAgentInstruction = React.useMemo(
-    () => buildAgentInstruction(revealedKey || displayApiKey),
-    [displayApiKey, revealedKey]
-  );
+
+  const clearScheduledConfigSave = React.useCallback(() => {
+    if (configSaveTimerRef.current === null) return;
+    window.clearTimeout(configSaveTimerRef.current);
+    configSaveTimerRef.current = null;
+  }, []);
+
+  const saveConfig = React.useCallback(async (
+    showTip = true,
+    configToSave: AgentApiPluginConfig = latestConfigRef.current
+  ) => {
+    const normalized = {
+      ...configToSave,
+      selectedTemplateId: configToSave.selectedTemplateId || DEFAULT_RESUME_TEMPLATE_ID,
+    };
+    const saveVersion = ++configSaveVersionRef.current;
+    latestConfigRef.current = normalized;
+    persistConfig(normalized);
+    setConfig(normalized);
+    try {
+      const saved = await agentService.savePluginConfig(toServerConfig(normalized));
+      if (saveVersion !== configSaveVersionRef.current) {
+        return true;
+      }
+      const next = fromServerConfig(saved);
+      latestConfigRef.current = next;
+      hasPendingLocalChangeRef.current = false;
+      persistConfig(next);
+      setConfig(next);
+      if (showTip) {
+        setTip('配置已保存到服务端');
+      }
+      return true;
+    } catch (error) {
+      if (saveVersion === configSaveVersionRef.current) {
+        setTip(error instanceof Error ? error.message : '服务端配置保存失败');
+      }
+      return false;
+    }
+  }, []);
+
+  const scheduleConfigSave = React.useCallback((next: AgentApiPluginConfig) => {
+    clearScheduledConfigSave();
+    configSaveTimerRef.current = window.setTimeout(() => {
+      configSaveTimerRef.current = null;
+      void saveConfig(false, next);
+    }, 450);
+  }, [clearScheduledConfigSave, saveConfig]);
 
   React.useEffect(() => {
     if (!isOpen) return;
-    setConfig(loadConfig());
-    setActiveTab('basic');
+    const localConfig = loadConfig();
+    latestConfigRef.current = localConfig;
+    hasLoadedServerConfigRef.current = false;
+    hasPendingLocalChangeRef.current = false;
+    clearScheduledConfigSave();
+    setConfig(localConfig);
+    setActiveTab('template');
     setTip('');
     setRevealedKey('');
     setNewKeyName('Agent');
     setTemplatePresetMap(loadResumeTemplatePresetMap(authUserKey));
     setCustomizingTemplateId(null);
-  }, [authUserKey, isOpen]);
+  }, [authUserKey, clearScheduledConfigSave, isOpen]);
 
   React.useEffect(() => {
     if (!isOpen) return;
+    let isCancelled = false;
     void (async () => {
       try {
         const serverConfig = await agentService.getPluginConfig();
+        if (isCancelled) return;
         const normalized = fromServerConfig(serverConfig);
+        hasLoadedServerConfigRef.current = true;
+        if (hasPendingLocalChangeRef.current) {
+          scheduleConfigSave(latestConfigRef.current);
+          return;
+        }
+        latestConfigRef.current = normalized;
         persistConfig(normalized);
         setConfig(normalized);
       } catch (error) {
+        if (isCancelled) return;
+        hasLoadedServerConfigRef.current = true;
+        if (hasPendingLocalChangeRef.current) {
+          scheduleConfigSave(latestConfigRef.current);
+        }
         setTip(error instanceof Error ? error.message : '服务端配置加载失败，已使用本地配置');
       }
     })();
-  }, [isOpen]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, scheduleConfigSave]);
+
+  React.useEffect(() => {
+    if (isOpen) return;
+    clearScheduledConfigSave();
+  }, [clearScheduledConfigSave, isOpen]);
+
+  React.useEffect(() => () => {
+    clearScheduledConfigSave();
+  }, [clearScheduledConfigSave]);
 
   const loadApiKeys = React.useCallback(async () => {
     if (!isOpen) return;
     try {
       const keys = await agentService.listApiKeys();
       setApiKeys(keys);
-      setRevealedKey((current) => current || resolveStoredPlainKey(keys));
     } catch (error) {
       setTip(error instanceof Error ? error.message : 'API Key 加载失败');
     }
@@ -205,74 +282,82 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
 
   if (!isOpen) return null;
 
-  const saveConfig = async (showTip = true) => {
-    const normalized = {
-      ...config,
-      selectedTemplateId: config.selectedTemplateId || DEFAULT_RESUME_TEMPLATE_ID,
-    };
-    persistConfig(normalized);
-    setConfig(normalized);
-    try {
-      const saved = await agentService.savePluginConfig(toServerConfig(normalized));
-      const next = fromServerConfig(saved);
-      persistConfig(next);
-      setConfig(next);
-      if (showTip) {
-        setTip('配置已保存到服务端');
-      }
-      return true;
-    } catch (error) {
-      setTip(error instanceof Error ? error.message : '服务端配置保存失败');
-      return false;
-    }
-  };
-
   const updateConfig = (patch: Partial<AgentApiPluginConfig>) => {
     setConfig((prev) => {
       const next = { ...prev, ...patch };
+      configSaveVersionRef.current += 1;
+      latestConfigRef.current = next;
+      hasPendingLocalChangeRef.current = true;
       persistConfig(next);
+      if (hasLoadedServerConfigRef.current) {
+        scheduleConfigSave(next);
+      }
       return next;
     });
   };
 
+  const createAndActivateApiKey = async (revokeExisting = true) => {
+    const activeKeys = apiKeys.filter((key) => !key.revoked_at);
+    const result = await agentService.createApiKey(newKeyName.trim() || 'Agent');
+    const revokedAt = new Date().toISOString();
+    setRevealedKey(result.key);
+    setApiKeys((current) => [
+      result.api_key,
+      ...current.filter((key) => key.id !== result.api_key.id),
+    ]);
+    if (!revokeExisting) {
+      return { key: result.key, failedRevokeCount: 0 };
+    }
+    const revokeResults = await Promise.allSettled(
+      activeKeys.map((key) => agentService.revokeApiKey(key.id))
+    );
+    const revokedKeyIds = new Set(
+      activeKeys
+        .filter((_key, index) => revokeResults[index]?.status === 'fulfilled')
+        .map((key) => key.id)
+    );
+    setApiKeys((current) => current.map((key) => (
+      revokedKeyIds.has(key.id) && !key.revoked_at ? { ...key, revoked_at: revokedAt } : key
+    )));
+    const failedRevokeCount = revokeResults.filter((item) => item.status === 'rejected').length;
+    return { key: result.key, failedRevokeCount };
+  };
+
   const copyInstruction = async () => {
-    if (!revealedKey) {
-      setTip('请先刷新或查看完整 API Key 后再复制指令');
-      return;
+    setIsMutatingKey(true);
+    setTip('');
+    try {
+      let fullKey = revealedKey;
+      let failedRevokeCount = 0;
+      if (!fullKey) {
+        const created = await createAndActivateApiKey(false);
+        fullKey = created.key;
+        failedRevokeCount = created.failedRevokeCount;
+      }
+      const isSaved = await saveConfig(false, latestConfigRef.current);
+      if (!isSaved) {
+        return;
+      }
+      await copyTextToClipboard(buildAgentInstruction(fullKey));
+      setTip(
+        failedRevokeCount > 0
+          ? '已复制完整指令；新 API Key 仅本次显示，部分旧 Key 撤销失败'
+          : '已复制完整指令，可直接发送给你的 Agent'
+      );
+    } catch (error) {
+      setTip(error instanceof Error && error.message === 'clipboard_unavailable'
+        ? '剪贴板不可用，请手动选中指令复制'
+        : error instanceof Error ? error.message : '复制指令失败');
+    } finally {
+      setIsMutatingKey(false);
     }
-    const isSaved = await saveConfig(false);
-    if (!isSaved) {
-      return;
-    }
-    await navigator.clipboard.writeText(copyableAgentInstruction);
-    setTip('已复制完整指令，可直接发送给你的 Agent');
   };
 
   const refreshApiKey = async () => {
     setIsMutatingKey(true);
     setTip('');
     try {
-      const activeKeys = apiKeys.filter((key) => !key.revoked_at);
-      const result = await agentService.createApiKey(newKeyName.trim() || 'Agent');
-      const revokedAt = new Date().toISOString();
-      setRevealedKey(result.key);
-      setApiKeys((current) => [
-        result.api_key,
-        ...current.filter((key) => key.id !== result.api_key.id),
-      ]);
-      storePlainKey(result.api_key.id, result.key);
-      const revokeResults = await Promise.allSettled(
-        activeKeys.map((key) => agentService.revokeApiKey(key.id))
-      );
-      const revokedKeyIds = new Set(
-        activeKeys
-          .filter((_key, index) => revokeResults[index]?.status === 'fulfilled')
-          .map((key) => key.id)
-      );
-      setApiKeys((current) => current.map((key) => (
-        revokedKeyIds.has(key.id) && !key.revoked_at ? { ...key, revoked_at: revokedAt } : key
-      )));
-      const failedRevokeCount = revokeResults.filter((item) => item.status === 'rejected').length;
+      const { failedRevokeCount } = await createAndActivateApiKey();
       setTip(
         failedRevokeCount > 0
           ? '新 API Key 已生成并显示，部分旧 Key 撤销失败，可稍后重试'
@@ -287,8 +372,12 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
 
   const copyRevealedKey = async () => {
     if (!revealedKey) return;
-    await navigator.clipboard.writeText(revealedKey);
-    setTip('API Key 已复制');
+    try {
+      await copyTextToClipboard(revealedKey);
+      setTip('API Key 已复制');
+    } catch {
+      setTip('剪贴板不可用，请手动选中 API Key 复制');
+    }
   };
 
   const handleSaveTemplatePreset = async (preset: {
@@ -307,7 +396,8 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
   };
 
   const closeWithSave = () => {
-    void saveConfig(false);
+    clearScheduledConfigSave();
+    void saveConfig(false, latestConfigRef.current);
     onClose();
   };
 
@@ -333,51 +423,32 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-slate-100">发送给通用 Agent 的指令</div>
-                <div className="mt-1 text-xs text-slate-400">包含插件下载链接、API 地址和部分打码的 API Key。</div>
+                <div className="mt-1 text-xs text-slate-400">包含服务端 SKILL 集获取接口、API 地址和部分打码的 API Key。</div>
               </div>
               <div className="flex gap-2">
-                <button className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700" onClick={copyInstruction} type="button">复制指令</button>
+                <button className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-50" disabled={isMutatingKey} onClick={copyInstruction} type="button">复制指令</button>
                 <button className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50" disabled={isMutatingKey} onClick={refreshApiKey} type="button">刷新 API Key</button>
               </div>
             </div>
-            <textarea className="h-32 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100 outline-none focus:border-primary" readOnly value={agentInstruction} />
+            <textarea className="h-40 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100 outline-none focus:border-primary" readOnly value={agentInstruction} />
             {revealedKey ? (
               <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
-                <div className="mb-2 text-xs font-medium text-amber-200">完整 API Key 已保存在当前浏览器，可再次查看并复制给 Agent。</div>
+                <div className="mb-2 text-xs font-medium text-amber-200">完整 API Key 仅本次显示，请复制给 Agent 后妥善保存。</div>
                 <div className="flex gap-2">
                   <input className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100" readOnly value={revealedKey} />
                   <button className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-slate-950" onClick={copyRevealedKey} type="button">复制 Key</button>
                 </div>
               </div>
             ) : null}
-            {!revealedKey && resolveStoredPlainKey(apiKeys) ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
-                <div className="text-xs text-slate-300">当前浏览器已保存完整 API Key，可再次查看并复制。</div>
-                <button className="rounded-lg bg-slate-700 px-3 py-2 text-xs text-white hover:bg-slate-600" onClick={() => setRevealedKey(resolveStoredPlainKey(apiKeys))} type="button">查看 Key</button>
-              </div>
-            ) : null}
             <p className="mt-3 text-xs text-amber-300">提示：平台只基于已有真实经历改写，不会新增不存在的公司、项目、奖项、证书或学历。</p>
           </div>
 
           <div className="mt-4 flex gap-2">
-            <button className={tabButtonClass('basic')} onClick={() => setActiveTab('basic')} type="button">基础配置</button>
             <button className={tabButtonClass('template')} onClick={() => setActiveTab('template')} type="button">简历模板</button>
             <button className={tabButtonClass('polish')} onClick={() => setActiveTab('polish')} type="button">润色设置</button>
           </div>
 
           <div className="mt-4 min-h-[150px] rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
-            {activeTab === 'basic' ? (
-              <div className="grid gap-3 text-sm sm:grid-cols-2">
-                <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-                  <span>
-                    <span className="block text-sm font-medium text-slate-100">强制一页</span>
-                    <span className="text-xs text-slate-400">生成适合快速投递的单页简历</span>
-                  </span>
-                  <input className="h-5 w-5 rounded border-slate-600 bg-slate-800 text-primary" type="checkbox" checked={config.forceOnePage} onChange={(e) => updateConfig({ forceOnePage: e.target.checked })} />
-                </label>
-              </div>
-            ) : null}
-
             {activeTab === 'template' ? (
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 {RESUME_TEMPLATE_DEFINITIONS.map((template) => {

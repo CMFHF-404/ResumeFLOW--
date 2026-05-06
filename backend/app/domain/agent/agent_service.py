@@ -6,8 +6,10 @@ import json
 import re
 import secrets
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote, urlencode
 
@@ -34,7 +36,7 @@ from ..export.schemas import (
 )
 from ..export.snapshot_service import create_render_snapshot
 from ..profile.profile_service import get_profile_if_exists
-from ..resume.models import Resume
+from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_service import NotFoundError as ResumeNotFoundError
 from ..resume.resume_service import get_resume_detail
 from ..resume.resume_schema import ResumeExperienceItem
@@ -44,6 +46,8 @@ from .schemas import (
     AgentApiKeyRead,
     AgentPluginConfigRead,
     AgentPluginConfigUpdate,
+    AgentSkillBundleFile,
+    AgentSkillBundleResponse,
     AgentJobAnalysisResponse,
     AgentJobGenerateRequest,
     AgentJobMetadata,
@@ -59,11 +63,14 @@ KEY_PREFIX_LENGTH = 12
 RECENT_RESUME_LIMIT = 1
 AGENT_EXPERIENCE_FETCH_LIMIT = 200
 FOLDER_SAFE_PATTERN = re.compile(r'[\\/:*?"<>|\r\n\t]+')
-FORCE_ONE_PAGE_LINE_HEIGHT = 1.35
-FORCE_ONE_PAGE_FONT_SIZE = 13
-FORCE_ONE_PAGE_TOP_PADDING_PX = 15
-FORCE_ONE_PAGE_ITEM_SPACING_EM = 0.25
+SMART_ONE_PAGE_LINE_HEIGHT = 1.35
+SMART_ONE_PAGE_FONT_SIZE = 13
+SMART_ONE_PAGE_TOP_PADDING_PX = 15
+SMART_ONE_PAGE_ITEM_SPACING_EM = 0.25
+SMART_ONE_PAGE_SECTION_SPACING_KEY = 2
 PROFILE_TEMPLATE_PRESETS_KEY = "resumeTemplatePresets"
+AGENT_SKILL_DIR = Path(__file__).resolve().parent / "skill_bundles" / "resumeflow-job-search"
+AGENT_SKILL_FILES = ("SKILL.md", "references/api.md", "agents/openai.yaml")
 
 
 @dataclass(frozen=True)
@@ -172,11 +179,7 @@ async def resolve_agent_generate_options(
             else config.polish_before_output
         ),
         polish_level=payload.polish_level or config.polish_level,
-        force_one_page=(
-            payload.force_one_page
-            if payload.force_one_page is not None
-            else config.force_one_page
-        ),
+        force_one_page=True,
     )
 
 
@@ -250,6 +253,21 @@ async def authenticate_agent_api_key(
     session.add(record)
     await session.commit()
     return AgentAuthenticatedUser(id=record.user_id)
+
+
+def build_agent_skill_bundle() -> AgentSkillBundleResponse:
+    files: List[AgentSkillBundleFile] = []
+    for relative_path in AGENT_SKILL_FILES:
+        path = AGENT_SKILL_DIR / relative_path
+        if not path.is_file():
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Agent skill bundle not found")
+        files.append(
+            AgentSkillBundleFile(
+                path=relative_path.replace("\\", "/"),
+                content=path.read_text(encoding="utf-8"),
+            )
+        )
+    return AgentSkillBundleResponse(name="resumeflow-job-search", files=files)
 
 
 async def resolve_agent_resume(
@@ -428,12 +446,23 @@ async def build_agent_resume_pdf(
         resume_items=resume_items,
         category_by_master_id=category_by_master_id,
     )
+    generated_resume = await _persist_agent_generated_resume(
+        session,
+        user_id,
+        source_resume=resume,
+        resume_items=resume_items,
+        snapshot=snapshot,
+        payload=payload,
+        analysis=analysis,
+    )
     file_name = f"{analysis.suggested_folder_name}.pdf"
     record, token = await create_render_snapshot(session, user_id, snapshot)
     download_path = f"/exports/download/resume-pdf/{record.id}?{urlencode({'token': token, 'fileName': file_name})}"
     return AgentResumePdf(
         download_url=_absolute_url(request, download_path),
         file_name=file_name,
+        generated_resume_id=str(generated_resume.id),
+        generated_resume_title=generated_resume.title,
     )
 
 
@@ -628,16 +657,156 @@ def _resolve_snapshot_layout(
         "sectionSpacingClass": str(layout.get("sectionSpacingClass") or "space-y-4"),
         "listSpacingClass": str(layout.get("listSpacingClass") or "space-y-2"),
     }
-    if options and options.force_one_page:
-        values.update(
-            lineHeight=min(values["lineHeight"], FORCE_ONE_PAGE_LINE_HEIGHT),
-            fontSize=min(values["fontSize"], FORCE_ONE_PAGE_FONT_SIZE),
-            itemSpacingEm=min(values["itemSpacingEm"], FORCE_ONE_PAGE_ITEM_SPACING_EM),
-            topPaddingPx=min(values["topPaddingPx"], FORCE_ONE_PAGE_TOP_PADDING_PX),
-            sectionSpacingClass="mb-2",
-            listSpacingClass="space-y-1",
-        )
+    values.update(
+        lineHeight=min(values["lineHeight"], SMART_ONE_PAGE_LINE_HEIGHT),
+        fontSize=min(values["fontSize"], SMART_ONE_PAGE_FONT_SIZE),
+        itemSpacingEm=min(values["itemSpacingEm"], SMART_ONE_PAGE_ITEM_SPACING_EM),
+        topPaddingPx=min(values["topPaddingPx"], SMART_ONE_PAGE_TOP_PADDING_PX),
+        sectionSpacingClass=f"mb-{SMART_ONE_PAGE_SECTION_SPACING_KEY}",
+        listSpacingClass="space-y-1",
+    )
     return values
+
+
+def _hash_agent_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _snapshot_skill_ids(snapshot: ResumePdfRenderSnapshot) -> List[str]:
+    ids: List[str] = []
+    for group in snapshot.selectedSkillGroups:
+        ids.extend(skill.id for skill in group.skills if skill.id)
+    return ids
+
+
+def _build_agent_jd_analysis_config(
+    payload: AgentJobGenerateRequest,
+    analysis: AgentJobAnalysisResponse,
+) -> Dict[str, Any]:
+    jd_text = payload.jd_text.strip()
+    result = {
+        "matchPercentage": analysis.match_percentage,
+        "jobKeywords": [],
+        "missingKeywords": analysis.missing_keywords,
+        "jobTitle": payload.job_title,
+        "company": payload.company_name,
+        "summary": analysis.evaluation,
+        "extractedJdText": jd_text,
+    }
+    return {
+        "jdText": jd_text,
+        "jdInputSignature": _hash_agent_text(jd_text),
+        "experienceSignature": _hash_agent_text(json.dumps(result, ensure_ascii=False, sort_keys=True)),
+        "result": result,
+        "itemSignatures": {
+            "experiences": {},
+            "certifications": {},
+            "skills": {},
+        },
+        "experienceText": "",
+        "inputMode": "text",
+        "updatedAt": _now_aware().isoformat(),
+    }
+
+
+def _build_agent_generated_resume_config(
+    source_config: Any,
+    snapshot: ResumePdfRenderSnapshot,
+    payload: AgentJobGenerateRequest,
+    analysis: AgentJobAnalysisResponse,
+) -> Dict[str, Any]:
+    source = deepcopy(source_config) if isinstance(source_config, dict) else {}
+    layout = source.get("layout") if isinstance(source.get("layout"), dict) else {}
+    return {
+        "profile": snapshot.profile.model_dump(mode="json"),
+        "personalSummary": snapshot.profile.summary,
+        "profileSyncMode": "local",
+        "selection": {
+            "experienceIds": [item.id for item in [*snapshot.selectedWorkItems, *snapshot.selectedProjectItems]],
+            "educationIds": snapshot.selectedEduIds,
+            "certificationIds": snapshot.selectedCertIds,
+            "skillIds": _snapshot_skill_ids(snapshot),
+        },
+        "layout": {
+            "sectionOrder": snapshot.sectionOrder,
+            "density": "compact",
+            "topPaddingPx": snapshot.topPaddingPx,
+            "sectionSpacingKey": SMART_ONE_PAGE_SECTION_SPACING_KEY,
+            "sectionSpacingClass": snapshot.sectionSpacingClass,
+            "itemSpacingEm": SMART_ONE_PAGE_ITEM_SPACING_EM,
+            "lineHeight": snapshot.lineHeight,
+            "fontSize": snapshot.fontSize,
+            "isSmartPageApplied": True,
+            "isSummaryVisible": bool(snapshot.profile.summary.strip()),
+            "orders": layout.get("orders", {}) if isinstance(layout.get("orders"), dict) else {},
+            "templateId": snapshot.templateId,
+            "themeColorPresetId": snapshot.themeColorPresetId,
+            "experienceListMarkerStyle": snapshot.experienceListMarkerStyle,
+            "skillTagSeparator": snapshot.skillTagSeparator,
+        },
+        "jdAnalysis": _build_agent_jd_analysis_config(payload, analysis),
+        "agentJob": {
+            "jobTitle": payload.job_title,
+            "companyName": payload.company_name,
+            "jobUrl": str(payload.job_url),
+            "source": payload.source,
+            "matchPercentage": analysis.match_percentage,
+            "recommendation": analysis.recommendation,
+            "suggestedFolderName": analysis.suggested_folder_name,
+            "strengths": analysis.strengths,
+            "gaps": analysis.gaps,
+            "missingKeywords": analysis.missing_keywords,
+            "generatedAt": _now_aware().isoformat(),
+        },
+    }
+
+
+async def _persist_agent_generated_resume(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    source_resume: Resume,
+    resume_items: List[ResumeExperienceItem],
+    snapshot: ResumePdfRenderSnapshot,
+    payload: AgentJobGenerateRequest,
+    analysis: AgentJobAnalysisResponse,
+) -> Resume:
+    title = f"{payload.company_name} - {payload.job_title}"
+    target_role = payload.job_title or getattr(source_resume, "target_role", None)
+    generated = Resume(
+        user_id=user_id,
+        title=title,
+        target_role=target_role,
+        config=_build_agent_generated_resume_config(
+            getattr(source_resume, "config", None),
+            snapshot,
+            payload,
+            analysis,
+        ),
+    )
+    session.add(generated)
+    await session.flush()
+
+    selected_master_ids = {
+        item.id for item in [*snapshot.selectedWorkItems, *snapshot.selectedProjectItems, *snapshot.educations]
+    }
+    for item in resume_items:
+        experience = getattr(item, "experience", None)
+        master_id = str(getattr(experience, "master_experience_id", "") or "")
+        if master_id not in selected_master_ids:
+            continue
+        session.add(
+            ResumeExperienceLink(
+                resume_id=generated.id,
+                experience_version_id=uuid.UUID(str(item.experience_version_id)),
+                overrides_json=deepcopy(item.overrides_json or {}),
+                display_order=int(item.display_order),
+            )
+        )
+
+    await session.commit()
+    await session.refresh(generated)
+    return generated
 
 
 def _resume_selection(config: Dict[str, Any]) -> Dict[str, Any]:

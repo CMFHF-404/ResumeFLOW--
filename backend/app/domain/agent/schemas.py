@@ -47,6 +47,16 @@ class AgentApiKeyRevokeResponse(BaseModel):
     revoked_at: datetime
 
 
+class AgentSkillBundleFile(BaseModel):
+    path: str
+    content: str
+
+
+class AgentSkillBundleResponse(BaseModel):
+    name: str
+    files: List[AgentSkillBundleFile]
+
+
 class AgentJobRequest(BaseModel):
     job_title: str = Field(min_length=1, max_length=160)
     company_name: str = Field(min_length=1, max_length=160)
@@ -76,6 +86,8 @@ class AgentJobAnalysisResponse(BaseModel):
 class AgentResumePdf(BaseModel):
     download_url: str
     file_name: str
+    generated_resume_id: Optional[str] = None
+    generated_resume_title: Optional[str] = None
 
 
 class AgentJobMetadata(BaseModel):
