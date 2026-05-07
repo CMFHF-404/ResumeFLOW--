@@ -279,6 +279,14 @@ POLISH_MODE_INSTRUCTIONS = {
         "Do not invent new facts, numbers, tools, or responsibilities. "
         "The visible character count should be increased by at least 30% overall whenever the source text is long enough to support that change."
     ),
+    "enhanced": (
+        "Enhanced mode should reorganize wording more actively than default mode when it improves JD fit, clarity, and resume impact. "
+        "You may restructure clauses across S/T/A/R, prioritize the most relevant deliverables, and make the value proposition sharper, while preserving every fact, metric, responsibility level, chronology, and tool exactly as supported by the input."
+    ),
+    "strong_match": (
+        "Strong-match mode should prioritize JD fit more than default mode while staying strictly evidence-based. "
+        "Prefer the strongest JD-aligned facts, deliverables, tools, and measurable outcomes already present in the input; do not add unsupported keywords, inflate ownership, or invent achievements."
+    ),
 }
 
 ASSISTANT_COMMON_RULES = (

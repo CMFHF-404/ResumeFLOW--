@@ -4,6 +4,7 @@ export type AgentApiKey = {
   id: string;
   name: string;
   key_prefix: string;
+  key?: string | null;
   created_at: string;
   last_used_at?: string | null;
   revoked_at?: string | null;
@@ -51,8 +52,8 @@ export const agentService = {
     return response.data;
   },
 
-  async createApiKey(name: string): Promise<CreateAgentApiKeyResponse> {
-    const response = await apiClient.post<CreateAgentApiKeyResponse>('/agent/api-keys', { name });
+  async createApiKey(name: string, rotate = false): Promise<CreateAgentApiKeyResponse> {
+    const response = await apiClient.post<CreateAgentApiKeyResponse>('/agent/api-keys', { name, rotate });
     return response.data;
   },
 

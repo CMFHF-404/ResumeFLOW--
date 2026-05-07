@@ -178,6 +178,7 @@ class AgentApiKey(SQLModel, table=True):
     name: str
     key_prefix: str = Field(index=True)
     key_hash: str = Field(sa_column=Column(Text, nullable=False))
+    key_plaintext: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None

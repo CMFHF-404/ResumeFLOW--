@@ -208,10 +208,42 @@ async def ensure_agent_api_keys_table() -> None:
                     name TEXT NOT NULL,
                     key_prefix TEXT NOT NULL,
                     key_hash TEXT NOT NULL,
+                    key_plaintext TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                     last_used_at TIMESTAMPTZ,
                     revoked_at TIMESTAMPTZ
                 )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                ALTER TABLE agent_api_keys
+                ADD COLUMN IF NOT EXISTS key_plaintext TEXT
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                WITH ranked_active_keys AS (
+                    SELECT
+                        id,
+                        row_number() OVER (
+                            PARTITION BY user_id
+                            ORDER BY created_at DESC, id DESC
+                        ) AS active_rank
+                    FROM agent_api_keys
+                    WHERE revoked_at IS NULL
+                )
+                UPDATE agent_api_keys AS key
+                SET
+                    revoked_at = now(),
+                    key_plaintext = NULL
+                FROM ranked_active_keys
+                WHERE key.id = ranked_active_keys.id
+                  AND ranked_active_keys.active_rank > 1
                 """
             )
         )
@@ -228,6 +260,15 @@ async def ensure_agent_api_keys_table() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_agent_api_keys_key_prefix
                 ON agent_api_keys(key_prefix)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uniq_agent_api_keys_active_user
+                ON agent_api_keys(user_id)
+                WHERE revoked_at IS NULL
                 """
             )
         )

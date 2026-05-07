@@ -26,12 +26,14 @@ class AgentPluginConfigUpdate(BaseModel):
 
 class AgentApiKeyCreate(BaseModel):
     name: str = Field(default="Agent", min_length=1, max_length=80)
+    rotate: bool = False
 
 
 class AgentApiKeyRead(BaseModel):
     id: str
     name: str
     key_prefix: str
+    key: Optional[str] = None
     created_at: datetime
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
@@ -55,6 +57,33 @@ class AgentSkillBundleFile(BaseModel):
 class AgentSkillBundleResponse(BaseModel):
     name: str
     files: List[AgentSkillBundleFile]
+
+
+class AgentResumeTemplateOption(BaseModel):
+    id: str
+    name: str
+    description: str
+    has_avatar: bool
+    default_theme_color_preset_id: str
+
+
+class AgentResumeTemplateOptionsResponse(BaseModel):
+    default_template_id: str = DEFAULT_AGENT_TEMPLATE_ID
+    templates: List[AgentResumeTemplateOption]
+
+
+class AgentPolishOption(BaseModel):
+    id: str
+    label: str
+    polish_before_output: bool
+    polish_level: Optional[str] = None
+    description: str
+
+
+class AgentPolishOptionsResponse(BaseModel):
+    default_polish_before_output: bool = True
+    default_polish_level: str = DEFAULT_AGENT_POLISH_LEVEL
+    options: List[AgentPolishOption]
 
 
 class AgentJobRequest(BaseModel):
