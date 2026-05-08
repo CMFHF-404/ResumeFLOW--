@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, FileText, Wand2 } from 'lucide-react';
 import RichTextEditor from '../../../components/RichTextEditor';
 import { stripRichTextToText } from '../../../utils/richText';
@@ -24,8 +24,19 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
     onVisibilityChange,
     onGenerate,
 }) => {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(() => !stripRichTextToText(value).trim());
     const hasValue = stripRichTextToText(value).trim().length > 0;
+    const previousHasValueRef = useRef(hasValue);
+
+    useEffect(() => {
+        if (!hasValue && previousHasValueRef.current) {
+            setIsCollapsed(true);
+        }
+        if (hasValue && !previousHasValueRef.current) {
+            setIsCollapsed(false);
+        }
+        previousHasValueRef.current = hasValue;
+    }, [hasValue]);
 
     return (
         <section className="space-y-3">
