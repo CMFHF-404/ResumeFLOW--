@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timezone
+import logging
 import math
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -32,6 +33,9 @@ from ..skills.schemas import UserSkillCreate
 from .schemas import AssistantSessionCreate, AssistantSessionUpdate
 
 
+logger = logging.getLogger("uvicorn.error")
+
+
 class NotFoundError(Exception):
     pass
 
@@ -58,6 +62,32 @@ def _is_message_applied(message: AIAssistantMessage) -> bool:
 def _read_context_string(context: dict, key: str) -> str | None:
     value = context.get(key)
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _summarize_draft_content(content: Any) -> Dict[str, Any]:
+    if not isinstance(content, dict):
+        return {"content_type": type(content).__name__}
+    data = content.get("data")
+    if not isinstance(data, dict):
+        return {
+            "type": content.get("type"),
+            "status": content.get("status"),
+            "has_data": False,
+        }
+    return {
+        "type": content.get("type"),
+        "status": content.get("status"),
+        "category": data.get("category"),
+        "has_data": True,
+        "has_targetMasterId": isinstance(data.get("targetMasterId"), str)
+        and bool(data.get("targetMasterId").strip()),
+        "has_title": isinstance(data.get("title"), str) and bool(data.get("title").strip()),
+        "has_org": isinstance(data.get("org"), str) and bool(data.get("org").strip()),
+        "has_startDate": isinstance(data.get("startDate"), str) and bool(data.get("startDate").strip()),
+        "has_endDate": isinstance(data.get("endDate"), str) and bool(data.get("endDate").strip()),
+        "isCurrent": data.get("isCurrent"),
+        "has_star": isinstance(data.get("star"), dict),
+    }
 
 
 def _latest_preview_matches_message(
@@ -240,6 +270,14 @@ def _resolve_bound_experience_master_id(
     target_master_id = _read_draft_target_master_id(data)
     if context_master_id:
         if target_master_id and target_master_id != context_master_id:
+            if assistant_session.entry_source == "experience_bank":
+                logger.warning(
+                    "Ignoring mismatched assistant draft target for experience_bank session: session_id=%s context_master_id=%s has_draft_target_master_id=%s",
+                    assistant_session.id,
+                    context_master_id,
+                    True,
+                )
+                return context_master_id
             raise InvalidMessageError("Draft target does not match the current experience context")
         return context_master_id
     if not allow_unbound_target:
@@ -554,6 +592,8 @@ async def mark_message_applied(
     skip_apply: bool = False,
 ) -> AIAssistantMessage:
     assistant_session = await get_session(session, user_id, session_id)
+    context_json = assistant_session.context_json or {}
+    context_master_id = _read_context_string(context_json, "masterId")
     result = await session.execute(
         select(AIAssistantMessage).where(
             AIAssistantMessage.id == message_id,
@@ -563,9 +603,28 @@ async def mark_message_applied(
     message = result.scalars().one_or_none()
     if not message:
         raise NotFoundError(f"Assistant message {message_id} not found")
+    draft_summary = _summarize_draft_content(message.content_json)
+    logger.info(
+        "Assistant draft apply context: user_id=%s session_id=%s message_id=%s entry_source=%s mode=%s skip_apply=%s context_master_id=%s context_category=%s message_type=%s draft=%s",
+        user_id,
+        assistant_session.id,
+        message.id,
+        assistant_session.entry_source,
+        getattr(assistant_session, "mode", None),
+        skip_apply,
+        context_master_id,
+        context_json.get("category") if isinstance(context_json, dict) else None,
+        message.message_type,
+        draft_summary,
+    )
     if message.message_type != "draft_card":
         raise InvalidMessageError("Only draft card messages can be marked as applied")
     if _is_message_applied(message):
+        logger.info(
+            "Assistant draft already applied: session_id=%s message_id=%s",
+            assistant_session.id,
+            message.id,
+        )
         return message
     if skip_apply:
         if assistant_session.entry_source == "direct":
@@ -580,6 +639,11 @@ async def mark_message_applied(
                     allow_unbound_target=False,
                 )
     elif assistant_session.entry_source == "direct":
+        logger.info(
+            "Assistant draft apply branch: direct session_id=%s message_id=%s",
+            assistant_session.id,
+            message.id,
+        )
         await _apply_direct_draft_card(
             session,
             user_id=user_id,
@@ -587,6 +651,12 @@ async def mark_message_applied(
             message=message,
         )
     elif assistant_session.entry_source == "experience_bank":
+        logger.info(
+            "Assistant draft apply branch: experience_bank session_id=%s message_id=%s context_master_id=%s",
+            assistant_session.id,
+            message.id,
+            context_master_id,
+        )
         await _apply_experience_bank_draft_card(
             session,
             user_id=user_id,
@@ -594,12 +664,15 @@ async def mark_message_applied(
             message=message,
         )
     elif assistant_session.entry_source == "resume_editor":
+        logger.info(
+            "Assistant draft apply branch: resume_editor session_id=%s message_id=%s context_master_id=%s",
+            assistant_session.id,
+            message.id,
+            context_master_id,
+        )
         content = message.content_json or {}
         data = content.get("data")
         if content.get("type") == "experience" and isinstance(data, dict):
-            context_master_id = _read_context_string(
-                assistant_session.context_json or {}, "masterId"
-            )
             if context_master_id:
                 _resolve_bound_experience_master_id(
                     assistant_session,

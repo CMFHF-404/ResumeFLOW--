@@ -8,6 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...constants import ALLOWED_OVERRIDE_KEYS
 from ...models import ExperienceVersion
+from ...utils.date_utils import normalize_month_date_string
 from ...utils.time_utils import utc_now
 from ..experience.experience_service import get_version_for_user
 from .models import Resume, ResumeExperienceLink
@@ -326,6 +327,7 @@ async def _next_display_order(session: AsyncSession, resume_id: str) -> int:
 
 def _filter_overrides(overrides: Dict[str, Any]) -> Dict[str, Any]:
     safe_overrides = _normalize_overrides(overrides)
+    safe_overrides = _normalize_date_overrides(safe_overrides)
     return {key: value for key, value in safe_overrides.items() if key in ALLOWED_OVERRIDE_KEYS}
 
 
@@ -333,6 +335,19 @@ def _normalize_overrides(value: Any) -> Dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _normalize_date_overrides(overrides: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(overrides)
+    for key in ("start_date", "end_date"):
+        if key not in normalized:
+            continue
+        normalized_value = normalize_month_date_string(normalized[key])
+        if normalized_value:
+            normalized[key] = normalized_value
+        else:
+            normalized.pop(key, None)
+    return normalized
 
 
 def _normalize_override_keys(value: Any) -> List[str]:

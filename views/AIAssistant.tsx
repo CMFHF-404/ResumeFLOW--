@@ -29,6 +29,7 @@ import { resumeService, type Resume } from '../services/resumeService';
 import { skillsService } from '../services/skillsService';
 import { buildSelectedResumeFromResources } from '../utils/assistantResumeContext';
 import { normalizeAssistantDraftCard } from '../utils/assistantDraft';
+import { normalizeDateInput } from '../utils/dateUtils';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { extractThoughtHeadline } from '../utils/aiThought';
 import { stripRichTextToText } from '../utils/richText';
@@ -514,6 +515,80 @@ const readContextString = (context: Record<string, unknown>, key: string) => {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 };
 
+const clipLogText = (value: unknown, limit = 240) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
+};
+
+const readErrorDetail = (payload: unknown): string | null => {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const record = payload as { detail?: unknown; message?: unknown; error?: unknown };
+  const detail = record.detail ?? record.message ?? record.error;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail.trim();
+  }
+  if (Array.isArray(detail) || (detail && typeof detail === 'object')) {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
+  }
+  return null;
+};
+
+const extractApplyErrorDetails = (applyError: unknown) => {
+  const maybeError = applyError as {
+    message?: unknown;
+    code?: unknown;
+    response?: { status?: number; data?: unknown };
+    config?: { method?: string; url?: string };
+  };
+  const status = maybeError.response?.status;
+  const detail = readErrorDetail(maybeError.response?.data);
+  const message = typeof maybeError.message === 'string' ? maybeError.message : null;
+  const userMessage = detail || (status ? `HTTP ${status}` : null) || message || '未知错误';
+  return {
+    userMessage,
+    status,
+    detail: clipLogText(detail),
+    message: clipLogText(message),
+    code: typeof maybeError.code === 'string' ? maybeError.code : undefined,
+    method: maybeError.config?.method,
+    url: maybeError.config?.url,
+    responseData: maybeError.response?.data,
+  };
+};
+
+const summarizeDraftForLog = (card: AssistantDraftCard) => {
+  if (card.type !== 'experience') {
+    return {
+      type: card.type,
+      status: card.status,
+      hasSummary: Boolean(card.summary?.trim()),
+    };
+  }
+  return {
+    type: card.type,
+    status: card.status,
+    hasSummary: Boolean(card.summary?.trim()),
+    category: card.data.category,
+    hasTargetMasterId: Boolean(card.data.targetMasterId?.trim()),
+    hasOrg: Boolean(card.data.org.trim()),
+    hasTitle: Boolean(card.data.title.trim()),
+    hasStartDate: Boolean(card.data.startDate.trim()),
+    hasEndDate: Boolean(card.data.endDate.trim()),
+    isCurrent: card.data.isCurrent,
+  };
+};
+
 const isPersistedCallbackOnlySession = (session: AssistantSession | null) => {
   if (!session) {
     return false;
@@ -650,10 +725,10 @@ const buildResumeExperienceOverrideOperation = (draft: Extract<AssistantDraftCar
     overrides.org = draft.org.trim();
   }
   if (draft.startDate.trim()) {
-    overrides.start_date = draft.startDate.trim();
+    overrides.start_date = normalizeDateInput(draft.startDate) ?? draft.startDate.trim();
   }
   if (!draft.isCurrent && draft.endDate.trim()) {
-    overrides.end_date = draft.endDate.trim();
+    overrides.end_date = normalizeDateInput(draft.endDate) ?? draft.endDate.trim();
   } else {
     clearOverrideKeys.add('end_date');
   }
@@ -682,8 +757,8 @@ const buildExperienceVersionPayload = (
     title: resolvedTitle,
     org: draft.org.trim() || fallback?.org,
     location: fallback?.location,
-    start_date: draft.startDate.trim() || undefined,
-    end_date: draft.isCurrent ? undefined : (draft.endDate.trim() || undefined),
+    start_date: normalizeDateInput(draft.startDate) || undefined,
+    end_date: draft.isCurrent ? undefined : (normalizeDateInput(draft.endDate) || undefined),
     is_current: Boolean(draft.isCurrent),
     summary: fallback?.summary,
     highlights: fallback?.highlights ?? [],
@@ -718,7 +793,9 @@ const isSameDraftCard = (preview: Record<string, unknown> | undefined, card: Ass
     return false;
   }
   try {
-    return JSON.stringify(preview.data ?? null) === JSON.stringify(card.data);
+    const normalizedPreview = normalizeAssistantDraftCard(preview as unknown as AssistantDraftCard);
+    const normalizedCard = normalizeAssistantDraftCard(card);
+    return JSON.stringify(normalizedPreview.data ?? null) === JSON.stringify(normalizedCard.data);
   } catch (error) {
     return false;
   }
@@ -1947,6 +2024,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         applied = true;
       } else if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
         appliedMessage = await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
+        experienceService.clearListCache();
         applied = true;
       } else if (!handledByCustomApply && callbackOnly) {
         error('这个草稿需要在原编辑上下文中确认，请从对应入口重新打开会话。');
@@ -2015,8 +2093,23 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         success('草稿已确认录入');
       }
     } catch (applyError) {
-      console.error('[AIAssistant] Failed to apply draft:', applyError);
-      error('草稿录入失败，请稍后重试');
+      const applyErrorDetails = extractApplyErrorDetails(applyError);
+      console.error('[AIAssistant] Failed to apply draft:', {
+        sessionId: selectedSession.id,
+        entrySource: selectedSession.entry_source,
+        mode: selectedSession.mode,
+        messageId,
+        callbackOnly,
+        hasCustomApplyHandler: Boolean(applyHandler),
+        context: {
+          masterId: readContextString(selectedSession.context_json ?? {}, 'masterId'),
+          category: readContextString(selectedSession.context_json ?? {}, 'category'),
+          assistantApplyMode: readContextString(selectedSession.context_json ?? {}, 'assistantApplyMode'),
+        },
+        draft: summarizeDraftForLog(normalizedCard),
+        error: applyErrorDetails,
+      }, applyError);
+      error(`草稿录入失败：${applyErrorDetails.userMessage}`, 6000);
     } finally {
       setApplyingMessageIds((prev) => {
         const next = new Set(prev);

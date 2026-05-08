@@ -1,6 +1,7 @@
 import asyncio
 import html
 import json
+import logging
 import re
 from typing import Any, Dict
 from uuid import UUID
@@ -48,6 +49,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+logger = logging.getLogger("uvicorn.error")
 MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024
 MAX_ASSISTANT_ATTACHMENT_TEXT_CHARS = 12_000
 MAX_ASSISTANT_ATTACHMENT_EXCERPT_CHARS = 1_200
@@ -673,6 +675,13 @@ async def mark_assistant_message_applied(
     session: AsyncSession = Depends(get_db_session),
     current_user=Depends(get_current_user),
 ):
+    logger.info(
+        "Applying assistant draft: user_id=%s session_id=%s message_id=%s skip_apply=%s",
+        current_user.id,
+        session_id,
+        message_id,
+        skip_apply,
+    )
     try:
         message = await mark_message_applied(
             session,
@@ -682,9 +691,43 @@ async def mark_assistant_message_applied(
             skip_apply=skip_apply,
         )
     except NotFoundError as exc:
+        logger.warning(
+            "Assistant draft apply not found: user_id=%s session_id=%s message_id=%s skip_apply=%s error=%s",
+            current_user.id,
+            session_id,
+            message_id,
+            skip_apply,
+            exc,
+        )
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InvalidMessageError as exc:
+        logger.warning(
+            "Assistant draft apply rejected: user_id=%s session_id=%s message_id=%s skip_apply=%s error=%s",
+            current_user.id,
+            session_id,
+            message_id,
+            skip_apply,
+            exc,
+        )
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception(
+            "Assistant draft apply crashed: user_id=%s session_id=%s message_id=%s skip_apply=%s",
+            current_user.id,
+            session_id,
+            message_id,
+            skip_apply,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Assistant draft apply failed: {type(exc).__name__}",
+        ) from exc
+    logger.info(
+        "Assistant draft applied: user_id=%s session_id=%s message_id=%s",
+        current_user.id,
+        session_id,
+        message_id,
+    )
     return AssistantMessageApplyRead(message=_to_message_read(message))
 
 

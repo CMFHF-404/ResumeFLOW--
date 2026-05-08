@@ -2,6 +2,7 @@ import os
 import unittest
 import uuid
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import json
@@ -18,6 +19,9 @@ _set_required_env_defaults()
 from app.models import ExperienceCategory, ExperienceVersion, MasterExperience  # noqa: E402
 from app.domain.ai import ai_service  # noqa: E402
 from app.domain.assistant import assistant_router, assistant_service  # noqa: E402
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _ScalarResult:
@@ -50,6 +54,40 @@ class _FakeAsyncSession:
 
     def add(self, value):
         self.added.append(value)
+
+
+class AssistantFrontendSourceTests(unittest.TestCase):
+    def test_experience_bank_card_assistant_launch_keeps_local_apply_handler(self) -> None:
+        source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
+        start = source.index("const handleOpenAssistant")
+        end = source.index("  const isPolishing", start)
+        block = source[start:end]
+
+        self.assertIn("applyDraftHandler:", block)
+        self.assertIn("registerPendingAssistantApply(cardId, meta)", block)
+        self.assertIn("updateCardData(cardId, nextData)", block)
+        self.assertIn("callbackOnly: true", block)
+
+    def test_ai_assistant_allows_experience_bank_custom_apply_handler(self) -> None:
+        source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "const applyHandler = applyHandlerMapRef.current.get(selectedSession.id);",
+            source,
+        )
+        self.assertNotIn(
+            "selectedSession.entry_source === 'experience_bank'\n      ? undefined",
+            source,
+        )
+
+    def test_ai_assistant_normalizes_latest_preview_before_draft_comparison(self) -> None:
+        source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        start = source.index("const isSameDraftCard")
+        end = source.index("const resolveDraftGroupId", start)
+        block = source[start:end]
+
+        self.assertIn("normalizeAssistantDraftCard(preview", block)
+        self.assertNotIn("JSON.stringify(preview.data ?? null) === JSON.stringify(card.data)", block)
 
 
 class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
@@ -821,6 +859,66 @@ class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created_versions[0].version, 1)
         self.assertEqual(created_versions[0].title, "新项目")
 
+    async def test_apply_direct_experience_draft_accepts_year_month_dates(self) -> None:
+        session = _FakeAsyncSession([_ExecuteResult(first=None)])
+        assistant_session = SimpleNamespace(context_json={}, entry_source="direct")
+        message = SimpleNamespace(
+            content_json={
+                "type": "experience",
+                "data": {
+                    "category": "project",
+                    "title": "AI 产品开发",
+                    "org": "原子简历",
+                    "startDate": "2024.05",
+                    "endDate": "2025-03",
+                    "isCurrent": False,
+                    "star": {"s": "背景", "t": "目标", "a": "执行", "r": "结果"},
+                },
+            }
+        )
+
+        await assistant_service._apply_direct_draft_card(  # type: ignore[attr-defined]
+            session,
+            user_id="user-1",
+            assistant_session=assistant_session,
+            message=message,
+        )
+
+        created_versions = [item for item in session.added if isinstance(item, ExperienceVersion)]
+        self.assertEqual(len(created_versions), 1)
+        self.assertEqual(created_versions[0].start_date, date(2024, 5, 1))
+        self.assertEqual(created_versions[0].end_date, date(2025, 3, 1))
+
+    async def test_apply_direct_experience_draft_coerces_day_dates_to_month_start(self) -> None:
+        session = _FakeAsyncSession([_ExecuteResult(first=None)])
+        assistant_session = SimpleNamespace(context_json={}, entry_source="direct")
+        message = SimpleNamespace(
+            content_json={
+                "type": "experience",
+                "data": {
+                    "category": "project",
+                    "title": "RPG 游戏经历",
+                    "org": "独立互动叙事 RPG 游戏",
+                    "startDate": "2025-08-01",
+                    "endDate": "2026-04-30",
+                    "isCurrent": False,
+                    "star": {"s": "背景", "t": "目标", "a": "执行", "r": "结果"},
+                },
+            }
+        )
+
+        await assistant_service._apply_direct_draft_card(  # type: ignore[attr-defined]
+            session,
+            user_id="user-1",
+            assistant_session=assistant_session,
+            message=message,
+        )
+
+        created_versions = [item for item in session.added if isinstance(item, ExperienceVersion)]
+        self.assertEqual(len(created_versions), 1)
+        self.assertEqual(created_versions[0].start_date, date(2025, 8, 1))
+        self.assertEqual(created_versions[0].end_date, date(2026, 4, 1))
+
     async def test_mark_message_applied_rejects_mismatched_target_in_resume_editor(self) -> None:
         assistant_session = SimpleNamespace(
             id=uuid.uuid4(),
@@ -929,8 +1027,116 @@ class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("applied_at", message.content_json)
         session.commit.assert_awaited()
 
+    async def test_mark_message_applied_updates_bound_experience_bank_master_with_month_dates(self) -> None:
+        master_id = uuid.uuid4()
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            entry_source="experience_bank",
+            context_json={"masterId": str(master_id), "category": "project"},
+            latest_preview={},
+        )
+        message = SimpleNamespace(
+            id=uuid.uuid4(),
+            message_type="draft_card",
+            content_json={
+                "type": "experience",
+                "data": {
+                    "category": "project",
+                    "targetMasterId": str(uuid.uuid4()),
+                    "title": "RPG 游戏经历",
+                    "org": "独立互动叙事 RPG 游戏",
+                    "startDate": "2025-08-01",
+                    "endDate": "2026-04-30",
+                    "isCurrent": False,
+                    "star": {"s": "背景", "t": "目标", "a": "执行", "r": "结果"},
+                },
+            },
+        )
+        master = MasterExperience(
+            id=master_id,
+            user_id="user-1",
+            category=ExperienceCategory.PROJECT,
+            latest_version_id=None,
+        )
+        session = _FakeAsyncSession([
+            _ExecuteResult(one_or_none=message),
+            _ExecuteResult(one_or_none=master),
+            _ExecuteResult(first=1),
+        ])
+
+        with patch.object(assistant_service, "get_session", AsyncMock(return_value=assistant_session)):
+            updated = await assistant_service.mark_message_applied(
+                session,
+                user_id="user-1",
+                session_id=assistant_session.id,
+                message_id=message.id,
+            )
+
+        self.assertIs(updated, message)
+        created_versions = [item for item in session.added if isinstance(item, ExperienceVersion)]
+        self.assertEqual(len(created_versions), 1)
+        self.assertEqual(created_versions[0].master_experience_id, master_id)
+        self.assertEqual(created_versions[0].start_date, date(2025, 8, 1))
+        self.assertEqual(created_versions[0].end_date, date(2026, 4, 1))
+        self.assertIn("applied_at", message.content_json)
+        session.commit.assert_awaited()
+
 
 class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
+    def test_draft_apply_log_summary_omits_user_resume_content(self) -> None:
+        summary = assistant_service._summarize_draft_content(  # type: ignore[attr-defined]
+            {
+                "type": "experience",
+                "status": "draft_ready",
+                "data": {
+                    "category": "project",
+                    "targetMasterId": "master-sensitive-id",
+                    "title": "AI 产品开发",
+                    "org": "秘密公司",
+                    "startDate": "2024.05",
+                    "endDate": "2025.03",
+                    "isCurrent": False,
+                    "star": {"s": "敏感背景", "a": "敏感行动"},
+                },
+            }
+        )
+
+        serialized = json.dumps(summary, ensure_ascii=False)
+        for sensitive_text in (
+            "master-sensitive-id",
+            "AI 产品开发",
+            "秘密公司",
+            "2024.05",
+            "2025.03",
+            "敏感背景",
+            "敏感行动",
+        ):
+            self.assertNotIn(sensitive_text, serialized)
+        self.assertEqual(summary["type"], "experience")
+        self.assertTrue(summary["has_data"])
+        self.assertTrue(summary["has_targetMasterId"])
+        self.assertTrue(summary["has_star"])
+
+    def test_experience_bank_mismatch_log_omits_draft_target_value(self) -> None:
+        sensitive_target = "AI 草稿目标里可能出现的敏感简历内容"
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            entry_source="experience_bank",
+            context_json={"masterId": str(uuid.uuid4())},
+        )
+
+        with self.assertLogs("uvicorn.error", level="WARNING") as captured:
+            resolved = assistant_service._resolve_bound_experience_master_id(  # type: ignore[attr-defined]
+                assistant_session,
+                {"targetMasterId": sensitive_target},
+                allow_unbound_target=False,
+            )
+
+        logs = "\n".join(captured.output)
+        self.assertEqual(resolved, assistant_session.context_json["masterId"])
+        self.assertNotIn(sensitive_target, logs)
+        self.assertIn("has_draft_target_master_id=True", logs)
+
     async def test_persist_assistant_turn_sanitizes_selected_experiences(self) -> None:
         session = _FakeAsyncSession([])
         assistant_session = SimpleNamespace(

@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ...models import ExperienceCategory
+from ...utils.date_utils import coerce_month_date, is_blank_or_present_date
 
 
 class ExperienceVersionPayload(BaseModel):
@@ -19,6 +20,13 @@ class ExperienceVersionPayload(BaseModel):
     highlights: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     star: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def _normalize_month_date(cls, value: Any) -> Any:
+        if is_blank_or_present_date(value):
+            return None
+        return coerce_month_date(value) or value
 
 
 class ExperienceCreate(BaseModel):
