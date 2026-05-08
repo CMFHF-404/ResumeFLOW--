@@ -29,6 +29,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ...config import load_settings
 from ...constants import MAX_LIMIT
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
+from ...utils.date_utils import normalize_month_date_string
 from ..ai.ai_service import call_llm_json
 from .prompts import RESUME_CHUNK_PARSING_PROMPT, RESUME_MERGE_PROMPT, RESUME_PARSING_PROMPT
 from .schemas import DuplicateMatch, ParsedExperienceItem, ParsedExperienceVersion
@@ -355,18 +356,9 @@ def _is_present_marker(value: Any) -> bool:
 
 
 def _normalize_date(value: Any) -> Optional[str]:
-    if not value:
+    if _is_present_marker(value):
         return None
-    text = str(value).strip()
-    if not text or _is_present_marker(text):
-        return None
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
-        return text
-    if re.match(r"^\d{4}-\d{2}$", text):
-        return f"{text}-01"
-    if re.match(r"^\d{4}$", text):
-        return f"{text}-01-01"
-    return None
+    return normalize_month_date_string(value)
 
 
 def _ensure_list(value: Any) -> List[Any]:

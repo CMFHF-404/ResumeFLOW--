@@ -62,6 +62,13 @@ class _FakeAsyncClient:
 
 
 class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
+    def test_normalize_date_uses_month_granularity(self) -> None:
+        self.assertEqual(parser_service._normalize_date("2024.05"), "2024-05-01")
+        self.assertEqual(parser_service._normalize_date("2025-03"), "2025-03-01")
+        self.assertEqual(parser_service._normalize_date("2025/8/31"), "2025-08-01")
+        self.assertEqual(parser_service._normalize_date("2026年4月30日"), "2026-04-01")
+        self.assertEqual(parser_service._normalize_date("2026-08-22"), "2026-08-01")
+
     def test_build_gemini_timeout_uses_global_ai_timeout(self) -> None:
         fake_settings = SimpleNamespace(ai_timeout_seconds=300)
 

@@ -5,9 +5,9 @@ const CARD_EDGE_EXPAND_CLASS = 'card-edge-expand';
 const CARD_EDGE_COLLAPSE_CLASS = 'card-edge-collapse';
 
 /**
- * 将日期字符串从前端格式（YYYY.MM 或 YYYY-MM）转换为后端期望的 ISO 日期格式（YYYY-MM-DD）
- * @param dateStr 日期字符串，例如 "2017.09" 或 "2017-09"
- * @returns ISO 格式的日期字符串，例如 "2017-09-01"，如果为空则返回 undefined
+ * 将日期字符串转换为后端存储格式，统一到月粒度的当月 1 日。
+ * @param dateStr 日期字符串，例如 "2017.09"、"2017-09" 或 "2017年9月"
+ * @returns ISO 格式的日期字符串，例如 "2017-09-01"，如果为空或非法则返回 undefined
  */
 export const convertDateToISO = (dateStr: string | undefined): string | undefined => {
   if (!dateStr || !dateStr.trim()) {
@@ -15,23 +15,24 @@ export const convertDateToISO = (dateStr: string | undefined): string | undefine
   }
 
   const trimmed = dateStr.trim();
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
+  const normalized = trimmed
+    .replace(/年/g, '-')
+    .replace(/月/g, '-')
+    .replace(/日/g, '')
+    .replace(/[./]/g, '-')
+    .replace(/\s+/g, '')
+    .replace(/-+$/g, '');
+  const match = normalized.match(/^(\d{4})(?:-(\d{1,2})(?:-\d{1,2})?)?$/);
+  if (!match) {
+    return undefined;
   }
 
-  const parts = trimmed.split(/[.\-]/);
-  if (parts.length >= 2) {
-    const year = parts[0].padStart(4, '0');
-    const month = parts[1].padStart(2, '0');
-    return `${year}-${month}-01`;
+  const year = match[1];
+  const month = Number(match[2] || '1');
+  if (month < 1 || month > 12) {
+    return undefined;
   }
-
-  if (parts.length === 1 && parts[0].length === 4) {
-    return `${parts[0]}-01-01`;
-  }
-
-  return undefined;
+  return `${year}-${String(month).padStart(2, '0')}-01`;
 };
 
 export const parseYearMonthValue = (dateStr?: string): number | null => {

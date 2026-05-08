@@ -10,13 +10,11 @@ export const formatYearMonth = (value?: string): string => {
   if (!trimmed) {
     return "";
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed.slice(0, 7).replace("-", ".");
+  const normalized = convertDateToISO(trimmed);
+  if (normalized) {
+    return normalized.slice(0, 7).replace("-", ".");
   }
-  if (/^\d{4}-\d{2}$/.test(trimmed)) {
-    return trimmed.replace("-", ".");
-  }
-  return trimmed.replace("-", ".");
+  return trimmed.replace(/-/g, ".");
 };
 
 export const normalizeDateInput = (value: string): string | undefined => {

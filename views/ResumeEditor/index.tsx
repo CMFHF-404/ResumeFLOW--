@@ -25,6 +25,7 @@ import { experienceService, type ExperienceDetail, type ExperienceListItem } fro
 import { skillsService } from '../../services/skillsService';
 import type {
     CertificationView,
+    EducationEditDraft,
     EducationView,
     ExperienceEditDraft,
     PolishPreviewState,
@@ -41,7 +42,7 @@ import type {
     SkillGroupView,
 } from '../../types/resume';
 import type { Resume as DashboardResume } from '../../types';
-import { buildExperienceDate } from '../../utils/dateUtils';
+import { buildExperienceDate, normalizeDateInput } from '../../utils/dateUtils';
 import {
     buildResumeAISnapshot,
     buildStarFields,
@@ -4886,8 +4887,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             };
             const clearOverrideKeys = new Set<string>();
             const org = normalizedDraftCard.data.org.trim();
-            const startDate = normalizedDraftCard.data.startDate.trim();
-            const endDate = normalizedDraftCard.data.isCurrent ? '' : normalizedDraftCard.data.endDate.trim();
+            const startDate = normalizeDateInput(normalizedDraftCard.data.startDate);
+            const endDate = normalizedDraftCard.data.isCurrent ? undefined : normalizeDateInput(normalizedDraftCard.data.endDate);
             if (title) {
                 overrides.title = title;
             }
@@ -4927,8 +4928,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 version: {
                     title,
                     org: normalizedDraftCard.data.org.trim() || undefined,
-                    start_date: normalizedDraftCard.data.startDate.trim() || undefined,
-                    end_date: normalizedDraftCard.data.isCurrent ? undefined : (normalizedDraftCard.data.endDate.trim() || undefined),
+                    start_date: normalizeDateInput(normalizedDraftCard.data.startDate),
+                    end_date: normalizedDraftCard.data.isCurrent ? undefined : normalizeDateInput(normalizedDraftCard.data.endDate),
                     is_current: Boolean(normalizedDraftCard.data.isCurrent),
                     star: normalizedDraftCard.data.star,
                 },
