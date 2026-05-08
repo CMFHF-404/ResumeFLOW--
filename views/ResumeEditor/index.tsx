@@ -1946,7 +1946,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [floatingPolishCustomPrompt, setFloatingPolishCustomPrompt] = useState('');
     const [floatingPolishSession, setFloatingPolishSession] = useState<FloatingExperiencePolishSession | null>(null);
     const [isFloatingExperiencePolishRunning, setIsFloatingExperiencePolishRunning] = useState(false);
+    const [pendingPolishAutoAnalyzeSeq, setPendingPolishAutoAnalyzeSeq] = useState(0);
     const floatingExperiencePolishRunningRef = useRef(false);
+    const lastPolishAutoAnalyzeSeqRef = useRef(0);
     const singleFloatingPolishPreview = floatingPolishSession?.mode === 'single'
         ? floatingPolishSession.items[0] ?? null
         : null;
@@ -2610,6 +2612,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             });
             setFloatingPolishSession(null);
             setActiveFloatingPolishExperienceId(null);
+            setPendingPolishAutoAnalyzeSeq((current) => current + 1);
             trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             updateToast(toastId, { message: '润色结果已保存到当前简历', type: 'success', duration: 2500 });
         } catch (error) {
@@ -2632,6 +2635,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         ensureFloatingPolishResumeLinks,
         resumeId,
         rollbackFloatingPolishResumeLinks,
+        setPendingPolishAutoAnalyzeSeq,
         setResumeExperienceMap,
         showToastLoading,
         singleFloatingPolishPreview,
@@ -2841,6 +2845,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             setResumeExperienceMap(nextMap);
             setFloatingPolishSession(null);
             setIsBatchPolishToolbarOpen(false);
+            setPendingPolishAutoAnalyzeSeq((current) => current + 1);
             trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             updateToast(toastId, {
                 message: batchFloatingPolishPreview.failedIds.length > 0
@@ -2870,6 +2875,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         ensureFloatingPolishResumeLinks,
         resumeId,
         rollbackFloatingPolishResumeLinks,
+        setPendingPolishAutoAnalyzeSeq,
         setResumeExperienceMap,
         showToastLoading,
         updateToast,
@@ -3286,6 +3292,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         await applyResumeNameUpdate(autoName, { silent: true });
         return result;
     }, [applyResumeNameUpdate, canAutoNameResume, jdText, resumeName, runJdAnalyzeWithToast]);
+    useEffect(() => {
+        if (pendingPolishAutoAnalyzeSeq <= 0) {
+            return;
+        }
+        if (lastPolishAutoAnalyzeSeqRef.current === pendingPolishAutoAnalyzeSeq) {
+            return;
+        }
+        lastPolishAutoAnalyzeSeqRef.current = pendingPolishAutoAnalyzeSeq;
+        void runJdAnalyzeWithToast();
+    }, [pendingPolishAutoAnalyzeSeq, runJdAnalyzeWithToast]);
     useEffect(() => {
         if (typeof document === 'undefined') {
             return;
