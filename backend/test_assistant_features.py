@@ -57,6 +57,24 @@ class _FakeAsyncSession:
 
 
 class AssistantFrontendSourceTests(unittest.TestCase):
+    def test_editor_sidebar_ai_polish_card_can_collapse_to_match_and_suggestion(self) -> None:
+        source = (REPO_ROOT / "views" / "ResumeEditor" / "components" / "EditorSidebar.tsx").read_text(encoding="utf-8")
+        start = source.index("const EditingSuggestionNav")
+        end = source.index("const EditorSidebar", start)
+        block = source[start:end]
+
+        self.assertIn("isPolishCardCollapsed", block)
+        self.assertIn("setIsPolishCardCollapsed", block)
+        self.assertIn("aria-label={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}", block)
+        self.assertIn("title={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}", block)
+        self.assertIn("transition-[grid-template-rows,opacity]", block)
+        self.assertIn("isPolishCardCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'", block)
+        self.assertIn("aria-hidden={isPolishCardCollapsed}", block)
+        self.assertIn("!isPolishCardCollapsed && toolbar ? <div className=\"mt-3\">{toolbar}</div> : null", block)
+        self.assertIn("isPolishCardCollapsed ? '-rotate-90' : 'rotate-0'", block)
+        self.assertIn("isPolishCardCollapsed ? 'flex items-start gap-3'", block)
+        self.assertIn("折叠后仅显示匹配度与润色建议", block)
+
     def test_personal_summary_panel_collapses_when_empty(self) -> None:
         source = (REPO_ROOT / "views" / "ResumeEditor" / "components" / "PersonalSummaryPanel.tsx").read_text(encoding="utf-8")
 
