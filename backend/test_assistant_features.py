@@ -57,16 +57,37 @@ class _FakeAsyncSession:
 
 
 class AssistantFrontendSourceTests(unittest.TestCase):
-    def test_experience_bank_card_assistant_launch_keeps_local_apply_handler(self) -> None:
+    def test_personal_summary_panel_collapses_when_empty(self) -> None:
+        source = (REPO_ROOT / "views" / "ResumeEditor" / "components" / "PersonalSummaryPanel.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("useState(() => !stripRichTextToText(value).trim())", source)
+        self.assertIn("previousHasValueRef", source)
+        self.assertIn("if (!hasValue && previousHasValueRef.current)", source)
+        self.assertIn("setIsCollapsed(true)", source)
+        self.assertIn("if (hasValue && !previousHasValueRef.current)", source)
+        self.assertIn("setIsCollapsed(false)", source)
+
+    def test_experience_bank_card_assistant_launch_uses_server_apply(self) -> None:
         source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
         start = source.index("const handleOpenAssistant")
         end = source.index("  const isPolishing", start)
         block = source[start:end]
 
-        self.assertIn("applyDraftHandler:", block)
-        self.assertIn("registerPendingAssistantApply(cardId, meta)", block)
-        self.assertIn("updateCardData(cardId, nextData)", block)
-        self.assertIn("callbackOnly: true", block)
+        self.assertIn("entrySource: 'experience_bank'", block)
+        self.assertNotIn("applyDraftHandler:", block)
+        self.assertNotIn("registerPendingAssistantApply(cardId, meta)", block)
+        self.assertNotIn("callbackOnly: true", block)
+
+    def test_experience_bank_temp_card_assistant_requires_save_first(self) -> None:
+        source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
+        start = source.index("const handleOpenAssistant")
+        end = source.index("  const isPolishing", start)
+        block = source[start:end]
+
+        self.assertIn("if (isTempId(cardId))", block)
+        self.assertIn("toast.error('请先保存这段经历，再使用高级模式'", block)
+        self.assertIn("return;", block)
+        self.assertIn("[category, onLaunchAssistant, toast]", block)
 
     def test_ai_assistant_allows_experience_bank_custom_apply_handler(self) -> None:
         source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
