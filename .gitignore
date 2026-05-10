@@ -35,6 +35,7 @@ develop-eggs/
 dist/
 downloads/
 job-archives/
+backend/db-backups/
 eggs/
 .eggs/
 lib/

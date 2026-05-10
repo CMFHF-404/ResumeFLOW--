@@ -340,6 +340,9 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("/agent/v1/polish-options", files["references/api.md"])
         self.assertIn("API Key 对应的 ResumeFLOW 用户账号", files["references/api.md"])
         self.assertIn("每个用户保留一个可复制的 Agent API Key", files["references/api.md"])
+        self.assertIn("save the API base URL and API key locally", files["SKILL.md"])
+        self.assertIn("persist the supplied API base URL and full API key", files["references/api.md"])
+        self.assertIn("excluded from version control", files["references/api.md"])
         self.assertIn("获取模板选项和润色选项", files["SKILL.md"])
 
     def test_resume_template_options_match_agent_contract(self) -> None:

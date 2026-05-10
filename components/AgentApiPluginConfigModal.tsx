@@ -68,6 +68,7 @@ const buildAgentInstruction = (displayApiKey: string) => {
     '鉴权：Authorization: Bearer <API Key>',
     `ResumeFLOW API Base：${apiBaseUrl}`,
     `API Key：${displayApiKey}`,
+    '请将 ResumeFLOW API Base 和 API Key 保存到本机私有密钥存储或本地配置中，方便后续同一机器继续使用；不要写入仓库、归档、日志或普通回复。',
     '安装后请按 SKILL.md 与 references/api.md 调用选项接口，先向用户确认模板、是否启用输出润色及档位，再执行求职筛选、分析、生成和归档流程。',
   ].join('\n');
 };
@@ -205,7 +206,7 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({ i
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-slate-100">发送给通用 Agent 的指令</div>
-                <div className="mt-1 text-xs text-slate-400">包含服务端 SKILL 集获取接口、API 地址和当前账号保存的 API Key。</div>
+                <div className="mt-1 text-xs text-slate-400">包含服务端 SKILL 集获取接口、API 地址、当前账号保存的 API Key，以及 Agent 本地复用提醒。</div>
               </div>
               <div className="flex gap-2">
                 <button className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-50" disabled={isMutatingKey} onClick={copyInstruction} type="button">复制指令</button>
