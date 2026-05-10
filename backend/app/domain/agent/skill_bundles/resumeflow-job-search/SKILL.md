@@ -22,6 +22,7 @@ Use this skill to coordinate a user-approved job search that turns job descripti
 ## ResumeFLOW Rules
 
 - Use only the API base URL and API key supplied by the user or current task. Never invent credentials.
+- When the user supplies a full API key and the runtime has a local secret store or user-private config outside version control, save the API base URL and API key locally so future ResumeFLOW job-search sessions on the same machine can reuse them without asking again. Never commit the key, include it in archives, or print it in normal output.
 - Send `Authorization: Bearer <API Key>` on every ResumeFLOW Agent API request.
 - Treat the API key as bound to the API Key 对应的 ResumeFLOW 用户账号. Analysis uses that account's resume data, generated resumes are saved under that account, and future token accounting can be associated with that user id server-side.
 - Treat the API key as stable until the user refreshes it in ResumeFLOW. The web app stores one reusable Agent API key per user and includes it when copying Agent instructions.
