@@ -38,7 +38,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             if (isAuthenticated && !shouldForceReauth) {
                 return;
             }
-            console.log('[AuthGuard] Login required:', reason || 'unknown');
+            if (import.meta.env.DEV) {
+                console.log('[AuthGuard] Login required:', reason || 'unknown');
+            }
             isSigningInRef.current = true;
             void (async () => {
                 await trackLoginStart(shouldForceReauth ? 'auth_guard_reauth' : 'auth_guard');

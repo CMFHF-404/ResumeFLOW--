@@ -203,14 +203,18 @@ const App: React.FC = () => {
 
   // 处理简历数据更新的回调
   const handleResumesUpdate = useCallback((resumes: Resume[]) => {
-    console.log('[App] 更新全局简历缓存，共', resumes.length, '份简历');
+    if (import.meta.env.DEV) {
+      console.log('[App] 更新全局简历缓存，共', resumes.length, '份简历');
+    }
     setCachedResumes(resumes);
     setCachedResumesOwnerKey(authUserKey ?? null);
   }, [authUserKey]);
 
   // 处理经历库数据更新的回调
   const handleProfileUpdate = useCallback((data: any) => {
-    console.log('[App] 更新经历库缓存');
+    if (import.meta.env.DEV) {
+      console.log('[App] 更新经历库缓存');
+    }
     setProfileCache(data);
   }, []);
   const handleOpenFeedback = useCallback(() => {
