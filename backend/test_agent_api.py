@@ -344,6 +344,10 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("persist the supplied API base URL and full API key", files["references/api.md"])
         self.assertIn("excluded from version control", files["references/api.md"])
         self.assertIn("获取模板选项和润色选项", files["SKILL.md"])
+        self.assertIn("job-link.md", files["SKILL.md"])
+        self.assertIn("[Open job posting](https://example.com/jobs/123)", files["SKILL.md"])
+        self.assertIn("Do not save the recruiting page HTML", files["SKILL.md"])
+        self.assertNotIn("job.html", files["SKILL.md"])
 
     def test_resume_template_options_match_agent_contract(self) -> None:
         result = agent_service.build_agent_resume_template_options()
@@ -2328,7 +2332,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                 end_date=None,
                 is_current=False,
                 summary="主修前端方向",
-                star={"degree": "本科", "major": "计算机科学"},
+                star={"degree": "本科"},
             )
         )
         hidden_item = SimpleNamespace(
@@ -2340,7 +2344,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                 end_date=None,
                 is_current=False,
                 summary="不应导出",
-                star={"degree": "硕士", "major": "隐藏专业"},
+                star={"degree": "硕士"},
             )
         )
         bank = {
@@ -2364,6 +2368,82 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(snapshot.selectedEduIds, ["master-edu-selected"])
         self.assertEqual([item.school for item in snapshot.educations], ["示例大学"])
+        self.assertEqual([item.major for item in snapshot.educations], ["计算机科学"])
+        self.assertEqual([item.degree for item in snapshot.educations], ["本科"])
+
+    def test_agent_pdf_snapshot_does_not_repeat_degree_as_major(self) -> None:
+        resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端", config={})
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_前端实习_90",
+        )
+        bank = {
+            "profile": None,
+            "experiences": [
+                (
+                    SimpleNamespace(id="edu-1", category=ExperienceCategory.EDUCATION),
+                    SimpleNamespace(
+                        id="version-edu-1",
+                        title="本科",
+                        org="示例大学",
+                        start_date=None,
+                        end_date=None,
+                        is_current=False,
+                        summary="",
+                        star={"degree": "本科"},
+                    ),
+                )
+            ],
+            "certifications": [],
+            "skills": [],
+        }
+
+        snapshot = agent_service._build_resume_pdf_snapshot(
+            resume,
+            bank,
+            payload,
+            analysis,
+            "",
+        )
+
+        self.assertEqual([item.major for item in snapshot.educations], [""])
+        self.assertEqual([item.degree for item in snapshot.educations], ["本科"])
+
+        linked_snapshot = agent_service._build_resume_pdf_snapshot(
+            resume,
+            bank,
+            payload,
+            analysis,
+            "",
+            resume_items=[
+                SimpleNamespace(
+                    experience=SimpleNamespace(
+                        master_experience_id="edu-1",
+                        title="本科",
+                        org="示例大学",
+                        start_date=None,
+                        end_date=None,
+                        is_current=False,
+                        summary="",
+                        star={"degree": "本科"},
+                    )
+                )
+            ],
+        )
+
+        self.assertEqual([item.major for item in linked_snapshot.educations], [""])
+        self.assertEqual([item.degree for item in linked_snapshot.educations], ["本科"])
 
     def test_agent_pdf_snapshot_filters_selected_experience_items(self) -> None:
         resume = SimpleNamespace(
@@ -2982,7 +3062,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                         end_date=None,
                         is_current=False,
                         summary="",
-                        star={"degree": "本科", "major": "计算机科学"},
+                        star={"degree": "本科"},
                     ),
                 ),
                 (
@@ -2995,7 +3075,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                         end_date=None,
                         is_current=False,
                         summary="",
-                        star={"degree": "硕士", "major": "软件工程"},
+                        star={"degree": "硕士"},
                     ),
                 ),
             ],
@@ -3024,5 +3104,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual([item.id for item in snapshot.educations], ["edu-2", "edu-1"])
+        self.assertEqual([item.major for item in snapshot.educations], ["软件工程", "计算机科学"])
+        self.assertEqual([item.degree for item in snapshot.educations], ["硕士", "本科"])
         self.assertEqual([item.id for item in snapshot.sortedCertifications], ["cert-2", "cert-1"])
         self.assertEqual([group.name for group in snapshot.selectedSkillGroups], ["Backend", "Frontend"])

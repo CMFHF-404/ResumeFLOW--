@@ -1890,8 +1890,8 @@ def _resume_item_education_snapshots(
             EducationViewSnapshot(
                 id=master_id,
                 school=getattr(experience, "org", "") or getattr(experience, "title", "") or "",
-                major=str(star.get("major") or getattr(experience, "summary", "") or ""),
-                degree=str(star.get("degree") or getattr(experience, "title", "") or ""),
+                major=_education_major(getattr(experience, "title", ""), star, getattr(experience, "summary", "")),
+                degree=str(star.get("degree") or ""),
                 startDate=_date_to_str(getattr(experience, "start_date", None)),
                 endDate=_date_to_str(getattr(experience, "end_date", None)),
                 isCurrent=bool(getattr(experience, "is_current", False)),
@@ -2239,6 +2239,14 @@ def _experience_snapshots(rows: List[Tuple[Any, Any]], category: ExperienceCateg
     return items
 
 
+def _education_major(title: Any, star: Dict[str, Any], summary: Any) -> str:
+    title_text = str(title or "")
+    degree_text = str(star.get("degree") or "")
+    if title_text and title_text != degree_text:
+        return title_text
+    return str(star.get("major") or summary or "")
+
+
 def _education_snapshots(rows: List[Tuple[Any, Any]]) -> List[EducationViewSnapshot]:
     items = []
     for master, version in rows:
@@ -2249,8 +2257,8 @@ def _education_snapshots(rows: List[Tuple[Any, Any]]) -> List[EducationViewSnaps
             EducationViewSnapshot(
                 id=str(getattr(master, "id", getattr(version, "id", ""))),
                 school=getattr(version, "org", "") or getattr(version, "title", "") or "",
-                major=str(star.get("major") or getattr(version, "summary", "") or ""),
-                degree=str(star.get("degree") or getattr(version, "title", "") or ""),
+                major=_education_major(getattr(version, "title", ""), star, getattr(version, "summary", "")),
+                degree=str(star.get("degree") or ""),
                 startDate=_date_to_str(getattr(version, "start_date", None)),
                 endDate=_date_to_str(getattr(version, "end_date", None)),
                 isCurrent=bool(getattr(version, "is_current", False)),
