@@ -1357,7 +1357,7 @@ async def _persist_agent_generated_resume(
     persist_snapshot_star_overrides: bool = False,
     bank_experience_rows: Optional[List[Tuple[Any, Any]]] = None,
 ) -> Resume:
-    title = f"{payload.company_name} - {payload.job_title}"
+    title = f"{payload.company_name} - {payload.job_title} [Agent]"
     target_role = payload.job_title or getattr(source_resume, "target_role", None)
     generated = Resume(
         user_id=user_id,

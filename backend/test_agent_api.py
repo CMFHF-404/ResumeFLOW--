@@ -322,6 +322,7 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(len(session.added), 1)
+        self.assertEqual(session.added[0].title, "示例公司 - 前端实习 [Agent]")
 
     def test_skill_bundle_returns_server_side_skill_files(self) -> None:
         result = agent_service.build_agent_skill_bundle()
