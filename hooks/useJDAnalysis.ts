@@ -1115,10 +1115,12 @@ export const useJDAnalysis = ({
     if (analysisContext.experienceSignature === experienceSignature) {
       return;
     }
-    console.log('[JD Debug] Signature Mismatch!', {
-      oldSig: analysisContext.experienceSignature,
-      newSig: experienceSignature
-    });
+    if (import.meta.env.DEV) {
+      console.log('[JD Debug] Signature Mismatch!', {
+        oldSig: analysisContext.experienceSignature,
+        newSig: experienceSignature
+      });
+    }
     const nextSignatures = buildJDItemSignatures(
       experienceItems,
       certifications,
@@ -1128,13 +1130,17 @@ export const useJDAnalysis = ({
       analysisContext.itemSignatures,
       nextSignatures
     );
-    console.log('[JD Debug] Diff:', diff);
+    if (import.meta.env.DEV) {
+      console.log('[JD Debug] Diff:', diff);
+    }
     if (
       diff.experiences.size > 0 ||
       diff.certifications.size > 0 ||
       diff.skills.size > 0
     ) {
-      console.log('[JD Debug] Marking Stale!');
+      if (import.meta.env.DEV) {
+        console.log('[JD Debug] Marking Stale!');
+      }
       setDebugInfo({
         diff,
         diffDetails: {
