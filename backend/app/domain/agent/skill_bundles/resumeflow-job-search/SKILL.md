@@ -1,6 +1,6 @@
 ---
 name: resumeflow-job-search
-description: "Use when Codex or another agent needs to run a job-search workflow with ResumeFLOW: confirm job preferences, search and filter job boards, collect JD content, call ResumeFLOW Agent APIs to analyze job match and generate tailored resume PDFs, then archive each high-match job locally with the job page HTML, JD, and generated resume."
+description: "Use when Codex or another agent needs to run a job-search workflow with ResumeFLOW: confirm job preferences, search and filter job boards, collect JD content, call ResumeFLOW Agent APIs to analyze job match and generate tailored resume PDFs, then archive each high-match job locally with a direct job-page link, JD, and generated resume."
 ---
 
 # ResumeFLOW Job Search
@@ -17,7 +17,7 @@ Use this skill to coordinate a user-approved job search that turns job descripti
 4. For each candidate job, capture at minimum `job_title`, `company_name`, full `jd_text`, canonical `job_url`, and optional `source`.
 5. Batch jobs through ResumeFLOW analysis first. Prefer `/agent/v1/jobs/analyze` for screening many JDs, then call `/agent/v1/jobs/generate` only for jobs that meet the user's threshold and hard filters.
 6. Present a shortlist before application actions. Include match score, recommendation, strengths, gaps, missing keywords, source URL, selected template, polish setting, and the planned local folder path.
-7. For each approved high-match job, create one local folder named `match-company-role`, using the numeric match score first. Save the direct page HTML, JD text or attachment, and the generated ResumeFLOW PDF in that folder.
+7. For each approved high-match job, create one local folder named `match-company-role`, using the numeric match score first. Save a direct hyperlink to the original recruiting page, JD text or attachment, and the generated ResumeFLOW PDF in that folder.
 
 ## ResumeFLOW Rules
 
@@ -37,13 +37,13 @@ Create one folder per generated job:
 
 ```text
 <match_percentage>-<company_name>-<job_title>/
-  job.html
+  job-link.md
   jd.txt
   resume.pdf
   metadata.json
 ```
 
-Sanitize folder and file names for the local OS. Put the original `job_url`, `source`, match score, API recommendation, generation time, and ResumeFLOW PDF URL in `metadata.json`.
+Write `job-link.md` as a Markdown hyperlink to the original `job_url`, for example `[Open job posting](https://example.com/jobs/123)`. Do not save the recruiting page HTML unless the user explicitly asks for a page snapshot. Sanitize folder and file names for the local OS. Put the original `job_url`, `source`, match score, API recommendation, generation time, and ResumeFLOW PDF URL in `metadata.json`.
 
 ## Output To User
 
