@@ -526,7 +526,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     const loadProfile = async () => {
       // 防抖：如果已有请求正在进行，直接返回
       if (isLoadingProfileRef.current) {
-        console.log('[ExperienceBank] 请求防抖：跳过重复请求');
+        if (import.meta.env.DEV) {
+          console.log('[ExperienceBank] 请求防抖：跳过重复请求');
+        }
         return;
       }
 
@@ -535,7 +537,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
         if (!hasHydratedProfileRef.current) {
           setIsLoadingProfile(true);
         }
-        console.log('[ExperienceBank] 开始加载个人资料...');
+        if (import.meta.env.DEV) {
+          console.log('[ExperienceBank] 开始加载个人资料...');
+        }
 
         // profileService 已有内置缓存机制，会自动处理缓存
         const profile = await profileService.getProfile();
@@ -543,7 +547,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
         applyProfileSnapshot(profile);
         hasHydratedProfileRef.current = true;
 
-        console.log('[ExperienceBank] 加载成功');
+        if (import.meta.env.DEV) {
+          console.log('[ExperienceBank] 加载成功');
+        }
 
         // 使用 ref 调用回调，更新 App 级缓存
         if (onProfileUpdateRef.current) {
@@ -566,7 +572,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   // 检测是否需要自动打开简历上传弹窗
   useEffect(() => {
     if (shouldOpenResumeUpload) {
-      console.log('[ExperienceBank] 自动打开简历上传弹窗');
+      if (import.meta.env.DEV) {
+        console.log('[ExperienceBank] 自动打开简历上传弹窗');
+      }
       void handleImportResumeClick();
     }
   }, [handleImportResumeClick, shouldOpenResumeUpload]);
@@ -575,7 +583,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     if (!isAuthenticated || !readPendingResumeUpload()) {
       return;
     }
-    console.log('[ExperienceBank] 恢复待执行的简历导入动作');
+    if (import.meta.env.DEV) {
+      console.log('[ExperienceBank] 恢复待执行的简历导入动作');
+    }
     writePendingResumeUpload(false);
     setIsResumeModalOpen(true);
   }, [isAuthenticated]);
@@ -584,7 +594,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     if (!isAuthenticated || !readPendingAssistantLaunch()) {
       return;
     }
-    console.log('[ExperienceBank] 恢复待执行的 AI 助手启动动作');
+    if (import.meta.env.DEV) {
+      console.log('[ExperienceBank] 恢复待执行的 AI 助手启动动作');
+    }
     writePendingAssistantLaunch(false);
     launchEmptyStateAssistant();
   }, [isAuthenticated, launchEmptyStateAssistant]);

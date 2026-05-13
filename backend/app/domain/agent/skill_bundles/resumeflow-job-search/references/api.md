@@ -15,6 +15,8 @@ The API key is bound to the API Key 对应的 ResumeFLOW 用户账号. Agent cal
 
 Each ResumeFLOW user keeps one reusable Agent API key by default: 每个用户保留一个可复制的 Agent API Key. The full key is stored server-side for that user so the web app can include it when copying Agent instructions. It remains stable until the user explicitly clicks refresh, which revokes the old key and creates a replacement.
 
+Agents should also persist the supplied API base URL and full API key in local user-private storage when their runtime supports it, such as an OS secret store or a local config file that is outside the project workspace and excluded from version control. This local copy is for reuse in later ResumeFLOW sessions on the same machine. Do not store the key in job archives, generated resumes, repository files, logs, screenshots, or chat summaries; if the local copy is missing or authentication returns 401, ask the user to provide or refresh the key.
+
 ## Agent Capabilities
 
 ResumeFLOW exposes the core workflow Agent needs: skill bundle install, template selection, polish option selection, JD analysis, tailored resume generation, account-side resume archive, and PDF download metadata.
