@@ -57,6 +57,45 @@ class _FakeAsyncSession:
 
 
 class AssistantFrontendSourceTests(unittest.TestCase):
+    def test_editor_sidebar_ai_polish_card_can_collapse_to_match_and_suggestion(self) -> None:
+        source = (REPO_ROOT / "views" / "ResumeEditor" / "components" / "EditorSidebar.tsx").read_text(encoding="utf-8")
+        start = source.index("const EditingSuggestionNav")
+        end = source.index("const EditorSidebar", start)
+        block = source[start:end]
+
+        self.assertIn("isPolishCardCollapsed", block)
+        self.assertIn("setIsPolishCardCollapsed", block)
+        self.assertIn("aria-label={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}", block)
+        self.assertIn("title={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}", block)
+        self.assertIn("transition-[grid-template-rows,opacity]", block)
+        self.assertIn("isPolishCardCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'", block)
+        self.assertIn("aria-hidden={isPolishCardCollapsed}", block)
+        self.assertIn("!isPolishCardCollapsed && toolbar ? <div className=\"mt-3\">{toolbar}</div> : null", block)
+        self.assertIn("isPolishCardCollapsed ? '-rotate-90' : 'rotate-0'", block)
+        self.assertIn("isPolishCardCollapsed ? 'flex items-start gap-3'", block)
+        self.assertIn("折叠后仅显示匹配度与润色建议", block)
+
+    def test_resume_editor_auto_analyzes_jd_after_confirming_polish(self) -> None:
+        source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("pendingPolishAutoAnalyzeSeq", source)
+        self.assertIn("lastPolishAutoAnalyzeSeqRef", source)
+        self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", source)
+        self.assertIn("if (pendingPolishAutoAnalyzeSeq <= 0)", source)
+        self.assertIn("lastPolishAutoAnalyzeSeqRef.current === pendingPolishAutoAnalyzeSeq", source)
+        self.assertIn("lastPolishAutoAnalyzeSeqRef.current = pendingPolishAutoAnalyzeSeq", source)
+        self.assertIn("void runJdAnalyzeWithToast()", source)
+
+        single_start = source.index("const handleConfirmFloatingExperiencePolish")
+        single_end = source.index("const handleOpenBatchPolishToolbar", single_start)
+        single_block = source[single_start:single_end]
+        self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", single_block)
+
+        batch_start = source.index("const handleConfirmBatchExperiencePolish")
+        batch_end = source.index("const handleOpenExperienceAssistant", batch_start)
+        batch_block = source[batch_start:batch_end]
+        self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", batch_block)
+
     def test_personal_summary_panel_collapses_when_empty(self) -> None:
         source = (REPO_ROOT / "views" / "ResumeEditor" / "components" / "PersonalSummaryPanel.tsx").read_text(encoding="utf-8")
 

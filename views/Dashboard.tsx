@@ -276,9 +276,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      console.log('[Dashboard] 开始加载简历列表...');
+      if (import.meta.env.DEV) {
+        console.log('[Dashboard] 开始加载简历列表...');
+      }
       const mappedResumes = await fetchDashboardResumes({ force: true });
-      console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
+      if (import.meta.env.DEV) {
+        console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
+      }
       setResumes(mappedResumes);
     } catch (err) {
       console.error('Failed to load resumes:', err);
@@ -598,7 +602,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         result.status === 'rejected' ? [targetIds[index]] : []
       ));
       resumeService.clearListCache();
-      console.log('[Dashboard] 删除请求完成，准备刷新列表:', targetIds);
+      if (import.meta.env.DEV) {
+        console.log('[Dashboard] 删除请求完成，准备刷新列表:', targetIds);
+      }
       setDeleteTargetId(null);
       setBatchDeleteTargetIds([]);
       let refreshedResumes: Resume[] | null = null;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, User } from 'lucide-react';
+import { ChevronDown, Database, User } from 'lucide-react';
 import type { ResumeExperienceView } from '../../../types/resume';
 import {
     EDITING_SUGGESTION_NAV_CLASS,
@@ -46,35 +46,67 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     staleExperienceIds,
     toolbar,
 }) => {
+    const [isPolishCardCollapsed, setIsPolishCardCollapsed] = React.useState(false);
     if (!editingItem) {
         return null;
     }
     const suggestion = resolveExperienceSuggestion(editingItem, staleExperienceIds);
+    const matchBadge = typeof editingItem.matchScore === 'number' ? (
+        <MatchBadge
+            score={editingItem.matchScore}
+            trend={editingItem.matchTrend}
+            variant="solid"
+        />
+    ) : staleExperienceIds.has(editingItem.id) ? (
+        <StaleBadge />
+    ) : (
+        <span className="text-[11px] font-semibold text-gray-400">匹配度 --</span>
+    );
+
     return (
         <div className={EDITING_SUGGESTION_NAV_CLASS}>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/60">
-                <div className="flex items-start justify-between gap-3 md:items-center">
+                <div
+                    className={isPolishCardCollapsed ? 'flex items-start gap-3' : 'flex items-start justify-between gap-3 md:items-center'}
+                >
                     <div className="shrink-0">
-                        {typeof editingItem.matchScore === 'number' ? (
-                            <MatchBadge
-                                score={editingItem.matchScore}
-                                trend={editingItem.matchTrend}
-                                variant="solid"
-                            />
-                        ) : staleExperienceIds.has(editingItem.id) ? (
-                            <StaleBadge />
-                        ) : (
-                            <span className="text-[11px] font-semibold text-gray-400">匹配度 --</span>
-                        )}
+                        {matchBadge}
                     </div>
-                    <div className="shrink-0 text-[11px] font-semibold text-primary">
-                        AI 润色工具栏
+                    {isPolishCardCollapsed ? (
+                        <div className="min-w-0 flex-1 rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300">
+                            {suggestion}
+                        </div>
+                    ) : (
+                        <div className="min-w-0 flex-1 text-[11px] font-semibold text-primary">
+                            AI 润色工具栏
+                        </div>
+                    )}
+                    {toolbar ? (
+                        <button
+                            type="button"
+                            onClick={() => setIsPolishCardCollapsed((current) => !current)}
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                            aria-label={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}
+                            title={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}
+                        >
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isPolishCardCollapsed ? '-rotate-90' : 'rotate-0'}`} />
+                        </button>
+                    ) : null}
+                </div>
+                <div
+                    aria-hidden={isPolishCardCollapsed}
+                    className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out ${
+                        isPolishCardCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+                    }`}
+                >
+                    <div className="min-h-0 overflow-hidden">
+                        <div className="mt-3 w-full rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300 md:bg-transparent md:px-0 md:py-0">
+                            {suggestion}
+                        </div>
+                        {!isPolishCardCollapsed && toolbar ? <div className="mt-3">{toolbar}</div> : null}
                     </div>
                 </div>
-                <div className="mt-3 w-full rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300 md:bg-transparent md:px-0 md:py-0">
-                    {suggestion}
-                </div>
-                {toolbar ? <div className="mt-3">{toolbar}</div> : null}
+                <span className="sr-only">折叠后仅显示匹配度与润色建议</span>
             </div>
         </div>
     );

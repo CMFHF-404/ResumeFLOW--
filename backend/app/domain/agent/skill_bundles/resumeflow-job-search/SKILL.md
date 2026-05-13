@@ -1,6 +1,6 @@
 ---
 name: resumeflow-job-search
-description: "Use when Codex or another agent needs to run a job-search workflow with ResumeFLOW: confirm job preferences, search and filter job boards, collect JD content, call ResumeFLOW Agent APIs to analyze job match and generate tailored resume PDFs, then archive each high-match job locally with the job page HTML, JD, and generated resume."
+description: "Use when Codex or another agent needs to run a job-search workflow with ResumeFLOW: confirm job preferences, search and filter job boards, collect JD content, call ResumeFLOW Agent APIs to analyze job match and generate tailored resume PDFs, then archive each high-match job locally with a direct job-page link, JD, and generated resume."
 ---
 
 # ResumeFLOW Job Search
@@ -17,11 +17,12 @@ Use this skill to coordinate a user-approved job search that turns job descripti
 4. For each candidate job, capture at minimum `job_title`, `company_name`, full `jd_text`, canonical `job_url`, and optional `source`.
 5. Batch jobs through ResumeFLOW analysis first. Prefer `/agent/v1/jobs/analyze` for screening many JDs, then call `/agent/v1/jobs/generate` only for jobs that meet the user's threshold and hard filters.
 6. Present a shortlist before application actions. Include match score, recommendation, strengths, gaps, missing keywords, source URL, selected template, polish setting, and the planned local folder path.
-7. For each approved high-match job, create one local folder named `match-company-role`, using the numeric match score first. Save the direct page HTML, JD text or attachment, and the generated ResumeFLOW PDF in that folder.
+7. For each approved high-match job, create one local folder named `match-company-role`, using the numeric match score first. Save a direct hyperlink to the original recruiting page, JD text or attachment, and the generated ResumeFLOW PDF in that folder.
 
 ## ResumeFLOW Rules
 
 - Use only the API base URL and API key supplied by the user or current task. Never invent credentials.
+- When the user supplies a full API key and the runtime has a local secret store or user-private config outside version control, save the API base URL and API key locally so future ResumeFLOW job-search sessions on the same machine can reuse them without asking again. Never commit the key, include it in archives, or print it in normal output.
 - Send `Authorization: Bearer <API Key>` on every ResumeFLOW Agent API request.
 - Treat the API key as bound to the API Key 对应的 ResumeFLOW 用户账号. Analysis uses that account's resume data, generated resumes are saved under that account, and future token accounting can be associated with that user id server-side.
 - Treat the API key as stable until the user refreshes it in ResumeFLOW. The web app stores one reusable Agent API key per user and includes it when copying Agent instructions.
@@ -36,13 +37,13 @@ Create one folder per generated job:
 
 ```text
 <match_percentage>-<company_name>-<job_title>/
-  job.html
+  job-link.md
   jd.txt
   resume.pdf
   metadata.json
 ```
 
-Sanitize folder and file names for the local OS. Put the original `job_url`, `source`, match score, API recommendation, generation time, and ResumeFLOW PDF URL in `metadata.json`.
+Write `job-link.md` as a Markdown hyperlink to the original `job_url`, for example `[Open job posting](https://example.com/jobs/123)`. Do not save the recruiting page HTML unless the user explicitly asks for a page snapshot. Sanitize folder and file names for the local OS. Put the original `job_url`, `source`, match score, API recommendation, generation time, and ResumeFLOW PDF URL in `metadata.json`.
 
 ## Output To User
 
