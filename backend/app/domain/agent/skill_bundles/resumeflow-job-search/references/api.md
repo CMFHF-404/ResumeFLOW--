@@ -39,6 +39,69 @@ Response body:
       "description": "ATS 友好的成熟单栏模板，结构清晰稳重。",
       "has_avatar": false,
       "default_theme_color_preset_id": "slate"
+    },
+    {
+      "id": "minimal-gray",
+      "name": "极简留白",
+      "description": "轻装饰、强可读的 clean 模板，适合大多数岗位。",
+      "has_avatar": false,
+      "default_theme_color_preset_id": "slate"
+    },
+    {
+      "id": "accent-emerald",
+      "name": "活力青绿",
+      "description": "现代强调色单栏模板，保留专业感与识别度。",
+      "has_avatar": false,
+      "default_theme_color_preset_id": "emerald"
+    },
+    {
+      "id": "open-source-classic",
+      "name": "开源经典",
+      "description": "参考开源简历项目的紧凑单栏结构，偏 ATS 与打印友好。",
+      "has_avatar": false,
+      "default_theme_color_preset_id": "blue"
+    },
+    {
+      "id": "timeline-blue",
+      "name": "时间线蓝",
+      "description": "借鉴社区时间线模板的纵向节奏，适合项目和经历较多的简历。",
+      "has_avatar": false,
+      "default_theme_color_preset_id": "blue"
+    },
+    {
+      "id": "avatar-professional",
+      "name": "商务头像",
+      "description": "右上头像与左侧信息严格分栏，适合正式商务简历。",
+      "has_avatar": true,
+      "default_theme_color_preset_id": "blue"
+    },
+    {
+      "id": "avatar-split",
+      "name": "侧栏头像",
+      "description": "成熟双栏模板，左侧品牌信息，右侧主内容。",
+      "has_avatar": true,
+      "default_theme_color_preset_id": "amber"
+    },
+    {
+      "id": "modern-slate-avatar",
+      "name": "商务深灰",
+      "description": "在现代深灰基础上增加头像与区块图标，更具视觉活力。",
+      "has_avatar": true,
+      "default_theme_color_preset_id": "slate"
+    },
+    {
+      "id": "photo-card",
+      "name": "头像名片",
+      "description": "顶部名片式头像布局，适合需要更强个人识别度的投递场景。",
+      "has_avatar": true,
+      "default_theme_color_preset_id": "teal"
+    },
+    {
+      "id": "photo-sidebar",
+      "name": "深色侧栏",
+      "description": "成熟双栏头像模板，侧栏承载身份信息，主栏突出成果内容。",
+      "has_avatar": true,
+      "default_theme_color_preset_id": "violet"
     }
   ]
 }

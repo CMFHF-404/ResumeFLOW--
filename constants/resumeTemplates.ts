@@ -2,9 +2,13 @@ export type ResumeTemplateId =
   | 'modern-slate'
   | 'minimal-gray'
   | 'accent-emerald'
+  | 'open-source-classic'
+  | 'timeline-blue'
   | 'avatar-professional'
   | 'avatar-split'
-  | 'modern-slate-avatar';
+  | 'modern-slate-avatar'
+  | 'photo-card'
+  | 'photo-sidebar';
 
 export type ResumeThemeColorPresetId =
   | 'slate'
@@ -133,6 +137,22 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     defaultThemeColorPresetId: 'emerald',
   },
   {
+    id: 'open-source-classic',
+    name: '开源经典',
+    description: '参考开源简历项目的紧凑单栏结构，偏 ATS 与打印友好。',
+    hasAvatar: false,
+    layoutKind: 'classic',
+    defaultThemeColorPresetId: 'blue',
+  },
+  {
+    id: 'timeline-blue',
+    name: '时间线蓝',
+    description: '借鉴社区时间线模板的纵向节奏，适合项目和经历较多的简历。',
+    hasAvatar: false,
+    layoutKind: 'accent',
+    defaultThemeColorPresetId: 'blue',
+  },
+  {
     id: 'avatar-professional',
     name: '商务头像',
     description: '右上头像与左侧信息严格分栏，适合正式商务简历。',
@@ -155,6 +175,22 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     hasAvatar: true,
     layoutKind: 'classic',
     defaultThemeColorPresetId: 'slate',
+  },
+  {
+    id: 'photo-card',
+    name: '头像名片',
+    description: '顶部名片式头像布局，适合需要更强个人识别度的投递场景。',
+    hasAvatar: true,
+    layoutKind: 'avatar',
+    defaultThemeColorPresetId: 'teal',
+  },
+  {
+    id: 'photo-sidebar',
+    name: '深色侧栏',
+    description: '成熟双栏头像模板，侧栏承载身份信息，主栏突出成果内容。',
+    hasAvatar: true,
+    layoutKind: 'split',
+    defaultThemeColorPresetId: 'violet',
   },
 ] as const;
 
