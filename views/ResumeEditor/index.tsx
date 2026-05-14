@@ -88,7 +88,7 @@ import {
     trackSmartOnePageTriggered,
 } from '../../utils/analyticsTracker';
 import { mapResumesToDashboard } from '../../utils/dashboardResumeMapper';
-import { DEFAULT_RESUME_TITLE, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
+import { DEFAULT_RESUME_TITLE, resolveResumeDisplayTitle, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
     A4_HEIGHT_MM,
@@ -6626,6 +6626,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         onEditExperience={handleEditExperience}
                         onEditCertification={handleEditCertification}
                         onEditSkill={handleEditSkill}
+                        resumeDisplayTitle={resolveResumeDisplayTitle(resumeName)}
                     />
                 </div>
             </div>
@@ -6704,6 +6705,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onEditExperience={() => { }}
                     onEditCertification={() => { }}
                     onEditSkill={() => { }}
+                    resumeDisplayTitle={resolveResumeDisplayTitle(resumeName)}
                 />
             </div>
             {isMobileEditorDrawerOpen ? (

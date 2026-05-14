@@ -349,6 +349,8 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[Open job posting](https://example.com/jobs/123)", files["SKILL.md"])
         self.assertIn("Do not save the recruiting page HTML", files["SKILL.md"])
         self.assertNotIn("job.html", files["SKILL.md"])
+        for template in agent_service.build_agent_resume_template_options().templates:
+            self.assertIn(f'"id": "{template.id}"', files["references/api.md"])
 
     def test_resume_template_options_match_agent_contract(self) -> None:
         result = agent_service.build_agent_resume_template_options()
@@ -360,9 +362,13 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
                 "modern-slate",
                 "minimal-gray",
                 "accent-emerald",
+                "open-source-classic",
+                "timeline-blue",
                 "avatar-professional",
                 "avatar-split",
                 "modern-slate-avatar",
+                "photo-card",
+                "photo-sidebar",
             ],
         )
         self.assertEqual(result.templates[0].name, "现代深灰")
