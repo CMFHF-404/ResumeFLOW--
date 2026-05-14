@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, GripVertical, User, Briefcase, Folder, GraduationCap, Wrench, BadgeCheck, List } from 'lucide-react';
+import { Edit3, GripVertical, User, Briefcase, Folder, GraduationCap, Wrench, BadgeCheck, List, Mail, Phone, MapPin, Link2 } from 'lucide-react';
 import {
     FONT_SIZE_DEFAULT,
     HEADER_EXTRA_TOP_SPACING_CLASS,
@@ -32,6 +32,27 @@ import {
     type ResumeThemeColorPresetId,
 } from '../../../constants/resumeTemplates';
 import { normalizeResumeSkillTagSeparator } from '../../../utils/resumeCustomization';
+
+const renderTimelineBlueLeadMarkers = (showConnectorToNext: boolean) => (
+    <>
+        {showConnectorToNext ? (
+            <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-[7px] top-[22px] w-px"
+                style={{
+                    bottom: 'calc(-1 * var(--rf-list-spacing))',
+                    backgroundColor: 'var(--rf-accent-color)',
+                    opacity: 0.24,
+                }}
+            />
+        ) : null}
+        <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-[4px] top-2.5 h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: 'var(--rf-accent-color)' }}
+        />
+    </>
+);
 
 type SectionDragHandler = (event: React.DragEvent, sectionId: string) => void;
 type ItemDragHandler = (event: React.DragEvent, itemId: string) => void;
@@ -335,6 +356,8 @@ export type ResumePreviewProps = {
     onEditExperience: (id: string) => void;
     onEditCertification: (id: string) => void;
     onEditSkill: (id: string) => void;
+    /** 简历文档标题（如「AI产品经理 - 某公司」），用于头像名片等页眉副标题 */
+    resumeDisplayTitle?: string;
 };
 
 const ResumePreview: React.FC<ResumePreviewProps> = ({
@@ -384,6 +407,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditExperience,
     onEditCertification,
     onEditSkill,
+    resumeDisplayTitle: resumeDisplayTitleProp,
 }) => {
     const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal';
     const isDashboardModalPreview = previewScope === 'dashboard-modal';
@@ -403,6 +427,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         detectDesktopEditorViewport
     );
     const isReadOnly = Boolean(readOnly);
+    const resumeDisplayTitle = React.useMemo(
+        () => (resumeDisplayTitleProp ?? '').trim() || undefined,
+        [resumeDisplayTitleProp]
+    );
     const useMobileEditorInteraction = previewScope === 'editor' && !isDesktopEditorViewport;
     const showTouchDragHandles = !isReadOnly
         && (isTouchOnlyInteractionEnvironment || useMobileEditorInteraction);
@@ -485,6 +513,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         () => resolveResumeThemeColor(templateId, themeColorPresetId),
         [templateId, themeColorPresetId]
     );
+    const isOpenSourceClassicTemplate = activeTemplate.id === 'open-source-classic';
+    const isTimelineBlueTemplate = activeTemplate.id === 'timeline-blue';
+    const isPhotoCardTemplate = activeTemplate.id === 'photo-card';
+    const isPhotoSidebarTemplate = activeTemplate.id === 'photo-sidebar';
     const resolvedSkillTagSeparator = React.useMemo(
         () => normalizeResumeSkillTagSeparator(skillTagSeparator),
         [skillTagSeparator]
@@ -613,12 +645,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         if (activeTemplate.layoutKind === 'avatar') {
             return 'bg-transparent';
         }
+        if (isTimelineBlueTemplate) {
+            return 'bg-transparent';
+        }
         return '';
-    }, [activeTemplate.layoutKind, isSplitTemplate, splitSidebarSectionIdSet]);
+    }, [activeTemplate.layoutKind, isSplitTemplate, isTimelineBlueTemplate, splitSidebarSectionIdSet]);
     const getSectionSurfaceClass = React.useCallback((sectionId: string) => {
         const feedbackPhase = getTouchFeedbackState('section', sectionId);
         const templateToneClass = getTemplateSectionSurfaceToneClass(sectionId);
-        const isAccentOrAvatar = activeTemplate.layoutKind === 'accent' || activeTemplate.layoutKind === 'avatar' || activeTemplate.layoutKind === 'minimal';
+        const isAccentOrAvatar = activeTemplate.layoutKind === 'accent' || activeTemplate.layoutKind === 'avatar' || activeTemplate.layoutKind === 'minimal' || isTimelineBlueTemplate;
         const baseClass = isAccentOrAvatar
             ? `-m-1 rounded p-1 ${templateToneClass} ${interactionTransitionClass}`.trim()
             : `-m-2 rounded p-2 ${templateToneClass} ${interactionTransitionClass}`.trim();
@@ -632,7 +667,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return `${baseClass} bg-primary/6 ring-1 ring-primary/20 shadow-[0_10px_22px_rgba(16,185,129,0.10)]`;
         }
         return baseClass;
-    }, [activeTemplate.layoutKind, getTemplateSectionSurfaceToneClass, getTouchFeedbackState, interactionTransitionClass, touchDragPreview?.sourceId]);
+    }, [activeTemplate.layoutKind, getTemplateSectionSurfaceToneClass, getTouchFeedbackState, interactionTransitionClass, isTimelineBlueTemplate, touchDragPreview?.sourceId]);
     const getItemSurfaceClass = React.useCallback((itemKey: string) => {
         const feedbackPhase = getTouchFeedbackState('item', itemKey);
         const baseClass = `${itemHoverBgClass} -m-2 rounded p-2 ${touchSelectionClass} ${interactionTransitionClass}`;
@@ -1370,7 +1405,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             '--rf-accent-soft-bg': activeThemeColor.accentSoftBg,
             '--rf-accent-border': activeThemeColor.accentBorder,
             '--rf-accent-text': activeThemeColor.accentText,
-            background: isSplitTemplate ? 'transparent' : '#ffffff',
+            background: isSplitTemplate
+                ? 'transparent'
+                : isPhotoCardTemplate
+                    ? `linear-gradient(180deg, ${activeThemeColor.accentColor} 0px, ${activeThemeColor.accentColor} 64px, ${activeThemeColor.accentSoftBg} 110px, #ffffff 165px)`
+                    : '#ffffff',
         } as React.CSSProperties;
 
         if (!isScaledEditorPreview) {
@@ -1390,6 +1429,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         isPrintPreview,
         isScaledEditorPreview,
         isSplitTemplate,
+        isPhotoCardTemplate,
         lineHeight,
         listSpacingValue,
         scaledPreviewMetrics.scale,
@@ -1425,10 +1465,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     );
     const splitSidebarColumnStyle = React.useMemo(
         () => ({
-            backgroundColor: 'var(--rf-accent-soft-bg)',
-            borderRight: '1px solid var(--rf-accent-border)',
+            backgroundColor: isPhotoSidebarTemplate ? '#111827' : 'var(--rf-accent-soft-bg)',
+            borderRight: isPhotoSidebarTemplate ? 'none' : '1px solid var(--rf-accent-border)',
         } as React.CSSProperties),
-        []
+        [isPhotoSidebarTemplate]
     );
     const splitMainColumnStyle = React.useMemo(
         () => ({
@@ -1505,6 +1545,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         return sectionWrapperStyle;
     }, [sectionWrapperStyle]);
     const sectionHeadingTextClassName = React.useMemo(() => {
+        if (isOpenSourceClassicTemplate) {
+            return 'text-[11px] tracking-[0.2em]';
+        }
+        if (isTimelineBlueTemplate) {
+            return 'text-[11px] tracking-[0.18em]';
+        }
         if (activeTemplate.layoutKind === 'minimal') {
             return 'text-[11px] tracking-[0.28em] text-gray-500';
         }
@@ -1512,8 +1558,17 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return 'text-[11px] tracking-[0.18em]';
         }
         return 'text-xs tracking-widest';
-    }, [activeTemplate.layoutKind]);
+    }, [activeTemplate.layoutKind, isOpenSourceClassicTemplate, isTimelineBlueTemplate]);
     const sectionHeadingBorderClassName = React.useMemo(() => {
+        if (isPhotoCardTemplate) {
+            return 'border-b pb-1';
+        }
+        if (isTimelineBlueTemplate) {
+            return '';
+        }
+        if (isOpenSourceClassicTemplate) {
+            return 'border-b';
+        }
         if (activeTemplate.layoutKind === 'minimal') {
             return 'border-b border-gray-200';
         }
@@ -1524,8 +1579,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return 'border-b-[2.5px] pb-1';
         }
         return 'border-b';
-    }, [activeTemplate.layoutKind]);
-    const renderAvatarFrame = React.useCallback((className: string) => {
+    }, [activeTemplate.layoutKind, isOpenSourceClassicTemplate, isPhotoCardTemplate, isTimelineBlueTemplate]);
+    const renderAvatarFrame = React.useCallback((className: string, imageObjectFit: 'contain' | 'cover' = 'contain') => {
         if (avatarSrc && !hasAvatarLoadError) {
             const isAvatarLayout = activeTemplate.layoutKind === 'avatar';
             return (
@@ -1533,7 +1588,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     <img
                         src={avatarSrc}
                         alt="个人头像"
-                        className="h-full w-full object-contain"
+                        className={`h-full w-full ${imageObjectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
                         onError={() => setHasAvatarLoadError(true)}
                     />
                 </div>
@@ -1562,25 +1617,36 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         const isAvatar = activeTemplate.layoutKind === 'avatar';
         const isClassic = activeTemplate.layoutKind === 'classic';
         const isModernAvatar = activeTemplate.id === 'modern-slate-avatar';
-        const IconComponent = (isClassic || isModernAvatar) ? (CLASSIC_SECTION_ICONS[sectionId] || List) : null;
+        const isOpenSourceClassic = isOpenSourceClassicTemplate;
+        const isPhotoCard = isPhotoCardTemplate;
+        const isTimelineBlue = isTimelineBlueTemplate;
+        const isPhotoSidebarSection = isPhotoSidebarTemplate && splitSidebarSectionIdSet.has(sectionId);
+        const SectionIconComponent = CLASSIC_SECTION_ICONS[sectionId] || List;
+        const IconComponent = (isClassic || isModernAvatar || isTimelineBlue) ? SectionIconComponent : null;
         
         return (
             <h2
-                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar ? 'flex items-center' : ''} ${isAccent ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''}`}
+                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar || isTimelineBlue ? 'flex items-center' : ''} ${isAccent && !isTimelineBlue ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent && !isTimelineBlue ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''} ${isTimelineBlue ? 'relative min-w-0 w-full gap-2 pr-1' : ''}`}
                 style={{
                     ...(isAccentEmerald || !isAccent ? sectionTitleStyle : {}),
                     ...touchHandleStyle,
-                    color: isAvatar ? 'var(--rf-accent-color)'
+                    color: isPhotoSidebarSection ? '#ffffff'
+                        : isAvatar || isTimelineBlue ? 'var(--rf-accent-color)'
                         : 'var(--rf-accent-text)',
                     borderBottomColor: activeTemplate.layoutKind === 'minimal'
                         ? '#e5e7eb'
-                        : isAccent ? 'transparent' 
+                        : isPhotoSidebarSection ? 'rgba(255,255,255,0.35)'
+                        : isPhotoCard ? 'var(--rf-accent-border)'
+                        : isAccent ? (isTimelineBlue ? 'var(--rf-accent-border)' : 'transparent')
                         : isAvatar ? 'var(--rf-accent-color)'
                         : 'var(--rf-accent-border)',
-                    ...(isAccent ? {
+                    ...(isAccent && !isTimelineBlue ? {
                         borderLeft: `5px solid var(--rf-accent-color)`,
                         background: `linear-gradient(to right, var(--rf-accent-soft-bg), transparent)`,
                         borderRadius: '0 4px 4px 0',
+                    } : {}),
+                    ...(isOpenSourceClassic ? {
+                        fontFamily: 'Georgia, "Times New Roman", serif',
                     } : {})
                 }}
                 onTouchStart={
@@ -1589,28 +1655,55 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         : (event) => handleSectionTitleTouchStart(event, sectionId)
                 }
             >
-                {IconComponent && (
-                    <IconComponent
-                        className="h-[1.1em] w-[1.1em]"
-                        style={{ color: 'var(--rf-accent-color)' }}
-                    />
+                {isTimelineBlue ? (
+                    <>
+                        {IconComponent ? (
+                            <span
+                                aria-hidden="true"
+                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border bg-white"
+                                style={{ borderColor: 'var(--rf-accent-border)' }}
+                            >
+                                <IconComponent className="h-2.5 w-2.5" style={{ color: 'var(--rf-accent-color)' }} />
+                            </span>
+                        ) : null}
+                        <span className="shrink-0">{title}</span>
+                        <span
+                            aria-hidden="true"
+                            className="ms-3 h-px min-w-[1.25rem] flex-1 self-center rounded-full"
+                            style={{ backgroundColor: 'var(--rf-accent-border)', opacity: 0.88 }}
+                        />
+                    </>
+                ) : (
+                    <>
+                        {IconComponent && (
+                            <IconComponent
+                                className="h-[1.1em] w-[1.1em]"
+                                style={{ color: isPhotoSidebarSection ? '#ffffff' : 'var(--rf-accent-color)' }}
+                            />
+                        )}
+                        <span>{title}</span>
+                    </>
                 )}
-                <span>{title}</span>
             </h2>
         );
     }, [
         activeTemplate.id,
         activeTemplate.layoutKind,
+        isOpenSourceClassicTemplate,
+        isPhotoCardTemplate,
+        isPhotoSidebarTemplate,
         isReadOnly,
+        isTimelineBlueTemplate,
         sectionHeadingBorderClassName,
         sectionHeadingTextClassName,
         sectionTitleStyle,
         showTouchDragHandles,
+        splitSidebarSectionIdSet,
         touchHandleStyle,
         touchSelectionClass,
     ]);
     const renderAccentTopDecoration = React.useCallback(() => {
-        if (activeTemplate.layoutKind !== 'accent') {
+        if (activeTemplate.layoutKind !== 'accent' || isTimelineBlueTemplate) {
             return null;
         }
 
@@ -1621,7 +1714,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 style={{ backgroundColor: 'var(--rf-accent-color)' }}
             />
         );
-    }, [activeTemplate.layoutKind]);
+    }, [activeTemplate.layoutKind, isTimelineBlueTemplate]);
 
     const renderExperienceSection = (
         sectionId: 'work' | 'project',
@@ -1715,13 +1808,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 }
                         }
                     >
-                        {items.map((item) => {
+                        {items.map((item, index) => {
                             const itemKey = buildDragItemKey('experience', item.id);
+                            const showTimelineRail = isTimelineBlueTemplate && index < items.length - 1;
                             return (
                                 <div
                                     key={item.id}
                                     data-rf-item-id={itemKey}
-                                    className={`relative group/item ${itemDragClass}`}
+                                    className={`relative group/item ${itemDragClass} ${isTimelineBlueTemplate ? 'pl-7' : ''}`}
                                     draggable={enableNativeHtmlDrag}
                                     onDragStart={
                                         enableNativeHtmlDrag ? (event) => handleNativeItemDragStart(event, itemKey) : undefined
@@ -1730,6 +1824,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                         enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                     }
                                 >
+                                    {isTimelineBlueTemplate ? renderTimelineBlueLeadMarkers(showTimelineRail) : null}
                                     {!isReadOnly ? (
                                         <div
                                             className={getItemControlClass(itemKey)}
@@ -1863,6 +1958,117 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             borderBottomColor: 'var(--rf-accent-border)',
         } as React.CSSProperties;
 
+        if (isOpenSourceClassicTemplate) {
+            return (
+                <div
+                    id="basic-info"
+                    data-rf-section-id="basic-info"
+                    className={`border-b pb-4 text-center ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    style={{
+                        ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
+                        fontFamily: 'Georgia, "Times New Roman", serif',
+                    }}
+                >
+                    {renderOverflowMarker('basic-info')}
+                    <h1 className="mt-1 text-[31px] font-bold tracking-[0.08em] text-gray-950">
+                        {profile.name}
+                    </h1>
+                    {contactItems.length ? (
+                        <div className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] font-medium text-gray-600">
+                            {contactItems.map((item, index) => (
+                                <span key={item} className="inline-flex items-center whitespace-nowrap">
+                                    <span>{item}</span>
+                                    {index < contactItems.length - 1 ? (
+                                        <span className="ml-3 h-1 w-1 rounded-full" style={{ backgroundColor: 'var(--rf-accent-border)' }} />
+                                    ) : null}
+                                </span>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+            );
+        }
+
+        if (isTimelineBlueTemplate) {
+            return (
+                <div
+                    id="basic-info"
+                    data-rf-section-id="basic-info"
+                    className={`scroll-mt-8 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS}`}
+                    style={{
+                        ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
+                        borderBottomWidth: 0,
+                    }}
+                >
+                    {renderOverflowMarker('basic-info')}
+                    <div className="flex items-start justify-between gap-5 border-b pb-4" style={{ borderBottomColor: 'var(--rf-accent-border)' }}>
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-2 h-1 w-14 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
+                            <h1 className="text-[34px] font-bold tracking-[0.1em] text-gray-950">
+                                {profile.name}
+                            </h1>
+                        </div>
+                        {contactItems.length ? (
+                            <div className="max-w-[220px] space-y-1 text-right text-[11px] font-medium text-gray-600">
+                                {contactItems.map((item) => (
+                                    <div key={item}>{item}</div>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            );
+        }
+
+        if (isPhotoCardTemplate) {
+            const contactEntries = [
+                { label: '邮箱', value: profile.email?.trim() ?? '', Icon: Mail },
+                { label: '电话', value: profile.phone?.trim() ?? '', Icon: Phone },
+                { label: '地点', value: profile.location?.trim() ?? '', Icon: MapPin },
+                { label: '链接', value: profile.linkedin?.trim() ?? '', Icon: Link2 },
+            ].filter((item) => item.value);
+
+            return (
+                <div
+                    id="basic-info"
+                    data-rf-section-id="basic-info"
+                    className={`pb-4 mb-3 ${sectionSpacingClass} ${HEADER_EXTRA_TOP_SPACING_CLASS} scroll-mt-8`}
+                    style={{
+                        ...commonHeaderStyle,
+                        ...getSectionOverflowHighlightStyle('basic-info'),
+                        borderBottomWidth: 0,
+                    }}
+                >
+                    {renderOverflowMarker('basic-info')}
+                    <div className="flex items-start gap-5 px-1 pb-2 pt-4">
+                        {renderAvatarFrame('flex h-28 w-[88px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white bg-white shadow-sm', 'cover')}
+                        <div className="min-w-0 flex-1">
+                            <h1 className="text-[34px] font-bold tracking-[0.06em] leading-tight text-gray-950">
+                                {profile.name}
+                            </h1>
+                            {resumeDisplayTitle ? (
+                                <p className="mt-1 text-[12px] font-semibold leading-snug text-gray-700">
+                                    {resumeDisplayTitle}
+                                </p>
+                            ) : null}
+                            {contactEntries.length ? (
+                                <div className="mt-3 grid max-w-[360px] grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-semibold leading-snug text-gray-700">
+                                    {contactEntries.map(({ label, value, Icon }) => (
+                                        <div key={label} className="inline-flex min-w-0 items-center gap-1.5">
+                                            <Icon className="h-3 w-3 shrink-0" style={{ color: 'var(--rf-accent-color)' }} />
+                                            <span className="truncate">{value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         if (activeTemplate.layoutKind === 'split') {
             return (
                 <div
@@ -1877,15 +2083,20 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     {renderOverflowMarker('basic-info')}
                     <div className="mb-5 flex items-start justify-between gap-5">
                         <div className="min-w-0 flex-1">
-                            <div className="mb-2 h-1.5 w-14 rounded-full" style={{ backgroundColor: 'var(--rf-accent-color)' }} />
-                            <h1 className="text-[28px] font-bold tracking-[0.12em] text-gray-900">
+                            <div className="mb-2 h-1.5 w-14 rounded-full" style={{ backgroundColor: isPhotoSidebarTemplate ? '#ffffff' : 'var(--rf-accent-color)' }} />
+                            <h1 className={`text-[28px] font-bold tracking-[0.12em] ${isPhotoSidebarTemplate ? 'text-white' : 'text-gray-900'}`}>
                                 {profile.name}
                             </h1>
+                            {isPhotoSidebarTemplate && resumeDisplayTitle ? (
+                                <p className="mt-1 text-[11px] font-semibold leading-snug tracking-normal text-white/75">
+                                    {resumeDisplayTitle}
+                                </p>
+                            ) : null}
                         </div>
-                        {renderAvatarFrame('flex h-32 w-24 shrink-0 overflow-hidden rounded-[1.4rem] border border-white/75 bg-white p-0.5 shadow-sm')}
+                        {renderAvatarFrame(`flex h-32 w-24 shrink-0 overflow-hidden ${isPhotoSidebarTemplate ? 'rounded-full border border-white/45 bg-white/10 p-1 shadow-sm' : 'rounded-[1.4rem] border border-white/75 bg-white p-0.5 shadow-sm'}`)}
                     </div>
                     {contactItems.length ? (
-                        <div className="space-y-1.5 text-[11px] font-medium text-gray-700">
+                        <div className={`space-y-1.5 text-[11px] font-medium ${isPhotoSidebarTemplate ? 'text-white/80' : 'text-gray-700'}`}>
                             {contactItems.map((item) => (
                                 <div key={item}>{item}</div>
                             ))}
@@ -1904,7 +2115,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     style={{
                         ...commonHeaderStyle,
                         ...getSectionOverflowHighlightStyle('basic-info'),
-                        borderBottom: 'none',
+                        borderBottomWidth: 0,
                     }}
                 >
                     {renderOverflowMarker('basic-info')}
@@ -1964,7 +2175,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         ...commonHeaderStyle,
                         ...getSectionOverflowHighlightStyle('basic-info'),
                         paddingBottom: 0,
-                        borderBottom: 'none',
+                        borderBottomWidth: 0,
                     }}
                 >
                     {renderOverflowMarker('basic-info')}
@@ -2122,18 +2333,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                             }
                         >
-                            {visibleEducations.map((edu) => {
+                            {visibleEducations.map((edu, eduIndex) => {
                                 const itemKey = buildDragItemKey('education', edu.id);
                                 const dateText = buildExperienceDate(
                                     edu.startDate,
                                     edu.endDate,
                                     edu.isCurrent
                                 );
+                                const showTimelineRail = isTimelineBlueTemplate && eduIndex < visibleEducations.length - 1;
                                 return (
                                     <div
                                         key={edu.id}
                                         data-rf-item-id={itemKey}
-                                        className={`relative group/item ${itemDragClass}`}
+                                        className={`relative group/item ${itemDragClass} ${isTimelineBlueTemplate ? 'pl-7' : ''}`}
                                         draggable={enableNativeHtmlDrag}
                                         onDragStart={
                                             enableNativeHtmlDrag
@@ -2144,6 +2356,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                         }
                                     >
+                                        {isTimelineBlueTemplate ? renderTimelineBlueLeadMarkers(showTimelineRail) : null}
                                         {!isReadOnly ? (
                                             <div
                                                 className={getItemControlClass(itemKey)}
@@ -2297,13 +2510,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                             }
                         >
-                            {visibleCerts.map((cert) => {
+                            {visibleCerts.map((cert, certIndex) => {
                                 const itemKey = buildDragItemKey('certification', cert.id);
+                                const showTimelineRail = isTimelineBlueTemplate && certIndex < visibleCerts.length - 1;
                                 return (
                                     <div
                                         key={cert.id}
                                         data-rf-item-id={itemKey}
-                                        className={`relative group/item ${itemDragClass}`}
+                                        className={`relative group/item ${itemDragClass} ${isTimelineBlueTemplate ? 'pl-7' : ''}`}
                                         draggable={enableNativeHtmlDrag}
                                         onDragStart={
                                             enableNativeHtmlDrag
@@ -2314,6 +2528,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                         }
                                     >
+                                        {isTimelineBlueTemplate ? renderTimelineBlueLeadMarkers(showTimelineRail) : null}
                                         {!isReadOnly ? (
                                             <div
                                                 className={getItemControlClass(itemKey)}
@@ -2456,14 +2671,15 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                     }
                             }
                         >
-                            {selectedSkillGroups.map((group) => {
+                            {selectedSkillGroups.map((group, groupIndex) => {
                                 const itemKey = buildDragItemKey('skillGroup', group.name);
                                 const editableSkill = group.skills[0];
+                                const showTimelineRail = isTimelineBlueTemplate && groupIndex < selectedSkillGroups.length - 1;
                                 return (
                                     <div
                                         key={group.name}
                                         data-rf-item-id={itemKey}
-                                        className={`relative group/item ${itemDragClass}`}
+                                        className={`relative group/item ${itemDragClass} ${isTimelineBlueTemplate ? 'pl-7' : ''}`}
                                         draggable={enableNativeHtmlDrag}
                                         onDragStart={
                                             enableNativeHtmlDrag
@@ -2474,6 +2690,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                             enableNativeHtmlDrag ? handleNativeDragEnd : undefined
                                         }
                                     >
+                                        {isTimelineBlueTemplate ? renderTimelineBlueLeadMarkers(showTimelineRail) : null}
                                         {!isReadOnly ? (
                                             <div
                                                 className={getItemControlClass(itemKey)}
@@ -2618,7 +2835,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     {isSplitTemplate ? (
                         <>
                             <div
-                                className="flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6"
+                                className={`flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6 ${isPhotoSidebarTemplate ? 'text-white [&_.text-gray-900]:!text-white [&_.text-gray-800]:!text-white/85 [&_.text-gray-700]:!text-white/75 [&_.text-gray-600]:!text-white/70 [&_.text-gray-500]:!text-white/60' : ''}`}
                             >
                                 {renderHeaderBlock()}
                                 {renderOrderedSections(splitColumnSectionIds.sidebar)}

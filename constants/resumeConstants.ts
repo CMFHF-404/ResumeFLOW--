@@ -1,6 +1,15 @@
 export const DEFAULT_RESUME_TITLE = "未命名简历";
 export const UNTITLED_RESUME_TITLE = "未命名简历";
 
+/** 用于预览/页眉等：占位标题不展示 */
+export const resolveResumeDisplayTitle = (value?: string | null): string | undefined => {
+    const trimmed = (value ?? "").trim();
+    if (!trimmed || trimmed === DEFAULT_RESUME_TITLE) {
+        return undefined;
+    }
+    return trimmed;
+};
+
 export const MATCH_BADGE_STYLES = {
   emerald: {
     soft: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
