@@ -12,6 +12,7 @@ import {
     type ResumeTemplateId,
     type ResumeThemeColorPresetId,
 } from '../../../constants/resumeTemplates';
+import { resolveResumeDisplayTitle } from '../../../constants/resumeConstants';
 import type {
     CertificationView,
     EducationView,
@@ -428,7 +429,8 @@ const buildResumePreviewProps = (
     previewRef: React.RefObject<HTMLDivElement>,
     previewContentRef: React.RefObject<HTMLDivElement>,
     spacingClass: string,
-    listSpacingValue: string
+    listSpacingValue: string,
+    resumeDisplayTitle?: string,
 ): ResumePreviewProps => ({
     readOnly: true,
     previewRef,
@@ -454,6 +456,7 @@ const buildResumePreviewProps = (
     sortedCertifications: previewState.sortedCertifications,
     selectedCertIds: previewState.selectedCertIds,
     selectedSkillGroups: previewState.selectedSkillGroups,
+    resumeDisplayTitle,
     isDragging: false,
     draggedItemKey: null,
     draggedSectionId: null,
@@ -498,7 +501,8 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
             previewRef,
             previewContentRef,
             spacingClass,
-            listSpacingValue
+            listSpacingValue,
+            resolveResumeDisplayTitle(resumeName),
         )
         : null;
 
