@@ -26,6 +26,9 @@ export interface PolishExperienceResponse {
     t?: string;
     a?: string;
     r?: string;
+    recommendedRewriteMode?: 'rewrite_now' | 'ask_before_rewrite' | 'not_recommended_for_this_role';
+    evidenceDiagnosis?: string;
+    followUpQuestions?: string[];
 }
 
 export interface JDAnalysisResult {
@@ -38,9 +41,46 @@ export interface JDAnalysisResult {
     summary: string;
     extractedJdText?: string;
     jdInterpretation?: JDInterpretation;
+    capabilityAnalysis?: JDCapabilityAnalysis;
     experienceMatches?: MatchScoreEntry[];
     certificationMatches?: MatchScoreEntry[];
     skillMatches?: MatchScoreEntry[];
+}
+
+export interface JDCoreCapability {
+    id: string;
+    name: string;
+    weight: number;
+    jdEvidence: string;
+    resumeEvidenceLevel: 0 | 1 | 2 | 3 | 4;
+    resumeEvidenceSummary: string;
+    risk: 'none' | 'weak_evidence' | 'keyword_only' | 'missing' | 'mispositioned';
+    likelyUnwritten?: boolean;
+    followUpQuestions: string[];
+}
+
+export interface ExperienceEvidenceDiagnosis {
+    experienceId: string;
+    currentPositioning: string;
+    targetRolePositioning: string;
+    provenCapabilities: string[];
+    weakCapabilities: string[];
+    unsupportedClaims: string[];
+    missingButAskableEvidence: Array<{
+        capability: string;
+        question: string;
+        exampleAnswerHint: string;
+    }>;
+    recommendedRewriteMode: 'rewrite_now' | 'ask_before_rewrite' | 'not_recommended_for_this_role';
+}
+
+export interface JDCapabilityAnalysis {
+    roleFamily: string;
+    coreCapabilities: JDCoreCapability[];
+    overallEvidenceCompleteness: number;
+    scoreConfidence: 'high' | 'medium' | 'low';
+    scoreWarnings: string[];
+    experienceDiagnoses: ExperienceEvidenceDiagnosis[];
 }
 
 export interface JDInterpretation {
@@ -143,7 +183,7 @@ export interface GeneratePersonalSummaryResponse {
     summary: string;
 }
 
-export type PolishMode = 'default' | 'highlight' | 'shorten' | 'expand' | 'custom' | 'assistant';
+export type PolishMode = 'default' | 'highlight' | 'smart_complete' | 'shorten' | 'expand' | 'custom' | 'assistant';
 
 export type AssistantMode = 'general' | 'experience' | 'certification' | 'skill';
 export type AssistantSkillId = 'star_guidance' | 'experience_completion' | 'mock_interview';
@@ -311,6 +351,7 @@ export type AssistantStreamEvent =
 type RawJDAnalysisResult = JDAnalysisResult & {
     extracted_jd_text?: unknown;
     jd_interpretation?: unknown;
+    capability_analysis?: unknown;
 };
 
 
@@ -809,10 +850,16 @@ const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResul
         : result.jd_interpretation && typeof result.jd_interpretation === 'object'
             ? (result.jd_interpretation as JDInterpretation)
             : undefined;
+    const capabilityAnalysis = result.capabilityAnalysis && typeof result.capabilityAnalysis === 'object'
+        ? result.capabilityAnalysis
+        : result.capability_analysis && typeof result.capability_analysis === 'object'
+            ? (result.capability_analysis as JDCapabilityAnalysis)
+            : undefined;
     return {
         ...result,
         ...(extractedJdText ? { extractedJdText } : {}),
         ...(jdInterpretation ? { jdInterpretation } : {}),
+        ...(capabilityAnalysis ? { capabilityAnalysis } : {}),
     };
 };
 

@@ -25,6 +25,47 @@ JD_ANALYSIS_SHARED_RUBRIC = (
     "value, and JD relevance. Avoid generic praise."
 )
 
+JD_CAPABILITY_ANALYSIS_RULES = (
+    "Do not evaluate fit by keyword overlap. First infer the core capabilities behind the JD. "
+    "For each core capability, judge whether the resume provides evidence level: "
+    "0 no evidence, 1 keyword only, 2 action only, 3 action plus method or output, "
+    "4 decision/process plus measurable or verifiable result. "
+    "If a product role requires product judgment, user research, MVP validation, roadmap, PRD, "
+    "stakeholder communication, or business impact, do not give high scores merely because the resume "
+    "mentions AI tools, coding tools, or development implementation. "
+    "Identify proven capabilities, weak evidence, keyword-only evidence, possible but unwritten evidence, "
+    "and follow-up questions that would help the user supplement truthful facts. "
+    "Never assume the user has done something. If it is plausible but not written, ask as a question. "
+    "Apply evidence caps: if high-weight JD capabilities have evidenceLevel <= 1, overall matchPercentage "
+    "must not exceed 75; if more than 40% of core capabilities are keyword-only or missing, overall "
+    "matchPercentage must not exceed 70; if the experience positioning is misaligned with the role family, "
+    "lower scoreConfidence even when keywords match. "
+)
+
+JD_CAPABILITY_RESPONSE_RULES = (
+    " In addition to the existing fields, return 'capabilityAnalysis'. "
+    "'capabilityAnalysis' must include: "
+    "'roleFamily' (short Chinese string), "
+    "'coreCapabilities' (array of objects with keys: "
+    "'id' (stable short snake_case string), 'name' (Chinese), 'weight' (0-100), "
+    "'jdEvidence' (JD evidence), 'resumeEvidenceLevel' (0/1/2/3/4), "
+    "'resumeEvidenceSummary' (Chinese summary of what the resume actually proves), "
+    "'risk' ('none'/'weak_evidence'/'keyword_only'/'missing'/'mispositioned'), "
+    "optional 'likelyUnwritten' (boolean), and 'followUpQuestions' (array of 1-3 Chinese questions)), "
+    "'overallEvidenceCompleteness' (0-100), "
+    "'scoreConfidence' ('high'/'medium'/'low'), "
+    "'scoreWarnings' (array of short Chinese warnings), "
+    "and 'experienceDiagnoses' (array of objects with keys: "
+    "'experienceId' (must match input experience id), "
+    "'currentPositioning' (what the current text mainly proves), "
+    "'targetRolePositioning' (how it should be positioned for this JD), "
+    "'provenCapabilities' (array), 'weakCapabilities' (array), 'unsupportedClaims' (array), "
+    "'missingButAskableEvidence' (array of objects with 'capability', 'question', and 'exampleAnswerHint'), "
+    "and 'recommendedRewriteMode' ('rewrite_now'/'ask_before_rewrite'/'not_recommended_for_this_role')). "
+    "Use capabilityAnalysis to separate three gap types: clearly missing evidence, likely but unwritten evidence, "
+    "and keyword-only evidence that needs proof."
+)
+
 JD_ANALYSIS_RESPONSE_RULES = (
     "Return JSON only with keys: "
     "'matchPercentage' (0-100), 'missingKeywords' (array of 3-6 short strings), "
@@ -63,6 +104,7 @@ JD_ANALYSIS_RESPONSE_RULES = (
     "searchQueries are practical job-board keyword combinations with includeKeywords and excludeKeywords arrays, "
     "and avoidTitles prevent false-positive roles. Do not invent real job openings or companies. "
     "Base every recommendation on JD evidence."
+    + JD_CAPABILITY_RESPONSE_RULES
 )
 
 JD_ANALYSIS_IMAGE_RESPONSE_RULES = (
@@ -105,6 +147,7 @@ JD_ANALYSIS_IMAGE_RESPONSE_RULES = (
     "searchQueries are practical job-board keyword combinations with includeKeywords and excludeKeywords arrays, "
     "and avoidTitles prevent false-positive roles. Do not invent real job openings or companies. "
     "Base every recommendation on JD evidence."
+    + JD_CAPABILITY_RESPONSE_RULES
 )
 
 JD_ANALYSIS = (
@@ -114,6 +157,8 @@ JD_ANALYSIS = (
     "'certifications' (array of items with id, name, issuer, issue_date), "
     "and 'skills' (array of items with id, name, category). "
     + JD_ANALYSIS_SHARED_RUBRIC
+    + " "
+    + JD_CAPABILITY_ANALYSIS_RULES
     + " "
     + JD_ANALYSIS_RESPONSE_RULES
     + "If Current Experience Content and Previous Experience Content are provided, "
@@ -243,6 +288,22 @@ STAR_RESUME_READY_REWRITE = (
     "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
+STAR_SMART_COMPLETE_REWRITE = (
+    "You are a Resume Evidence Coach and Resume Writer. The user input is a JSON object that may include fields like "
+    "company, role, s, t, a, and r. If jd_text is provided, first diagnose whether the source text contains enough "
+    "factual evidence for the target role. If evidence is insufficient for the JD, do not over-polish technical implementation "
+    "into product ownership; return 'recommendedRewriteMode' as 'ask_before_rewrite', 'evidenceDiagnosis' as a short Chinese "
+    "diagnosis, and 'followUpQuestions' as 3-5 focused Chinese questions instead of forcing a rewrite. "
+    "Do not transform technical implementation evidence into product ownership unless the input proves product decisions, user research, "
+    "MVP validation, metrics, or stakeholder work. If evidence is sufficient, rewrite the provided STAR content into resume-ready statements "
+    "while staying strictly factual. Preserve all facts, chronology, responsibility scope, metrics, tools, and hyperlinks; do not invent, "
+    "exaggerate, upgrade ownership, or add unsupported keywords. Use JD language only when the original content proves it. "
+    "Add Markdown bold to the strongest evidence, with no more than 5 distinct bold phrases across the whole output. "
+    "S/T/R must be one sentence each, and A must be concise action points separated by newlines without numbering. "
+    "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r', optional 'recommendedRewriteMode', "
+    "'evidenceDiagnosis', and 'followUpQuestions'."
+)
+
 TAG_GENERATION = (
     "You are a resume coach. Given work experience text, return JSON only with key "
     "'tags' as an array of 3-8 short skill tags. Avoid duplicates. Use the same "
@@ -312,6 +373,11 @@ POLISH_MODE_INSTRUCTIONS = {
         "Expand lightly to improve clarity, context, and impact while staying factual. "
         "Do not invent new facts, numbers, tools, or responsibilities. "
         "The visible character count should be increased by at least 30% overall whenever the source text is long enough to support that change."
+    ),
+    "smart_complete": (
+        "Smart-complete mode should diagnose evidence before rewriting. "
+        "When source facts are insufficient for the target role, ask focused follow-up questions instead of forcing a rewrite. "
+        "When facts are sufficient, rewrite conservatively and only express supported value."
     ),
     "enhanced": (
         "Enhanced mode should reorganize wording more actively than default mode when it improves JD fit, clarity, and resume impact. "
@@ -434,6 +500,8 @@ JD_ANALYSIS_IMAGE = (
     "'certifications' (array of items with id, name, issuer, issue_date), "
     "and 'skills' (array of items with id, name, category). "
     + JD_ANALYSIS_SHARED_RUBRIC
+    + " "
+    + JD_CAPABILITY_ANALYSIS_RULES
     + " "
     + JD_ANALYSIS_IMAGE_RESPONSE_RULES
     + " "

@@ -11,7 +11,7 @@ import {
     Wand2,
     X,
 } from 'lucide-react';
-import type { JDAnalysisResult, JDInterpretation } from '../../../services/aiService';
+import type { JDAnalysisResult, JDCoreCapability, JDInterpretation } from '../../../services/aiService';
 import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
 import { MatchBadge } from './Badges';
 import JDAttachmentUploader, {
@@ -422,6 +422,42 @@ type JDInterpretationCardProps = {
     analysisResult: JDAnalysisResult;
 };
 
+const EVIDENCE_LEVEL_LABELS: Record<JDCoreCapability['resumeEvidenceLevel'], string> = {
+    0: '无证据',
+    1: '仅关键词',
+    2: '有动作',
+    3: '动作+产出',
+    4: '决策+验证',
+};
+
+const RISK_LABELS: Record<JDCoreCapability['risk'], string> = {
+    none: '证据充分',
+    weak_evidence: '证据偏弱',
+    keyword_only: '只有关键词',
+    missing: '缺失',
+    mispositioned: '定位错位',
+};
+
+const SCORE_CONFIDENCE_LABELS = {
+    high: '高',
+    medium: '中',
+    low: '低',
+} as const;
+
+const clampPercent = (value: unknown) => (
+    typeof value === 'number' && Number.isFinite(value)
+        ? Math.max(0, Math.min(100, Math.round(value)))
+        : 0
+);
+
+const getCapabilityRiskTone = (risk: JDCoreCapability['risk']) => (
+    risk === 'none'
+        ? 'emerald'
+        : risk === 'missing' || risk === 'mispositioned'
+            ? 'amber'
+            : 'slate'
+);
+
 const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisResult }) => {
     const interpretation = analysisResult.jdInterpretation;
     const profileTags = buildProfileTags(interpretation);
@@ -596,6 +632,7 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                     <div className="space-y-4">
                         <JDInterpretationCard analysisResult={analysisResult} />
+                        <CapabilityEvidenceCard analysisResult={analysisResult} />
                         <SameTypeJobStrategyCard
                             interpretation={analysisResult.jdInterpretation}
                             analysisResult={analysisResult}
@@ -607,6 +644,93 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                     </div>
                 </div>
             </div>
+        </div>
+    );
+};
+
+type CapabilityEvidenceCardProps = {
+    analysisResult: JDAnalysisResult;
+    compact?: boolean;
+};
+
+const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
+    analysisResult,
+    compact = false,
+}) => {
+    const analysis = analysisResult.capabilityAnalysis;
+    if (!analysis) {
+        return null;
+    }
+    const completeness = clampPercent(analysis.overallEvidenceCompleteness);
+    const capabilities = getArray<JDCoreCapability>(analysis.coreCapabilities);
+    const warningText = getArray<string>(analysis.scoreWarnings)
+        .map(getText)
+        .filter(Boolean);
+    const followUpQuestions = capabilities
+        .flatMap((item) => getArray<string>(item.followUpQuestions))
+        .map(getText)
+        .filter(Boolean);
+    const weakCapabilities = capabilities.filter((item) => item.resumeEvidenceLevel <= 2 || item.risk !== 'none');
+
+    return (
+        <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                    <h4 className="text-[12px] font-bold text-amber-900 dark:text-amber-100">
+                        能力证据诊断
+                    </h4>
+                    <p className="mt-0.5 text-[10.5px] text-amber-700/80 dark:text-amber-300/80">
+                        证据完整度 {completeness}% · 评分置信度 {SCORE_CONFIDENCE_LABELS[analysis.scoreConfidence] ?? '中'}
+                    </p>
+                </div>
+                <Pill tone={completeness >= 75 ? 'emerald' : 'amber'}>
+                    {analysis.roleFamily || '岗位能力画像'}
+                </Pill>
+            </div>
+            {warningText.length > 0 ? (
+                <p className="mb-2 text-[11.5px] leading-relaxed text-amber-900 dark:text-amber-100">
+                    {warningText.slice(0, compact ? 1 : 2).join('；')}
+                </p>
+            ) : null}
+            {!compact && capabilities.length > 0 ? (
+                <div className="space-y-1.5">
+                    {capabilities.slice(0, 5).map((item) => (
+                        <div
+                            key={item.id || item.name}
+                            className="rounded-md border border-amber-100 bg-white/80 px-2 py-1.5 text-[11px] leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-gray-900/70 dark:text-amber-100"
+                        >
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-semibold">{item.name}</span>
+                                <Pill tone={getCapabilityRiskTone(item.risk)}>
+                                    {EVIDENCE_LEVEL_LABELS[item.resumeEvidenceLevel] ?? '待判断'}
+                                </Pill>
+                                {item.risk !== 'none' ? (
+                                    <Pill tone="amber">{RISK_LABELS[item.risk] ?? item.risk}</Pill>
+                                ) : null}
+                            </div>
+                            {item.resumeEvidenceSummary ? (
+                                <p className="mt-1 text-amber-800/80 dark:text-amber-200/80">
+                                    {item.resumeEvidenceSummary}
+                                </p>
+                            ) : null}
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+            {weakCapabilities.length > 0 || followUpQuestions.length > 0 ? (
+                <div className="mt-2 space-y-1">
+                    {weakCapabilities.length > 0 ? (
+                        <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                            弱证据：{weakCapabilities.slice(0, 5).map((item) => item.name).join('、')}
+                        </p>
+                    ) : null}
+                    {followUpQuestions.length > 0 ? (
+                        <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                            建议补充：{followUpQuestions.slice(0, compact ? 1 : 3).join('；')}
+                        </p>
+                    ) : null}
+                </div>
+            ) : null}
         </div>
     );
 };
@@ -950,6 +1074,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 <p className="text-[11.5px] leading-relaxed text-emerald-800 dark:text-emerald-300/80">
                                     {analysisResult.summary}
                                 </p>
+                                <CapabilityEvidenceCard analysisResult={analysisResult} compact />
                                 <BossGreetingSection
                                     analysisResult={analysisResult}
                                     bossGreeting={bossGreeting}
@@ -1038,6 +1163,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         {analysisResult.summary}
                                     </p>
                                 </div>
+                                <CapabilityEvidenceCard analysisResult={analysisResult} compact />
                                 <BossGreetingSection
                                     analysisResult={analysisResult}
                                     bossGreeting={bossGreeting}
