@@ -887,6 +887,7 @@ type ResumeEditorProps = {
     authUserKey?: string | null;
     onResumesUpdate?: (resumes: DashboardResume[]) => void;
     onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
+    onOpenAgentPluginConfig?: () => void;
 };
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
@@ -911,6 +912,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     authUserKey = null,
     onResumesUpdate,
     onLaunchAssistant,
+    onOpenAgentPluginConfig,
 }) => {
     const [isDarkMode, setIsDarkMode] = useState(() =>
         typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -6448,6 +6450,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             onRefreshBossGreeting: handleRefreshBossGreeting,
                             onCopyBossGreeting: handleCopyBossGreeting,
                             onCollapseBossGreeting: handleCollapseBossGreeting,
+                            onOpenAgentPluginConfig,
                             debugInfo,
                             showDebugInfo,
                             isOutdated,
@@ -6746,6 +6749,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                     onRefreshBossGreeting: handleRefreshBossGreeting,
                                     onCopyBossGreeting: handleCopyBossGreeting,
                                     onCollapseBossGreeting: handleCollapseBossGreeting,
+                                    onOpenAgentPluginConfig,
                                     debugInfo,
                                     showDebugInfo,
                                     isOutdated,

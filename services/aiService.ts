@@ -37,9 +37,53 @@ export interface JDAnalysisResult {
     company?: string;
     summary: string;
     extractedJdText?: string;
+    jdInterpretation?: JDInterpretation;
     experienceMatches?: MatchScoreEntry[];
     certificationMatches?: MatchScoreEntry[];
     skillMatches?: MatchScoreEntry[];
+}
+
+export interface JDInterpretation {
+    roleFamily: string;
+    normalizedTitle: string;
+    seniority: string;
+    businessDomain?: string;
+    roleIntent: string;
+    coreResponsibilities: Array<{
+        label: string;
+        evidence: string;
+        weight: 'high' | 'medium' | 'low';
+    }>;
+    mustHave: Array<{
+        label: string;
+        type: 'skill' | 'experience' | 'domain' | 'education' | 'tool' | 'other';
+        evidence: string;
+    }>;
+    niceToHave: Array<{
+        label: string;
+        evidence: string;
+    }>;
+    hardFilters: Array<{
+        label: string;
+        evidence: string;
+    }>;
+    sameTypeJobStrategy: {
+        recommendedTitles: Array<{
+            title: string;
+            reason: string;
+            confidence: number;
+        }>;
+        searchQueries: Array<{
+            label: string;
+            query: string;
+            includeKeywords: string[];
+            excludeKeywords: string[];
+        }>;
+        avoidTitles: Array<{
+            title: string;
+            reason: string;
+        }>;
+    };
 }
 
 export type AnalyzeJDParams = {
@@ -266,6 +310,7 @@ export type AssistantStreamEvent =
 
 type RawJDAnalysisResult = JDAnalysisResult & {
     extracted_jd_text?: unknown;
+    jd_interpretation?: unknown;
 };
 
 
@@ -759,9 +804,15 @@ const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResul
         : typeof result.extracted_jd_text === 'string'
             ? result.extracted_jd_text
             : undefined;
+    const jdInterpretation = result.jdInterpretation && typeof result.jdInterpretation === 'object'
+        ? result.jdInterpretation
+        : result.jd_interpretation && typeof result.jd_interpretation === 'object'
+            ? (result.jd_interpretation as JDInterpretation)
+            : undefined;
     return {
         ...result,
         ...(extractedJdText ? { extractedJdText } : {}),
+        ...(jdInterpretation ? { jdInterpretation } : {}),
     };
 };
 
