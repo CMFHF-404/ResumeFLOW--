@@ -414,6 +414,8 @@ const mergeAnalysisResult = (
     jobTitle: next.jobTitle ?? prev.jobTitle,
     company: next.company ?? prev.company,
     summary: next.summary,
+    extractedJdText: next.extractedJdText ?? prev.extractedJdText,
+    jdInterpretation: next.jdInterpretation ?? prev.jdInterpretation,
     experienceMatches: mergeMatchEntries(
       prev.experienceMatches,
       next.experienceMatches,

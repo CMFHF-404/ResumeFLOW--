@@ -621,6 +621,15 @@ def _normalize_jd_analysis_result(result: Dict[str, Any]) -> Dict[str, Any]:
     else:
         normalized.pop("extractedJdText", None)
         normalized.pop("extracted_jd_text", None)
+    jd_interpretation = normalized.get("jdInterpretation")
+    if not isinstance(jd_interpretation, dict):
+        jd_interpretation = normalized.get("jd_interpretation")
+    if isinstance(jd_interpretation, dict):
+        normalized["jdInterpretation"] = jd_interpretation
+        normalized.pop("jd_interpretation", None)
+    else:
+        normalized.pop("jdInterpretation", None)
+        normalized.pop("jd_interpretation", None)
     return normalized
 
 

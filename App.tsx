@@ -254,6 +254,7 @@ const App: React.FC = () => {
             authUserKey={authUserKey}
             onResumesUpdate={handleResumesUpdate}
             onLaunchAssistant={handleLaunchAssistant}
+            onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
           />
         );
       case ViewState.EXPERIENCE_BANK:
@@ -273,6 +274,7 @@ const App: React.FC = () => {
             authUserKey={authUserKey}
             onResumesUpdate={handleResumesUpdate}
             onLaunchAssistant={handleLaunchAssistant}
+            onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
           />
         );
       case ViewState.AI_ASSISTANT:
