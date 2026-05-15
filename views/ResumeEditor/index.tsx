@@ -65,7 +65,7 @@ import { formatRelativeTime } from '../../utils/timeUtils';
 import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
-import { buildJDPolishContext } from '../../utils/assistantResumeContext';
+import { buildJDCapabilityContext, buildJDPolishContext } from '../../utils/assistantResumeContext';
 import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
@@ -892,6 +892,51 @@ type ResumeEditorProps = {
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
 const DEFAULT_RESUME_POLISH_MODE: ResumePolishMode = 'default';
+const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
+    'default',
+    'highlight',
+    'smart_complete',
+    'shorten',
+    'expand',
+    'custom',
+];
+const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
+    'default',
+    'highlight',
+    'shorten',
+    'expand',
+    'custom',
+];
+
+type SmartCompletionPromptState = {
+    diagnosis: string;
+    questions: string[];
+    answer: string;
+};
+
+const buildSmartCompletionCustomPrompt = (answer: string, capabilityContext: string) => {
+    const trimmedAnswer = answer.trim();
+    const trimmedCapabilityContext = capabilityContext.trim();
+    return [
+        trimmedCapabilityContext,
+        trimmedAnswer ? `用户补充的真实事实：${trimmedAnswer}` : '',
+    ].filter(Boolean).join('\n\n') || undefined;
+};
+
+const buildSmartCompletionPromptState = (
+    result: {
+        evidenceDiagnosis?: string;
+        followUpQuestions?: string[];
+    },
+    previous?: SmartCompletionPromptState | null
+): SmartCompletionPromptState => ({
+    diagnosis: result.evidenceDiagnosis?.trim() || '这段经历证据不足，建议先补充事实后再润色。',
+    questions: (result.followUpQuestions ?? [])
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 5),
+    answer: previous?.answer ?? '',
+});
 type FloatingExperiencePolishSessionItem = {
     targetId: string;
     beforeDraft: ExperienceEditDraft;
@@ -1628,6 +1673,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         () => buildJDPolishContext(jdText, analysisResult, isOutdated),
         [analysisResult, isOutdated, jdText]
     );
+    const jdCapabilityPolishContext = useMemo(
+        () => buildJDCapabilityContext(analysisResult, isOutdated),
+        [analysisResult, isOutdated]
+    );
     const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
     const trackedPendingAssistantApplyRef = useRef(new Set<string>());
     const pendingAiPolishApplyRef = useRef(new Set<string>());
@@ -1939,6 +1988,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [experience, experienceItems, isLoadingExperiences, resumeId]);
     const [experiencePolishMode, setExperiencePolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
     const [experienceCustomPrompt, setExperienceCustomPrompt] = useState('');
+    const [experienceSmartCompletionPrompt, setExperienceSmartCompletionPrompt] = useState<SmartCompletionPromptState | null>(null);
     const [experiencePolishPreview, setExperiencePolishPreview] = useState<PolishPreviewState<ExperienceEditDraft> | null>(null);
     const [isEditingExperiencePolishRunning, setIsEditingExperiencePolishRunning] = useState(false);
     const editingExperiencePolishRunningRef = useRef(false);
@@ -1946,6 +1996,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isBatchPolishToolbarOpen, setIsBatchPolishToolbarOpen] = useState(false);
     const [floatingPolishMode, setFloatingPolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
     const [floatingPolishCustomPrompt, setFloatingPolishCustomPrompt] = useState('');
+    const [floatingSmartCompletionPrompt, setFloatingSmartCompletionPrompt] = useState<SmartCompletionPromptState | null>(null);
     const [floatingPolishSession, setFloatingPolishSession] = useState<FloatingExperiencePolishSession | null>(null);
     const [isFloatingExperiencePolishRunning, setIsFloatingExperiencePolishRunning] = useState(false);
     const [pendingPolishAutoAnalyzeSeq, setPendingPolishAutoAnalyzeSeq] = useState(0);
@@ -1961,6 +2012,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     useEffect(() => {
         setExperiencePolishMode(DEFAULT_RESUME_POLISH_MODE);
         setExperienceCustomPrompt('');
+        setExperienceSmartCompletionPrompt(null);
         setExperiencePolishPreview(null);
         setIsEditingExperiencePolishRunning(false);
         editingExperiencePolishRunningRef.current = false;
@@ -1980,6 +2032,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const targetExists = experienceItems.some((item) => item.id === activeFloatingPolishExperienceId);
         if (!targetExists) {
             setActiveFloatingPolishExperienceId(null);
+            setFloatingSmartCompletionPrompt(null);
             setFloatingPolishSession((prev) => {
                 if (!prev || prev.mode !== 'single') {
                     return prev;
@@ -2008,6 +2061,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         );
         let hasError = false;
         let applied = false;
+        let requestedSmartCompletion = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
 
@@ -2027,7 +2081,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 },
                 jdText: trimmedJd,
                 mode: experiencePolishMode,
-                customPrompt: experiencePolishMode === 'custom' ? experienceCustomPrompt.trim() : undefined,
+                customPrompt: experiencePolishMode === 'custom'
+                    ? experienceCustomPrompt.trim()
+                    : experiencePolishMode === 'smart_complete'
+                        ? buildSmartCompletionCustomPrompt(
+                            experienceSmartCompletionPrompt?.answer ?? '',
+                            jdCapabilityPolishContext
+                        )
+                        : undefined,
                 entrySource: 'resume_editor',
             }, (event) => {
                 if (event.type !== 'thought') {
@@ -2038,6 +2099,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
                 }
             });
+
+            if (
+                experiencePolishMode === 'smart_complete'
+                && (
+                    result.recommendedRewriteMode === 'ask_before_rewrite'
+                    || result.recommendedRewriteMode === 'not_recommended_for_this_role'
+                )
+            ) {
+                requestedSmartCompletion = true;
+                setExperienceSmartCompletionPrompt((prev) => buildSmartCompletionPromptState(result, prev));
+                return;
+            }
 
             const normalizeField = (value?: string) => {
                 if (!value) {
@@ -2063,6 +2136,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 experience.setEditingDraft(nextDraft);
                 applied = true;
                 action = 'applied';
+                setExperienceSmartCompletionPrompt(null);
                 pendingAiPolishApplyRef.current.add(draft.masterId);
             }
         } catch (error) {
@@ -2073,6 +2147,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 updateToast(toastId, { message: 'JD 润色失败，请稍后重试', type: 'error', duration: 3000 });
             } else if (applied) {
                 updateToast(toastId, { message: '已应用到当前编辑内容', type: 'success', duration: 2500 });
+            } else if (requestedSmartCompletion) {
+                updateToast(toastId, { message: '请在智能补全卡片内补充信息后再执行', type: 'success', duration: 2500 });
             } else {
                 updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
             }
@@ -2089,6 +2165,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         experience,
         experienceCustomPrompt,
         experiencePolishMode,
+        experienceSmartCompletionPrompt,
+        jdCapabilityPolishContext,
         jdPolishContext,
         showToastError,
         showToastLoading,
@@ -2253,6 +2331,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('请等待当前润色完成后再继续操作');
             return;
         }
+        setFloatingSmartCompletionPrompt(null);
         if (floatingPolishSession?.mode === 'single') {
             restoreFloatingPolishSessionItems(floatingPolishSession);
             setFloatingPolishSession(null);
@@ -2271,6 +2350,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('请先确认或撤销当前润色结果');
             return;
         }
+        setFloatingSmartCompletionPrompt(null);
         setActiveFloatingPolishExperienceId(null);
     }, [floatingPolishSession, isFloatingExperiencePolishRunning, showToastError]);
 
@@ -2279,6 +2359,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('请等待当前润色完成后再继续操作');
             return;
         }
+        setFloatingSmartCompletionPrompt(null);
         if (floatingPolishSession?.mode === 'batch') {
             restoreFloatingPolishSessionItems(floatingPolishSession);
             setFloatingPolishSession(null);
@@ -2295,6 +2376,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('请先确认或撤销当前批量润色结果');
             return;
         }
+        setFloatingSmartCompletionPrompt(null);
         setIsBatchPolishToolbarOpen(false);
     }, [floatingPolishSession, isFloatingExperiencePolishRunning, showToastError]);
 
@@ -2316,6 +2398,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         setSidebarTab('experience');
+        setFloatingSmartCompletionPrompt(null);
         setActiveFloatingPolishExperienceId((prev) => (
             prev === id && !singleFloatingPolishPreview ? null : id
         ));
@@ -2346,6 +2429,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const toastId = showToastLoading('正在为简历预览生成润色结果...');
         let hasError = false;
         let applied = false;
+        let requestedSmartCompletion = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
 
@@ -2364,7 +2448,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 },
                 jdText: trimmedJd,
                 mode: floatingPolishMode,
-                customPrompt: floatingPolishMode === 'custom' ? floatingPolishCustomPrompt.trim() : undefined,
+                customPrompt: floatingPolishMode === 'custom'
+                    ? floatingPolishCustomPrompt.trim()
+                    : floatingPolishMode === 'smart_complete'
+                        ? buildSmartCompletionCustomPrompt(
+                            floatingSmartCompletionPrompt?.answer ?? '',
+                            jdCapabilityPolishContext
+                        )
+                        : undefined,
                 entrySource: 'resume_editor',
             }, (event) => {
                 if (event.type !== 'thought') {
@@ -2375,6 +2466,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
                 }
             });
+
+            if (
+                floatingPolishMode === 'smart_complete'
+                && (
+                    result.recommendedRewriteMode === 'ask_before_rewrite'
+                    || result.recommendedRewriteMode === 'not_recommended_for_this_role'
+                )
+            ) {
+                requestedSmartCompletion = true;
+                setFloatingSmartCompletionPrompt((prev) => buildSmartCompletionPromptState(result, prev));
+                return;
+            }
 
             const normalizeField = (value?: string) => {
                 if (!value) {
@@ -2398,6 +2501,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             applied = sessionItem ? applyFloatingPolishPreview('single', [sessionItem]) : false;
             if (applied) {
                 action = 'applied';
+                setFloatingSmartCompletionPrompt(null);
             }
         } catch (error) {
             hasError = true;
@@ -2407,6 +2511,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 updateToast(toastId, { message: 'AI 润色失败，请稍后重试', type: 'error', duration: 3000 });
             } else if (applied) {
                 updateToast(toastId, { message: '已同步到简历预览，请确认或撤销', type: 'success', duration: 2500 });
+            } else if (requestedSmartCompletion) {
+                updateToast(toastId, { message: '请在智能补全卡片内补充信息后再执行', type: 'success', duration: 2500 });
             } else {
                 updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
             }
@@ -2426,6 +2532,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         experienceItems,
         floatingPolishCustomPrompt,
         floatingPolishMode,
+        floatingSmartCompletionPrompt,
+        jdCapabilityPolishContext,
         jdPolishContext,
         showToastError,
         showToastLoading,
@@ -2658,10 +2766,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         setSidebarTab('experience');
+        setFloatingSmartCompletionPrompt(null);
+        if (floatingPolishMode === 'smart_complete') {
+            setFloatingPolishMode(DEFAULT_RESUME_POLISH_MODE);
+        }
         setIsBatchPolishToolbarOpen(true);
     }, [
         activeFloatingPolishExperienceId,
         floatingPolishSession,
+        floatingPolishMode,
         isFloatingExperiencePolishRunning,
         showToastError,
     ]);
@@ -2673,6 +2786,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const trimmedJd = jdPolishContext.trim();
         if (!trimmedJd) {
             showToastError('请先填写 JD 再润色');
+            return;
+        }
+        if (floatingPolishMode === 'smart_complete') {
+            setFloatingPolishMode(DEFAULT_RESUME_POLISH_MODE);
+            setFloatingSmartCompletionPrompt(null);
+            showToastError('批量润色暂不支持智能补全，请使用单条经历补充事实');
             return;
         }
         const targetItems = experienceItems.filter((item) => selectedExpIds.has(item.id));
@@ -4612,17 +4731,36 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         e.preventDefault();
         finishDragInteraction();
     };
+    const handleExperiencePolishModeChange = (mode: ResumePolishMode) => {
+        setExperiencePolishMode(mode);
+        if (mode !== 'smart_complete') {
+            setExperienceSmartCompletionPrompt(null);
+        }
+    };
+    const handleFloatingPolishModeChange = (mode: ResumePolishMode) => {
+        setFloatingPolishMode(mode);
+        if (mode !== 'smart_complete') {
+            setFloatingSmartCompletionPrompt(null);
+        }
+    };
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const editingSuggestionToolbar = editingItem ? (
         <AIPolishToolbar
             isPreviewing={false}
             isRunning={isEditingExperiencePolishRunning}
             activeMode={experiencePolishMode}
+            modeOptions={SMART_RESUME_POLISH_MODES}
             customPrompt={experienceCustomPrompt}
+            smartCompletionPrompt={experienceSmartCompletionPrompt ? {
+                ...experienceSmartCompletionPrompt,
+                onAnswerChange: (value) => setExperienceSmartCompletionPrompt((prev) => (
+                    prev ? { ...prev, answer: value } : prev
+                )),
+            } : null}
             hasJdContext
             disabledAssistant={!jdPolishContext.trim()}
             compact
-            onModeChange={setExperiencePolishMode}
+            onModeChange={handleExperiencePolishModeChange}
             onCustomPromptChange={setExperienceCustomPrompt}
             onRun={() => void handleRunEditingExperiencePolish()}
             onUndo={handleUndoEditingExperiencePolish}
@@ -4635,12 +4773,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isPreviewing={Boolean(singleFloatingPolishPreview)}
             isRunning={isFloatingExperiencePolishRunning}
             activeMode={floatingPolishMode}
+            modeOptions={SMART_RESUME_POLISH_MODES}
             customPrompt={floatingPolishCustomPrompt}
+            smartCompletionPrompt={floatingSmartCompletionPrompt ? {
+                ...floatingSmartCompletionPrompt,
+                onAnswerChange: (value) => setFloatingSmartCompletionPrompt((prev) => (
+                    prev ? { ...prev, answer: value } : prev
+                )),
+            } : null}
             hasJdContext
             disabledAssistant={!jdPolishContext.trim()}
             previewTitle="AI 润色结果"
             previewDescription="润色结果已同步到简历预览，确认后会保存到当前简历。"
-            onModeChange={setFloatingPolishMode}
+            onModeChange={handleFloatingPolishModeChange}
             onCustomPromptChange={setFloatingPolishCustomPrompt}
             onRun={() => void handleRunFloatingExperiencePolish()}
             onUndo={handleUndoFloatingExperiencePolish}
@@ -4652,8 +4797,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         <AIPolishToolbar
             isPreviewing={Boolean(batchFloatingPolishPreview)}
             isRunning={isFloatingExperiencePolishRunning}
-            activeMode={floatingPolishMode}
+            activeMode={floatingPolishMode === 'smart_complete' ? DEFAULT_RESUME_POLISH_MODE : floatingPolishMode}
+            modeOptions={BATCH_RESUME_POLISH_MODES}
             customPrompt={floatingPolishCustomPrompt}
+            smartCompletionPrompt={floatingSmartCompletionPrompt ? {
+                ...floatingSmartCompletionPrompt,
+                onAnswerChange: (value) => setFloatingSmartCompletionPrompt((prev) => (
+                    prev ? { ...prev, answer: value } : prev
+                )),
+            } : null}
             hasJdContext
             disabledAssistant
             previewTitle="AI 批量润色结果"
@@ -4666,7 +4818,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             runningLabel="批量润色中..."
             undoLabel="撤销全部"
             confirmLabel="确认全部"
-            onModeChange={setFloatingPolishMode}
+            onModeChange={handleFloatingPolishModeChange}
             onCustomPromptChange={setFloatingPolishCustomPrompt}
             onRun={() => void handleRunBatchExperiencePolish()}
             onUndo={handleUndoBatchExperiencePolish}

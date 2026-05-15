@@ -159,12 +159,45 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AiServicePolishPromptTests(unittest.TestCase):
+    def test_normalize_jd_analysis_result_keeps_capability_analysis(self) -> None:
+        result = ai_service._normalize_jd_analysis_result(
+            {
+                "matchPercentage": 78,
+                "capability_analysis": {
+                    "roleFamily": "AI 产品经理",
+                    "overallEvidenceCompleteness": 52,
+                    "scoreConfidence": "medium",
+                    "scoreWarnings": ["产品证据不足"],
+                    "coreCapabilities": [],
+                    "experienceDiagnoses": [],
+                },
+            }
+        )
+
+        self.assertIn("capabilityAnalysis", result)
+        self.assertNotIn("capability_analysis", result)
+        self.assertEqual(result["capabilityAnalysis"]["overallEvidenceCompleteness"], 52)
+
     def test_default_mode_with_jd_uses_resume_ready_rewrite_prompt(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="default", jd_text="产品经理 JD")
 
         self.assertIn("Rewrite the provided STAR content into resume-ready statements", prompt)
         self.assertIn("stronger than light highlighting", prompt)
         self.assertIn("no more than 5", prompt)
+        self.assertNotIn("ask_before_rewrite", prompt)
+
+    def test_smart_complete_mode_can_ask_for_evidence_before_rewrite(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="smart_complete", jd_text="产品经理 JD")
+
+        self.assertIn("Resume Evidence Coach", prompt)
+        self.assertIn("recommendedRewriteMode", prompt)
+        self.assertIn("evidenceDiagnosis", prompt)
+        self.assertIn("followUpQuestions", prompt)
+
+    def test_jd_analysis_prompt_requires_capability_analysis(self) -> None:
+        self.assertIn("core capabilities behind the JD", ai_service.JD_ANALYSIS)
+        self.assertIn("capabilityAnalysis", ai_service.JD_ANALYSIS)
+        self.assertIn("resumeEvidenceLevel", ai_service.JD_ANALYSIS)
 
     def test_default_mode_without_jd_uses_role_based_highlight_fallback(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="default", jd_text=None)

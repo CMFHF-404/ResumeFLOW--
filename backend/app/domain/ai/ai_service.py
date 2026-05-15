@@ -24,6 +24,7 @@ from .prompts import (
     STAR_HIGHLIGHT_NO_JD,
     STAR_POLISH,
     STAR_RESUME_READY_REWRITE,
+    STAR_SMART_COMPLETE_REWRITE,
     TAG_GENERATION,
 )
 
@@ -630,6 +631,15 @@ def _normalize_jd_analysis_result(result: Dict[str, Any]) -> Dict[str, Any]:
     else:
         normalized.pop("jdInterpretation", None)
         normalized.pop("jd_interpretation", None)
+    capability_analysis = normalized.get("capabilityAnalysis")
+    if not isinstance(capability_analysis, dict):
+        capability_analysis = normalized.get("capability_analysis")
+    if isinstance(capability_analysis, dict):
+        normalized["capabilityAnalysis"] = capability_analysis
+        normalized.pop("capability_analysis", None)
+    else:
+        normalized.pop("capabilityAnalysis", None)
+        normalized.pop("capability_analysis", None)
     return normalized
 
 
@@ -1390,6 +1400,8 @@ def _resolve_star_prompt(
     has_jd_text: bool = False,
 ) -> str:
     normalized_mode = (mode or "default").strip().lower()
+    if normalized_mode in {"smart_complete", "smart_completion"}:
+        return STAR_SMART_COMPLETE_REWRITE
     if normalized_mode == "default":
         if has_jd_text:
             return STAR_RESUME_READY_REWRITE
