@@ -284,8 +284,28 @@
             animation: cardHighlight 900ms ease-out;
         }
 
+        @keyframes aiPolishCardExpand {
+            from {
+                max-height: 0;
+                opacity: 0;
+                transform: translateY(-6px);
+            }
+
+            to {
+                max-height: 32rem;
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .ai-polish-card-expand {
+            animation: aiPolishCardExpand 220ms ease-out;
+            transform-origin: top;
+        }
+
         @media (prefers-reduced-motion: reduce) {
-            .card-highlight {
+            .card-highlight,
+            .ai-polish-card-expand {
                 animation: none;
             }
         }
