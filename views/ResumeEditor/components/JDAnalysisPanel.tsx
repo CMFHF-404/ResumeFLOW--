@@ -653,6 +653,31 @@ type CapabilityEvidenceCardProps = {
     compact?: boolean;
 };
 
+const getCapabilityFollowUpQuestions = (capabilities: JDCoreCapability[]) => (
+    capabilities
+        .flatMap((item) => getArray<string>(item.followUpQuestions))
+        .map(getText)
+        .filter(Boolean)
+);
+
+const CapabilityFollowUpCommentLine: React.FC<{
+    analysisResult: JDAnalysisResult;
+    limit?: number;
+}> = ({ analysisResult, limit = 1 }) => {
+    const capabilities = getArray<JDCoreCapability>(analysisResult.capabilityAnalysis?.coreCapabilities);
+    const followUpQuestions = getCapabilityFollowUpQuestions(capabilities);
+
+    if (followUpQuestions.length === 0) {
+        return null;
+    }
+
+    return (
+        <span className="mt-1 block text-amber-800 dark:text-amber-200">
+            建议补充：{followUpQuestions.slice(0, limit).join('；')}
+        </span>
+    );
+};
+
 const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
     analysisResult,
     compact = false,
@@ -666,10 +691,7 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
     const warningText = getArray<string>(analysis.scoreWarnings)
         .map(getText)
         .filter(Boolean);
-    const followUpQuestions = capabilities
-        .flatMap((item) => getArray<string>(item.followUpQuestions))
-        .map(getText)
-        .filter(Boolean);
+    const followUpQuestions = getCapabilityFollowUpQuestions(capabilities);
     const weakCapabilities = capabilities.filter((item) => item.resumeEvidenceLevel <= 2 || item.risk !== 'none');
 
     return (
@@ -1073,8 +1095,8 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             <div className="space-y-2">
                                 <p className="text-[11.5px] leading-relaxed text-emerald-800 dark:text-emerald-300/80">
                                     {analysisResult.summary}
+                                    <CapabilityFollowUpCommentLine analysisResult={analysisResult} />
                                 </p>
-                                <CapabilityEvidenceCard analysisResult={analysisResult} compact />
                                 <BossGreetingSection
                                     analysisResult={analysisResult}
                                     bossGreeting={bossGreeting}
@@ -1161,9 +1183,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     </div>
                                     <p className="text-[11.5px] leading-relaxed text-emerald-800 dark:text-emerald-300/80">
                                         {analysisResult.summary}
+                                        <CapabilityFollowUpCommentLine analysisResult={analysisResult} />
                                     </p>
                                 </div>
-                                <CapabilityEvidenceCard analysisResult={analysisResult} compact />
                                 <BossGreetingSection
                                     analysisResult={analysisResult}
                                     bossGreeting={bossGreeting}
