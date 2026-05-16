@@ -15,6 +15,7 @@ import {
 } from '../utils/analyticsTracker';
 import type { PolishPreviewState } from '../types/resume';
 import type { AssistantLaunchRequest } from './AIAssistant';
+import { buildSmartCompleteAssistantPrompt } from '../utils/assistantSmartCompletePrompt';
 
 type ToastApi = {
   success: (message: string, duration?: number) => string;
@@ -1194,14 +1195,14 @@ const usePolishActions = ({
       return;
     }
     if (isTempId(cardId)) {
-      toast.error('请先保存这段经历，再使用高级模式', 3000);
+      toast.error('请先保存这段经历，再使用智能补全', 3000);
       return;
     }
     onLaunchAssistant({
       context: {
         mode: 'experience',
         entrySource: 'experience_bank',
-        title: `${current.org || '未命名经历'} · AI 整理`,
+        title: `${current.org || '未命名经历'} · 智能补全`,
         contextJson: {
           masterId: cardId,
           category,
@@ -1212,7 +1213,15 @@ const usePolishActions = ({
           star: current.star,
         },
       },
-      initialUserMessage: `请基于这段经历继续和我对话整理，最后输出一张可确认录入的经历卡片。\n\n组织/项目：${current.org || '未填写'}\n角色：${current.title || '未填写'}\n时间：${current.start_date || '未填写'} - ${current.end_date || '至今'}\nS：${stripRichTextToText(current.star.s) || '未填写'}\nT：${stripRichTextToText(current.star.t) || '未填写'}\nA：${stripRichTextToText(current.star.a) || '未填写'}\nR：${stripRichTextToText(current.star.r) || '未填写'}`,
+      initialSkillId: 'experience_completion',
+      initialUserMessage: buildSmartCompleteAssistantPrompt({
+        org: current.org,
+        title: current.title,
+        startDate: current.start_date,
+        endDate: current.end_date,
+        isCurrent: !current.end_date,
+        star: current.star,
+      }),
     });
   }, [category, onLaunchAssistant, toast]);
 

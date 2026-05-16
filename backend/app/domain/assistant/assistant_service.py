@@ -728,6 +728,7 @@ async def persist_assistant_turn(
     user_skill_id: str | None = None,
     assistant_text: str,
     draft_card: dict | None,
+    suggested_followups: list[dict] | None = None,
     title: str | None = None,
 ) -> list[AIAssistantMessage]:
     user_content_json = {"text": display_message if display_message is not None else user_message}
@@ -763,7 +764,11 @@ async def persist_assistant_turn(
             session_id=assistant_session.id,
             role="assistant",
             message_type="assistant_text",
-            content_json={"text": assistant_text},
+            content_json={
+                "text": assistant_text,
+                **({"skill_id": user_skill_id} if user_skill_id else {}),
+                **({"suggestedFollowups": suggested_followups} if suggested_followups else {}),
+            },
         )
     )
     if draft_card:

@@ -8,12 +8,19 @@ export type AIPolishToolbarProps = {
   isPreviewing: boolean;
   isRunning: boolean;
   activeMode: ToolbarMode;
+  modeOptions?: ToolbarMode[];
   customPrompt: string;
   hasJdContext?: boolean;
   disabledAssistant?: boolean;
   previewTitle?: string;
   previewDescription?: string;
   previewContent?: React.ReactNode;
+  smartCompletionPrompt?: {
+    diagnosis: string;
+    questions: string[];
+    answer: string;
+    onAnswerChange: (value: string) => void;
+  } | null;
   runHint?: string;
   runButtonLabel?: string;
   runningLabel?: string;
@@ -29,17 +36,21 @@ export type AIPolishToolbarProps = {
   compact?: boolean;
 };
 
-const MODE_OPTIONS: Array<{ value: ToolbarMode; label: string }> = [
-  { value: 'default', label: 'AI 润色' },
-  { value: 'highlight', label: '匹配高亮' },
-  { value: 'shorten', label: '精简内容' },
-  { value: 'expand', label: '扩写文本' },
-  { value: 'custom', label: '自定义 Prompt' },
-];
+const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];
+
+const MODE_LABELS: Record<ToolbarMode, string> = {
+  default: 'AI 润色',
+  highlight: '匹配高亮',
+  smart_complete: '智能补全',
+  shorten: '精简内容',
+  expand: '扩写文本',
+  custom: '自定义 Prompt',
+};
 
 const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
   default: '结合 JD，改写成更接近简历成稿的表达。',
   highlight: '保守轻改，只加粗最匹配 JD 的证据。',
+  smart_complete: '先判断证据是否足够，必要时在卡片内追问补充事实。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
   expand: '补充必要上下文，字数扩写 30% 以上。',
   custom: '按你的 Prompt 定向润色，仍以事实为准。',
@@ -48,6 +59,7 @@ const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
 const MODE_DESCRIPTIONS_NO_JD: Record<ToolbarMode, string> = {
   default: '保留原文，仅调整重点内容的强调。',
   highlight: '保留原文，仅调整重点内容的强调。',
+  smart_complete: '诊断经历证据缺口，并给出可补充的问题。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
   expand: '补充必要上下文，字数扩写 30% 以上。',
   custom: '按你的 Prompt 定向润色，仍以事实为准。',
@@ -57,12 +69,14 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   isPreviewing,
   isRunning,
   activeMode,
+  modeOptions = DEFAULT_MODE_OPTIONS,
   customPrompt,
   hasJdContext = false,
   disabledAssistant,
   previewTitle,
   previewDescription,
   previewContent,
+  smartCompletionPrompt,
   runHint,
   runButtonLabel,
   runningLabel,
@@ -136,21 +150,21 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   }
 
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm ${className ?? ''}`}>
+    <div className={`max-h-[min(62vh,30rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm ${className ?? ''}`}>
       <div className={`flex ${compact ? 'flex-col gap-2' : 'flex-col gap-3'}`}>
         <div className="flex flex-wrap gap-2">
-          {MODE_OPTIONS.map((option) => (
+          {modeOptions.map((option) => (
             <button
-              key={option.value}
+              key={option}
               type="button"
-              onClick={() => onModeChange(option.value)}
+              onClick={() => onModeChange(option)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                activeMode === option.value
+                activeMode === option
                   ? 'bg-slate-900 text-white'
                   : 'border border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-900'
               }`}
             >
-              {option.label}
+              {MODE_LABELS[option]}
             </button>
           ))}
           <button
@@ -160,7 +174,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Bot className="h-3.5 w-3.5" />
-            高级模式
+            智能补全
           </button>
         </div>
         {activeMode === 'custom' ? (
@@ -170,6 +184,29 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             placeholder="例如：突出跨团队协作，但保持事实克制，不要夸大成果。"
             className="min-h-[84px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
           />
+        ) : null}
+        {activeMode === 'smart_complete' && smartCompletionPrompt ? (
+          <div className={`ai-polish-card-expand flex ${compact ? 'max-h-[18rem]' : 'max-h-[22rem]'} min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/80 p-3 md:max-h-none md:overflow-visible`}>
+            <div className={`${compact ? 'max-h-[10rem]' : 'max-h-[13rem]'} min-h-0 overflow-y-auto pr-2 md:max-h-none md:overflow-visible md:pr-0`}>
+              <div className="text-xs font-semibold text-amber-900">需要补充的信息</div>
+              <p className="mt-1 text-xs leading-5 text-amber-800">{smartCompletionPrompt.diagnosis}</p>
+              {smartCompletionPrompt.questions.length > 0 ? (
+                <div className="mt-2 space-y-1">
+                  {smartCompletionPrompt.questions.slice(0, 5).map((question, index) => (
+                    <p key={`${question}-${index}`} className="text-xs leading-5 text-amber-900">
+                      {index + 1}. {question}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <textarea
+              value={smartCompletionPrompt.answer}
+              onChange={(event) => smartCompletionPrompt.onAnswerChange(event.target.value)}
+              placeholder="在这里补充真实事实，例如目标用户、产品取舍、MVP 验证、用户反馈或指标结果。"
+              className="mt-3 min-h-[76px] shrink-0 w-full resize-y rounded-2xl border border-amber-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700 outline-none transition placeholder:text-amber-700/50 focus:border-amber-300 focus:ring-2 focus:ring-amber-100"
+            />
+          </div>
         ) : null}
         <div className="flex items-center justify-between gap-3">
           <p className="max-w-[16rem] text-xs leading-5 text-slate-500">{modeDescription}</p>
