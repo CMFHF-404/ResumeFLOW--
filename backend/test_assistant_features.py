@@ -106,6 +106,34 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("if (hasValue && !previousHasValueRef.current)", source)
         self.assertIn("setIsCollapsed(false)", source)
 
+    def test_ai_polish_toolbar_hides_shorten_expand_and_lets_smart_card_expand_on_desktop(self) -> None:
+        toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        html_source = (REPO_ROOT / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];", toolbar_source)
+
+        smart_start = editor_source.index("const SMART_RESUME_POLISH_MODES")
+        smart_end = editor_source.index("const BATCH_RESUME_POLISH_MODES", smart_start)
+        smart_block = editor_source[smart_start:smart_end]
+        self.assertIn("'smart_complete'", smart_block)
+        self.assertNotIn("'shorten'", smart_block)
+        self.assertNotIn("'expand'", smart_block)
+
+        batch_start = editor_source.index("const BATCH_RESUME_POLISH_MODES")
+        batch_end = editor_source.index("type SmartCompletionPromptState", batch_start)
+        batch_block = editor_source[batch_start:batch_end]
+        self.assertNotIn("'shorten'", batch_block)
+        self.assertNotIn("'expand'", batch_block)
+
+        smart_card_start = toolbar_source.index("activeMode === 'smart_complete'")
+        smart_card_end = toolbar_source.index("<textarea", smart_card_start)
+        smart_card_block = toolbar_source[smart_card_start:smart_card_end]
+        self.assertIn("ai-polish-card-expand", smart_card_block)
+        self.assertIn("md:max-h-none md:overflow-visible", smart_card_block)
+        self.assertIn("md:pr-0", smart_card_block)
+        self.assertIn(".ai-polish-card-expand", html_source)
+
     def test_experience_bank_card_assistant_launch_uses_server_apply(self) -> None:
         source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
         start = source.index("const handleOpenAssistant")

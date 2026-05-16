@@ -896,15 +896,11 @@ const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
     'highlight',
     'smart_complete',
-    'shorten',
-    'expand',
     'custom',
 ];
 const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
     'highlight',
-    'shorten',
-    'expand',
     'custom',
 ];
 

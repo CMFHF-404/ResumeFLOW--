@@ -36,7 +36,7 @@ export type AIPolishToolbarProps = {
   compact?: boolean;
 };
 
-const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'shorten', 'expand', 'custom'];
+const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];
 
 const MODE_LABELS: Record<ToolbarMode, string> = {
   default: 'AI 润色',
@@ -186,8 +186,8 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           />
         ) : null}
         {activeMode === 'smart_complete' && smartCompletionPrompt ? (
-          <div className={`flex ${compact ? 'max-h-[18rem]' : 'max-h-[22rem]'} min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/80 p-3`}>
-            <div className={`${compact ? 'max-h-[10rem]' : 'max-h-[13rem]'} min-h-0 overflow-y-auto pr-2`}>
+          <div className={`ai-polish-card-expand flex ${compact ? 'max-h-[18rem]' : 'max-h-[22rem]'} min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/80 p-3 md:max-h-none md:overflow-visible`}>
+            <div className={`${compact ? 'max-h-[10rem]' : 'max-h-[13rem]'} min-h-0 overflow-y-auto pr-2 md:max-h-none md:overflow-visible md:pr-0`}>
               <div className="text-xs font-semibold text-amber-900">需要补充的信息</div>
               <p className="mt-1 text-xs leading-5 text-amber-800">{smartCompletionPrompt.diagnosis}</p>
               {smartCompletionPrompt.questions.length > 0 ? (
