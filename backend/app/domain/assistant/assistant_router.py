@@ -807,6 +807,7 @@ async def stream_assistant_session_turn(
                     user_skill_id=payload.skill_id,
                     assistant_text=result["assistantText"],
                     draft_card=result.get("draftCard"),
+                    suggested_followups=result.get("suggestedFollowups"),
                     title=result.get("title"),
                 )
                 await emit({"type": "progress", "node": "persist_result", "title": "保存会话记录"})

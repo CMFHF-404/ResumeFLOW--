@@ -25,6 +25,47 @@ JD_ANALYSIS_SHARED_RUBRIC = (
     "value, and JD relevance. Avoid generic praise."
 )
 
+JD_CAPABILITY_ANALYSIS_RULES = (
+    "Do not evaluate fit by keyword overlap. First infer the core capabilities behind the JD. "
+    "For each core capability, judge whether the resume provides evidence level: "
+    "0 no evidence, 1 keyword only, 2 action only, 3 action plus method or output, "
+    "4 decision/process plus measurable or verifiable result. "
+    "If a product role requires product judgment, user research, MVP validation, roadmap, PRD, "
+    "stakeholder communication, or business impact, do not give high scores merely because the resume "
+    "mentions AI tools, coding tools, or development implementation. "
+    "Identify proven capabilities, weak evidence, keyword-only evidence, possible but unwritten evidence, "
+    "and follow-up questions that would help the user supplement truthful facts. "
+    "Never assume the user has done something. If it is plausible but not written, ask as a question. "
+    "Apply evidence caps: if high-weight JD capabilities have evidenceLevel <= 1, overall matchPercentage "
+    "must not exceed 75; if more than 40% of core capabilities are keyword-only or missing, overall "
+    "matchPercentage must not exceed 70; if the experience positioning is misaligned with the role family, "
+    "lower scoreConfidence even when keywords match. "
+)
+
+JD_CAPABILITY_RESPONSE_RULES = (
+    " In addition to the existing fields, return 'capabilityAnalysis'. "
+    "'capabilityAnalysis' must include: "
+    "'roleFamily' (short Chinese string), "
+    "'coreCapabilities' (array of objects with keys: "
+    "'id' (stable short snake_case string), 'name' (Chinese), 'weight' (0-100), "
+    "'jdEvidence' (JD evidence), 'resumeEvidenceLevel' (0/1/2/3/4), "
+    "'resumeEvidenceSummary' (Chinese summary of what the resume actually proves), "
+    "'risk' ('none'/'weak_evidence'/'keyword_only'/'missing'/'mispositioned'), "
+    "optional 'likelyUnwritten' (boolean), and 'followUpQuestions' (array of 1-3 Chinese questions)), "
+    "'overallEvidenceCompleteness' (0-100), "
+    "'scoreConfidence' ('high'/'medium'/'low'), "
+    "'scoreWarnings' (array of short Chinese warnings), "
+    "and 'experienceDiagnoses' (array of objects with keys: "
+    "'experienceId' (must match input experience id), "
+    "'currentPositioning' (what the current text mainly proves), "
+    "'targetRolePositioning' (how it should be positioned for this JD), "
+    "'provenCapabilities' (array), 'weakCapabilities' (array), 'unsupportedClaims' (array), "
+    "'missingButAskableEvidence' (array of objects with 'capability', 'question', and 'exampleAnswerHint'), "
+    "and 'recommendedRewriteMode' ('rewrite_now'/'ask_before_rewrite'/'not_recommended_for_this_role')). "
+    "Use capabilityAnalysis to separate three gap types: clearly missing evidence, likely but unwritten evidence, "
+    "and keyword-only evidence that needs proof."
+)
+
 JD_ANALYSIS_RESPONSE_RULES = (
     "Return JSON only with keys: "
     "'matchPercentage' (0-100), 'missingKeywords' (array of 3-6 short strings), "
@@ -46,6 +87,24 @@ JD_ANALYSIS_RESPONSE_RULES = (
     "'id' (must match input skill id), 'score' (0-100), and 'reason' (<=20 words)). "
     "For skillMatches, you MUST return one entry for every input skill id; "
     "if a skill does not match, still return it with score 0 and an empty reason. "
+    "In addition to the existing fields, return 'jdInterpretation'. "
+    "'jdInterpretation' should explain the JD as a job-search seed, not as isolated keywords. "
+    "It must include: 'roleFamily' (short Chinese string), 'normalizedTitle' (short Chinese string), "
+    "'seniority' (实习/校招/初级/中级/高级/不明确), optional 'businessDomain', "
+    "'roleIntent' (one Chinese sentence), "
+    "'coreResponsibilities' (array of objects with 'label', 'evidence', and weight 'high'/'medium'/'low'), "
+    "'mustHave' (array of objects with 'label', type 'skill'/'experience'/'domain'/'education'/'tool'/'other', and 'evidence'), "
+    "'niceToHave' (array of objects with 'label' and 'evidence'), "
+    "'hardFilters' (array of objects with 'label' and 'evidence'), and "
+    "'sameTypeJobStrategy' with 'recommendedTitles', 'searchQueries', and 'avoidTitles'. "
+    "Each recommendedTitles item must include 'title', 'reason', and 'confidence' (0-100). "
+    "Each searchQueries item must include 'label', 'query', 'includeKeywords', and 'excludeKeywords'. "
+    "Each avoidTitles item must include 'title' and 'reason'. "
+    "For sameTypeJobStrategy, recommendedTitles are role titles the user can search and apply to together, "
+    "searchQueries are practical job-board keyword combinations with includeKeywords and excludeKeywords arrays, "
+    "and avoidTitles prevent false-positive roles. Do not invent real job openings or companies. "
+    "Base every recommendation on JD evidence."
+    + JD_CAPABILITY_RESPONSE_RULES
 )
 
 JD_ANALYSIS_IMAGE_RESPONSE_RULES = (
@@ -71,6 +130,24 @@ JD_ANALYSIS_IMAGE_RESPONSE_RULES = (
     "'id' (must match input skill id), 'score' (0-100), and 'reason' (<=20 words)). "
     "For skillMatches, you MUST return one entry for every input skill id; "
     "if a skill does not match, still return it with score 0 and an empty reason. "
+    "In addition to the existing fields, return 'jdInterpretation'. "
+    "'jdInterpretation' should explain the JD as a job-search seed, not as isolated keywords. "
+    "It must include: 'roleFamily' (short Chinese string), 'normalizedTitle' (short Chinese string), "
+    "'seniority' (实习/校招/初级/中级/高级/不明确), optional 'businessDomain', "
+    "'roleIntent' (one Chinese sentence), "
+    "'coreResponsibilities' (array of objects with 'label', 'evidence', and weight 'high'/'medium'/'low'), "
+    "'mustHave' (array of objects with 'label', type 'skill'/'experience'/'domain'/'education'/'tool'/'other', and 'evidence'), "
+    "'niceToHave' (array of objects with 'label' and 'evidence'), "
+    "'hardFilters' (array of objects with 'label' and 'evidence'), and "
+    "'sameTypeJobStrategy' with 'recommendedTitles', 'searchQueries', and 'avoidTitles'. "
+    "Each recommendedTitles item must include 'title', 'reason', and 'confidence' (0-100). "
+    "Each searchQueries item must include 'label', 'query', 'includeKeywords', and 'excludeKeywords'. "
+    "Each avoidTitles item must include 'title' and 'reason'. "
+    "For sameTypeJobStrategy, recommendedTitles are role titles the user can search and apply to together, "
+    "searchQueries are practical job-board keyword combinations with includeKeywords and excludeKeywords arrays, "
+    "and avoidTitles prevent false-positive roles. Do not invent real job openings or companies. "
+    "Base every recommendation on JD evidence."
+    + JD_CAPABILITY_RESPONSE_RULES
 )
 
 JD_ANALYSIS = (
@@ -80,6 +157,8 @@ JD_ANALYSIS = (
     "'certifications' (array of items with id, name, issuer, issue_date), "
     "and 'skills' (array of items with id, name, category). "
     + JD_ANALYSIS_SHARED_RUBRIC
+    + " "
+    + JD_CAPABILITY_ANALYSIS_RULES
     + " "
     + JD_ANALYSIS_RESPONSE_RULES
     + "If Current Experience Content and Previous Experience Content are provided, "
@@ -209,6 +288,28 @@ STAR_RESUME_READY_REWRITE = (
     "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
+STAR_SMART_COMPLETE_REWRITE = (
+    "You are a Resume Evidence Coach and Resume Writer. The user input is a JSON object that may include fields like "
+    "company, role, s, t, a, and r. If jd_text is provided, first diagnose whether the source text contains enough "
+    "factual evidence for the target role. If evidence is insufficient for the JD, do not over-polish technical implementation "
+    "into product ownership; return 'recommendedRewriteMode' as 'ask_before_rewrite', 'evidenceDiagnosis' as a short Chinese "
+    "diagnosis, and 'followUpQuestions' as 0-3 focused Chinese questions instead of forcing a rewrite. "
+    "Follow-up questions must be limited to truthful, plausibly answerable facts inside this current STAR experience only. "
+    "Do not ask about other projects, course projects, personal exercises, the user's broader professional background, "
+    "non-this-project cases, certifications, skills, or any experience outside the current input item. "
+    "If the current experience clearly has no relevant material for a missing JD capability, state that gap in the diagnosis "
+    "and ask no question for that capability instead of asking the user to provide unrelated evidence. "
+    "Do not create questions to fill a quota; an empty followUpQuestions array is valid when there are no useful current-experience facts to ask about. "
+    "Do not transform technical implementation evidence into product ownership unless the input proves product decisions, user research, "
+    "MVP validation, metrics, or stakeholder work. If evidence is sufficient, rewrite the provided STAR content into resume-ready statements "
+    "while staying strictly factual. Preserve all facts, chronology, responsibility scope, metrics, tools, and hyperlinks; do not invent, "
+    "exaggerate, upgrade ownership, or add unsupported keywords. Use JD language only when the original content proves it. "
+    "Add Markdown bold to the strongest evidence, with no more than 5 distinct bold phrases across the whole output. "
+    "S/T/R must be one sentence each, and A must be concise action points separated by newlines without numbering. "
+    "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r', optional 'recommendedRewriteMode', "
+    "'evidenceDiagnosis', and 'followUpQuestions'."
+)
+
 TAG_GENERATION = (
     "You are a resume coach. Given work experience text, return JSON only with key "
     "'tags' as an array of 3-8 short skill tags. Avoid duplicates. Use the same "
@@ -279,6 +380,12 @@ POLISH_MODE_INSTRUCTIONS = {
         "Do not invent new facts, numbers, tools, or responsibilities. "
         "The visible character count should be increased by at least 30% overall whenever the source text is long enough to support that change."
     ),
+    "smart_complete": (
+        "Smart-complete mode should diagnose evidence before rewriting. "
+        "When source facts are insufficient for the target role, ask only useful current-experience follow-up questions instead of forcing a rewrite. "
+        "Ask 0-3 questions, never pad the list to a fixed count, and do not ask for facts from other projects or unrelated experiences. "
+        "When facts are sufficient, rewrite conservatively and only express supported value."
+    ),
     "enhanced": (
         "Enhanced mode should reorganize wording more actively than default mode when it improves JD fit, clarity, and resume impact. "
         "You may restructure clauses across S/T/A/R, prioritize the most relevant deliverables, and make the value proposition sharper, while preserving every fact, metric, responsibility level, chronology, and tool exactly as supported by the input."
@@ -294,7 +401,9 @@ ASSISTANT_COMMON_RULES = (
     "into useful resume, interview, and job-application guidance through guided questioning. Return JSON only with keys: "
     "'assistantText' (required Chinese string), "
     "'draftCard' (object or null), and "
-    "'title' (short Chinese session title, <=12 Chinese characters). "
+    "'title' (short Chinese session title, <=12 Chinese characters), and "
+    "'suggestedFollowups' (array of 0-3 objects, each with 'label' (short Chinese button text), "
+    "'prompt' (the exact next user message in Chinese), and 'skillId' ('star_guidance'/'experience_completion'/'mock_interview')). "
     "draftCard defaults to null. Only return a draftCard when the active skill allows drafting and the user explicitly asks for a draft/saveable card, "
     "or when the facts are already sufficient and a draft is clearly the user's requested outcome. "
     "If the input JSON includes 'bank_context', treat it as the user's authoritative experience library and latest personal material. "
@@ -308,6 +417,9 @@ ASSISTANT_COMMON_RULES = (
     "If selected_resume.jd_context is missing, clearly state that no linked JD was detected and give advice based on the resume alone. "
     "If the input JSON includes an 'attachment' object or an 'attachments' array, treat them as user-provided source material and use them together with the latest message. "
     "When information is insufficient, ask exactly one focused follow-up question in assistantText and set draftCard to null. "
+    "Suggested follow-up buttons must be generated from the current assistantText, current skill, and actual missing facts; do not use generic fixed labels. "
+    "Each suggestedFollowups item must lead to a materially different next step, and it is valid to return fewer than 3 or an empty array. "
+    "For experience_completion / 智能补全, suggestedFollowups must obey the same current-experience-only scope as the answer: no other projects, course projects, personal exercises, professional background, or non-this-project cases. "
     "Do not return a draftCard merely because facts are sufficient. For polish, adjustment, critique, interview, or planning turns, "
     "return assistantText with the useful revision or guidance and keep draftCard null unless the latest user message clearly asks to generate, save, confirm, or output a card. "
     "When the user explicitly asks for an initial draft / says they are okay with a first draft, return a draftCard. "
@@ -400,6 +512,8 @@ JD_ANALYSIS_IMAGE = (
     "'certifications' (array of items with id, name, issuer, issue_date), "
     "and 'skills' (array of items with id, name, category). "
     + JD_ANALYSIS_SHARED_RUBRIC
+    + " "
+    + JD_CAPABILITY_ANALYSIS_RULES
     + " "
     + JD_ANALYSIS_IMAGE_RESPONSE_RULES
     + " "

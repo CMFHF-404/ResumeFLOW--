@@ -367,6 +367,7 @@ const buildPrevResultPayload = (result: JDAnalysisResult | null) => {
       .filter((item) => typeof item.score === "number");
   return {
     matchPercentage: result.matchPercentage,
+    capabilityAnalysis: result.capabilityAnalysis,
     experienceMatches: pickScores(result.experienceMatches),
     certificationMatches: pickScores(result.certificationMatches),
     skillMatches: pickScores(result.skillMatches),
@@ -414,6 +415,9 @@ const mergeAnalysisResult = (
     jobTitle: next.jobTitle ?? prev.jobTitle,
     company: next.company ?? prev.company,
     summary: next.summary,
+    extractedJdText: next.extractedJdText ?? prev.extractedJdText,
+    jdInterpretation: next.jdInterpretation ?? prev.jdInterpretation,
+    capabilityAnalysis: next.capabilityAnalysis ?? prev.capabilityAnalysis,
     experienceMatches: mergeMatchEntries(
       prev.experienceMatches,
       next.experienceMatches,

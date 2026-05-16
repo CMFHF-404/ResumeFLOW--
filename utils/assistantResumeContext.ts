@@ -42,6 +42,38 @@ export const buildJDPolishContext = (
   return contextLines.join('\n');
 };
 
+export const buildJDCapabilityContext = (
+  analysisResult: JDAnalysisResult | null,
+  isOutdated: boolean
+) => {
+  const currentAnalysis = !isOutdated ? analysisResult : null;
+  const capabilityAnalysis = currentAnalysis?.capabilityAnalysis;
+  const coreCapabilities = Array.isArray(capabilityAnalysis?.coreCapabilities)
+    ? capabilityAnalysis.coreCapabilities
+    : [];
+  const scoreWarnings = Array.isArray(capabilityAnalysis?.scoreWarnings)
+    ? capabilityAnalysis.scoreWarnings
+    : [];
+  const weakCapabilities = coreCapabilities
+    .filter((item) => item.resumeEvidenceLevel <= 2 || item.risk !== 'none')
+    .map((item) => item.name)
+    .filter(Boolean)
+    .slice(0, 6);
+  const followUpQuestions = coreCapabilities
+    .flatMap((item) => Array.isArray(item.followUpQuestions) ? item.followUpQuestions : [])
+    .filter(Boolean)
+    .slice(0, 5);
+  const capabilityLines = [
+    capabilityAnalysis ? `证据完整度：${capabilityAnalysis.overallEvidenceCompleteness}%` : '',
+    scoreWarnings.length ? `证据风险：${scoreWarnings.join('；')}` : '',
+    weakCapabilities.length ? `弱证据能力：${weakCapabilities.join('、')}` : '',
+    followUpQuestions.length ? `建议先追问补充：${followUpQuestions.join('；')}` : '',
+  ].filter(Boolean);
+  return capabilityLines.length
+    ? ['能力证据诊断：', capabilityLines.join('\n')].join('\n')
+    : '';
+};
+
 const resolveSelectedIds = (value: unknown) => {
   if (!Array.isArray(value)) {
     return null;
