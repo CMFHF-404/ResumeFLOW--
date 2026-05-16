@@ -16,7 +16,7 @@ import {
     Wand2,
     X,
 } from 'lucide-react';
-import type { JDAnalysisResult } from '../../../services/aiService';
+import type { JDAnalysisResult, JDCoreCapability } from '../../../services/aiService';
 import { StaleBadge } from './Badges';
 import JDAttachmentUploader, {
     JDAttachmentPreview,
@@ -83,6 +83,25 @@ const SUMMARY_CLAMP_STYLE: React.CSSProperties = {
 const ANALYSIS_CARD_TRANSITION = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const MOBILE_POLISH_CARD_OPEN_DURATION_MS = 420;
 const MOBILE_POLISH_CARD_CLOSE_DURATION_MS = 240;
+
+const normalizeMobileDisplayText = (value: unknown) => (
+    typeof value === 'string'
+        ? value.replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
+        : ''
+);
+
+const getMobileArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? value as T[] : []);
+
+const getMobileCapabilityFollowUpQuestion = (analysisResult: JDAnalysisResult | null) => (
+    getMobileArray<JDCoreCapability>(analysisResult?.capabilityAnalysis?.coreCapabilities)
+        .flatMap((item) => (
+            item && typeof item === 'object'
+                ? getMobileArray<unknown>(item.followUpQuestions)
+                : []
+        ))
+        .map(normalizeMobileDisplayText)
+        .find(Boolean) ?? ''
+);
 
 const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     resumeId,
@@ -300,6 +319,10 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         }
         return '在底部抽屉补充 JD 后，这里会展示匹配评价与简历建议。';
     }, [analysisResult?.summary]);
+    const followUpQuestion = useMemo(
+        () => getMobileCapabilityFollowUpQuestion(analysisResult),
+        [analysisResult]
+    );
 
     const analysisCardMotionStyle = useMemo<React.CSSProperties>(() => ({
         maxHeight: isAnalysisCollapsed ? 0 : (analysisCardHeight ? `${analysisCardHeight}px` : undefined),
@@ -622,6 +645,11 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                             >
                                                 {summaryText}
                                             </p>
+                                            {followUpQuestion ? (
+                                                <p className="text-[12.5px] leading-5 text-amber-800 dark:text-amber-200">
+                                                    建议补充：{followUpQuestion}
+                                                </p>
+                                            ) : null}
                                             {hasSummary ? (
                                                 <div className="space-y-2">
                                                     <button
