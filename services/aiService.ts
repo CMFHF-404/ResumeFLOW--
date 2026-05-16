@@ -295,6 +295,12 @@ export interface AssistantSelectedResume {
     jdContext?: string;
 }
 
+export interface AssistantSuggestedFollowup {
+    label: string;
+    prompt: string;
+    skillId: AssistantSkillId;
+}
+
 export interface AssistantSessionDetail {
     session: AssistantSession;
     messages: AssistantMessage[];
@@ -317,6 +323,7 @@ export interface AssistantEntryContext {
 export interface AssistantTurnResult {
     assistantText: string;
     draftCard?: AssistantDraftCard | null;
+    suggestedFollowups?: AssistantSuggestedFollowup[];
     title?: string;
 }
 

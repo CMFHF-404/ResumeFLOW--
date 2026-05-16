@@ -22,7 +22,7 @@ import {
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSession, type AssistantSkillId, type AssistantStreamEvent } from '../services/aiService';
+import { MAX_ASSISTANT_SELECTED_EXPERIENCES, aiService, type AssistantDraftCard, type AssistantEntryContext, type AssistantMessage, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSession, type AssistantSkillId, type AssistantStreamEvent, type AssistantSuggestedFollowup } from '../services/aiService';
 import { certificationsService } from '../services/certificationsService';
 import { experienceService, type ExperienceListItem } from '../services/experienceService';
 import { resumeService, type Resume } from '../services/resumeService';
@@ -60,6 +60,7 @@ export type AssistantApplyDraftHandler = (
 export type AssistantLaunchRequest = {
   requestId?: string;
   context: AssistantEntryContext;
+  initialSkillId?: AssistantSkillId | null;
   initialUserMessage?: string;
   prefillResume?: AssistantSelectedResume;
   applyDraftHandler?: AssistantApplyDraftHandler;
@@ -131,8 +132,8 @@ const ASSISTANT_SKILL_PRESETS: Array<{
   },
   {
     id: 'experience_completion',
-    title: '经历补全助手',
-    prompt: '请检查我选中的经历缺少哪些岗位价值证据，并按重要性追问我补全职责、方法和结果。',
+    title: '智能补全',
+    prompt: '请按智能补全模式诊断选中经历是否足够支撑目标 JD；证据不足时只追问当前经历内可补充事实，0-3 个问题，不要询问其他项目、课程项目、个人练习或非本项目案例。',
     Icon: Wrench,
   },
   {
@@ -143,22 +144,71 @@ const ASSISTANT_SKILL_PRESETS: Array<{
   },
 ];
 
-const ASSISTANT_SKILL_FOLLOWUPS: Record<AssistantSkillId, Array<{ label: string; prompt: string; skillId: AssistantSkillId }>> = {
-  star_guidance: [
-    { label: '继续追问成果', prompt: '请继续追问我最缺的结果、数据或影响证据。', skillId: 'star_guidance' },
-    { label: '生成成稿', prompt: '现在请基于已有信息生成一版可保存的 STAR 经历卡片。', skillId: 'star_guidance' },
-    { label: '切换到模拟面试', prompt: '请基于这段经历模拟面试官追问，并指出回答重点。', skillId: 'mock_interview' },
-  ],
-  experience_completion: [
-    { label: '继续补全职责', prompt: '请继续追问我职责边界、协作对象和具体方法。', skillId: 'experience_completion' },
-    { label: '提炼岗位价值', prompt: '请把当前经历里最能打动目标岗位的证据按优先级列出来。', skillId: 'experience_completion' },
-    { label: '生成成稿', prompt: '请把已补全的信息整理成一版可保存的 STAR 经历卡片。', skillId: 'star_guidance' },
-  ],
-  mock_interview: [
-    { label: '继续追问', prompt: '请继续像面试官一样追问我的薄弱点。', skillId: 'mock_interview' },
-    { label: '优化回答', prompt: '请根据岗位价值，帮我优化上一题的回答结构。', skillId: 'mock_interview' },
-    { label: '补全经历', prompt: '请指出这段经历为了应对面试还缺哪些事实证据。', skillId: 'experience_completion' },
-  ],
+const ASSISTANT_SKILL_IDS = new Set<AssistantSkillId>(['star_guidance', 'experience_completion', 'mock_interview']);
+
+const normalizeAssistantSuggestedFollowups = (value: unknown): AssistantSuggestedFollowup[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized: AssistantSuggestedFollowup[] = [];
+  const seenPrompts = new Set<string>();
+  value.forEach((item) => {
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+    const record = item as Record<string, unknown>;
+    const label = typeof record.label === 'string' ? record.label.trim() : '';
+    const prompt = typeof record.prompt === 'string' ? record.prompt.trim() : '';
+    const skillId = typeof record.skillId === 'string' ? record.skillId : (
+      typeof record.skill_id === 'string' ? record.skill_id : ''
+    );
+    if (!label || !prompt || !ASSISTANT_SKILL_IDS.has(skillId as AssistantSkillId)) {
+      return;
+    }
+    const promptKey = prompt.replace(/\s+/g, '');
+    if (seenPrompts.has(promptKey)) {
+      return;
+    }
+    seenPrompts.add(promptKey);
+    normalized.push({ label, prompt, skillId: skillId as AssistantSkillId });
+  });
+  return normalized.slice(0, 3);
+};
+
+const extractLastAssistantQuestion = (text: string) => {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+  const questionMatches = normalized.match(/[^。！？?!]*[？?]/g) ?? [];
+  const lastQuestion = questionMatches.at(-1)?.trim();
+  if (lastQuestion) {
+    return lastQuestion;
+  }
+  const segments = normalized.split(/[。！？?!]/).map((item) => item.trim()).filter(Boolean);
+  return segments.at(-1) ?? '';
+};
+
+const buildFallbackSuggestedFollowups = (message: AssistantMessage): AssistantSuggestedFollowup[] => {
+  const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
+  const question = extractLastAssistantQuestion(text);
+  if (!question) {
+    return [];
+  }
+  if (
+    typeof message.content_json?.skill_id !== 'string'
+    || !ASSISTANT_SKILL_IDS.has(message.content_json.skill_id as AssistantSkillId)
+  ) {
+    return [];
+  }
+  const skillId = message.content_json.skill_id as AssistantSkillId;
+  return [
+    {
+      label: '回答这个问题',
+      prompt: `我来补充这个问题：${question}`,
+      skillId,
+    },
+  ];
 };
 
 const clipSelectedExperienceText = (value: string, limit: number) => {
@@ -963,6 +1013,23 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
     [selectedSessionId, sessions]
   );
+  const latestSuggestedFollowups = useMemo(() => {
+    let fallbackFollowups: AssistantSuggestedFollowup[] = [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== 'assistant' || message.message_type !== 'assistant_text') {
+        continue;
+      }
+      const followups = normalizeAssistantSuggestedFollowups(message.content_json?.suggestedFollowups);
+      if (followups.length > 0) {
+        return followups;
+      }
+      if (fallbackFollowups.length === 0) {
+        fallbackFollowups = buildFallbackSuggestedFollowups(message);
+      }
+    }
+    return fallbackFollowups;
+  }, [messages]);
   const selectedSessionIsCallbackOnly = useMemo(
     () => (
       selectedSession
@@ -1762,7 +1829,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               id: `local-assistant-${new Date().toISOString()}-${Math.random()}`,
               role: 'assistant',
               message_type: 'assistant_text',
-              content_json: { text: result.assistantText },
+              content_json: {
+                text: result.assistantText,
+                ...(skillId ? { skill_id: skillId } : {}),
+                ...(result.suggestedFollowups?.length ? { suggestedFollowups: result.suggestedFollowups } : {}),
+              },
               created_at: new Date().toISOString(),
             },
           ]);
@@ -1853,6 +1924,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             created.id,
             {
               userMessage: pendingLaunchRequest.initialUserMessage,
+              skillId: pendingLaunchRequest.initialSkillId ?? null,
               selectedResume: pendingLaunchRequest.prefillResume ?? null,
             },
             pendingLaunchRequest.context.mode,
@@ -2622,9 +2694,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   {activeThought ? (
                      <ActiveThoughtBlock thought={activeThought} />
                   ) : null}
-                  {!activeThought && lastAssistantSkillId ? (
+                  {!activeThought && latestSuggestedFollowups.length > 0 ? (
                     <div className="mb-6 flex flex-wrap justify-center gap-2">
-                      {ASSISTANT_SKILL_FOLLOWUPS[lastAssistantSkillId].map((item) => (
+                      {latestSuggestedFollowups.map((item) => (
                         <button
                           key={`${item.skillId}-${item.label}`}
                           type="button"

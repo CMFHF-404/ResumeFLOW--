@@ -174,7 +174,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Bot className="h-3.5 w-3.5" />
-            高级模式
+            智能补全
           </button>
         </div>
         {activeMode === 'custom' ? (
