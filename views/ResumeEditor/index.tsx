@@ -66,6 +66,7 @@ import { buildResumeExportTitle } from '../../utils/exportFilename';
 import { downloadUrlFile } from '../../utils/downloadUrlFile';
 import { extractThoughtHeadline } from '../../utils/aiThought';
 import { buildJDCapabilityContext, buildJDPolishContext } from '../../utils/assistantResumeContext';
+import { buildSmartCompleteAssistantPrompt } from '../../utils/assistantSmartCompletePrompt';
 import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
@@ -895,7 +896,6 @@ const DEFAULT_RESUME_POLISH_MODE: ResumePolishMode = 'default';
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
     'highlight',
-    'smart_complete',
     'custom',
 ];
 const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
@@ -930,7 +930,7 @@ const buildSmartCompletionPromptState = (
     questions: (result.followUpQuestions ?? [])
         .map((item) => item.trim())
         .filter(Boolean)
-        .slice(0, 5),
+        .slice(0, 3),
     answer: previous?.answer ?? '',
 });
 type FloatingExperiencePolishSessionItem = {
@@ -3007,7 +3007,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             context: {
                 mode: 'experience',
                 entrySource: 'resume_editor',
-                title: `${draft.company || '未命名经历'} · 高级润色`,
+                title: `${draft.company || '未命名经历'} · 智能补全`,
                 contextJson: {
                     resumeId,
                     masterId: draft.masterId,
@@ -3021,7 +3021,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     jdText: jdPolishContext,
                 },
             },
-            initialUserMessage: `请基于这段经历和目标 JD 与我继续互动调整，等我确认初稿后输出一张可确认的经历卡片。\n\n目标 JD：${jdPolishContext || '未填写'}\n\n组织/项目：${draft.company || '未填写'}\n角色：${draft.title || '未填写'}\n时间：${draft.startDate || '未填写'} - ${draft.endDate || (draft.isCurrent ? '至今' : '未填写')}\nS：${stripRichTextToText(draft.star.s) || '未填写'}\nT：${stripRichTextToText(draft.star.t) || '未填写'}\nA：${stripRichTextToText(draft.star.a) || '未填写'}\nR：${stripRichTextToText(draft.star.r) || '未填写'}`,
+            initialSkillId: 'experience_completion',
+            initialUserMessage: buildSmartCompleteAssistantPrompt({
+                jdText: jdPolishContext,
+                org: draft.company,
+                title: draft.title,
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                isCurrent: draft.isCurrent,
+                star: draft.star,
+            }),
             applyDraftHandler: async (draftCard, meta) => {
                 const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
                 if (normalizedDraftCard.type !== 'experience') {
@@ -3069,7 +3078,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             context: {
                 mode: 'experience',
                 entrySource: 'resume_editor',
-                title: `${draft.company || '未命名经历'} · 高级润色`,
+                title: `${draft.company || '未命名经历'} · 智能补全`,
                 contextJson: {
                     resumeId,
                     masterId: draft.masterId,
@@ -3083,7 +3092,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     jdText: jdPolishContext,
                 },
             },
-            initialUserMessage: `请基于这段经历和目标 JD 与我继续互动调整，等我确认初稿后输出一张可确认的经历卡片。\n\n目标 JD：${jdPolishContext || '未填写'}\n\n组织/项目：${draft.company || '未填写'}\n角色：${draft.title || '未填写'}\n时间：${draft.startDate || '未填写'} - ${draft.endDate || (draft.isCurrent ? '至今' : '未填写')}\nS：${stripRichTextToText(draft.star.s) || '未填写'}\nT：${stripRichTextToText(draft.star.t) || '未填写'}\nA：${stripRichTextToText(draft.star.a) || '未填写'}\nR：${stripRichTextToText(draft.star.r) || '未填写'}`,
+            initialSkillId: 'experience_completion',
+            initialUserMessage: buildSmartCompleteAssistantPrompt({
+                jdText: jdPolishContext,
+                org: draft.company,
+                title: draft.title,
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                isCurrent: draft.isCurrent,
+                star: draft.star,
+            }),
             applyDraftHandler: async (draftCard) => {
                 const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
                 if (normalizedDraftCard.type !== 'experience') {

@@ -193,6 +193,38 @@ class AiServicePolishPromptTests(unittest.TestCase):
         self.assertIn("recommendedRewriteMode", prompt)
         self.assertIn("evidenceDiagnosis", prompt)
         self.assertIn("followUpQuestions", prompt)
+        self.assertIn("0-3 focused Chinese questions", prompt)
+        self.assertIn("current STAR experience only", prompt)
+        self.assertIn("Do not ask about other projects", prompt)
+        self.assertIn("Do not create questions to fill a quota", prompt)
+        self.assertIn("empty followUpQuestions array is valid", prompt)
+
+    def test_smart_complete_result_filters_off_scope_and_padded_questions(self) -> None:
+        result = ai_service._normalize_polish_result(
+            {
+                "recommendedRewriteMode": "ask_before_rewrite",
+                "evidenceDiagnosis": "当前经历可继续补充阈值设计。",
+                "followUpQuestions": [
+                    "简单阈值还是简单的统计模型？",
+                    "你是否接触过公司内部的其他AI相关项目？",
+                    "在你的专业背景中，是否有过任何涉及模型微调的课程项目或个人练习？",
+                    "针对该JD提到的AI产品功能设计，你是否能提供非本项目案例？",
+                    "处理溯源数据时，是否有用机器学习进行销量预测或异常检测的构想？",
+                    "处理溯源数据时，是否有用机器学习进行销量预测或异常检测的构想？",
+                    "你是否定义过输出反馈的验收方式？",
+                ],
+            },
+            mode="smart_complete",
+        )
+
+        self.assertEqual(
+            result["followUpQuestions"],
+            [
+                "简单阈值还是简单的统计模型？",
+                "处理溯源数据时，是否有用机器学习进行销量预测或异常检测的构想？",
+                "你是否定义过输出反馈的验收方式？",
+            ],
+        )
 
     def test_jd_analysis_prompt_requires_capability_analysis(self) -> None:
         self.assertIn("core capabilities behind the JD", ai_service.JD_ANALYSIS)
@@ -234,6 +266,70 @@ class AiServiceAssistantSkillTests(unittest.TestCase):
         self.assertIn("STAR 引导助手", prompt)
         self.assertIn("ask exactly one focused follow-up question", prompt)
         self.assertIn("return a draftCard only when", prompt)
+
+    def test_experience_completion_prompt_matches_smart_complete_constraints(self) -> None:
+        prompt = ai_service._get_assistant_prompt("experience", skill_id="experience_completion")
+
+        self.assertIn("Current assistant skill: 智能补全", prompt)
+        self.assertIn("selected current STAR experience", prompt)
+        self.assertIn("ask 0-3 focused Chinese", prompt)
+        self.assertIn("current experience only", prompt)
+        self.assertIn("Do not ask about other projects", prompt)
+        self.assertIn("Do not create questions to fill a quota", prompt)
+        self.assertIn("state that gap instead of asking for unrelated evidence", prompt)
+
+    def test_assistant_result_normalizes_ai_generated_followups(self) -> None:
+        result = ai_service._normalize_assistant_result(
+            {
+                "assistantText": "还需要确认异常识别规则。",
+                "title": "智能补全",
+                "draftCard": None,
+                "suggestedFollowups": [
+                    {
+                        "label": "补充规则",
+                        "prompt": "请继续追问当前经历里的异常识别规则。",
+                        "skillId": "experience_completion",
+                    },
+                    {
+                        "label": "其他项目",
+                        "prompt": "请补充你在其他项目中的AI产品设计案例。",
+                        "skillId": "experience_completion",
+                    },
+                    {
+                        "label": "生成成稿",
+                        "prompt": "请根据当前已确认事实生成经历卡片。",
+                        "skill_id": "star_guidance",
+                    },
+                    {
+                        "label": "无效",
+                        "prompt": "不会保留",
+                        "skillId": "unknown",
+                    },
+                    {
+                        "label": "重复",
+                        "prompt": "请根据当前已确认事实生成经历卡片。",
+                        "skillId": "star_guidance",
+                    },
+                ],
+            },
+            skill_id="experience_completion",
+        )
+
+        self.assertEqual(
+            result["suggestedFollowups"],
+            [
+                {
+                    "label": "补充规则",
+                    "prompt": "请继续追问当前经历里的异常识别规则。",
+                    "skillId": "experience_completion",
+                },
+                {
+                    "label": "生成成稿",
+                    "prompt": "请根据当前已确认事实生成经历卡片。",
+                    "skillId": "star_guidance",
+                },
+            ],
+        )
 
     def test_get_assistant_prompt_does_not_force_card_for_polish_turns(self) -> None:
         prompt = ai_service._get_assistant_prompt("general")

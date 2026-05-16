@@ -50,6 +50,25 @@ MAX_SELECTED_RESUME_EXPERIENCES = 40
 MAX_SELECTED_RESUME_EDUCATIONS = 20
 MAX_SELECTED_RESUME_CERTIFICATIONS = 30
 MAX_SELECTED_RESUME_SKILLS = 60
+MAX_SMART_COMPLETE_FOLLOW_UP_QUESTIONS = 3
+MAX_ASSISTANT_SUGGESTED_FOLLOWUPS = 3
+MAX_ASSISTANT_FOLLOWUP_LABEL_CHARS = 16
+MAX_ASSISTANT_FOLLOWUP_PROMPT_CHARS = 220
+SMART_COMPLETE_OFF_SCOPE_QUESTION_TERMS = (
+    "其他项目",
+    "其它项目",
+    "非本项目",
+    "非当前项目",
+    "本项目以外",
+    "项目以外",
+    "非该项目",
+    "课程项目",
+    "个人练习",
+    "个人项目",
+    "专业背景",
+    "其他案例",
+    "其它案例",
+)
 ASSISTANT_ACTION_ORDERED_PREFIX_PATTERN = re.compile(r"^\s*\d+[.、)）]\s*(.+)$")
 ASSISTANT_ACTION_UNORDERED_PREFIX_PATTERN = re.compile(r"^\s*[-*＊•·]\s*(.+)$")
 ASSISTANT_ACTION_INLINE_ORDERED_PATTERN = re.compile(r"^\s*\d+[.、)）]\s*.+$")
@@ -75,13 +94,17 @@ ASSISTANT_SKILL_PROMPTS: Dict[str, Dict[str, str]] = {
         ),
     },
     "experience_completion": {
-        "title": "经历补全助手",
+        "title": "智能补全",
         "prompt": (
-            "Current assistant skill: 经历补全助手. Diagnose what employer-useful evidence is missing from "
-            "the selected experience or resume: business goal, candidate ownership, methods/tools, "
-            "collaboration boundary, measurable result, and JD/company value. Do not merely rewrite. "
-            "assistantText must point out the strongest reusable facts, likely gaps, and one next question "
-            "ranked by importance. Default draftCard to null unless the user asks to generate or save a card."
+            "Current assistant skill: 智能补全. Diagnose whether the selected current STAR experience contains enough "
+            "factual evidence for the target JD before rewriting. If evidence is insufficient, ask 0-3 focused Chinese "
+            "questions limited to truthful, plausibly answerable facts inside this current experience only. Do not ask "
+            "about other projects, course projects, personal exercises, the user's broader professional background, "
+            "non-this-project cases, certifications, skills, or any experience outside the current input item. Do not "
+            "create questions to fill a quota; if the current experience clearly has no relevant material for a missing "
+            "JD capability, state that gap instead of asking for unrelated evidence. Do not transform technical "
+            "implementation into product ownership unless the input proves product decisions, user research, MVP "
+            "validation, metrics, or stakeholder work. Default draftCard to null unless the user asks to generate or save a card."
         ),
     },
     "mock_interview": {
@@ -1439,6 +1462,97 @@ def _build_polish_prompt(
     return " ".join(prompt_parts)
 
 
+def _is_off_scope_smart_complete_question(question: str) -> bool:
+    normalized = re.sub(r"\s+", "", question)
+    if not normalized:
+        return True
+    if any(term in normalized for term in SMART_COMPLETE_OFF_SCOPE_QUESTION_TERMS):
+        return True
+    if ("其他" in normalized or "其它" in normalized) and ("项目" in normalized or "案例" in normalized):
+        return True
+    return "是否有过任何" in normalized
+
+
+def _normalize_smart_complete_polish_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    questions = result.get("followUpQuestions")
+    if not isinstance(questions, list):
+        if isinstance(questions, str) and questions.strip():
+            raw_questions: List[Any] = [questions]
+        else:
+            raw_questions = []
+    else:
+        raw_questions = questions
+
+    normalized_questions: List[str] = []
+    seen_questions: set[str] = set()
+    for item in raw_questions:
+        if not isinstance(item, str):
+            continue
+        question = item.strip()
+        if not question or _is_off_scope_smart_complete_question(question):
+            continue
+        question_key = re.sub(r"\s+", "", question)
+        if question_key in seen_questions:
+            continue
+        seen_questions.add(question_key)
+        normalized_questions.append(question)
+        if len(normalized_questions) >= MAX_SMART_COMPLETE_FOLLOW_UP_QUESTIONS:
+            break
+
+    return {
+        **result,
+        "followUpQuestions": normalized_questions,
+    }
+
+
+def _normalize_polish_result(result: Dict[str, Any], mode: Optional[str] = None) -> Dict[str, Any]:
+    normalized_mode = (mode or "default").strip().lower()
+    if normalized_mode in {"smart_complete", "smart_completion"}:
+        return _normalize_smart_complete_polish_result(result)
+    return result
+
+
+def _normalize_assistant_suggested_followups(
+    value: Any,
+    *,
+    active_skill_id: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    normalized_active_skill_id = _normalize_assistant_skill_id(active_skill_id)
+    normalized_items: List[Dict[str, str]] = []
+    seen_prompts: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        raw_label = item.get("label")
+        raw_prompt = item.get("prompt")
+        raw_skill_id = item.get("skillId") or item.get("skill_id")
+        if not isinstance(raw_label, str) or not isinstance(raw_prompt, str):
+            continue
+        label = raw_label.strip()
+        prompt = raw_prompt.strip()
+        skill_id = _normalize_assistant_skill_id(str(raw_skill_id or ""))
+        if not label or not prompt or not skill_id:
+            continue
+        if normalized_active_skill_id == "experience_completion" and _is_off_scope_smart_complete_question(f"{label} {prompt}"):
+            continue
+        prompt_key = re.sub(r"\s+", "", prompt)
+        if prompt_key in seen_prompts:
+            continue
+        seen_prompts.add(prompt_key)
+        normalized_items.append(
+            {
+                "label": label[:MAX_ASSISTANT_FOLLOWUP_LABEL_CHARS],
+                "prompt": prompt[:MAX_ASSISTANT_FOLLOWUP_PROMPT_CHARS],
+                "skillId": skill_id,
+            }
+        )
+        if len(normalized_items) >= MAX_ASSISTANT_SUGGESTED_FOLLOWUPS:
+            break
+    return normalized_items
+
+
 def _get_assistant_prompt(mode: str, skill_id: Optional[str] = None) -> str:
     normalized_skill_id = _normalize_assistant_skill_id(skill_id)
     if mode == "general":
@@ -2207,6 +2321,10 @@ def _normalize_assistant_result(
         "assistantText": normalized_text,
         "draftCard": normalized_card,
         "title": normalized_title,
+        "suggestedFollowups": _normalize_assistant_suggested_followups(
+            result.get("suggestedFollowups"),
+            active_skill_id=skill_id,
+        ),
     }
 
 
@@ -2229,7 +2347,8 @@ async def polish_experience(
         {"role": "system", "content": prompt},
         {"role": "user", "content": json.dumps(content_payload, ensure_ascii=False)},
     ]
-    return await _call_llm(messages, json_mode=True)
+    result = await _call_llm(messages, json_mode=True)
+    return _normalize_polish_result(result, mode)
 
 
 async def polish_experience_with_thoughts(
@@ -2252,7 +2371,7 @@ async def polish_experience_with_thoughts(
     if custom_prompt:
         content_payload["custom_prompt"] = custom_prompt
     try:
-        return await _stream_gemini_json_response(
+        result = await _stream_gemini_json_response(
             system_prompt=prompt,
             user_parts=[
                 {"text": json.dumps(content_payload, ensure_ascii=False)},
@@ -2262,6 +2381,7 @@ async def polish_experience_with_thoughts(
             budget_tokens=settings.ai_thinking_budget_polish,
             thought_callback=thought_callback,
         )
+        return _normalize_polish_result(result, mode)
     except Exception:
         logger.warning(
             "[AI Stream] Gemini thought streaming failed for star_polish, falling back to standard polish.",

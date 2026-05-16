@@ -106,17 +106,20 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("if (hasValue && !previousHasValueRef.current)", source)
         self.assertIn("setIsCollapsed(false)", source)
 
-    def test_ai_polish_toolbar_hides_shorten_expand_and_lets_smart_card_expand_on_desktop(self) -> None:
+    def test_ai_polish_toolbar_merges_smart_complete_into_assistant_launch(self) -> None:
         toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
         editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
-        html_source = (REPO_ROOT / "index.html").read_text(encoding="utf-8")
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        helper_source = (REPO_ROOT / "utils" / "assistantSmartCompletePrompt.ts").read_text(encoding="utf-8")
 
         self.assertIn("const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];", toolbar_source)
+        self.assertIn("智能补全", toolbar_source)
+        self.assertNotIn("高级模式", toolbar_source)
 
         smart_start = editor_source.index("const SMART_RESUME_POLISH_MODES")
         smart_end = editor_source.index("const BATCH_RESUME_POLISH_MODES", smart_start)
         smart_block = editor_source[smart_start:smart_end]
-        self.assertIn("'smart_complete'", smart_block)
+        self.assertNotIn("'smart_complete'", smart_block)
         self.assertNotIn("'shorten'", smart_block)
         self.assertNotIn("'expand'", smart_block)
 
@@ -126,13 +129,13 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertNotIn("'shorten'", batch_block)
         self.assertNotIn("'expand'", batch_block)
 
-        smart_card_start = toolbar_source.index("activeMode === 'smart_complete'")
-        smart_card_end = toolbar_source.index("<textarea", smart_card_start)
-        smart_card_block = toolbar_source[smart_card_start:smart_card_end]
-        self.assertIn("ai-polish-card-expand", smart_card_block)
-        self.assertIn("md:max-h-none md:overflow-visible", smart_card_block)
-        self.assertIn("md:pr-0", smart_card_block)
-        self.assertIn(".ai-polish-card-expand", html_source)
+        self.assertIn("initialSkillId: 'experience_completion'", editor_source)
+        self.assertIn("buildSmartCompleteAssistantPrompt", editor_source)
+        self.assertIn("initialSkillId?: AssistantSkillId | null", assistant_source)
+        self.assertIn("skillId: pendingLaunchRequest.initialSkillId ?? null", assistant_source)
+        self.assertIn("只围绕当前这段经历内真实、可能可补充的事实追问 0-3 个问题", helper_source)
+        self.assertIn("不要询问其他项目、课程项目、个人练习、专业背景或非本项目案例", helper_source)
+        self.assertIn(".slice(0, 3)", editor_source)
 
     def test_experience_bank_card_assistant_launch_uses_server_apply(self) -> None:
         source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
@@ -152,7 +155,9 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         block = source[start:end]
 
         self.assertIn("if (isTempId(cardId))", block)
-        self.assertIn("toast.error('请先保存这段经历，再使用高级模式'", block)
+        self.assertIn("toast.error('请先保存这段经历，再使用智能补全'", block)
+        self.assertIn("initialSkillId: 'experience_completion'", block)
+        self.assertIn("buildSmartCompleteAssistantPrompt", block)
         self.assertIn("return;", block)
         self.assertIn("[category, onLaunchAssistant, toast]", block)
 
@@ -176,6 +181,26 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
         self.assertIn("normalizeAssistantDraftCard(preview", block)
         self.assertNotIn("JSON.stringify(preview.data ?? null) === JSON.stringify(card.data)", block)
+
+    def test_ai_assistant_uses_ai_generated_followup_buttons(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        service_source = (REPO_ROOT / "services" / "aiService.ts").read_text(encoding="utf-8")
+        prompt_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "prompts.py").read_text(encoding="utf-8")
+        assistant_service_source = (REPO_ROOT / "backend" / "app" / "domain" / "assistant" / "assistant_service.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("ASSISTANT_SKILL_FOLLOWUPS", assistant_source)
+        self.assertIn("normalizeAssistantSuggestedFollowups", assistant_source)
+        self.assertIn("latestSuggestedFollowups", assistant_source)
+        self.assertIn("message.content_json?.suggestedFollowups", assistant_source)
+        self.assertIn("buildFallbackSuggestedFollowups", assistant_source)
+        self.assertIn("回答这个问题", assistant_source)
+        self.assertIn("result.suggestedFollowups", assistant_source)
+        self.assertIn("...(skillId ? { skill_id: skillId } : {})", assistant_source)
+        self.assertIn("export interface AssistantSuggestedFollowup", service_source)
+        self.assertIn("'suggestedFollowups' (array of 0-3 objects", prompt_source)
+        self.assertIn("Suggested follow-up buttons must be generated", prompt_source)
+        self.assertIn('"skill_id": user_skill_id', assistant_service_source)
+        self.assertIn('"suggestedFollowups": suggested_followups', assistant_service_source)
 
 
 class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
