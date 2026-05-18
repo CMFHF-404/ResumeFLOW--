@@ -8,7 +8,8 @@ import ViewErrorBoundary from './components/ViewErrorBoundary';
 import Dashboard from './views/Dashboard';
 import ExperienceBank from './views/ExperienceBank';
 import ResumeEditor from './views/ResumeEditor';
-import AIAssistant, { type AssistantLaunchRequest } from './views/AIAssistant';
+import AIAssistant from './views/AIAssistant';
+import type { AssistantLaunchRequest } from './views/AIAssistant/types';
 import Callback from './views/Callback';
 import { ViewState, Resume } from './types';
 import {

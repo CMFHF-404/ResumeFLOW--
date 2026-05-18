@@ -69,7 +69,6 @@ from .schemas import (
 
 API_KEY_PREFIX = "rfag_"
 KEY_PREFIX_LENGTH = 12
-RECENT_RESUME_LIMIT = 1
 AGENT_EXPERIENCE_FETCH_LIMIT = 200
 FOLDER_SAFE_PATTERN = re.compile(r'[\\/:*?"<>|\r\n\t]+')
 SMART_ONE_PAGE_LINE_HEIGHT = 1.35
@@ -530,12 +529,19 @@ async def resolve_agent_resume(
         select(Resume)
         .where(Resume.user_id == user_id)
         .order_by(desc(Resume.updated_at))
-        .limit(RECENT_RESUME_LIMIT)
     )
-    resume = result.scalars().all()
-    if not resume:
+    resumes = result.scalars().all()
+    if not resumes:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No resume found")
-    return resume[0]
+    for resume in resumes:
+        if not _is_agent_generated_resume(resume):
+            return resume
+    return resumes[0]
+
+
+def _is_agent_generated_resume(resume: Resume) -> bool:
+    config = getattr(resume, "config", None)
+    return isinstance(config, dict) and isinstance(config.get("agentJob"), dict)
 
 
 async def resolve_agent_resume_detail(
@@ -1510,6 +1516,31 @@ def _threshold_match_ids(entries: Any) -> List[str]:
     return selected
 
 
+def _selection_list(selection: Dict[str, Any], key: str) -> List[str]:
+    value = selection.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item_id) for item_id in value if str(item_id or "").strip()]
+
+
+def _merge_selected_ids(
+    primary_ids: Iterable[str],
+    fallback_ids: Iterable[str],
+    limit: Optional[int] = None,
+) -> List[str]:
+    selected: List[str] = []
+    seen: set[str] = set()
+    for item_id in [*primary_ids, *fallback_ids]:
+        normalized = str(item_id or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        selected.append(normalized)
+        seen.add(normalized)
+        if limit is not None and len(selected) >= limit:
+            break
+    return selected
+
+
 def _agent_auto_assembly_selection(
     source_config: Any,
     analysis_result: Optional[Dict[str, Any]],
@@ -1522,11 +1553,23 @@ def _agent_auto_assembly_selection(
 
     config = source_config if isinstance(source_config, dict) else {}
     current_selection = _resume_selection(config)
+    cert_ids = _merge_selected_ids(
+        _threshold_match_ids(analysis_result.get("certificationMatches")),
+        _selection_list(current_selection, "certificationIds"),
+    )
+    skill_ids = _merge_selected_ids(
+        _threshold_match_ids(analysis_result.get("skillMatches")),
+        _selection_list(current_selection, "skillIds"),
+    )
     return {
         **deepcopy(current_selection),
-        "experienceIds": experience_ids,
-        "certificationIds": _threshold_match_ids(analysis_result.get("certificationMatches")),
-        "skillIds": _threshold_match_ids(analysis_result.get("skillMatches")),
+        "experienceIds": _merge_selected_ids(
+            experience_ids,
+            _selection_list(current_selection, "experienceIds"),
+            AUTO_ASSEMBLY_MAX_EXPERIENCES,
+        ),
+        **({"certificationIds": cert_ids} if cert_ids or "certificationIds" in current_selection else {}),
+        **({"skillIds": skill_ids} if skill_ids or "skillIds" in current_selection else {}),
     }
 
 

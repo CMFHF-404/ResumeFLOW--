@@ -622,6 +622,35 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, latest_resume)
         session.execute.assert_awaited_once()
 
+    async def test_resolve_resume_skips_agent_generated_resumes_by_default(self) -> None:
+        agent_resume = SimpleNamespace(
+            id="resume-agent",
+            config={"agentJob": {"jobTitle": "AI 产品实习"}},
+        )
+        full_resume = SimpleNamespace(id="resume-full", config={})
+        session = _FakeSession([_ExecuteResult(all_values=[agent_resume, full_resume])])
+
+        result = await agent_service.resolve_agent_resume(session, "user-1", None)
+
+        self.assertIs(result, full_resume)
+        session.execute.assert_awaited_once()
+
+    async def test_resolve_resume_finds_full_resume_after_many_agent_resumes(self) -> None:
+        agent_resumes = [
+            SimpleNamespace(
+                id=f"resume-agent-{index}",
+                config={"agentJob": {"jobTitle": f"AI 产品实习 {index}"}},
+            )
+            for index in range(25)
+        ]
+        full_resume = SimpleNamespace(id="resume-full", config={})
+        session = _FakeSession([_ExecuteResult(all_values=[*agent_resumes, full_resume])])
+
+        result = await agent_service.resolve_agent_resume(session, "user-1", None)
+
+        self.assertIs(result, full_resume)
+        session.execute.assert_awaited_once()
+
     async def test_resume_analysis_text_serializes_agent_bank_as_plain_json(self) -> None:
         resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端")
         profile = SimpleNamespace(
@@ -1682,10 +1711,40 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         selection = assembled_resume.config["selection"]
         self.assertEqual(selection["experienceIds"], ["exp-top", "exp-mid", "exp-third"])
         self.assertEqual(selection["educationIds"], ["edu-1"])
-        self.assertEqual(selection["certificationIds"], ["cert-keep"])
-        self.assertEqual(selection["skillIds"], ["skill-keep"])
+        self.assertEqual(selection["certificationIds"], ["cert-keep", "old-cert"])
+        self.assertEqual(selection["skillIds"], ["skill-keep", "old-skill"])
         self.assertEqual(assembled_resume.config["layout"]["density"], "compact")
         self.assertTrue(assembled_resume.config["layout"]["isSmartPageApplied"])
+
+    def test_agent_auto_assembly_backfills_sparse_matches_from_current_selection(self) -> None:
+        resume = SimpleNamespace(
+            id="resume-1",
+            title="主简历",
+            target_role="产品",
+            config={
+                "selection": {
+                    "experienceIds": ["exp-current-1", "exp-current-2", "exp-current-3"],
+                    "skillIds": ["skill-current"],
+                },
+            },
+        )
+        analysis_result = {
+            "experienceMatches": [{"id": "exp-current-2", "score": 95}],
+            "skillMatches": [],
+            "certificationMatches": [],
+        }
+
+        assembled_resume = agent_service._resume_with_agent_auto_assembly_selection(
+            resume,
+            analysis_result,
+        )
+
+        selection = assembled_resume.config["selection"]
+        self.assertEqual(
+            selection["experienceIds"],
+            ["exp-current-2", "exp-current-1", "exp-current-3"],
+        )
+        self.assertEqual(selection["skillIds"], ["skill-current"])
 
     async def test_agent_pdf_generation_applies_auto_assembly_selection(self) -> None:
         resume = SimpleNamespace(

@@ -14,7 +14,7 @@ import {
   trackAiPolishUndone,
 } from '../utils/analyticsTracker';
 import type { PolishPreviewState } from '../types/resume';
-import type { AssistantLaunchRequest } from './AIAssistant';
+import type { AssistantLaunchRequest } from './AIAssistant/types';
 import { buildSmartCompleteAssistantPrompt } from '../utils/assistantSmartCompletePrompt';
 
 type ToastApi = {
