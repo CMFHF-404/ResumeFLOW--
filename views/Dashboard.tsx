@@ -22,7 +22,7 @@ import { trackLoginStart, trackResumeDuplicated } from '../utils/analyticsTracke
 import { formatRelativeTime } from '../utils/timeUtils';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { buildPreferredResumeCreateConfig } from './resumeTemplateStorage';
-import type { AssistantLaunchRequest } from './AIAssistant';
+import type { AssistantLaunchRequest } from './AIAssistant/types';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;

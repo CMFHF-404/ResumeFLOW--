@@ -35,7 +35,7 @@ import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
-import type { AssistantLaunchRequest } from './AIAssistant';
+import type { AssistantLaunchRequest } from './AIAssistant/types';
 import type { ExperienceBankPdfRenderSnapshot } from '../types/experienceBankExport';
 import {
   buildExperienceBankExportDateLabel,

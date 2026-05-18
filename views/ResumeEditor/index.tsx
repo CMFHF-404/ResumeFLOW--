@@ -46,7 +46,6 @@ import { buildExperienceDate, normalizeDateInput } from '../../utils/dateUtils';
 import {
     buildResumeAISnapshot,
     buildStarFields,
-    clampMatchScore,
     mergeStarFieldsWithSource,
 } from '../../utils/resumeHelpers';
 import { mergeLinkedInLink } from '../profileUtils';
@@ -89,10 +88,9 @@ import {
     trackSmartOnePageTriggered,
 } from '../../utils/analyticsTracker';
 import { mapResumesToDashboard } from '../../utils/dashboardResumeMapper';
-import { DEFAULT_RESUME_TITLE, resolveResumeDisplayTitle, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
+import { resolveResumeDisplayTitle, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
-    A4_HEIGHT_MM,
     AUTO_ASSEMBLY_MATCH_THRESHOLD,
     AUTO_ASSEMBLY_MAX_EXPERIENCES,
     AUTO_ASSEMBLY_TOAST_MESSAGES,
@@ -125,19 +123,13 @@ import {
     LINE_HEIGHT_MIN,
     LINE_HEIGHT_STEP,
     LIST_SPACING_BY_DENSITY,
-    PREVIEW_PADDING_MM,
     PROFILE_SYNC_MODES,
-    SECTION_SPACING_CLASS_BY_DENSITY,
     SIDEBAR_WIDTH_CLASS,
     SMART_PAGE_ADJUSTING_TOAST_DURATION_MS,
-    SMART_PAGE_ITEM_SPACING_DEFAULT,
     SMART_PAGE_ITEM_SPACING_MAX,
     SMART_PAGE_ITEM_SPACING_MIN,
     SMART_PAGE_ITEM_SPACING_STEP,
-    SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY,
-    SMART_PAGE_SECTION_SPACING_STEPS,
     SMART_PAGE_TOP_PADDING_MIN_PX,
-    SMART_PAGE_TOP_PADDING_MAX_OFFSET_PX,
     SMART_PAGE_TOP_PADDING_STEP_PX,
     PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX,
     SMART_PAGE_TOAST_MESSAGES,
@@ -179,6 +171,53 @@ import {
     resolveSelectionSet,
     sortByCategory,
 } from './helpers';
+import {
+    FONT_SIZE_OPTIONS,
+    FONT_SIZE_SHRINK_STEPS,
+    ITEM_SPACING_SELECT_OPTIONS,
+    LINE_HEIGHT_OPTIONS,
+    LINE_HEIGHT_SHRINK_STEPS,
+    MAX_ITEM_SPACING_EM,
+    SECTION_SPACING_OPTIONS,
+    TOP_PADDING_MIN_PX,
+    TOP_PADDING_SELECT_OPTIONS,
+    TOP_PADDING_SLIDER_MAX,
+    areLayoutValuesEqual,
+    buildDefaultSmartPageLayout,
+    buildDiscreteStepsFromCurrent,
+    buildFontSizeSteps,
+    buildLineHeightSteps,
+    buildReductionStepsFromCurrent,
+    buildSpacingValue,
+    resolveDefaultItemSpacingEm,
+    resolveDefaultSectionSpacingKey,
+    resolveDefaultTopPaddingPx,
+    resolveLayoutSnapshotFromConfig,
+    resolveNearestSectionSpacingKey,
+    resolveSectionSpacingClass,
+    type LayoutSnapshot,
+    type SmartPageLayout,
+} from './layoutUtils';
+import {
+    buildAutoAssemblySelectionFilter,
+    buildLayoutSnapshot,
+    buildOrderedScoreItems,
+    buildRemovalQueue,
+    buildSelectionSnapshot,
+    hasPositiveMatchScore,
+    pickThresholdIds,
+    pickTopIds,
+    toMatchScoreMap,
+    toggleGroupedSelectionSnapshotIds,
+    toggleSelectionSnapshotIds,
+    type AutoAssemblySelection,
+    type ManualSelectionSnapshot,
+} from './autoAssemblyUtils';
+import {
+    isDefaultResumeTitle,
+    normalizeResumeTitle,
+    resolveAutoResumeName,
+} from './autoNameUtils';
 import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
 import {
     DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
@@ -208,222 +247,10 @@ import MobileEditorHeader from './components/MobileEditorHeader';
 import TemplateSelectorModal from './components/TemplateSelectorModal';
 import ResumePreview from './components/ResumePreview';
 import AIPolishToolbar from '../../components/AIPolishToolbar';
-import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from '../AIAssistant';
+import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from '../AIAssistant/types';
 
-const buildLineHeightSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(2)));
-    }
-    const normalizedEnd = Number(min.toFixed(2));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
-
-const LINE_HEIGHT_SHRINK_STEPS = buildLineHeightSteps(
-    LINE_HEIGHT_DEFAULT,
-    LINE_HEIGHT_MIN,
-    LINE_HEIGHT_STEP
-);
-const LINE_HEIGHT_OPTION_VALUES = buildLineHeightSteps(
-    LINE_HEIGHT_MAX,
-    LINE_HEIGHT_MIN,
-    LINE_HEIGHT_STEP
-);
-
-// 字号调整步骤（用于智能一页算法）
-const buildFontSizeSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(1)));
-    }
-    const normalizedEnd = Number(min.toFixed(1));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
-
-const buildDiscreteStepsFromCurrent = <T extends number>(
-    steps: readonly T[],
-    start: T,
-    direction: 'shrink' | 'expand'
-) => {
-    const exactIndex = steps.findIndex((candidate) => candidate === start);
-    const startIndex = exactIndex >= 0
-        ? exactIndex
-        : steps.reduce(
-            (nearestIndex, step, index) => (
-                Math.abs(step - start) < Math.abs(steps[nearestIndex] - start)
-                    ? index
-                    : nearestIndex
-            ),
-            0
-        );
-    return direction === 'shrink'
-        ? [...steps].slice(startIndex)
-        : [...steps].slice(0, startIndex + 1).reverse();
-};
-
-const FONT_SIZE_SHRINK_STEPS = buildFontSizeSteps(FONT_SIZE_DEFAULT, FONT_SIZE_MIN, FONT_SIZE_STEP);
-const FONT_SIZE_OPTION_VALUES = buildFontSizeSteps(FONT_SIZE_MAX, FONT_SIZE_MIN, FONT_SIZE_STEP);
-const CSS_PX_PER_MM = 96 / 25.4;
 const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
 const TEMPLATE_PRESET_SYNC_TIMEOUT_MS = 1500;
-const formatOptionNumberLabel = (value: number, maxDecimals = 2) => (
-    value.toFixed(maxDecimals).replace(/\.?0+$/, '')
-);
-const LINE_HEIGHT_OPTIONS = LINE_HEIGHT_OPTION_VALUES.map((value) => ({
-    value,
-    label: formatOptionNumberLabel(value),
-}));
-const FONT_SIZE_OPTIONS = FONT_SIZE_OPTION_VALUES.map((value) => ({
-    value,
-    label: `${formatOptionNumberLabel(value, 1)} px`,
-}));
-
-type SmartPageLayout = {
-    topPaddingPx: number;
-    sectionSpacingKey: SectionSpacingKey;
-    itemSpacingEm: number;
-    lineHeight: number;
-    fontSize: number;
-};
-
-const buildTopPaddingSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(2)));
-    }
-    const normalizedEnd = Number(min.toFixed(2));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
-
-const buildItemSpacingSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(2)));
-    }
-    const normalizedEnd = Number(min.toFixed(2));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
-
-const buildReductionStepsFromCurrent = (start: number, min: number, step: number) => {
-    if (start <= min) {
-        return [Number(start.toFixed(2))];
-    }
-    return buildItemSpacingSteps(start, min, step);
-};
-
-const SECTION_SPACING_KEYS: SectionSpacingKey[] = [...SMART_PAGE_SECTION_SPACING_STEPS];
-const MAX_ITEM_SPACING_EM = SMART_PAGE_ITEM_SPACING_MAX;
-const ITEM_SPACING_OPTIONS = Array.from(new Set([
-    ...buildItemSpacingSteps(
-        MAX_ITEM_SPACING_EM,
-        SMART_PAGE_ITEM_SPACING_MIN,
-        SMART_PAGE_ITEM_SPACING_STEP
-    ),
-    ...Object.values(LIST_SPACING_BY_DENSITY),
-].map((value) => Number(value.toFixed(3))))).sort((left, right) => right - left);
-const SECTION_SPACING_OPTIONS = SECTION_SPACING_KEYS.map((value) => ({
-    value,
-    label: `${value}`,
-}));
-const ITEM_SPACING_SELECT_OPTIONS = ITEM_SPACING_OPTIONS.map((value) => ({
-    value,
-    label: formatOptionNumberLabel(value, 3),
-}));
-
-const areLayoutValuesEqual = (current: SmartPageLayout, defaults: SmartPageLayout) => (
-    current.topPaddingPx === defaults.topPaddingPx
-    && current.sectionSpacingKey === defaults.sectionSpacingKey
-    && current.itemSpacingEm === defaults.itemSpacingEm
-    && current.lineHeight === defaults.lineHeight
-    && current.fontSize === defaults.fontSize
-);
-
-const resolveNearestSectionSpacingKey = (value: number): SectionSpacingKey => (
-    SECTION_SPACING_KEYS.reduce<SectionSpacingKey>((nearest, candidate) => {
-        const candidateDistance = Math.abs(candidate - value);
-        const nearestDistance = Math.abs(nearest - value);
-        if (candidateDistance < nearestDistance) {
-            return candidate;
-        }
-        return nearest;
-    }, SECTION_SPACING_KEYS[0])
-);
-
-const resolveDefaultTopPaddingPx = (a4Height?: number) => {
-    const pxPerMm = a4Height ? a4Height / A4_HEIGHT_MM : CSS_PX_PER_MM;
-    return Number((pxPerMm * PREVIEW_PADDING_MM).toFixed(2));
-};
-const resolveMaxTopPaddingPx = (a4Height?: number) => Number(
-    (resolveDefaultTopPaddingPx(a4Height) + SMART_PAGE_TOP_PADDING_MAX_OFFSET_PX).toFixed(2)
-);
-const TOP_PADDING_MAX_PX = resolveMaxTopPaddingPx();
-const TOP_PADDING_MIN_PX = SMART_PAGE_TOP_PADDING_MIN_PX;
-const TOP_PADDING_OPTIONS = buildTopPaddingSteps(
-    TOP_PADDING_MAX_PX,
-    TOP_PADDING_MIN_PX,
-    SMART_PAGE_TOP_PADDING_STEP_PX
-);
-const TOP_PADDING_SELECT_OPTIONS = TOP_PADDING_OPTIONS.map((value) => ({
-    value,
-    label: `${formatOptionNumberLabel(value)} px`,
-}));
-const TOP_PADDING_SLIDER_MAX = TOP_PADDING_MAX_PX;
-
-const resolveDefaultSectionSpacingKey = (
-    density: 'compact' | 'standard' | 'spacious'
-): SectionSpacingKey => {
-    if (density === 'compact') {
-        return 4;
-    }
-    if (density === 'spacious') {
-        return 8;
-    }
-    return 6;
-};
-
-const resolveDefaultItemSpacingEm = (density: 'compact' | 'standard' | 'spacious') => {
-    if (density === 'standard') {
-        return SMART_PAGE_ITEM_SPACING_DEFAULT;
-    }
-    return LIST_SPACING_BY_DENSITY[density];
-};
-
-const resolveSectionSpacingClass = (spacingKey: SectionSpacingKey) => {
-    return SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY[spacingKey]
-        ?? SECTION_SPACING_CLASS_BY_DENSITY.standard;
-};
 
 type ModuleReorderContext = {
     moduleType: 'experience' | 'education' | 'certification' | 'skill_group' | 'section';
@@ -447,22 +274,6 @@ type SmartPageExecutionResult =
     | ({ status: 'fit' } & SmartPageLayout)
     | ({ status: 'overflow' } & SmartPageLayout)
     | { status: 'skipped'; reason: 'busy' | 'unavailable' };
-
-type OrderedScoreItem = {
-    id: string;
-    score: number;
-    index: number;
-};
-
-type AutoAssemblySelection = {
-    hasMatchedExperience: boolean;
-    experienceIds: string[];
-    certificationIds: string[];
-    skillIds: string[];
-    experienceRemovalQueue: string[];
-    certificationRemovalQueue: string[];
-    skillRemovalQueue: string[];
-};
 
 type BossGreetingSignatureParams = {
     jdText: string;
@@ -490,16 +301,6 @@ type PersonalSummarySignatureParams = {
     };
 };
 
-type ManualSelectionSnapshot = {
-    experienceIds: string[];
-    certificationIds: string[];
-    skillIds: string[];
-};
-
-type LayoutSnapshot = SmartPageLayout & {
-    isSmartPageApplied: boolean;
-};
-
 type AutoAssemblyStateSnapshot = {
     selection: ManualSelectionSnapshot;
     layout: LayoutSnapshot;
@@ -517,92 +318,6 @@ type CreateResumeFlowResult =
     | { status: 'warning'; stage: 'sync'; resumeId: string; error: unknown }
     | { status: 'partial'; stage: 'load'; resumeId: string; error?: unknown }
     | { status: 'failed'; stage: 'create'; error: unknown };
-
-const buildDefaultSmartPageLayout = (
-    density: 'compact' | 'standard' | 'spacious',
-    a4Height?: number
-): SmartPageLayout => ({
-    topPaddingPx: resolveDefaultTopPaddingPx(a4Height),
-    sectionSpacingKey: resolveDefaultSectionSpacingKey(density),
-    itemSpacingEm: resolveDefaultItemSpacingEm(density),
-    lineHeight: LINE_HEIGHT_DEFAULT,
-    fontSize: FONT_SIZE_DEFAULT,
-});
-
-const resolveLayoutSnapshotFromConfig = (
-    layout?: ResumeEditorConfig['layout'],
-    a4Height?: number
-): LayoutSnapshot => {
-    const resolvedDensity = layout?.density ?? 'standard';
-    const defaultLayout = buildDefaultSmartPageLayout(resolvedDensity, a4Height);
-    return {
-        topPaddingPx: layout?.topPaddingPx ?? defaultLayout.topPaddingPx,
-        sectionSpacingKey: layout?.sectionSpacingKey ?? defaultLayout.sectionSpacingKey,
-        itemSpacingEm: layout?.itemSpacingEm ?? defaultLayout.itemSpacingEm,
-        lineHeight: layout?.lineHeight ?? defaultLayout.lineHeight,
-        fontSize: layout?.fontSize ?? defaultLayout.fontSize,
-        isSmartPageApplied: layout?.isSmartPageApplied ?? false,
-    };
-};
-
-const toMatchScoreMap = (entries?: Array<{ id: string; score: number }>) => {
-    const map = new Map<string, number>();
-    (entries || []).forEach((entry) => {
-        const score = clampMatchScore(entry.score);
-        if (score !== undefined) {
-            map.set(entry.id, score);
-        }
-    });
-    return map;
-};
-
-const compareByScoreAsc = (a: OrderedScoreItem, b: OrderedScoreItem) => {
-    if (a.score !== b.score) {
-        return a.score - b.score;
-    }
-    return a.index - b.index;
-};
-
-const compareByScoreDesc = (a: OrderedScoreItem, b: OrderedScoreItem) => {
-    if (a.score !== b.score) {
-        return b.score - a.score;
-    }
-    return a.index - b.index;
-};
-
-const buildOrderedScoreItems = <T extends { id: string }>(
-    items: T[],
-    scoreMap: Map<string, number>
-) => items.map((item, index) => ({
-    id: item.id,
-    score: scoreMap.get(item.id) ?? 0,
-    index,
-}));
-
-const pickTopIds = (
-    items: OrderedScoreItem[],
-    limit: number
-) => items
-    .slice()
-    .sort(compareByScoreDesc)
-    .slice(0, limit)
-    .map((item) => item.id);
-
-const pickThresholdIds = (
-    items: OrderedScoreItem[],
-    threshold: number
-) => items
-    .filter((item) => item.score > threshold)
-    .map((item) => item.id);
-
-const buildRemovalQueue = (
-    selectedIds: Set<string>,
-    orderedItems: OrderedScoreItem[]
-) => orderedItems
-    .filter((item) => selectedIds.has(item.id))
-    .slice()
-    .sort(compareByScoreAsc)
-    .map((item) => item.id);
 
 const buildBossGreetingSignature = ({
     jdText,
@@ -647,60 +362,6 @@ const buildPersonalSummarySignature = ({
     context,
 });
 
-const buildSelectionSnapshot = (
-    selectedExpIds: Set<string>,
-    selectedCertIds: Set<string>,
-    selectedSkillIds: Set<string>
-): ManualSelectionSnapshot => ({
-    experienceIds: [...selectedExpIds],
-    certificationIds: [...selectedCertIds],
-    skillIds: [...selectedSkillIds],
-});
-
-const buildAutoAssemblySelectionFilter = (
-    result: JDAnalysisResult,
-    selection: Pick<ManualSelectionSnapshot, 'experienceIds' | 'certificationIds' | 'skillIds'>
-) => {
-    const experienceScoreMap = toMatchScoreMap(result.experienceMatches);
-    const certificationScoreMap = toMatchScoreMap(result.certificationMatches);
-    const skillScoreMap = toMatchScoreMap(result.skillMatches);
-    const selectedScores = [
-        ...selection.experienceIds.map((id) => experienceScoreMap.get(id)),
-        ...selection.certificationIds.map((id) => certificationScoreMap.get(id)),
-        ...selection.skillIds.map((id) => skillScoreMap.get(id)),
-    ].filter((score): score is number => typeof score === 'number' && score > 0);
-    if (selectedScores.length === 0) {
-        return DEFAULT_MATCH_SCORE_FILTER;
-    }
-    const minSelectedScore = Math.min(...selectedScores);
-    return Math.max(0, Math.min(100, Math.floor(minSelectedScore / 10) * 10));
-};
-
-    const buildLayoutSnapshot = (
-        layout: SmartPageLayout,
-        isSmartPageApplied: boolean
-    ): LayoutSnapshot => ({
-        ...layout,
-        isSmartPageApplied,
-    });
-
-const toggleSelectionSnapshotIds = (ids: string[], targetId: string) => (
-    ids.includes(targetId) ? ids.filter((id) => id !== targetId) : [...ids, targetId]
-);
-
-const toggleGroupedSelectionSnapshotIds = (ids: string[], targetIds: string[]) => {
-    const next = new Set(ids);
-    const shouldSelect = targetIds.some((id) => !next.has(id));
-    targetIds.forEach((id) => {
-        if (shouldSelect) {
-            next.add(id);
-            return;
-        }
-        next.delete(id);
-    });
-    return [...next];
-};
-
 const waitForNextFrame = (callback: () => void) => {
     if (typeof window === 'undefined') {
         callback();
@@ -721,8 +382,6 @@ const buildStableResumeSnapshotText = (snapshot: ReturnType<typeof buildResumeAI
     skills: sortSnapshotEntriesById(snapshot.skills),
 });
 
-const hasPositiveMatchScore = (item: OrderedScoreItem) => item.score > 0;
-
 const mapDragTypeToModuleType = (dragType: DragItemType): ModuleReorderContext['moduleType'] => {
     return dragType === 'skillGroup' ? 'skill_group' : dragType;
 };
@@ -739,65 +398,6 @@ const resolveModuleKey = (
         return `section:${sectionId}`;
     }
     return moduleType;
-};
-
-const RESUME_AUTO_NAME_SEPARATOR = ' - ';
-const MAX_AUTO_NAME_PART_LENGTH = 40;
-const JD_TITLE_PATTERNS = [
-    /(?:职位|岗位|角色|招聘职位|招聘岗位|Position|Title)\s*[:：]\s*([^\n\r]+)/i,
-    /(?:需求|开放岗位)\s*[:：]\s*([^\n\r]+)/i,
-];
-const JD_COMPANY_PATTERNS = [
-    /(?:公司|企业|单位|组织|公司名称|公司名|Company|Organization)\s*[:：]\s*([^\n\r]+)/i,
-];
-
-const normalizeResumeTitle = (value: string) => value.trim();
-const isDefaultResumeTitle = (value: string) => {
-    const normalized = normalizeResumeTitle(value);
-    return normalized === UNTITLED_RESUME_TITLE || normalized === DEFAULT_RESUME_TITLE;
-};
-
-const sanitizeAutoNamePart = (value?: string) => {
-    const trimmed = value?.trim() ?? '';
-    if (!trimmed) {
-        return '';
-    }
-    return trimmed.length > MAX_AUTO_NAME_PART_LENGTH
-        ? trimmed.slice(0, MAX_AUTO_NAME_PART_LENGTH)
-        : trimmed;
-};
-
-const extractFirstMatch = (text: string, patterns: RegExp[]) => {
-    if (!text.trim()) {
-        return '';
-    }
-    for (const pattern of patterns) {
-        const match = pattern.exec(text);
-        if (match?.[1]) {
-            return sanitizeAutoNamePart(match[1]);
-        }
-    }
-    return '';
-};
-
-const buildAutoResumeName = (jobTitle?: string, company?: string) => {
-    const safeTitle = sanitizeAutoNamePart(jobTitle);
-    const safeCompany = sanitizeAutoNamePart(company);
-    if (safeTitle && safeCompany) {
-        return `${safeTitle}${RESUME_AUTO_NAME_SEPARATOR}${safeCompany}`;
-    }
-    return safeTitle || safeCompany || '';
-};
-
-const resolveAutoResumeName = (analysisResult: JDAnalysisResult | null, jdText: string) => {
-    if (!analysisResult) {
-        return '';
-    }
-    const jobTitle = sanitizeAutoNamePart(analysisResult.jobTitle)
-        || extractFirstMatch(jdText, JD_TITLE_PATTERNS);
-    const company = sanitizeAutoNamePart(analysisResult.company)
-        || extractFirstMatch(jdText, JD_COMPANY_PATTERNS);
-    return buildAutoResumeName(jobTitle, company);
 };
 
 const applyAssistantExperienceDraftToEditingDraft = (
@@ -860,12 +460,6 @@ const buildPendingAssistantManualSaveDraftKey = (
 const readErrorStatus = (error: unknown): number | undefined => (
     (error as { response?: { status?: number } } | null)?.response?.status
 );
-
-const buildSpacingValue = (baseSpacing: number, lineHeightValue: number) => {
-    const scale = Math.min(1, lineHeightValue / LINE_HEIGHT_DEFAULT);
-    // 用 em 而不是 rem：这样间距会跟随预览容器的 fontSize 缩放（智能一页阶段2会调整字号）。
-    return `${(baseSpacing * scale).toFixed(3)}em`;
-};
 
 const measureResumeLayout = (
     pageElement: HTMLElement | null,
