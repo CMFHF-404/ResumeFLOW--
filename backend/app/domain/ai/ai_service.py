@@ -20,6 +20,7 @@ from .prompts import (
     POLISH_MODE_INSTRUCTIONS,
     PERSONAL_SUMMARY_GENERATION,
     SKILL_ASSISTANT_PROMPT,
+    STAR_GENERAL_REWRITE_NO_JD,
     STAR_HIGHLIGHT,
     STAR_HIGHLIGHT_NO_JD,
     STAR_POLISH,
@@ -1428,7 +1429,7 @@ def _resolve_star_prompt(
     if normalized_mode == "default":
         if has_jd_text:
             return STAR_RESUME_READY_REWRITE
-        return STAR_HIGHLIGHT_NO_JD
+        return STAR_GENERAL_REWRITE_NO_JD
     if normalized_mode in {"highlight", "match_highlight"}:
         if has_jd_text:
             return STAR_HIGHLIGHT

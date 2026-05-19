@@ -106,10 +106,24 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("if (hasValue && !previousHasValueRef.current)", source)
         self.assertIn("setIsCollapsed(false)", source)
 
+    def test_ai_polish_toolbar_no_jd_default_copy_separates_rewrite_from_highlight(self) -> None:
+        toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("default: '结构化 STAR 并转为专业书面语。'", toolbar_source)
+        self.assertIn("highlight: '保留原文，仅调整重点内容的强调。'", toolbar_source)
+
+    def test_experience_bank_polish_toolbar_hides_match_highlight_mode(self) -> None:
+        source = (REPO_ROOT / "views" / "ExperienceCard.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("const EXPERIENCE_BANK_POLISH_MODES", source)
+        self.assertIn("['default', 'custom']", source)
+        self.assertIn("modeOptions={EXPERIENCE_BANK_POLISH_MODES}", source)
+
     def test_ai_polish_toolbar_merges_smart_complete_into_assistant_launch(self) -> None:
         toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
         editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
         assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        assistant_types_source = (REPO_ROOT / "views" / "AIAssistant" / "types.ts").read_text(encoding="utf-8")
         helper_source = (REPO_ROOT / "utils" / "assistantSmartCompletePrompt.ts").read_text(encoding="utf-8")
 
         self.assertIn("const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];", toolbar_source)
@@ -131,7 +145,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
         self.assertIn("initialSkillId: 'experience_completion'", editor_source)
         self.assertIn("buildSmartCompleteAssistantPrompt", editor_source)
-        self.assertIn("initialSkillId?: AssistantSkillId | null", assistant_source)
+        self.assertIn("initialSkillId?: AssistantSkillId | null", assistant_types_source)
         self.assertIn("skillId: pendingLaunchRequest.initialSkillId ?? null", assistant_source)
         self.assertIn("只围绕当前这段经历内真实、可能可补充的事实追问 0-3 个问题", helper_source)
         self.assertIn("不要询问其他项目、课程项目、个人练习、专业背景或非本项目案例", helper_source)
@@ -174,7 +188,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         )
 
     def test_ai_assistant_normalizes_latest_preview_before_draft_comparison(self) -> None:
-        source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        source = (REPO_ROOT / "views" / "AIAssistant" / "sessionUtils.ts").read_text(encoding="utf-8")
         start = source.index("const isSameDraftCard")
         end = source.index("const resolveDraftGroupId", start)
         block = source[start:end]
@@ -184,6 +198,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
     def test_ai_assistant_uses_ai_generated_followup_buttons(self) -> None:
         assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        selection_source = (REPO_ROOT / "views" / "AIAssistant" / "selectionUtils.ts").read_text(encoding="utf-8")
         service_source = (REPO_ROOT / "services" / "aiService.ts").read_text(encoding="utf-8")
         prompt_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "prompts.py").read_text(encoding="utf-8")
         assistant_service_source = (REPO_ROOT / "backend" / "app" / "domain" / "assistant" / "assistant_service.py").read_text(encoding="utf-8")
@@ -193,7 +208,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("latestSuggestedFollowups", assistant_source)
         self.assertIn("message.content_json?.suggestedFollowups", assistant_source)
         self.assertIn("buildFallbackSuggestedFollowups", assistant_source)
-        self.assertIn("回答这个问题", assistant_source)
+        self.assertIn("回答这个问题", selection_source)
         self.assertIn("result.suggestedFollowups", assistant_source)
         self.assertIn("...(skillId ? { skill_id: skillId } : {})", assistant_source)
         self.assertIn("export interface AssistantSuggestedFollowup", service_source)

@@ -60,6 +60,8 @@ const STAR_SECTIONS: Array<{
     { id: 'r', label: 'R - 结果 (Result)', color: 'emerald', ph: '取得成果：最终取得了什么量化的成果、正面反馈或具体影响...' },
   ];
 
+const EXPERIENCE_BANK_POLISH_MODES: Array<Exclude<PolishMode, 'assistant'>> = ['default', 'custom'];
+
 type ExperienceCardProps = {
   data: ExperienceCardData;
   labels: ExperienceCardLabels;
@@ -523,6 +525,7 @@ const ExperienceCardFooter: React.FC<{
                     isPreviewing={isPolishPreviewing}
                     isRunning={isPolishing}
                     activeMode={activePolishMode}
+                    modeOptions={EXPERIENCE_BANK_POLISH_MODES}
                     customPrompt={customPolishPrompt}
                     hasJdContext={false}
                     onModeChange={onPolishModeChange}

@@ -275,6 +275,20 @@ STAR_HIGHLIGHT_NO_JD = (
     "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
+STAR_GENERAL_REWRITE_NO_JD = (
+    "You are a Resume Writer. The user input is a JSON object that may include fields like "
+    "company, role, s, t, a, r, or raw_text. No JD text is provided. In default mode, "
+    "convert casual or oral wording into professional resume language while staying strictly factual. "
+    "Do not merely highlight existing text. Rewrite and structure the content clearly across S/T/A/R, "
+    "moving facts between Situation, Task, Action, and Result only when the target field is clearly more appropriate. "
+    "Use concise, written, resume-ready wording that reflects professional qualities such as ownership, execution, "
+    "collaboration, problem solving, delivery quality, and measurable impact when those facts are present. "
+    "Preserve all existing facts, chronology, responsibility scope, metrics, tools, and hyperlinks; do not invent, "
+    "exaggerate, upgrade ownership, or add unsupported keywords. Do not add Markdown bold, HTML tags, or other emphasis markers. "
+    "Use the same language as the input. For S/T/R, write one sentence each when possible. For A, output concise action points "
+    "separated by newlines without numbering. Return JSON only with keys: 's', 't', 'a', 'r'."
+)
+
 STAR_RESUME_READY_REWRITE = (
     "You are a Resume Writer. The user input is a JSON object that may include fields like "
     "company, role, s, t, a, and r. If jd_text is provided, Rewrite the provided STAR content into resume-ready statements "
