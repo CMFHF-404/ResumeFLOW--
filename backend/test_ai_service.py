@@ -231,12 +231,13 @@ class AiServicePolishPromptTests(unittest.TestCase):
         self.assertIn("capabilityAnalysis", ai_service.JD_ANALYSIS)
         self.assertIn("resumeEvidenceLevel", ai_service.JD_ANALYSIS)
 
-    def test_default_mode_without_jd_uses_role_based_highlight_fallback(self) -> None:
+    def test_default_mode_without_jd_rewrites_star_without_bold_highlights(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="default", jd_text=None)
 
-        self.assertIn("Infer the likely role focus", prompt)
-        self.assertIn("concrete ownership or execution evidence", prompt)
-        self.assertIn("do not rewrite", prompt)
+        self.assertIn("convert casual or oral wording into professional resume language", prompt)
+        self.assertIn("structure the content clearly across S/T/A/R", prompt)
+        self.assertIn("Do not add Markdown bold", prompt)
+        self.assertNotIn("Only adjust Markdown bold", prompt)
 
     def test_shorten_mode_keeps_rewrite_prompt(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="shorten")

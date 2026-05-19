@@ -57,7 +57,7 @@ const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
 };
 
 const MODE_DESCRIPTIONS_NO_JD: Record<ToolbarMode, string> = {
-  default: '保留原文，仅调整重点内容的强调。',
+  default: '结构化 STAR 并转为专业书面语。',
   highlight: '保留原文，仅调整重点内容的强调。',
   smart_complete: '诊断经历证据缺口，并给出可补充的问题。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
