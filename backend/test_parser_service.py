@@ -62,6 +62,40 @@ class _FakeAsyncClient:
 
 
 class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_parse_resume_rejects_unreadable_text_without_attachment_ai(self) -> None:
+        with patch.object(parser_service, "extract_resume_text", return_value=" \n !!! "):
+            with patch.object(
+                parser_service,
+                "_parse_resume_from_attachment",
+                new_callable=AsyncMock,
+            ) as attachment_parse:
+                with self.assertRaisesRegex(ValueError, "无法读取附件中的文本内容"):
+                    await parser_service.parse_resume(
+                        b"%PDF-1.4",
+                        "resume.pdf",
+                        "application/pdf",
+                        request_id="req-unreadable",
+                    )
+
+        attachment_parse.assert_not_called()
+
+    async def test_parse_resume_with_thoughts_rejects_unreadable_text_without_attachment_ai(self) -> None:
+        with patch.object(parser_service, "extract_resume_text", return_value=" \n !!! "):
+            with patch.object(
+                parser_service,
+                "_parse_resume_from_attachment",
+                new_callable=AsyncMock,
+            ) as attachment_parse:
+                with self.assertRaisesRegex(ValueError, "无法读取附件中的文本内容"):
+                    await parser_service.parse_resume_with_thoughts(
+                        b"%PDF-1.4",
+                        "resume.pdf",
+                        "application/pdf",
+                        request_id="req-unreadable-stream",
+                    )
+
+        attachment_parse.assert_not_called()
+
     def test_normalize_date_uses_month_granularity(self) -> None:
         self.assertEqual(parser_service._normalize_date("2024.05"), "2024-05-01")
         self.assertEqual(parser_service._normalize_date("2025-03"), "2025-03-01")
