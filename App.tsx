@@ -75,6 +75,7 @@ const App: React.FC = () => {
   const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
+  const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
   const authUserKey = useAuthUserKey();
   const authUserKeyRef = useRef<string | null>(null);
   const authVisitSourceRef = useRef<'post_login' | 'session_restore'>('session_restore');
@@ -97,6 +98,7 @@ const App: React.FC = () => {
     setIsAgentPluginConfigOpen(false);
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
+    setEditorMobileDrawerOpenRequest(0);
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
@@ -150,8 +152,13 @@ const App: React.FC = () => {
     if (resumeId) {
       setActiveResumeId(resumeId);
     }
+    setEditorMobileDrawerOpenRequest((current) => current + 1);
     setCurrentView(ViewState.EDITOR);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.EDITOR);
+  }, []);
+
+  const handleConsumeEditorMobileDrawerOpenRequest = useCallback(() => {
+    setEditorMobileDrawerOpenRequest(0);
   }, []);
 
   useEffect(() => {
@@ -276,6 +283,8 @@ const App: React.FC = () => {
             onResumesUpdate={handleResumesUpdate}
             onLaunchAssistant={handleLaunchAssistant}
             onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
+            mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
+            onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
           />
         );
       case ViewState.AI_ASSISTANT:

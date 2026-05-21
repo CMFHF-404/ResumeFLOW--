@@ -916,14 +916,17 @@ const ModalHeader: React.FC<{
   onClose: () => void;
   actionLabel?: string;
   onAction?: () => void;
-}> = ({ onClose, actionLabel, onAction }) => (
+  hideDescription?: boolean;
+}> = ({ onClose, actionLabel, onAction, hideDescription = false }) => (
   <div className="flex items-start justify-between gap-4">
     <div className="min-w-0">
       <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Resume Intake</p>
       <h3 className="text-2xl font-bold text-gray-900 dark:text-white">导入简历经验池</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-        上传 PDF/DOCX，自动拆解 STAR 并智能查重。AI 深度分析约需 40-60 秒，请耐心等待。
-      </p>
+      {!hideDescription ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          上传 PDF/DOCX，自动拆解 STAR 并智能查重。AI 深度分析约需 40-60 秒，请耐心等待。
+        </p>
+      ) : null}
     </div>
     <div className="flex shrink-0 items-center gap-2">
       {actionLabel && onAction ? (
@@ -2035,6 +2038,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
             onClose={onClose}
             actionLabel={shouldShowMobilePreview ? '重新上传' : undefined}
             onAction={shouldShowMobilePreview ? handleResetToUpload : undefined}
+            hideDescription={shouldShowMobilePreview}
           />
           {shouldShowDesktopSplitLayout ? (
             <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1.9fr]">
