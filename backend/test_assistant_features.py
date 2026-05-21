@@ -217,6 +217,25 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn('"skill_id": user_skill_id', assistant_service_source)
         self.assertIn('"suggestedFollowups": suggested_followups', assistant_service_source)
 
+    def test_resume_editor_mobile_drawer_request_is_consumed_once(self) -> None:
+        app_source = (REPO_ROOT / "App.tsx").read_text(encoding="utf-8")
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("onMobileDrawerOpenRequestConsumed?: () => void;", editor_source)
+        self.assertIn("onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}", app_source)
+        self.assertIn("setEditorMobileDrawerOpenRequest(0)", app_source)
+
+        effect_start = editor_source.index("if (mobileDrawerOpenRequest <= 0 || typeof window === 'undefined')")
+        effect_end = editor_source.index("    }, [mobileDrawerOpenRequest", effect_start)
+        effect_block = editor_source[effect_start:effect_end]
+
+        self.assertIn("onMobileDrawerOpenRequestConsumed?.();", effect_block)
+        self.assertLess(
+            effect_block.index("onMobileDrawerOpenRequestConsumed?.();"),
+            effect_block.index("if (window.innerWidth >= 768)"),
+        )
+        self.assertIn("onMobileDrawerOpenRequestConsumed", editor_source[effect_end:effect_end + 160])
+
 
 class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_build_bank_context_includes_latest_non_archived_library_content(self) -> None:

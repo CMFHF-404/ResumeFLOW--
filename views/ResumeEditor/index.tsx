@@ -488,6 +488,8 @@ type ResumeEditorProps = {
     onResumesUpdate?: (resumes: DashboardResume[]) => void;
     onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
     onOpenAgentPluginConfig?: () => void;
+    mobileDrawerOpenRequest?: number;
+    onMobileDrawerOpenRequestConsumed?: () => void;
 };
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
@@ -596,6 +598,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     onResumesUpdate,
     onLaunchAssistant,
     onOpenAgentPluginConfig,
+    mobileDrawerOpenRequest = 0,
+    onMobileDrawerOpenRequestConsumed,
 }) => {
     const [isDarkMode, setIsDarkMode] = useState(() =>
         typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -4050,6 +4054,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             setIsMobileEditorDrawerVisible(true);
         });
     }, []);
+    useEffect(() => {
+        if (mobileDrawerOpenRequest <= 0 || typeof window === 'undefined') {
+            return;
+        }
+        onMobileDrawerOpenRequestConsumed?.();
+        if (window.innerWidth >= 768) {
+            return;
+        }
+        setSidebarTab('experience');
+        openMobileEditorDrawer();
+    }, [mobileDrawerOpenRequest, onMobileDrawerOpenRequestConsumed, openMobileEditorDrawer]);
     const dismissMobileEditorDrawerImmediately = useCallback(() => {
         if (mobileEditorDrawerTimerRef.current !== null) {
             window.clearTimeout(mobileEditorDrawerTimerRef.current);
