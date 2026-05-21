@@ -416,7 +416,7 @@ const RichTextToolbar: React.FC<{ state: ToolbarState; buttons: ToolbarButton[] 
     }
     return createPortal(
         <div
-            className="fixed z-50 flex items-center gap-1 bg-emerald-700 text-white rounded-md shadow-lg px-2 py-1"
+            className="fixed z-[90] flex items-center gap-1 bg-emerald-700 text-white rounded-md shadow-lg px-2 py-1"
             style={{ left: state.x, top: state.y, transform: 'translate(-50%, -100%)' }}
             onMouseDown={(event) => event.preventDefault()}
         >
@@ -462,7 +462,7 @@ const RichTextLinkPopover: React.FC<{
 
     return createPortal(
         <div
-            className="fixed z-50 w-72 rounded-lg border border-emerald-200 bg-white shadow-xl px-3 py-2 space-y-2 text-sm"
+            className="fixed z-[90] w-72 rounded-lg border border-emerald-200 bg-white shadow-xl px-3 py-2 space-y-2 text-sm"
             style={{ left: state.x, top: state.y, transform: 'translate(-50%, -100%)' }}
         >
             <div className="flex items-center justify-between">
@@ -555,9 +555,16 @@ const useToolbarState = (editorRef: React.RefObject<HTMLDivElement>) => {
 
     useEffect(() => {
         const handleScroll = () => hideToolbar();
+        const handleSelectionChange = () => {
+            updateSelectionState();
+        };
+        document.addEventListener('selectionchange', handleSelectionChange);
         window.addEventListener('scroll', handleScroll, true);
-        return () => window.removeEventListener('scroll', handleScroll, true);
-    }, [hideToolbar]);
+        return () => {
+            document.removeEventListener('selectionchange', handleSelectionChange);
+            window.removeEventListener('scroll', handleScroll, true);
+        };
+    }, [hideToolbar, updateSelectionState]);
 
     return { toolbar, hideToolbar, updateSelectionState };
 };
@@ -1068,6 +1075,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onPaste={readOnly ? undefined : handlePaste}
                 onKeyDown={readOnly ? undefined : handleKeyDown}
                 onMouseUp={readOnly ? undefined : updateSelectionState}
+                onTouchEnd={readOnly ? undefined : updateSelectionState}
                 onKeyUp={readOnly ? undefined : updateSelectionState}
                 onScroll={hideToolbar}
                 onFocus={readOnly ? undefined : handleFocus}

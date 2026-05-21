@@ -1400,7 +1400,7 @@ def _prepare_resume_text(text: str, request_id: Optional[str] = None) -> Optiona
     meaningful_char_count = _count_meaningful_text_chars(stripped)
     if meaningful_char_count < MIN_MEANINGFUL_TEXT_CHARS:
         logger.info(
-            "[ResumeParse] extracted text unreadable, fallback to attachment request_id=%s text_length=%s meaningful_char_count=%s",
+            "[ResumeParse] extracted text unreadable, rejecting parse request_id=%s text_length=%s meaningful_char_count=%s",
             request_id,
             len(stripped),
             meaningful_char_count,
@@ -1408,7 +1408,7 @@ def _prepare_resume_text(text: str, request_id: Optional[str] = None) -> Optiona
         return None
     if len(stripped) < MIN_TEXT_LENGTH:
         logger.info(
-            "[ResumeParse] extracted text too short, fallback to attachment request_id=%s text_length=%s meaningful_char_count=%s",
+            "[ResumeParse] extracted text too short, rejecting parse request_id=%s text_length=%s meaningful_char_count=%s",
             request_id,
             len(stripped),
             meaningful_char_count,
@@ -1528,22 +1528,7 @@ async def parse_resume(
     )
 
     if not cleaned:
-        encode_start = perf_counter()
-        encoded_file = _encode_upload_data(file_data)
-        encode_ms = (perf_counter() - encode_start) * 1000
-        _log_timing(
-            "encode_file",
-            encode_ms,
-            request_id,
-            {"encoded_length": len(encoded_file)},
-        )
-        return await _parse_resume_from_attachment(
-            encoded_file=encoded_file,
-            filename=filename,
-            file_mime_type=file_mime_type,
-            request_id=request_id,
-            progress_callback=progress_callback,
-        )
+        raise ValueError(UNREADABLE_RESUME_TEXT_ERROR)
 
     return await _parse_resume_from_text(
         cleaned_text=cleaned,
@@ -1579,22 +1564,7 @@ async def parse_resume_with_thoughts(
     )
 
     if not cleaned:
-        encode_start = perf_counter()
-        encoded_file = _encode_upload_data(file_data)
-        encode_ms = (perf_counter() - encode_start) * 1000
-        _log_timing(
-            "encode_file",
-            encode_ms,
-            request_id,
-            {"encoded_length": len(encoded_file)},
-        )
-        return await _parse_resume_from_attachment(
-            encoded_file=encoded_file,
-            filename=filename,
-            file_mime_type=file_mime_type,
-            request_id=request_id,
-            progress_callback=progress_callback,
-        )
+        raise ValueError(UNREADABLE_RESUME_TEXT_ERROR)
 
     if not settings.gemini_api_key:
         logger.warning(
