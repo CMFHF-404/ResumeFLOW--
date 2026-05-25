@@ -67,7 +67,6 @@ import { extractThoughtHeadline } from '../../utils/aiThought';
 import { buildJDCapabilityContext, buildJDPolishContext } from '../../utils/assistantResumeContext';
 import { buildSmartCompleteAssistantPrompt } from '../../utils/assistantSmartCompletePrompt';
 import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
-import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
 import {
     normalizeAiRichText,
     sanitizeRichTextHtml,
@@ -132,7 +131,6 @@ import {
     SMART_PAGE_ITEM_SPACING_STEP,
     SMART_PAGE_TOP_PADDING_MIN_PX,
     SMART_PAGE_TOP_PADDING_STEP_PX,
-    PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX,
     SMART_PAGE_TOAST_MESSAGES,
     JD_ANALYSIS_TOAST_MESSAGES,
     JD_ANALYSIS_PROGRESS_NODE_TITLES,
@@ -223,6 +221,25 @@ import {
     normalizeResumeTitle,
     resolveAutoResumeName,
 } from './autoNameUtils';
+import {
+    applyAssistantExperienceDraftToEditingDraft,
+    buildPendingAssistantManualSaveDraftKey,
+} from './assistantDraftApplyUtils';
+import {
+    buildSmartCompletionCustomPrompt,
+    buildSmartCompletionPromptState,
+    type SmartCompletionPromptState,
+} from './smartCompletionUtils';
+import {
+    buildBossGreetingSignature,
+    buildPersonalSummarySignature,
+    buildStableResumeSnapshotText,
+    measureResumeLayout,
+    normalizePersistedBossGreeting,
+    readErrorStatus,
+    waitForNextFrame,
+    type PendingPersistedBossGreeting,
+} from './snapshotUtils';
 import { buildResumePdfRenderSnapshot } from '../../utils/resumePdf';
 import {
     DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
@@ -280,32 +297,6 @@ type SmartPageExecutionResult =
     | ({ status: 'overflow' } & SmartPageLayout)
     | { status: 'skipped'; reason: 'busy' | 'unavailable' };
 
-type BossGreetingSignatureParams = {
-    jdText: string;
-    summary: string;
-    jobTitle?: string;
-    company?: string;
-    resumeText: string;
-};
-
-type PersonalSummarySignatureParams = {
-    jdText: string;
-    context: {
-        profile: {
-            name: string;
-            email: string;
-            phone: string;
-            location: string;
-            linkedin: string;
-        };
-        workExperiences: Array<Record<string, unknown>>;
-        projectExperiences: Array<Record<string, unknown>>;
-        educationExperiences: Array<Record<string, unknown>>;
-        certifications: Array<Record<string, unknown>>;
-        skills: Array<Record<string, unknown>>;
-    };
-};
-
 type AutoAssemblyStateSnapshot = {
     selection: ManualSelectionSnapshot;
     layout: LayoutSnapshot;
@@ -324,69 +315,6 @@ type CreateResumeFlowResult =
     | { status: 'partial'; stage: 'load'; resumeId: string; error?: unknown }
     | { status: 'failed'; stage: 'create'; error: unknown };
 
-const buildBossGreetingSignature = ({
-    jdText,
-    summary,
-    jobTitle,
-    company,
-    resumeText,
-}: BossGreetingSignatureParams) => JSON.stringify({
-    jdText: jdText.trim(),
-    summary,
-    jobTitle: jobTitle ?? '',
-    company: company ?? '',
-    resumeText,
-});
-
-const normalizePersistedBossGreeting = (value: unknown): ResumeBossGreeting | null => {
-    if (!value || typeof value !== 'object') {
-        return null;
-    }
-    const record = value as Partial<ResumeBossGreeting>;
-    const greeting = typeof record.greeting === 'string' ? record.greeting.trim() : '';
-    if (!greeting) {
-        return null;
-    }
-    return {
-        greeting,
-        ...(typeof record.signature === 'string' && record.signature.trim()
-            ? { signature: record.signature }
-            : {}),
-    };
-};
-
-type PendingPersistedBossGreeting = ResumeBossGreeting & {
-    resumeId: string | null;
-};
-
-const buildPersonalSummarySignature = ({
-    jdText,
-    context,
-}: PersonalSummarySignatureParams) => JSON.stringify({
-    jdText: jdText.trim(),
-    context,
-});
-
-const waitForNextFrame = (callback: () => void) => {
-    if (typeof window === 'undefined') {
-        callback();
-        return () => undefined;
-    }
-    const frameId = window.requestAnimationFrame(() => callback());
-    return () => window.cancelAnimationFrame(frameId);
-};
-
-const sortSnapshotEntriesById = <T extends { id: string }>(items: T[]) => (
-    [...items].sort((a, b) => a.id.localeCompare(b.id))
-);
-
-const buildStableResumeSnapshotText = (snapshot: ReturnType<typeof buildResumeAISnapshot>) => JSON.stringify({
-    experiences: sortSnapshotEntriesById(snapshot.experiences),
-    educations: sortSnapshotEntriesById(snapshot.educations),
-    certifications: sortSnapshotEntriesById(snapshot.certifications),
-    skills: sortSnapshotEntriesById(snapshot.skills),
-});
-
 const mapDragTypeToModuleType = (dragType: DragItemType): ModuleReorderContext['moduleType'] => {
     return dragType === 'skillGroup' ? 'skill_group' : dragType;
 };
@@ -403,82 +331,6 @@ const resolveModuleKey = (
         return `section:${sectionId}`;
     }
     return moduleType;
-};
-
-const applyAssistantExperienceDraftToEditingDraft = (
-    draft: ExperienceEditDraft,
-    assistantDraft: {
-        org: string;
-        title: string;
-        startDate: string;
-        endDate: string;
-        isCurrent?: boolean;
-        star: {
-            s: string;
-            t: string;
-            a: string;
-            r: string;
-        };
-    }
-): ExperienceEditDraft => {
-    const nextDraft: ExperienceEditDraft = {
-        ...draft,
-        company: assistantDraft.org,
-        title: assistantDraft.title,
-        startDate: assistantDraft.startDate || '',
-        endDate: assistantDraft.isCurrent ? '' : (assistantDraft.endDate || ''),
-        isCurrent: Boolean(assistantDraft.isCurrent),
-        star: {
-            s: assistantDraft.star.s,
-            t: assistantDraft.star.t,
-            a: assistantDraft.star.a,
-            r: assistantDraft.star.r,
-        },
-        starTouched: true,
-    };
-    return (
-        nextDraft.company === draft.company
-        && nextDraft.title === draft.title
-        && nextDraft.startDate === draft.startDate
-        && nextDraft.endDate === draft.endDate
-        && nextDraft.isCurrent === draft.isCurrent
-        && nextDraft.star.s === draft.star.s
-        && nextDraft.star.t === draft.star.t
-        && nextDraft.star.a === draft.star.a
-        && nextDraft.star.r === draft.star.r
-        && nextDraft.starTouched === draft.starTouched
-    )
-        ? draft
-        : nextDraft;
-};
-
-const buildPendingAssistantManualSaveDraftKey = (
-    draft: Pick<PendingAssistantManualSaveDraft, 'sessionId' | 'messageId' | 'resumeId' | 'masterId' | 'createdAt'>
-) => [
-    draft.sessionId,
-    draft.messageId,
-    draft.resumeId,
-    draft.masterId,
-    String(draft.createdAt),
-].join(':');
-
-const readErrorStatus = (error: unknown): number | undefined => (
-    (error as { response?: { status?: number } } | null)?.response?.status
-);
-
-const measureResumeLayout = (
-    pageElement: HTMLElement | null,
-    contentElement: HTMLElement | null
-): ResumePrintLayoutMeasurement | null => {
-    if (!pageElement || !contentElement) {
-        return null;
-    }
-
-    return measureResumePrintLayout(
-        pageElement,
-        contentElement,
-        PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX
-    );
 };
 
 type ResumeEditorProps = {
@@ -504,12 +356,6 @@ const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'highlight',
     'custom',
 ];
-
-type SmartCompletionPromptState = {
-    diagnosis: string;
-    questions: string[];
-    answer: string;
-};
 
 const FLOATING_POLISH_PREVIEW_FIELDS: Array<{ key: keyof ExperienceEditDraft['star']; label: string }> = [
     { key: 's', label: '情境' },
@@ -554,29 +400,6 @@ const FloatingPolishPreviewContent: React.FC<{ draft: ExperienceEditDraft }> = (
     );
 };
 
-const buildSmartCompletionCustomPrompt = (answer: string, capabilityContext: string) => {
-    const trimmedAnswer = answer.trim();
-    const trimmedCapabilityContext = capabilityContext.trim();
-    return [
-        trimmedCapabilityContext,
-        trimmedAnswer ? `用户补充的真实事实：${trimmedAnswer}` : '',
-    ].filter(Boolean).join('\n\n') || undefined;
-};
-
-const buildSmartCompletionPromptState = (
-    result: {
-        evidenceDiagnosis?: string;
-        followUpQuestions?: string[];
-    },
-    previous?: SmartCompletionPromptState | null
-): SmartCompletionPromptState => ({
-    diagnosis: result.evidenceDiagnosis?.trim() || '这段经历证据不足，建议先补充事实后再润色。',
-    questions: (result.followUpQuestions ?? [])
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .slice(0, 3),
-    answer: previous?.answer ?? '',
-});
 type FloatingExperiencePolishSessionItem = {
     targetId: string;
     beforeDraft: ExperienceEditDraft;

@@ -125,6 +125,9 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
         assistant_types_source = (REPO_ROOT / "views" / "AIAssistant" / "types.ts").read_text(encoding="utf-8")
         helper_source = (REPO_ROOT / "utils" / "assistantSmartCompletePrompt.ts").read_text(encoding="utf-8")
+        smart_completion_source = (
+            REPO_ROOT / "views" / "ResumeEditor" / "smartCompletionUtils.ts"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];", toolbar_source)
         self.assertIn("智能补全", toolbar_source)
@@ -138,7 +141,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertNotIn("'expand'", smart_block)
 
         batch_start = editor_source.index("const BATCH_RESUME_POLISH_MODES")
-        batch_end = editor_source.index("type SmartCompletionPromptState", batch_start)
+        batch_end = editor_source.index("const FLOATING_POLISH_PREVIEW_FIELDS", batch_start)
         batch_block = editor_source[batch_start:batch_end]
         self.assertNotIn("'shorten'", batch_block)
         self.assertNotIn("'expand'", batch_block)
@@ -149,10 +152,10 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("skillId: pendingLaunchRequest.initialSkillId ?? null", assistant_source)
         self.assertIn("只围绕当前这段经历内真实、可能可补充的事实追问 0-3 个问题", helper_source)
         self.assertIn("不要询问其他项目、课程项目、个人练习、专业背景或非本项目案例", helper_source)
-        self.assertIn(".slice(0, 3)", editor_source)
+        self.assertIn(".slice(0, 3)", smart_completion_source)
 
     def test_experience_bank_card_assistant_launch_uses_server_apply(self) -> None:
-        source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
+        source = (REPO_ROOT / "views" / "ExperienceSection" / "polishActions.ts").read_text(encoding="utf-8")
         start = source.index("const handleOpenAssistant")
         end = source.index("  const isPolishing", start)
         block = source[start:end]
@@ -163,7 +166,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertNotIn("callbackOnly: true", block)
 
     def test_experience_bank_temp_card_assistant_requires_save_first(self) -> None:
-        source = (REPO_ROOT / "views" / "ExperienceSection.tsx").read_text(encoding="utf-8")
+        source = (REPO_ROOT / "views" / "ExperienceSection" / "polishActions.ts").read_text(encoding="utf-8")
         start = source.index("const handleOpenAssistant")
         end = source.index("  const isPolishing", start)
         block = source[start:end]

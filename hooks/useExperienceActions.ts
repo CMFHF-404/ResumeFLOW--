@@ -49,6 +49,16 @@ import type {
     StarFieldKey,
     StarFields,
 } from '../types/resume';
+import {
+    addToSet,
+    createDraftId,
+    deleteMapEntry,
+    isDraftId,
+    removeFromSet,
+    runWithFlag,
+    setMapEntry,
+    toggleInSet,
+} from './experienceActionHandlers/collectionUtils';
 
 type ToastApi = {
     success: (message: string, duration?: number) => string;
@@ -67,64 +77,6 @@ const JD_POLISH_TOAST_MESSAGES = {
 } as const;
 const JD_POLISH_TOAST_DURATION_MS = 2500;
 const JD_POLISH_TOAST_ERROR_DURATION_MS = 3000;
-
-const createDraftId = (prefix: string) => {
-    const random = Math.random().toString(16).slice(2, 6);
-    return `${prefix}-${Date.now()}-${random}`;
-};
-
-const isDraftId = (id: string, prefix: string) => id.startsWith(prefix);
-
-const addToSet = (prev: Set<string>, id: string) => {
-    const next = new Set(prev);
-    next.add(id);
-    return next;
-};
-
-const removeFromSet = (prev: Set<string>, id: string) => {
-    const next = new Set(prev);
-    next.delete(id);
-    return next;
-};
-
-const toggleInSet = (prev: Set<string>, id: string) => {
-    const next = new Set(prev);
-    if (next.has(id)) {
-        next.delete(id);
-    } else {
-        next.add(id);
-    }
-    return next;
-};
-
-const setMapEntry = <K, V>(prev: Map<K, V>, key: K, value: V) => {
-    const next = new Map(prev);
-    next.set(key, value);
-    return next;
-};
-
-const deleteMapEntry = <K, V>(prev: Map<K, V>, key: K) => {
-    const next = new Map(prev);
-    next.delete(key);
-    return next;
-};
-
-const runWithFlag = async <T>(
-    id: string,
-    flagSet: Set<string>,
-    setFlagSet: Dispatch<SetStateAction<Set<string>>>,
-    task: () => Promise<T>
-) => {
-    if (flagSet.has(id)) {
-        return null;
-    }
-    setFlagSet((prev) => addToSet(prev, id));
-    try {
-        return await task();
-    } finally {
-        setFlagSet((prev) => removeFromSet(prev, id));
-    }
-};
 
 type ExperienceDefaults = {
     experienceTitleByCategory: Record<ResumeExperienceView['category'], string>;
