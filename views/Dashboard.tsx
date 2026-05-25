@@ -31,6 +31,7 @@ interface DashboardProps {
   authUserKey?: string | null;
   onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
+  onOpenAgentPluginConfig?: () => void;
 }
 
 const DELETE_CONFIRM_TITLE = '删除简历';

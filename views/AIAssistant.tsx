@@ -29,9 +29,7 @@ import { resumeService } from '../services/resumeService';
 import { skillsService } from '../services/skillsService';
 import { buildSelectedResumeFromResources } from '../utils/assistantResumeContext';
 import { normalizeAssistantDraftCard } from '../utils/assistantDraft';
-import { normalizeDateInput } from '../utils/dateUtils';
 import { formatRelativeTime } from '../utils/timeUtils';
-import { extractThoughtHeadline } from '../utils/aiThought';
 import { trackAiAssistantDraftApplied } from '../utils/analyticsTracker';
 import {
   clearPendingAssistantManualSaveDraft,
@@ -74,6 +72,19 @@ import {
   type AssistantDraftGroup,
   type AssistantDraftMessageItem,
 } from './AIAssistant/sessionUtils';
+import {
+  ASSISTANT_MODE_HINTS,
+  isPersistedCallbackOnlySession,
+  readContextString,
+  resolveSessionHint,
+} from './AIAssistant/sessionContextUtils';
+import {
+  extractApplyErrorDetails,
+  summarizeDraftForLog,
+} from './AIAssistant/logUtils';
+import { computeComposerReservedHeight } from './AIAssistant/layoutUtils';
+import { resolveAssistantStreamThought } from './AIAssistant/streamUtils';
+import { buildResumeExperienceOverrideOperation } from './AIAssistant/draftApplyUtils';
 import type {
   AssistantApplyDraftHandler,
   AssistantLaunchRequest,
@@ -86,9 +97,6 @@ type AIAssistantProps = {
   draftInput?: string;
   onDraftInputChange?: (value: string) => void;
 };
-
-const COMPOSER_OVERLAY_MIN_CLEARANCE = 72;
-const COMPOSER_OVERLAY_VISIBLE_OVERLAP = 36;
 
 const ASSISTANT_SKILL_PRESETS: Array<{
   id: AssistantSkillId;
@@ -119,7 +127,7 @@ const ASSISTANT_SKILL_PRESETS: Array<{
 const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: React.ReactNode }> = {
   general: {
     label: '综合助理',
-    hint: '同一条对话里自由整理经历、证书与技能',
+    hint: ASSISTANT_MODE_HINTS.general,
     icon: (
       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
         <Bot className="h-3.5 w-3.5" />
@@ -128,196 +136,19 @@ const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: Reac
   },
   experience: {
     label: '经历整理',
-    hint: '用 STAR 追问把经历梳成可录入卡片',
+    hint: ASSISTANT_MODE_HINTS.experience,
     icon: <Sparkles className="h-4 w-4" />,
   },
   certification: {
     label: '证书整理',
-    hint: '把证书信息整理成统一录入格式',
+    hint: ASSISTANT_MODE_HINTS.certification,
     icon: <FileBadge2 className="h-4 w-4" />,
   },
   skill: {
     label: '技能整理',
-    hint: '归类技能并沉淀成技能组卡片',
+    hint: ASSISTANT_MODE_HINTS.skill,
     icon: <Wrench className="h-4 w-4" />,
   },
-};
-
-
-const resolveSessionHint = (session: AssistantSession | null) => {
-  if (!session) {
-    return '直接描述你的素材，AI 会自动识别是在整理经历、证书还是技能。';
-  }
-  if (session.entry_source === 'resume_editor') {
-    return '当前会话来自简历工厂高级入口，但你仍然可以继续扩展到证书或技能。';
-  }
-  if (session.entry_source === 'experience_bank') {
-    return '当前会话来自经历库高级入口，但你仍然可以继续扩展到证书或技能。';
-  }
-  return MODE_META[session.mode].hint;
-};
-
-const readContextString = (context: Record<string, unknown>, key: string) => {
-  const value = context[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-};
-
-const clipLogText = (value: unknown, limit = 240) => {
-  if (typeof value !== 'string') {
-    return value;
-  }
-  return value.length > limit ? `${value.slice(0, limit)}...` : value;
-};
-
-const readErrorDetail = (payload: unknown): string | null => {
-  if (typeof payload === 'string' && payload.trim()) {
-    return payload.trim();
-  }
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const record = payload as { detail?: unknown; message?: unknown; error?: unknown };
-  const detail = record.detail ?? record.message ?? record.error;
-  if (typeof detail === 'string' && detail.trim()) {
-    return detail.trim();
-  }
-  if (Array.isArray(detail) || (detail && typeof detail === 'object')) {
-    try {
-      return JSON.stringify(detail);
-    } catch {
-      return String(detail);
-    }
-  }
-  return null;
-};
-
-const extractApplyErrorDetails = (applyError: unknown) => {
-  const maybeError = applyError as {
-    message?: unknown;
-    code?: unknown;
-    response?: { status?: number; data?: unknown };
-    config?: { method?: string; url?: string };
-  };
-  const status = maybeError.response?.status;
-  const detail = readErrorDetail(maybeError.response?.data);
-  const message = typeof maybeError.message === 'string' ? maybeError.message : null;
-  const userMessage = detail || (status ? `HTTP ${status}` : null) || message || '未知错误';
-  return {
-    userMessage,
-    status,
-    detail: clipLogText(detail),
-    message: clipLogText(message),
-    code: typeof maybeError.code === 'string' ? maybeError.code : undefined,
-    method: maybeError.config?.method,
-    url: maybeError.config?.url,
-    responseData: maybeError.response?.data,
-  };
-};
-
-const summarizeDraftForLog = (card: AssistantDraftCard) => {
-  if (card.type !== 'experience') {
-    return {
-      type: card.type,
-      status: card.status,
-      hasSummary: Boolean(card.summary?.trim()),
-    };
-  }
-  return {
-    type: card.type,
-    status: card.status,
-    hasSummary: Boolean(card.summary?.trim()),
-    category: card.data.category,
-    hasTargetMasterId: Boolean(card.data.targetMasterId?.trim()),
-    hasOrg: Boolean(card.data.org.trim()),
-    hasTitle: Boolean(card.data.title.trim()),
-    hasStartDate: Boolean(card.data.startDate.trim()),
-    hasEndDate: Boolean(card.data.endDate.trim()),
-    isCurrent: card.data.isCurrent,
-  };
-};
-
-const isPersistedCallbackOnlySession = (session: AssistantSession | null) => {
-  if (!session) {
-    return false;
-  }
-  const applyMode = readContextString(session.context_json ?? {}, 'assistantApplyMode');
-  if (applyMode === 'manual_save') {
-    return true;
-  }
-  return session.entry_source === 'resume_editor'
-    && Boolean(readContextString(session.context_json ?? {}, 'masterId'));
-};
-
-const computeComposerReservedHeight = (composerHeight: number) => {
-  if (!Number.isFinite(composerHeight) || composerHeight <= 0) {
-    return 160;
-  }
-  return Math.max(composerHeight - COMPOSER_OVERLAY_VISIBLE_OVERLAP, COMPOSER_OVERLAY_MIN_CLEARANCE);
-};
-
-const resolveAssistantStreamThought = (event: AssistantStreamEvent) => {
-  if (event.type === 'thought') {
-    return extractThoughtHeadline(event.summary) || event.summary;
-  }
-  if (event.type === 'progress') {
-    return event.title?.trim() || '';
-  }
-  return '';
-};
-
-const buildResumeExperienceOverrideOperation = (draft: Extract<AssistantDraftCard, { type: 'experience' }>['data']) => {
-  const overrides: Record<string, unknown> = {
-    star: draft.star,
-    is_current: Boolean(draft.isCurrent),
-  };
-  const clearOverrideKeys = new Set<string>();
-  if (draft.title.trim()) {
-    overrides.title = draft.title.trim();
-  }
-  if (draft.org.trim()) {
-    overrides.org = draft.org.trim();
-  }
-  if (draft.startDate.trim()) {
-    overrides.start_date = normalizeDateInput(draft.startDate) ?? draft.startDate.trim();
-  }
-  if (!draft.isCurrent && draft.endDate.trim()) {
-    overrides.end_date = normalizeDateInput(draft.endDate) ?? draft.endDate.trim();
-  } else {
-    clearOverrideKeys.add('end_date');
-  }
-  return {
-    overrides_json: overrides,
-    ...(clearOverrideKeys.size > 0 ? { clear_override_keys: Array.from(clearOverrideKeys) } : {}),
-  };
-};
-
-const buildExperienceVersionPayload = (
-  draft: Extract<AssistantDraftCard, { type: 'experience' }>['data'],
-  fallback?: {
-    title?: string;
-    org?: string;
-    location?: string;
-    summary?: string;
-    highlights?: string[];
-    tags?: string[];
-  }
-) => {
-  const resolvedTitle = draft.title.trim() || fallback?.title?.trim() || '';
-  if (!resolvedTitle) {
-    throw new Error('缺少经历标题，无法确认录入');
-  }
-  return {
-    title: resolvedTitle,
-    org: draft.org.trim() || fallback?.org,
-    location: fallback?.location,
-    start_date: normalizeDateInput(draft.startDate) || undefined,
-    end_date: draft.isCurrent ? undefined : (normalizeDateInput(draft.endDate) || undefined),
-    is_current: Boolean(draft.isCurrent),
-    summary: fallback?.summary,
-    highlights: fallback?.highlights ?? [],
-    tags: fallback?.tags ?? [],
-    star: draft.star,
-  };
 };
 
 const AIAssistant: React.FC<AIAssistantProps> = ({

@@ -1,8 +1,10 @@
-import apiClient, { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
-import { dispatchLoginRequired } from './authRedirect';
+import apiClient from './apiClient';
+import { normalizeJDAnalysisResult } from './aiNormalizeUtils';
+import { postStreamRequest } from './aiStreamUtils';
 import type { MatchScoreEntry, MatchTrend } from '../types/analysis';
 import type { ExperienceCategory } from './experienceService';
 import type { ResumeAISnapshot } from '../utils/resumeHelpers';
+import type { RawJDAnalysisResult } from './aiNormalizeUtils';
 
 export interface PolishExperiencePayload {
     content: {
@@ -355,13 +357,6 @@ export type AssistantStreamEvent =
     | AssistantFinalEvent
     | AssistantErrorEvent;
 
-type RawJDAnalysisResult = JDAnalysisResult & {
-    extracted_jd_text?: unknown;
-    jd_interpretation?: unknown;
-    capability_analysis?: unknown;
-};
-
-
 export type JDAnalyzeProgressNode =
     | 'prepare_context'
     | 'request_ai'
@@ -477,28 +472,6 @@ export type PersonalSummaryStreamEvent =
     | PersonalSummaryFinalEvent
     | PersonalSummaryErrorEvent;
 
-const parseNdjsonLines = (chunk: string) => chunk.split('\n').map((line) => line.trim()).filter(Boolean);
-
-const resolveApiUrl = (path: string) => {
-    const base = getApiBaseUrl();
-    if (!base) {
-        return path;
-    }
-    const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    return `${normalizedBase}${normalizedPath}`;
-};
-
-const ensureStreamResponseOk = (response: Response) => {
-    if (response.ok) {
-        return;
-    }
-    if (response.status === 401) {
-        dispatchLoginRequired('unauthorized-write');
-    }
-    throw new Error(`AI stream request failed: ${response.status}`);
-};
-
 const streamAnalyzeRequest = async (
     path: string,
     body: BodyInit,
@@ -508,72 +481,23 @@ const streamAnalyzeRequest = async (
         contentType?: string | null;
     } = {}
 ): Promise<JDAnalysisResult> => {
-    const headers = new Headers();
-    const authHeader = await getAuthorizationHeader();
-    if (!authHeader) {
-        dispatchLoginRequired('write-operation');
-        throw new Error('Authentication required for write operation');
-    }
-    headers.set('Authorization', authHeader);
-    if (options.contentType !== null) {
-        headers.set('Content-Type', options.contentType ?? 'application/json');
-    }
-
-    const response = await fetch(resolveApiUrl(path), {
-        method: 'POST',
-        headers,
+    return postStreamRequest<AnalyzeStreamEvent, JDAnalysisResult>({
+        path,
         body,
-    });
-
-    ensureStreamResponseOk(response);
-    if (!response.body) {
-        throw new Error('AI stream response body is empty');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalResult: JDAnalysisResult | null = null;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = parseNdjsonLines(buffer);
-        const hasTrailingNewline = buffer.endsWith('\n');
-        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
-
-        lines.forEach((line) => {
-            let parsed: AnalyzeStreamEvent;
-            try {
-                parsed = JSON.parse(line) as AnalyzeStreamEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
-                return;
-            }
-            options.onEvent?.(parsed);
+        contentType: options.contentType,
+        onEvent: options.onEvent,
+        onParsedEvent: (parsed) => {
             if (parsed.type === 'progress') {
                 options.onProgress?.(parsed);
-                return;
             }
-            if (parsed.type === 'thought') {
-                return;
-            }
-            if (parsed.type === 'error') {
-                throw new Error(parsed.message || 'AI stream error');
-            }
+        },
+        getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
-                finalResult = normalizeJDAnalysisResult(parsed.result);
+                return normalizeJDAnalysisResult(parsed.result);
             }
-        });
-    }
-
-    if (!finalResult) {
-        throw new Error('AI stream did not return final result');
-    }
-    return finalResult;
+            return null;
+        },
+    });
 };
 
 const streamPolishRequest = async (
@@ -582,63 +506,18 @@ const streamPolishRequest = async (
         onEvent?: (event: PolishStreamEvent) => void;
     } = {}
 ): Promise<PolishExperienceResponse> => {
-    const headers = new Headers();
-    const authHeader = await getAuthorizationHeader();
-    if (!authHeader) {
-        dispatchLoginRequired('write-operation');
-        throw new Error('Authentication required for write operation');
-    }
-    headers.set('Authorization', authHeader);
-    headers.set('Content-Type', 'application/json');
-
-    const response = await fetch(resolveApiUrl('/api/polish-text/stream'), {
-        method: 'POST',
-        headers,
+    return postStreamRequest<PolishStreamEvent, PolishExperienceResponse>({
+        path: '/api/polish-text/stream',
         body: JSON.stringify(payload),
-    });
-
-    ensureStreamResponseOk(response);
-    if (!response.body) {
-        throw new Error('AI stream response body is empty');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalResult: PolishExperienceResponse | null = null;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = parseNdjsonLines(buffer);
-        const hasTrailingNewline = buffer.endsWith('\n');
-        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
-
-        lines.forEach((line) => {
-            let parsed: PolishStreamEvent;
-            try {
-                parsed = JSON.parse(line) as PolishStreamEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
-                return;
-            }
-            options.onEvent?.(parsed);
-            if (parsed.type === 'error') {
-                throw new Error(parsed.message || 'AI stream error');
-            }
+        contentType: 'application/json',
+        onEvent: options.onEvent,
+        getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
-                finalResult = parsed.result;
+                return parsed.result;
             }
-        });
-    }
-
-    if (!finalResult) {
-        throw new Error('AI stream did not return final result');
-    }
-    return finalResult;
+            return null;
+        },
+    });
 };
 
 const streamBossGreetingRequest = async (
@@ -647,62 +526,18 @@ const streamBossGreetingRequest = async (
         onEvent?: (event: BossGreetingStreamEvent) => void;
     } = {}
 ): Promise<GenerateBossGreetingResponse> => {
-    const headers = new Headers();
-    const authHeader = await getAuthorizationHeader();
-    if (!authHeader) {
-        dispatchLoginRequired('write-operation');
-        throw new Error('Authentication required for write operation');
-    }
-    headers.set('Authorization', authHeader);
-    headers.set('Content-Type', 'application/json');
-
-    const response = await fetch(resolveApiUrl('/api/generate-boss-greeting/stream'), {
-        method: 'POST',
-        headers,
+    const finalResult = await postStreamRequest<BossGreetingStreamEvent, GenerateBossGreetingResponse>({
+        path: '/api/generate-boss-greeting/stream',
         body: JSON.stringify(payload),
-    });
-
-    ensureStreamResponseOk(response);
-    if (!response.body) {
-        throw new Error('AI stream response body is empty');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalResult: GenerateBossGreetingResponse | null = null;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = parseNdjsonLines(buffer);
-        const hasTrailingNewline = buffer.endsWith('\n');
-        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
-
-        lines.forEach((line) => {
-            let parsed: BossGreetingStreamEvent;
-            try {
-                parsed = JSON.parse(line) as BossGreetingStreamEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
-                return;
-            }
-            options.onEvent?.(parsed);
-            if (parsed.type === 'error') {
-                throw new Error(parsed.message || 'AI stream error');
-            }
+        contentType: 'application/json',
+        onEvent: options.onEvent,
+        getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
-                finalResult = parsed.result;
+                return parsed.result;
             }
-        });
-    }
-
-    if (!finalResult) {
-        throw new Error('AI stream did not return final result');
-    }
+            return null;
+        },
+    });
     if (!finalResult.greeting?.trim()) {
         throw new Error('AI 未生成有效的 BOSS 招呼语，请稍后重试');
     }
@@ -715,62 +550,18 @@ const streamPersonalSummaryRequest = async (
         onEvent?: (event: PersonalSummaryStreamEvent) => void;
     } = {}
 ): Promise<GeneratePersonalSummaryResponse> => {
-    const headers = new Headers();
-    const authHeader = await getAuthorizationHeader();
-    if (!authHeader) {
-        dispatchLoginRequired('write-operation');
-        throw new Error('Authentication required for write operation');
-    }
-    headers.set('Authorization', authHeader);
-    headers.set('Content-Type', 'application/json');
-
-    const response = await fetch(resolveApiUrl('/api/generate-personal-summary/stream'), {
-        method: 'POST',
-        headers,
+    const finalResult = await postStreamRequest<PersonalSummaryStreamEvent, GeneratePersonalSummaryResponse>({
+        path: '/api/generate-personal-summary/stream',
         body: JSON.stringify(payload),
-    });
-
-    ensureStreamResponseOk(response);
-    if (!response.body) {
-        throw new Error('AI stream response body is empty');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalResult: GeneratePersonalSummaryResponse | null = null;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = parseNdjsonLines(buffer);
-        const hasTrailingNewline = buffer.endsWith('\n');
-        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
-
-        lines.forEach((line) => {
-            let parsed: PersonalSummaryStreamEvent;
-            try {
-                parsed = JSON.parse(line) as PersonalSummaryStreamEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
-                return;
-            }
-            options.onEvent?.(parsed);
-            if (parsed.type === 'error') {
-                throw new Error(parsed.message || 'AI stream error');
-            }
+        contentType: 'application/json',
+        onEvent: options.onEvent,
+        getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
-                finalResult = parsed.result;
+                return parsed.result;
             }
-        });
-    }
-
-    if (!finalResult) {
-        throw new Error('AI stream did not return final result');
-    }
+            return null;
+        },
+    });
     if (!finalResult.summary?.trim()) {
         throw new Error('AI 未生成有效的个人评价，请稍后重试');
     }
@@ -785,89 +576,18 @@ const streamAssistantRequest = async (
         contentType?: string | null;
     } = {}
 ): Promise<AssistantTurnResult> => {
-    const headers = new Headers();
-    const authHeader = await getAuthorizationHeader();
-    if (!authHeader) {
-        dispatchLoginRequired('write-operation');
-        throw new Error('Authentication required for write operation');
-    }
-    headers.set('Authorization', authHeader);
-    if (options.contentType !== null) {
-        headers.set('Content-Type', options.contentType ?? 'application/json');
-    }
-
-    const response = await fetch(resolveApiUrl(`/api/assistant/sessions/${sessionId}/stream`), {
-        method: 'POST',
-        headers,
+    return postStreamRequest<AssistantStreamEvent, AssistantTurnResult>({
+        path: `/api/assistant/sessions/${sessionId}/stream`,
         body,
-    });
-
-    ensureStreamResponseOk(response);
-    if (!response.body) {
-        throw new Error('AI stream response body is empty');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalResult: AssistantTurnResult | null = null;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = parseNdjsonLines(buffer);
-        const hasTrailingNewline = buffer.endsWith('\n');
-        buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
-
-        lines.forEach((line) => {
-            let parsed: AssistantStreamEvent;
-            try {
-                parsed = JSON.parse(line) as AssistantStreamEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
-                return;
-            }
-            options.onEvent?.(parsed);
-            if (parsed.type === 'error') {
-                throw new Error(parsed.message || 'AI stream error');
-            }
+        contentType: options.contentType,
+        onEvent: options.onEvent,
+        getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
-                finalResult = parsed.result;
+                return parsed.result;
             }
-        });
-    }
-
-    if (!finalResult) {
-        throw new Error('AI stream did not return final result');
-    }
-    return finalResult;
-};
-
-const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
-    const extractedJdText = typeof result.extractedJdText === 'string'
-        ? result.extractedJdText
-        : typeof result.extracted_jd_text === 'string'
-            ? result.extracted_jd_text
-            : undefined;
-    const jdInterpretation = result.jdInterpretation && typeof result.jdInterpretation === 'object'
-        ? result.jdInterpretation
-        : result.jd_interpretation && typeof result.jd_interpretation === 'object'
-            ? (result.jd_interpretation as JDInterpretation)
-            : undefined;
-    const capabilityAnalysis = result.capabilityAnalysis && typeof result.capabilityAnalysis === 'object'
-        ? result.capabilityAnalysis
-        : result.capability_analysis && typeof result.capability_analysis === 'object'
-            ? (result.capability_analysis as JDCapabilityAnalysis)
-            : undefined;
-    return {
-        ...result,
-        ...(extractedJdText ? { extractedJdText } : {}),
-        ...(jdInterpretation ? { jdInterpretation } : {}),
-        ...(capabilityAnalysis ? { capabilityAnalysis } : {}),
-    };
+            return null;
+        },
+    });
 };
 
 export const aiService = {

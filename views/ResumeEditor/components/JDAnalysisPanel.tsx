@@ -73,6 +73,10 @@ type StrategySearchQueryItem = {
     includeKeywords?: string[];
     excludeKeywords?: string[];
 };
+type RequirementItem = {
+    label: string;
+    evidence?: string;
+};
 
 const getRecordText = (value: unknown, keys: string[]) => {
     if (!value || typeof value !== 'object') {
@@ -461,9 +465,9 @@ const getCapabilityRiskTone = (risk: JDCoreCapability['risk']) => (
 const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisResult }) => {
     const interpretation = analysisResult.jdInterpretation;
     const profileTags = buildProfileTags(interpretation);
-    const coreResponsibilities = getArray(interpretation?.coreResponsibilities);
-    const mustHave = getArray(interpretation?.mustHave);
-    const hardFilters = getArray(interpretation?.hardFilters);
+    const coreResponsibilities = getArray<RequirementItem>(interpretation?.coreResponsibilities);
+    const mustHave = getArray<RequirementItem>(interpretation?.mustHave);
+    const hardFilters = getArray<RequirementItem>(interpretation?.hardFilters);
     const missingKeywords = getArray(analysisResult.missingKeywords);
 
     return (
