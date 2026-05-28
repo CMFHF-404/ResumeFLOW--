@@ -16,7 +16,7 @@ def _set_required_env_defaults() -> None:
 
 _set_required_env_defaults()
 
-from app.models import ExperienceCategory, ExperienceVersion, MasterExperience  # noqa: E402
+from app.models import ExperienceCategory, ExperienceVersion, MasterExperience, Skill, UserSkill  # noqa: E402
 from app.domain.ai import ai_service  # noqa: E402
 from app.domain.assistant import assistant_router, assistant_service  # noqa: E402
 
@@ -37,11 +37,15 @@ class _ScalarResult:
 
 
 class _ExecuteResult:
-    def __init__(self, *, one_or_none=None, first=None):
+    def __init__(self, *, one_or_none=None, first=None, all_items=None):
         self._scalars = _ScalarResult(one_or_none=one_or_none, first=first)
+        self._all_items = all_items if all_items is not None else []
 
     def scalars(self):
         return self._scalars
+
+    def all(self):
+        return self._all_items
 
 
 class _FakeAsyncSession:
@@ -219,6 +223,44 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("Suggested follow-up buttons must be generated", prompt_source)
         self.assertIn('"skill_id": user_skill_id', assistant_service_source)
         self.assertIn('"suggestedFollowups": suggested_followups', assistant_service_source)
+
+    def test_ai_assistant_surfaces_stream_error_message_to_user(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024", assistant_source)
+        self.assertIn("formatAssistantAttachmentTooLargeMessage", assistant_source)
+        self.assertIn("file.size <= MAX_ASSISTANT_ATTACHMENT_BYTES", assistant_source)
+        self.assertIn(
+            "if (normalizedFiles.length === 0) {\n"
+            "      if (attachmentInputRef.current) {\n"
+            "        attachmentInputRef.current.value = '';\n"
+            "      }\n"
+            "      return;\n"
+            "    }",
+            assistant_source,
+        )
+        self.assertIn("const resolveAssistantSendErrorMessage", assistant_source)
+        self.assertIn("error(resolveAssistantSendErrorMessage(sendError)", assistant_source)
+
+    def test_ai_assistant_skill_group_drafts_merge_existing_tags(self) -> None:
+        service_source = (REPO_ROOT / "services" / "aiService.ts").read_text(encoding="utf-8")
+        session_source = (REPO_ROOT / "views" / "AIAssistant" / "sessionUtils.ts").read_text(encoding="utf-8")
+        draft_card_source = (REPO_ROOT / "views" / "AIAssistant" / "AssistantDraftCardView.tsx").read_text(encoding="utf-8")
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        prompt_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "prompts.py").read_text(encoding="utf-8")
+
+        self.assertIn("targetUserSkillId?: string | null", service_source)
+        self.assertNotIn("proficiency?: number | null;", service_source)
+        self.assertIn("item.card.type === 'skill_group'", session_source)
+        self.assertIn("skill_group:", session_source)
+        self.assertIn("将合并更新技能组", draft_card_source)
+        self.assertNotIn("skill.proficiency", draft_card_source)
+        self.assertIn("findExistingSkillForAssistantDraft", editor_source)
+        self.assertNotIn("payload.proficiency", editor_source)
+        self.assertIn("targetUserSkillId", prompt_source)
+        self.assertIn("Never fabricate targetUserSkillId", prompt_source)
+        self.assertIn("熟练掌握 Vibe Coding", prompt_source)
+        self.assertNotIn("proficiency must be", prompt_source)
 
     def test_resume_editor_mobile_drawer_request_is_consumed_once(self) -> None:
         app_source = (REPO_ROOT / "App.tsx").read_text(encoding="utf-8")
@@ -861,6 +903,115 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_apply_direct_skill_group_merges_existing_skills_and_creates_missing(self) -> None:
+        category = "产品经理核心技能"
+        existing_skill = SimpleNamespace(id=uuid.uuid4(), name="Axure", category=category)
+        existing_user_skill = UserSkill(
+            id=uuid.uuid4(),
+            user_id="user-1",
+            skill_id=existing_skill.id,
+            proficiency=2,
+        )
+        preserved_skill = SimpleNamespace(id=uuid.uuid4(), name="Figma", category=category)
+        preserved_user_skill = UserSkill(
+            id=uuid.uuid4(),
+            user_id="user-1",
+            skill_id=preserved_skill.id,
+            proficiency=4,
+        )
+        session = _FakeAsyncSession(
+            [
+                _ExecuteResult(all_items=[
+                    (existing_user_skill, existing_skill),
+                    (preserved_user_skill, preserved_skill),
+                ]),
+                _ExecuteResult(one_or_none=existing_skill),
+                _ExecuteResult(one_or_none=None),
+            ]
+        )
+        assistant_session = SimpleNamespace(context_json={}, entry_source="direct")
+        message = SimpleNamespace(
+            content_json={
+                "type": "skill_group",
+                "data": {
+                    "category": category,
+                    "skills": [
+                        {"name": " Axure "},
+                        {"name": "PRD 撰写"},
+                        {"name": "Axure"},
+                    ],
+                },
+            }
+        )
+
+        await assistant_service._apply_direct_draft_card(  # type: ignore[attr-defined]
+            session,
+            user_id="user-1",
+            assistant_session=assistant_session,
+            message=message,
+        )
+
+        created_user_skills = [
+            item for item in session.added
+            if isinstance(item, UserSkill) and item.id not in {existing_user_skill.id, preserved_user_skill.id}
+        ]
+        self.assertEqual(existing_user_skill.proficiency, 2)
+        self.assertEqual(existing_user_skill.skill_id, existing_skill.id)
+        self.assertEqual(preserved_user_skill.proficiency, 4)
+        self.assertEqual(preserved_user_skill.skill_id, preserved_skill.id)
+        self.assertEqual(len(created_user_skills), 1)
+        self.assertEqual(created_user_skills[0].user_id, "user-1")
+        self.assertIsNone(created_user_skills[0].proficiency)
+
+    async def test_apply_direct_skill_group_uses_target_user_skill_id_before_name_match(self) -> None:
+        category = "AI 工具"
+        old_skill = SimpleNamespace(id=uuid.uuid4(), name="Prompt Engineering", category=category)
+        targeted_user_skill = UserSkill(
+            id=uuid.uuid4(),
+            user_id="user-1",
+            skill_id=old_skill.id,
+            proficiency=3,
+        )
+        session = _FakeAsyncSession(
+            [
+                _ExecuteResult(all_items=[(targeted_user_skill, old_skill)]),
+                _ExecuteResult(one_or_none=None),
+            ]
+        )
+        assistant_session = SimpleNamespace(context_json={}, entry_source="direct")
+        message = SimpleNamespace(
+            content_json={
+                "type": "skill_group",
+                "data": {
+                    "category": category,
+                    "skills": [
+                        {
+                            "targetUserSkillId": str(targeted_user_skill.id),
+                            "name": "Vibe Coding",
+                        }
+                    ],
+                },
+            }
+        )
+
+        await assistant_service._apply_direct_draft_card(  # type: ignore[attr-defined]
+            session,
+            user_id="user-1",
+            assistant_session=assistant_session,
+            message=message,
+        )
+
+        created_skills = [item for item in session.added if isinstance(item, Skill)]
+        created_user_skills = [
+            item for item in session.added
+            if isinstance(item, UserSkill) and item.id != targeted_user_skill.id
+        ]
+        self.assertEqual(len(created_skills), 1)
+        self.assertEqual(created_skills[0].name, "Vibe Coding")
+        self.assertEqual(targeted_user_skill.skill_id, created_skills[0].id)
+        self.assertEqual(targeted_user_skill.proficiency, 3)
+        self.assertEqual(created_user_skills, [])
+
     async def test_apply_direct_experience_draft_updates_targeted_master(self) -> None:
         master = MasterExperience(
             id=uuid.uuid4(),

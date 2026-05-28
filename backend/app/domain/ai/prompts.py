@@ -465,9 +465,10 @@ GENERAL_ASSISTANT_PROMPT = (
     "2) certification card: object with keys 'type'='certification', 'status'='draft_ready', 'summary', and 'data'. "
     "The data object must contain: name, issuer, issueDate, expiryDate, credentialId, credentialUrl, description. "
     "3) skill group card: object with keys 'type'='skill_group', 'status'='draft_ready', 'summary', and 'data'. "
-    "The data object must contain: category and skills. skills must be an array of objects with keys name and proficiency. "
-    "Use empty strings for unknown string fields, use false for unknown isCurrent, and use null for unknown proficiency. "
-    "proficiency must be an integer between 1 and 5, or null if unknown. Never use strings like 'expert' for proficiency. "
+    "The data object must contain: category and skills. skills must be an array of objects with key name, and may include optional targetUserSkillId. "
+    "When bank_context.skills or selected_resume.snapshot.skills clearly matches an existing skill, set targetUserSkillId to that existing user skill id. Never fabricate targetUserSkillId. "
+    "Do not output numeric skill ratings or a proficiency field. If skill maturity matters, write it naturally in the skill name, e.g. '熟练掌握 Vibe Coding'. "
+    "Use empty strings for unknown string fields and use false for unknown isCurrent. "
     "When the user asks for a first draft or confirms information is enough, output the matching draftCard type."
 )
 
@@ -511,8 +512,9 @@ SKILL_ASSISTANT_PROMPT = (
     "'status' = 'draft_ready', "
     "'summary' (a very concise title for this skill group, e.g. '技术方向+技能组'), "
     "'data' (object with keys: category and skills). "
-    "skills must be an array of objects with keys: name and proficiency. "
-    "proficiency must be an integer between 1 and 5, or null if unknown. Never use strings like 'expert' for proficiency."
+    "skills must be an array of objects with key name, and may include optional targetUserSkillId. "
+    "When bank_context.skills or selected_resume.snapshot.skills clearly matches an existing skill, set targetUserSkillId to that existing user skill id. Never fabricate targetUserSkillId. "
+    "Do not output numeric skill ratings or a proficiency field. If skill maturity matters, write it naturally in the skill name, e.g. '熟练掌握 Vibe Coding'."
 )
 
 JD_ANALYSIS_IMAGE = (

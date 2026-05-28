@@ -22,7 +22,7 @@ import {
 } from '../../services/aiService';
 import { certificationsService, type Certification as CertificationRecord } from '../../services/certificationsService';
 import { experienceService, type ExperienceDetail, type ExperienceListItem } from '../../services/experienceService';
-import { skillsService } from '../../services/skillsService';
+import { skillsService, type UserSkill } from '../../services/skillsService';
 import type {
     CertificationView,
     EducationEditDraft,
@@ -273,6 +273,34 @@ import type { AssistantDraftApplyMeta, AssistantLaunchRequest } from '../AIAssis
 
 const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
 const TEMPLATE_PRESET_SYNC_TIMEOUT_MS = 1500;
+
+type AssistantSkillDraftPayload = {
+    name: string;
+    category?: string;
+    targetUserSkillId?: string;
+};
+
+const normalizeAssistantSkillDraftText = (value?: string | null) => (
+    (value || '').trim().replace(/\s+/g, ' ')
+);
+
+const buildAssistantSkillDraftKey = (name?: string | null, category?: string | null) => (
+    `${normalizeAssistantSkillDraftText(category).toLocaleLowerCase()}::${normalizeAssistantSkillDraftText(name).toLocaleLowerCase()}`
+);
+
+const findExistingSkillForAssistantDraft = (
+    existingSkills: UserSkill[],
+    payload: AssistantSkillDraftPayload,
+) => {
+    if (payload.targetUserSkillId) {
+        const byTargetId = existingSkills.find((item) => item.id === payload.targetUserSkillId);
+        if (byTargetId) {
+            return byTargetId;
+        }
+    }
+    const targetKey = buildAssistantSkillDraftKey(payload.name, payload.category);
+    return existingSkills.find((item) => buildAssistantSkillDraftKey(item.name, item.category) === targetKey) ?? null;
+};
 
 type ModuleReorderContext = {
     moduleType: 'experience' | 'education' | 'certification' | 'skill_group' | 'section';
@@ -4479,29 +4507,43 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             const skillPayloads = Array.from(
                 normalizedDraftCard.data.skills.reduce((map, item) => {
                     const name = item.name.trim();
-                    if (!name || map.has(name)) {
+                    const key = buildAssistantSkillDraftKey(name, category);
+                    if (!name) {
                         return map;
                     }
-                    map.set(name, {
+                    map.set(key, {
                         name,
                         category,
-                        proficiency: typeof item.proficiency === 'number' ? item.proficiency : undefined,
+                        targetUserSkillId: item.targetUserSkillId?.trim() || undefined,
                     });
                     return map;
-                }, new Map<string, { name: string; category?: string; proficiency?: number }>())
+                }, new Map<string, AssistantSkillDraftPayload>())
                     .values()
             );
             if (skillPayloads.length === 0) {
                 throw new Error('缺少技能名称，无法录入技能组');
             }
-            const createdSkills = await Promise.all(
-                skillPayloads.map((payload) => skillsService.create(payload))
+            const existingSkills = await skillsService.list({ force: true });
+            const appliedSkills = await Promise.all(
+                skillPayloads.map((payload) => {
+                    const existing = findExistingSkillForAssistantDraft(existingSkills, payload);
+                    if (existing) {
+                        return skillsService.update(existing.id, {
+                            name: payload.name,
+                            category: payload.category,
+                        });
+                    }
+                    return skillsService.create({
+                        name: payload.name,
+                        category: payload.category,
+                    });
+                })
             );
             const nextSkills = await skillsService.list({ force: true });
             setSkillGroups(buildSkillGroups(nextSkills));
             setSelectedSkillIds((prev) => {
                 const next = new Set(prev);
-                createdSkills.forEach((item) => next.add(item.id));
+                appliedSkills.forEach((item) => next.add(item.id));
                 return next;
             });
             return true;

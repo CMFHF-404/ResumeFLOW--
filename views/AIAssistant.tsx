@@ -124,6 +124,25 @@ const ASSISTANT_SKILL_PRESETS: Array<{
   },
 ];
 
+const MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const ASSISTANT_SEND_ERROR_FALLBACK = 'AI 助理回复失败，请稍后重试';
+
+const formatAssistantAttachmentTooLargeMessage = (fileName: string) => {
+  const normalizedName = fileName.trim();
+  const label = normalizedName ? `「${normalizedName}」` : '';
+  return `附件${label}过大，请上传不超过 5MB 的文件。`;
+};
+
+const resolveAssistantSendErrorMessage = (sendError: unknown) => {
+  if (sendError instanceof Error && sendError.message.trim()) {
+    return sendError.message.trim();
+  }
+  if (typeof sendError === 'string' && sendError.trim()) {
+    return sendError.trim();
+  }
+  return ASSISTANT_SEND_ERROR_FALLBACK;
+};
+
 const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: React.ReactNode }> = {
   general: {
     label: '综合助理',
@@ -433,11 +452,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       error('仅支持上传图片、PDF 或 DOCX 附件');
     }
 
+    const oversizedFiles = incomingFiles.filter(
+      (file) => isAcceptedAssistantAttachmentFile(file) && file.size > MAX_ASSISTANT_ATTACHMENT_BYTES
+    );
+    if (oversizedFiles.length > 0) {
+      error(formatAssistantAttachmentTooLargeMessage(oversizedFiles[0].name), 6000);
+    }
+
     const normalizedFiles = incomingFiles
-      .filter((file) => isAcceptedAssistantAttachmentFile(file))
+      .filter((file) => isAcceptedAssistantAttachmentFile(file) && file.size <= MAX_ASSISTANT_ATTACHMENT_BYTES)
       .map((file) => normalizeIncomingAttachmentFile(file, source === 'paste' ? '粘贴图片' : '附件'));
 
     if (normalizedFiles.length === 0) {
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = '';
+      }
       return;
     }
 
@@ -1074,7 +1103,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         persistDraftSelectedResume(sessionId, selectedResumeItem);
         setSelectedResume((current) => current ?? selectedResumeItem);
       }
-      error('AI 助理回复失败，请稍后重试');
+      error(resolveAssistantSendErrorMessage(sendError), 6000);
     } finally {
       setSendingCount((count) => Math.max(0, count - 1));
     }

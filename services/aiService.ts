@@ -224,7 +224,7 @@ export interface AssistantSkillDraftGroup {
     category: string;
     skills: Array<{
         name: string;
-        proficiency?: number | null;
+        targetUserSkillId?: string | null;
     }>;
 }
 

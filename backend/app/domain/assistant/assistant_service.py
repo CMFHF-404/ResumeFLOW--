@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import timezone
 import logging
-import math
+from datetime import timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -29,7 +28,6 @@ from ..ai.ai_service import (
 )
 from ..certifications.schemas import CertificationCreate
 from ..experience.schemas import ExperienceCreate, ExperienceVersionPayload
-from ..skills.schemas import UserSkillCreate
 from .schemas import AssistantSessionCreate, AssistantSessionUpdate
 
 
@@ -285,33 +283,21 @@ def _resolve_bound_experience_master_id(
     return target_master_id
 
 
-def _coerce_proficiency_to_int(raw: Any) -> int | None:
-    """将 AI 返回的 proficiency 值规范化为整数或 None。
+def _normalize_skill_merge_text(raw: Any) -> str:
+    if not isinstance(raw, str):
+        return ""
+    return " ".join(raw.strip().split())
 
-    AI 偶尔会返回字符串（如 'expert'）而非整数，此处做防御性转换：
-    - 已经是 int：直接返回
-    - 是值为整数的 float：转为 int
-    - 是值为整数的数字字符串（如 '4'、'4.0'）：转为 int
-    - 其他类型（包括非数字字符串）：返回 None，避免 Pydantic 抛出 ValidationError
-    """
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, float):
-        if math.isfinite(raw) and raw.is_integer():
-            return int(raw)
-        return None
-    if isinstance(raw, str):
-        normalized = raw.strip()
-        if not normalized:
-            return None
-        try:
-            parsed = float(normalized)
-        except ValueError:
-            return None
-        if math.isfinite(parsed) and parsed.is_integer():
-            return int(parsed)
-        return None
-    return None
+
+def _build_skill_merge_key(*, name: str | None, category: str | None) -> str:
+    normalized_name = _normalize_skill_merge_text(name).casefold()
+    normalized_category = _normalize_skill_merge_text(category).casefold()
+    return f"{normalized_category}\0{normalized_name}"
+
+
+def _read_target_user_skill_id(raw_skill: Dict[str, Any]) -> str | None:
+    value = raw_skill.get("targetUserSkillId")
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 async def _get_or_create_skill(
@@ -321,8 +307,7 @@ async def _get_or_create_skill(
     category: str | None = None,
 ) -> Skill:
     query = select(Skill).where(Skill.name == name)
-    if category is not None:
-        query = query.where(Skill.category == category)
+    query = query.where(Skill.category == category)
     result = await session.execute(query)
     skill = result.scalars().one_or_none()
     if skill:
@@ -332,6 +317,85 @@ async def _get_or_create_skill(
     session.add(skill)
     await session.flush()
     return skill
+
+
+async def _list_user_skill_rows(session: AsyncSession, *, user_id: str) -> List[tuple[UserSkill, Skill]]:
+    result = await session.execute(
+        select(UserSkill, Skill)
+        .join(Skill, UserSkill.skill_id == Skill.id)
+        .where(UserSkill.user_id == user_id)
+    )
+    return list(result.all())
+
+
+def _normalize_skill_group_drafts(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    category = _normalize_skill_merge_text(data.get("category")) or None
+    raw_skills = data.get("skills")
+    if not isinstance(raw_skills, list) or not raw_skills:
+        raise InvalidMessageError("Draft skill group payload is invalid")
+
+    normalized_by_key: Dict[str, Dict[str, Any]] = {}
+    for raw_skill in raw_skills:
+        if not isinstance(raw_skill, dict):
+            raise InvalidMessageError("Draft skill group payload is invalid")
+        name = _normalize_skill_merge_text(raw_skill.get("name"))
+        if not name:
+            continue
+        key = _build_skill_merge_key(name=name, category=category)
+        normalized_by_key[key] = {
+            "name": name,
+            "category": category,
+            "target_user_skill_id": _read_target_user_skill_id(raw_skill),
+        }
+
+    if not normalized_by_key:
+        raise InvalidMessageError("Draft skill group payload is invalid")
+    return list(normalized_by_key.values())
+
+
+async def _apply_skill_group_draft_card(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    data: Dict[str, Any],
+) -> None:
+    skill_drafts = _normalize_skill_group_drafts(data)
+    existing_rows = await _list_user_skill_rows(session, user_id=user_id)
+    existing_by_id = {str(user_skill.id): (user_skill, skill) for user_skill, skill in existing_rows}
+    existing_by_key: Dict[str, tuple[UserSkill, Skill]] = {}
+    for user_skill, skill in existing_rows:
+        key = _build_skill_merge_key(name=skill.name, category=skill.category)
+        existing_by_key.setdefault(key, (user_skill, skill))
+
+    for item in skill_drafts:
+        name = item["name"]
+        category = item["category"]
+        target_user_skill_id = item["target_user_skill_id"]
+        key = _build_skill_merge_key(name=name, category=category)
+        existing_row = existing_by_id.get(target_user_skill_id) if target_user_skill_id else None
+        if existing_row is None:
+            existing_row = existing_by_key.get(key)
+
+        skill = await _get_or_create_skill(
+            session,
+            name=name,
+            category=category,
+        )
+        if existing_row is not None:
+            user_skill, _existing_skill = existing_row
+            user_skill.skill_id = skill.id
+            session.add(user_skill)
+            existing_by_id[str(user_skill.id)] = (user_skill, skill)
+            existing_by_key[key] = (user_skill, skill)
+            continue
+
+        user_skill = UserSkill(
+            user_id=user_id,
+            skill_id=skill.id,
+        )
+        session.add(user_skill)
+        existing_by_id[str(user_skill.id)] = (user_skill, skill)
+        existing_by_key[key] = (user_skill, skill)
 
 
 async def _apply_direct_draft_card(
@@ -410,31 +474,11 @@ async def _apply_direct_draft_card(
         return
 
     if card_type == "skill_group":
-        raw_skills = data.get("skills")
-        if not isinstance(raw_skills, list) or not raw_skills:
-            raise InvalidMessageError("Draft skill group payload is invalid")
-        for raw_skill in raw_skills:
-            if not isinstance(raw_skill, dict):
-                raise InvalidMessageError("Draft skill group payload is invalid")
-            payload = UserSkillCreate.model_validate(
-                {
-                    "name": raw_skill.get("name"),
-                    "category": data.get("category") or None,
-                    "proficiency": _coerce_proficiency_to_int(raw_skill.get("proficiency")),
-                }
-            )
-            skill = await _get_or_create_skill(
-                session,
-                name=payload.name,
-                category=payload.category,
-            )
-            session.add(
-                UserSkill(
-                    user_id=user_id,
-                    skill_id=skill.id,
-                    proficiency=payload.proficiency,
-                )
-            )
+        await _apply_skill_group_draft_card(
+            session,
+            user_id=user_id,
+            data=data,
+        )
         return
 
     raise InvalidMessageError(f"Unsupported draft card type: {card_type}")

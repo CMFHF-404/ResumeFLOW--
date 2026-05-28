@@ -51,6 +51,9 @@ export const AssistantDraftCardView: React.FC<{
   const experienceApplyHint = card.type === 'experience'
     ? (hasTargetMaster ? '将更新现有经历' : '将新建经历')
     : null;
+  const skillGroupApplyHint = card.type === 'skill_group'
+    ? '将合并更新技能组'
+    : null;
   const experienceCategoryLabel = card.type === 'experience'
     ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
     : null;
@@ -161,7 +164,6 @@ export const AssistantDraftCardView: React.FC<{
           {card.data.skills.map((skill) => (
             <div key={`${card.data.category}-${skill.name}`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
               {skill.name}
-              {typeof skill.proficiency === 'number' ? ` · ${skill.proficiency}` : ''}
             </div>
           ))}
         </div>
@@ -190,6 +192,11 @@ export const AssistantDraftCardView: React.FC<{
                   : 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-950/40 dark:text-sky-300'
               }`}>
                 {experienceApplyHint}
+              </div>
+            ) : null}
+            {skillGroupApplyHint ? (
+              <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300">
+                {skillGroupApplyHint}
               </div>
             ) : null}
           </div>

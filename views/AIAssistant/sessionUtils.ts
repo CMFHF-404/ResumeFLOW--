@@ -49,6 +49,13 @@ export const isSameDraftCard = (preview: Record<string, unknown> | undefined, ca
 };
 
 const resolveDraftGroupId = (item: AssistantDraftMessageItem) => {
+  if (item.card.type === 'skill_group') {
+    const category = item.card.data.category.trim();
+    if (category) {
+      return `skill_group:${category.toLocaleLowerCase()}`;
+    }
+    return `message:${item.message.id}`;
+  }
   if (item.card.type !== 'experience') {
     return `message:${item.message.id}`;
   }
