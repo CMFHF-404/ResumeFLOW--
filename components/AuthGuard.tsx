@@ -8,6 +8,8 @@ interface AuthGuardProps {
     children: ReactNode;
 }
 
+const FORCE_REAUTH_REASONS = new Set(['unauthorized', 'unauthorized-write']);
+
 export default function AuthGuard({ children }: AuthGuardProps) {
     const { isAuthenticated, isLoading, signIn, getAccessToken } = useLogto();
     const [isTokenReady, setIsTokenReady] = useState(false);
@@ -29,7 +31,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
     useEffect(() => {
         const unsubscribe = subscribeLoginRequired(({ reason, redirectUri }) => {
-            const shouldForceReauth = reason === 'unauthorized-write';
+            const shouldForceReauth = reason ? FORCE_REAUTH_REASONS.has(reason) : false;
 
             if (isLoading || isSigningInRef.current) {
                 return;

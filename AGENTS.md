@@ -18,12 +18,16 @@
 - Backend:
   - Install with `pip install -r requirements.txt` from `backend/`
   - Copy settings from `backend/.env.example` to `backend/.env`
+  - Initialize a local PostgreSQL database with `python init_local_db.py` when you need the default `localhost:5432/resumeflow` setup.
+  - Grant the first admin role with `python set_first_admin.py <logto-user-id>`, or set `FIRST_ADMIN_USER_ID` before running `python set_first_admin.py`.
   - Start from `backend/` with `sh prestart.sh` or `uvicorn app.main:app --host 0.0.0.0 --port 8000`
   - `prestart.sh` runs `python app/init_db.py` before starting Uvicorn
 - `magic-resume-inspect/`:
   - Install with `pnpm install`
   - Start with `pnpm dev`
   - Build with `pnpm build`
+  - Serve a production build with `pnpm start`
+  - Lint with `pnpm lint`
   - Cloudflare Pages helpers are already defined: `pnpm pages:build`, `pnpm preview`, `pnpm deploy`
 
 ## Verification
@@ -35,9 +39,11 @@
   - `python verify_ai.py`
   - `python verify_timeout.py`
 - Backend tests are `unittest`-style files under `backend/`. Prefer `python -m unittest <module>` from `backend/` for targeted runs, for example `python -m unittest test_assistant_features` or `python -m unittest test_parser_service`.
+- Agent and AI backend checks commonly use `python -m unittest test_agent_api` and `python -m unittest test_ai_service` from `backend/`.
 
 ## Guardrails
 
 - Do not hand-edit generated artifacts or caches: `dist/`, `backend/__pycache__/`, `backend/.assistant_attachment_cache/`, `vite-dev.log`, `git-status.txt`, `git-diff.txt`.
 - Do not mix package managers across workspaces: the repo root uses npm and `package-lock.json`; `magic-resume-inspect/` uses pnpm and `pnpm-lock.yaml`.
+- Treat `backend/migrate_postgres_best_effort.py` as a manual high-impact database migration tool. It requires explicit `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL`; do not run it as part of default setup.
 - TODO: There is no repo-owned command yet that starts the root frontend and `backend/` together. If a unified local workflow is added later, document it here instead of guessing.
