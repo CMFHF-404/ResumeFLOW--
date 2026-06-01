@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
+import hashlib
 import io
 import inspect
 import json
 import logging
 import re
 import unicodedata
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -245,10 +248,14 @@ LOG_WARN_THRESHOLDS_MS = {
     "parse_resume_total": 25_000,
 }
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+PARSE_CACHE_MAX_ENTRIES = 64
+PARSE_CHUNK_CONCURRENCY = 3
+PARSE_CACHE_VERSION = "resume-parser-v3"
 ParseProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 GEMINI_POOL_TIMEOUT_SECONDS = 10.0
+_PARSE_RESULT_CACHE: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 
 
 @dataclass(frozen=True)
@@ -256,6 +263,72 @@ class ExistingExperience:
     category: ExperienceCategory
     title: str
     org: str
+
+
+def clear_parse_cache() -> None:
+    _PARSE_RESULT_CACHE.clear()
+
+
+def _clone_parse_result(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return copy.deepcopy(payload)
+
+
+def _prompt_signature() -> str:
+    content = "\n".join(
+        [
+            PARSE_CACHE_VERSION,
+            RESUME_PARSING_PROMPT,
+            RESUME_CHUNK_PARSING_PROMPT,
+            RESUME_MERGE_PROMPT,
+        ]
+    )
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _build_parse_cache_key(
+    file_data: bytes,
+    filename: str,
+    file_mime_type: str,
+    parser_mode: str,
+) -> str:
+    file_hash = hashlib.sha256(file_data).hexdigest()
+    model = settings.gemini_model if parser_mode == "thinking" else settings.ai_model
+    payload = {
+        "version": PARSE_CACHE_VERSION,
+        "file_hash": file_hash,
+        "filename": filename or "",
+        "mime_type": file_mime_type or "",
+        "mode": parser_mode,
+        "model": model,
+        "prompt": _prompt_signature(),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _get_cached_parse_result(
+    cache_key: str,
+    request_id: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    cached = _PARSE_RESULT_CACHE.get(cache_key)
+    if cached is None:
+        return None
+    _PARSE_RESULT_CACHE.move_to_end(cache_key)
+    _log_timing("parse_cache", 0, request_id, {"status": "hit"})
+    return _clone_parse_result(cached)
+
+
+def _store_cached_parse_result(
+    cache_key: str,
+    payload: Dict[str, Any],
+    request_id: Optional[str],
+) -> None:
+    _PARSE_RESULT_CACHE[cache_key] = _clone_parse_result(payload)
+    _PARSE_RESULT_CACHE.move_to_end(cache_key)
+    while len(_PARSE_RESULT_CACHE) > PARSE_CACHE_MAX_ENTRIES:
+        _PARSE_RESULT_CACHE.popitem(last=False)
+    _log_timing("parse_cache", 0, request_id, {"status": "stored"})
 
 
 def _resolve_file_kind(file: UploadFile) -> str:
@@ -706,24 +779,38 @@ async def _parse_resume_chunked(
     text: str, request_id: Optional[str]
 ) -> Dict[str, Any]:
     chunks = _split_resume_text(text)
-    chunk_results: List[Dict[str, Any]] = []
-    for index, chunk in enumerate(chunks):
+    semaphore = asyncio.Semaphore(PARSE_CHUNK_CONCURRENCY)
+
+    async def parse_chunk(index: int, chunk: str) -> Optional[Tuple[int, Dict[str, Any]]]:
         messages = _build_resume_messages(RESUME_CHUNK_PARSING_PROMPT, chunk)
         try:
-            result = await _call_resume_llm(
-                messages,
-                request_id,
-                "ai_chunk_call",
-                {
-                    "chunk_index": index + 1,
-                    "chunk_total": len(chunks),
-                    "input_length": len(chunk),
-                },
-            )
+            async with semaphore:
+                result = await _call_resume_llm(
+                    messages,
+                    request_id,
+                    "ai_chunk_call",
+                    {
+                        "chunk_index": index + 1,
+                        "chunk_total": len(chunks),
+                        "input_length": len(chunk),
+                    },
+                )
         except Exception:
-            continue
-        if isinstance(result, dict):
-            chunk_results.append(result)
+            return None
+        if not isinstance(result, dict):
+            return None
+        return index, result
+
+    chunk_outputs = await asyncio.gather(
+        *(parse_chunk(index, chunk) for index, chunk in enumerate(chunks))
+    )
+    chunk_results = [
+        result
+        for _index, result in sorted(
+            [item for item in chunk_outputs if item is not None],
+            key=lambda item: item[0],
+        )
+    ]
     if not chunk_results:
         return await _parse_resume_single(text, request_id)
     draft = _merge_chunk_results(chunk_results)
@@ -845,6 +932,58 @@ def _prepare_resume_text(text: str, request_id: Optional[str] = None) -> Optiona
     return cleaned
 
 
+async def _parse_resume_cached(
+    *,
+    file_data: bytes,
+    filename: str,
+    file_mime_type: str,
+    request_id: Optional[str],
+    parser_mode: str,
+    progress_callback: ParseProgressCallback,
+    parse_cleaned: Callable[[str], Awaitable[Dict[str, Any]]],
+    should_store_cache: Optional[Callable[[], bool]] = None,
+) -> Dict[str, Any]:
+    if not file_data:
+        raise ValueError("文件为空，无法解析。")
+    _ensure_attachment_size_limit(file_data)
+
+    cache_key = _build_parse_cache_key(
+        file_data,
+        filename,
+        file_mime_type,
+        parser_mode,
+    )
+    cached = _get_cached_parse_result(cache_key, request_id)
+    if cached is not None:
+        await _emit_progress(
+            progress_callback,
+            {"type": "progress", "node": "merge_result", "title": "复用解析结果"},
+        )
+        return cached
+
+    await _emit_progress(
+        progress_callback,
+        {"type": "progress", "node": "extract_text", "title": "提取简历正文"},
+    )
+    cleaned = _prepare_resume_text(
+        extract_resume_text(
+            file_data=file_data,
+            filename=filename,
+            file_mime_type=file_mime_type,
+            request_id=request_id,
+        ),
+        request_id,
+    )
+
+    if not cleaned:
+        raise ValueError(UNREADABLE_RESUME_TEXT_ERROR)
+
+    result = await parse_cleaned(cleaned)
+    if should_store_cache is None or should_store_cache():
+        _store_cached_parse_result(cache_key, result, request_id)
+    return _clone_parse_result(result)
+
+
 async def _parse_resume_from_text(
     *,
     cleaned_text: str,
@@ -937,31 +1076,21 @@ async def parse_resume(
     request_id: Optional[str] = None,
     progress_callback: ParseProgressCallback = None,
 ) -> Dict[str, Any]:
-    if not file_data:
-        raise ValueError("文件为空，无法解析。")
-    _ensure_attachment_size_limit(file_data)
-
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "extract_text", "title": "提取简历正文"},
-    )
-    cleaned = _prepare_resume_text(
-        extract_resume_text(
-            file_data=file_data,
-            filename=filename,
-            file_mime_type=file_mime_type,
+    async def parse_cleaned(cleaned_text: str) -> Dict[str, Any]:
+        return await _parse_resume_from_text(
+            cleaned_text=cleaned_text,
             request_id=request_id,
-        ),
-        request_id,
-    )
+            progress_callback=progress_callback,
+        )
 
-    if not cleaned:
-        raise ValueError(UNREADABLE_RESUME_TEXT_ERROR)
-
-    return await _parse_resume_from_text(
-        cleaned_text=cleaned,
+    return await _parse_resume_cached(
+        file_data=file_data,
+        filename=filename,
+        file_mime_type=file_mime_type,
         request_id=request_id,
+        parser_mode="standard",
         progress_callback=progress_callback,
+        parse_cleaned=parse_cleaned,
     )
 
 
@@ -973,66 +1102,61 @@ async def parse_resume_with_thoughts(
     progress_callback: ParseProgressCallback = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    if not file_data:
-        raise ValueError("文件为空，无法解析。")
-    _ensure_attachment_size_limit(file_data)
+    did_use_thinking_parser = False
 
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "extract_text", "title": "提取简历正文"},
-    )
-    cleaned = _prepare_resume_text(
-        extract_resume_text(
-            file_data=file_data,
-            filename=filename,
-            file_mime_type=file_mime_type,
-            request_id=request_id,
-        ),
-        request_id,
-    )
+    async def parse_cleaned(cleaned_text: str) -> Dict[str, Any]:
+        nonlocal did_use_thinking_parser
+        if not settings.gemini_api_key:
+            logger.warning(
+                "[ResumeParse] GEMINI_API_KEY missing, fallback to standard parser request_id=%s",
+                request_id,
+            )
+            return await _parse_resume_from_text(
+                cleaned_text=cleaned_text,
+                request_id=request_id,
+                progress_callback=progress_callback,
+            )
 
-    if not cleaned:
-        raise ValueError(UNREADABLE_RESUME_TEXT_ERROR)
+        await _emit_progress(
+            progress_callback,
+            {"type": "progress", "node": "request_ai", "title": "调用 Gemini Thinking 解析"},
+        )
+        try:
+            result = await _stream_resume_thinking_parse(
+                cleaned_text=cleaned_text,
+                request_id=request_id,
+                thought_callback=thought_callback,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[ResumeParse] Gemini fallback request_id=%s error_type=%s error=%s",
+                request_id,
+                type(exc).__name__,
+                str(exc),
+            )
+            await _emit_thought(thought_callback, {"type": "thought_reset"})
+            return await _parse_resume_from_text(
+                cleaned_text=cleaned_text,
+                request_id=request_id,
+                progress_callback=progress_callback,
+            )
+        await _emit_progress(
+            progress_callback,
+            {"type": "progress", "node": "merge_result", "title": "整理结构化结果"},
+        )
+        did_use_thinking_parser = True
+        return result
 
-    if not settings.gemini_api_key:
-        logger.warning(
-            "[ResumeParse] GEMINI_API_KEY missing, fallback to standard parser request_id=%s",
-            request_id,
-        )
-        return await _parse_resume_from_text(
-            cleaned_text=cleaned,
-            request_id=request_id,
-            progress_callback=progress_callback,
-        )
-
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "request_ai", "title": "调用 Gemini Thinking 解析"},
+    return await _parse_resume_cached(
+        file_data=file_data,
+        filename=filename,
+        file_mime_type=file_mime_type,
+        request_id=request_id,
+        parser_mode="thinking",
+        progress_callback=progress_callback,
+        parse_cleaned=parse_cleaned,
+        should_store_cache=lambda: did_use_thinking_parser,
     )
-    try:
-        result = await _stream_resume_thinking_parse(
-            cleaned_text=cleaned,
-            request_id=request_id,
-            thought_callback=thought_callback,
-        )
-    except Exception as exc:
-        logger.warning(
-            "[ResumeParse] Gemini fallback request_id=%s error_type=%s error=%s",
-            request_id,
-            type(exc).__name__,
-            str(exc),
-        )
-        await _emit_thought(thought_callback, {"type": "thought_reset"})
-        return await _parse_resume_from_text(
-            cleaned_text=cleaned,
-            request_id=request_id,
-            progress_callback=progress_callback,
-        )
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "merge_result", "title": "整理结构化结果"},
-    )
-    return result
 
 
 async def fetch_existing_experiences(

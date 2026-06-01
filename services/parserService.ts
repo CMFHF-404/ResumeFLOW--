@@ -64,6 +64,10 @@ export interface ResumeParseResponse {
   skills?: ParsedSkillGroup[];
 }
 
+export interface ResumeParseOptions {
+  enableThinking?: boolean;
+}
+
 export type ResumeParseProgressNode =
   | 'receive_file'
   | 'extract_text'
@@ -141,7 +145,8 @@ const resolveApiUrl = (path: string) => {
 const streamResumeParseRequest = async (
   file: File,
   onEvent?: (event: ResumeParseStreamEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: ResumeParseOptions = {}
 ): Promise<ResumeParseResponse> => {
   const authHeader = await getAuthorizationHeader();
   if (!authHeader) {
@@ -151,6 +156,9 @@ const streamResumeParseRequest = async (
 
   const formData = new FormData();
   formData.append('file', file);
+  if (options.enableThinking) {
+    formData.append('enable_thinking', 'true');
+  }
 
   const response = await fetch(resolveApiUrl('/parser/parse/stream'), {
     method: 'POST',
@@ -226,10 +234,11 @@ export const parserService = {
   async parseResume(
     file: File,
     onEvent?: (event: ResumeParseStreamEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options: ResumeParseOptions = {}
   ) {
     if (onEvent) {
-      return streamResumeParseRequest(file, onEvent, signal);
+      return streamResumeParseRequest(file, onEvent, signal, options);
     }
     const formData = new FormData();
     formData.append('file', file);

@@ -4,7 +4,7 @@ from time import perf_counter
 from typing import Any, Dict
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.status import HTTP_400_BAD_REQUEST
@@ -122,16 +122,18 @@ async def parse_resume_endpoint(
 @router.post("/parse/stream")
 async def parse_resume_stream_endpoint(
     file: UploadFile = File(...),
+    enable_thinking: bool = Form(False),
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
     request_id = str(uuid.uuid4())
     total_start = perf_counter()
     logger.info(
-        "[ResumeParse] stream start request_id=%s filename=%s content_type=%s",
+        "[ResumeParse] stream start request_id=%s filename=%s content_type=%s enable_thinking=%s",
         request_id,
         file.filename or "",
         file.content_type or "",
+        enable_thinking,
     )
 
     async def event_stream():
@@ -147,14 +149,20 @@ async def parse_resume_stream_endpoint(
                 )
                 file_data = await extract_text(file, request_id)
                 file_kind = _resolve_file_kind(file)
-                payload = await parse_resume_with_thoughts(
-                    file_data=file_data,
-                    filename=file.filename or "resume",
-                    file_mime_type=_resolve_file_mime(file, file_kind),
-                    request_id=request_id,
-                    progress_callback=emit,
-                    thought_callback=emit,
-                )
+                common_parse_kwargs = {
+                    "file_data": file_data,
+                    "filename": file.filename or "resume",
+                    "file_mime_type": _resolve_file_mime(file, file_kind),
+                    "request_id": request_id,
+                    "progress_callback": emit,
+                }
+                if enable_thinking is True:
+                    payload = await parse_resume_with_thoughts(
+                        **common_parse_kwargs,
+                        thought_callback=emit,
+                    )
+                else:
+                    payload = await parse_resume(**common_parse_kwargs)
 
                 build_start = perf_counter()
                 items = build_resume_items(payload)
