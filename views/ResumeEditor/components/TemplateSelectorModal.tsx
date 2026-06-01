@@ -24,7 +24,11 @@ import {
   normalizeResumeSkillTagSeparator,
 } from '../../../utils/resumeCustomization';
 import type { ResumeTemplatePresetMap } from '../../resumeTemplateStorage';
-import { DEFAULT_SECTION_ORDER, RESUME_SECTION_IDS } from '../constants';
+import { DEFAULT_SECTION_ORDER } from '../constants';
+import {
+  normalizeTemplateSectionOrder,
+  reorderTemplateSectionOrder,
+} from './TemplateSelectorModal/sectionOrderUtils';
 
 type TemplateSelectorModalProps = {
   isOpen: boolean;
@@ -66,47 +70,6 @@ const TEMPLATE_SECTION_META: Record<string, { label: string; hint: string }> = {
   project: { label: '项目经历', hint: '独立项目或专项案例' },
   certifications: { label: '证书资质', hint: '证书、资格与补充背书' },
   skills: { label: '技能清单', hint: '技能分组与工具能力' },
-};
-
-const normalizeSectionOrder = (sectionOrder?: string[]) => {
-  const filtered = (sectionOrder || []).filter((sectionId) => RESUME_SECTION_IDS.has(sectionId));
-  const unique: string[] = [];
-  filtered.forEach((sectionId) => {
-    if (!unique.includes(sectionId)) {
-      unique.push(sectionId);
-    }
-  });
-  if (!unique.includes('summary')) {
-    unique.unshift('summary');
-  }
-  DEFAULT_SECTION_ORDER.forEach((sectionId) => {
-    if (!unique.includes(sectionId)) {
-      unique.push(sectionId);
-    }
-  });
-  return unique.length ? unique : [...DEFAULT_SECTION_ORDER];
-};
-
-const reorderSectionOrder = (
-  sectionOrder: string[],
-  draggedSectionId: string,
-  targetSectionId: string,
-  placement: 'before' | 'after'
-) => {
-  if (draggedSectionId === targetSectionId) {
-    return sectionOrder;
-  }
-  const nextOrder = [...sectionOrder];
-  const draggedIndex = nextOrder.indexOf(draggedSectionId);
-  const targetIndex = nextOrder.indexOf(targetSectionId);
-  if (draggedIndex < 0 || targetIndex < 0) {
-    return sectionOrder;
-  }
-  nextOrder.splice(draggedIndex, 1);
-  const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
-  const insertIndex = placement === 'before' ? adjustedTargetIndex : adjustedTargetIndex + 1;
-  nextOrder.splice(insertIndex, 0, draggedSectionId);
-  return nextOrder;
 };
 
 const MOBILE_LONG_PRESS_DURATION_MS = 260;
@@ -377,8 +340,8 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     }
     const preset = templatePresetMap[templateId];
     const draftSectionOrder = templateId === selectedTemplateId
-      ? normalizeSectionOrder(sectionOrder)
-      : normalizeSectionOrder(preset?.sectionOrder);
+      ? normalizeTemplateSectionOrder(sectionOrder)
+      : normalizeTemplateSectionOrder(preset?.sectionOrder);
     const draftThemeColorPresetId = templateId === selectedTemplateId
       ? themeColorPresetId
       : (preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId));
@@ -435,7 +398,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
       }
       const targetRect = targetElement.getBoundingClientRect();
       const placement = clientY < targetRect.top + targetRect.height / 2 ? 'before' : 'after';
-      return reorderSectionOrder(prev, draggingSectionId, targetSectionId, placement);
+      return reorderTemplateSectionOrder(prev, draggingSectionId, targetSectionId, placement);
     });
   }, [draggingSectionId]);
 

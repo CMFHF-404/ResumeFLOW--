@@ -1,14 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AuthGuard from './components/AuthGuard';
 import FeedbackModal from './components/FeedbackModal';
 import AppreciationModal from './components/AppreciationModal';
 import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
-import Dashboard from './views/Dashboard';
-import ExperienceBank from './views/ExperienceBank';
-import ResumeEditor from './views/ResumeEditor';
-import AIAssistant from './views/AIAssistant';
 import type { AssistantLaunchRequest } from './views/AIAssistant/types';
 import Callback from './views/Callback';
 import { ViewState, Resume } from './types';
@@ -28,6 +24,11 @@ import {
 } from './hooks/useAuthUserKey';
 
 const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
+
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const ExperienceBank = lazy(() => import('./views/ExperienceBank'));
+const ResumeEditor = lazy(() => import('./views/ResumeEditor'));
+const AIAssistant = lazy(() => import('./views/AIAssistant'));
 
 const resolveStoredView = (value: string | null): ViewState | null => {
   if (!value) {
@@ -324,7 +325,9 @@ const App: React.FC = () => {
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
-            {renderView()}
+            <Suspense fallback={null}>
+              {renderView()}
+            </Suspense>
           </ViewErrorBoundary>
         </div>
         <FeedbackModal
