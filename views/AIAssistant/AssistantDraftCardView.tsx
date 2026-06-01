@@ -31,13 +31,14 @@ export const AssistantDraftCardView: React.FC<{
   disabled?: boolean;
   defaultExpanded?: boolean;
   expanded?: boolean;
+  isApplied?: boolean;
   isApplying?: boolean;
   isManualSaveMode?: boolean;
   showManualSaveHint?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onJumpToEditor?: () => void;
   onApply: () => void;
-}> = ({ card, disabled, defaultExpanded = true, expanded, isApplying, isManualSaveMode, showManualSaveHint, onExpandedChange, onJumpToEditor, onApply }) => {
+}> = ({ card, disabled, defaultExpanded = true, expanded, isApplied, isApplying, isManualSaveMode, showManualSaveHint, onExpandedChange, onJumpToEditor, onApply }) => {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const isExpanded = expanded ?? uncontrolledExpanded;
   const setIsExpanded = (nextExpanded: boolean) => {
@@ -54,6 +55,13 @@ export const AssistantDraftCardView: React.FC<{
   const skillGroupApplyHint = card.type === 'skill_group'
     ? '将合并更新技能组'
     : null;
+  const applyButtonLabel = isApplying
+    ? '录入中...'
+    : isApplied
+      ? '已录入'
+      : showManualSaveHint
+        ? '已同步'
+        : '确认录入';
   const experienceCategoryLabel = card.type === 'experience'
     ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
     : null;
@@ -254,7 +262,7 @@ export const AssistantDraftCardView: React.FC<{
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-emerald-950/60"
           >
             <Check className="h-3.5 w-3.5" />
-            {isApplying ? '录入中...' : '确认录入'}
+            {applyButtonLabel}
           </button>
           </div>
         </div>

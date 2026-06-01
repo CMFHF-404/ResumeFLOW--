@@ -1579,6 +1579,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             }}
             onApply={() => void handleApplyDraft(item.message.id, item.card)}
             disabled={appliedMessageIds.has(item.message.id) || manualSaveMessageIds.has(item.message.id)}
+            isApplied={appliedMessageIds.has(item.message.id)}
             isApplying={applyingMessageIds.has(item.message.id)}
             isManualSaveMode={item.isManualSaveMode}
             showManualSaveHint={manualSaveMessageIds.has(item.message.id)}
