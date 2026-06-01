@@ -81,23 +81,38 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
     def test_resume_editor_auto_analyzes_jd_after_confirming_polish(self) -> None:
         source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        confirm_actions_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useFloatingExperiencePolishConfirmActions.ts"
+        ).read_text(encoding="utf-8")
+        jd_analyze_hook_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useJdAnalyzeWithToast.ts"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("pendingPolishAutoAnalyzeSeq", source)
-        self.assertIn("lastPolishAutoAnalyzeSeqRef", source)
-        self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", source)
-        self.assertIn("if (pendingPolishAutoAnalyzeSeq <= 0)", source)
-        self.assertIn("lastPolishAutoAnalyzeSeqRef.current === pendingPolishAutoAnalyzeSeq", source)
-        self.assertIn("lastPolishAutoAnalyzeSeqRef.current = pendingPolishAutoAnalyzeSeq", source)
-        self.assertIn("void runJdAnalyzeWithToast()", source)
+        self.assertIn("lastPolishAutoAnalyzeSeqRef", jd_analyze_hook_source)
+        self.assertIn("setPendingPolishAutoAnalyzeSeq", source)
+        self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", confirm_actions_source)
+        self.assertIn("if (pendingPolishAutoAnalyzeSeq <= 0)", jd_analyze_hook_source)
+        self.assertIn("lastPolishAutoAnalyzeSeqRef.current === pendingPolishAutoAnalyzeSeq", jd_analyze_hook_source)
+        self.assertIn("lastPolishAutoAnalyzeSeqRef.current = pendingPolishAutoAnalyzeSeq", jd_analyze_hook_source)
+        self.assertIn("void runJdAnalyzeWithToast()", jd_analyze_hook_source)
 
-        single_start = source.index("const handleConfirmFloatingExperiencePolish")
-        single_end = source.index("const handleOpenBatchPolishToolbar", single_start)
-        single_block = source[single_start:single_end]
+        single_start = confirm_actions_source.index("const handleConfirmFloatingExperiencePolish")
+        single_end = confirm_actions_source.index("const handleConfirmBatchExperiencePolish", single_start)
+        single_block = confirm_actions_source[single_start:single_end]
         self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", single_block)
 
-        batch_start = source.index("const handleConfirmBatchExperiencePolish")
-        batch_end = source.index("const handleOpenExperienceAssistant", batch_start)
-        batch_block = source[batch_start:batch_end]
+        batch_start = confirm_actions_source.index("const handleConfirmBatchExperiencePolish")
+        batch_end = confirm_actions_source.index("return {", batch_start)
+        batch_block = confirm_actions_source[batch_start:batch_end]
         self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", batch_block)
 
     def test_personal_summary_panel_collapses_when_empty(self) -> None:
@@ -132,6 +147,13 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         smart_completion_source = (
             REPO_ROOT / "views" / "ResumeEditor" / "smartCompletionUtils.ts"
         ).read_text(encoding="utf-8")
+        floating_preview_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "components"
+            / "FloatingPolishPreviewContent.tsx"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];", toolbar_source)
         self.assertIn("智能补全", toolbar_source)
@@ -145,10 +167,11 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertNotIn("'expand'", smart_block)
 
         batch_start = editor_source.index("const BATCH_RESUME_POLISH_MODES")
-        batch_end = editor_source.index("const FLOATING_POLISH_PREVIEW_FIELDS", batch_start)
+        batch_end = editor_source.index("const ResumeEditor", batch_start)
         batch_block = editor_source[batch_start:batch_end]
         self.assertNotIn("'shorten'", batch_block)
         self.assertNotIn("'expand'", batch_block)
+        self.assertIn("const FLOATING_POLISH_PREVIEW_FIELDS", floating_preview_source)
 
         self.assertIn("initialSkillId: 'experience_completion'", editor_source)
         self.assertIn("buildSmartCompleteAssistantPrompt", editor_source)
@@ -247,6 +270,13 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         session_source = (REPO_ROOT / "views" / "AIAssistant" / "sessionUtils.ts").read_text(encoding="utf-8")
         draft_card_source = (REPO_ROOT / "views" / "AIAssistant" / "AssistantDraftCardView.tsx").read_text(encoding="utf-8")
         editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        draft_apply_hook_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeAssistantDraftApply.ts"
+        ).read_text(encoding="utf-8")
         prompt_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "prompts.py").read_text(encoding="utf-8")
 
         self.assertIn("targetUserSkillId?: string | null", service_source)
@@ -255,8 +285,8 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("skill_group:", session_source)
         self.assertIn("将合并更新技能组", draft_card_source)
         self.assertNotIn("skill.proficiency", draft_card_source)
-        self.assertIn("findExistingSkillForAssistantDraft", editor_source)
-        self.assertNotIn("payload.proficiency", editor_source)
+        self.assertIn("findExistingSkillForAssistantDraft", draft_apply_hook_source)
+        self.assertNotIn("payload.proficiency", editor_source + draft_apply_hook_source)
         self.assertIn("targetUserSkillId", prompt_source)
         self.assertIn("Never fabricate targetUserSkillId", prompt_source)
         self.assertIn("熟练掌握 Vibe Coding", prompt_source)
@@ -265,21 +295,95 @@ class AssistantFrontendSourceTests(unittest.TestCase):
     def test_resume_editor_mobile_drawer_request_is_consumed_once(self) -> None:
         app_source = (REPO_ROOT / "App.tsx").read_text(encoding="utf-8")
         editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        drawer_hook_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useMobileEditorDrawer.ts"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("onMobileDrawerOpenRequestConsumed?: () => void;", editor_source)
         self.assertIn("onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}", app_source)
         self.assertIn("setEditorMobileDrawerOpenRequest(0)", app_source)
+        self.assertIn("onMobileDrawerOpenRequestConsumed,", editor_source)
 
-        effect_start = editor_source.index("if (mobileDrawerOpenRequest <= 0 || typeof window === 'undefined')")
-        effect_end = editor_source.index("    }, [mobileDrawerOpenRequest", effect_start)
-        effect_block = editor_source[effect_start:effect_end]
+        effect_start = drawer_hook_source.index("if (mobileDrawerOpenRequest <= 0 || typeof window === 'undefined')")
+        effect_end = drawer_hook_source.index("    }, [mobileDrawerOpenRequest", effect_start)
+        effect_block = drawer_hook_source[effect_start:effect_end]
 
         self.assertIn("onMobileDrawerOpenRequestConsumed?.();", effect_block)
         self.assertLess(
             effect_block.index("onMobileDrawerOpenRequestConsumed?.();"),
             effect_block.index("if (window.innerWidth >= 768)"),
         )
-        self.assertIn("onMobileDrawerOpenRequestConsumed", editor_source[effect_end:effect_end + 160])
+        self.assertIn("onMobileDrawerOpenRequestConsumed", drawer_hook_source[effect_end:effect_end + 160])
+
+
+class AssistantAttachmentSelectionTests(unittest.TestCase):
+    def test_short_transform_reuses_latest_attachment_from_multi_attachment_history(self) -> None:
+        first_attachment = {
+            "name": "resume-cn.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "textExcerpt": "中文简历",
+        }
+        second_attachment = {
+            "name": "cover-letter-cn.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "textExcerpt": "中文求职信",
+        }
+        history = [
+            {
+                "role": "user",
+                "content_json": {
+                    "text": "帮我看看这两份材料",
+                    "attachment": first_attachment,
+                    "attachments": [first_attachment, second_attachment],
+                },
+            }
+        ]
+
+        selected = ai_service._resolve_relevant_attachments(  # type: ignore[attr-defined]
+            history,
+            user_message="翻译成英文",
+        )
+
+        self.assertEqual(selected, [second_attachment])
+
+    def test_english_short_transform_reuses_latest_attachment_from_multi_attachment_history(self) -> None:
+        first_attachment = {
+            "name": "resume-cn.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "textExcerpt": "中文简历",
+        }
+        second_attachment = {
+            "name": "cover-letter-cn.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "textExcerpt": "中文求职信",
+        }
+        history = [
+            {
+                "role": "user",
+                "content_json": {
+                    "text": "check these two files",
+                    "attachment": first_attachment,
+                    "attachments": [first_attachment, second_attachment],
+                },
+            }
+        ]
+
+        for message in ("translate to English", "summarize", "polish it"):
+            with self.subTest(message=message):
+                selected = ai_service._resolve_relevant_attachments(  # type: ignore[attr-defined]
+                    history,
+                    user_message=message,
+                )
+
+                self.assertEqual(selected, [second_attachment])
 
 
 class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):

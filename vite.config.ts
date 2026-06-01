@@ -19,7 +19,6 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks: {
-            'react-vendor': ['react', 'react-dom'],
             'ui-vendor': ['lucide-react', 'react-datepicker'],
           },
         },
