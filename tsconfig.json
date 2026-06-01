@@ -26,4 +26,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
+  "exclude": [
+    "dist",
+    "node_modules",
+    "magic-resume-inspect"
+  ]
 }

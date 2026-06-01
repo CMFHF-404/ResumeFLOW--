@@ -188,6 +188,275 @@ export const areLayoutValuesEqual = (current: SmartPageLayout, defaults: SmartPa
     && current.fontSize === defaults.fontSize
 );
 
+export type SmartPageAdjustmentMode = 'shrink' | 'expand';
+
+export type SmartPageStageLayout = {
+    key: string;
+    layout: SmartPageLayout;
+};
+
+export const resolveNearestStepIndex = (steps: readonly number[], value: number) => steps.reduce(
+    (nearestIndex, step, index) => (
+        Math.abs(step - value) < Math.abs(steps[nearestIndex] - value)
+            ? index
+            : nearestIndex
+    ),
+    0
+);
+
+export const resolveStepByOffset = <T extends number>(
+    steps: readonly T[],
+    value: number,
+    offset: number
+): T => {
+    const baseIndex = resolveNearestStepIndex(steps, value);
+    const nextIndex = Math.min(Math.max(baseIndex + offset, 0), steps.length - 1);
+    return steps[nextIndex];
+};
+
+export const resolveLayoutScore = (
+    layout: SmartPageLayout,
+    defaultLayout: SmartPageLayout,
+    topPaddingSteps: readonly number[],
+    itemSpacingSteps: readonly number[],
+    mode: SmartPageAdjustmentMode
+) => {
+    const topPaddingMinPx = Math.min(...topPaddingSteps);
+    const topPaddingMaxPx = Math.max(...topPaddingSteps);
+    const itemSpacingMinEm = Math.min(...itemSpacingSteps);
+    const itemSpacingMaxEm = Math.max(...itemSpacingSteps);
+    const minSectionSpacingKey = SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1];
+    const maxSectionSpacingKey = SECTION_SPACING_KEYS[0];
+    const defaultSectionIndex = resolveNearestStepIndex(
+        SECTION_SPACING_KEYS,
+        defaultLayout.sectionSpacingKey
+    );
+    const currentSectionIndex = resolveNearestStepIndex(
+        SECTION_SPACING_KEYS,
+        layout.sectionSpacingKey
+    );
+    const fontSizeDelta = Math.abs(layout.fontSize - defaultLayout.fontSize) / FONT_SIZE_STEP;
+    const lineHeightDelta = Math.abs(layout.lineHeight - defaultLayout.lineHeight) / LINE_HEIGHT_STEP;
+    const topPaddingDelta = Math.abs(layout.topPaddingPx - defaultLayout.topPaddingPx)
+        / SMART_PAGE_TOP_PADDING_STEP_PX;
+    const itemSpacingDelta = Math.abs(layout.itemSpacingEm - defaultLayout.itemSpacingEm)
+        / SMART_PAGE_ITEM_SPACING_STEP;
+    const sectionSpacingDelta = Math.abs(currentSectionIndex - defaultSectionIndex);
+
+    const weightedDelta = (
+        (fontSizeDelta * 5)
+        + (lineHeightDelta * 3)
+        + (sectionSpacingDelta * 2)
+        + (topPaddingDelta * 2)
+        + (itemSpacingDelta * 1.5)
+    );
+
+    let penalty = mode === 'shrink' ? weightedDelta : 0;
+
+    if (mode === 'shrink' && Math.abs(layout.fontSize - FONT_SIZE_MIN) < 0.001) {
+        if (layout.sectionSpacingKey !== minSectionSpacingKey) {
+            penalty += 6;
+        }
+        if (layout.topPaddingPx - topPaddingMinPx > 0.001) {
+            penalty += 6;
+        }
+    }
+
+    if (mode === 'expand' && Math.abs(layout.fontSize - FONT_SIZE_MAX) < 0.001) {
+        if (layout.sectionSpacingKey !== maxSectionSpacingKey) {
+            penalty += 6;
+        }
+        if (topPaddingMaxPx - layout.topPaddingPx > 0.001) {
+            penalty += 6;
+        }
+    }
+
+    const resolveAdjustmentRatio = (
+        value: number,
+        baselineValue: number,
+        minValue: number,
+        maxValue: number
+    ) => {
+        const denominator = mode === 'shrink'
+            ? baselineValue - minValue
+            : maxValue - baselineValue;
+        if (Math.abs(denominator) < 0.001) {
+            return 0;
+        }
+        return mode === 'shrink'
+            ? Math.max(0, Math.min(1, (baselineValue - value) / denominator))
+            : Math.max(0, Math.min(1, (value - baselineValue) / denominator));
+    };
+
+    const sectionAdjustmentRatio = mode === 'shrink'
+        ? defaultSectionIndex >= SECTION_SPACING_KEYS.length - 1
+            ? 0
+            : Math.max(
+                0,
+                Math.min(
+                    1,
+                    (currentSectionIndex - defaultSectionIndex)
+                    / ((SECTION_SPACING_KEYS.length - 1) - defaultSectionIndex)
+                )
+            )
+        : defaultSectionIndex <= 0
+            ? 0
+            : Math.max(
+                0,
+                Math.min(1, (defaultSectionIndex - currentSectionIndex) / defaultSectionIndex)
+            );
+
+    const ratios = [
+        resolveAdjustmentRatio(layout.fontSize, defaultLayout.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX),
+        resolveAdjustmentRatio(layout.lineHeight, defaultLayout.lineHeight, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX),
+        sectionAdjustmentRatio,
+        resolveAdjustmentRatio(
+            layout.topPaddingPx,
+            defaultLayout.topPaddingPx,
+            topPaddingMinPx,
+            topPaddingMaxPx
+        ),
+        resolveAdjustmentRatio(
+            layout.itemSpacingEm,
+            defaultLayout.itemSpacingEm,
+            itemSpacingMinEm,
+            itemSpacingMaxEm
+        ),
+    ];
+    const averageRatio = ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
+    penalty += ratios.reduce(
+        (sum, ratio) => sum + Math.abs(ratio - averageRatio),
+        0
+    ) * 2;
+
+    const maxRatio = Math.max(...ratios);
+    const minRatio = Math.min(...ratios);
+    if (maxRatio - minRatio > 0.35) {
+        penalty += (maxRatio - minRatio - 0.35) * 8;
+    }
+
+    return mode === 'shrink'
+        ? 100 - penalty
+        : weightedDelta - penalty;
+};
+
+export const dedupeSmartPageStageLayouts = (stages: SmartPageStageLayout[]) => (
+    stages.filter((stage, index) => {
+        const currentKey = JSON.stringify(stage.layout);
+        return stages.findIndex((candidate) => JSON.stringify(candidate.layout) === currentKey) === index;
+    })
+);
+
+export const buildSmartPageExpansionStages = (
+    defaultLayout: SmartPageLayout,
+    topPaddingSteps: readonly number[],
+    itemSpacingSteps: readonly number[],
+    fontSizeSteps: readonly number[],
+    lineHeightSteps: readonly number[],
+    sectionSpacingSteps: readonly SectionSpacingKey[]
+) => dedupeSmartPageStageLayouts([
+    {
+        key: 'mild',
+        layout: {
+            topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 1),
+            sectionSpacingKey: resolveStepByOffset(sectionSpacingSteps, defaultLayout.sectionSpacingKey, 1),
+            itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 1),
+            lineHeight: resolveStepByOffset(lineHeightSteps, defaultLayout.lineHeight, 1),
+            fontSize: resolveStepByOffset(fontSizeSteps, defaultLayout.fontSize, 1),
+        },
+    },
+    {
+        key: 'medium',
+        layout: {
+            topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 2),
+            sectionSpacingKey: resolveStepByOffset(sectionSpacingSteps, defaultLayout.sectionSpacingKey, 2),
+            itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 2),
+            lineHeight: resolveStepByOffset(lineHeightSteps, defaultLayout.lineHeight, 2),
+            fontSize: resolveStepByOffset(fontSizeSteps, defaultLayout.fontSize, 2),
+        },
+    },
+    {
+        key: 'strong',
+        layout: {
+            topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 3),
+            sectionSpacingKey: resolveStepByOffset(sectionSpacingSteps, defaultLayout.sectionSpacingKey, 3),
+            itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 3),
+            lineHeight: resolveStepByOffset(lineHeightSteps, defaultLayout.lineHeight, 3),
+            fontSize: resolveStepByOffset(fontSizeSteps, defaultLayout.fontSize, 3),
+        },
+    },
+    {
+        key: 'max-balanced',
+        layout: {
+            topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
+            sectionSpacingKey: sectionSpacingSteps[sectionSpacingSteps.length - 1],
+            itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
+            lineHeight: lineHeightSteps[lineHeightSteps.length - 1],
+            fontSize: fontSizeSteps[fontSizeSteps.length - 1],
+        },
+    },
+]);
+
+export const buildSmartPageShrinkStages = (
+    defaultLayout: SmartPageLayout,
+    topPaddingSteps: readonly number[],
+    itemSpacingSteps: readonly number[],
+    hardFallbackLayout: SmartPageLayout
+) => dedupeSmartPageStageLayouts([
+    {
+        key: 'mild',
+        layout: {
+            topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 1),
+            sectionSpacingKey: resolveStepByOffset(SECTION_SPACING_KEYS, defaultLayout.sectionSpacingKey, 1),
+            itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 1),
+            lineHeight: resolveStepByOffset(LINE_HEIGHT_SHRINK_STEPS, defaultLayout.lineHeight, 1),
+            fontSize: resolveStepByOffset(FONT_SIZE_SHRINK_STEPS, defaultLayout.fontSize, 1),
+        },
+    },
+    {
+        key: 'medium',
+        layout: {
+            topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 2),
+            sectionSpacingKey: resolveStepByOffset(SECTION_SPACING_KEYS, defaultLayout.sectionSpacingKey, 2),
+            itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 2),
+            lineHeight: resolveStepByOffset(LINE_HEIGHT_SHRINK_STEPS, defaultLayout.lineHeight, 2),
+            fontSize: resolveStepByOffset(FONT_SIZE_SHRINK_STEPS, defaultLayout.fontSize, 2),
+        },
+    },
+    {
+        key: 'strong',
+        layout: {
+            topPaddingPx: resolveStepByOffset(topPaddingSteps, defaultLayout.topPaddingPx, 3),
+            sectionSpacingKey: resolveStepByOffset(SECTION_SPACING_KEYS, defaultLayout.sectionSpacingKey, 3),
+            itemSpacingEm: resolveStepByOffset(itemSpacingSteps, defaultLayout.itemSpacingEm, 3),
+            lineHeight: resolveStepByOffset(LINE_HEIGHT_SHRINK_STEPS, defaultLayout.lineHeight, 3),
+            fontSize: resolveStepByOffset(FONT_SIZE_SHRINK_STEPS, defaultLayout.fontSize, 3),
+        },
+    },
+    {
+        key: 'max-balanced',
+        layout: {
+            topPaddingPx: topPaddingSteps[topPaddingSteps.length - 1],
+            sectionSpacingKey: SECTION_SPACING_KEYS[SECTION_SPACING_KEYS.length - 1],
+            itemSpacingEm: itemSpacingSteps[itemSpacingSteps.length - 1],
+            lineHeight: resolveStepByOffset(
+                LINE_HEIGHT_SHRINK_STEPS,
+                defaultLayout.lineHeight,
+                Math.round(0.2 / LINE_HEIGHT_STEP)
+            ),
+            fontSize: resolveStepByOffset(
+                FONT_SIZE_SHRINK_STEPS,
+                defaultLayout.fontSize,
+                Math.round(2 / FONT_SIZE_STEP)
+            ),
+        },
+    },
+    {
+        key: 'hard-fallback',
+        layout: hardFallbackLayout,
+    },
+]);
+
 export const resolveNearestSectionSpacingKey = (value: number): SectionSpacingKey => (
     SECTION_SPACING_KEYS.reduce<SectionSpacingKey>((nearest, candidate) => {
         const candidateDistance = Math.abs(candidate - value);
