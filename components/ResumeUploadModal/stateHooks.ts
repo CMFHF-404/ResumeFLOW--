@@ -349,6 +349,7 @@ export const useResumeParsing = (
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [thinkingNodes, setThinkingNodes] = useState<ThinkingNode[]>(buildEmptyThinkingNodes);
+  const [enableThinking, setEnableThinking] = useState(false);
   const longParseNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parseErrorCountRef = useRef(0);
   const activeParseControllerRef = useRef<AbortController | null>(null);
@@ -450,7 +451,8 @@ export const useResumeParsing = (
                 setThinkingNodes((prev) => appendThinkingDelta(prev, event.summary));
               }
             },
-            abortController.signal
+            abortController.signal,
+            { enableThinking }
           ),
           PARSE_TIMEOUT_MS,
           () => {
@@ -515,6 +517,7 @@ export const useResumeParsing = (
       cancelActiveParse,
       clearLongParseNotice,
       fetchExistingSkills,
+      enableThinking,
       scheduleLongParseNotice,
       toast,
     ]
@@ -549,6 +552,8 @@ export const useResumeParsing = (
     errorMessage,
     isDragging,
     thinkingNodes,
+    enableThinking,
+    setEnableThinking,
     setIsDragging,
     handleFileChange,
     handleDrop,

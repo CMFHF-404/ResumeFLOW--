@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
 import {
   AlertTriangle,
+  Brain,
   CheckCircle2,
   FileText,
   LoaderCircle,
   UploadCloud,
+  Zap,
   X,
 } from 'lucide-react';
 
@@ -464,7 +466,7 @@ const UploadDropzone: React.FC<{
   onDragState: (next: boolean) => void;
 }> = ({ isDragging, inputRef, onFileChange, onDrop, onDragState }) => (
   <div
-    className={`relative rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-all ${isDragging
+    className={`relative rounded-2xl border-2 border-dashed px-5 py-6 text-center transition-all sm:px-6 sm:py-8 [@media(max-height:560px)]:py-2 ${isDragging
       ? 'border-emerald-400 bg-emerald-50/70 dark:bg-emerald-900/20'
       : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40'
       }`}
@@ -499,7 +501,7 @@ const FileStatusCard: React.FC<{
   progress: number;
   errorMessage: string | null;
 }> = ({ file, stage, progress, errorMessage }) => (
-  <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/60 p-4 space-y-3">
+  <div className="space-y-3 rounded-2xl border border-gray-100 bg-white/80 p-4 dark:border-gray-800 dark:bg-gray-900/60 [@media(max-height:560px)]:space-y-2 [@media(max-height:560px)]:p-3">
     <div className="flex items-center gap-3">
       <FileText className="w-5 h-5 text-gray-400" />
       <div className="flex-1">
@@ -525,7 +527,7 @@ const FileStatusCard: React.FC<{
   </div>
 );
 
-const ThinkingTraceCard: React.FC<{
+const ThinkingTraceCardBody: React.FC<{
   stage: ParseStage;
   nodes: ThinkingNode[];
 }> = ({ stage, nodes }) => {
@@ -550,14 +552,9 @@ const ThinkingTraceCard: React.FC<{
     : isWorking
       ? 'text-violet-600'
       : 'text-emerald-600';
-  const cardClassName = isError
-    ? 'border-red-100/80 bg-gradient-to-r from-red-50/95 via-white to-rose-50/80 shadow-[0_12px_30px_rgba(239,68,68,0.08)]'
-    : isWorking
-      ? 'border-violet-200/80 bg-[linear-gradient(120deg,rgba(245,243,255,0.96),rgba(255,255,255,0.92),rgba(237,233,254,0.95),rgba(224,231,255,0.92))] bg-[length:220%_220%] shadow-[0_16px_40px_rgba(124,58,237,0.16)]'
-      : 'border-emerald-100/80 bg-gradient-to-r from-emerald-50/95 via-white to-teal-50/80 shadow-[0_12px_30px_rgba(16,185,129,0.08)]';
 
   return (
-    <div className={`relative h-[70px] overflow-hidden rounded-2xl border px-4 py-3 ${cardClassName}`}>
+    <>
       <style>{`
         @keyframes thinkingRollIn {
           0% {
@@ -621,6 +618,92 @@ const ThinkingTraceCard: React.FC<{
           </div>
         </div>
       </div>
+    </>
+  );
+};
+
+const ParseModeCard: React.FC<{
+  stage: ParseStage;
+  nodes: ThinkingNode[];
+  enableThinking: boolean;
+  onEnableThinkingChange: (next: boolean) => void;
+}> = ({ stage, nodes, enableThinking, onEnableThinkingChange }) => {
+  const isWorking = stage === 'uploading' || stage === 'parsing' || stage === 'analyzing';
+  const disableModeChange = stage !== 'idle' && stage !== 'error';
+  const frontStatus = stage === 'error'
+    ? '解析遇到问题，可重新上传后再试'
+    : stage === 'ready'
+      ? '解析完成，可检查并导入'
+      : isWorking
+        ? '正在解析，结果会自动更新'
+        : '默认更快，点击切换专家模式';
+  const backStatus = isWorking ? '正在显示模型思考过程' : '实时思考过程';
+  const cardTone = stage === 'error'
+    ? 'border-red-100/80 bg-gradient-to-r from-red-50/95 via-white to-rose-50/80'
+    : enableThinking
+      ? 'border-violet-200/80 bg-[linear-gradient(120deg,rgba(245,243,255,0.96),rgba(255,255,255,0.92),rgba(237,233,254,0.95),rgba(224,231,255,0.92))] bg-[length:220%_220%]'
+      : 'border-emerald-100/80 bg-gradient-to-r from-emerald-50/95 via-white to-cyan-50/80';
+  const faceBaseClassName = 'absolute inset-0 flex h-full w-full flex-col justify-center gap-2 px-4 py-3 transition-transform duration-500 [backface-visibility:hidden] [@media(max-height:560px)]:py-2';
+
+  return (
+    <div className={`relative h-[96px] overflow-hidden rounded-2xl border [@media(max-height:560px)]:h-[86px] ${cardTone}`}>
+      <div
+        className={`relative h-full w-full transition-transform duration-500 [transform-style:preserve-3d] ${enableThinking ? '[transform:rotateY(180deg)]' : ''}`}
+      >
+        <div
+          className={`${faceBaseClassName} ${enableThinking ? 'pointer-events-none' : ''}`}
+          aria-hidden={enableThinking}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">快速模式</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">{frontStatus}</p>
+            </div>
+            <button
+              type="button"
+              className={`relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/85 shadow-sm ring-1 transition hover:scale-105 disabled:cursor-not-allowed ${isWorking
+                ? 'text-emerald-600 ring-emerald-100'
+                : 'text-violet-600 ring-violet-100 hover:text-violet-700 disabled:text-gray-300'
+                }`}
+              disabled={disableModeChange}
+              tabIndex={enableThinking ? -1 : 0}
+              onClick={() => onEnableThinkingChange(true)}
+              aria-label="切换到专家模式"
+            >
+              {isWorking ? (
+                <>
+                  <span className="absolute inset-0 rounded-full border-2 border-emerald-100 border-t-emerald-500 border-r-cyan-400 animate-spin" />
+                  <LoaderCircle className="relative h-4 w-4 animate-spin" />
+                </>
+              ) : (
+                <Brain className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        </div>
+        <div
+          className={`${faceBaseClassName} [transform:rotateY(180deg)] ${enableThinking ? '' : 'pointer-events-none'}`}
+          aria-hidden={!enableThinking}
+        >
+          <div className="relative flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-violet-900 dark:text-violet-100">专家模式</p>
+              <p className="truncate text-xs text-violet-500 dark:text-violet-300">{backStatus}</p>
+            </div>
+            <button
+              type="button"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/85 text-emerald-600 shadow-sm ring-1 ring-emerald-100 transition hover:scale-105 hover:text-emerald-700 disabled:cursor-not-allowed disabled:text-gray-300"
+              disabled={disableModeChange}
+              tabIndex={enableThinking ? 0 : -1}
+              onClick={() => onEnableThinkingChange(false)}
+              aria-label="切换到快速模式"
+            >
+              <Zap className="h-4 w-4" />
+            </button>
+          </div>
+          <ThinkingTraceCardBody stage={stage} nodes={nodes} />
+        </div>
+      </div>
     </div>
   );
 };
@@ -631,32 +714,46 @@ export const UploadPanel: React.FC<{
   progress: number;
   errorMessage: string | null;
   thinkingNodes: ThinkingNode[];
+  enableThinking: boolean;
   isDragging: boolean;
   inputRef: React.RefObject<HTMLInputElement>;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragState: (next: boolean) => void;
+  onEnableThinkingChange: (next: boolean) => void;
   onReupload: () => void;
+  modeCardPlacement?: 'afterDropzone' | 'bottom';
   showStatusCard?: boolean;
   showReupload?: boolean;
-  showThinkingTrace?: boolean;
 }> = ({
   file,
   stage,
   progress,
   errorMessage,
   thinkingNodes,
+  enableThinking,
   isDragging,
   inputRef,
   onFileChange,
   onDrop,
   onDragState,
+  onEnableThinkingChange,
   onReupload,
+  modeCardPlacement = 'afterDropzone',
   showStatusCard = true,
   showReupload = true,
-  showThinkingTrace = true,
-}) => (
-    <div className="space-y-4">
+}) => {
+  const modeCard = (
+    <ParseModeCard
+      stage={stage}
+      nodes={thinkingNodes}
+      enableThinking={enableThinking}
+      onEnableThinkingChange={onEnableThinkingChange}
+    />
+  );
+
+  return (
+    <div className="space-y-4 [@media(max-height:560px)]:space-y-3">
       <UploadDropzone
         isDragging={isDragging}
         inputRef={inputRef}
@@ -664,6 +761,7 @@ export const UploadPanel: React.FC<{
         onDrop={onDrop}
         onDragState={onDragState}
       />
+      {modeCardPlacement === 'afterDropzone' ? modeCard : null}
       {showStatusCard ? (
         <FileStatusCard file={file} stage={stage} progress={progress} errorMessage={errorMessage} />
       ) : errorMessage ? (
@@ -680,9 +778,10 @@ export const UploadPanel: React.FC<{
           </button>
         </div>
       ) : null}
-      {showThinkingTrace ? <ThinkingTraceCard stage={stage} nodes={thinkingNodes} /> : null}
+      {modeCardPlacement === 'bottom' ? modeCard : null}
     </div>
   );
+};
 
 export const PreviewPanel: React.FC<{
   personalInfo?: ParsedPersonalInfo;
@@ -724,9 +823,9 @@ export const PreviewPanel: React.FC<{
     const educationItems = items.filter((item) => item.category === 'education');
 
     return (
-      <div className="space-y-4">
+      <div className="flex h-full min-h-0 flex-col space-y-4">
         <SectionTitle title="解析结果预览" />
-        <div className="space-y-6 max-h-[420px] overflow-y-auto pr-2">
+        <div className="min-h-0 flex-1 touch-pan-y space-y-6 overflow-y-auto overscroll-contain pb-6 pr-2 [-webkit-overflow-scrolling:touch]">
           <div className="space-y-3">
             <SectionTitle title="个人信息" />
             <PersonalInfoPreview
