@@ -21,8 +21,11 @@ from ...models import (
     UserSkill,
 )
 from ...utils.time_utils import utc_now
-from ..ai.ai_service import (
+from ..ai.assistant_action_utils import (
     _normalize_assistant_action_text,
+    _normalize_assistant_draft_card,
+)
+from ..ai.ai_service import (
     _normalize_selected_experiences,
     _normalize_selected_resume,
 )
@@ -95,6 +98,13 @@ def _latest_preview_matches_message(
     if not isinstance(latest_preview, dict) or not isinstance(message_content, dict):
         return False
     return latest_preview == message_content
+
+
+def _normalize_apply_draft_content(content: Any) -> Dict[str, Any]:
+    normalized = _normalize_assistant_draft_card(content)
+    if not isinstance(normalized, dict):
+        raise InvalidMessageError("Draft card payload is invalid")
+    return normalized
 
 
 def _read_draft_target_master_id(data: Dict[str, Any]) -> str | None:
@@ -405,7 +415,7 @@ async def _apply_direct_draft_card(
     assistant_session: AIAssistantSession,
     message: AIAssistantMessage,
 ) -> None:
-    content = message.content_json or {}
+    content = _normalize_apply_draft_content(message.content_json or {})
     card_type = content.get("type")
     data = content.get("data")
     if not isinstance(data, dict):
@@ -491,7 +501,7 @@ async def _apply_experience_bank_draft_card(
     assistant_session: AIAssistantSession,
     message: AIAssistantMessage,
 ) -> None:
-    content = message.content_json or {}
+    content = _normalize_apply_draft_content(message.content_json or {})
     if content.get("type") != "experience":
         raise InvalidMessageError("Experience bank sessions only support experience draft cards")
     data = content.get("data")
