@@ -5,21 +5,8 @@ import App from './App';
 import ExperienceBankPdfExportPage from './views/ExperienceBankPdfExportPage';
 import ResumePdfExportPage from './views/ResumePdfExportPage';
 
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
-
-const resolveLogtoAccountApiResource = () => {
-  const configuredResource = import.meta.env.VITE_LOGTO_ACCOUNT_API_RESOURCE?.trim();
-  if (configuredResource) {
-    return trimTrailingSlash(configuredResource);
-  }
-
-  const endpoint = import.meta.env.VITE_LOGTO_ENDPOINT?.trim();
-  return endpoint ? `${trimTrailingSlash(endpoint)}/api` : '';
-};
-
 const logtoResources = [
   import.meta.env.VITE_LOGTO_RESOURCE,
-  resolveLogtoAccountApiResource(),
 ].filter((resource): resource is string => Boolean(resource));
 
 const config: LogtoConfig = {
