@@ -3,6 +3,7 @@ import AuthGuard from './components/AuthGuard';
 import FeedbackModal from './components/FeedbackModal';
 import AppreciationModal from './components/AppreciationModal';
 import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
+import AccountManagementModal from './components/AccountManagementModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest } from './views/AIAssistant/types';
@@ -74,6 +75,7 @@ const App: React.FC = () => {
   const [isAppreciationOpen, setIsAppreciationOpen] = useState(false);
   const [appreciationReturnFocusElement, setAppreciationReturnFocusElement] = useState<HTMLElement | null>(null);
   const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
+  const [isAccountManagementOpen, setIsAccountManagementOpen] = useState(false);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
@@ -97,6 +99,7 @@ const App: React.FC = () => {
     setIsAppreciationOpen(false);
     setAppreciationReturnFocusElement(null);
     setIsAgentPluginConfigOpen(false);
+    setIsAccountManagementOpen(false);
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
     setEditorMobileDrawerOpenRequest(0);
@@ -250,6 +253,12 @@ const App: React.FC = () => {
   const handleCloseAgentPluginConfig = useCallback(() => {
     setIsAgentPluginConfigOpen(false);
   }, []);
+  const handleOpenAccountManagement = useCallback(() => {
+    setIsAccountManagementOpen(true);
+  }, []);
+  const handleCloseAccountManagement = useCallback(() => {
+    setIsAccountManagementOpen(false);
+  }, []);
   const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);
 
   const renderView = () => {
@@ -322,6 +331,7 @@ const App: React.FC = () => {
           onOpenFeedback={handleOpenFeedback}
           onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
           onOpenAppreciation={handleOpenAppreciation}
+          onOpenAccountManagement={handleOpenAccountManagement}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
@@ -343,6 +353,10 @@ const App: React.FC = () => {
         <AgentApiPluginConfigModal
           isOpen={isAgentPluginConfigOpen}
           onClose={handleCloseAgentPluginConfig}
+        />
+        <AccountManagementModal
+          isOpen={isAccountManagementOpen}
+          onClose={handleCloseAccountManagement}
         />
       </div>
     </AuthGuard>

@@ -1,14 +1,32 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { LogtoProvider, LogtoConfig } from '@logto/react';
+import { LogtoProvider, LogtoConfig, UserScope } from '@logto/react';
 import App from './App';
 import ExperienceBankPdfExportPage from './views/ExperienceBankPdfExportPage';
 import ResumePdfExportPage from './views/ResumePdfExportPage';
 
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+
+const resolveLogtoAccountApiResource = () => {
+  const configuredResource = import.meta.env.VITE_LOGTO_ACCOUNT_API_RESOURCE?.trim();
+  if (configuredResource) {
+    return trimTrailingSlash(configuredResource);
+  }
+
+  const endpoint = import.meta.env.VITE_LOGTO_ENDPOINT?.trim();
+  return endpoint ? `${trimTrailingSlash(endpoint)}/api` : '';
+};
+
+const logtoResources = [
+  import.meta.env.VITE_LOGTO_RESOURCE,
+  resolveLogtoAccountApiResource(),
+].filter((resource): resource is string => Boolean(resource));
+
 const config: LogtoConfig = {
   endpoint: import.meta.env.VITE_LOGTO_ENDPOINT,
   appId: import.meta.env.VITE_LOGTO_APP_ID,
-  resources: [import.meta.env.VITE_LOGTO_RESOURCE],
+  scopes: [UserScope.Profile, UserScope.Email, UserScope.Phone, UserScope.Identities],
+  resources: logtoResources,
 };
 
 const rootElement = document.getElementById('root');
