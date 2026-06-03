@@ -31,6 +31,34 @@ class AssistantDraftCardNormalizerTests(unittest.TestCase):
 
         self.assertIsNone(_normalize_assistant_draft_card(card))
 
+    def test_legacy_education_draft_is_normalized_to_experience(self) -> None:
+        card = {
+            "type": "education",
+            "status": "draft_ready",
+            "summary": "教育经历",
+            "data": {
+                "org": "某大学",
+                "title": "计算机科学",
+                "startDate": "2022-09",
+                "endDate": "2026-06",
+                "isCurrent": False,
+                "star": {
+                    "s": "本科阶段",
+                    "t": "课程学习",
+                    "a": "数据结构\n操作系统",
+                    "r": "完成核心课程",
+                },
+            },
+        }
+
+        normalized = _normalize_assistant_draft_card(card)
+
+        self.assertIsNotNone(normalized)
+        self.assertEqual(normalized["type"], "experience")
+        self.assertEqual(normalized["data"]["category"], "education")
+        self.assertEqual(normalized["data"]["org"], "某大学")
+        self.assertEqual(sorted(normalized["data"]["star"].keys()), ["a", "r", "s", "t"])
+
 
 class GeminiThinkingConfigTests(unittest.TestCase):
     def test_build_generation_config_uses_default_thinking_when_budget_omitted(self) -> None:

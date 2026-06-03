@@ -1432,6 +1432,60 @@ class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("applied_at", message.content_json)
         session.commit.assert_awaited()
 
+    async def test_mark_message_applied_creates_education_from_legacy_education_card(self) -> None:
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            entry_source="direct",
+            context_json={},
+            latest_preview={},
+        )
+        message = SimpleNamespace(
+            id=uuid.uuid4(),
+            message_type="draft_card",
+            content_json={
+                "type": "education",
+                "status": "draft_ready",
+                "summary": "教育经历",
+                "data": {
+                    "org": "某大学",
+                    "title": "计算机科学",
+                    "startDate": "2022-09",
+                    "endDate": "2026-06",
+                    "isCurrent": False,
+                    "star": {
+                        "s": "本科",
+                        "t": "GPA 3.8",
+                        "a": "数据结构\n操作系统",
+                        "r": "完成核心课程",
+                    },
+                },
+            },
+        )
+        session = _FakeAsyncSession([
+            _ExecuteResult(one_or_none=message),
+            _ExecuteResult(first=None),
+        ])
+
+        with patch.object(assistant_service, "get_session", AsyncMock(return_value=assistant_session)):
+            updated = await assistant_service.mark_message_applied(
+                session,
+                user_id="user-1",
+                session_id=assistant_session.id,
+                message_id=message.id,
+            )
+
+        self.assertIs(updated, message)
+        created_masters = [item for item in session.added if isinstance(item, MasterExperience)]
+        created_versions = [item for item in session.added if isinstance(item, ExperienceVersion)]
+        self.assertEqual(len({item.id for item in created_masters}), 1)
+        self.assertEqual(created_masters[0].category, ExperienceCategory.EDUCATION)
+        self.assertEqual(len(created_versions), 1)
+        self.assertEqual(created_versions[0].title, "计算机科学")
+        self.assertEqual(created_versions[0].org, "某大学")
+        self.assertEqual(created_versions[0].star["a"], "数据结构\n操作系统")
+        self.assertIn("applied_at", message.content_json)
+        session.commit.assert_awaited()
+
     async def test_mark_message_applied_updates_bound_experience_bank_master_with_month_dates(self) -> None:
         master_id = uuid.uuid4()
         assistant_session = SimpleNamespace(

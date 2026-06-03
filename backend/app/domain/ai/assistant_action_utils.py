@@ -131,16 +131,52 @@ def _normalize_assistant_skill_group_card(card: Dict[str, Any]) -> Dict[str, Any
     return normalized_card
 
 
+def _normalize_legacy_education_draft_card(card: Dict[str, Any]) -> Dict[str, Any]:
+    data = card.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    star = data.get("star")
+    if not isinstance(star, dict):
+        star = {}
+
+    normalized_data = {
+        "category": "education",
+        "org": _normalize_assistant_draft_text(data.get("org")),
+        "title": _normalize_assistant_draft_text(data.get("title")),
+        "startDate": _normalize_assistant_draft_text(data.get("startDate")),
+        "endDate": _normalize_assistant_draft_text(data.get("endDate")),
+        "isCurrent": bool(data.get("isCurrent")),
+        "star": {
+            "s": _normalize_assistant_draft_text(star.get("s")),
+            "t": _normalize_assistant_draft_text(star.get("t")),
+            "a": _normalize_assistant_draft_text(star.get("a")),
+            "r": _normalize_assistant_draft_text(star.get("r")),
+        },
+    }
+    target_master_id = _normalize_assistant_draft_text(data.get("targetMasterId"))
+    if target_master_id:
+        normalized_data["targetMasterId"] = target_master_id
+
+    normalized_card = dict(card)
+    normalized_card["type"] = "experience"
+    normalized_card["data"] = normalized_data
+    return normalized_card
+
+
 def _normalize_assistant_draft_card(card: Any) -> Dict[str, Any] | None:
     if not isinstance(card, dict):
         return None
 
     normalized_card = dict(card)
-    if normalized_card.get("type") == "skill_group":
+    card_type = normalized_card.get("type")
+    if card_type == "education":
+        return _normalize_legacy_education_draft_card(normalized_card)
+
+    if card_type == "skill_group":
         return _normalize_assistant_skill_group_card(normalized_card)
 
-    if normalized_card.get("type") != "experience":
-        return normalized_card
+    if card_type != "experience":
+        return normalized_card if card_type == "certification" else None
 
     data = normalized_card.get("data")
     if not isinstance(data, dict):

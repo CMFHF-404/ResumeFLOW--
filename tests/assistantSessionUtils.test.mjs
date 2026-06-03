@@ -46,3 +46,45 @@ test('rejects assistant session details whose messages are not arrays', async ()
     /Assistant session detail messages must be an array/
   );
 });
+
+test('matches legacy education previews against normalized experience draft cards', async () => {
+  const { isSameDraftCard } = await importAssistantSessionUtils();
+
+  const preview = {
+    type: 'education',
+    status: 'draft_ready',
+    data: {
+      org: '某大学',
+      title: '计算机科学',
+      startDate: '2022-09',
+      endDate: '2026-06',
+      isCurrent: false,
+      star: {
+        s: '本科阶段',
+        t: '课程学习',
+        a: '数据结构',
+        r: '完成核心课程',
+      },
+    },
+  };
+  const card = {
+    type: 'experience',
+    status: 'draft_ready',
+    data: {
+      category: 'education',
+      org: '某大学',
+      title: '计算机科学',
+      startDate: '2022-09',
+      endDate: '2026-06',
+      isCurrent: false,
+      star: {
+        s: '本科阶段',
+        t: '课程学习',
+        a: '数据结构',
+        r: '完成核心课程',
+      },
+    },
+  };
+
+  assert.equal(isSameDraftCard(preview, card), true);
+});
