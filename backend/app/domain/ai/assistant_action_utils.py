@@ -89,11 +89,56 @@ def _normalize_assistant_action_text(value: Any) -> str | None:
     return "\n".join(normalized_lines)
 
 
+def _normalize_assistant_draft_text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _normalize_assistant_skill_group_card(card: Dict[str, Any]) -> Dict[str, Any] | None:
+    data = card.get("data")
+    if not isinstance(data, dict):
+        return None
+
+    raw_skills = data.get("skills")
+    if not isinstance(raw_skills, list):
+        return None
+
+    normalized_skills: List[Dict[str, Any]] = []
+    for raw_skill in raw_skills:
+        if isinstance(raw_skill, str):
+            name = _normalize_assistant_draft_text(raw_skill)
+            if name:
+                normalized_skills.append({"name": name})
+            continue
+        if not isinstance(raw_skill, dict):
+            continue
+        name = _normalize_assistant_draft_text(raw_skill.get("name"))
+        if not name:
+            continue
+        normalized_skill = {"name": name}
+        target_user_skill_id = _normalize_assistant_draft_text(raw_skill.get("targetUserSkillId"))
+        if target_user_skill_id:
+            normalized_skill["targetUserSkillId"] = target_user_skill_id
+        normalized_skills.append(normalized_skill)
+
+    if not normalized_skills:
+        return None
+
+    normalized_card = dict(card)
+    normalized_card["data"] = {
+        "category": _normalize_assistant_draft_text(data.get("category")),
+        "skills": normalized_skills,
+    }
+    return normalized_card
+
+
 def _normalize_assistant_draft_card(card: Any) -> Dict[str, Any] | None:
     if not isinstance(card, dict):
         return None
 
     normalized_card = dict(card)
+    if normalized_card.get("type") == "skill_group":
+        return _normalize_assistant_skill_group_card(normalized_card)
+
     if normalized_card.get("type") != "experience":
         return normalized_card
 

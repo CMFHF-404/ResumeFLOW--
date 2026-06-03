@@ -14,7 +14,22 @@ def _set_required_env_defaults() -> None:
 _set_required_env_defaults()
 
 from app.domain.ai import ai_service  # noqa: E402
+from app.domain.ai.assistant_action_utils import _normalize_assistant_draft_card  # noqa: E402
 from app import config as config_module  # noqa: E402
+
+
+class AssistantDraftCardNormalizerTests(unittest.TestCase):
+    def test_skill_group_draft_without_skills_is_dropped(self) -> None:
+        card = {
+            "type": "skill_group",
+            "status": "draft_ready",
+            "summary": "旧技能组草稿",
+            "data": {
+                "category": "核心技能",
+            },
+        }
+
+        self.assertIsNone(_normalize_assistant_draft_card(card))
 
 
 class GeminiThinkingConfigTests(unittest.TestCase):
