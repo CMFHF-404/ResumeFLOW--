@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, HeartHandshake } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, HeartHandshake, UserCog } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
@@ -12,6 +12,7 @@ interface GlobalSidebarProps {
   onOpenFeedback: () => void;
   onOpenAgentPluginConfig: () => void;
   onOpenAppreciation: (returnFocusElement?: HTMLElement | null) => void;
+  onOpenAccountManagement: () => void;
 }
 
 const DEFAULT_PROFILE_NAME = '即刻开始';
@@ -23,6 +24,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   onOpenFeedback,
   onOpenAgentPluginConfig,
   onOpenAppreciation,
+  onOpenAccountManagement,
 }) => {
   const { signOut, signIn, isAuthenticated } = useLogto();
   const { profile } = useProfile();
@@ -149,6 +151,11 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     onOpenAgentPluginConfig();
   };
 
+  const handleOpenAccountManagement = () => {
+    setIsAvatarMenuOpen(false);
+    onOpenAccountManagement();
+  };
+
   const handleSetView = (view: ViewState) => {
     setIsAvatarMenuOpen(false);
     setView(view);
@@ -205,6 +212,17 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           <Bot className="h-4 w-4" />
           <span>Agent API 插件配置</span>
         </button>
+        {isAuthenticated ? (
+          <button
+            className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
+            onClick={handleOpenAccountManagement}
+            type="button"
+            role="menuitem"
+          >
+            <UserCog className="h-4 w-4" />
+            <span>账号管理</span>
+          </button>
+        ) : null}
         {isAuthenticated ? (
           <button
             className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
