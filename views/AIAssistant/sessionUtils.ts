@@ -1,4 +1,4 @@
-import type { AssistantDraftCard, AssistantMessage, AssistantSession } from '../../services/aiService';
+import type { AssistantDraftCard, AssistantMessage, AssistantSession, AssistantSessionDetail } from '../../services/aiService';
 import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 
 export type AssistantDraftMessageItem = {
@@ -12,6 +12,20 @@ export type AssistantDraftGroup = {
   id: string;
   items: AssistantDraftMessageItem[];
   latestItem: AssistantDraftMessageItem;
+};
+
+export const assertAssistantSessionListResponse = (value: unknown): AssistantSession[] => {
+  if (!Array.isArray(value)) {
+    throw new Error('Assistant session list response must be an array');
+  }
+  return value as AssistantSession[];
+};
+
+export const assertAssistantSessionDetailResponse = (value: AssistantSessionDetail): AssistantSessionDetail => {
+  if (!Array.isArray(value.messages)) {
+    throw new Error('Assistant session detail messages must be an array');
+  }
+  return value;
 };
 
 export const isDraftMessageApplied = (message: AssistantMessage) => {
