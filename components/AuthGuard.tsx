@@ -2,13 +2,16 @@ import { useLogto } from '@logto/react';
 import { useEffect, ReactNode, useMemo, useRef, useState } from 'react';
 import { clearAccessTokenProvider, setAccessTokenProvider } from '../services/authTokenProvider';
 import { subscribeLoginRequired } from '../services/authRedirect';
+import {
+    isForceReauthReason,
+    markUserSignInStarted,
+    shouldAutoSignInForLoginRequired,
+} from '../services/authFlowState';
 import { trackLoginStart } from '../utils/analyticsTracker';
 
 interface AuthGuardProps {
     children: ReactNode;
 }
-
-const FORCE_REAUTH_REASONS = new Set(['unauthorized', 'unauthorized-write']);
 
 export default function AuthGuard({ children }: AuthGuardProps) {
     const { isAuthenticated, isLoading, signIn, getAccessToken } = useLogto();
@@ -25,24 +28,27 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
     useEffect(() => {
         if (isAuthenticated) {
+            markUserSignInStarted();
             setHasAuthenticatedOnce(true);
         }
     }, [isAuthenticated]);
 
     useEffect(() => {
         const unsubscribe = subscribeLoginRequired(({ reason, redirectUri }) => {
-            const shouldForceReauth = reason ? FORCE_REAUTH_REASONS.has(reason) : false;
+            const shouldForceReauth = isForceReauthReason(reason);
 
-            if (isLoading || isSigningInRef.current) {
-                return;
-            }
-
-            if (isAuthenticated && !shouldForceReauth) {
+            if (!shouldAutoSignInForLoginRequired({
+                reason,
+                isAuthenticated,
+                isLoading,
+                isSigningIn: isSigningInRef.current,
+            })) {
                 return;
             }
             if (import.meta.env.DEV) {
                 console.log('[AuthGuard] Login required:', reason || 'unknown');
             }
+            markUserSignInStarted();
             isSigningInRef.current = true;
             void (async () => {
                 await trackLoginStart(shouldForceReauth ? 'auth_guard_reauth' : 'auth_guard');

@@ -3,6 +3,7 @@ import { useLogto } from '@logto/react';
 import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, HeartHandshake, UserCog } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
+import { markUserSignInStarted, markUserSignOutStarted } from '../services/authFlowState';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
 import { trackLoginStart } from '../utils/analyticsTracker';
 
@@ -74,11 +75,13 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     // 注销并跳转回首页(登录页)
     // 注意: 需要在 Logto 控制台将 http://localhost:5173 添加到 "Post Sign-out Redirect URI"
     setIsAvatarMenuOpen(false);
+    markUserSignOutStarted();
     await signOut(window.location.origin);
   };
 
   const handleSignIn = async () => {
     setIsAvatarMenuOpen(false);
+    markUserSignInStarted();
     await trackLoginStart('sidebar');
     await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
   };

@@ -141,7 +141,7 @@ const requestAccountApi = async <T>(
     path: string,
     options?: RequestInit
 ): Promise<T> => {
-    const token = await tokenGetter(resolveLogtoAccountApiResource());
+    const token = await tokenGetter();
     if (!token) {
         throw new LogtoAccountApiError('登录状态已失效，请重新登录', { status: 401 });
     }
