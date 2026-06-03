@@ -28,7 +28,7 @@ import { experienceService } from '../services/experienceService';
 import { resumeService } from '../services/resumeService';
 import { skillsService } from '../services/skillsService';
 import { buildSelectedResumeFromResources } from '../utils/assistantResumeContext';
-import { normalizeAssistantDraftCard } from '../utils/assistantDraft';
+import { isAssistantDraftCardDisplayable, normalizeAssistantDraftCard } from '../utils/assistantDraft';
 import { formatRelativeTime } from '../utils/timeUtils';
 import { trackAiAssistantDraftApplied } from '../utils/analyticsTracker';
 import {
@@ -62,6 +62,8 @@ import {
   readMessageSelectedResume,
 } from './AIAssistant/selectionUtils';
 import {
+  assertAssistantSessionDetailResponse,
+  assertAssistantSessionListResponse,
   groupDraftItems,
   isDraftMessageApplied,
   isPendingLatestPreview,
@@ -273,6 +275,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         return [];
       }
       const card = normalizeAssistantDraftCard(message.content_json as unknown as AssistantDraftCard);
+      if (!isAssistantDraftCardDisplayable(card)) {
+        return [];
+      }
       const isManualSaveMode = (
         selectedSessionIsCallbackOnly
         && selectedSession?.entry_source === 'resume_editor'
@@ -637,7 +642,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setIsLoadingSessions(true);
     try {
       const mutationSeqAtStart = sessionMutationCounterRef.current;
-      const rows = await aiService.listAssistantSessions();
+      const rows = assertAssistantSessionListResponse(await aiService.listAssistantSessions());
       const nextSessions = reconcileAssistantSessions(
         sessionsRef.current,
         rows,
@@ -669,7 +674,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     const messageMutationAtStart = messageMutationSeqRef.current;
     setIsLoadingDetail(true);
     try {
-      const detail = await aiService.getAssistantSession(sessionId);
+      const detail = assertAssistantSessionDetailResponse(await aiService.getAssistantSession(sessionId));
       if (detailRequestIdRef.current !== requestId || selectedSessionIdRef.current !== sessionId) {
         return;
       }
@@ -1251,6 +1256,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       || isPersistedCallbackOnlySession(selectedSession)
     );
     const normalizedCard = normalizeAssistantDraftCard(card);
+    if (!isAssistantDraftCardDisplayable(normalizedCard)) {
+      error('这张草稿缺少可录入内容，请继续聊天补充后再确认。');
+      return;
+    }
     const isResumeEditorManualSaveMode = (
       callbackOnly
       && normalizedCard.type === 'experience'
