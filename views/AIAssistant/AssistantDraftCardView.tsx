@@ -162,7 +162,8 @@ export const AssistantDraftCardView: React.FC<{
       );
     }
 
-    return (
+    if (card.type === 'skill_group') {
+      return (
       <div className="space-y-3 mt-4">
         <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
           <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">技能分类</div>
@@ -176,7 +177,10 @@ export const AssistantDraftCardView: React.FC<{
           ))}
         </div>
       </div>
-    );
+      );
+    }
+
+    return null;
   };
 
   return (

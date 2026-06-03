@@ -50,12 +50,12 @@ export const isSameDraftCard = (preview: Record<string, unknown> | undefined, ca
   if (!preview || typeof preview !== 'object') {
     return false;
   }
-  if (preview.type !== card.type) {
-    return false;
-  }
   try {
     const normalizedPreview = normalizeAssistantDraftCard(preview as unknown as AssistantDraftCard);
     const normalizedCard = normalizeAssistantDraftCard(card);
+    if (normalizedPreview.type !== normalizedCard.type) {
+      return false;
+    }
     return JSON.stringify(normalizedPreview.data ?? null) === JSON.stringify(normalizedCard.data);
   } catch (error) {
     return false;
