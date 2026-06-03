@@ -1,4 +1,4 @@
-import type { AssistantDraftCard } from '../services/aiService';
+import type { AssistantDraftCard, AssistantExperienceDraft } from '../services/aiService';
 import { formatYearMonth } from './dateUtils';
 import { normalizeAiRichText, splitRichTextLines } from './richText';
 
@@ -47,10 +47,45 @@ const normalizeSkillGroupDraftCard = (card: Extract<AssistantDraftCard, { type: 
     };
 };
 
+const normalizeExperienceDraftStar = (value: unknown): AssistantExperienceDraft['star'] => {
+    const star = isRecord(value) ? value : {};
+    return {
+        s: normalizeDraftText(star.s),
+        t: normalizeDraftText(star.t),
+        a: normalizeDraftText(star.a),
+        r: normalizeDraftText(star.r),
+    };
+};
+
+const normalizeLegacyEducationDraftCard = (card: Record<string, unknown>): AssistantDraftCard => {
+    const data = isRecord(card.data) ? card.data : {};
+    const targetMasterId = normalizeDraftText(data.targetMasterId);
+    return {
+        type: 'experience',
+        status: 'draft_ready',
+        ...(normalizeDraftText(card.summary) ? { summary: normalizeDraftText(card.summary) } : {}),
+        data: {
+            category: 'education',
+            org: normalizeDraftText(data.org),
+            title: normalizeDraftText(data.title),
+            startDate: formatYearMonth(normalizeDraftText(data.startDate)),
+            endDate: formatYearMonth(normalizeDraftText(data.endDate)),
+            isCurrent: Boolean(data.isCurrent),
+            ...(targetMasterId ? { targetMasterId } : {}),
+            star: normalizeExperienceDraftStar(data.star),
+        },
+    };
+};
+
 const shouldNormalizeExperienceAction = (card: AssistantDraftCard) =>
     card.type === 'experience' && card.data.category !== 'education';
 
 export const normalizeAssistantDraftCard = (card: AssistantDraftCard): AssistantDraftCard => {
+    const cardType = (card as { type?: unknown }).type;
+    if (cardType === 'education') {
+        return normalizeLegacyEducationDraftCard(card as unknown as Record<string, unknown>);
+    }
+
     if (card.type === 'skill_group') {
         return normalizeSkillGroupDraftCard(card);
     }
@@ -80,7 +115,12 @@ export const isAssistantDraftCardDisplayable = (card: AssistantDraftCard | null 
     if (!card) {
         return false;
     }
-    return card.type !== 'skill_group' || card.data.skills.length > 0;
+    const cardType = (card as { type?: unknown }).type;
+    if (cardType === 'skill_group') {
+        return Array.isArray((card as Extract<AssistantDraftCard, { type: 'skill_group' }>).data?.skills)
+            && (card as Extract<AssistantDraftCard, { type: 'skill_group' }>).data.skills.length > 0;
+    }
+    return cardType === 'experience' || cardType === 'certification';
 };
 
 export const getAssistantActionPreviewLines = (card: AssistantDraftCard) => {
