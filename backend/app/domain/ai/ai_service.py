@@ -145,8 +145,12 @@ ASSISTANT_SKILL_PROMPTS: Dict[str, Dict[str, str]] = {
             "and bank_context. If information is insufficient, ask exactly one focused follow-up question "
             "about the most important missing STAR detail and set draftCard to null. Do not rush to produce "
             "a finished draft. You may return a draftCard only when the user explicitly asks for a draft, "
-            "confirms the information is enough, or the supplied facts already cover S/T/A/R with concrete "
-            "actions and results. When returning draftCard, follow the experience card schema exactly."
+            "confirms the information is enough, or the supplied work/project facts already cover S/T/A/R. "
+            "For education material, a draft may be returned when the material covers school, major, degree, "
+            "GPA or grades, or coursework well enough to save an education experience. "
+            "When the material is clearly education, grades, or coursework, organize it as an education "
+            "experience draft instead of forcing work/project-style actions and results. "
+            "When returning draftCard, follow the experience card schema exactly."
         ),
     },
     "experience_completion": {
