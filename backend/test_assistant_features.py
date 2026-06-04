@@ -1482,7 +1482,13 @@ class AssistantDraftApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(created_versions), 1)
         self.assertEqual(created_versions[0].title, "计算机科学")
         self.assertEqual(created_versions[0].org, "某大学")
-        self.assertEqual(created_versions[0].star["a"], "数据结构\n操作系统")
+        self.assertEqual(created_versions[0].star["degree"], "本科")
+        self.assertEqual(created_versions[0].star["gpa"], "GPA 3.8")
+        self.assertEqual(created_versions[0].star["courses"], "数据结构\n操作系统")
+        self.assertNotIn("s", created_versions[0].star)
+        self.assertNotIn("t", created_versions[0].star)
+        self.assertNotIn("a", created_versions[0].star)
+        self.assertNotIn("r", created_versions[0].star)
         self.assertIn("applied_at", message.content_json)
         session.commit.assert_awaited()
 
@@ -1759,7 +1765,55 @@ class AssistantStarNormalizationTests(unittest.TestCase):
             ExperienceCategory.EDUCATION,
         )
 
-        self.assertEqual(merged["a"], "高等数学\n数据结构")
+        self.assertEqual(merged["courses"], "高等数学\n数据结构")
+
+    def test_merge_star_payload_maps_education_draft_fields_for_persisted_versions(self) -> None:
+        merged = assistant_service._merge_star_payload(
+            {
+                "s": "本科",
+                "t": "3.46/4.0",
+                "a": "测试课程（90）",
+                "r": "",
+            },
+            ExperienceCategory.EDUCATION,
+        )
+
+        self.assertEqual(merged["degree"], "本科")
+        self.assertEqual(merged["gpa"], "3.46/4.0")
+        self.assertEqual(merged["courses"], "测试课程（90）")
+        self.assertNotIn("s", merged)
+        self.assertNotIn("t", merged)
+        self.assertNotIn("a", merged)
+        self.assertNotIn("r", merged)
+
+    def test_merge_star_payload_preserves_legacy_education_values_when_draft_is_blank(self) -> None:
+        latest_version = SimpleNamespace(
+            star={
+                "s": "本科",
+                "t": "3.46/4.0",
+                "a": "测试课程（90）",
+                "r": "完成核心课程",
+            }
+        )
+
+        merged = assistant_service._merge_star_payload(
+            {
+                "s": "",
+                "t": "",
+                "a": "",
+                "r": "",
+            },
+            ExperienceCategory.EDUCATION,
+            latest_version,
+        )
+
+        self.assertEqual(merged["degree"], "本科")
+        self.assertEqual(merged["gpa"], "3.46/4.0")
+        self.assertEqual(merged["courses"], "测试课程（90）")
+        self.assertNotIn("s", merged)
+        self.assertNotIn("t", merged)
+        self.assertNotIn("a", merged)
+        self.assertNotIn("r", merged)
 
 
 if __name__ == "__main__":

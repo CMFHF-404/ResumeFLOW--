@@ -74,3 +74,67 @@ test('normalizes legacy education draft cards to experience cards', async () => 
   assert.deepEqual(Object.keys(normalized.data.star).sort(), ['a', 'r', 's', 't']);
   assert.equal(isAssistantDraftCardDisplayable(normalized), true);
 });
+
+test('folds explicit education draft fields into the internal star mapping', async () => {
+  const { normalizeAssistantDraftCard } = await importAssistantDraftUtils();
+
+  const normalized = normalizeAssistantDraftCard({
+    type: 'experience',
+    status: 'draft_ready',
+    summary: '教育经历',
+    data: {
+      category: 'education',
+      org: '厦门大学嘉庚学院',
+      title: '计算机科学与技术',
+      startDate: '2025-09',
+      endDate: '',
+      isCurrent: true,
+      degree: '本科',
+      gpa: '3.46/4.0',
+      courses: '测试课程（90）\n另一门课（A）',
+      star: {
+        s: '',
+        t: '',
+        a: '',
+        r: '不应作为教育保存字段',
+      },
+    },
+  });
+
+  assert.equal(normalized.data.star.s, '本科');
+  assert.equal(normalized.data.star.t, '3.46/4.0');
+  assert.equal(normalized.data.star.a, '测试课程（90）\n另一门课（A）');
+  assert.equal(normalized.data.star.r, '');
+});
+
+test('returns semantic display fields for education draft cards', async () => {
+  const { getAssistantEducationDraftFields, normalizeAssistantDraftCard } = await importAssistantDraftUtils();
+
+  const normalized = normalizeAssistantDraftCard({
+    type: 'experience',
+    status: 'draft_ready',
+    summary: '教育经历',
+    data: {
+      category: 'education',
+      org: '厦门大学嘉庚学院',
+      title: '计算机科学与技术',
+      startDate: '2025-09',
+      endDate: '',
+      isCurrent: true,
+      star: {
+        s: '本科',
+        t: '3.46/4.0',
+        a: '测试课程（90）',
+        r: '不会保存的结果字段',
+      },
+    },
+  });
+
+  assert.deepEqual(getAssistantEducationDraftFields(normalized), [
+    ['学校', '厦门大学嘉庚学院'],
+    ['专业', '计算机科学与技术'],
+    ['学位', '本科'],
+    ['GPA/绩点', '3.46/4.0'],
+    ['课程', '测试课程（90）'],
+  ]);
+});

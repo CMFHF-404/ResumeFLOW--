@@ -166,6 +166,23 @@ def _merge_star_payload(
     resolved_star = latest_version.star.copy() if latest_version and isinstance(latest_version.star, dict) else {}
     if not isinstance(incoming_star, dict):
         return resolved_star
+    if category == ExperienceCategory.EDUCATION:
+        existing_star = dict(resolved_star)
+        for key in ("s", "t", "a", "r"):
+            resolved_star.pop(key, None)
+        for source_key, target_key in (("s", "degree"), ("t", "gpa"), ("a", "courses")):
+            value = incoming_star.get(source_key)
+            if not (isinstance(value, str) and value.strip()):
+                value = incoming_star.get(target_key)
+            if not (isinstance(value, str) and value.strip()):
+                value = existing_star.get(target_key)
+            if not (isinstance(value, str) and value.strip()):
+                value = existing_star.get(source_key)
+            if isinstance(value, str) and value.strip():
+                resolved_star[target_key] = value
+            elif target_key not in resolved_star and isinstance(value, str):
+                resolved_star[target_key] = value
+        return resolved_star
     for key in ("s", "t", "a", "r"):
         value = incoming_star.get(key)
         normalized_value = (

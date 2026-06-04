@@ -510,9 +510,23 @@ class AiServiceAssistantNormalizationTests(unittest.TestCase):
 
     def test_assistant_prompts_require_action_lines_without_prefixes(self) -> None:
         self.assertIn("For work or project experience cards, data.star.a must contain concise action points", ai_service.GENERAL_ASSISTANT_PROMPT)
-        self.assertIn("For education cards, use data.star.a for courses or core coursework text", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertIn("For education cards, map data.org to school", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertIn("Keep course grades or scores on the same line as the course name", ai_service.GENERAL_ASSISTANT_PROMPT)
         self.assertIn("When category is 'work' or 'project', star.a must be concise action points", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
-        self.assertIn("When category is 'education', use star.a for courses or core coursework text", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+        self.assertIn("When category is 'education', map org to school", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+        self.assertIn("Keep course grades or scores on the same line as the course name", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+
+    def test_star_guidance_prompt_allows_education_drafts_without_work_style_results(self) -> None:
+        prompt = ai_service.ASSISTANT_SKILL_PROMPTS["star_guidance"]["prompt"]
+
+        self.assertIn("material covers school, major, degree, GPA or grades, or coursework", prompt)
+        self.assertNotIn("cover S/T/A/R with concrete actions and results", prompt)
+
+    def test_education_prompt_requires_empty_result_field(self) -> None:
+        self.assertIn("Set data.star.r to an empty string for education cards.", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertIn("Set star.r to an empty string for education cards.", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
+        self.assertNotIn("saveable education-specific result text", ai_service.GENERAL_ASSISTANT_PROMPT)
+        self.assertNotIn("saveable education-specific result text", ai_service.EXPERIENCE_ASSISTANT_PROMPT)
 
     def test_normalize_assistant_result_keeps_date_prefixed_action_text(self) -> None:
         result = ai_service._normalize_assistant_result(
@@ -587,6 +601,34 @@ class AiServiceAssistantNormalizationTests(unittest.TestCase):
         )
 
         self.assertEqual(result["draftCard"]["data"]["star"]["a"], "高等数学\n数据结构")
+
+    def test_normalize_assistant_result_keeps_education_course_grade_text(self) -> None:
+        result = ai_service._normalize_assistant_result(
+            {
+                "assistantText": "已整理",
+                "draftCard": {
+                    "type": "experience",
+                    "status": "draft_ready",
+                    "summary": "教育经历",
+                    "data": {
+                        "category": "education",
+                        "org": "某大学",
+                        "title": "计算机科学",
+                        "startDate": "2022-09",
+                        "endDate": "2026-06",
+                        "isCurrent": False,
+                        "star": {
+                            "s": "本科",
+                            "t": "GPA 3.8",
+                            "a": "测试课程（90）\n另一门课（A）",
+                            "r": "",
+                        },
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(result["draftCard"]["data"]["star"]["a"], "测试课程（90）\n另一门课（A）")
 
 
 class AiServiceAssistantStreamingTests(unittest.IsolatedAsyncioTestCase):
