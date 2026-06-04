@@ -57,6 +57,16 @@ const normalizeExperienceDraftStar = (value: unknown): AssistantExperienceDraft[
     };
 };
 
+const normalizeEducationDraftStar = (data: Record<string, unknown>): AssistantExperienceDraft['star'] => {
+    const star = normalizeExperienceDraftStar(data.star);
+    return {
+        s: normalizeDraftText(data.degree) || star.s,
+        t: normalizeDraftText(data.gpa) || star.t,
+        a: normalizeDraftText(data.courses) || star.a,
+        r: '',
+    };
+};
+
 const normalizeLegacyEducationDraftCard = (card: Record<string, unknown>): AssistantDraftCard => {
     const data = isRecord(card.data) ? card.data : {};
     const targetMasterId = normalizeDraftText(data.targetMasterId);
@@ -72,13 +82,33 @@ const normalizeLegacyEducationDraftCard = (card: Record<string, unknown>): Assis
             endDate: formatYearMonth(normalizeDraftText(data.endDate)),
             isCurrent: Boolean(data.isCurrent),
             ...(targetMasterId ? { targetMasterId } : {}),
-            star: normalizeExperienceDraftStar(data.star),
+            star: normalizeEducationDraftStar(data),
         },
     };
 };
 
 const shouldNormalizeExperienceAction = (card: AssistantDraftCard) =>
     card.type === 'experience' && card.data.category !== 'education';
+
+const normalizeEducationExperienceDraftCard = (
+    card: Extract<AssistantDraftCard, { type: 'experience' }>
+): AssistantDraftCard => {
+    const data = isRecord(card.data) ? card.data : {};
+    const targetMasterId = normalizeDraftText(data.targetMasterId);
+    return {
+        ...card,
+        data: {
+            category: 'education',
+            org: normalizeDraftText(data.org),
+            title: normalizeDraftText(data.title),
+            startDate: formatYearMonth(normalizeDraftText(data.startDate)),
+            endDate: formatYearMonth(normalizeDraftText(data.endDate)),
+            isCurrent: Boolean(data.isCurrent),
+            ...(targetMasterId ? { targetMasterId } : {}),
+            star: normalizeEducationDraftStar(data),
+        },
+    };
+};
 
 export const normalizeAssistantDraftCard = (card: AssistantDraftCard): AssistantDraftCard => {
     const cardType = (card as { type?: unknown }).type;
@@ -92,6 +122,10 @@ export const normalizeAssistantDraftCard = (card: AssistantDraftCard): Assistant
 
     if (card.type !== 'experience') {
         return card;
+    }
+
+    if (card.data.category === 'education') {
+        return normalizeEducationExperienceDraftCard(card);
     }
 
     const shouldNormalizeAction = shouldNormalizeExperienceAction(card);
@@ -109,6 +143,19 @@ export const normalizeAssistantDraftCard = (card: AssistantDraftCard): Assistant
             },
         },
     };
+};
+
+export const getAssistantEducationDraftFields = (card: AssistantDraftCard): Array<[string, string]> => {
+    if (card.type !== 'experience' || card.data.category !== 'education') {
+        return [];
+    }
+    return [
+        ['学校', card.data.org],
+        ['专业', card.data.title],
+        ['学位', card.data.star.s],
+        ['GPA/绩点', card.data.star.t],
+        ['课程', card.data.star.a],
+    ];
 };
 
 export const isAssistantDraftCardDisplayable = (card: AssistantDraftCard | null | undefined): card is AssistantDraftCard => {

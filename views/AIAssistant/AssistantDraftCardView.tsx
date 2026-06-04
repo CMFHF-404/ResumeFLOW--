@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { type AssistantDraftCard } from '../../services/aiService';
-import { getAssistantActionPreviewLines } from '../../utils/assistantDraft';
+import { getAssistantActionPreviewLines, getAssistantEducationDraftFields } from '../../utils/assistantDraft';
 
 const markdownComponents = {
   p: ({node, ...props}: any) => <p className="m-0 whitespace-pre-wrap" {...props} />,
@@ -66,9 +66,49 @@ export const AssistantDraftCardView: React.FC<{
     ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
     : null;
   const actionPreviewLines = getAssistantActionPreviewLines(card);
+  const educationDraftFields = card.type === 'experience' && card.data.category === 'education'
+    ? getAssistantEducationDraftFields(card)
+    : [];
 
   const renderContent = () => {
     if (card.type === 'experience') {
+      if (card.data.category === 'education') {
+        return (
+          <div className="space-y-3 mt-4">
+            <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">类别</div>
+                <div className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-slate-100">{experienceCategoryLabel}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">时间</div>
+                <div className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
+                  {card.data.startDate || '待补充'} - {card.data.isCurrent ? '至今' : (card.data.endDate || '待补充')}
+                </div>
+              </div>
+            </div>
+            {!card.data.targetMasterId ? (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-950/30">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">录入方式</div>
+                <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100">{experienceApplyHint}</div>
+              </div>
+            ) : null}
+            <div className="grid gap-3 md:grid-cols-2">
+              {educationDraftFields.map(([label, value]) => (
+                <div key={label} className={`rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80 ${label === '课程' ? 'md:col-span-2' : ''}`}>
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600 space-y-2 break-words overflow-hidden dark:text-slate-300">
+                    <ReactMarkdown components={markdownComponents}>
+                      {value || '待补充'}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] gap-3 md:grid-cols-2">
