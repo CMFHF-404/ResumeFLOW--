@@ -4,25 +4,16 @@ import asyncio
 import base64
 import copy
 import hashlib
-import io
 import inspect
 import json
 import logging
 import re
-import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass
-from pathlib import Path
 from time import perf_counter
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple
-from zipfile import BadZipFile
 
-from docx import Document
-from docx.opc.exceptions import PackageNotFoundError
-from fastapi import UploadFile
 import httpx
-from pypdf import PdfReader
-from pypdf.errors import PdfReadError
 from sqlalchemy import desc
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -50,6 +41,32 @@ from .duplicate_detection import (
     _similarity,
     apply_duplicate_flags,
 )
+from .document_text import (
+    MAX_ATTACHMENT_BYTES,
+    MAX_RESUME_TEXT_CHARS,
+    MIN_MEANINGFUL_TEXT_CHARS,
+    MIN_TEXT_LENGTH,
+    SUPPORTED_DOCX_TYPES,
+    SUPPORTED_EXTENSIONS,
+    SUPPORTED_PDF_TYPES,
+    UNREADABLE_RESUME_TEXT_ERROR,
+    _count_meaningful_text_chars,
+    _ensure_attachment_size_limit,
+    _extract_docx_text,
+    _extract_pdf_text,
+    _prepare_resume_text,
+    _resolve_file_kind,
+    _resolve_file_kind_from_metadata,
+    _resolve_file_mime,
+    extract_resume_text,
+    extract_text,
+)
+from . import thinking_transport
+from .thinking_transport import (
+    GEMINI_CONNECT_TIMEOUT_SECONDS,
+    GEMINI_POOL_TIMEOUT_SECONDS,
+    THOUGHT_PAYLOAD_TIMEOUT_SECONDS,
+)
 from .payload_normalization import (
     DEFAULT_EDU_ORG,
     DEFAULT_EDU_TITLE,
@@ -72,7 +89,6 @@ from .payload_normalization import (
     _build_work_version,
     _clean_inline_text,
     _clean_multiline_text,
-    _clean_resume_text,
     _collect_entry_text,
     _contains_any,
     _count_keyword_hits,
@@ -111,20 +127,11 @@ from .schemas import DuplicateMatch, ParsedExperienceItem, ParsedExperienceVersi
 logger = logging.getLogger(__name__)
 settings = load_settings()
 
-SUPPORTED_PDF_TYPES = {"application/pdf"}
-SUPPORTED_DOCX_TYPES = {
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-}
-SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
-MIN_TEXT_LENGTH = 30
-MIN_MEANINGFUL_TEXT_CHARS = 10
-MAX_RESUME_TEXT_CHARS = 12_000
 LONG_RESUME_TEXT_THRESHOLD = 6_000
 CHUNK_MAX_CHARS = 3_200
 CHUNK_MIN_CHARS = 800
 MAX_MERGE_PAYLOAD_CHARS = 10_000
 DUPLICATE_SIMILARITY_THRESHOLD = 0.86
-THOUGHT_PAYLOAD_TIMEOUT_SECONDS = 180.0
 DEFAULT_WORK_TITLE = "未命名经历"
 DEFAULT_WORK_ORG = "未知机构"
 DEFAULT_EDU_TITLE = "未命名专业"
@@ -142,9 +149,6 @@ PARA_SPLIT_PATTERN = re.compile(r"\n\s*\n+")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？!?;；.])\s+")
 LINK_SPLIT_PATTERN = re.compile(r"[\s,;，；]+")
 PERSONAL_INFO_FIELDS = ("full_name", "email", "phone", "location")
-UNREADABLE_RESUME_TEXT_ERROR = (
-    "无法读取附件中的文本内容，请检查上传内容；当前不支持无法读取文本的附件。"
-)
 PROJECT_KEYWORDS = {
     "project",
     "projects",
@@ -247,14 +251,11 @@ LOG_WARN_THRESHOLDS_MS = {
     "ai_call": 20_000,
     "parse_resume_total": 25_000,
 }
-MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 PARSE_CACHE_MAX_ENTRIES = 64
 PARSE_CHUNK_CONCURRENCY = 3
 PARSE_CACHE_VERSION = "resume-parser-v3"
 ParseProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
-GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
-GEMINI_POOL_TIMEOUT_SECONDS = 10.0
 _PARSE_RESULT_CACHE: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 
 
@@ -329,45 +330,6 @@ def _store_cached_parse_result(
     while len(_PARSE_RESULT_CACHE) > PARSE_CACHE_MAX_ENTRIES:
         _PARSE_RESULT_CACHE.popitem(last=False)
     _log_timing("parse_cache", 0, request_id, {"status": "stored"})
-
-
-def _resolve_file_kind(file: UploadFile) -> str:
-    filename = file.filename or ""
-    extension = Path(filename).suffix.lower()
-    content_type = (file.content_type or "").lower()
-    if content_type in SUPPORTED_PDF_TYPES or extension == ".pdf":
-        return "pdf"
-    if content_type in SUPPORTED_DOCX_TYPES or extension == ".docx":
-        return "docx"
-    raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
-
-
-def _ensure_attachment_size_limit(data: bytes) -> None:
-    if len(data) <= MAX_ATTACHMENT_BYTES:
-        return
-    max_mb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
-    raise ValueError(
-        f"文件过大，无法直接解析。请上传不超过 {max_mb:.0f}MB 的 PDF 或 DOCX 文件。"
-    )
-
-
-def _resolve_file_mime(file: UploadFile, kind: str) -> str:
-    content_type = (file.content_type or "").lower().strip()
-    if content_type:
-        return content_type
-    if kind == "pdf":
-        return "application/pdf"
-    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-
-def _resolve_file_kind_from_metadata(filename: str, content_type: str) -> str:
-    extension = Path(filename or "").suffix.lower()
-    normalized_type = (content_type or "").lower().strip()
-    if normalized_type in SUPPORTED_PDF_TYPES or extension == ".pdf":
-        return "pdf"
-    if normalized_type in SUPPORTED_DOCX_TYPES or extension == ".docx":
-        return "docx"
-    raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
 
 
 def _log_timing(
@@ -450,105 +412,34 @@ async def _emit_thought(
 
 
 def _build_gemini_headers() -> Dict[str, str]:
-    api_key = settings.gemini_api_key
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY 未配置，无法返回 Gemini 实时思考节点。")
-    return {
-        "x-goog-api-key": api_key,
-        "Content-Type": "application/json",
-    }
+    return thinking_transport._build_gemini_headers(settings)
 
 
 def _build_gemini_stream_url(model: str) -> str:
-    base_url = (settings.gemini_base_url or "").rstrip("/")
-    if not base_url:
-        raise ValueError("GEMINI_BASE_URL 未配置，无法调用 Gemini Thinking。")
-    normalized = base_url.lower()
-    if not normalized.endswith("/v1beta") and not normalized.endswith("/v1"):
-        base_url = f"{base_url}/v1beta"
-    return f"{base_url}/models/{model}:streamGenerateContent?alt=sse"
+    return thinking_transport._build_gemini_stream_url(settings, model)
 
 
 def _build_gemini_timeout() -> httpx.Timeout:
-    return httpx.Timeout(
-        connect=GEMINI_CONNECT_TIMEOUT_SECONDS,
-        write=float(settings.ai_timeout_seconds),
-        read=float(settings.ai_timeout_seconds),
-        pool=GEMINI_POOL_TIMEOUT_SECONDS,
-    )
+    return thinking_transport._build_gemini_timeout(settings)
 
 
 def _build_gemini_payload_timeout_seconds() -> float:
-    return min(float(settings.ai_timeout_seconds), THOUGHT_PAYLOAD_TIMEOUT_SECONDS)
+    return thinking_transport._build_gemini_payload_timeout_seconds(
+        settings,
+        THOUGHT_PAYLOAD_TIMEOUT_SECONDS,
+    )
 
 
 def _build_resume_thinking_request(cleaned_text: str) -> Dict[str, Any]:
-    return {
-        "systemInstruction": {
-            "parts": [{"text": RESUME_PARSING_PROMPT}],
-        },
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": (
-                            "请解析以下简历正文，并严格输出 JSON。"
-                            "不要补充正文中不存在的信息。\n\n"
-                            f"{cleaned_text}"
-                        )
-                    }
-                ],
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "thinkingConfig": {
-                "includeThoughts": True,
-            },
-        },
-    }
+    return thinking_transport._build_resume_thinking_request(
+        cleaned_text,
+        RESUME_PARSING_PROMPT,
+    )
 
 
 async def _iter_sse_json_payloads(response: httpx.Response):
-    def build_payload(lines: List[str]) -> str:
-        data_lines: List[str] = []
-        for item in lines:
-            if not item.startswith("data:"):
-                continue
-            value = item[5:]
-            if value.startswith(" "):
-                value = value[1:]
-            data_lines.append(value)
-        return "\n".join(data_lines)
-
-    event_lines: List[str] = []
-    async for raw_line in response.aiter_lines():
-        line = raw_line.rstrip("\r")
-        if not line.strip():
-            if not event_lines:
-                continue
-            payload = build_payload(event_lines)
-            event_lines = []
-            if not payload:
-                continue
-            if payload == "[DONE]":
-                break
-            try:
-                yield json.loads(payload)
-            except json.JSONDecodeError:
-                logger.warning("[ResumeParse] invalid Gemini SSE payload: %s", payload[:500])
-            continue
-        event_lines.append(line)
-
-    if event_lines:
-        payload = build_payload(event_lines)
-        if payload and payload != "[DONE]":
-            try:
-                yield json.loads(payload)
-            except json.JSONDecodeError:
-                logger.warning("[ResumeParse] invalid Gemini SSE trailing payload: %s", payload[:500])
+    async for payload in thinking_transport._iter_sse_json_payloads(response):
+        yield payload
 
 
 async def _stream_resume_thinking_parse(
@@ -556,92 +447,23 @@ async def _stream_resume_thinking_parse(
     request_id: Optional[str],
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    request_body = _build_resume_thinking_request(cleaned_text)
-    model = settings.gemini_model
-    url = _build_gemini_stream_url(model)
-    answer_parts: List[str] = []
-    call_start = perf_counter()
-
-    try:
-        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
-            async with client.stream(
-                "POST",
-                url,
-                headers=_build_gemini_headers(),
-                json=request_body,
-            ) as response:
-                response.raise_for_status()
-                content_type = (response.headers.get("content-type") or "").lower()
-                if "text/event-stream" not in content_type:
-                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
-                    logger.error(
-                        "[ResumeParse] Gemini proxy returned unexpected content-type request_id=%s content_type=%s body=%s",
-                        request_id,
-                        content_type,
-                        body_preview,
-                    )
-                    raise ValueError(
-                        "Gemini 中转站返回了非流式响应，请检查 GEMINI_BASE_URL 是否需要包含 /v1beta。"
-                    )
-                payload_iter = _iter_sse_json_payloads(response).__aiter__()
-                while True:
-                    try:
-                        payload = await asyncio.wait_for(
-                            payload_iter.__anext__(),
-                            timeout=_build_gemini_payload_timeout_seconds(),
-                        )
-                    except StopAsyncIteration:
-                        break
-                    except asyncio.TimeoutError as exc:
-                        raise ValueError(
-                            "Gemini Thinking 长时间未收到新的解析流数据，请稍后重试。"
-                        ) from exc
-                    candidates = payload.get("candidates") or []
-                    if not candidates:
-                        continue
-                    parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
-                    for part in parts:
-                        text = part.get("text")
-                        if not isinstance(text, str) or not text:
-                            continue
-                        if part.get("thought") is True:
-                            await _emit_thought(
-                                thought_callback,
-                                {"type": "thought", "summary": text},
-                            )
-                            continue
-                        answer_parts.append(text)
-    except httpx.HTTPStatusError as exc:
-        try:
-            await exc.response.aread()
-            error_text = exc.response.text[:1000]
-        except Exception:
-            error_text = "Failed to read response body."
-        logger.error(
-            "[ResumeParse] Gemini thinking request failed request_id=%s status=%s body=%s",
-            request_id,
-            exc.response.status_code,
-            error_text,
-        )
-        raise ValueError("Gemini Thinking 解析失败，请稍后重试。") from exc
-    except httpx.TimeoutException as exc:
-        raise ValueError("Gemini Thinking 解析超时，请稍后重试。") from exc
-
-    call_ms = (perf_counter() - call_start) * 1000
-    _log_timing(
-        "ai_call",
-        call_ms,
-        request_id,
-        {
-            "mode": "gemini_thinking",
-            "input_length": len(cleaned_text),
-        },
+    return await thinking_transport.stream_resume_thinking_parse(
+        cleaned_text=cleaned_text,
+        request_id=request_id,
+        thought_callback=thought_callback,
+        settings=settings,
+        request_body=_build_resume_thinking_request(cleaned_text),
+        build_headers=_build_gemini_headers,
+        build_stream_url=_build_gemini_stream_url,
+        build_timeout=_build_gemini_timeout,
+        build_payload_timeout_seconds=_build_gemini_payload_timeout_seconds,
+        iter_sse_json_payloads=_iter_sse_json_payloads,
+        emit_thought=_emit_thought,
+        parse_structured_response_text=_parse_structured_response_text,
+        normalize_parse_result=_normalize_parse_result,
+        log_timing=_log_timing,
+        httpx_module=httpx,
     )
-
-    answer_text = "".join(answer_parts).strip()
-    if not answer_text:
-        raise ValueError("Gemini 未返回可解析的结构化结果。")
-    return _normalize_parse_result(_parse_structured_response_text(answer_text))
 
 
 async def _call_resume_llm(
@@ -816,120 +638,6 @@ async def _parse_resume_chunked(
     draft = _merge_chunk_results(chunk_results)
     merged = await _merge_with_llm(draft, request_id)
     return _normalize_parse_result(merged)
-
-
-async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> bytes:
-    total_start = perf_counter()
-    read_start = perf_counter()
-    data = await file.read()
-    read_ms = (perf_counter() - read_start) * 1000
-    _log_timing(
-        "read_file",
-        read_ms,
-        request_id,
-        {
-            "size": len(data),
-            "filename": file.filename or "",
-            "content_type": file.content_type or "",
-        },
-    )
-    if not data:
-        raise ValueError("文件为空，无法解析。")
-    _resolve_file_kind(file)
-    total_ms = (perf_counter() - total_start) * 1000
-    _log_timing("extract_text_total", total_ms, request_id)
-    return data
-
-
-def _extract_pdf_text(data: bytes) -> str:
-    reader = PdfReader(io.BytesIO(data))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n".join(pages)
-
-
-def _extract_docx_text(data: bytes) -> str:
-    doc = Document(io.BytesIO(data))
-    parts = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
-
-    def append_table_text(table) -> None:
-        for row in table.rows:
-            cells = []
-            for cell in row.cells:
-                cell_parts = [para.text.strip() for para in cell.paragraphs if para.text.strip()]
-                for nested_table in cell.tables:
-                    append_table_text(nested_table)
-                if cell_parts:
-                    cells.append("\n".join(cell_parts))
-            if cells:
-                parts.append(" | ".join(cells))
-
-    for table in doc.tables:
-        append_table_text(table)
-
-    return "\n".join(parts)
-
-
-def extract_resume_text(
-    file_data: bytes,
-    filename: str,
-    file_mime_type: str,
-    request_id: Optional[str] = None,
-) -> str:
-    if not file_data:
-        raise ValueError("文件为空，无法解析。")
-    _ensure_attachment_size_limit(file_data)
-    kind = _resolve_file_kind_from_metadata(filename, file_mime_type)
-    parse_start = perf_counter()
-    try:
-        if kind == "pdf":
-            text = _extract_pdf_text(file_data)
-            parse_step = "parse_pdf"
-        else:
-            text = _extract_docx_text(file_data)
-            parse_step = "parse_docx"
-    except (PdfReadError, BadZipFile, PackageNotFoundError, ValueError) as exc:
-        logger.warning(
-            "[ResumeParse] failed to extract resume text request_id=%s filename=%s kind=%s error=%s",
-            request_id,
-            filename,
-            kind,
-            str(exc),
-        )
-        raise ValueError("文件无法读取，请确认文件未损坏、未加密且内容可解析。") from exc
-    parse_ms = (perf_counter() - parse_start) * 1000
-    _log_timing(parse_step, parse_ms, request_id, {"text_length": len(text)})
-    return text
-
-
-def _count_meaningful_text_chars(text: str) -> int:
-    return sum(
-        1
-        for char in text
-        if unicodedata.category(char).startswith(("L", "N"))
-    )
-
-
-def _prepare_resume_text(text: str, request_id: Optional[str] = None) -> Optional[str]:
-    cleaned = _clean_resume_text(text)
-    stripped = cleaned.strip()
-    meaningful_char_count = _count_meaningful_text_chars(stripped)
-    if meaningful_char_count < MIN_MEANINGFUL_TEXT_CHARS:
-        logger.info(
-            "[ResumeParse] extracted text unreadable, rejecting parse request_id=%s text_length=%s meaningful_char_count=%s",
-            request_id,
-            len(stripped),
-            meaningful_char_count,
-        )
-        return None
-    if len(stripped) < MIN_TEXT_LENGTH:
-        logger.info(
-            "[ResumeParse] extracted text too short, rejecting parse request_id=%s text_length=%s meaningful_char_count=%s",
-            request_id,
-            len(stripped),
-            meaningful_char_count,
-        )
-        return None
-    return cleaned
 
 
 async def _parse_resume_cached(

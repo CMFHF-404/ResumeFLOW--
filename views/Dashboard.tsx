@@ -2,26 +2,22 @@ import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffe
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
-import { resolveAuthUserKeyFromActiveSession } from '../services/apiClient';
+import { devLog } from '../services/devLogger';
 import { resumeService } from '../services/resumeService';
-import { profileService } from '../services/profileService';
 import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import {
-  mapResumeToDashboard,
-  mapResumesToDashboard,
-  resolveDashboardResumeLocalMatchRate,
-} from '../utils/dashboardResumeMapper';
-import { DEFAULT_RESUME_TITLE } from '../constants/resumeConstants';
+  filterExistingResumeIds,
+  removeResumeIds,
+} from './Dashboard/dashboardUtils';
+import { useDashboardResumeList } from './Dashboard/useDashboardResumeList';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
-import { trackLoginStart, trackResumeDuplicated } from '../utils/analyticsTracker';
-import { formatRelativeTime } from '../utils/timeUtils';
+import { trackLoginStart } from '../utils/analyticsTracker';
 import UnAuthPrompt from '../components/UnAuthPrompt';
-import { buildPreferredResumeCreateConfig } from './resumeTemplateStorage';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
 
 interface DashboardProps {
@@ -38,7 +34,6 @@ const DELETE_CONFIRM_TITLE = '删除简历';
 const BULK_DELETE_CONFIRM_TITLE = '批量删除简历';
 const DELETE_CONFIRM_LABEL = '删除';
 const DELETE_CANCEL_LABEL = '取消';
-const COPY_SUFFIX = ' (副本)';
 const VIEW_MODE_STORAGE_KEY = 'yuanzijianli.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
 const MOBILE_LONG_PRESS_DURATION = 450;
@@ -54,16 +49,6 @@ const BATCH_DELETE_TOAST_MESSAGES = {
 const DELETE_VERIFY_MESSAGES = {
   notRemoved: '删除未生效，已重新同步列表',
   syncFailed: '删除完成，但同步列表失败，请稍后重试',
-} as const;
-const COPY_TOAST_MESSAGES = {
-  loading: '正在创建副本...',
-  success: '副本已创建',
-  error: '创建副本失败，请重试',
-} as const;
-const RENAME_TOAST_MESSAGES = {
-  loading: '正在更新名称...',
-  success: '名称已更新',
-  error: '重命名失败，请重试',
 } as const;
 const DROPDOWN_WIDTH = 192;
 const DROPDOWN_OFFSET = 4;
@@ -131,41 +116,6 @@ const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
   return value === 'list' ? 'list' : 'grid';
 };
 
-const mergeMatchRatesIntoResumes = (items: Resume[]) => {
-  let changed = false;
-  const next = items.map((resume) => {
-    const localMatchRate = resolveDashboardResumeLocalMatchRate(resume.id);
-    const matchRate = typeof localMatchRate === 'number' ? localMatchRate : resume.matchRate;
-    const status = (matchRate > 0 ? 'final' : 'draft') as Resume['status'];
-    if (resume.matchRate === matchRate && resume.status === status) {
-      return resume;
-    }
-    changed = true;
-    return { ...resume, matchRate, status };
-  });
-  return changed ? next : items;
-};
-
-const areResumeListsEqual = (prev: Resume[], next: Resume[]) => {
-  if (prev === next) {
-    return true;
-  }
-  if (prev.length !== next.length) {
-    return false;
-  }
-  return prev.every((item, index) => {
-    const other = next[index];
-    return item.id === other.id
-      && item.name === other.name
-      && item.targetRole === other.targetRole
-      && item.matchRate === other.matchRate
-      && item.createdAt === other.createdAt
-      && item.lastModified === other.lastModified
-      && item.status === other.status
-      && item.type === other.type;
-  });
-};
-
 const Dashboard: React.FC<DashboardProps> = ({
   setView,
   cachedResumes = [],
@@ -181,25 +131,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     await trackLoginStart('dashboard_cta');
     await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
   }, [signIn]);
-  const isCacheOwnerMatched = Boolean(
-    cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
-  );
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     resolveStoredViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
   );
-  const [resumes, setResumes] = useState<Resume[]>(() =>
-    isCacheOwnerMatched ? cachedResumes : []
-  );
-  const [isLoading, setIsLoading] = useState(!isCacheOwnerMatched);
-  const [error, setError] = useState<string | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const [dropdownAnchor, setDropdownAnchor] = useState<DropdownAnchor | null>(null);
   const [dropdownPos, setDropdownPos] = useState<DropdownPosition | null>(null);
-  const [isCreatingResume, setIsCreatingResume] = useState(false);
   const [isDeletingResume, setIsDeletingResume] = useState(false);
-  const [isCopyingResume, setIsCopyingResume] = useState(false);
-  const [isRenamingResume, setIsRenamingResume] = useState(false);
   const [isBatchEditMode, setIsBatchEditMode] = useState(false);
   const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -215,26 +154,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     updateToast,
     closeToast,
   } = useToast();
-
-  // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
-  const onResumesUpdateRef = useRef(onResumesUpdate);
-
-  // 同步最新的回调函数到 ref
-  useEffect(() => {
-    onResumesUpdateRef.current = onResumesUpdate;
-  }, [onResumesUpdate]);
-
-  useEffect(() => {
-    if (!isCacheOwnerMatched) {
-      return;
-    }
-    if (cachedResumes.length === 0) {
-      setResumes((prev) => (prev.length === 0 ? prev : []));
-      return;
-    }
-    const hydrated = mergeMatchRatesIntoResumes(cachedResumes);
-    setResumes((prev) => (areResumeListsEqual(prev, hydrated) ? prev : hydrated));
-  }, [cachedResumes, isCacheOwnerMatched]);
+  const {
+    resumes,
+    setResumes,
+    isLoading,
+    error,
+    isCreatingResume,
+    isCopyingResume,
+    isRenamingResume,
+    fetchDashboardResumes,
+    createResume,
+    duplicateResume,
+    renameResume,
+  } = useDashboardResumeList({
+    cachedResumes,
+    cachedResumesOwnerKey,
+    authUserKey,
+    userProfile,
+    setView,
+    onResumesUpdate,
+    showToastLoading,
+    updateToast,
+  });
 
   useEffect(() => {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
@@ -253,60 +194,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     mediaQuery.addListener(handleChange);
     return () => mediaQuery.removeListener(handleChange);
   }, []);
-
-
-
-  const lastSyncedResumesRef = useRef<Resume[] | null>(null);
-  useEffect(() => {
-    const handler = onResumesUpdateRef.current;
-    if (!handler || lastSyncedResumesRef.current === resumes) {
-      return;
-    }
-    lastSyncedResumesRef.current = resumes;
-    handler(resumes);
-  }, [resumes]);
-
-  const fetchDashboardResumes = useCallback(async (options?: { force?: boolean }) => {
-    const data = await resumeService.list(options);
-    return mapResumesToDashboard(data);
-  }, []);
-
-  const loadKey = authUserKey ?? 'unknown';
-  const lastLoadKeyRef = useRef<string | null>(null);
-  const loadResumes = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      if (import.meta.env.DEV) {
-        console.log('[Dashboard] 开始加载简历列表...');
-      }
-      const mappedResumes = await fetchDashboardResumes({ force: true });
-      if (import.meta.env.DEV) {
-        console.log(`[Dashboard] 加载成功，共 ${mappedResumes.length} 份简历`);
-      }
-      setResumes(mappedResumes);
-    } catch (err) {
-      console.error('Failed to load resumes:', err);
-      setError('加载简历列表失败,请稍后重试');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchDashboardResumes]);
-
-  // 从后端加载简历列表（用户切换时强制刷新）
-  useEffect(() => {
-    if (lastLoadKeyRef.current === loadKey) {
-      return;
-    }
-    lastLoadKeyRef.current = loadKey;
-    if (!isCacheOwnerMatched) {
-      setResumes([]);
-    }
-    void loadResumes();
-  }, [isCacheOwnerMatched, loadKey, loadResumes]);
-
-
-
   const effectiveViewMode = isMobile ? 'list' : viewMode;
   const selectedResumeIdSet = useMemo(() => new Set(selectedResumeIds), [selectedResumeIds]);
   const selectedCount = selectedResumeIds.length;
@@ -331,33 +218,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     setView(ViewState.EDITOR);
   };
 
-  const handleCreateResume = async () => {
-    if (isCreatingResume) {
-      return;
-    }
-    try {
-      setIsCreatingResume(true);
-      const profileForCreate = userProfile
-        ?? await profileService.getProfile().catch(() => profileService.peekProfileForCurrentUser());
-      const ownerId = profileForCreate?.user_id ?? authUserKey ?? await resolveAuthUserKeyFromActiveSession();
-      const created = await resumeService.create({
-        title: DEFAULT_RESUME_TITLE,
-        config: buildPreferredResumeCreateConfig(
-          profileForCreate?.extra_json,
-          ownerId
-        ),
-      });
-      const newResume = mapResumeToDashboard(created);
-      setResumes((prev) => {
-        return [newResume, ...prev];
-      });
-      setActiveResumeId(created.id);
-      setView(ViewState.EDITOR);
-    } catch (error) {
-      console.error('[Dashboard] 创建简历失败:', error);
-    } finally {
-      setIsCreatingResume(false);
-    }
+  const handleCreateResume = () => {
+    void createResume();
   };
 
   const closeDropdown = useCallback(() => {
@@ -462,38 +324,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     closeDropdown();
   };
 
-  const duplicateResume = async (id: string, sourceName: string) => {
-    const toastId = showToastLoading(COPY_TOAST_MESSAGES.loading);
-    const startedAt = Date.now();
-    try {
-      setIsCopyingResume(true);
-      const duplicated = await resumeService.duplicate(id, { title: `${sourceName}${COPY_SUFFIX}` });
-      const nextResume = mapResumeToDashboard(duplicated);
-      setResumes((prev) => {
-        return [nextResume, ...prev];
-      });
-      trackResumeDuplicated({
-        source: 'dashboard',
-        action: 'success',
-        sourceResumeId: id,
-        duplicatedResumeId: duplicated.id,
-        durationMs: Date.now() - startedAt,
-      });
-      updateToast(toastId, { message: COPY_TOAST_MESSAGES.success, type: 'success', duration: 2000 });
-    } catch (error) {
-      console.error('[Dashboard] 创建副本失败:', error);
-      trackResumeDuplicated({
-        source: 'dashboard',
-        action: 'error',
-        sourceResumeId: id,
-        durationMs: Date.now() - startedAt,
-      });
-      updateToast(toastId, { message: COPY_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
-    } finally {
-      setIsCopyingResume(false);
-    }
-  };
-
   const handleCopy = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (isCopyingResume) {
@@ -520,37 +350,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleConfirmRename = async (nextName: string) => {
-    if (!renameTargetId || isRenamingResume) {
-      return;
-    }
-    const currentName = resumes.find((resume) => resume.id === renameTargetId)?.name ?? '';
-    if (nextName === currentName) {
+    const result = await renameResume(renameTargetId, nextName);
+    if (result === 'renamed' || result === 'unchanged') {
       setRenameTargetId(null);
-      return;
-    }
-    const toastId = showToastLoading(RENAME_TOAST_MESSAGES.loading);
-    try {
-      setIsRenamingResume(true);
-      const updated = await resumeService.update(renameTargetId, { title: nextName });
-      setResumes((prev) => {
-        const next = prev.map((resume) =>
-          resume.id === updated.id
-            ? {
-              ...resume,
-              name: updated.title,
-              lastModified: formatRelativeTime(updated.updated_at),
-            }
-            : resume
-        );
-        return next;
-      });
-      setRenameTargetId(null);
-      updateToast(toastId, { message: RENAME_TOAST_MESSAGES.success, type: 'success', duration: 2000 });
-    } catch (error) {
-      console.error('[Dashboard] 重命名简历失败:', error);
-      updateToast(toastId, { message: RENAME_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
-    } finally {
-      setIsRenamingResume(false);
     }
   };
 
@@ -603,9 +405,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         result.status === 'rejected' ? [targetIds[index]] : []
       ));
       resumeService.clearListCache();
-      if (import.meta.env.DEV) {
-        console.log('[Dashboard] 删除请求完成，准备刷新列表:', targetIds);
-      }
+      devLog('[Dashboard] 删除请求完成，准备刷新列表:', targetIds);
       setDeleteTargetId(null);
       setBatchDeleteTargetIds([]);
       let refreshedResumes: Resume[] | null = null;
@@ -615,7 +415,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       } catch (refreshError) {
         console.error('[Dashboard] 删除后刷新列表失败:', refreshError);
         if (deletedIds.length > 0) {
-          setResumes((prev) => prev.filter((resume) => !deletedIds.includes(resume.id)));
+          setResumes((prev) => removeResumeIds(prev, deletedIds));
         }
         if (activeResumeId && deletedIds.includes(activeResumeId)) {
           clearActiveResumeId();
@@ -626,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         if (previewTargetId && deletedIds.includes(previewTargetId)) {
           setPreviewTargetId(null);
         }
-        setSelectedResumeIds((prev) => prev.filter((id) => !deletedIds.includes(id)));
+        setSelectedResumeIds((prev) => filterExistingResumeIds(prev, removeResumeIds(resumes, deletedIds)));
         updateToast(toastId, {
           message: failedIds.length > 0
             ? `已删除 ${deletedIds.length} 份，${failedIds.length} 份删除失败`
@@ -652,7 +452,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (previewTargetId && confirmedDeletedIds.includes(previewTargetId)) {
         setPreviewTargetId(null);
       }
-      setSelectedResumeIds((prev) => prev.filter((id) => !confirmedDeletedIds.includes(id)));
+      setSelectedResumeIds((prev) => filterExistingResumeIds(prev, removeResumeIds(resumes, confirmedDeletedIds)));
       const unresolvedCount = remainingIds.length;
       updateToast(toastId, {
         message: unresolvedCount > 0
@@ -725,7 +525,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     setSelectedResumeIds((prev) => {
-      const next = prev.filter((id) => resumes.some((resume) => resume.id === id));
+      const next = filterExistingResumeIds(prev, resumes);
       return next.length === prev.length ? prev : next;
     });
   }, [resumes]);

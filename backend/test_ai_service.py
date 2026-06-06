@@ -14,7 +14,10 @@ def _set_required_env_defaults() -> None:
 _set_required_env_defaults()
 
 from app.domain.ai import ai_service  # noqa: E402
+from app.domain.ai import jd_analysis_service  # noqa: E402
+from app.domain.ai import prompts as ai_prompts  # noqa: E402
 from app.domain.ai.assistant_action_utils import _normalize_assistant_draft_card  # noqa: E402
+from app.domain.ai.response_normalizers import _normalize_jd_analysis_result  # noqa: E402
 from app import config as config_module  # noqa: E402
 
 
@@ -159,9 +162,9 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
         )
         stream_mock = AsyncMock(return_value={})
 
-        with patch.object(ai_service, "settings", fake_settings):
-            with patch.object(ai_service, "_stream_gemini_json_response", stream_mock):
-                await ai_service.analyze_jd_with_thoughts("JD text")
+        with patch.object(jd_analysis_service, "settings", fake_settings):
+            with patch.object(jd_analysis_service, "_stream_gemini_json_response", stream_mock):
+                await jd_analysis_service.analyze_jd_with_thoughts("JD text")
 
         self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 2048)
         self.assertEqual(stream_mock.await_args.kwargs["request_label"], "jd_text_analysis")
@@ -203,7 +206,7 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
 class AiServicePolishPromptTests(unittest.TestCase):
     def test_normalize_jd_analysis_result_keeps_capability_analysis(self) -> None:
-        result = ai_service._normalize_jd_analysis_result(
+        result = _normalize_jd_analysis_result(
             {
                 "matchPercentage": 78,
                 "capability_analysis": {
@@ -270,9 +273,9 @@ class AiServicePolishPromptTests(unittest.TestCase):
         )
 
     def test_jd_analysis_prompt_requires_capability_analysis(self) -> None:
-        self.assertIn("core capabilities behind the JD", ai_service.JD_ANALYSIS)
-        self.assertIn("capabilityAnalysis", ai_service.JD_ANALYSIS)
-        self.assertIn("resumeEvidenceLevel", ai_service.JD_ANALYSIS)
+        self.assertIn("core capabilities behind the JD", ai_prompts.JD_ANALYSIS)
+        self.assertIn("capabilityAnalysis", ai_prompts.JD_ANALYSIS)
+        self.assertIn("resumeEvidenceLevel", ai_prompts.JD_ANALYSIS)
 
     def test_default_mode_without_jd_rewrites_star_without_bold_highlights(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="default", jd_text=None)

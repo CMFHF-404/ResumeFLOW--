@@ -93,7 +93,8 @@ const shouldNormalizeExperienceAction = (card: AssistantDraftCard) =>
 const normalizeEducationExperienceDraftCard = (
     card: Extract<AssistantDraftCard, { type: 'experience' }>
 ): AssistantDraftCard => {
-    const data = isRecord(card.data) ? card.data : {};
+    const rawData = card.data as unknown;
+    const data: Record<string, unknown> = isRecord(rawData) ? rawData : {};
     const targetMasterId = normalizeDraftText(data.targetMasterId);
     return {
         ...card,

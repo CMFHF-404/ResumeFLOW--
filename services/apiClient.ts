@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { requestAccessToken } from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
+import { devLog } from './devLogger';
 import {
     clearCachedLogtoAccessTokens,
     getCachedLogtoAccessToken,
@@ -125,9 +126,7 @@ apiClient.interceptors.request.use(
 
         const resource = getLogtoResource();
         const token = await resolveAccessToken(resource);
-        if (import.meta.env.DEV) {
-            console.log(`[API Client] Resource: ${resource}, Token found: ${!!token}`);
-        }
+        devLog(`[API Client] Resource: ${resource}, Token found: ${!!token}`);
 
         const shouldRequireLogin = isWriteMethod(config.method);
 

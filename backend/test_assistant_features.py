@@ -81,6 +81,13 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
     def test_resume_editor_auto_analyzes_jd_after_confirming_polish(self) -> None:
         source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        coordinator_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorExperiencePolishCoordinator.ts"
+        ).read_text(encoding="utf-8")
         confirm_actions_source = (
             REPO_ROOT
             / "views"
@@ -98,7 +105,8 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
         self.assertIn("pendingPolishAutoAnalyzeSeq", source)
         self.assertIn("lastPolishAutoAnalyzeSeqRef", jd_analyze_hook_source)
-        self.assertIn("setPendingPolishAutoAnalyzeSeq", source)
+        self.assertIn("useResumeEditorExperiencePolishCoordinator({", source)
+        self.assertIn("setPendingPolishAutoAnalyzeSeq", coordinator_source)
         self.assertIn("setPendingPolishAutoAnalyzeSeq((current) => current + 1)", confirm_actions_source)
         self.assertIn("if (pendingPolishAutoAnalyzeSeq <= 0)", jd_analyze_hook_source)
         self.assertIn("lastPolishAutoAnalyzeSeqRef.current === pendingPolishAutoAnalyzeSeq", jd_analyze_hook_source)
@@ -142,6 +150,12 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
         editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
         assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        assistant_launch_bootstrap_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantLaunchBootstrap.ts"
+        ).read_text(encoding="utf-8")
         assistant_types_source = (REPO_ROOT / "views" / "AIAssistant" / "types.ts").read_text(encoding="utf-8")
         helper_source = (REPO_ROOT / "utils" / "assistantSmartCompletePrompt.ts").read_text(encoding="utf-8")
         smart_completion_source = (
@@ -153,6 +167,13 @@ class AssistantFrontendSourceTests(unittest.TestCase):
             / "ResumeEditor"
             / "components"
             / "FloatingPolishPreviewContent.tsx"
+        ).read_text(encoding="utf-8")
+        resume_assistant_launch_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorAssistantLaunch.ts"
         ).read_text(encoding="utf-8")
 
         self.assertIn("const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];", toolbar_source)
@@ -173,10 +194,10 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertNotIn("'expand'", batch_block)
         self.assertIn("const FLOATING_POLISH_PREVIEW_FIELDS", floating_preview_source)
 
-        self.assertIn("initialSkillId: 'experience_completion'", editor_source)
-        self.assertIn("buildSmartCompleteAssistantPrompt", editor_source)
+        self.assertIn("initialSkillId: 'experience_completion'", resume_assistant_launch_source)
+        self.assertIn("buildSmartCompleteAssistantPrompt", resume_assistant_launch_source)
         self.assertIn("initialSkillId?: AssistantSkillId | null", assistant_types_source)
-        self.assertIn("skillId: pendingLaunchRequest.initialSkillId ?? null", assistant_source)
+        self.assertIn("skillId: pendingLaunchRequest.initialSkillId ?? null", assistant_launch_bootstrap_source)
         self.assertIn("只围绕当前这段经历内真实、可能可补充的事实追问 0-3 个问题", helper_source)
         self.assertIn("不要询问其他项目、课程项目、个人练习、专业背景或非本项目案例", helper_source)
         self.assertIn(".slice(0, 3)", smart_completion_source)
@@ -207,10 +228,16 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
     def test_ai_assistant_allows_experience_bank_custom_apply_handler(self) -> None:
         source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        draft_apply_actions_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantDraftApplyActions.ts"
+        ).read_text(encoding="utf-8")
 
         self.assertIn(
             "const applyHandler = applyHandlerMapRef.current.get(selectedSession.id);",
-            source,
+            draft_apply_actions_source,
         )
         self.assertNotIn(
             "selectedSession.entry_source === 'experience_bank'\n      ? undefined",
@@ -229,18 +256,31 @@ class AssistantFrontendSourceTests(unittest.TestCase):
     def test_ai_assistant_uses_ai_generated_followup_buttons(self) -> None:
         assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
         selection_source = (REPO_ROOT / "views" / "AIAssistant" / "selectionUtils.ts").read_text(encoding="utf-8")
+        message_derivation_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "messageDerivationUtils.ts"
+        ).read_text(encoding="utf-8")
+        message_sending_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantMessageSending.ts"
+        ).read_text(encoding="utf-8")
+        message_send_source = (REPO_ROOT / "views" / "AIAssistant" / "messageSendUtils.ts").read_text(encoding="utf-8")
         service_source = (REPO_ROOT / "services" / "aiService.ts").read_text(encoding="utf-8")
         prompt_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "prompts.py").read_text(encoding="utf-8")
         assistant_service_source = (REPO_ROOT / "backend" / "app" / "domain" / "assistant" / "assistant_service.py").read_text(encoding="utf-8")
 
         self.assertNotIn("ASSISTANT_SKILL_FOLLOWUPS", assistant_source)
-        self.assertIn("normalizeAssistantSuggestedFollowups", assistant_source)
+        self.assertIn("normalizeAssistantSuggestedFollowups", message_derivation_source)
         self.assertIn("latestSuggestedFollowups", assistant_source)
-        self.assertIn("message.content_json?.suggestedFollowups", assistant_source)
-        self.assertIn("buildFallbackSuggestedFollowups", assistant_source)
+        self.assertIn("message.content_json?.suggestedFollowups", message_derivation_source)
+        self.assertIn("buildFallbackSuggestedFollowups", message_derivation_source)
         self.assertIn("回答这个问题", selection_source)
-        self.assertIn("result.suggestedFollowups", assistant_source)
-        self.assertIn("...(skillId ? { skill_id: skillId } : {})", assistant_source)
+        self.assertIn("result.suggestedFollowups", message_sending_source)
+        self.assertIn("...(skillId ? { skill_id: skillId } : {})", message_send_source)
         self.assertIn("export interface AssistantSuggestedFollowup", service_source)
         self.assertIn("'suggestedFollowups' (array of 0-3 objects", prompt_source)
         self.assertIn("Suggested follow-up buttons must be generated", prompt_source)
@@ -249,10 +289,23 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
     def test_ai_assistant_surfaces_stream_error_message_to_user(self) -> None:
         assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        attachment_hook_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantComposerAttachments.ts"
+        ).read_text(encoding="utf-8")
+        message_sending_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantMessageSending.ts"
+        ).read_text(encoding="utf-8")
 
-        self.assertIn("MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024", assistant_source)
-        self.assertIn("formatAssistantAttachmentTooLargeMessage", assistant_source)
-        self.assertIn("file.size <= MAX_ASSISTANT_ATTACHMENT_BYTES", assistant_source)
+        self.assertIn("MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024", attachment_hook_source)
+        self.assertIn("formatAssistantAttachmentTooLargeMessage", attachment_hook_source)
+        self.assertIn("return `附件${label}过大，请上传不超过 5MB 的文件。`;", attachment_hook_source)
+        self.assertIn("file.size <= MAX_ASSISTANT_ATTACHMENT_BYTES", attachment_hook_source)
         self.assertIn(
             "if (normalizedFiles.length === 0) {\n"
             "      if (attachmentInputRef.current) {\n"
@@ -260,10 +313,485 @@ class AssistantFrontendSourceTests(unittest.TestCase):
             "      }\n"
             "      return;\n"
             "    }",
-            assistant_source,
+            attachment_hook_source,
         )
-        self.assertIn("const resolveAssistantSendErrorMessage", assistant_source)
-        self.assertIn("error(resolveAssistantSendErrorMessage(sendError)", assistant_source)
+        self.assertIn("restoreComposerAttachmentsIfEmpty", assistant_source)
+        self.assertIn("const resolveAssistantSendErrorMessage", message_sending_source)
+        self.assertIn("error(resolveAssistantSendErrorMessage(sendError)", message_sending_source)
+
+    def test_ai_assistant_draft_panel_stays_presentational(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        draft_panel_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "AssistantDraftPanel.tsx"
+        ).read_text(encoding="utf-8")
+        draft_panel_state_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantDraftPanelState.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("AssistantMobileDraftTray", assistant_source)
+        self.assertIn("AssistantDesktopDraftPanel", assistant_source)
+        self.assertIn("useAssistantDraftPanelState", assistant_source)
+        self.assertIn("const syncVersionState", draft_panel_state_source)
+        self.assertIn("draftCardCount === 1", draft_panel_state_source)
+        self.assertIn("onApplyDraft(item)", draft_panel_source)
+        self.assertNotIn("aiService", draft_panel_source)
+        self.assertNotIn("resumeService", draft_panel_source)
+        self.assertNotIn("writePendingAssistantManualSaveDraft", draft_panel_source)
+
+    def test_ai_assistant_history_panel_stays_presentational(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        history_panel_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "AssistantHistoryPanel.tsx"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("AssistantHistoryPanel", assistant_source)
+        self.assertIn("onSelectDesktopSession={handleSelectSession}", assistant_source)
+        self.assertIn("onSelectMobileSession={handleSelectSession}", assistant_source)
+        self.assertIn("onRenameSession={(event, session) => void handleRenameSession(event, session)}", assistant_source)
+        self.assertIn("onDeleteSession={(event, sessionId) => void handleDeleteSession(event, sessionId)}", assistant_source)
+        self.assertIn("AssistantHistorySessionList", history_panel_source)
+        self.assertNotIn("aiService", history_panel_source)
+        self.assertNotIn("loadSessionDetail", history_panel_source)
+        self.assertNotIn("markSessionMutated", history_panel_source)
+        self.assertNotIn("markSessionDeleted", history_panel_source)
+
+    def test_ai_assistant_history_actions_are_in_controller_hook(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        history_actions_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantHistoryActions.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useAssistantHistoryActions({", assistant_source)
+        self.assertIn("handleSelectSession", history_actions_source)
+        self.assertIn("setIsMobileHistoryOpen(false)", history_actions_source)
+        self.assertIn("clearPendingAssistantManualSaveDraft", history_actions_source)
+        self.assertIn("deletedDraftSelectedResume", history_actions_source)
+        self.assertIn("draftSelectedResumeBySessionRef.current.set(deleteConfirmId, deletedDraftSelectedResume)", history_actions_source)
+        self.assertIn("sortSessionsByUpdatedAt", history_actions_source)
+        self.assertIn("mergeAssistantSessions(prev, [deletedSession])", history_actions_source)
+        self.assertNotIn("clearPendingAssistantManualSaveDraft", assistant_source)
+        self.assertNotIn("const executeDeleteSession = useCallback", assistant_source)
+        self.assertNotIn("const handleRenameSession = useCallback", assistant_source)
+
+    def test_ai_assistant_launch_bootstrap_is_in_controller_hook(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        session_controller_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantSessionController.ts"
+        ).read_text(encoding="utf-8")
+        launch_bootstrap_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantLaunchBootstrap.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useAssistantLaunchBootstrap({", assistant_source)
+        self.assertIn("resetForDraftLaunch,", assistant_source)
+        self.assertIn("suppressAutoSelectSessionRef,", assistant_source)
+        self.assertIn("draftLaunchRequestRef.current = launchRequest", session_controller_source)
+        self.assertIn("selectedSessionIdRef.current = null", session_controller_source)
+        self.assertIn("resetForDraftLaunch(pendingLaunchRequest, normalizedPrefillResume)", launch_bootstrap_source)
+        self.assertIn("suppressAutoSelectSessionRef.current = true", launch_bootstrap_source)
+        self.assertIn("createSessionRecord(pendingLaunchRequest.context", launch_bootstrap_source)
+        self.assertIn("applyHandlerMapRef.current.set(created.id, pendingLaunchRequest.applyDraftHandler)", launch_bootstrap_source)
+        self.assertIn("callbackOnlySessionIdsRef.current.add(created.id)", launch_bootstrap_source)
+        self.assertIn("await sendMessage(", launch_bootstrap_source)
+        self.assertIn("cleanupSupersededSession(created.id)", launch_bootstrap_source)
+        self.assertIn("onConsumeLaunchRequest?.(pendingLaunchRequest.requestId)", launch_bootstrap_source)
+        self.assertNotIn("draftLaunchRequestRef.current = launchRequest", assistant_source)
+        self.assertNotIn("selectedSessionIdRef.current = null", assistant_source)
+        self.assertNotIn("const bootstrap = async", assistant_source)
+        self.assertNotIn("Failed to bootstrap launch request", assistant_source)
+
+    def test_ai_assistant_resource_pickers_are_in_controller_hook(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        resource_picker_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantResourcePickers.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useAssistantResourcePickers({", assistant_source)
+        self.assertIn("openExperiencePicker", resource_picker_source)
+        self.assertIn("experienceService.listAll('work')", resource_picker_source)
+        self.assertIn("resumeService.list()", resource_picker_source)
+        self.assertIn("buildSelectedResumeFromResources", resource_picker_source)
+        self.assertIn("draftLaunchRequestRef.current = {", resource_picker_source)
+        self.assertIn("prefillResume: nextSelectedResume", resource_picker_source)
+        self.assertNotIn("const openExperiencePicker = useCallback", assistant_source)
+        self.assertNotIn("const openResumePicker = useCallback", assistant_source)
+        self.assertNotIn("const handleConfirmSelectedResume = useCallback", assistant_source)
+
+    def test_ai_assistant_session_loading_is_in_controller_hook(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        session_controller_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantSessionController.ts"
+        ).read_text(encoding="utf-8")
+        session_loading_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantSessionLoading.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useAssistantSessionController({", assistant_source)
+        self.assertIn("useAssistantSessionLoading({", session_controller_source)
+        self.assertIn("const [sessions, setSessions]", session_controller_source)
+        self.assertIn("const [selectedSessionId, setSelectedSessionId]", session_controller_source)
+        self.assertIn("const [messages, setMessages]", session_controller_source)
+        self.assertIn("const commitCreatedSession = useCallback", session_controller_source)
+        self.assertIn("const cleanupSupersededSession = useCallback", session_controller_source)
+        self.assertIn("const createSessionRecord = useCallback", session_controller_source)
+        self.assertIn("const persistSessionSnapshot = useCallback", session_controller_source)
+        self.assertIn("loadSessions", session_loading_source)
+        self.assertIn("loadSessionDetail", session_loading_source)
+        self.assertIn("detailRequestIdRef", session_loading_source)
+        self.assertIn("reconcileAssistantSessions(", session_loading_source)
+        self.assertIn("messageMutationSeqRef.current > messageMutationAtStart", session_loading_source)
+        self.assertIn("selectedSessionIdRef.current !== sessionId", session_loading_source)
+        self.assertNotIn("useAssistantSessionLoading({", assistant_source)
+        self.assertNotIn("const loadSessions = useCallback", assistant_source)
+        self.assertNotIn("const loadSessionDetail = useCallback", assistant_source)
+        self.assertNotIn("const commitCreatedSession = useCallback", assistant_source)
+        self.assertNotIn("const cleanupSupersededSession = useCallback", assistant_source)
+        self.assertNotIn("const createSessionRecord = useCallback", assistant_source)
+        self.assertNotIn("const persistSessionSnapshot = useCallback", assistant_source)
+
+    def test_ai_assistant_send_message_uses_pure_message_builders(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        message_send_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "messageSendUtils.ts"
+        ).read_text(encoding="utf-8")
+        message_sending_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantMessageSending.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useAssistantMessageSending({", assistant_source)
+        self.assertIn("prepareAssistantSendPayload(payload)", message_sending_source)
+        self.assertIn("buildOptimisticAssistantUserMessage(", message_sending_source)
+        self.assertIn("buildAssistantTextMessage(", message_sending_source)
+        self.assertIn("aiService.sendAssistantMessage", message_sending_source)
+        self.assertIn("restoreComposerAttachmentsIfEmpty", assistant_source)
+        self.assertIn("restoreComposerAttachmentsIfEmpty(attachments)", message_sending_source)
+        self.assertIn("MULTI_ATTACHMENT_DEFAULT_MESSAGE", message_send_source)
+        self.assertIn("SELECTED_RESUME_DEFAULT_MESSAGE", message_send_source)
+        self.assertIn("local-assistant-${now}-${randomValue}", message_send_source)
+        self.assertIn("selected_experiences", message_send_source)
+        self.assertIn("selected_resume", message_send_source)
+        self.assertNotIn("const optimisticUserMessage: AssistantMessage = {", assistant_source)
+        self.assertNotIn("id: `local-assistant-${new Date().toISOString()}-${Math.random()}`", assistant_source)
+        self.assertNotIn("请先阅读我上传的这些附件，并帮我整理其中的关键信息。", assistant_source)
+        self.assertNotIn("const sendMessage = useCallback", assistant_source)
+
+    def test_ai_assistant_apply_draft_uses_pure_context_helpers(self) -> None:
+        assistant_source = (REPO_ROOT / "views" / "AIAssistant.tsx").read_text(encoding="utf-8")
+        draft_apply_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "draftApplyUtils.ts"
+        ).read_text(encoding="utf-8")
+        message_derivation_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "messageDerivationUtils.ts"
+        ).read_text(encoding="utf-8")
+        draft_apply_actions_source = (
+            REPO_ROOT
+            / "views"
+            / "AIAssistant"
+            / "useAssistantDraftApplyActions.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useAssistantDraftApplyActions({", assistant_source)
+        self.assertIn("assertResumeEditorDraftTargetMatches(", draft_apply_actions_source)
+        self.assertIn("buildResumeEditorDraftJumpState({", draft_apply_actions_source)
+        self.assertIn("if (pendingManualSaveDraft) {\n              writePendingAssistantManualSaveDraft(pendingManualSaveDraft);", draft_apply_actions_source)
+        self.assertIn("callbackOnly ? { skipApply: true } : undefined", draft_apply_actions_source)
+        self.assertIn("experienceService.clearListCache()", draft_apply_actions_source)
+        self.assertIn("setAppliedMessageIds((prev) => new Set(prev).add(messageId))", draft_apply_actions_source)
+        self.assertIn("markSessionMutated(selectedSession.id)", draft_apply_actions_source)
+        self.assertIn("latest_preview: updatedMessage.content_json", draft_apply_actions_source)
+        self.assertIn("next.delete(messageId)", draft_apply_actions_source)
+        self.assertIn("readExperienceDraftTargetMasterId", draft_apply_source)
+        self.assertIn("buildResumeEditorManualSaveDraft(params)", draft_apply_source)
+        self.assertIn("AI 草稿目标经历与当前编辑上下文不一致", draft_apply_source)
+        self.assertIn("source: 'resume_editor'", draft_apply_source)
+        self.assertIn("deriveLatestSuggestedFollowups", message_derivation_source)
+        self.assertIn("deriveDraftMessageItems", message_derivation_source)
+        self.assertIn("isResumeEditorManualSaveDraft", message_derivation_source)
+        self.assertNotIn("targetMasterId !== contextMasterId", assistant_source)
+        self.assertNotIn("source: 'resume_editor',\n                sessionId: selectedSession.id", assistant_source)
+        self.assertNotIn("const handleApplyDraft = useCallback", assistant_source)
+
+    def test_resume_editor_assistant_launch_is_in_controller_hook(self) -> None:
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        assistant_launch_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorAssistantLaunch.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useResumeEditorAssistantLaunch({", editor_source)
+        self.assertIn("handleOpenExperienceAssistant", assistant_launch_source)
+        self.assertIn("handleOpenFloatingExperienceAssistant", assistant_launch_source)
+        self.assertIn("handleLaunchResumeAssistant", assistant_launch_source)
+        self.assertIn("buildSmartCompleteAssistantPrompt({", assistant_launch_source)
+        self.assertIn("contextJson: {", assistant_launch_source)
+        self.assertIn("masterId: draft.masterId", assistant_launch_source)
+        self.assertIn("jdText: jdPolishContext", assistant_launch_source)
+        self.assertIn("initialUserMessage: buildSmartCompleteAssistantPrompt({", assistant_launch_source)
+        self.assertEqual(assistant_launch_source.count("callbackOnly: true"), 2)
+        self.assertIn("pendingAssistantApplyRef.current.set(draft.masterId, meta.persistApplied)", assistant_launch_source)
+        self.assertIn("trackedPendingAssistantApplyRef.current.delete(draft.masterId)", assistant_launch_source)
+        self.assertIn("setExperiencePolishPreview(null)", assistant_launch_source)
+        self.assertIn("applyFloatingPolishPreview('single', [sessionItem])", assistant_launch_source)
+        self.assertIn("prefillResume: {", assistant_launch_source)
+        self.assertIn("snapshot: selectedResumeSnapshot", assistant_launch_source)
+        self.assertIn("...(jdPolishContext ? { jdContext: jdPolishContext } : {})", assistant_launch_source)
+        self.assertIn("applyDraftHandler: handleApplyResumeAssistantDraft", assistant_launch_source)
+        self.assertNotIn("const handleOpenExperienceAssistant = useCallback", editor_source)
+        self.assertNotIn("const handleOpenFloatingExperienceAssistant = useCallback", editor_source)
+        self.assertNotIn("const handleLaunchResumeAssistant = useCallback", editor_source)
+
+    def test_ai_service_transport_is_isolated_from_business_flows(self) -> None:
+        ai_service_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "ai_service.py").read_text(encoding="utf-8")
+        transport_source = (
+            REPO_ROOT
+            / "backend"
+            / "app"
+            / "domain"
+            / "ai"
+            / "llm_transport.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("from .llm_transport import (", ai_service_source)
+        self.assertIn("_call_llm", ai_service_source)
+        self.assertIn("_post_chat_completion", ai_service_source)
+        self.assertIn("_stream_gemini_json_response", ai_service_source)
+        self.assertNotIn("async with httpx.AsyncClient", ai_service_source)
+        self.assertNotIn("def _build_headers", ai_service_source)
+        self.assertNotIn("def _build_gemini_headers", ai_service_source)
+        self.assertNotIn("async def _iter_sse_json_payloads", ai_service_source)
+        self.assertIn("def _build_headers", transport_source)
+        self.assertIn("def _build_gemini_headers", transport_source)
+        self.assertIn("def _build_ai_timeout", transport_source)
+        self.assertIn("async def _iter_sse_json_payloads", transport_source)
+        self.assertIn("async def _stream_gemini_json_response", transport_source)
+        self.assertIn("async def _post_chat_completion", transport_source)
+        self.assertIn("async def _call_llm", transport_source)
+        self.assertIn("_parse_json_content_candidates(parse_candidates)", transport_source)
+
+    def test_jd_analysis_service_is_isolated_from_ai_service_facade(self) -> None:
+        ai_service_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "ai_service.py").read_text(encoding="utf-8")
+        jd_analysis_source = (
+            REPO_ROOT
+            / "backend"
+            / "app"
+            / "domain"
+            / "ai"
+            / "jd_analysis_service.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("from .jd_analysis_service import (", ai_service_source)
+        self.assertIn("analyze_jd,", ai_service_source)
+        self.assertIn("analyze_jd_with_image,", ai_service_source)
+        self.assertIn("analyze_jd_with_image_thoughts,", ai_service_source)
+        self.assertIn("analyze_jd_with_thoughts,", ai_service_source)
+        self.assertNotIn("async def analyze_jd", ai_service_source)
+        self.assertNotIn("def _build_jd_analysis_user_parts", ai_service_source)
+        self.assertNotIn("def _build_image_jd_user_message", ai_service_source)
+        self.assertNotIn("def _build_image_jd_user_parts", ai_service_source)
+        self.assertIn("async def analyze_jd(", jd_analysis_source)
+        self.assertIn("async def analyze_jd_with_thoughts(", jd_analysis_source)
+        self.assertIn("async def analyze_jd_with_image(", jd_analysis_source)
+        self.assertIn("async def analyze_jd_with_image_thoughts(", jd_analysis_source)
+        self.assertIn("def _build_jd_analysis_user_parts", jd_analysis_source)
+        self.assertIn("def _build_image_jd_user_message", jd_analysis_source)
+        self.assertIn("def _build_image_jd_user_parts", jd_analysis_source)
+
+    def test_resume_editor_core_state_is_in_dedicated_hook(self) -> None:
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        core_state_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorCoreState.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useResumeEditorCoreState()", editor_source)
+        self.assertIn("lineHeight, setLineHeight", core_state_source)
+        self.assertIn("profile, setProfile", core_state_source)
+        self.assertIn("selectedExpIds, setSelectedExpIds", core_state_source)
+        self.assertIn("manualLayoutSnapshotRef", core_state_source)
+        self.assertIn("currentLayout", core_state_source)
+        self.assertIn("isLayoutModified", core_state_source)
+        self.assertIn("useState(LINE_HEIGHT_DEFAULT)", core_state_source)
+        self.assertIn("useState(FONT_SIZE_DEFAULT)", core_state_source)
+        self.assertIn("resolveDefaultSectionSpacingKey('standard')", core_state_source)
+        self.assertIn("buildDefaultSmartPageLayout('standard')", core_state_source)
+        self.assertEqual(core_state_source.count("const latestLayoutSnapshotRef = useRef"), 1)
+        self.assertEqual(core_state_source.count("const manualLayoutSnapshotRef = useRef"), 1)
+        self.assertIn(
+            "}), [fontSize, itemSpacingEm, lineHeight, sectionSpacingKey, topPaddingPx]);",
+            core_state_source,
+        )
+        self.assertIn("[certifications, educations, experienceItems, skillGroups]", core_state_source)
+        self.assertIn("}, [bossGreeting, bossGreetingSignature]);", core_state_source)
+        self.assertNotIn("const [lineHeight, setLineHeight]", editor_source)
+        self.assertNotIn("const [profile, setProfile]", editor_source)
+        self.assertNotIn("const [selectedExpIds, setSelectedExpIds]", editor_source)
+        self.assertNotIn("const latestLayoutSnapshotRef = useRef", editor_source)
+
+    def test_resume_editor_manual_save_drafts_are_in_dedicated_hook(self) -> None:
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        coordinator_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorExperiencePolishCoordinator.ts"
+        ).read_text(encoding="utf-8")
+        manual_draft_hook_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorManualSaveDrafts.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useResumeEditorExperiencePolishCoordinator({", editor_source)
+        self.assertIn("useResumeEditorManualSaveDrafts({", coordinator_source)
+        self.assertIn("readPendingAssistantManualSaveDrafts({ resumeId })", manual_draft_hook_source)
+        self.assertIn(".filter((draft) => draft.source === 'resume_editor')", manual_draft_hook_source)
+        self.assertIn("clearPendingAssistantManualSaveDraft({", manual_draft_hook_source)
+        self.assertIn("buildPendingAssistantManualSaveDraftKey(pendingManualSaveDraft)", manual_draft_hook_source)
+        self.assertIn("applyAssistantExperienceDraftToEditingDraft(prev, pendingManualSaveDraft.draft)", manual_draft_hook_source)
+        self.assertNotIn("readPendingAssistantManualSaveDrafts({ resumeId })", editor_source)
+        self.assertNotIn("const [pendingManualSaveDraft, staleManualSaveDrafts]", editor_source)
+
+    def test_resume_editor_transient_reset_is_in_dedicated_hook(self) -> None:
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        transient_reset_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorTransientReset.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useResumeEditorTransientReset({", editor_source)
+        self.assertIn("handleCancelDelete();", transient_reset_source)
+        self.assertIn("setOriginalProfile({ ...nextProfile });", transient_reset_source)
+        self.assertIn("setOriginalProfileSyncMode(nextProfileSyncMode);", transient_reset_source)
+        self.assertIn("setIsEditingProfile(false);", transient_reset_source)
+        self.assertIn("experience.cancelEditingExperience();", transient_reset_source)
+        self.assertIn("education.cancelEducationEdit();", transient_reset_source)
+        self.assertIn("certification.cancelCertificationEdit();", transient_reset_source)
+        self.assertIn("skill.cancelSkillEdit();", transient_reset_source)
+        self.assertIn("skill.setRenamingCategoryTarget(null);", transient_reset_source)
+        self.assertIn("skill.setRenamingCategoryDraft('');", transient_reset_source)
+        self.assertNotIn("const resetEditorTransientState = useCallback", editor_source)
+
+    def test_resume_editor_experience_polish_controls_are_in_dedicated_hook(self) -> None:
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+        coordinator_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorExperiencePolishCoordinator.ts"
+        ).read_text(encoding="utf-8")
+        controls_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "hooks"
+            / "useResumeEditorExperiencePolishControls.ts"
+        ).read_text(encoding="utf-8")
+        view_utils_source = (
+            REPO_ROOT
+            / "views"
+            / "ResumeEditor"
+            / "experiencePolishViewUtils.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useResumeEditorExperiencePolishCoordinator({", editor_source)
+        self.assertIn("useResumeEditorExperiencePolishControls({", coordinator_source)
+        self.assertIn("useEditingExperiencePolishActions({", coordinator_source)
+        self.assertIn("useFloatingExperiencePolishActions({", coordinator_source)
+        self.assertIn("useFloatingExperiencePolishConfirmActions({", coordinator_source)
+        self.assertIn("resolveBatchPolishOpenBlockMessage({", coordinator_source)
+        self.assertIn("buildExperienceViewFromDraft", view_utils_source)
+        self.assertIn("resolveSafeDateRange(", view_utils_source)
+        self.assertIn("buildExperienceDate(", view_utils_source)
+        self.assertIn("setExperiencePolishMode(DEFAULT_RESUME_POLISH_MODE);", controls_source)
+        self.assertIn("setExperienceSmartCompletionPrompt(null);", controls_source)
+        self.assertIn("editingExperiencePolishRunningRef.current = false;", controls_source)
+        self.assertIn("handleExperiencePolishModeChange", controls_source)
+        self.assertIn("handleFloatingPolishModeChange", controls_source)
+        self.assertNotIn("const buildExperienceViewFromDraft = useCallback", editor_source)
+        self.assertNotIn("const handleExperiencePolishModeChange = (mode", editor_source)
+        self.assertNotIn("const handleFloatingPolishModeChange = (mode", editor_source)
+        self.assertNotIn("const handleOpenBatchPolishToolbar = useCallback", editor_source)
+        self.assertNotIn("const handleUndoBatchExperiencePolish = useCallback", editor_source)
+
+    def test_experience_bank_summary_generation_is_in_dedicated_hook(self) -> None:
+        profile_source = (
+            REPO_ROOT
+            / "views"
+            / "ExperienceBank"
+            / "useExperienceBankProfile.ts"
+        ).read_text(encoding="utf-8")
+        summary_hook_source = (
+            REPO_ROOT
+            / "views"
+            / "ExperienceBank"
+            / "useExperienceBankSummaryGeneration.ts"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("useExperienceBankSummaryGeneration({", profile_source)
+        self.assertIn("cancelSummaryGeneration({ bumpDraftVersion: true });", profile_source)
+        self.assertIn("cancelSummaryGeneration();", profile_source)
+        self.assertIn("aiService.generatePersonalSummaryStream", summary_hook_source)
+        self.assertIn("summaryGenerationRequestIdRef", summary_hook_source)
+        self.assertIn("summaryDraftVersionRef", summary_hook_source)
+        self.assertIn("activeSummaryToastIdRef", summary_hook_source)
+        self.assertIn("snapshotHasSummarySourceContent", summary_hook_source)
+        self.assertIn("markSummaryDraftTouched();", summary_hook_source)
+        self.assertNotIn("aiService.generatePersonalSummaryStream", profile_source)
+        self.assertNotIn("const summaryGenerationRequestIdRef", profile_source)
+        self.assertNotIn("const summaryDraftVersionRef", profile_source)
+        self.assertNotIn("const activeSummaryToastIdRef", profile_source)
 
     def test_ai_assistant_skill_group_drafts_merge_existing_tags(self) -> None:
         service_source = (REPO_ROOT / "services" / "aiService.ts").read_text(encoding="utf-8")
