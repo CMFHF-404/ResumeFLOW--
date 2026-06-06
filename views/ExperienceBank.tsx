@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   UploadCloud,
   Download,
@@ -21,8 +21,8 @@ import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { exportService } from '../services/exportService';
-import { aiService } from '../services/aiService';
-import { Profile, profileService } from '../services/profileService';
+import { devLog } from '../services/devLogger';
+import { type Profile, profileService } from '../services/profileService';
 import type { Certification } from '../services/certificationsService';
 import { certificationsService } from '../services/certificationsService';
 import type { ExperienceListItem } from '../services/experienceService';
@@ -34,7 +34,7 @@ import EducationSection from './EducationSection';
 import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
-import { mergeLinkedInLink, resolveLinkedInLink } from './profileUtils';
+import { resolveLinkedInLink } from './profileUtils';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
 import type { ExperienceBankPdfRenderSnapshot } from '../types/experienceBankExport';
 import {
@@ -43,34 +43,13 @@ import {
 } from '../utils/exportFilename';
 import { buildExperienceBankPdfRenderSnapshot } from '../utils/experienceBankPdf';
 import { downloadUrlFile } from '../utils/downloadUrlFile';
-import { extractThoughtHeadline } from '../utils/aiThought';
-import { stripRichTextToText } from '../utils/richText';
-import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../services/parserService';
 import {
   trackExperienceBankExported,
   trackLoginStart,
 } from '../utils/analyticsTracker';
-const PROFILE_REQUEST_RESET_DELAY_MS = 300;
+import { useExperienceBankProfile } from './ExperienceBank/useExperienceBankProfile';
 const PENDING_RESUME_UPLOAD_KEY = 'yuanzijianli.pendingResumeUpload';
 const PENDING_ASSISTANT_LAUNCH_KEY = 'yuanzijianli.pendingExperienceBankAssistantLaunch';
-const SUMMARY_PREVIEW_CHAR_LIMIT = 100;
-
-const buildSummaryPreview = (value: string, limit: number) => {
-  const normalized = value.trim();
-  const characters = Array.from(normalized);
-
-  if (characters.length <= limit) {
-    return {
-      text: normalized,
-      isTruncated: false,
-    };
-  }
-
-  return {
-    text: `${characters.slice(0, limit).join('')}...`,
-    isTruncated: true,
-  };
-};
 
 const readPendingResumeUpload = () => {
   if (typeof window === 'undefined') {
@@ -123,57 +102,6 @@ const writePendingAssistantLaunch = (shouldPersist: boolean) => {
     // ignore storage errors (private mode, etc.)
   }
 };
-
-const resolveNextProfilePatch = (
-  parsedPersonalInfo?: ParsedPersonalInfo,
-  currentProfile?: {
-    name: string;
-    email: string;
-    phone: string;
-    location: string;
-  },
-  selection?: ParsedPersonalInfoSelection
-) => {
-  if (!parsedPersonalInfo) {
-    return null;
-  }
-  const nextFullName = parsedPersonalInfo.full_name?.trim();
-  const nextEmail = parsedPersonalInfo.email?.trim();
-  const nextPhone = parsedPersonalInfo.phone?.trim();
-  const nextLocation = parsedPersonalInfo.location?.trim();
-  const patch: {
-    full_name?: string;
-    email?: string;
-    phone?: string;
-    location?: string;
-  } = {};
-  const shouldApply = (key: keyof ParsedPersonalInfoSelection, currentValue?: string) => {
-    if (selection) {
-      return selection[key];
-    }
-    return !currentValue?.trim();
-  };
-  if (nextFullName && shouldApply('full_name', currentProfile?.name)) {
-    patch.full_name = nextFullName;
-  }
-  if (nextEmail && shouldApply('email', currentProfile?.email)) {
-    patch.email = nextEmail;
-  }
-  if (nextPhone && shouldApply('phone', currentProfile?.phone)) {
-    patch.phone = nextPhone;
-  }
-  if (nextLocation && shouldApply('location', currentProfile?.location)) {
-    patch.location = nextLocation;
-  }
-  return Object.keys(patch).length ? patch : null;
-};
-
-const buildProfileSnapshot = (profile: Profile) => ({
-  name: profile.full_name || '',
-  email: profile.email || '',
-  phone: profile.phone || '',
-  location: profile.location || '',
-});
 
 const sortById = <T extends { id: string }>(items: T[]) => (
   [...items].sort((left, right) => left.id.localeCompare(right.id))
@@ -292,8 +220,8 @@ const loadExperienceBankValidationSnapshot = async (): Promise<ExperienceBankPdf
   };
 };
 interface ExperienceBankProps {
-  cachedProfile?: any;
-  onProfileUpdate?: (data: any) => void;
+  cachedProfile?: Profile;
+  onProfileUpdate?: (data: Profile) => void;
   shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
 }
@@ -304,8 +232,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   shouldOpenResumeUpload = false,
   onLaunchAssistant,
 }) => {
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
   const { isAuthenticated, signIn } = useLogto();
 
@@ -338,350 +264,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     });
   }, [onLaunchAssistant]);
 
-  // Personal Info State
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [originalProfile, setOriginalProfile] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    location: "",
-    link: "",
-    summary: "",
-    avatarDataUrl: null as string | null,
-    extraJson: {} as Record<string, any>,
-  });
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [location, setLocation] = useState("");
-  const [link, setLink] = useState("");
-  const [summary, setSummary] = useState("");
-  const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
-  // 头像状态
-  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
-  const [profileExtraJson, setProfileExtraJson] = useState<Record<string, any>>({});
-  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
-  const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
-  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
-  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
-  const isLoadingProfileRef = useRef(false);
-  const hasHydratedProfileRef = useRef(false);
-  const summaryGenerationRequestIdRef = useRef(0);
-  const summaryDraftVersionRef = useRef(0);
-  const activeSummaryToastIdRef = useRef<string | null>(null);
-  const profileDraftOverridesRef = useRef({
-    name: false,
-    email: false,
-    phone: false,
-    location: false,
-    link: false,
-    summary: false,
-  });
-  const latestDraftProfileRef = useRef({
-    name: '',
-    email: '',
-    phone: '',
-    location: '',
-    link: '',
-    summary: '',
-    profileSocialLinks: {} as Record<string, any>,
-  });
-
-  latestDraftProfileRef.current = {
-    name,
-    email,
-    phone,
-    location,
-    link,
-    summary,
-    profileSocialLinks,
-  };
-
-  const summaryText = useMemo(() => summary.trim(), [summary]);
-  const summaryPreview = useMemo(
-    () => buildSummaryPreview(summaryText, SUMMARY_PREVIEW_CHAR_LIMIT),
-    [summaryText]
-  );
-
-  useEffect(() => {
-    setIsSummaryExpanded(false);
-  }, [summaryText, isEditingProfile]);
-
-  const buildDraftProfileSnapshot = useCallback((profile: Profile | null): Profile | null => {
-    if (!profile) {
-      return null;
-    }
-    const overrides = profileDraftOverridesRef.current;
-    const hasAnyOverride = Object.values(overrides).some(Boolean);
-    if (!hasHydratedProfileRef.current && !hasAnyOverride) {
-      return profile;
-    }
-    const currentDraft = latestDraftProfileRef.current;
-    return {
-      ...profile,
-      full_name: overrides.name ? currentDraft.name : profile.full_name,
-      email: overrides.email ? currentDraft.email : profile.email,
-      phone: overrides.phone ? currentDraft.phone : profile.phone,
-      location: overrides.location ? currentDraft.location : profile.location,
-      summary: overrides.summary ? currentDraft.summary : profile.summary,
-      social_links: overrides.link
-        ? mergeLinkedInLink(profile.social_links || currentDraft.profileSocialLinks, currentDraft.link)
-        : profile.social_links,
-    };
-  }, []);
-
-  const markProfileFieldDraftTouched = useCallback((
-    field: keyof typeof profileDraftOverridesRef.current
-  ) => {
-    profileDraftOverridesRef.current[field] = true;
-  }, []);
-
-  const resetProfileDraftOverrides = useCallback(() => {
-    profileDraftOverridesRef.current = {
-      name: false,
-      email: false,
-      phone: false,
-      location: false,
-      link: false,
-      summary: false,
-    };
-  }, []);
-
-  // 使用 ref 存储回调，避免 useEffect 依赖项变化导致重复执行
-  const onProfileUpdateRef = useRef(onProfileUpdate);
-
-
-  const applyProfileSnapshot = useCallback((profile: Profile) => {
-    const resolvedLink = resolveLinkedInLink(profile);
-    const extraJson = profile.extra_json || {};
-    const savedAvatar = typeof extraJson.avatar_data_url === 'string' ? extraJson.avatar_data_url : null;
-    resetProfileDraftOverrides();
-    setName(profile.full_name || "");
-    setEmail(profile.email || "");
-    setPhone(profile.phone || "");
-    setLocation(profile.location || "");
-    setLink(resolvedLink);
-    setSummary(profile.summary || "");
-    setProfileSocialLinks({ ...(profile.social_links || {}) });
-    setAvatarDataUrl(savedAvatar);
-    setProfileExtraJson(extraJson);
-    setOriginalProfile({
-      name: profile.full_name || "",
-      email: profile.email || "",
-      phone: profile.phone || "",
-      location: profile.location || "",
-      link: resolvedLink,
-      summary: profile.summary || "",
-      avatarDataUrl: savedAvatar,
-      extraJson,
-    });
-  }, [resetProfileDraftOverrides]);
-
-  const mergeRecoveredProfileIntoDraft = useCallback((profile: Profile) => {
-    const overrides = profileDraftOverridesRef.current;
-    const currentDraft = latestDraftProfileRef.current;
-    const resolvedLink = resolveLinkedInLink(profile);
-    const extraJson = profile.extra_json || {};
-    const savedAvatar = typeof extraJson.avatar_data_url === 'string' ? extraJson.avatar_data_url : null;
-    const mergedSocialLinks = overrides.link
-      ? mergeLinkedInLink(profile.social_links || currentDraft.profileSocialLinks, currentDraft.link)
-      : { ...(profile.social_links || {}) };
-
-    setName(overrides.name ? currentDraft.name : (profile.full_name || ""));
-    setEmail(overrides.email ? currentDraft.email : (profile.email || ""));
-    setPhone(overrides.phone ? currentDraft.phone : (profile.phone || ""));
-    setLocation(overrides.location ? currentDraft.location : (profile.location || ""));
-    setLink(overrides.link ? currentDraft.link : resolvedLink);
-    setSummary(overrides.summary ? currentDraft.summary : (profile.summary || ""));
-    setProfileSocialLinks(mergedSocialLinks);
-    setOriginalProfile({
-      name: profile.full_name || "",
-      email: profile.email || "",
-      phone: profile.phone || "",
-      location: profile.location || "",
-      link: resolvedLink,
-      summary: profile.summary || "",
-      avatarDataUrl: savedAvatar,
-      extraJson,
-    });
-  }, []);
-
-  // 同步最新的回调函数到 ref
-  useEffect(() => {
-    onProfileUpdateRef.current = onProfileUpdate;
-  }, [onProfileUpdate]);
-
-  useEffect(() => {
-    if (!cachedProfile) {
-      return;
-    }
-    applyProfileSnapshot(cachedProfile);
-    hasHydratedProfileRef.current = true;
-    setIsLoadingProfile(false);
-  }, [cachedProfile, applyProfileSnapshot]);
-
-  // 加载个人资料
-  useEffect(() => {
-    const loadProfile = async () => {
-      // 防抖：如果已有请求正在进行，直接返回
-      if (isLoadingProfileRef.current) {
-        if (import.meta.env.DEV) {
-          console.log('[ExperienceBank] 请求防抖：跳过重复请求');
-        }
-        return;
-      }
-
-      try {
-        isLoadingProfileRef.current = true;
-        if (!hasHydratedProfileRef.current) {
-          setIsLoadingProfile(true);
-        }
-        if (import.meta.env.DEV) {
-          console.log('[ExperienceBank] 开始加载个人资料...');
-        }
-
-        // profileService 已有内置缓存机制，会自动处理缓存
-        const profile = await profileService.getProfile();
-
-        applyProfileSnapshot(profile);
-        hasHydratedProfileRef.current = true;
-
-        if (import.meta.env.DEV) {
-          console.log('[ExperienceBank] 加载成功');
-        }
-
-        // 使用 ref 调用回调，更新 App 级缓存
-        if (onProfileUpdateRef.current) {
-          onProfileUpdateRef.current(profile);
-        }
-      } catch (err) {
-        console.error('Failed to load profile:', err);
-      } finally {
-        setIsLoadingProfile(false);
-        // 延迟重置请求状态
-        setTimeout(() => {
-          isLoadingProfileRef.current = false;
-        }, PROFILE_REQUEST_RESET_DELAY_MS);
-      }
-    };
-
-    loadProfile();
-  }, []); // ✅ 空依赖数组，只在挂载时执行一次
-
-  // 检测是否需要自动打开简历上传弹窗
-  useEffect(() => {
-    if (shouldOpenResumeUpload) {
-      if (import.meta.env.DEV) {
-        console.log('[ExperienceBank] 自动打开简历上传弹窗');
-      }
-      void handleImportResumeClick();
-    }
-  }, [handleImportResumeClick, shouldOpenResumeUpload]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !readPendingResumeUpload()) {
-      return;
-    }
-    if (import.meta.env.DEV) {
-      console.log('[ExperienceBank] 恢复待执行的简历导入动作');
-    }
-    writePendingResumeUpload(false);
-    setIsResumeModalOpen(true);
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !readPendingAssistantLaunch()) {
-      return;
-    }
-    if (import.meta.env.DEV) {
-      console.log('[ExperienceBank] 恢复待执行的 AI 助手启动动作');
-    }
-    writePendingAssistantLaunch(false);
-    launchEmptyStateAssistant();
-  }, [isAuthenticated, launchEmptyStateAssistant]);
-
-  // 开始编辑个人信息
-  const handleEditProfile = () => {
-    if (isLoadingProfile) {
-      return;
-    }
-    setOriginalProfile({
-      name,
-      email,
-      phone,
-      location,
-      link,
-      summary,
-      avatarDataUrl,
-      extraJson: profileExtraJson,
-    });
-    setIsEditingProfile(true);
-  };
-
-  // 取消编辑个人信息
-  const handleCancelProfile = () => {
-    summaryGenerationRequestIdRef.current += 1;
-    if (activeSummaryToastIdRef.current) {
-      closeToast(activeSummaryToastIdRef.current);
-      activeSummaryToastIdRef.current = null;
-    }
-    setIsGeneratingSummary(false);
-    summaryDraftVersionRef.current += 1;
-    resetProfileDraftOverrides();
-    setName(originalProfile.name);
-    setEmail(originalProfile.email);
-    setPhone(originalProfile.phone);
-    setLocation(originalProfile.location);
-    setLink(originalProfile.link);
-    setSummary(originalProfile.summary);
-    setAvatarDataUrl(originalProfile.avatarDataUrl);
-    setProfileExtraJson(originalProfile.extraJson);
-    setIsEditingProfile(false);
-  };
-
-  // 保存个人信息（含头像）
-  const handleSaveProfile = async () => {
-    try {
-      summaryGenerationRequestIdRef.current += 1;
-      if (activeSummaryToastIdRef.current) {
-        closeToast(activeSummaryToastIdRef.current);
-        activeSummaryToastIdRef.current = null;
-      }
-      setIsGeneratingSummary(false);
-      setIsSavingProfile(true);
-      const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, link);
-      // 合并 extra_json，保留现有字段，只更新头像
-      const nextExtraJson = { ...profileExtraJson };
-      if (avatarDataUrl) {
-        nextExtraJson.avatar_data_url = avatarDataUrl;
-      } else {
-        delete nextExtraJson.avatar_data_url;
-      }
-      const updated = await profileService.updateProfile({
-        full_name: name,
-        email,
-        phone,
-        location,
-        summary,
-        social_links: nextSocialLinks,
-        extra_json: nextExtraJson,
-      });
-      applyProfileSnapshot(updated);
-      setIsEditingProfile(false);
-      if (onProfileUpdateRef.current) {
-        onProfileUpdateRef.current(updated);
-      }
-      success('个人信息保存成功');
-    } catch (err) {
-      console.error('Failed to save profile:', err);
-      toastError('个人信息保存失败');
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
-
-  // Toast 状态管理
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -706,50 +288,79 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const education = useEducationManager(toastApi);
   const { refreshEducation } = education;
 
-  const resolveCurrentProfileSnapshot = useCallback(async () => {
-    if (hasHydratedProfileRef.current && !isLoadingProfile) {
-      return { name, email, phone, location };
-    }
-    try {
-      const latestProfile = await profileService.getProfile({ force: true });
-      applyProfileSnapshot(latestProfile);
-      hasHydratedProfileRef.current = true;
-      return buildProfileSnapshot(latestProfile);
-    } catch (error) {
-      console.error('[ExperienceBank] 刷新个人资料失败:', error);
-      return null;
-    }
-  }, [applyProfileSnapshot, email, isLoadingProfile, location, name, phone]);
+  const {
+    isLoadingProfile,
+    isSavingProfile,
+    isEditingProfile,
+    name,
+    email,
+    phone,
+    location,
+    link,
+    summary,
+    summaryText,
+    summaryPreview,
+    isSummaryExpanded,
+    setIsSummaryExpanded,
+    avatarDataUrl,
+    isCropModalOpen,
+    pendingImageSrc,
+    avatarFileInputRef,
+    isGeneratingSummary,
+    isAvatarInteractionEnabled,
+    buildCurrentProfileDraftSnapshot,
+    handleEditProfile,
+    handleCancelProfile,
+    handleSaveProfile,
+    handleResumeImported: handleProfileResumeImported,
+    handleGenerateSummary,
+    handleSummaryChange,
+    handleNameChange,
+    handleEmailChange,
+    handlePhoneChange,
+    handleLocationChange,
+    handleLinkChange,
+    handleAvatarUploadClick,
+    handleFileSelected,
+    handleCropConfirm,
+    handleAvatarDelete,
+    handleCropCancel,
+  } = useExperienceBankProfile({
+    cachedProfile,
+    onProfileUpdate,
+    refreshEducation,
+    loadExportSnapshot: loadExperienceBankExportSnapshot,
+    loadValidationSnapshot: loadExperienceBankValidationSnapshot,
+    buildSummaryPayload: buildExperienceBankSummaryPayload,
+    success,
+    toastError,
+    loading,
+    updateToast,
+    closeToast,
+  });
 
   const handleResumeImported = useCallback(async (
-    parsedPersonalInfo?: ParsedPersonalInfo,
-    personalInfoSelection?: ParsedPersonalInfoSelection
+    ...args: Parameters<typeof handleProfileResumeImported>
   ) => {
-    const currentProfile = await resolveCurrentProfileSnapshot();
-    if (!currentProfile) {
-      setExperienceRefreshSignal((prev) => prev + 1);
-      await refreshEducation();
+    setExperienceRefreshSignal((prev) => prev + 1);
+    await handleProfileResumeImported(...args);
+  }, [handleProfileResumeImported]);
+
+  useEffect(() => {
+    if (shouldOpenResumeUpload) {
+      devLog('[ExperienceBank] 自动打开简历上传弹窗');
+      void handleImportResumeClick();
+    }
+  }, [handleImportResumeClick, shouldOpenResumeUpload]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !readPendingResumeUpload()) {
       return;
     }
-    const profilePatch = resolveNextProfilePatch(
-      parsedPersonalInfo,
-      currentProfile,
-      personalInfoSelection
-    );
-    if (profilePatch) {
-      try {
-        const updatedProfile = await profileService.updateProfile(profilePatch);
-        applyProfileSnapshot(updatedProfile);
-        if (onProfileUpdateRef.current) {
-          onProfileUpdateRef.current(updatedProfile);
-        }
-      } catch (error) {
-        console.error('[ExperienceBank] 个人信息自动回填失败:', error);
-      }
-    }
-    setExperienceRefreshSignal((prev) => prev + 1);
-    await refreshEducation();
-  }, [applyProfileSnapshot, refreshEducation, resolveCurrentProfileSnapshot]);
+    devLog('[ExperienceBank] 恢复待执行的简历导入动作');
+    writePendingResumeUpload(false);
+    setIsResumeModalOpen(true);
+  }, [isAuthenticated]);
 
   const handleLaunchEmptyStateAssistant = useCallback(async () => {
     if (!isAuthenticated) {
@@ -761,6 +372,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     writePendingAssistantLaunch(false);
     launchEmptyStateAssistant();
   }, [isAuthenticated, launchEmptyStateAssistant, signIn]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !readPendingAssistantLaunch()) {
+      return;
+    }
+    devLog('[ExperienceBank] 恢复待执行的 AI 助手启动动作');
+    writePendingAssistantLaunch(false);
+    launchEmptyStateAssistant();
+  }, [isAuthenticated, launchEmptyStateAssistant]);
 
   const isExperienceBankEmpty = workExperienceCount === 0
     && projectExperienceCount === 0
@@ -778,7 +398,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
     try {
       const latestSnapshot = await loadExperienceBankExportSnapshot();
-      const profileSnapshot = buildDraftProfileSnapshot(latestSnapshot.profile);
+      const profileSnapshot = buildCurrentProfileDraftSnapshot(latestSnapshot.profile);
       const snapshot = buildExperienceBankPdfRenderSnapshot({
         ...latestSnapshot,
         profile: profileSnapshot,
@@ -810,240 +430,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     } finally {
       setIsExportingPdf(false);
     }
-  }, [buildDraftProfileSnapshot, isExportingPdf, loading, updateToast]);
-
-  const handleGenerateSummary = useCallback(async () => {
-    if (isGeneratingSummary || isLoadingProfile) {
-      return;
-    }
-
-    setIsGeneratingSummary(true);
-    const requestId = summaryGenerationRequestIdRef.current + 1;
-    summaryGenerationRequestIdRef.current = requestId;
-    const draftVersionAtStart = summaryDraftVersionRef.current;
-    const isCurrentSummaryRequest = () => summaryGenerationRequestIdRef.current === requestId;
-    let toastId: string | null = null;
-    const releaseActiveSummaryToast = () => {
-      if (toastId && activeSummaryToastIdRef.current === toastId) {
-        activeSummaryToastIdRef.current = null;
-      }
-    };
-    try {
-      const latestSnapshot = await loadExperienceBankExportSnapshot();
-      if (
-        !isCurrentSummaryRequest()
-        || summaryDraftVersionRef.current !== draftVersionAtStart
-      ) {
-        return;
-      }
-      mergeRecoveredProfileIntoDraft(latestSnapshot.profile);
-      hasHydratedProfileRef.current = true;
-      const hasContent = latestSnapshot.workItems.length > 0
-        || latestSnapshot.projectItems.length > 0
-        || latestSnapshot.educationItems.length > 0
-        || latestSnapshot.certifications.length > 0
-        || latestSnapshot.skills.length > 0;
-      const profileSnapshot = buildDraftProfileSnapshot(latestSnapshot.profile);
-      const existingSummary = profileSnapshot?.summary?.trim() || '';
-      if (!hasContent) {
-        toastError('请先完善经历库内容后再生成个人评价。');
-        return;
-      }
-      if (existingSummary && typeof window !== 'undefined') {
-        const shouldOverwrite = window.confirm('当前已有个人评价内容，是否用 AI 生成结果覆盖？');
-        if (!shouldOverwrite) {
-          return;
-        }
-      }
-
-      toastId = loading('正在生成个人评价...');
-      activeSummaryToastIdRef.current = toastId;
-      if (!isEditingProfile) {
-        setIsEditingProfile(true);
-      }
-      const requestPayload = buildExperienceBankSummaryPayload(profileSnapshot, latestSnapshot);
-      const requestSignature = JSON.stringify(requestPayload);
-
-      const response = await aiService.generatePersonalSummaryStream(requestPayload, (event) => {
-        if (toastId && event.type === 'thought' && isCurrentSummaryRequest()) {
-          const title = extractThoughtHeadline(event.summary);
-          if (!title) {
-            return;
-          }
-          updateToast(toastId, {
-            message: title,
-            type: 'ai_thinking',
-            duration: 0,
-          });
-        }
-      });
-
-      if (
-        !isCurrentSummaryRequest()
-        || summaryDraftVersionRef.current !== draftVersionAtStart
-      ) {
-        if (toastId) {
-          closeToast(toastId);
-        }
-        releaseActiveSummaryToast();
-        return;
-      }
-      const currentSnapshot = await loadExperienceBankValidationSnapshot();
-      if (!currentSnapshot) {
-        if (toastId) {
-          closeToast(toastId);
-        }
-        releaseActiveSummaryToast();
-        return;
-      }
-      const currentProfileSnapshot = buildDraftProfileSnapshot(currentSnapshot.profile);
-      const currentSignature = JSON.stringify(
-        buildExperienceBankSummaryPayload(currentProfileSnapshot, currentSnapshot)
-      );
-      if (
-        !isCurrentSummaryRequest()
-        || summaryDraftVersionRef.current !== draftVersionAtStart
-        || currentSignature !== requestSignature
-      ) {
-        if (toastId) {
-          closeToast(toastId);
-        }
-        releaseActiveSummaryToast();
-        return;
-      }
-      markProfileFieldDraftTouched('summary');
-      setSummary(stripRichTextToText(response.summary).trim());
-      if (toastId) {
-        updateToast(toastId, {
-          message: '个人评价已生成',
-          type: 'success',
-          duration: 2500,
-        });
-      }
-      releaseActiveSummaryToast();
-    } catch (error) {
-      if (!isCurrentSummaryRequest()) {
-        if (toastId) {
-          closeToast(toastId);
-        }
-        releaseActiveSummaryToast();
-        return;
-      }
-      console.error('[ExperienceBank] 个人评价生成失败:', error);
-      if (toastId) {
-        updateToast(toastId, {
-          message: error instanceof Error ? error.message : '个人评价生成失败，请稍后重试',
-          type: 'error',
-          duration: 3500,
-        });
-      } else {
-        toastError(error instanceof Error ? error.message : '个人评价生成失败，请稍后重试');
-      }
-      releaseActiveSummaryToast();
-    } finally {
-      if (isCurrentSummaryRequest()) {
-        setIsGeneratingSummary(false);
-      }
-    }
-  }, [
-    buildDraftProfileSnapshot,
-    closeToast,
-    email,
-    isEditingProfile,
-    isGeneratingSummary,
-    isLoadingProfile,
-    link,
-    loading,
-    location,
-    mergeRecoveredProfileIntoDraft,
-    name,
-    phone,
-    summary,
-    toastError,
-    updateToast,
-  ]);
-
-  const handleSummaryChange = useCallback((value: string) => {
-    summaryDraftVersionRef.current += 1;
-    markProfileFieldDraftTouched('summary');
-    setSummary(value);
-  }, [markProfileFieldDraftTouched]);
-
-  const handleNameChange = useCallback((value: string) => {
-    markProfileFieldDraftTouched('name');
-    setName(value);
-  }, [markProfileFieldDraftTouched]);
-
-  const handleEmailChange = useCallback((value: string) => {
-    markProfileFieldDraftTouched('email');
-    setEmail(value);
-  }, [markProfileFieldDraftTouched]);
-
-  const handlePhoneChange = useCallback((value: string) => {
-    markProfileFieldDraftTouched('phone');
-    setPhone(value);
-  }, [markProfileFieldDraftTouched]);
-
-  const handleLocationChange = useCallback((value: string) => {
-    markProfileFieldDraftTouched('location');
-    setLocation(value);
-  }, [markProfileFieldDraftTouched]);
-
-  const handleLinkChange = useCallback((value: string) => {
-    markProfileFieldDraftTouched('link');
-    setLink(value);
-  }, [markProfileFieldDraftTouched]);
-
-  const isAvatarInteractionEnabled = !isLoadingProfile && !isSavingProfile;
-
-  // ─── 头像上传 handlers ────────────────────────────────────────────────────
-
-  const handleAvatarUploadClick = useCallback(() => {
-    if (!isAvatarInteractionEnabled) {
-      return;
-    }
-    avatarFileInputRef.current?.click();
-  }, [isAvatarInteractionEnabled]);
-
-  /** 用户选择文件后，读取为 DataURL 并打开裁剪弹窗 */
-  const handleFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const src = evt.target?.result as string;
-      setPendingImageSrc(src);
-      setIsCropModalOpen(true);
-    };
-    reader.readAsDataURL(file);
-    // 重置 input，允许再次选同一文件
-    e.target.value = '';
-  }, []);
-
-  /** 裁剪确认：更新头像状态，若非编辑模式自动进入编辑模式 */
-  const handleCropConfirm = useCallback((cropDataUrl: string) => {
-    setAvatarDataUrl(cropDataUrl);
-    setIsCropModalOpen(false);
-    setPendingImageSrc(null);
-    if (!isEditingProfile) {
-      setIsEditingProfile(true);
-    }
-  }, [isEditingProfile]);
-
-  /** 删除头像：清空头像状态，自动进入编辑模式 */
-  const handleAvatarDelete = useCallback(() => {
-    setAvatarDataUrl(null);
-    setIsCropModalOpen(false);
-    setPendingImageSrc(null);
-    if (!isEditingProfile) {
-      setIsEditingProfile(true);
-    }
-  }, [isEditingProfile]);
-
-  const handleCropCancel = useCallback(() => {
-    setIsCropModalOpen(false);
-    setPendingImageSrc(null);
-  }, []);
+  }, [buildCurrentProfileDraftSnapshot, isExportingPdf, loading, updateToast]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">

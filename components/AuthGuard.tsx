@@ -2,6 +2,7 @@ import { useLogto } from '@logto/react';
 import { useEffect, ReactNode, useMemo, useRef, useState } from 'react';
 import { clearAccessTokenProvider, setAccessTokenProvider } from '../services/authTokenProvider';
 import { subscribeLoginRequired } from '../services/authRedirect';
+import { devLog } from '../services/devLogger';
 import {
     isForceReauthReason,
     markUserSignInStarted,
@@ -45,9 +46,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             })) {
                 return;
             }
-            if (import.meta.env.DEV) {
-                console.log('[AuthGuard] Login required:', reason || 'unknown');
-            }
+            devLog('[AuthGuard] Login required:', reason || 'unknown');
             markUserSignInStarted();
             isSigningInRef.current = true;
             void (async () => {

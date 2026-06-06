@@ -16,6 +16,18 @@ const importAssistantSessionUtils = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+const buildSession = (id, updatedAt, title = `Session ${id}`) => ({
+  id,
+  user_id: 'user-1',
+  title,
+  mode: 'general',
+  entry_source: 'direct',
+  latest_preview: {},
+  context_json: {},
+  created_at: updatedAt,
+  updated_at: updatedAt,
+});
+
 test('rejects assistant session list responses that are not arrays', async () => {
   const { assertAssistantSessionListResponse } = await importAssistantSessionUtils();
 
@@ -45,6 +57,66 @@ test('rejects assistant session details whose messages are not arrays', async ()
     }),
     /Assistant session detail messages must be an array/
   );
+});
+
+test('preserves locally mutated sessions that are missing from stale list responses', async () => {
+  const { reconcileAssistantSessions } = await importAssistantSessionUtils();
+
+  const localSession = buildSession('local-new', '2026-06-03T00:03:00Z', 'Local draft');
+  const serverSession = buildSession('server-old', '2026-06-03T00:01:00Z', 'Server old');
+  const result = reconcileAssistantSessions(
+    [localSession],
+    [serverSession],
+    10,
+    new Map([['local-new', 11]]),
+    new Map(),
+  );
+
+  assert.deepEqual(result.map((session) => session.id), ['local-new', 'server-old']);
+});
+
+test('does not revive sessions deleted after a list request started', async () => {
+  const { reconcileAssistantSessions } = await importAssistantSessionUtils();
+
+  const deletedSession = buildSession('deleted', '2026-06-03T00:04:00Z', 'Deleted');
+  const result = reconcileAssistantSessions(
+    [],
+    [deletedSession],
+    10,
+    new Map(),
+    new Map([['deleted', 12]]),
+  );
+
+  assert.deepEqual(result.map((session) => session.id), []);
+});
+
+test('keeps locally updated sessions when stale list responses contain the same id', async () => {
+  const { reconcileAssistantSessions } = await importAssistantSessionUtils();
+
+  const localSession = buildSession('same', '2026-06-03T00:05:00Z', 'Local rename');
+  const staleServerSession = buildSession('same', '2026-06-03T00:02:00Z', 'Stale server');
+  const result = reconcileAssistantSessions(
+    [localSession],
+    [staleServerSession],
+    10,
+    new Map([['same', 13]]),
+    new Map(),
+  );
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].title, 'Local rename');
+});
+
+test('mergeAssistantSessions lets incoming sessions win and sorts by updated time', async () => {
+  const { mergeAssistantSessions } = await importAssistantSessionUtils();
+
+  const oldSession = buildSession('same', '2026-06-03T00:01:00Z', 'Old');
+  const otherSession = buildSession('other', '2026-06-03T00:02:00Z', 'Other');
+  const updatedSession = buildSession('same', '2026-06-03T00:03:00Z', 'Updated');
+  const result = mergeAssistantSessions([oldSession, otherSession], [updatedSession]);
+
+  assert.deepEqual(result.map((session) => session.id), ['same', 'other']);
+  assert.equal(result[0].title, 'Updated');
 });
 
 test('matches legacy education previews against normalized experience draft cards', async () => {

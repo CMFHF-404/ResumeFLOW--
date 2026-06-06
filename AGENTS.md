@@ -14,6 +14,7 @@
   - Build with `npm run build`
   - Preview with `npm run preview`
   - Copy settings from `.env.example` when local env vars are needed.
+  - For Logto account management, set `VITE_LOGTO_ACCOUNT_API_RESOURCE` and add `http://localhost:5173` to the Logto "Post Sign-out Redirect URI" list for local logout.
 - The Vite dev server binds to `0.0.0.0:5173` and proxies `/api` to `VITE_API_BASE_URL`, falling back to `http://localhost:8000`.
 - Backend:
   - Install with `pip install -r requirements.txt` from `backend/`

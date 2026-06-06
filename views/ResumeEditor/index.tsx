@@ -1,47 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { Database } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeData } from '../../hooks/useResumeData';
-import { type PolishMode } from '../../services/aiService';
-import type { Certification as CertificationRecord } from '../../services/certificationsService';
-import { experienceService, type ExperienceListItem } from '../../services/experienceService';
+import { experienceService } from '../../services/experienceService';
 import type {
     CertificationView,
     EducationView,
-    ExperienceEditDraft,
-    PolishPreviewState,
     ProfileSyncMode,
-    ResumeBossGreeting,
     ResumeEditorProfile,
-    ResumeExperienceListMarkerStyle,
-    ResumeJDAnalysis,
-    ResumeLayoutOrders,
     ResumeExperienceView,
-    SectionSpacingKey,
     SkillGroupView,
 } from '../../types/resume';
 import type { Resume as DashboardResume } from '../../types';
 import { buildExperienceDate } from '../../utils/dateUtils';
 import {
-    buildResumeAISnapshot,
     buildStarFields,
     mergeStarFieldsWithSource,
 } from '../../utils/resumeHelpers';
-import {
-    clearPendingAssistantManualSaveDraft,
-    type PendingAssistantManualSaveDraft,
-    readPendingAssistantManualSaveDrafts,
-} from '../assistantManualSaveStorage';
 import { buildJDCapabilityContext, buildJDPolishContext } from '../../utils/assistantResumeContext';
-import { buildSmartCompleteAssistantPrompt } from '../../utils/assistantSmartCompletePrompt';
-import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 import {
-    trackAiPolishResult,
-    trackAiPolishStart,
-    trackAiPolishUndone,
     trackLayoutModeChange,
 } from '../../utils/analyticsTracker';
 import { resolveResumeDisplayTitle, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
@@ -58,30 +38,23 @@ import {
     CONFIRM_DELETE_SKILL_CATEGORY_TITLE,
     CONFIRM_DELETE_SKILL_TEXT,
     CONFIRM_DELETE_SKILL_TITLE,
-    DEFAULT_PROFILE,
     DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY,
     DEFAULT_EXPERIENCE_COMPANY_BY_CATEGORY,
-    DEFAULT_SECTION_ORDER,
     DEFAULT_SKILL_CATEGORY,
     DEFAULT_SKILL_NAME,
     EDUCATION_DRAFT_PREFIX,
     EXPERIENCE_DRAFT_PREFIX,
-    FONT_SIZE_DEFAULT,
     FONT_SIZE_MAX,
     FONT_SIZE_MIN,
     FONT_SIZE_STEP,
-    LINE_HEIGHT_DEFAULT,
     LINE_HEIGHT_MAX,
     LINE_HEIGHT_MIN,
     LINE_HEIGHT_STEP,
-    LIST_SPACING_BY_DENSITY,
-    PROFILE_SYNC_MODES,
     SIDEBAR_WIDTH_CLASS,
     SMART_PAGE_ITEM_SPACING_MIN,
     SMART_PAGE_ITEM_SPACING_STEP,
     SMART_PAGE_TOP_PADDING_STEP_PX,
 } from './constants';
-import { buildDragItemKey } from './dragKeys';
 import {
     buildCertificationDraft,
     buildCertificationPayload,
@@ -120,66 +93,29 @@ import {
     TOP_PADDING_MIN_PX,
     TOP_PADDING_SELECT_OPTIONS,
     TOP_PADDING_SLIDER_MAX,
-    areLayoutValuesEqual,
     buildDefaultSmartPageLayout,
-    buildSpacingValue,
     resolveDefaultItemSpacingEm,
     resolveDefaultSectionSpacingKey,
-    resolveDefaultTopPaddingPx,
-    resolveSectionSpacingClass,
     type LayoutSnapshot,
-    type SmartPageLayout,
 } from './layoutUtils';
 import {
     buildLayoutSnapshot,
-    type ManualSelectionSnapshot,
 } from './autoAssemblyUtils';
 import {
     normalizeResumeTitle,
 } from './autoNameUtils';
 import {
-    applyAssistantExperienceDraftToEditingDraft,
-    buildPendingAssistantManualSaveDraftKey,
-} from './assistantDraftApplyUtils';
-import { applyAssistantExperienceDraftToDraft } from './assistantApplyUtils';
-import {
-    buildSmartCompletionPromptState,
-    type SmartCompletionPromptState,
-} from './smartCompletionUtils';
-import {
-    buildExperiencePolishPayloadContent,
-    buildPolishedExperienceDraft,
-    resolveExperiencePolishCustomPrompt,
-    shouldAskBeforeSmartCompletionRewrite,
-} from './experiencePolishUtils';
-import {
     buildBossGreetingSignature,
     buildPersonalSummarySignature,
-    buildStableResumeSnapshotText,
     waitForNextFrame,
-    type PendingPersistedBossGreeting,
 } from './snapshotUtils';
 import {
-    buildPersonalSummaryContext,
-    hasMeaningfulPersonalSummary,
-    resolveEditablePersonalSummary,
-    resolveEffectivePersonalSummary,
-} from './personalSummaryUtils';
-import {
-    DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
-    DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
-} from '../../utils/resumeCustomization';
-import {
-    DEFAULT_RESUME_TEMPLATE_ID,
     RESUME_THEME_COLOR_PRESETS,
-    resolveDefaultResumeThemeColorPresetId,
-    type ResumeTemplateId,
-    type ResumeThemeColorPresetId,
 } from '../../constants/resumeTemplates';
 import {
     buildPreferredResumeCreateConfig,
 } from '../resumeTemplateStorage';
-import EditorSidebar from './components/EditorSidebar';
+import EditorSidebar, { type EditorSidebarProps } from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
@@ -214,11 +150,16 @@ import { useApplyResumeLayoutConfig } from './hooks/useApplyResumeLayoutConfig';
 import { useEditorThemeState } from './hooks/useEditorThemeState';
 import { usePersistedBossGreetingSync } from './hooks/usePersistedBossGreetingSync';
 import { useCommittedResumeConfigSnapshot } from './hooks/useCommittedResumeConfigSnapshot';
-import { useEditingExperiencePolishActions } from './hooks/useEditingExperiencePolishActions';
-import { useFloatingExperiencePolishSession } from './hooks/useFloatingExperiencePolishSession';
-import { useFloatingExperiencePolishActions } from './hooks/useFloatingExperiencePolishActions';
-import { useFloatingExperiencePolishConfirmActions } from './hooks/useFloatingExperiencePolishConfirmActions';
-import { useFloatingPolishResumePersistence } from './hooks/useFloatingPolishResumePersistence';
+import { useResumeEditorPreviewModel } from './hooks/useResumeEditorPreviewModel';
+import { useResumeEditorAssistantLaunch } from './hooks/useResumeEditorAssistantLaunch';
+import { useResumeEditorCoreState } from './hooks/useResumeEditorCoreState';
+import { useResumeEditorTransientReset } from './hooks/useResumeEditorTransientReset';
+import {
+    DEFAULT_RESUME_POLISH_MODE,
+    type ResumePolishMode,
+} from './hooks/useResumeEditorExperiencePolishControls';
+import { useResumeEditorExperiencePolishCoordinator } from './hooks/useResumeEditorExperiencePolishCoordinator';
+import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
 type ResumeEditorProps = {
     cachedResumes?: DashboardResume[];
     cachedResumesOwnerKey?: string | null;
@@ -230,8 +171,6 @@ type ResumeEditorProps = {
     onMobileDrawerOpenRequestConsumed?: () => void;
 };
 
-type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
-const DEFAULT_RESUME_POLISH_MODE: ResumePolishMode = 'default';
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
     'highlight',
@@ -254,135 +193,91 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     onMobileDrawerOpenRequestConsumed,
 }) => {
     const { isDarkMode, toggleTheme } = useEditorThemeState();
-    const [lineHeight, setLineHeight] = useState(LINE_HEIGHT_DEFAULT);
-    const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
-    const [topPaddingPx, setTopPaddingPx] = useState(resolveDefaultTopPaddingPx());
-    const [sectionSpacingKey, setSectionSpacingKey] = useState<SectionSpacingKey>(
-        resolveDefaultSectionSpacingKey('standard')
-    );
-    const [itemSpacingEm, setItemSpacingEm] = useState(resolveDefaultItemSpacingEm('standard'));
-    const [measureLayout, setMeasureLayout] = useState<SmartPageLayout>(() =>
-        buildDefaultSmartPageLayout('standard')
-    );
-    const [isSmartPageApplied, setIsSmartPageApplied] = useState(false);
-    const [isLayoutAdjustToolbarOpen, setIsLayoutAdjustToolbarOpen] = useState(false);
-    const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
-    const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
-    const [isCreatingResume, setIsCreatingResume] = useState(false);
-    const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
-    // 1. Profile State
-    const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
-    const [personalSummary, setPersonalSummary] = useState('');
-    const [hasPersonalSummaryOverride, setHasPersonalSummaryOverride] = useState(false);
-    const [profileSyncMode, setProfileSyncMode] = useState<ProfileSyncMode>(PROFILE_SYNC_MODES.global);
-    const [profileSocialLinks, setProfileSocialLinks] = useState<Record<string, any>>({});
-    const [isEditingProfile, setIsEditingProfile] = useState(false);
-    const [isSavingProfile, setIsSavingProfile] = useState(false);
-    const [originalProfile, setOriginalProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
-    const [originalProfileSyncMode, setOriginalProfileSyncMode] = useState<ProfileSyncMode>(
-        PROFILE_SYNC_MODES.global
-    );
-    // 教育背景状态
-    const [educations, setEducations] = useState<EducationView[]>([]);
-    const [educationSourceMap, setEducationSourceMap] = useState<Map<string, ExperienceListItem>>(
-        new Map()
-    );
-    // 证书与技能状态
-    const [certifications, setCertifications] = useState<CertificationView[]>([]);
-    const [certificationSourceMap, setCertificationSourceMap] = useState<Map<string, CertificationRecord>>(
-        new Map()
-    );
-    const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([]);
+    const {
+        lineHeight, setLineHeight,
+        fontSize, setFontSize,
+        topPaddingPx, setTopPaddingPx,
+        sectionSpacingKey, setSectionSpacingKey,
+        itemSpacingEm, setItemSpacingEm,
+        measureLayout, setMeasureLayout,
+        isSmartPageApplied, setIsSmartPageApplied,
+        isLayoutAdjustToolbarOpen, setIsLayoutAdjustToolbarOpen,
+        isTemplateSelectorOpen, setIsTemplateSelectorOpen,
+        isAutoSavePaused, setIsAutoSavePaused,
+        isCreatingResume, setIsCreatingResume,
+        resumeName, setResumeName,
+        profile, setProfile,
+        personalSummary, setPersonalSummary,
+        hasPersonalSummaryOverride, setHasPersonalSummaryOverride,
+        profileSyncMode, setProfileSyncMode,
+        profileSocialLinks, setProfileSocialLinks,
+        isEditingProfile, setIsEditingProfile,
+        isSavingProfile, setIsSavingProfile,
+        originalProfile, setOriginalProfile,
+        originalProfileSyncMode, setOriginalProfileSyncMode,
+        educations, setEducations,
+        educationSourceMap, setEducationSourceMap,
+        certifications, setCertifications,
+        certificationSourceMap, setCertificationSourceMap,
+        skillGroups, setSkillGroups,
+        selectedEduIds, setSelectedEduIds,
+        selectedCertIds, setSelectedCertIds,
+        selectedSkillIds, setSelectedSkillIds,
+        experienceItems, setExperienceItems,
+        selectedExpIds, setSelectedExpIds,
+        isAutoAssembling, setIsAutoAssembling,
+        bossGreeting, setBossGreeting,
+        bossGreetingSignature, setBossGreetingSignature,
+        isBossGreetingVisible, setIsBossGreetingVisible,
+        isGeneratingBossGreeting, setIsGeneratingBossGreeting,
+        persistedJDAnalysisSnapshot, setPersistedJDAnalysisSnapshot,
+        sidebarTab, setSidebarTab,
+        mobileEditorScrollContainerRef,
+        density, setDensity,
+        previousDensityRef,
+        manualSelectionVersionRef,
+        manualLayoutVersionRef,
+        isProgrammaticSelectionUpdateRef,
+        manualSelectionSnapshotRef,
+        latestLayoutSnapshotRef,
+        manualLayoutSnapshotRef,
+        latestResumeIdRef,
+        latestBossGreetingSignatureRef,
+        latestBossGreetingAnalysisOutdatedRef,
+        autoAssembleRequestIdRef,
+        bossGreetingRequestIdRef,
+        pendingPersistedBossGreetingRef,
+        activeAutoAssembleToastIdRef,
+        activeBossGreetingToastIdRef,
+        bossGreetingUiStateRef,
+        currentLayout,
+        defaultLayout,
+        isLayoutModified,
+        sectionOrder, setSectionOrder,
+        isSummaryVisible, setIsSummaryVisible,
+        previewRef,
+        previewContentRef,
+        measurePreviewRef,
+        measurePreviewContentRef,
+        a4HeightRef,
+        smartPageAdjustingRef,
+        isExportingPdf, setIsExportingPdf,
+        resumeTemplateId, setResumeTemplateId,
+        themeColorPresetId, setThemeColorPresetId,
+        experienceListMarkerStyle, setExperienceListMarkerStyle,
+        skillTagSeparator, setSkillTagSeparator,
+        layoutOrders,
+        bossGreetingSnapshot,
+    } = useResumeEditorCoreState();
     const isCacheOwnerMatched = Boolean(
         cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
     );
-    // 教育背景/证书/技能选择状态
-    const [selectedEduIds, setSelectedEduIds] = useState<Set<string>>(new Set());
-    const [selectedCertIds, setSelectedCertIds] = useState<Set<string>>(new Set());
-    const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
-    // 2. Experience State
-    const [experienceItems, setExperienceItems] = useState<ResumeExperienceView[]>([]);
-    const [selectedExpIds, setSelectedExpIds] = useState<Set<string>>(new Set());
-    const [isAutoAssembling, setIsAutoAssembling] = useState(false);
-    const [bossGreeting, setBossGreeting] = useState('');
-    const [bossGreetingSignature, setBossGreetingSignature] = useState('');
-    const [isBossGreetingVisible, setIsBossGreetingVisible] = useState(false);
-    const [isGeneratingBossGreeting, setIsGeneratingBossGreeting] = useState(false);
-    const [persistedJDAnalysisSnapshot, setPersistedJDAnalysisSnapshot] =
-        useState<ResumeJDAnalysis | null | undefined>(undefined);
-    // 3. UI State
-    const [sidebarTab, setSidebarTab] = useState<'profile' | 'experience'>('experience');
-    const mobileEditorScrollContainerRef = useRef<HTMLDivElement | null>(null);
     const mobileEditorDrawer = useMobileEditorDrawer({
         mobileDrawerOpenRequest,
         onMobileDrawerOpenRequestConsumed,
         scrollContainerRef: mobileEditorScrollContainerRef,
         setSidebarTab,
     });
-    const [density, setDensity] = useState<'compact' | 'standard' | 'spacious'>('standard');
-    const previousDensityRef = useRef<'compact' | 'standard' | 'spacious'>(density);
-    const manualSelectionVersionRef = useRef(0);
-    const manualLayoutVersionRef = useRef(0);
-    const isProgrammaticSelectionUpdateRef = useRef(false);
-    const manualSelectionSnapshotRef = useRef<ManualSelectionSnapshot>({
-        experienceIds: [],
-        certificationIds: [],
-        skillIds: [],
-    });
-    const latestLayoutSnapshotRef = useRef<LayoutSnapshot>(
-        buildLayoutSnapshot(
-            {
-                topPaddingPx,
-                sectionSpacingKey,
-                itemSpacingEm,
-                lineHeight,
-                fontSize,
-            },
-            isSmartPageApplied
-        )
-    );
-    const manualLayoutSnapshotRef = useRef<LayoutSnapshot>(
-        buildLayoutSnapshot(
-            {
-                topPaddingPx,
-                sectionSpacingKey,
-                itemSpacingEm,
-                lineHeight,
-                fontSize,
-            },
-            isSmartPageApplied
-        )
-    );
-    // resumeId 在 useResumeData() 之后才声明，此处不能直接引用，初始化为 undefined。
-    // 在 useEffect 中同步更新，确保 ref 始终持有最新值。
-    const latestResumeIdRef = useRef<string | undefined>(undefined);
-    const latestBossGreetingSignatureRef = useRef('');
-    const latestBossGreetingAnalysisOutdatedRef = useRef(false);
-    const autoAssembleRequestIdRef = useRef(0);
-    const bossGreetingRequestIdRef = useRef(0);
-    const pendingPersistedBossGreetingRef = useRef<PendingPersistedBossGreeting | null>(null);
-    const activeAutoAssembleToastIdRef = useRef<string | null>(null);
-    const activeBossGreetingToastIdRef = useRef<string | null>(null);
-    const bossGreetingUiStateRef = useRef({
-        text: '',
-        signature: '',
-        isVisible: false,
-    });
-    const currentLayout = useMemo<SmartPageLayout>(() => ({
-        topPaddingPx,
-        sectionSpacingKey,
-        itemSpacingEm,
-        lineHeight,
-        fontSize,
-    }), [fontSize, itemSpacingEm, lineHeight, sectionSpacingKey, topPaddingPx]);
-    const defaultLayout = useMemo(
-        () => buildDefaultSmartPageLayout(density),
-        [density]
-    );
-    const isLayoutModified = useMemo(
-        () => !areLayoutValuesEqual(currentLayout, defaultLayout),
-        [currentLayout, defaultLayout]
-    );
     const {
         toasts,
         success: showToastSuccess,
@@ -440,16 +335,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         sectionSpacingKey,
         topPaddingPx,
     ]);
-    // Section Order State (for draggable resume sections)
-    const [sectionOrder, setSectionOrder] = useState<string[]>(
-        () => [...DEFAULT_SECTION_ORDER]
-    );
-    const [isSummaryVisible, setIsSummaryVisible] = useState(false);
-    const previewRef = useRef<HTMLDivElement | null>(null);
-    const previewContentRef = useRef<HTMLDivElement | null>(null);
-    const measurePreviewRef = useRef<HTMLDivElement | null>(null);
-    const measurePreviewContentRef = useRef<HTMLDivElement | null>(null);
-    const a4HeightRef = useRef<number | null>(null);
     const {
         isDragging,
         draggedItemKey,
@@ -480,38 +365,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         sectionOrder,
         setSectionOrder,
     });
-    const smartPageAdjustingRef = useRef(false);
-    const [isExportingPdf, setIsExportingPdf] = useState(false);
-    const [resumeTemplateId, setResumeTemplateId] = useState<ResumeTemplateId>(DEFAULT_RESUME_TEMPLATE_ID);
-    const [themeColorPresetId, setThemeColorPresetId] = useState<ResumeThemeColorPresetId>(
-        resolveDefaultResumeThemeColorPresetId(DEFAULT_RESUME_TEMPLATE_ID)
-    );
-    const [experienceListMarkerStyle, setExperienceListMarkerStyle] = useState<ResumeExperienceListMarkerStyle>(
-        DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE
-    );
-    const [skillTagSeparator, setSkillTagSeparator] = useState(DEFAULT_RESUME_SKILL_TAG_SEPARATOR);
-
-    const layoutOrders: ResumeLayoutOrders = useMemo(
-        () => ({
-            workExperienceIds: experienceItems.filter((item) => item.category === 'work').map((item) => item.id),
-            projectExperienceIds: experienceItems.filter((item) => item.category === 'project').map((item) => item.id),
-            educationIds: educations.map((item) => item.id),
-            certificationIds: certifications.map((item) => item.id),
-            skillGroupNames: skillGroups.map((group) => group.name),
-        }),
-        [certifications, educations, experienceItems, skillGroups]
-    );
-    const bossGreetingSnapshot = useMemo<ResumeBossGreeting | null>(() => {
-        const greeting = bossGreeting.trim();
-        if (!greeting) {
-            return null;
-        }
-        return {
-            greeting,
-            ...(bossGreetingSignature.trim() ? { signature: bossGreetingSignature } : {}),
-        };
-    }, [bossGreeting, bossGreetingSignature]);
-
     const resumeConfigSnapshot = useMemo(
         () =>
             buildResumeConfigSnapshot(
@@ -889,394 +742,74 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             certification: CERTIFICATION_DRAFT_PREFIX,
         },
     });
-    useEffect(() => {
-        if (!resumeId) {
-            return;
-        }
-        if (isLoadingExperiences) {
-            return;
-        }
-        const pendingManualSaveDrafts = readPendingAssistantManualSaveDrafts({ resumeId })
-            .filter((draft) => draft.source === 'resume_editor');
-        if (pendingManualSaveDrafts.length === 0) {
-            activeManualSaveDraftRef.current = null;
-            appliedManualSaveDraftKeyRef.current = null;
-            return;
-        }
-        const [pendingManualSaveDraft, staleManualSaveDrafts] = pendingManualSaveDrafts.reduce<
-            [PendingAssistantManualSaveDraft | null, PendingAssistantManualSaveDraft[]]
-        >((result, draft) => {
-            const [currentDraft, staleDrafts] = result;
-            const targetExists = experienceItems.some((item) => item.id === draft.masterId);
-            if (targetExists) {
-                return currentDraft ? result : [draft, staleDrafts];
-            }
-            staleDrafts.push(draft);
-            return [currentDraft, staleDrafts];
-        }, [null, []]);
-        staleManualSaveDrafts.forEach((draft) => {
-            clearPendingAssistantManualSaveDraft({
-                sessionId: draft.sessionId,
-                messageId: draft.messageId,
-            });
-        });
-        if (!pendingManualSaveDraft) {
-            activeManualSaveDraftRef.current = null;
-            appliedManualSaveDraftKeyRef.current = null;
-            return;
-        }
-        const draftKey = buildPendingAssistantManualSaveDraftKey(pendingManualSaveDraft);
-        activeManualSaveDraftRef.current = pendingManualSaveDraft;
-        if (experience.editingExpId !== pendingManualSaveDraft.masterId) {
-            if (appliedManualSaveDraftKeyRef.current === draftKey) {
-                return;
-            }
-            experience.startEditingExperience(pendingManualSaveDraft.masterId);
-            return;
-        }
-        if (!experience.editingDraft || experience.editingDraft.masterId !== pendingManualSaveDraft.masterId) {
-            return;
-        }
-        if (appliedManualSaveDraftKeyRef.current === draftKey) {
-            return;
-        }
-        appliedManualSaveDraftKeyRef.current = draftKey;
-        experience.setEditingDraft((prev) => {
-            if (!prev || prev.masterId !== pendingManualSaveDraft.masterId) {
-                return prev;
-            }
-            return applyAssistantExperienceDraftToEditingDraft(prev, pendingManualSaveDraft.draft);
-        });
-    }, [experience, experienceItems, isLoadingExperiences, resumeId]);
-    const [experiencePolishMode, setExperiencePolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
-    const [experienceCustomPrompt, setExperienceCustomPrompt] = useState('');
-    const [experienceSmartCompletionPrompt, setExperienceSmartCompletionPrompt] = useState<SmartCompletionPromptState | null>(null);
-    const [experiencePolishPreview, setExperiencePolishPreview] = useState<PolishPreviewState<ExperienceEditDraft> | null>(null);
-    const [isEditingExperiencePolishRunning, setIsEditingExperiencePolishRunning] = useState(false);
-    const editingExperiencePolishRunningRef = useRef(false);
-    const [floatingPolishMode, setFloatingPolishMode] = useState<ResumePolishMode>(DEFAULT_RESUME_POLISH_MODE);
-    const [floatingPolishCustomPrompt, setFloatingPolishCustomPrompt] = useState('');
-    const [pendingPolishAutoAnalyzeSeq, setPendingPolishAutoAnalyzeSeq] = useState(0);
-
-    useEffect(() => {
-        setExperiencePolishMode(DEFAULT_RESUME_POLISH_MODE);
-        setExperienceCustomPrompt('');
-        setExperienceSmartCompletionPrompt(null);
-        setExperiencePolishPreview(null);
-        setIsEditingExperiencePolishRunning(false);
-        editingExperiencePolishRunningRef.current = false;
-    }, [experience.editingExpId]);
-
     const {
+        activeFloatingPolishExperienceId,
+        isBatchPolishToolbarOpen,
+        floatingSmartCompletionPrompt,
+        setFloatingSmartCompletionPrompt,
+        floatingPolishSession,
+        isFloatingExperiencePolishRunning,
+        singleFloatingPolishPreview,
+        batchFloatingPolishPreview,
+        buildFloatingPolishSessionItem,
+        applyFloatingPolishPreview,
+        handleCloseFloatingPolishToolbar,
+        handleDismissFloatingPolishToolbar,
+        handleCloseBatchPolishToolbar,
+        handleDismissBatchPolishToolbar,
+        handlePolishExperienceFromCard,
+        experiencePolishMode,
+        experienceCustomPrompt,
+        setExperienceCustomPrompt,
+        experienceSmartCompletionPrompt,
+        setExperienceSmartCompletionPrompt,
+        experiencePolishPreview,
+        setExperiencePolishPreview,
+        isEditingExperiencePolishRunning,
+        setIsEditingExperiencePolishRunning,
+        editingExperiencePolishRunningRef,
+        floatingPolishMode,
+        floatingPolishCustomPrompt,
+        setFloatingPolishCustomPrompt,
+        pendingPolishAutoAnalyzeSeq,
+        handleExperiencePolishModeChange,
+        handleFloatingPolishModeChange,
         handleRunEditingExperiencePolish,
         handleUndoEditingExperiencePolish,
         handleConfirmEditingExperiencePolish,
-    } = useEditingExperiencePolishActions({
-        editingDraft: experience.editingDraft,
-        setEditingDraft: experience.setEditingDraft,
-        polishMode: experiencePolishMode,
-        customPrompt: experienceCustomPrompt,
-        smartCompletionPrompt: experienceSmartCompletionPrompt,
-        setSmartCompletionPrompt: setExperienceSmartCompletionPrompt,
-        polishPreview: experiencePolishPreview,
-        setPolishPreview: setExperiencePolishPreview,
-        isRunningRef: editingExperiencePolishRunningRef,
-        setIsRunning: setIsEditingExperiencePolishRunning,
+        handleRunFloatingExperiencePolish,
+        handleRunBatchExperiencePolish,
+        ensureFloatingPolishResumeLink,
+        handleConfirmFloatingExperiencePolish,
+        handleConfirmBatchExperiencePolish,
+        handleUndoFloatingExperiencePolish,
+        handleOpenBatchPolishToolbar,
+        handleUndoBatchExperiencePolish,
+        floatingPolishHighlightItemIds,
+        isPreviewInteractionLocked,
+    } = useResumeEditorExperiencePolishCoordinator({
+        resumeId,
+        isLoadingExperiences,
+        experienceItems,
+        setExperienceItems,
+        selectedExpIds,
+        setSelectedExpIds,
+        setSidebarTab,
+        activeManualSaveDraftRef,
+        appliedManualSaveDraftKeyRef,
+        experience,
+        buildExperienceViewFromDraft,
         pendingAiPolishApplyRef,
         jdPolishContext,
         jdCapabilityPolishContext,
         showToastError,
         showToastLoading,
         updateToast,
-    });
-
-    const buildExperienceViewFromDraft = useCallback((
-        baseItem: ResumeExperienceView,
-        draft: ExperienceEditDraft
-    ): ResumeExperienceView => {
-        const safeDates = resolveSafeDateRange(
-            draft.startDate,
-            draft.isCurrent ? '' : draft.endDate
-        );
-        const nextIsCurrent = draft.isCurrent ?? isPresentLabel(draft.endDate);
-        return {
-            ...baseItem,
-            title: draft.title.trim() || baseItem.title,
-            company: draft.company.trim() || baseItem.company,
-            startDate: safeDates.start,
-            endDate: nextIsCurrent ? '' : safeDates.end,
-            isCurrent: nextIsCurrent,
-            date: buildExperienceDate(
-                safeDates.start,
-                nextIsCurrent ? '' : safeDates.end,
-                nextIsCurrent
-            ),
-            star: {
-                s: draft.star.s,
-                t: draft.star.t,
-                a: draft.star.a,
-                r: draft.star.r,
-            },
-        };
-    }, []);
-
-    const {
-        activeFloatingPolishExperienceId,
-        setActiveFloatingPolishExperienceId,
-        isBatchPolishToolbarOpen,
-        setIsBatchPolishToolbarOpen,
-        floatingSmartCompletionPrompt,
-        setFloatingSmartCompletionPrompt,
-        floatingPolishSession,
-        setFloatingPolishSession,
-        isFloatingExperiencePolishRunning,
-        setIsFloatingExperiencePolishRunning,
-        floatingExperiencePolishRunningRef,
-        singleFloatingPolishPreview,
-        batchFloatingPolishPreview,
-        buildFloatingPolishSessionItem,
-        applyFloatingPolishPreview,
-        restoreFloatingPolishSessionItems,
-        handleCloseFloatingPolishToolbar,
-        handleDismissFloatingPolishToolbar,
-        handleCloseBatchPolishToolbar,
-        handleDismissBatchPolishToolbar,
-        handlePolishExperienceFromCard,
-    } = useFloatingExperiencePolishSession({
-        editingExperienceId: experience.editingExpId,
-        experienceItems,
-        selectedExpIds,
-        setExperienceItems,
-        setSelectedExpIds,
-        setSidebarTab,
-        showToastError,
-        buildExperienceViewFromDraft,
-    });
-
-    const {
-        handleRunFloatingExperiencePolish,
-        handleRunBatchExperiencePolish,
-    } = useFloatingExperiencePolishActions({
-        activeFloatingPolishExperienceId,
-        experienceItems,
-        selectedExpIds,
-        jdPolishContext,
-        jdCapabilityPolishContext,
-        floatingPolishMode,
-        setFloatingPolishMode,
-        defaultFloatingPolishMode: DEFAULT_RESUME_POLISH_MODE,
-        floatingPolishCustomPrompt,
-        floatingSmartCompletionPrompt,
-        setFloatingSmartCompletionPrompt,
-        floatingExperiencePolishRunningRef,
-        setIsFloatingExperiencePolishRunning,
-        buildFloatingPolishSessionItem,
-        applyFloatingPolishPreview,
-        showToastError,
-        showToastLoading,
-        updateToast,
-    });
-
-    const handleUndoFloatingExperiencePolish = useCallback(() => {
-        if (!singleFloatingPolishPreview || !floatingPolishSession || floatingPolishSession.mode !== 'single') {
-            return;
-        }
-        restoreFloatingPolishSessionItems(floatingPolishSession);
-        setFloatingPolishSession(null);
-        setActiveFloatingPolishExperienceId(null);
-        trackAiPolishUndone({ source: 'resume_editor', field: 'all' });
-    }, [floatingPolishSession, restoreFloatingPolishSessionItems, singleFloatingPolishPreview]);
-
-    const {
-        ensureFloatingPolishResumeLink,
-        ensureFloatingPolishResumeLinks,
-        rollbackFloatingPolishResumeLinks,
-        buildExperiencePolishOverrideOperation,
-    } = useFloatingPolishResumePersistence({
-        resumeId,
         resumeExperienceMap,
         experienceSourceMap,
         applyResumeDetail,
         setResumeExperienceMap,
     });
-
-    const {
-        handleConfirmFloatingExperiencePolish,
-        handleConfirmBatchExperiencePolish,
-    } = useFloatingExperiencePolishConfirmActions({
-        resumeId,
-        singleFloatingPolishPreview,
-        batchFloatingPolishPreview,
-        floatingExperiencePolishRunningRef,
-        setIsFloatingExperiencePolishRunning,
-        ensureFloatingPolishResumeLinks,
-        rollbackFloatingPolishResumeLinks,
-        buildExperiencePolishOverrideOperation,
-        applyResumeDetail,
-        setResumeExperienceMap,
-        setSelectedExpIds,
-        setFloatingPolishSession,
-        setActiveFloatingPolishExperienceId,
-        setIsBatchPolishToolbarOpen,
-        setPendingPolishAutoAnalyzeSeq,
-        showToastLoading,
-        updateToast,
-    });
-
-    const handleOpenBatchPolishToolbar = useCallback(() => {
-        if (isFloatingExperiencePolishRunning) {
-            showToastError('请等待当前润色完成后再继续操作');
-            return;
-        }
-        if (floatingPolishSession) {
-            showToastError('请先确认或撤销当前润色结果');
-            return;
-        }
-        if (activeFloatingPolishExperienceId) {
-            showToastError('请先关闭当前润色工具栏');
-            return;
-        }
-        setSidebarTab('experience');
-        setFloatingSmartCompletionPrompt(null);
-        if (floatingPolishMode === 'smart_complete') {
-            setFloatingPolishMode(DEFAULT_RESUME_POLISH_MODE);
-        }
-        setIsBatchPolishToolbarOpen(true);
-    }, [
-        activeFloatingPolishExperienceId,
-        floatingPolishSession,
-        floatingPolishMode,
-        isFloatingExperiencePolishRunning,
-        showToastError,
-    ]);
-
-    const handleUndoBatchExperiencePolish = useCallback(() => {
-        if (!batchFloatingPolishPreview) {
-            return;
-        }
-        restoreFloatingPolishSessionItems(batchFloatingPolishPreview);
-        setFloatingPolishSession(null);
-        setIsBatchPolishToolbarOpen(false);
-        trackAiPolishUndone({ source: 'resume_editor', field: 'all' });
-    }, [batchFloatingPolishPreview, restoreFloatingPolishSessionItems]);
-
-    const handleOpenExperienceAssistant = useCallback(() => {
-        if (!experience.editingDraft || !onLaunchAssistant) {
-            return;
-        }
-        const draft = experience.editingDraft;
-        onLaunchAssistant({
-            context: {
-                mode: 'experience',
-                entrySource: 'resume_editor',
-                title: `${draft.company || '未命名经历'} · 智能补全`,
-                contextJson: {
-                    resumeId,
-                    masterId: draft.masterId,
-                    category: draft.category,
-                    company: draft.company,
-                    title: draft.title,
-                    startDate: draft.startDate,
-                    endDate: draft.endDate,
-                    isCurrent: draft.isCurrent,
-                    star: draft.star,
-                    jdText: jdPolishContext,
-                },
-            },
-            initialSkillId: 'experience_completion',
-            initialUserMessage: buildSmartCompleteAssistantPrompt({
-                jdText: jdPolishContext,
-                org: draft.company,
-                title: draft.title,
-                startDate: draft.startDate,
-                endDate: draft.endDate,
-                isCurrent: draft.isCurrent,
-                star: draft.star,
-            }),
-            applyDraftHandler: async (draftCard, meta) => {
-                const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
-                if (normalizedDraftCard.type !== 'experience') {
-                    return false;
-                }
-                pendingAssistantApplyRef.current.set(draft.masterId, meta.persistApplied);
-                trackedPendingAssistantApplyRef.current.delete(draft.masterId);
-                experience.setEditingDraft((prev) => {
-                    if (!prev) {
-                        return prev;
-                    }
-                    return applyAssistantExperienceDraftToDraft(prev, normalizedDraftCard.data);
-                });
-                setExperiencePolishPreview(null);
-                return true;
-            },
-            callbackOnly: true,
-        });
-    }, [experience, jdPolishContext, onLaunchAssistant, resumeId]);
-
-    const handleOpenFloatingExperienceAssistant = useCallback(() => {
-        if (!activeFloatingPolishExperienceId || !onLaunchAssistant) {
-            return;
-        }
-        const currentItem = experienceItems.find((item) => item.id === activeFloatingPolishExperienceId);
-        if (!currentItem) {
-            return;
-        }
-        const draft = buildExperienceEditDraft(currentItem);
-        onLaunchAssistant({
-            context: {
-                mode: 'experience',
-                entrySource: 'resume_editor',
-                title: `${draft.company || '未命名经历'} · 智能补全`,
-                contextJson: {
-                    resumeId,
-                    masterId: draft.masterId,
-                    category: draft.category,
-                    company: draft.company,
-                    title: draft.title,
-                    startDate: draft.startDate,
-                    endDate: draft.endDate,
-                    isCurrent: draft.isCurrent,
-                    star: draft.star,
-                    jdText: jdPolishContext,
-                },
-            },
-            initialSkillId: 'experience_completion',
-            initialUserMessage: buildSmartCompleteAssistantPrompt({
-                jdText: jdPolishContext,
-                org: draft.company,
-                title: draft.title,
-                startDate: draft.startDate,
-                endDate: draft.endDate,
-                isCurrent: draft.isCurrent,
-                star: draft.star,
-            }),
-            applyDraftHandler: async (draftCard) => {
-                const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
-                if (normalizedDraftCard.type !== 'experience') {
-                    return false;
-                }
-                const nextDraft = applyAssistantExperienceDraftToDraft(draft, normalizedDraftCard.data);
-                if (!activeFloatingPolishExperienceId) {
-                    return false;
-                }
-                const currentItem = experienceItems.find((item) => item.id === activeFloatingPolishExperienceId);
-                if (!currentItem) {
-                    return false;
-                }
-                const sessionItem = buildFloatingPolishSessionItem(currentItem, nextDraft, draft);
-                return sessionItem ? applyFloatingPolishPreview('single', [sessionItem]) : false;
-            },
-            callbackOnly: true,
-        });
-    }, [
-        activeFloatingPolishExperienceId,
-        applyFloatingPolishPreview,
-        buildFloatingPolishSessionItem,
-        experienceItems,
-        jdPolishContext,
-        onLaunchAssistant,
-        resumeId,
-    ]);
 
     const commitLayoutSnapshot = useCallback((
         snapshot: LayoutSnapshot,
@@ -1418,32 +951,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastSuccess,
         showToastError,
     });
-    const resetEditorTransientState = useCallback((
-        nextProfile: ResumeEditorProfile,
-        nextProfileSyncMode: ProfileSyncMode
-    ) => {
-        handleCancelDelete();
-        setOriginalProfile({ ...nextProfile });
-        setOriginalProfileSyncMode(nextProfileSyncMode);
-        setIsEditingProfile(false);
-        experience.cancelEditingExperience();
-        education.cancelEducationEdit();
-        certification.cancelCertificationEdit();
-        skill.cancelSkillEdit();
-        skill.setRenamingCategoryTarget(null);
-        skill.setRenamingCategoryDraft('');
-    }, [
-        certification.cancelCertificationEdit,
-        education.cancelEducationEdit,
-        experience.cancelEditingExperience,
+    const resetEditorTransientState = useResumeEditorTransientReset({
         handleCancelDelete,
-        setIsEditingProfile,
         setOriginalProfile,
         setOriginalProfileSyncMode,
-        skill.cancelSkillEdit,
-        skill.setRenamingCategoryDraft,
-        skill.setRenamingCategoryTarget,
-    ]);
+        setIsEditingProfile,
+        experience,
+        education,
+        certification,
+        skill,
+    });
     const handleCreateResume = useCreateResumeFlow({
         authUserKey,
         resumeId,
@@ -1464,18 +981,89 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         updateToast,
     });
 
-    const handleExperiencePolishModeChange = (mode: ResumePolishMode) => {
-        setExperiencePolishMode(mode);
-        if (mode !== 'smart_complete') {
-            setExperienceSmartCompletionPrompt(null);
-        }
-    };
-    const handleFloatingPolishModeChange = (mode: ResumePolishMode) => {
-        setFloatingPolishMode(mode);
-        if (mode !== 'smart_complete') {
-            setFloatingSmartCompletionPrompt(null);
-        }
-    };
+    const listSpacingClass = 'space-y-[var(--rf-list-spacing)]';
+    const {
+        listSpacingValue,
+        bulletSpacingValue,
+        sectionSpacingClass,
+        measureListSpacingValue,
+        measureBulletSpacingValue,
+        measureSectionSpacingClass,
+        workItems,
+        projectItems,
+        selectedWorkItems,
+        selectedProjectItems,
+        selectedExperienceCount,
+        selectedEducations,
+        sortedCertifications,
+        selectedSkillGroups,
+        selectedCertifications,
+        selectedResumeSnapshot,
+        selectedResumeSnapshotText,
+        editablePersonalSummary,
+        hasEditablePersonalSummary,
+        previewProfile,
+        personalSummaryContext,
+    } = useResumeEditorPreviewModel({
+        itemSpacingEm,
+        lineHeight,
+        sectionSpacingKey,
+        measureLayout,
+        experienceItems,
+        selectedExpIds,
+        educations,
+        selectedEduIds,
+        certifications,
+        selectedCertIds,
+        skillGroups,
+        selectedSkillIds,
+        profile,
+        personalSummary,
+        hasPersonalSummaryOverride,
+        isSummaryVisible,
+    });
+    const canBatchPolish = Boolean(
+        jdPolishContext.trim()
+        && selectedExperienceCount > 0
+        && !isFloatingExperiencePolishRunning
+        && !floatingPolishSession
+    );
+    const handleApplyResumeAssistantDraft = useResumeAssistantDraftApply({
+        resumeId,
+        educationSourceMap,
+        setEducationSourceMap,
+        setEducations,
+        setSelectedEduIds,
+        setCertifications,
+        setCertificationSourceMap,
+        setSelectedCertIds,
+        setSkillGroups,
+        setSelectedSkillIds,
+        setSelectedExpIds,
+        setResumeExperienceMap,
+        applyResumeDetail,
+        ensureFloatingPolishResumeLink,
+    });
+    const {
+        handleOpenExperienceAssistant,
+        handleOpenFloatingExperienceAssistant,
+        handleLaunchResumeAssistant,
+    } = useResumeEditorAssistantLaunch({
+        resumeId,
+        resumeName,
+        jdPolishContext,
+        selectedResumeSnapshot,
+        onLaunchAssistant,
+        experience,
+        experienceItems,
+        activeFloatingPolishExperienceId,
+        buildFloatingPolishSessionItem,
+        applyFloatingPolishPreview,
+        pendingAssistantApplyRef,
+        trackedPendingAssistantApplyRef,
+        setExperiencePolishPreview,
+        handleApplyResumeAssistantDraft,
+    });
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const {
         editingSuggestionToolbar,
@@ -1524,158 +1112,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onUndoBatch: handleUndoBatchExperiencePolish,
         onConfirmBatch: () => void handleConfirmBatchExperiencePolish(),
     });
-    const floatingPolishHighlightItemIds = useMemo(
-        () => new Set(
-            (floatingPolishSession?.items ?? []).map((item) => buildDragItemKey('experience', item.targetId))
-        ),
-        [floatingPolishSession]
-    );
-    const isPreviewInteractionLocked = Boolean(floatingPolishSession)
-        || isFloatingExperiencePolishRunning
-        || isBatchPolishToolbarOpen;
-    const listSpacingValue = useMemo(() => {
-        return buildSpacingValue(itemSpacingEm, lineHeight);
-    }, [itemSpacingEm, lineHeight]);
-    const bulletSpacingValue = useMemo(
-        () => buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, lineHeight),
-        [lineHeight]
-    );
-    const sectionSpacingClass = useMemo(
-        () => resolveSectionSpacingClass(sectionSpacingKey),
-        [sectionSpacingKey]
-    );
-    const measureListSpacingValue = useMemo(
-        () => buildSpacingValue(measureLayout.itemSpacingEm, measureLayout.lineHeight),
-        [measureLayout.itemSpacingEm, measureLayout.lineHeight]
-    );
-    const measureBulletSpacingValue = useMemo(
-        () => buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, measureLayout.lineHeight),
-        [measureLayout.lineHeight]
-    );
-    const measureSectionSpacingClass = useMemo(
-        () => resolveSectionSpacingClass(measureLayout.sectionSpacingKey),
-        [measureLayout.sectionSpacingKey]
-    );
-    const listSpacingClass = 'space-y-[var(--rf-list-spacing)]';
-    const workItems = useMemo(
-        () => experienceItems.filter((item) => item.category === 'work'),
-        [experienceItems]
-    );
-    const projectItems = useMemo(
-        () => experienceItems.filter((item) => item.category === 'project'),
-        [experienceItems]
-    );
-    const selectedWorkItems = useMemo(
-        () => workItems.filter((item) => selectedExpIds.has(item.id)),
-        [selectedExpIds, workItems]
-    );
-    const selectedProjectItems = useMemo(
-        () => projectItems.filter((item) => selectedExpIds.has(item.id)),
-        [projectItems, selectedExpIds]
-    );
-    const selectedExperienceCount = selectedWorkItems.length + selectedProjectItems.length;
-    const canBatchPolish = Boolean(
-        jdPolishContext.trim()
-        && selectedExperienceCount > 0
-        && !isFloatingExperiencePolishRunning
-        && !floatingPolishSession
-    );
-    const selectedEducations = useMemo(
-        () => educations.filter((item) => selectedEduIds.has(item.id)),
-        [educations, selectedEduIds]
-    );
-    const sortedCertifications = certifications;
-    const selectedSkillGroups = useMemo(() => {
-        return skillGroups
-            .map((group) => ({
-                name: group.name,
-                skills: group.skills.filter((skill) => selectedSkillIds.has(skill.id)),
-            }))
-            .filter((group) => group.skills.length > 0);
-    }, [skillGroups, selectedSkillIds]);
-    const selectedCertifications = useMemo(
-        () => sortedCertifications.filter((item) => selectedCertIds.has(item.id)),
-        [selectedCertIds, sortedCertifications]
-    );
-    const selectedResumeSnapshot = useMemo(
-        () => buildResumeAISnapshot(
-            [...selectedWorkItems, ...selectedProjectItems],
-            selectedCertifications,
-            selectedSkillGroups,
-            selectedEducations,
-        ),
-        [selectedCertifications, selectedEducations, selectedProjectItems, selectedSkillGroups, selectedWorkItems]
-    );
-    const selectedResumeSnapshotText = useMemo(
-        () => buildStableResumeSnapshotText(selectedResumeSnapshot),
-        [selectedResumeSnapshot]
-    );
-    const handleApplyResumeAssistantDraft = useResumeAssistantDraftApply({
-        resumeId,
-        educationSourceMap,
-        setEducationSourceMap,
-        setEducations,
-        setSelectedEduIds,
-        setCertifications,
-        setCertificationSourceMap,
-        setSelectedCertIds,
-        setSkillGroups,
-        setSelectedSkillIds,
-        setSelectedExpIds,
-        setResumeExperienceMap,
-        applyResumeDetail,
-        ensureFloatingPolishResumeLink,
-    });
-    const handleLaunchResumeAssistant = useCallback(() => {
-        if (!resumeId || !onLaunchAssistant) {
-            return;
-        }
-        onLaunchAssistant({
-            context: {
-                mode: 'general',
-                entrySource: 'resume_editor',
-                title: `${resumeName || '未命名简历'} · AI 助理`,
-                contextJson: {
-                    resumeId,
-                },
-            },
-            prefillResume: {
-                resumeId,
-                resumeName: resumeName || '未命名简历',
-                snapshot: selectedResumeSnapshot,
-                ...(jdPolishContext ? { jdContext: jdPolishContext } : {}),
-            },
-            applyDraftHandler: handleApplyResumeAssistantDraft,
-        });
-    }, [handleApplyResumeAssistantDraft, jdPolishContext, onLaunchAssistant, resumeId, resumeName, selectedResumeSnapshot]);
-    const editablePersonalSummary = useMemo(
-        () => resolveEditablePersonalSummary({
-            personalSummary,
-            hasPersonalSummaryOverride,
-            profileSummary: profile.summary,
-        }),
-        [hasPersonalSummaryOverride, personalSummary, profile.summary]
-    );
-    const hasEditablePersonalSummary = useMemo(
-        () => hasMeaningfulPersonalSummary(editablePersonalSummary),
-        [editablePersonalSummary]
-    );
-    const effectivePersonalSummary = useMemo(
-        () => resolveEffectivePersonalSummary({
-            isSummaryVisible,
-            personalSummary,
-            hasPersonalSummaryOverride,
-            profileSummary: profile.summary,
-        }),
-        [hasPersonalSummaryOverride, isSummaryVisible, personalSummary, profile.summary]
-    );
-    const previewProfile = useMemo(
-        () => ({
-            ...profile,
-            summary: effectivePersonalSummary,
-        }),
-        [effectivePersonalSummary, profile]
-    );
     const {
         isPreviewOverflowing,
         overflowingSectionIds,
@@ -1698,24 +1134,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             selectedSkillGroups,
         ],
     });
-    const personalSummaryContext = useMemo(
-        () => buildPersonalSummaryContext({
-            profile,
-            selectedWorkItems,
-            selectedProjectItems,
-            selectedEducations,
-            selectedCertifications,
-            selectedSkillGroups,
-        }),
-        [
-            profile,
-            selectedCertifications,
-            selectedEducations,
-            selectedProjectItems,
-            selectedSkillGroups,
-            selectedWorkItems,
-        ]
-    );
     const personalSummaryCurrentSignature = useMemo(
         () => buildPersonalSummarySignature({
             jdText: jdPolishContext,
@@ -1983,6 +1401,113 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     const canCreateResume = !isLoadingResume;
     const isEditorBusy = isLoadingResume || isCreatingResume;
+    const commonEditorSidebarProps: Omit<EditorSidebarProps, 'layoutMode' | 'showJDPanel'> = {
+        sidebarTab,
+        onSelectTab: handleSidebarTabSelect,
+        onProfileTabSelected: handleProfileTabSelected,
+        jdPanelProps: {
+            jdText,
+            analysisResult,
+            isAnalyzing,
+            isCollapsed: isJDCollapsed,
+            onAnalyze: handleAnalyzeWithAutoName,
+            onToggleCollapse: handleToggleJdCollapse,
+            onJdTextChange: handleJdTextChange,
+            jdFile,
+            onFileChange: setJdFile,
+            hasMissingAttachmentContext,
+            bossGreeting,
+            isBossGreetingVisible,
+            isBossGreetingOutdated,
+            isGeneratingBossGreeting,
+            onGenerateBossGreeting: handleGenerateBossGreeting,
+            onRefreshBossGreeting: handleRefreshBossGreeting,
+            onCopyBossGreeting: handleCopyBossGreeting,
+            onCollapseBossGreeting: handleCollapseBossGreeting,
+            onOpenAgentPluginConfig,
+            debugInfo,
+            showDebugInfo,
+            isOutdated,
+        },
+        profileTabProps: {
+            profile,
+            setProfile,
+            profileSyncMode,
+            setProfileSyncMode,
+            isEditingProfile,
+            isSavingProfile,
+            isProfileReadOnly,
+            onBeginEdit: handleBeginProfileEdit,
+            onCancelEdit: cancelProfileEdit,
+            onSave: handleSaveProfile,
+            educations,
+            selectedEduIds,
+            editingEducationId: education.editingEducationId,
+            educationDraft: education.educationDraft,
+            isSavingEducation: education.isSavingEducation,
+            deletingEducationIds: education.deletingEducationIds,
+            onBeginCreateEducation: handleBeginCreateEducation,
+            onBeginEditEducation: handleBeginEditEducation,
+            onCancelEducationEdit: education.cancelEducationEdit,
+            onUpdateEducationDraft: education.updateEducationDraft,
+            onUpdateEducationDate: education.updateEducationDate,
+            onSaveEducation: education.handleSaveEducation,
+            onRequestDeleteEducation: education.requestDeleteEducation,
+            onToggleEducationSelection: trackedSelection.toggleEducationSelection,
+        },
+        experienceTabProps: {
+            experience,
+            certification,
+            skill,
+            selection: trackedSelection,
+            personalSummary: editablePersonalSummary,
+            isSummaryVisible,
+            isGeneratingPersonalSummary,
+            canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
+            onPersonalSummaryChange: handlePersonalSummaryChange,
+            onSummaryVisibilityChange: setIsSummaryVisible,
+            onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
+            matchScoreFilter,
+            onMatchScoreFilterChange: handleMatchScoreFilterChange,
+            workItems,
+            projectItems,
+            selectedExpIds,
+            staleExperienceIds,
+            sortedCertifications,
+            selectedCertIds,
+            certificationMatchScores,
+            certificationMatchTrends,
+            skillGroups,
+            selectedSkillIds,
+            skillMatchScores,
+            skillMatchTrends,
+            selectedExperienceCount,
+            canBatchPolish,
+            isBatchPolishing: isFloatingExperiencePolishRunning,
+            isAutoAssembling,
+            onBatchPolish: handleOpenBatchPolishToolbar,
+            onAutoAssemble: handleAutoAssemble,
+            onResetRenamingCategory: resetRenamingCategory,
+            onPolishExperience: handlePolishExperienceFromCard,
+            activePolishExperienceId: activeFloatingPolishExperienceId,
+            hasBlockingPolishState: Boolean(floatingPolishSession) || isFloatingExperiencePolishRunning || isBatchPolishToolbarOpen,
+            isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
+            polishToolbar: floatingPolishToolbar,
+            batchPolishToolbar,
+            onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
+            onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
+            onCloseBatchPolishToolbar: handleCloseBatchPolishToolbar,
+            onDismissBatchPolishToolbar: handleDismissBatchPolishToolbar,
+            onResetWorkSort: () => handleResetSort('work'),
+            onResetProjectSort: () => handleResetSort('project'),
+            onResetCertificationSort: handleResetCertificationSort,
+        },
+        editingSuggestion: {
+            editingItem,
+            staleExperienceIds,
+            toolbar: editingSuggestionToolbar,
+        },
+    };
     return (
         <div
             ref={mobileEditorScrollContainerRef}
@@ -2067,111 +1592,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             <div className="flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
                 <div className={`hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden ${SIDEBAR_WIDTH_CLASS}`}>
                     <EditorSidebar
-                        sidebarTab={sidebarTab}
-                        onSelectTab={handleSidebarTabSelect}
-                        onProfileTabSelected={handleProfileTabSelected}
-                        jdPanelProps={{
-                            jdText,
-                            analysisResult,
-                            isAnalyzing,
-                            isCollapsed: isJDCollapsed,
-                            onAnalyze: handleAnalyzeWithAutoName,
-                            onToggleCollapse: handleToggleJdCollapse,
-                            onJdTextChange: handleJdTextChange,
-                            jdFile,
-                            onFileChange: setJdFile,
-                            hasMissingAttachmentContext,
-                            bossGreeting,
-                            isBossGreetingVisible,
-                            isBossGreetingOutdated,
-                            isGeneratingBossGreeting,
-                            onGenerateBossGreeting: handleGenerateBossGreeting,
-                            onRefreshBossGreeting: handleRefreshBossGreeting,
-                            onCopyBossGreeting: handleCopyBossGreeting,
-                            onCollapseBossGreeting: handleCollapseBossGreeting,
-                            onOpenAgentPluginConfig,
-                            debugInfo,
-                            showDebugInfo,
-                            isOutdated,
-                        }}
-                        profileTabProps={{
-                            profile,
-                            setProfile,
-                            profileSyncMode,
-                            setProfileSyncMode,
-                            isEditingProfile,
-                            isSavingProfile,
-                            isProfileReadOnly,
-                            onBeginEdit: handleBeginProfileEdit,
-                            onCancelEdit: cancelProfileEdit,
-                            onSave: handleSaveProfile,
-                            educations,
-                            selectedEduIds,
-                            editingEducationId: education.editingEducationId,
-                            educationDraft: education.educationDraft,
-                            isSavingEducation: education.isSavingEducation,
-                            deletingEducationIds: education.deletingEducationIds,
-                            onBeginCreateEducation: handleBeginCreateEducation,
-                            onBeginEditEducation: handleBeginEditEducation,
-                            onCancelEducationEdit: education.cancelEducationEdit,
-                            onUpdateEducationDraft: education.updateEducationDraft,
-                            onUpdateEducationDate: education.updateEducationDate,
-                            onSaveEducation: education.handleSaveEducation,
-                            onRequestDeleteEducation: education.requestDeleteEducation,
-                            onToggleEducationSelection: trackedSelection.toggleEducationSelection,
-                        }}
-                        experienceTabProps={{
-                              experience,
-                              certification,
-                              skill,
-                                selection: trackedSelection,
-                                personalSummary: editablePersonalSummary,
-                                isSummaryVisible,
-                                isGeneratingPersonalSummary,
-                                canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
-                                onPersonalSummaryChange: handlePersonalSummaryChange,
-                                onSummaryVisibilityChange: setIsSummaryVisible,
-                                onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
-                                matchScoreFilter,
-                            onMatchScoreFilterChange: handleMatchScoreFilterChange,
-                            workItems,
-                            projectItems,
-                            selectedExpIds,
-                            staleExperienceIds,
-                            sortedCertifications,
-                            selectedCertIds,
-                            certificationMatchScores,
-                            certificationMatchTrends,
-                            skillGroups,
-                            selectedSkillIds,
-                            skillMatchScores,
-                            skillMatchTrends,
-                            selectedExperienceCount,
-                            canBatchPolish,
-                            isBatchPolishing: isFloatingExperiencePolishRunning,
-                            isAutoAssembling,
-                            onBatchPolish: handleOpenBatchPolishToolbar,
-                            onAutoAssemble: handleAutoAssemble,
-                            onResetRenamingCategory: resetRenamingCategory,
-                            onPolishExperience: handlePolishExperienceFromCard,
-                            activePolishExperienceId: activeFloatingPolishExperienceId,
-                            hasBlockingPolishState: Boolean(floatingPolishSession) || isFloatingExperiencePolishRunning || isBatchPolishToolbarOpen,
-                            isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
-                            polishToolbar: floatingPolishToolbar,
-                            batchPolishToolbar,
-                            onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
-                            onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
-                            onCloseBatchPolishToolbar: handleCloseBatchPolishToolbar,
-                            onDismissBatchPolishToolbar: handleDismissBatchPolishToolbar,
-                            onResetWorkSort: () => handleResetSort('work'),
-                            onResetProjectSort: () => handleResetSort('project'),
-                            onResetCertificationSort: handleResetCertificationSort,
-                        }}
-                        editingSuggestion={{
-                            editingItem,
-                            staleExperienceIds,
-                            toolbar: editingSuggestionToolbar,
-                        }}
+                        {...commonEditorSidebarProps}
                     />
                 </div>
                 <div className="flex flex-1 flex-col overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0">
@@ -2364,113 +1785,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                                 <div className="mx-auto h-1.5 w-14 rounded-full bg-gray-300 dark:bg-gray-700" />
                             </div>
                             <EditorSidebar
+                                {...commonEditorSidebarProps}
                                 layoutMode="drawer"
                                 showJDPanel={false}
-                                sidebarTab={sidebarTab}
-                                onSelectTab={handleSidebarTabSelect}
-                                onProfileTabSelected={handleProfileTabSelected}
-                                jdPanelProps={{
-                                    jdText,
-                                    analysisResult,
-                                    isAnalyzing,
-                                    isCollapsed: isJDCollapsed,
-                                    onAnalyze: handleAnalyzeWithAutoName,
-                                    onToggleCollapse: handleToggleJdCollapse,
-                                    onJdTextChange: handleJdTextChange,
-                                    jdFile,
-                                    onFileChange: setJdFile,
-                                    hasMissingAttachmentContext,
-                                    bossGreeting,
-                                    isBossGreetingVisible,
-                                    isBossGreetingOutdated,
-                                    isGeneratingBossGreeting,
-                                    onGenerateBossGreeting: handleGenerateBossGreeting,
-                                    onRefreshBossGreeting: handleRefreshBossGreeting,
-                                    onCopyBossGreeting: handleCopyBossGreeting,
-                                    onCollapseBossGreeting: handleCollapseBossGreeting,
-                                    onOpenAgentPluginConfig,
-                                    debugInfo,
-                                    showDebugInfo,
-                                    isOutdated,
-                                }}
-                                profileTabProps={{
-                                    profile,
-                                    setProfile,
-                                    profileSyncMode,
-                                    setProfileSyncMode,
-                                    isEditingProfile,
-                                    isSavingProfile,
-                                    isProfileReadOnly,
-                                    onBeginEdit: handleBeginProfileEdit,
-                                    onCancelEdit: cancelProfileEdit,
-                                    onSave: handleSaveProfile,
-                                    educations,
-                                    selectedEduIds,
-                                    editingEducationId: education.editingEducationId,
-                                    educationDraft: education.educationDraft,
-                                    isSavingEducation: education.isSavingEducation,
-                                    deletingEducationIds: education.deletingEducationIds,
-                                    onBeginCreateEducation: handleBeginCreateEducation,
-                                    onBeginEditEducation: handleBeginEditEducation,
-                                    onCancelEducationEdit: education.cancelEducationEdit,
-                                    onUpdateEducationDraft: education.updateEducationDraft,
-                                    onUpdateEducationDate: education.updateEducationDate,
-                                    onSaveEducation: education.handleSaveEducation,
-                                    onRequestDeleteEducation: education.requestDeleteEducation,
-                                    onToggleEducationSelection: trackedSelection.toggleEducationSelection,
-                                }}
-                                experienceTabProps={{
-                                      experience,
-                                      certification,
-                                      skill,
-                                        selection: trackedSelection,
-                                        personalSummary: editablePersonalSummary,
-                                        isSummaryVisible,
-                                        isGeneratingPersonalSummary,
-                                        canGeneratePersonalSummary: Boolean(jdPolishContext.trim()),
-                                        onPersonalSummaryChange: handlePersonalSummaryChange,
-                                        onSummaryVisibilityChange: setIsSummaryVisible,
-                                        onGeneratePersonalSummary: () => void handleGeneratePersonalSummary(),
-                                        matchScoreFilter,
-                                    onMatchScoreFilterChange: handleMatchScoreFilterChange,
-                                    workItems,
-                                    projectItems,
-                                    selectedExpIds,
-                                    staleExperienceIds,
-                                    sortedCertifications,
-                                    selectedCertIds,
-                                    certificationMatchScores,
-                                    certificationMatchTrends,
-                                    skillGroups,
-                                    selectedSkillIds,
-                                    skillMatchScores,
-                                    skillMatchTrends,
-                                    selectedExperienceCount,
-                                    canBatchPolish,
-                                    isBatchPolishing: isFloatingExperiencePolishRunning,
-                                    isAutoAssembling,
-                                    onBatchPolish: handleOpenBatchPolishToolbar,
-                                    onAutoAssemble: handleAutoAssemble,
-                                    onResetRenamingCategory: resetRenamingCategory,
-                            onPolishExperience: handlePolishExperienceFromCard,
-                            activePolishExperienceId: activeFloatingPolishExperienceId,
-                            hasBlockingPolishState: Boolean(floatingPolishSession) || isFloatingExperiencePolishRunning || isBatchPolishToolbarOpen,
-                            isEditingExperiencePolishPreviewing: Boolean(experiencePolishPreview),
-                            polishToolbar: floatingPolishToolbar,
-                            batchPolishToolbar,
-                            onClosePolishExperienceToolbar: handleCloseFloatingPolishToolbar,
-                            onDismissPolishExperienceToolbar: handleDismissFloatingPolishToolbar,
-                            onCloseBatchPolishToolbar: handleCloseBatchPolishToolbar,
-                            onDismissBatchPolishToolbar: handleDismissBatchPolishToolbar,
-                                    onResetWorkSort: () => handleResetSort('work'),
-                                    onResetProjectSort: () => handleResetSort('project'),
-                                    onResetCertificationSort: handleResetCertificationSort,
-                                }}
-                                editingSuggestion={{
-                                    editingItem,
-                                    staleExperienceIds,
-                                    toolbar: editingSuggestionToolbar,
-                                }}
                             />
                         </div>
                     </div>
