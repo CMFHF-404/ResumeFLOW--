@@ -25,6 +25,7 @@ import {
 } from './hooks/useAuthUserKey';
 
 const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
+const ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY = 'resumeflow.accountManagement.isOpen';
 
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const ExperienceBank = lazy(() => import('./views/ExperienceBank'));
@@ -56,6 +57,11 @@ const buildFeedbackContext = (view: ViewState) => {
   };
 };
 
+const readStoredAccountManagementOpen = () => (
+  typeof window !== 'undefined' &&
+  window.sessionStorage.getItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY) === 'true'
+);
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(() => {
     const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
@@ -75,7 +81,7 @@ const App: React.FC = () => {
   const [isAppreciationOpen, setIsAppreciationOpen] = useState(false);
   const [appreciationReturnFocusElement, setAppreciationReturnFocusElement] = useState<HTMLElement | null>(null);
   const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
-  const [isAccountManagementOpen, setIsAccountManagementOpen] = useState(false);
+  const [isAccountManagementOpen, setIsAccountManagementOpen] = useState(readStoredAccountManagementOpen);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
@@ -100,6 +106,7 @@ const App: React.FC = () => {
     setAppreciationReturnFocusElement(null);
     setIsAgentPluginConfigOpen(false);
     setIsAccountManagementOpen(false);
+    sessionStorage.removeItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY);
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
     setEditorMobileDrawerOpenRequest(0);
@@ -254,9 +261,11 @@ const App: React.FC = () => {
     setIsAgentPluginConfigOpen(false);
   }, []);
   const handleOpenAccountManagement = useCallback(() => {
+    sessionStorage.setItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY, 'true');
     setIsAccountManagementOpen(true);
   }, []);
   const handleCloseAccountManagement = useCallback(() => {
+    sessionStorage.removeItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY);
     setIsAccountManagementOpen(false);
   }, []);
   const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);

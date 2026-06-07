@@ -1,3 +1,5 @@
+import apiClient from './apiClient';
+
 export type LogtoAccountIdentifierType = 'email' | 'phone';
 
 export type LogtoAccountIdentifier = {
@@ -27,12 +29,14 @@ export interface LogtoVerificationRecord {
 export class LogtoAccountApiError extends Error {
     status?: number;
     code?: string;
+    retryAfterSeconds?: number;
 
-    constructor(message: string, options?: { status?: number; code?: string }) {
+    constructor(message: string, options?: { status?: number; code?: string; retryAfterSeconds?: number }) {
         super(message);
         this.name = 'LogtoAccountApiError';
         this.status = options?.status;
         this.code = options?.code;
+        this.retryAfterSeconds = options?.retryAfterSeconds;
     }
 }
 
@@ -52,6 +56,41 @@ export const resolveLogtoAccountApiResource = (): string => {
 };
 
 export const resolveLogtoAccountApiBaseUrl = resolveLogtoAccountApiResource;
+
+const CHINA_MAINLAND_PHONE_PATTERN = /^1[3-9]\d{9}$/;
+
+export const normalizeLogtoPhoneIdentifier = (value: string): string => {
+    const digits = value.replace(/\D/g, '');
+    const nationalPhone = digits.startsWith('86') ? digits.slice(2) : digits;
+    if (CHINA_MAINLAND_PHONE_PATTERN.test(nationalPhone)) {
+        return `86${nationalPhone}`;
+    }
+
+    return digits;
+};
+
+const requireLogtoPhoneIdentifier = (value: string): string => {
+    const normalizedPhone = normalizeLogtoPhoneIdentifier(value);
+    const nationalPhone = normalizedPhone.startsWith('86') ? normalizedPhone.slice(2) : normalizedPhone;
+    if (!CHINA_MAINLAND_PHONE_PATTERN.test(nationalPhone)) {
+        throw new LogtoAccountApiError('请输入 11 位中国大陆手机号');
+    }
+    return normalizedPhone;
+};
+
+const normalizeLogtoIdentifier = (identifier: LogtoAccountIdentifier): LogtoAccountIdentifier => {
+    if (identifier.type === 'phone') {
+        return {
+            ...identifier,
+            value: requireLogtoPhoneIdentifier(identifier.value),
+        };
+    }
+
+    return {
+        ...identifier,
+        value: identifier.value.trim(),
+    };
+};
 
 const normalizeVerificationRecord = (data: unknown): LogtoVerificationRecord => {
     if (!data || typeof data !== 'object') {
@@ -174,6 +213,95 @@ const requestAccountApi = async <T>(
 
 const jsonBody = (value: unknown) => JSON.stringify(value);
 
+const getBackendErrorDetail = (error: unknown): {
+    status?: number;
+    code?: string;
+    message?: string;
+    retryAfterSeconds?: number;
+} => {
+    if (!error || typeof error !== 'object') {
+        return {};
+    }
+
+    const response = (error as {
+        response?: {
+            status?: unknown;
+            data?: unknown;
+        };
+    }).response;
+    if (!response || typeof response !== 'object') {
+        return {};
+    }
+
+    const data = response.data as {
+        detail?: unknown;
+        message?: unknown;
+        code?: unknown;
+    };
+    const detail = data && typeof data.detail === 'object' && data.detail !== null
+        ? data.detail as {
+            message?: unknown;
+            code?: unknown;
+            retry_after_seconds?: unknown;
+        }
+        : null;
+
+    const retryAfterSeconds = typeof detail?.retry_after_seconds === 'number'
+        ? detail.retry_after_seconds
+        : undefined;
+
+    return {
+        status: typeof response.status === 'number' ? response.status : undefined,
+        code: typeof detail?.code === 'string'
+            ? detail.code
+            : typeof data?.code === 'string'
+                ? data.code
+                : undefined,
+        message: typeof detail?.message === 'string'
+            ? detail.message
+            : typeof data?.message === 'string'
+                ? data.message
+                : undefined,
+        retryAfterSeconds,
+    };
+};
+
+export const reserveVerificationCodeCooldown = async (
+    identifier: LogtoAccountIdentifier
+): Promise<{ cooldownSeconds: number; retryAfterSeconds: number }> => {
+    try {
+        const response = await apiClient.post('/account/verification-code-cooldown', {
+            identifier,
+        });
+        const data = response.data as {
+            cooldown_seconds?: unknown;
+            retry_after_seconds?: unknown;
+        };
+        return {
+            cooldownSeconds: typeof data.cooldown_seconds === 'number' ? data.cooldown_seconds : 60,
+            retryAfterSeconds: typeof data.retry_after_seconds === 'number' ? data.retry_after_seconds : 0,
+        };
+    } catch (error) {
+        const detail = getBackendErrorDetail(error);
+        throw new LogtoAccountApiError(
+            detail.message || '请稍后再试',
+            {
+                status: detail.status,
+                code: detail.code,
+                retryAfterSeconds: detail.retryAfterSeconds,
+            }
+        );
+    }
+};
+
+export const releaseVerificationCodeCooldown = async (
+    identifier: LogtoAccountIdentifier
+): Promise<void> => {
+    await apiClient.delete('/account/verification-code-cooldown', {
+        data: { identifier },
+    });
+};
+
 export const getAccountProfile = async (
     tokenGetter: LogtoTokenGetter
 ): Promise<LogtoAccountProfile> => {
@@ -195,11 +323,18 @@ export const sendVerificationCode = async (
     tokenGetter: LogtoTokenGetter,
     identifier: LogtoAccountIdentifier
 ): Promise<LogtoVerificationRecord> => {
-    const data = await requestAccountApi<unknown>(tokenGetter, '/verifications/verification-code', {
-        method: 'POST',
-        body: jsonBody({ identifier }),
-    });
-    return normalizeVerificationRecord(data);
+    const normalizedIdentifier = normalizeLogtoIdentifier(identifier);
+    await reserveVerificationCodeCooldown(normalizedIdentifier);
+    try {
+        const data = await requestAccountApi<unknown>(tokenGetter, '/verifications/verification-code', {
+            method: 'POST',
+            body: jsonBody({ identifier: normalizedIdentifier }),
+        });
+        return normalizeVerificationRecord(data);
+    } catch (sendError) {
+        await releaseVerificationCodeCooldown(normalizedIdentifier).catch(() => undefined);
+        throw sendError;
+    }
 };
 
 export const verifyCode = async (
@@ -208,10 +343,11 @@ export const verifyCode = async (
     verificationId: string,
     code: string
 ): Promise<LogtoVerificationRecord> => {
+    const normalizedIdentifier = normalizeLogtoIdentifier(identifier);
     const data = await requestAccountApi<unknown>(tokenGetter, '/verifications/verification-code/verify', {
         method: 'POST',
         body: jsonBody({
-            identifier,
+            identifier: normalizedIdentifier,
             verificationId,
             code,
         }),
@@ -249,11 +385,12 @@ export const updatePrimaryPhone = async (
     identityVerificationId: string,
     newIdentifierVerificationRecordId: string
 ): Promise<void> => {
+    const normalizedPhone = requireLogtoPhoneIdentifier(phone);
     await requestAccountApi<null>(tokenGetter, '/my-account/primary-phone', {
         method: 'POST',
         headers: buildVerificationHeaders(identityVerificationId),
         body: jsonBody({
-            phone,
+            phone: normalizedPhone,
             newIdentifierVerificationRecordId,
         }),
     });
@@ -274,6 +411,8 @@ export const updatePassword = async (
 export const logtoAccountService = {
     getAccountProfile,
     verifyIdentityByPassword,
+    reserveVerificationCodeCooldown,
+    releaseVerificationCodeCooldown,
     sendVerificationCode,
     verifyCode,
     updatePrimaryEmail,
