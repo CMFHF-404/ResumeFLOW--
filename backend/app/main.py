@@ -8,6 +8,7 @@ from typing import List
 
 from .auth_middleware import LogtoAuthMiddleware
 from .config import load_settings
+from .domain.account.account_router import router as account_router
 from .domain.agent.agent_router import router as agent_router
 from .domain.ai.ai_router import router as ai_router
 from .domain.assistant.assistant_router import router as assistant_router
@@ -79,6 +80,7 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
 )
 app.include_router(profile_router.router)
+app.include_router(account_router)
 app.include_router(experience_router.router)
 app.include_router(experience_versions.router)
 app.include_router(resumes.router)

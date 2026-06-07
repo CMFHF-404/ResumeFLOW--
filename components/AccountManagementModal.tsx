@@ -14,6 +14,7 @@ import {
 import {
   logtoAccountService,
   LogtoAccountApiError,
+  normalizeLogtoPhoneIdentifier,
   type LogtoAccountIdentifierType,
   type LogtoAccountProfile,
   type LogtoTokenGetter,
@@ -29,16 +30,15 @@ type AccountManagementModalProps = {
 type AccountAction = 'email' | 'phone' | 'password';
 type FlowStep = 'select' | 'verify' | 'update';
 type IdentityMethod = 'password' | 'code';
+type VerificationCodeCooldownKey = 'identity' | 'email' | 'phone';
 type MutationKey =
   | 'load'
   | 'identity-password'
   | 'identity-send-code'
   | 'identity-verify-code'
   | 'email-send-code'
-  | 'email-verify-code'
   | 'email-update'
   | 'phone-send-code'
-  | 'phone-verify-code'
   | 'phone-update'
   | 'password-update';
 
@@ -50,8 +50,194 @@ const SECONDARY_BUTTON_CLASS =
 const PRIMARY_BUTTON_CLASS =
   'inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50';
 const PANEL_CLASS = 'rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-lg shadow-slate-950/20';
+const DEFAULT_VERIFICATION_CODE_COOLDOWN_SECONDS = 60;
+const IDENTITY_VERIFICATION_CACHE_TTL_MS = 10 * 60 * 1000;
+const IDENTITY_VERIFICATION_CACHE_PREFIX = 'resumeflow.account.identityVerification';
+const ACCOUNT_MANAGEMENT_DRAFT_STORAGE_KEY = 'resumeflow.accountManagement.draft';
+const INITIAL_VERIFICATION_CODE_COOLDOWNS: Record<VerificationCodeCooldownKey, number> = {
+  identity: 0,
+  email: 0,
+  phone: 0,
+};
+
+type CachedIdentityVerification = LogtoVerificationRecord & {
+  accountId: string;
+  expiresAtMs: number;
+};
+
+type AccountManagementDraft = {
+  accountId?: string;
+  activeAction: AccountAction | null;
+  flowStep: FlowStep;
+  identityMethod: IdentityMethod;
+  identityIdentifierType: LogtoAccountIdentifierType;
+  identityIdentifierValue: string;
+  identityCodeRecord: LogtoVerificationRecord | null;
+  identityCode: string;
+  newEmail: string;
+  newEmailRecord: LogtoVerificationRecord | null;
+  newEmailVerifiedRecord: LogtoVerificationRecord | null;
+  newEmailCode: string;
+  newPhone: string;
+  newPhoneRecord: LogtoVerificationRecord | null;
+  newPhoneVerifiedRecord: LogtoVerificationRecord | null;
+  newPhoneCode: string;
+};
 
 const formatAccountValue = (value?: string | null) => value?.trim() || '未绑定';
+
+const getCodeCooldownButtonText = (label: string, seconds: number) => (
+  seconds > 0 ? `${seconds} 秒后重试` : label
+);
+
+const getIdentityVerificationCacheKey = (account: LogtoAccountProfile | null) => (
+  account?.id ? `${IDENTITY_VERIFICATION_CACHE_PREFIX}:${account.id}` : ''
+);
+
+const getCachedIdentityVerification = (account: LogtoAccountProfile | null): LogtoVerificationRecord | null => {
+  const cacheKey = getIdentityVerificationCacheKey(account);
+  if (!cacheKey || typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const cached = window.sessionStorage.getItem(cacheKey);
+    if (!cached) {
+      return null;
+    }
+    const parsed = JSON.parse(cached) as Partial<CachedIdentityVerification>;
+    if (
+      parsed.accountId !== account?.id ||
+      typeof parsed.verificationRecordId !== 'string' ||
+      typeof parsed.expiresAtMs !== 'number' ||
+      parsed.expiresAtMs <= Date.now()
+    ) {
+      window.sessionStorage.removeItem(cacheKey);
+      return null;
+    }
+
+    return {
+      verificationRecordId: parsed.verificationRecordId,
+      expiresAt: parsed.expiresAt ?? null,
+    };
+  } catch {
+    window.sessionStorage.removeItem(cacheKey);
+    return null;
+  }
+};
+
+const cacheIdentityVerification = (
+  account: LogtoAccountProfile | null,
+  record: LogtoVerificationRecord
+) => {
+  const cacheKey = getIdentityVerificationCacheKey(account);
+  const accountId = account?.id;
+  if (!cacheKey || !accountId || typeof window === 'undefined') {
+    return;
+  }
+
+  const payload: CachedIdentityVerification = {
+    ...record,
+    accountId,
+    expiresAtMs: Date.now() + IDENTITY_VERIFICATION_CACHE_TTL_MS,
+  };
+  window.sessionStorage.setItem(cacheKey, JSON.stringify(payload));
+};
+
+const clearCachedIdentityVerification = (account: LogtoAccountProfile | null) => {
+  const cacheKey = getIdentityVerificationCacheKey(account);
+  if (cacheKey && typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(cacheKey);
+  }
+};
+
+const isAccountAction = (value: unknown): value is AccountAction | null => (
+  value === null || value === 'email' || value === 'phone' || value === 'password'
+);
+
+const isFlowStep = (value: unknown): value is FlowStep => (
+  value === 'select' || value === 'verify' || value === 'update'
+);
+
+const isIdentityMethod = (value: unknown): value is IdentityMethod => (
+  value === 'password' || value === 'code'
+);
+
+const isIdentifierType = (value: unknown): value is LogtoAccountIdentifierType => (
+  value === 'email' || value === 'phone'
+);
+
+const parseDraftVerificationRecord = (value: unknown): LogtoVerificationRecord | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const record = value as Partial<LogtoVerificationRecord>;
+  if (typeof record.verificationRecordId !== 'string') {
+    return null;
+  }
+  return {
+    verificationRecordId: record.verificationRecordId,
+    expiresAt: typeof record.expiresAt === 'string' || typeof record.expiresAt === 'number'
+      ? record.expiresAt
+      : null,
+  };
+};
+
+const readAccountManagementDraft = (): AccountManagementDraft | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(ACCOUNT_MANAGEMENT_DRAFT_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<AccountManagementDraft>;
+    if (
+      !isAccountAction(parsed.activeAction ?? null) ||
+      !isFlowStep(parsed.flowStep) ||
+      !isIdentityMethod(parsed.identityMethod) ||
+      !isIdentifierType(parsed.identityIdentifierType)
+    ) {
+      window.sessionStorage.removeItem(ACCOUNT_MANAGEMENT_DRAFT_STORAGE_KEY);
+      return null;
+    }
+
+    return {
+      accountId: typeof parsed.accountId === 'string' ? parsed.accountId : undefined,
+      activeAction: parsed.activeAction ?? null,
+      flowStep: parsed.flowStep,
+      identityMethod: parsed.identityMethod,
+      identityIdentifierType: parsed.identityIdentifierType,
+      identityIdentifierValue: typeof parsed.identityIdentifierValue === 'string' ? parsed.identityIdentifierValue : '',
+      identityCodeRecord: parseDraftVerificationRecord(parsed.identityCodeRecord),
+      identityCode: typeof parsed.identityCode === 'string' ? parsed.identityCode : '',
+      newEmail: typeof parsed.newEmail === 'string' ? parsed.newEmail : '',
+      newEmailRecord: parseDraftVerificationRecord(parsed.newEmailRecord),
+      newEmailVerifiedRecord: parseDraftVerificationRecord(parsed.newEmailVerifiedRecord),
+      newEmailCode: typeof parsed.newEmailCode === 'string' ? parsed.newEmailCode : '',
+      newPhone: typeof parsed.newPhone === 'string' ? parsed.newPhone : '',
+      newPhoneRecord: parseDraftVerificationRecord(parsed.newPhoneRecord),
+      newPhoneVerifiedRecord: parseDraftVerificationRecord(parsed.newPhoneVerifiedRecord),
+      newPhoneCode: typeof parsed.newPhoneCode === 'string' ? parsed.newPhoneCode : '',
+    };
+  } catch {
+    window.sessionStorage.removeItem(ACCOUNT_MANAGEMENT_DRAFT_STORAGE_KEY);
+    return null;
+  }
+};
+
+const writeAccountManagementDraft = (draft: AccountManagementDraft) => {
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(ACCOUNT_MANAGEMENT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  }
+};
+
+const clearAccountManagementDraft = () => {
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(ACCOUNT_MANAGEMENT_DRAFT_STORAGE_KEY);
+  }
+};
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof LogtoAccountApiError) {
@@ -64,6 +250,11 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     }
     if (error.status === 422) {
       return message.includes('password') ? '新密码不符合当前 Logto 密码规则' : message;
+    }
+    if (error.status === 429) {
+      return error.retryAfterSeconds
+        ? `请稍后再试，${error.retryAfterSeconds} 秒后重试`
+        : '请稍后再试';
     }
     if (/verification|code/i.test(message)) {
       return '验证码无效或已过期，请重新获取';
@@ -227,6 +418,8 @@ const getActionTitle = (action: AccountAction | null, account: LogtoAccountProfi
 const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen, onClose }) => {
   const { getAccessToken, isAuthenticated } = useLogto();
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const codeRequestInFlightRef = React.useRef<Set<VerificationCodeCooldownKey>>(new Set());
+  const skipNextDraftPersistRef = React.useRef(false);
 
   const [account, setAccount] = React.useState<LogtoAccountProfile | null>(null);
   const [activeAction, setActiveAction] = React.useState<AccountAction | null>(null);
@@ -241,17 +434,18 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
 
   const [newEmail, setNewEmail] = React.useState('');
   const [newEmailRecord, setNewEmailRecord] = React.useState<LogtoVerificationRecord | null>(null);
-  const [isNewEmailVerified, setIsNewEmailVerified] = React.useState(false);
+  const [newEmailVerifiedRecord, setNewEmailVerifiedRecord] = React.useState<LogtoVerificationRecord | null>(null);
   const [newEmailCode, setNewEmailCode] = React.useState('');
 
   const [newPhone, setNewPhone] = React.useState('');
   const [newPhoneRecord, setNewPhoneRecord] = React.useState<LogtoVerificationRecord | null>(null);
-  const [isNewPhoneVerified, setIsNewPhoneVerified] = React.useState(false);
+  const [newPhoneVerifiedRecord, setNewPhoneVerifiedRecord] = React.useState<LogtoVerificationRecord | null>(null);
   const [newPhoneCode, setNewPhoneCode] = React.useState('');
 
   const [newPassword, setNewPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [activeMutation, setActiveMutation] = React.useState<MutationKey | null>(null);
+  const [verificationCodeCooldowns, setVerificationCodeCooldowns] = React.useState(INITIAL_VERIFICATION_CODE_COOLDOWNS);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
 
@@ -263,8 +457,14 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
   }, [getAccessToken]);
 
   const closeAndRequireLogin = React.useCallback(() => {
+    clearAccountManagementDraft();
     onClose();
     dispatchLoginRequired('unauthorized');
+  }, [onClose]);
+
+  const closeAccountManagement = React.useCallback(() => {
+    clearAccountManagementDraft();
+    onClose();
   }, [onClose]);
 
   const resetIdentityChallenge = React.useCallback((profile: LogtoAccountProfile | null) => {
@@ -280,11 +480,11 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
   const resetUpdateFields = React.useCallback(() => {
     setNewEmail('');
     setNewEmailRecord(null);
-    setIsNewEmailVerified(false);
+    setNewEmailVerifiedRecord(null);
     setNewEmailCode('');
     setNewPhone('');
     setNewPhoneRecord(null);
-    setIsNewPhoneVerified(false);
+    setNewPhoneVerifiedRecord(null);
     setNewPhoneCode('');
     setNewPassword('');
     setConfirmPassword('');
@@ -298,9 +498,22 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
     setError('');
     try {
       const data = await logtoAccountService.getAccountProfile(tokenGetter);
+      const draft = readAccountManagementDraft();
+      const canUseDraft = !draft?.accountId || draft.accountId === data.id;
+      if (draft && !canUseDraft) {
+        clearAccountManagementDraft();
+        setActiveAction(null);
+        setFlowStep('select');
+        resetUpdateFields();
+      }
       setAccount(data);
-      setIdentityIdentifierType(data.primaryEmail ? 'email' : 'phone');
-      setIdentityIdentifierValue(data.primaryEmail || data.primaryPhone || '');
+      setIdentityIdentifierType(canUseDraft && draft?.identityIdentifierType
+        ? draft.identityIdentifierType
+        : data.primaryEmail ? 'email' : 'phone');
+      setIdentityIdentifierValue(canUseDraft && draft?.identityIdentifierValue
+        ? draft.identityIdentifierValue
+        : data.primaryEmail || data.primaryPhone || '');
+      setIdentityVerification(getCachedIdentityVerification(data));
     } catch (loadError) {
       if (isAuthExpiredError(loadError)) {
         closeAndRequireLogin();
@@ -310,23 +523,40 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
     } finally {
       setActiveMutation((current) => (current === 'load' ? null : current));
     }
-  }, [closeAndRequireLogin, isAuthenticated, isOpen, tokenGetter]);
+  }, [closeAndRequireLogin, isAuthenticated, isOpen, resetUpdateFields, tokenGetter]);
 
   React.useEffect(() => {
     if (isOpen && !isAuthenticated) {
-      onClose();
+      closeAccountManagement();
     }
-  }, [isAuthenticated, isOpen, onClose]);
+  }, [closeAccountManagement, isAuthenticated, isOpen]);
 
   React.useEffect(() => {
     if (!isOpen) {
       return;
     }
+    skipNextDraftPersistRef.current = true;
+    const draft = readAccountManagementDraft();
     setAccount(null);
-    setActiveAction(null);
-    setFlowStep('select');
+    setActiveAction(draft?.activeAction ?? null);
+    setFlowStep(draft?.flowStep ?? 'select');
     resetIdentityChallenge(null);
     resetUpdateFields();
+    if (draft) {
+      setIdentityMethod(draft.identityMethod);
+      setIdentityIdentifierType(draft.identityIdentifierType);
+      setIdentityIdentifierValue(draft.identityIdentifierValue);
+      setIdentityCodeRecord(draft.identityCodeRecord);
+      setIdentityCode(draft.identityCode);
+      setNewEmail(draft.newEmail);
+      setNewEmailRecord(draft.newEmailRecord);
+      setNewEmailVerifiedRecord(draft.newEmailVerifiedRecord);
+      setNewEmailCode(draft.newEmailCode);
+      setNewPhone(draft.newPhone);
+      setNewPhoneRecord(draft.newPhoneRecord);
+      setNewPhoneVerifiedRecord(draft.newPhoneVerifiedRecord);
+      setNewPhoneCode(draft.newPhoneCode);
+    }
     setError('');
     setSuccess('');
     void refreshAccount();
@@ -336,17 +566,90 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
     if (!isOpen) {
       return;
     }
+    if (skipNextDraftPersistRef.current) {
+      skipNextDraftPersistRef.current = false;
+      return;
+    }
+
+    writeAccountManagementDraft({
+      accountId: account?.id,
+      activeAction,
+      flowStep,
+      identityMethod,
+      identityIdentifierType,
+      identityIdentifierValue,
+      identityCodeRecord,
+      identityCode,
+      newEmail,
+      newEmailRecord,
+      newEmailVerifiedRecord,
+      newEmailCode,
+      newPhone,
+      newPhoneRecord,
+      newPhoneVerifiedRecord,
+      newPhoneCode,
+    });
+  }, [
+    account?.id,
+    activeAction,
+    flowStep,
+    identityCode,
+    identityCodeRecord,
+    identityIdentifierType,
+    identityIdentifierValue,
+    identityMethod,
+    isOpen,
+    newEmail,
+    newEmailCode,
+    newEmailRecord,
+    newEmailVerifiedRecord,
+    newPhone,
+    newPhoneCode,
+    newPhoneRecord,
+    newPhoneVerifiedRecord,
+  ]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose();
+        closeAccountManagement();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     window.setTimeout(() => closeButtonRef.current?.focus(), 0);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [closeAccountManagement, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen || !Object.values(verificationCodeCooldowns).some((seconds) => seconds > 0)) {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      setVerificationCodeCooldowns((current) => ({
+        identity: Math.max(0, current.identity - 1),
+        email: Math.max(0, current.email - 1),
+        phone: Math.max(0, current.phone - 1),
+      }));
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [isOpen, verificationCodeCooldowns]);
+
+  const startVerificationCodeCooldown = React.useCallback((
+    key: VerificationCodeCooldownKey,
+    seconds = DEFAULT_VERIFICATION_CODE_COOLDOWN_SECONDS
+  ) => {
+    setVerificationCodeCooldowns((current) => ({
+      ...current,
+      [key]: Math.max(1, seconds),
+    }));
+  }, []);
 
   const runMutation = async (key: MutationKey, action: () => Promise<void>, fallback: string) => {
     setActiveMutation(key);
@@ -359,18 +662,60 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
         closeAndRequireLogin();
         return;
       }
+      if (mutationError instanceof LogtoAccountApiError && mutationError.status === 403) {
+        clearCachedIdentityVerification(account);
+        setIdentityVerification(null);
+        setFlowStep('verify');
+      }
       setError(getErrorMessage(mutationError, fallback));
     } finally {
       setActiveMutation((current) => (current === key ? null : current));
     }
   };
 
+  const runCodeSendMutation = (
+    cooldownKey: VerificationCodeCooldownKey,
+    mutationKey: MutationKey,
+    action: () => Promise<void>,
+    fallback: string
+  ) => {
+    if (codeRequestInFlightRef.current.has(cooldownKey) || verificationCodeCooldowns[cooldownKey] > 0) {
+      setError('请稍后再试');
+      setSuccess('');
+      return;
+    }
+
+    codeRequestInFlightRef.current.add(cooldownKey);
+    return runMutation(
+      mutationKey,
+      async () => {
+        try {
+          await action();
+          startVerificationCodeCooldown(cooldownKey);
+        } catch (codeSendError) {
+          if (codeSendError instanceof LogtoAccountApiError && codeSendError.status === 429) {
+            startVerificationCodeCooldown(
+              cooldownKey,
+              codeSendError.retryAfterSeconds || DEFAULT_VERIFICATION_CODE_COOLDOWN_SECONDS
+            );
+          }
+          throw codeSendError;
+        } finally {
+          codeRequestInFlightRef.current.delete(cooldownKey);
+        }
+      },
+      fallback
+    );
+  };
+
   const beginAction = (action: AccountAction) => {
+    const cachedIdentityVerification = getCachedIdentityVerification(account);
     setActiveAction(action);
-    setFlowStep('verify');
+    setFlowStep(cachedIdentityVerification ? 'update' : 'verify');
     setError('');
     setSuccess('');
     resetIdentityChallenge(account);
+    setIdentityVerification(cachedIdentityVerification);
     resetUpdateFields();
   };
 
@@ -379,6 +724,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
     setFlowStep('select');
     setError('');
     resetIdentityChallenge(account);
+    setIdentityVerification(getCachedIdentityVerification(account));
     resetUpdateFields();
   };
 
@@ -390,6 +736,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
 
   const finishIdentityVerification = (record: LogtoVerificationRecord) => {
     setIdentityVerification(record);
+    cacheIdentityVerification(account, record);
     setIdentityPassword('');
     setIdentityCode('');
     setFlowStep('update');
@@ -426,7 +773,8 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
     '二次验证失败'
   );
 
-  const sendIdentityCode = () => runMutation(
+  const sendIdentityCode = () => runCodeSendMutation(
+    'identity',
     'identity-send-code',
     async () => {
       const value = identityIdentifierValue.trim();
@@ -464,7 +812,8 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
     '验证码验证失败'
   );
 
-  const sendNewEmailCode = () => runMutation(
+  const sendNewEmailCode = () => runCodeSendMutation(
+    'email',
     'email-send-code',
     async () => {
       const email = newEmail.trim();
@@ -476,112 +825,94 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
         value: email,
       });
       setNewEmailRecord(record);
-      setIsNewEmailVerified(false);
+      setNewEmailVerifiedRecord(null);
       setNewEmailCode('');
       setSuccess('新邮箱验证码已发送');
     },
     '新邮箱验证码发送失败'
   );
 
-  const verifyNewEmailCode = () => runMutation(
-    'email-verify-code',
-    async () => {
-      if (!newEmailRecord) {
-        throw new Error('请先获取新邮箱验证码');
-      }
-      if (!newEmailCode.trim()) {
-        throw new Error('请输入新邮箱验证码');
-      }
-      const record = await logtoAccountService.verifyCode(
-        tokenGetter,
-        { type: 'email', value: newEmail.trim() },
-        newEmailRecord.verificationRecordId,
-        newEmailCode.trim()
-      );
-      setNewEmailRecord(record);
-      setIsNewEmailVerified(true);
-      setSuccess('新邮箱已验证，可以确认更新');
-    },
-    '新邮箱验证失败'
-  );
-
-  const updateEmail = () => runMutation(
+  const updateEmailWithCode = () => runMutation(
     'email-update',
     async () => {
       const identityVerificationId = requireIdentityVerification();
       if (!identityVerificationId) {
         return;
       }
-      if (!newEmailRecord || !isNewEmailVerified) {
-        throw new Error('请先验证新邮箱');
+      const email = newEmail.trim();
+      if (!/\S+@\S+\.\S+/.test(email)) {
+        throw new Error('请输入有效邮箱');
       }
+      if (!newEmailVerifiedRecord && !newEmailCode.trim()) {
+        throw new Error('请输入新邮箱验证码');
+      }
+      if (!newEmailVerifiedRecord && !newEmailRecord) {
+        throw new Error('验证码记录已失效，请重新发送验证码');
+      }
+      const emailVerificationRecord = newEmailVerifiedRecord ?? await logtoAccountService.verifyCode(
+        tokenGetter,
+        { type: 'email', value: email },
+        newEmailRecord!.verificationRecordId,
+        newEmailCode.trim()
+      );
+      setNewEmailVerifiedRecord(emailVerificationRecord);
       await logtoAccountService.updatePrimaryEmail(
         tokenGetter,
-        newEmail.trim(),
+        email,
         identityVerificationId,
-        newEmailRecord.verificationRecordId
+        emailVerificationRecord.verificationRecordId
       );
       await completeUpdate('邮箱已更新');
     },
     '邮箱更新失败'
   );
 
-  const sendNewPhoneCode = () => runMutation(
+  const sendNewPhoneCode = () => runCodeSendMutation(
+    'phone',
     'phone-send-code',
     async () => {
-      const phone = newPhone.trim();
-      if (!phone) {
-        throw new Error('请输入新手机号');
+      const normalizedPhone = normalizeLogtoPhoneIdentifier(newPhone);
+      if (!normalizedPhone) {
+        throw new Error('请输入 11 位中国大陆手机号');
       }
       const record = await logtoAccountService.sendVerificationCode(tokenGetter, {
         type: 'phone',
-        value: phone,
+        value: normalizedPhone,
       });
       setNewPhoneRecord(record);
-      setIsNewPhoneVerified(false);
+      setNewPhoneVerifiedRecord(null);
       setNewPhoneCode('');
       setSuccess('新手机号验证码已发送');
     },
     '新手机号验证码发送失败'
   );
 
-  const verifyNewPhoneCode = () => runMutation(
-    'phone-verify-code',
-    async () => {
-      if (!newPhoneRecord) {
-        throw new Error('请先获取新手机号验证码');
-      }
-      if (!newPhoneCode.trim()) {
-        throw new Error('请输入新手机号验证码');
-      }
-      const record = await logtoAccountService.verifyCode(
-        tokenGetter,
-        { type: 'phone', value: newPhone.trim() },
-        newPhoneRecord.verificationRecordId,
-        newPhoneCode.trim()
-      );
-      setNewPhoneRecord(record);
-      setIsNewPhoneVerified(true);
-      setSuccess('新手机号已验证，可以确认更新');
-    },
-    '新手机号验证失败'
-  );
-
-  const updatePhone = () => runMutation(
+  const updatePhoneWithCode = () => runMutation(
     'phone-update',
     async () => {
       const identityVerificationId = requireIdentityVerification();
       if (!identityVerificationId) {
         return;
       }
-      if (!newPhoneRecord || !isNewPhoneVerified) {
-        throw new Error('请先验证新手机号');
+      if (!newPhoneVerifiedRecord && !newPhoneCode.trim()) {
+        throw new Error('请输入新手机号验证码');
       }
+      if (!newPhoneVerifiedRecord && !newPhoneRecord) {
+        throw new Error('验证码记录已失效，请重新发送验证码');
+      }
+      const normalizedPhone = normalizeLogtoPhoneIdentifier(newPhone);
+      const phoneVerificationRecord = newPhoneVerifiedRecord ?? await logtoAccountService.verifyCode(
+        tokenGetter,
+        { type: 'phone', value: normalizedPhone },
+        newPhoneRecord!.verificationRecordId,
+        newPhoneCode.trim()
+      );
+      setNewPhoneVerifiedRecord(phoneVerificationRecord);
       await logtoAccountService.updatePrimaryPhone(
         tokenGetter,
-        newPhone.trim(),
+        normalizedPhone,
         identityVerificationId,
-        newPhoneRecord.verificationRecordId
+        phoneVerificationRecord.verificationRecordId
       );
       await completeUpdate('手机号已更新');
     },
@@ -756,12 +1087,12 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
                 />
                 <button
                   className="absolute right-1 top-1/2 inline-flex -translate-y-1/2 items-center justify-center gap-1 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={mutationInProgress}
+                  disabled={mutationInProgress || verificationCodeCooldowns.identity > 0}
                   onClick={sendIdentityCode}
                   type="button"
                 >
                   {activeMutation === 'identity-send-code' ? <Spinner /> : <Send className="h-3.5 w-3.5" />}
-                  发送验证码
+                  {getCodeCooldownButtonText('发送验证码', verificationCodeCooldowns.identity)}
                 </button>
               </div>
             </div>
@@ -800,7 +1131,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
               onChange={(event) => {
                 setNewEmail(event.target.value);
                 setNewEmailRecord(null);
-                setIsNewEmailVerified(false);
+                setNewEmailVerifiedRecord(null);
                 setNewEmailCode('');
               }}
               type="email"
@@ -810,13 +1141,18 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
             />
           </div>
           <div className="flex items-end">
-            <button className={SECONDARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={sendNewEmailCode} type="button">
+            <button
+              className={SECONDARY_BUTTON_CLASS}
+              disabled={mutationInProgress || verificationCodeCooldowns.email > 0}
+              onClick={sendNewEmailCode}
+              type="button"
+            >
               {activeMutation === 'email-send-code' ? <Spinner /> : <Send className="h-4 w-4" />}
-              发送验证码
+              {getCodeCooldownButtonText('发送验证码', verificationCodeCooldowns.email)}
             </button>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <input
             className={INPUT_CLASS}
             value={newEmailCode}
@@ -826,13 +1162,9 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
             inputMode="numeric"
             disabled={mutationInProgress}
           />
-          <button className={SECONDARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={verifyNewEmailCode} type="button">
-            {activeMutation === 'email-verify-code' ? <Spinner /> : <CheckCircle2 className="h-4 w-4" />}
-            验证邮箱
-          </button>
-          <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updateEmail} type="button">
+          <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updateEmailWithCode} type="button">
             {activeMutation === 'email-update' ? <Spinner /> : <Mail className="h-4 w-4" />}
-            确认更新邮箱
+            确认更新
           </button>
         </div>
       </div>
@@ -864,23 +1196,28 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
               onChange={(event) => {
                 setNewPhone(event.target.value);
                 setNewPhoneRecord(null);
-                setIsNewPhoneVerified(false);
+                setNewPhoneVerifiedRecord(null);
                 setNewPhoneCode('');
               }}
               type="tel"
               autoComplete="tel"
-              placeholder="输入新手机号"
+              placeholder="新手机号"
               disabled={mutationInProgress}
             />
           </div>
           <div className="flex items-end">
-            <button className={SECONDARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={sendNewPhoneCode} type="button">
+            <button
+              className={SECONDARY_BUTTON_CLASS}
+              disabled={mutationInProgress || verificationCodeCooldowns.phone > 0}
+              onClick={sendNewPhoneCode}
+              type="button"
+            >
               {activeMutation === 'phone-send-code' ? <Spinner /> : <Send className="h-4 w-4" />}
-              发送验证码
+              {getCodeCooldownButtonText('发送验证码', verificationCodeCooldowns.phone)}
             </button>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <input
             className={INPUT_CLASS}
             value={newPhoneCode}
@@ -890,13 +1227,9 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
             inputMode="numeric"
             disabled={mutationInProgress}
           />
-          <button className={SECONDARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={verifyNewPhoneCode} type="button">
-            {activeMutation === 'phone-verify-code' ? <Spinner /> : <CheckCircle2 className="h-4 w-4" />}
-            验证手机号
-          </button>
-          <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updatePhone} type="button">
+          <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updatePhoneWithCode} type="button">
             {activeMutation === 'phone-update' ? <Spinner /> : <Phone className="h-4 w-4" />}
-            确认更新手机号
+            确认更新
           </button>
         </div>
       </div>
@@ -970,7 +1303,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm"
-      onMouseDown={onClose}
+      onMouseDown={closeAccountManagement}
       role="dialog"
       aria-modal="true"
       aria-labelledby="account-management-title"
@@ -992,7 +1325,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
               <button
                 ref={closeButtonRef}
                 className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-                onClick={onClose}
+                onClick={closeAccountManagement}
                 type="button"
                 aria-label="关闭账号管理"
               >
