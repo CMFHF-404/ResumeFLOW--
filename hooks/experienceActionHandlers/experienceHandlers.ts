@@ -40,7 +40,7 @@ import type {
     ExperienceHelpers,
     ExperienceState,
     ToastApi,
-} from '../useExperienceActions';
+} from './types';
 
 const JD_POLISH_TOAST_MESSAGES = {
     loading: '正在基于 JD 润色...',

@@ -14,11 +14,38 @@ def _set_required_env_defaults() -> None:
 _set_required_env_defaults()
 
 from app.domain.ai import ai_service  # noqa: E402
+from app.domain.ai import assistant_tool_utils  # noqa: E402
 from app.domain.ai import jd_analysis_service  # noqa: E402
 from app.domain.ai import prompts as ai_prompts  # noqa: E402
 from app.domain.ai.assistant_action_utils import _normalize_assistant_draft_card  # noqa: E402
 from app.domain.ai.response_normalizers import _normalize_jd_analysis_result  # noqa: E402
 from app import config as config_module  # noqa: E402
+
+
+class AssistantToolUtilsBoundaryTests(unittest.TestCase):
+    def test_ai_service_reexports_assistant_tool_helpers(self) -> None:
+        payload = {
+            "selected_experiences": [
+                {"masterId": "exp-1", "full_text": "完整经历文本"},
+            ],
+            "selected_resume": {"id": "resume-1"},
+            "bank_context": {"skills": ["Python"]},
+        }
+        executor = assistant_tool_utils._build_assistant_context_tool_executor(payload)
+        tools = assistant_tool_utils._build_assistant_context_tools()
+
+        self.assertIs(ai_service._build_assistant_context_tools, assistant_tool_utils._build_assistant_context_tools)
+        self.assertIs(
+            ai_service._build_assistant_context_tool_executor,
+            assistant_tool_utils._build_assistant_context_tool_executor,
+        )
+        self.assertEqual(tools[0]["function"]["name"], "get_selected_experience_full_text")
+        self.assertEqual(
+            executor("get_selected_experience_full_text", {"masterId": "exp-1"}),
+            {"experience": "完整经历文本"},
+        )
+        self.assertEqual(executor("get_selected_resume_context", {}), {"selected_resume": {"id": "resume-1"}})
+        self.assertEqual(executor("get_bank_context", {}), {"bank_context": {"skills": ["Python"]}})
 
 
 class AssistantDraftCardNormalizerTests(unittest.TestCase):

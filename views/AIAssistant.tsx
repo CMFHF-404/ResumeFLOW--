@@ -2,11 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogto } from '@logto/react';
 import {
   Bot,
-  FileBadge2,
-  Lightbulb,
   PanelLeft,
-  Sparkles,
-  Wrench,
 } from 'lucide-react';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
@@ -15,11 +11,11 @@ import { MAX_ASSISTANT_SELECTED_EXPERIENCES, type AssistantMode, type AssistantS
 import { formatRelativeTime } from '../utils/timeUtils';
 import {
   readPendingAssistantManualSaveDrafts,
-  writePendingAssistantManualSaveDraft,
 } from './assistantManualSaveStorage';
 
 import { AssistantDesktopDraftPanel, AssistantMobileDraftTray } from './AIAssistant/AssistantDraftPanel';
 import { AssistantHistoryPanel } from './AIAssistant/AssistantHistoryPanel';
+import { AssistantSkillPresetPanel } from './AIAssistant/AssistantSkillPresetPanel';
 import ExperiencePicker from './AIAssistant/ExperiencePicker';
 import ResumePicker from './AIAssistant/ResumePicker';
 import { MessageItem, ActiveThoughtBlock } from './AIAssistant/MessageItem';
@@ -50,17 +46,9 @@ import {
   type AssistantDraftMessageItem,
 } from './AIAssistant/sessionUtils';
 import {
-  ASSISTANT_MODE_HINTS,
-  readContextString,
-  resolveSessionHint,
-} from './AIAssistant/sessionContextUtils';
-import {
-  extractApplyErrorDetails,
-} from './AIAssistant/logUtils';
-import { computeComposerReservedHeight } from './AIAssistant/layoutUtils';
-import {
-  buildResumeEditorDraftJumpState,
-} from './AIAssistant/draftApplyUtils';
+  attachDraftJumpHandlers,
+} from './AIAssistant/draftJumpUtils';
+import { useAssistantComposerResize } from './AIAssistant/useAssistantComposerResize';
 import type {
   AssistantLaunchRequest,
 } from './AIAssistant/types';
@@ -71,59 +59,6 @@ type AIAssistantProps = {
   onJumpToResumeEditor?: (resumeId?: string) => void;
   draftInput?: string;
   onDraftInputChange?: (value: string) => void;
-};
-
-const ASSISTANT_SKILL_PRESETS: Array<{
-  id: AssistantSkillId;
-  title: string;
-  prompt: string;
-  Icon: React.ComponentType<{ className?: string }>;
-}> = [
-  {
-    id: 'star_guidance',
-    title: 'STAR 引导助手',
-    prompt: '请用 STAR 引导我补全这段经历，先追问缺失信息，不要急着生成成稿。',
-    Icon: Sparkles,
-  },
-  {
-    id: 'experience_completion',
-    title: '智能补全',
-    prompt: '请按智能补全模式诊断选中经历是否足够支撑目标 JD；证据不足时只追问当前经历内可补充事实，0-3 个问题，不要询问其他项目、课程项目、个人练习或非本项目案例。',
-    Icon: Wrench,
-  },
-  {
-    id: 'mock_interview',
-    title: '模拟面试教练',
-    prompt: '请结合我选择的简历/JD，模拟面试官追问，并指出我的回答如何更贴合岗位价值。',
-    Icon: Lightbulb,
-  },
-];
-
-const MODE_META: Record<AssistantMode, { label: string; hint: string; icon: React.ReactNode }> = {
-  general: {
-    label: '综合助理',
-    hint: ASSISTANT_MODE_HINTS.general,
-    icon: (
-      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-        <Bot className="h-3.5 w-3.5" />
-      </div>
-    ),
-  },
-  experience: {
-    label: '经历整理',
-    hint: ASSISTANT_MODE_HINTS.experience,
-    icon: <Sparkles className="h-4 w-4" />,
-  },
-  certification: {
-    label: '证书整理',
-    hint: ASSISTANT_MODE_HINTS.certification,
-    icon: <FileBadge2 className="h-4 w-4" />,
-  },
-  skill: {
-    label: '技能整理',
-    hint: ASSISTANT_MODE_HINTS.skill,
-    icon: <Wrench className="h-4 w-4" />,
-  },
 };
 
 const AIAssistant: React.FC<AIAssistantProps> = ({
@@ -145,9 +80,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [isDesktopHistoryCollapsed, setIsDesktopHistoryCollapsed] = useState(false);
-  const [composerReservedHeight, setComposerReservedHeight] = useState(160);
-  const messageViewportRef = useRef<HTMLDivElement | null>(null);
-  const composerContainerRef = useRef<HTMLDivElement | null>(null);
+  const {
+    messageViewportRef,
+    composerContainerRef,
+    composerReservedHeight,
+    scrollToBottom,
+  } = useAssistantComposerResize();
   const {
     composerAttachments,
     attachmentInputRef,
@@ -160,7 +98,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     openAttachmentPicker,
   } = useAssistantComposerAttachments({ onError: error });
 
-  const composerHeightRef = useRef<number | null>(null);
   const lastMirroredDraftInputRef = useRef(draftInput);
 
   const clearSelectedExperiences = useCallback(() => {
@@ -169,13 +106,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const clearSelectedResume = useCallback(() => {
     setSelectedResume(null);
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    if (!messageViewportRef.current) {
-      return;
-    }
-    messageViewportRef.current.scrollTop = messageViewportRef.current.scrollHeight;
   }, []);
 
   const {
@@ -227,37 +157,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     return deriveLatestSuggestedFollowups(messages);
   }, [messages]);
   const draftMessageItems = useMemo<AssistantDraftMessageItem[]>(() => (
-    deriveDraftMessageItems(messages, selectedSession, callbackOnlySessionIdsRef.current).map((item) => {
-      const { message, card, isManualSaveMode } = item;
-      const onJumpToEditor = isManualSaveMode
-        ? () => {
-          const context = selectedSession?.context_json ?? {};
-          const contextResumeId = readContextString(context, 'resumeId');
-          if (card.type === 'experience') {
-            try {
-              const { resumeId, pendingManualSaveDraft } = buildResumeEditorDraftJumpState({
-                sessionId: selectedSession?.id ?? '',
-                messageId: message.id,
-                context,
-                draft: card.data,
-                createdAt: Date.now(),
-              });
-              if (pendingManualSaveDraft) {
-                writePendingAssistantManualSaveDraft(pendingManualSaveDraft);
-                setManualSaveMessageIds((prev) => new Set(prev).add(message.id));
-              }
-              onJumpToResumeEditor?.(resumeId ?? undefined);
-            } catch (jumpError) {
-              const jumpErrorDetails = extractApplyErrorDetails(jumpError);
-              error(`无法跳转到编辑区：${jumpErrorDetails.userMessage}`, 6000);
-            }
-            return;
-          }
-          onJumpToResumeEditor?.(contextResumeId ?? undefined);
-        }
-        : undefined;
-      return { message, card, isManualSaveMode, onJumpToEditor };
-    })
+    attachDraftJumpHandlers(
+      deriveDraftMessageItems(messages, selectedSession, callbackOnlySessionIdsRef.current),
+      {
+        selectedSession,
+        onJumpToResumeEditor,
+        markManualSaveMessage: (messageId) => {
+          setManualSaveMessageIds((prev) => new Set(prev).add(messageId));
+        },
+        notifyError: (message) => error(message, 6000),
+      }
+    )
   ), [callbackOnlySessionIdsRef, error, messages, onJumpToResumeEditor, selectedSession]);
   const draftGroups = useMemo(
     () => groupDraftItems(draftMessageItems),
@@ -314,52 +224,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     lastMirroredDraftInputRef.current = inputValue;
     onDraftInputChange?.(inputValue);
   }, [inputValue, onDraftInputChange]);
-
-  useEffect(() => {
-    const composer = composerContainerRef.current;
-    const viewport = messageViewportRef.current;
-    if (!composer || !viewport) {
-      return;
-    }
-
-    const syncComposerResize = () => {
-      const previousHeight = composerHeightRef.current;
-      const nextHeight = composer.offsetHeight;
-      composerHeightRef.current = nextHeight;
-      const nextReservedHeight = computeComposerReservedHeight(nextHeight);
-      setComposerReservedHeight((current) => (current === nextReservedHeight ? current : nextReservedHeight));
-
-      if (previousHeight === null || nextHeight === previousHeight) {
-        return;
-      }
-
-      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      const growthAllowance = Math.max(24, nextHeight - previousHeight + 24);
-      if (distanceFromBottom <= growthAllowance) {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
-      }
-    };
-
-    syncComposerResize();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', syncComposerResize);
-      return () => window.removeEventListener('resize', syncComposerResize);
-    }
-
-    const observer = new ResizeObserver(() => {
-      syncComposerResize();
-    });
-    observer.observe(composer);
-    window.addEventListener('resize', syncComposerResize);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', syncComposerResize);
-    };
-  }, [scrollToBottom]);
 
   useEffect(() => {
     scrollToBottom();
@@ -608,50 +472,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               style={{ paddingBottom: `${composerReservedHeight}px` }}
             >
               {shouldShowSkillPresetPanel ? (
-                <div className="mx-auto mt-6 flex w-full max-w-3xl min-w-0 flex-col gap-6 md:mt-10">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_60px_-30px_rgba(2,6,23,0.95)] md:p-8">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
-                        <Bot className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">选择 AI 助手定位</h2>
-                        <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-400">
-                          先选一个工作方式，我会把对应提示放进输入框。你可以继续修改，再决定是否发送。
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                      {ASSISTANT_SKILL_PRESETS.map(({ id, title, prompt, Icon }) => {
-                        const isActive = activeComposerSkillId === id;
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            onClick={() => handleSelectSkillPreset(id, prompt)}
-                            className={`min-h-[124px] rounded-2xl border px-4 py-4 text-left transition ${
-                              isActive
-                                ? 'border-emerald-300 bg-emerald-50 text-emerald-950 shadow-sm dark:border-emerald-500/60 dark:bg-emerald-950/35 dark:text-emerald-100'
-                                : 'border-slate-200 bg-slate-50/80 text-slate-800 hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-900'
-                            }`}
-                          >
-                            <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${
-                              isActive
-                                ? 'bg-emerald-500 text-white'
-                                : 'bg-white text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700'
-                            }`}>
-                              <Icon className="h-4 w-4" />
-                            </span>
-                            <span className="mt-3 block text-sm font-semibold leading-5">{title}</span>
-                            <span className="mt-2 block text-xs leading-5 text-slate-500 dark:text-slate-400">
-                              {prompt}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+                <AssistantSkillPresetPanel
+                  activeSkillId={activeComposerSkillId}
+                  onSelectPreset={handleSelectSkillPreset}
+                />
               ) : (
                 <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4">
                   {messages.map((message) => {

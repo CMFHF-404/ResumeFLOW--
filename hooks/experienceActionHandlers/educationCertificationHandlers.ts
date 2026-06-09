@@ -27,7 +27,7 @@ import type {
     EducationState,
     ExperienceHelpers,
     MatchScoreDomain,
-} from '../useExperienceActions';
+} from './types';
 
 type EducationDraftHandlers = {
     beginCreateEducation: () => void;

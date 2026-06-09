@@ -20,205 +20,31 @@ import { useLogto } from '@logto/react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
 import UnAuthPrompt from '../components/UnAuthPrompt';
-import { exportService } from '../services/exportService';
 import { devLog } from '../services/devLogger';
-import { type Profile, profileService } from '../services/profileService';
-import type { Certification } from '../services/certificationsService';
-import { certificationsService } from '../services/certificationsService';
-import type { ExperienceListItem } from '../services/experienceService';
+import type { Profile } from '../services/profileService';
 import { experienceService } from '../services/experienceService';
-import type { UserSkill } from '../services/skillsService';
-import { skillsService } from '../services/skillsService';
 import { useEducationManager } from '../hooks/useEducationManager';
 import EducationSection from './EducationSection';
 import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
-import { resolveLinkedInLink } from './profileUtils';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
-import type { ExperienceBankPdfRenderSnapshot } from '../types/experienceBankExport';
 import {
-  buildExperienceBankExportDateLabel,
-  buildExperienceBankExportTitle,
-} from '../utils/exportFilename';
-import { buildExperienceBankPdfRenderSnapshot } from '../utils/experienceBankPdf';
-import { downloadUrlFile } from '../utils/downloadUrlFile';
-import {
-  trackExperienceBankExported,
   trackLoginStart,
 } from '../utils/analyticsTracker';
 import { useExperienceBankProfile } from './ExperienceBank/useExperienceBankProfile';
-const PENDING_RESUME_UPLOAD_KEY = 'yuanzijianli.pendingResumeUpload';
-const PENDING_ASSISTANT_LAUNCH_KEY = 'yuanzijianli.pendingExperienceBankAssistantLaunch';
-
-const readPendingResumeUpload = () => {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  try {
-    return window.sessionStorage.getItem(PENDING_RESUME_UPLOAD_KEY) === '1';
-  } catch (error) {
-    return false;
-  }
-};
-
-const writePendingResumeUpload = (shouldPersist: boolean) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  try {
-    if (shouldPersist) {
-      window.sessionStorage.setItem(PENDING_RESUME_UPLOAD_KEY, '1');
-      return;
-    }
-    window.sessionStorage.removeItem(PENDING_RESUME_UPLOAD_KEY);
-  } catch (error) {
-    // ignore storage errors (private mode, etc.)
-  }
-};
-
-const readPendingAssistantLaunch = () => {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  try {
-    return window.sessionStorage.getItem(PENDING_ASSISTANT_LAUNCH_KEY) === '1';
-  } catch (error) {
-    return false;
-  }
-};
-
-const writePendingAssistantLaunch = (shouldPersist: boolean) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  try {
-    if (shouldPersist) {
-      window.sessionStorage.setItem(PENDING_ASSISTANT_LAUNCH_KEY, '1');
-      return;
-    }
-    window.sessionStorage.removeItem(PENDING_ASSISTANT_LAUNCH_KEY);
-  } catch (error) {
-    // ignore storage errors (private mode, etc.)
-  }
-};
-
-const sortById = <T extends { id: string }>(items: T[]) => (
-  [...items].sort((left, right) => left.id.localeCompare(right.id))
-);
-
-const buildExperienceBankSummaryPayload = (
-  profile: Profile | null,
-  snapshot: ExperienceBankPdfRenderSnapshot
-) => ({
-  mode: 'bank' as const,
-  profile: {
-    name: profile?.full_name || '',
-    email: profile?.email || '',
-    phone: profile?.phone || '',
-    location: profile?.location || '',
-    linkedin: profile ? resolveLinkedInLink(profile) : '',
-  },
-  workExperiences: sortById(snapshot.workItems.map((item) => ({
-    id: item.master.id,
-    title: item.latest_version?.title || '',
-    org: item.latest_version?.org || '',
-    start_date: item.latest_version?.start_date,
-    end_date: item.latest_version?.end_date,
-    is_current: item.latest_version?.is_current ?? false,
-    star: item.latest_version?.star || {},
-    summary: item.latest_version?.summary || '',
-  }))),
-  projectExperiences: sortById(snapshot.projectItems.map((item) => ({
-    id: item.master.id,
-    title: item.latest_version?.title || '',
-    org: item.latest_version?.org || '',
-    start_date: item.latest_version?.start_date,
-    end_date: item.latest_version?.end_date,
-    is_current: item.latest_version?.is_current ?? false,
-    star: item.latest_version?.star || {},
-    summary: item.latest_version?.summary || '',
-  }))),
-  educationExperiences: sortById(snapshot.educationItems.map((item) => ({
-    id: item.master.id,
-    school: item.latest_version?.org || '',
-    major: item.latest_version?.title || '',
-    start_date: item.latest_version?.start_date,
-    end_date: item.latest_version?.end_date,
-    is_current: item.latest_version?.is_current ?? false,
-    summary: item.latest_version?.summary || '',
-    star: item.latest_version?.star || {},
-  }))),
-  certifications: sortById(snapshot.certifications.map((cert) => ({
-    id: cert.id,
-    name: cert.name,
-    issuer: cert.issuer || '',
-    issue_date: cert.issue_date || '',
-  }))),
-  skills: sortById(snapshot.skills.map((skill) => ({
-    id: skill.id,
-    name: skill.name,
-    category: skill.category || '',
-  }))),
-});
-
-const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot> => {
-  const [
-    profile,
-    workItems,
-    projectItems,
-    educationItems,
-    certifications,
-    skills,
-  ] = await Promise.all([
-    profileService.getProfile({ force: true }),
-    experienceService.list('work', { force: true }),
-    experienceService.list('project', { force: true }),
-    experienceService.list('education', { force: true }),
-    certificationsService.list({ force: true }),
-    skillsService.list({ force: true }),
-  ]);
-
-  return {
-    profile,
-    workItems,
-    projectItems,
-    educationItems,
-    certifications,
-    skills,
-  };
-};
-
-const loadExperienceBankValidationSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot | null> => {
-  const [
-    profile,
-    workItems,
-    projectItems,
-    educationItems,
-    certifications,
-    skills,
-  ] = await Promise.all([
-    profileService.peekProfileForCurrentUser(),
-    experienceService.peekListForCurrentUser('work', { allowStale: true }),
-    experienceService.peekListForCurrentUser('project', { allowStale: true }),
-    experienceService.peekListForCurrentUser('education', { allowStale: true }),
-    certificationsService.peekListForCurrentUser({ allowStale: true }),
-    skillsService.peekListForCurrentUser({ allowStale: true }),
-  ]);
-
-  if (!profile || !workItems || !projectItems || !educationItems || !certifications || !skills) {
-    return null;
-  }
-
-  return {
-    profile,
-    workItems,
-    projectItems,
-    educationItems,
-    certifications,
-    skills,
-  };
-};
+import { buildExperienceBankSummaryPayload } from './ExperienceBank/summaryPayloadUtils';
+import {
+  readPendingAssistantLaunch,
+  readPendingResumeUpload,
+  writePendingAssistantLaunch,
+  writePendingResumeUpload,
+} from './ExperienceBank/pendingActionStorage';
+import {
+  loadExperienceBankExportSnapshot,
+  loadExperienceBankValidationSnapshot,
+} from './ExperienceBank/exportSnapshotLoaders';
+import { useExperienceBankPdfExport } from './ExperienceBank/useExperienceBankPdfExport';
 interface ExperienceBankProps {
   cachedProfile?: Profile;
   onProfileUpdate?: (data: Profile) => void;
@@ -266,7 +92,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [workExperienceCount, setWorkExperienceCount] = useState<number | null>(() => {
     const cached = experienceService.peekList('work');
     return cached ? cached.length : null;
@@ -339,6 +164,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     closeToast,
   });
 
+  const {
+    isExportingPdf,
+    handleExportAll,
+  } = useExperienceBankPdfExport({
+    buildCurrentProfileDraftSnapshot,
+    loading,
+    updateToast,
+  });
+
   const handleResumeImported = useCallback(async (
     ...args: Parameters<typeof handleProfileResumeImported>
   ) => {
@@ -385,52 +219,6 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const isExperienceBankEmpty = workExperienceCount === 0
     && projectExperienceCount === 0
     && educationExperienceCount === 0;
-
-  const handleExportAll = useCallback(async () => {
-    if (isExportingPdf) {
-      return;
-    }
-
-    const exportDate = new Date();
-    const exportTitle = buildExperienceBankExportTitle(exportDate);
-    const toastId = loading('正在生成 PDF...');
-    setIsExportingPdf(true);
-
-    try {
-      const latestSnapshot = await loadExperienceBankExportSnapshot();
-      const profileSnapshot = buildCurrentProfileDraftSnapshot(latestSnapshot.profile);
-      const snapshot = buildExperienceBankPdfRenderSnapshot({
-        ...latestSnapshot,
-        profile: profileSnapshot,
-        exportDateLabel: buildExperienceBankExportDateLabel(exportDate),
-      });
-      const { downloadUrl, fileName } = await exportService.createExperienceBankPdfDownloadLink(
-        snapshot,
-        exportTitle
-      );
-      await downloadUrlFile(downloadUrl, fileName);
-      trackExperienceBankExported({
-        workCount: snapshot.workItems.length,
-        projectCount: snapshot.projectItems.length,
-        educationCount: snapshot.educationItems.length,
-        certificationCount: snapshot.certifications.length,
-        skillCount: snapshot.skills.length,
-      });
-      updateToast(toastId, {
-        message: 'PDF 已生成，开始下载。',
-        type: 'success',
-        duration: 3000,
-      });
-    } catch (error) {
-      console.error('[ExperienceBank] 导出失败:', error);
-      updateToast(toastId, {
-        message: error instanceof Error ? error.message : '导出失败，请稍后重试',
-        type: 'error',
-      });
-    } finally {
-      setIsExportingPdf(false);
-    }
-  }, [buildCurrentProfileDraftSnapshot, isExportingPdf, loading, updateToast]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
-import secrets
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
@@ -12,13 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 from fastapi import HTTPException
-from sqlalchemy import desc
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
-from ...models import AgentApiKey, AgentPluginConfig, ExperienceCategory
-from ...utils.time_utils import utc_now
+from ...models import ExperienceCategory
 from ..ai.ai_service import analyze_jd, generate_personal_summary, polish_experience
 from ..export.schemas import (
     CertificationViewSnapshot,
@@ -53,11 +46,7 @@ from .agent_pdf_helpers import (
     _agent_auto_assembly_selection,
     _agent_polish_mode,
     _apply_snapshot_layout,
-    _apply_snapshot_trim,
-    _build_agent_generated_resume_config,
-    _build_agent_jd_analysis_config,
     _build_resume_pdf_snapshot,
-    _build_snapshot_trim_plan,
     _expand_snapshot_layout_candidates,
     _hard_fallback_snapshot_layout,
     _layout_float,
@@ -70,6 +59,15 @@ from .agent_pdf_helpers import (
     _snapshot_experience_star_overrides,
     _summary_generation_payload,
 )
+from .agent_generated_resume_config import (
+    _build_agent_generated_resume_config,
+    _build_agent_jd_analysis_config,
+)
+from .agent_pdf_fit_service import fit_snapshot_to_one_page
+from .agent_pdf_trim_service import (
+    _apply_snapshot_trim,
+    _build_snapshot_trim_plan,
+)
 from .agent_resume_helpers import (
     _is_agent_generated_resume,
     _load_agent_bank,
@@ -78,13 +76,32 @@ from .agent_resume_helpers import (
     resolve_agent_resume,
     resolve_agent_resume_detail,
 )
+from .agent_key_service import (
+    API_KEY_PREFIX,
+    KEY_PREFIX_LENGTH,
+    AgentAuthenticatedUser,
+    AgentGenerateOptions,
+    CreatedAgentApiKey,
+    authenticate_agent_api_key,
+    create_agent_api_key,
+    get_agent_plugin_config,
+    hash_agent_api_key,
+    list_agent_api_keys,
+    resolve_agent_generate_options,
+    revoke_agent_api_key,
+    upsert_agent_plugin_config,
+    verify_agent_api_key_hash,
+    _created_from_reusable_api_key,
+    _key_prefix,
+    _list_active_agent_api_keys,
+    _new_plaintext_key,
+    _recover_agent_api_key_conflict,
+    _to_api_key_read,
+    _to_plugin_config_read,
+)
 from .schemas import (
-    AgentApiKeyCreateResponse,
-    AgentApiKeyRead,
     AgentPolishOption,
     AgentPolishOptionsResponse,
-    AgentPluginConfigRead,
-    AgentPluginConfigUpdate,
     AgentResumeTemplateOption,
     AgentResumeTemplateOptionsResponse,
     AgentSkillBundleFile,
@@ -94,30 +111,7 @@ from .schemas import (
     AgentJobMetadata,
     AgentJobRequest,
     AgentResumePdf,
-    DEFAULT_AGENT_POLISH_LEVEL,
-    DEFAULT_AGENT_TEMPLATE_ID,
 )
-
-
-API_KEY_PREFIX = "rfag_"
-KEY_PREFIX_LENGTH = 12
-@dataclass(frozen=True)
-class CreatedAgentApiKey:
-    plaintext_key: str
-    read: AgentApiKeyRead
-
-
-@dataclass(frozen=True)
-class AgentAuthenticatedUser:
-    id: str
-
-
-@dataclass(frozen=True)
-class AgentGenerateOptions:
-    template_id: str
-    polish_before_output: bool
-    polish_level: str
-    force_one_page: bool
 
 
 @dataclass(frozen=True)
@@ -128,245 +122,6 @@ class AgentJobAnalysisBuild:
 
 def _now_aware() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def hash_agent_api_key(key: str) -> str:
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()
-
-
-def verify_agent_api_key_hash(key: str, key_hash: str) -> bool:
-    return hmac.compare_digest(hash_agent_api_key(key), key_hash)
-
-
-def _new_plaintext_key() -> str:
-    return f"{API_KEY_PREFIX}{secrets.token_urlsafe(32)}"
-
-
-def _key_prefix(key: str) -> str:
-    return key[:KEY_PREFIX_LENGTH]
-
-
-def _to_api_key_read(record: AgentApiKey) -> AgentApiKeyRead:
-    return AgentApiKeyRead(
-        id=str(record.id),
-        name=record.name,
-        key_prefix=record.key_prefix,
-        key=getattr(record, "key_plaintext", None) if record.revoked_at is None else None,
-        created_at=record.created_at,
-        last_used_at=record.last_used_at,
-        revoked_at=record.revoked_at,
-    )
-
-
-async def _list_active_agent_api_keys(session: AsyncSession, user_id: str) -> List[AgentApiKey]:
-    result = await session.execute(
-        select(AgentApiKey)
-        .where(
-            AgentApiKey.user_id == user_id,
-            AgentApiKey.revoked_at.is_(None),
-        )
-        .order_by(desc(AgentApiKey.created_at))
-    )
-    return list(result.scalars().all())
-
-
-def _created_from_reusable_api_key(record: AgentApiKey) -> CreatedAgentApiKey:
-    return CreatedAgentApiKey(
-        plaintext_key=record.key_plaintext,
-        read=_to_api_key_read(record),
-    )
-
-
-async def _recover_agent_api_key_conflict(
-    session: AsyncSession,
-    user_id: str,
-) -> Optional[CreatedAgentApiKey]:
-    active_records = await _list_active_agent_api_keys(session, user_id)
-    reusable = next(
-        (
-            record
-            for record in active_records
-            if getattr(record, "key_plaintext", None)
-        ),
-        None,
-    )
-    if reusable is not None:
-        return _created_from_reusable_api_key(reusable)
-    if active_records:
-        raise HTTPException(
-            status_code=HTTP_409_CONFLICT,
-            detail="Existing Agent API key cannot be displayed. Refresh it to create a replacement.",
-        )
-    return None
-
-
-def _to_plugin_config_read(record: Optional[AgentPluginConfig]) -> AgentPluginConfigRead:
-    if record is None:
-        return AgentPluginConfigRead()
-    return AgentPluginConfigRead(
-        selected_template_id=record.selected_template_id or DEFAULT_AGENT_TEMPLATE_ID,
-        polish_before_output=bool(record.polish_before_output),
-        polish_level=record.polish_level or DEFAULT_AGENT_POLISH_LEVEL,
-        force_one_page=bool(record.force_one_page),
-    )
-
-
-async def get_agent_plugin_config(
-    session: AsyncSession,
-    user_id: str,
-) -> AgentPluginConfigRead:
-    result = await session.execute(
-        select(AgentPluginConfig).where(AgentPluginConfig.user_id == user_id)
-    )
-    return _to_plugin_config_read(result.scalars().first())
-
-
-async def upsert_agent_plugin_config(
-    session: AsyncSession,
-    user_id: str,
-    payload: AgentPluginConfigUpdate,
-) -> AgentPluginConfigRead:
-    result = await session.execute(
-        select(AgentPluginConfig).where(AgentPluginConfig.user_id == user_id)
-    )
-    record = result.scalars().first()
-    if record is None:
-        record = AgentPluginConfig(user_id=user_id)
-    record.selected_template_id = payload.selected_template_id.strip() or DEFAULT_AGENT_TEMPLATE_ID
-    record.polish_before_output = payload.polish_before_output
-    record.polish_level = payload.polish_level.strip() or DEFAULT_AGENT_POLISH_LEVEL
-    record.force_one_page = payload.force_one_page
-    record.updated_at = utc_now()
-    session.add(record)
-    await session.commit()
-    return _to_plugin_config_read(record)
-
-
-async def resolve_agent_generate_options(
-    session: AsyncSession,
-    user_id: str,
-    payload: AgentJobGenerateRequest,
-) -> AgentGenerateOptions:
-    config = await get_agent_plugin_config(session, user_id)
-    return AgentGenerateOptions(
-        template_id=payload.template_id or config.selected_template_id,
-        polish_before_output=(
-            payload.polish_before_output
-            if payload.polish_before_output is not None
-            else config.polish_before_output
-        ),
-        polish_level=payload.polish_level or config.polish_level,
-        force_one_page=True,
-    )
-
-
-async def create_agent_api_key(
-    session: AsyncSession,
-    user_id: str,
-    name: str,
-    rotate: bool = False,
-) -> CreatedAgentApiKey:
-    active_records = await _list_active_agent_api_keys(session, user_id)
-    if not rotate:
-        reusable = next(
-            (
-                record
-                for record in active_records
-                if getattr(record, "key_plaintext", None)
-            ),
-            None,
-        )
-        if reusable is not None:
-            return _created_from_reusable_api_key(reusable)
-        if active_records:
-            raise HTTPException(
-                status_code=HTTP_409_CONFLICT,
-                detail="Existing Agent API key cannot be displayed. Refresh it to create a replacement.",
-            )
-
-    plaintext_key = _new_plaintext_key()
-    for record in active_records:
-        record.revoked_at = utc_now()
-        record.key_plaintext = None
-        session.add(record)
-    if active_records:
-        await session.flush()
-    record = AgentApiKey(
-        user_id=user_id,
-        name=name.strip() or "Agent",
-        key_prefix=_key_prefix(plaintext_key),
-        key_hash=hash_agent_api_key(plaintext_key),
-        key_plaintext=plaintext_key,
-    )
-    session.add(record)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        recovered = await _recover_agent_api_key_conflict(session, user_id)
-        if recovered is not None:
-            return recovered
-        raise HTTPException(
-            status_code=HTTP_409_CONFLICT,
-            detail="Agent API key was updated concurrently. Please retry.",
-        ) from exc
-    await session.refresh(record)
-    return CreatedAgentApiKey(
-        plaintext_key=plaintext_key,
-        read=_to_api_key_read(record),
-    )
-
-
-async def list_agent_api_keys(session: AsyncSession, user_id: str) -> List[AgentApiKeyRead]:
-    result = await session.execute(
-        select(AgentApiKey)
-        .where(AgentApiKey.user_id == user_id)
-        .order_by(desc(AgentApiKey.created_at))
-    )
-    return [_to_api_key_read(record) for record in result.scalars().all()]
-
-
-async def revoke_agent_api_key(
-    session: AsyncSession,
-    user_id: str,
-    api_key_id: str,
-) -> AgentApiKey:
-    result = await session.execute(
-        select(AgentApiKey).where(
-            AgentApiKey.id == api_key_id,
-            AgentApiKey.user_id == user_id,
-        )
-    )
-    record = result.scalars().first()
-    if not record:
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Agent API key not found")
-    if record.revoked_at is None:
-        record.revoked_at = utc_now()
-        record.key_plaintext = None
-        session.add(record)
-        await session.commit()
-        await session.refresh(record)
-    return record
-
-
-async def authenticate_agent_api_key(
-    session: AsyncSession,
-    key: str,
-) -> AgentAuthenticatedUser:
-    if not key or not key.startswith(API_KEY_PREFIX):
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid Agent API key")
-    result = await session.execute(
-        select(AgentApiKey).where(AgentApiKey.key_prefix == _key_prefix(key))
-    )
-    record = result.scalars().first()
-    if not record or record.revoked_at is not None:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid Agent API key")
-    if not verify_agent_api_key_hash(key, record.key_hash):
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid Agent API key")
-    record.last_used_at = utc_now()
-    session.add(record)
-    await session.commit()
-    return AgentAuthenticatedUser(id=record.user_id)
 
 
 async def build_agent_job_analysis(
@@ -606,56 +361,23 @@ async def _fit_snapshot_to_one_page(
     *,
     enabled: bool,
 ) -> ResumePdfRenderSnapshot:
-    if not enabled:
-        return snapshot
-    working_snapshot = snapshot.model_copy(deep=True)
-    trim_plan = _build_snapshot_trim_plan(working_snapshot, analysis_result)
-    plan_index = 0
+    async def render_page_count(candidate: ResumePdfRenderSnapshot) -> int:
+        return await _render_snapshot_page_count(session, user_id, candidate)
 
-    async def fit_current_content() -> Tuple[bool, ResumePdfRenderSnapshot]:
-        base_snapshot = working_snapshot.model_copy(deep=True)
-        if await _render_snapshot_page_count(session, user_id, base_snapshot) <= 1:
-            best_snapshot = base_snapshot
-            default_layout = {
-                "lineHeight": base_snapshot.lineHeight,
-                "fontSize": base_snapshot.fontSize,
-                "itemSpacingEm": _layout_float(
-                    {"itemSpacingEm": base_snapshot.listSpacingValue.replace("em", "")},
-                    "itemSpacingEm",
-                    SMART_PAGE_ITEM_SPACING_DEFAULT,
-                ),
-                "topPaddingPx": base_snapshot.topPaddingPx,
-                "sectionSpacingKey": _layout_section_spacing_key(
-                    {"sectionSpacingClass": base_snapshot.sectionSpacingClass},
-                ),
-            }
-            for candidate_layout in _expand_snapshot_layout_candidates(default_layout):
-                candidate_snapshot = _apply_snapshot_layout(
-                    base_snapshot.model_copy(deep=True),
-                    candidate_layout,
-                )
-                if await _render_snapshot_page_count(session, user_id, candidate_snapshot) <= 1:
-                    best_snapshot = candidate_snapshot
-            return True, best_snapshot
-
-        compact_snapshot = _apply_snapshot_layout(
-            base_snapshot.model_copy(deep=True),
-            _hard_fallback_snapshot_layout(),
-        )
-        if await _render_snapshot_page_count(session, user_id, compact_snapshot) <= 1:
-            return True, compact_snapshot
-        return False, compact_snapshot
-
-    while True:
-        fits, fitted_snapshot = await fit_current_content()
-        if fits:
-            return fitted_snapshot
-        if plan_index >= len(trim_plan):
-            return fitted_snapshot
-        if _apply_snapshot_trim(working_snapshot, trim_plan[plan_index]):
-            plan_index += 1
-            continue
-        plan_index += 1
+    return await fit_snapshot_to_one_page(
+        snapshot,
+        analysis_result,
+        enabled=enabled,
+        render_page_count=render_page_count,
+        build_trim_plan=_build_snapshot_trim_plan,
+        apply_trim=_apply_snapshot_trim,
+        apply_layout=_apply_snapshot_layout,
+        expand_layout_candidates=_expand_snapshot_layout_candidates,
+        hard_fallback_layout=_hard_fallback_snapshot_layout,
+        layout_float=_layout_float,
+        layout_section_spacing_key=_layout_section_spacing_key,
+        item_spacing_default=SMART_PAGE_ITEM_SPACING_DEFAULT,
+    )
 
 
 async def _persist_agent_generated_resume(

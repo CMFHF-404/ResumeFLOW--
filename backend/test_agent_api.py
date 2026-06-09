@@ -1,5 +1,7 @@
 import os
 import json
+import subprocess
+import sys
 import unittest
 import uuid
 from datetime import datetime, timezone
@@ -20,11 +22,22 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from app.models import ExperienceCategory  # noqa: E402
 from app import database  # noqa: E402
-from app.domain.agent import agent_router, agent_service  # noqa: E402
+from app.domain.export.schemas import CertificationViewSnapshot, SkillGroupViewSnapshot  # noqa: E402
+from app.domain.agent import (  # noqa: E402
+    agent_auto_assembly_service,
+    agent_key_service,
+    agent_pdf_helpers,
+    agent_pdf_trim_service,
+    agent_profile_snapshot_service,
+    agent_resume_item_snapshot_service,
+    agent_router,
+    agent_service,
+)
 from app.domain.export.browser_pdf_service import (  # noqa: E402
     BrowserPdfRenderError,
     BrowserPdfRenderTimeoutError,
 )
+from app.domain.resume.resume_schema import ResumeExperienceItem, ResumeExperienceMerged  # noqa: E402
 
 
 class _ScalarResult:
@@ -58,6 +71,699 @@ class _FakeSession:
 
     def add(self, item):
         self.added.append(item)
+
+
+class AgentKeyServiceBoundaryTests(unittest.TestCase):
+    def test_agent_service_reexports_key_service_hash_helpers(self) -> None:
+        key = "rfag_boundary-test"
+
+        self.assertEqual(agent_key_service.hash_agent_api_key(key), agent_service.hash_agent_api_key(key))
+        self.assertTrue(agent_service.verify_agent_api_key_hash(key, agent_key_service.hash_agent_api_key(key)))
+
+    def test_agent_service_preserves_legacy_key_helper_patch_names(self) -> None:
+        for name in (
+            "_new_plaintext_key",
+            "_key_prefix",
+            "_to_api_key_read",
+            "_list_active_agent_api_keys",
+            "_created_from_reusable_api_key",
+            "_recover_agent_api_key_conflict",
+            "_to_plugin_config_read",
+        ):
+            self.assertIs(getattr(agent_service, name), getattr(agent_key_service, name))
+
+
+class AgentPdfFitServiceBoundaryTests(unittest.TestCase):
+    def test_agent_service_reexports_pdf_fit_service(self) -> None:
+        from app.domain.agent import agent_pdf_fit_service
+
+        self.assertIs(
+            agent_service.fit_snapshot_to_one_page,
+            agent_pdf_fit_service.fit_snapshot_to_one_page,
+        )
+
+    def test_agent_service_preserves_legacy_pdf_fit_helper_patch_names(self) -> None:
+        for name in (
+            "SMART_PAGE_ITEM_SPACING_DEFAULT",
+            "_apply_snapshot_layout",
+            "_expand_snapshot_layout_candidates",
+            "_hard_fallback_snapshot_layout",
+            "_layout_float",
+            "_layout_section_spacing_key",
+        ):
+            self.assertIs(getattr(agent_service, name), getattr(agent_pdf_helpers, name))
+
+    def test_agent_service_pdf_trim_helpers_point_to_trim_service(self) -> None:
+        from app.domain.agent import agent_pdf_trim_service
+
+        for name in (
+            "_apply_snapshot_trim",
+            "_build_snapshot_trim_plan",
+        ):
+            self.assertIs(getattr(agent_service, name), getattr(agent_pdf_trim_service, name))
+
+
+class AgentPdfFitPatchCompatibilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_legacy_agent_service_trim_plan_patch_still_affects_fit_wrapper(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        with patch.object(agent_service, "_build_snapshot_trim_plan", return_value=[]) as mocked_trim_plan:
+            with patch.object(agent_service, "_render_snapshot_page_count", AsyncMock(side_effect=[2, 2])):
+                await agent_service._fit_snapshot_to_one_page(
+                    SimpleNamespace(),
+                    "user-1",
+                    snapshot,
+                    {"experienceMatches": []},
+                    enabled=True,
+                )
+
+        mocked_trim_plan.assert_called_once()
+
+
+class AgentGeneratedResumeConfigBoundaryTests(unittest.TestCase):
+    def test_generated_resume_config_module_imports_directly_without_agent_service(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import app.domain.agent.agent_generated_resume_config",
+            ],
+            cwd=os.getcwd(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_agent_service_reexports_generated_resume_config_helpers(self) -> None:
+        from app.domain.agent import agent_generated_resume_config
+
+        self.assertIs(
+            agent_service._build_agent_generated_resume_config,
+            agent_generated_resume_config._build_agent_generated_resume_config,
+        )
+        self.assertIs(
+            agent_service._build_agent_jd_analysis_config,
+            agent_generated_resume_config._build_agent_jd_analysis_config,
+        )
+
+    def test_legacy_pdf_helper_layout_patch_still_affects_generated_resume_config(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_产品实习_90",
+        )
+
+        with patch.object(agent_pdf_helpers, "_layout_float", return_value=9.9) as mocked_layout_float:
+            config = agent_pdf_helpers._build_agent_generated_resume_config({}, snapshot, payload, analysis)
+
+        mocked_layout_float.assert_called()
+        self.assertEqual(config["layout"]["itemSpacingEm"], 9.9)
+
+    def test_legacy_pdf_helper_jd_config_patch_still_affects_generated_resume_config(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_产品实习_90",
+        )
+
+        with patch.object(agent_pdf_helpers, "_build_agent_jd_analysis_config", return_value={"patched": True}) as mocked_jd_config:
+            config = agent_pdf_helpers._build_agent_generated_resume_config({}, snapshot, payload, analysis)
+
+        mocked_jd_config.assert_called_once_with(payload, analysis)
+        self.assertEqual(config["jdAnalysis"], {"patched": True})
+
+
+class AgentProfileSnapshotServiceBoundaryTests(unittest.TestCase):
+    def test_profile_snapshot_service_imports_directly_without_agent_service(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import app.domain.agent.agent_profile_snapshot_service",
+            ],
+            cwd=os.getcwd(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_pdf_helpers_reexports_profile_snapshot_helpers(self) -> None:
+        for name in (
+            "_layout_orders_config",
+            "_profile_payload",
+            "_profile_payload_for_resume",
+            "_profile_snapshot",
+            "_profile_template_preset",
+            "_resume_layout_config",
+            "_resume_personal_summary_override",
+            "_resume_profile_config",
+            "_resume_summary_visible",
+            "_snapshot_layout_orders",
+            "_template_default_theme_color_preset_id",
+            "_template_layout_value",
+            "_template_section_order",
+        ):
+            self.assertIs(getattr(agent_pdf_helpers, name), getattr(agent_profile_snapshot_service, name))
+
+    def test_legacy_pdf_helper_template_patch_still_affects_snapshot_build(self) -> None:
+        resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端", config={})
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_前端实习_90",
+        )
+        bank = {"profile": None, "experiences": [], "certifications": [], "skills": []}
+
+        with patch.object(agent_pdf_helpers, "_template_section_order", return_value=["skills"]) as mocked_order:
+            snapshot = agent_pdf_helpers._build_resume_pdf_snapshot(resume, bank, payload, analysis, "")
+
+        mocked_order.assert_called_once()
+        self.assertEqual(snapshot.sectionOrder, ["skills"])
+
+
+class AgentResumeItemSnapshotServiceBoundaryTests(unittest.TestCase):
+    def _resume_item(self, *, master_id: str, title: str, org: str, summary: str, star: dict) -> ResumeExperienceItem:
+        experience = ResumeExperienceMerged(
+            id=f"{master_id}-version",
+            master_experience_id=master_id,
+            version=1,
+            title=title,
+            org=org,
+            start_date=None,
+            end_date=None,
+            is_current=False,
+            summary=summary,
+            highlights=[],
+            tags=[],
+            star=star,
+        )
+        return ResumeExperienceItem(
+            id=f"{master_id}-item",
+            resume_id="resume-1",
+            experience_version_id=experience.id,
+            display_order=0,
+            experience=experience,
+        )
+
+    def test_resume_item_snapshot_service_imports_directly_without_agent_service(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import app.domain.agent.agent_resume_item_snapshot_service",
+            ],
+            cwd=os.getcwd(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_pdf_helpers_reexports_simple_resume_item_snapshot_helpers(self) -> None:
+        for name in (
+            "_certification_snapshots",
+            "_certifications_payload",
+            "_education_major",
+            "_skill_group_snapshots",
+            "_skills_payload",
+            "_star_fields",
+            "_version_payload",
+        ):
+            self.assertIs(getattr(agent_pdf_helpers, name), getattr(agent_resume_item_snapshot_service, name))
+
+    def test_legacy_pdf_helper_version_payload_patch_still_affects_experiences_payload(self) -> None:
+        master = SimpleNamespace(id="master-1", category=ExperienceCategory.WORK)
+        version = SimpleNamespace(id="version-1")
+
+        with patch.object(agent_pdf_helpers, "_version_payload", return_value={"title": "patched"}) as mocked_payload:
+            payload = agent_pdf_helpers._experiences_payload([(master, version)], ExperienceCategory.WORK)
+
+        mocked_payload.assert_called_once_with(version)
+        self.assertEqual(payload, [{"title": "patched", "id": "master-1"}])
+
+    def test_legacy_pdf_helper_star_patch_still_affects_experience_snapshots(self) -> None:
+        master = SimpleNamespace(id="master-1", category=ExperienceCategory.WORK)
+        version = SimpleNamespace(
+            id="version-1",
+            title="工作",
+            org="公司",
+            start_date=None,
+            end_date=None,
+            is_current=False,
+            star={"r": "结果"},
+        )
+        patched_star = agent_service.StarFields(s="patched")
+
+        with patch.object(agent_pdf_helpers, "_star_fields", return_value=patched_star) as mocked_star:
+            snapshots = agent_pdf_helpers._experience_snapshots([(master, version)], ExperienceCategory.WORK)
+
+        mocked_star.assert_called_once_with({"r": "结果"})
+        self.assertIs(snapshots[0].star, patched_star)
+
+    def test_legacy_pdf_helper_education_major_patch_still_affects_education_snapshots(self) -> None:
+        master = SimpleNamespace(id="education-1", category=ExperienceCategory.EDUCATION)
+        version = SimpleNamespace(
+            id="version-1",
+            title="计算机科学",
+            org="示例大学",
+            summary="软件工程",
+            start_date=None,
+            end_date=None,
+            is_current=False,
+            star={"degree": "本科"},
+        )
+
+        with patch.object(agent_pdf_helpers, "_education_major", return_value="patched-major") as mocked_major:
+            snapshots = agent_pdf_helpers._education_snapshots([(master, version)])
+
+        mocked_major.assert_called_once_with("计算机科学", {"degree": "本科"}, "软件工程")
+        self.assertEqual(snapshots[0].major, "patched-major")
+
+    def test_legacy_pdf_helper_star_patch_still_affects_resume_item_experience_snapshots(self) -> None:
+        item = self._resume_item(
+            master_id="work-1",
+            title="工作",
+            org="公司",
+            summary="",
+            star={"s": "场景"},
+        )
+        patched_star = agent_service.StarFields(t="patched")
+
+        with patch.object(agent_pdf_helpers, "_star_fields", return_value=patched_star) as mocked_star:
+            snapshots = agent_pdf_helpers._resume_item_experience_snapshots(
+                [item],
+                {"work-1": ExperienceCategory.WORK},
+                ExperienceCategory.WORK,
+            )
+
+        mocked_star.assert_called_once_with({"s": "场景"})
+        self.assertIs(snapshots[0].star, patched_star)
+
+    def test_legacy_pdf_helper_education_major_patch_still_affects_resume_item_education_snapshots(self) -> None:
+        item = self._resume_item(
+            master_id="education-1",
+            title="计算机科学",
+            org="示例大学",
+            summary="软件工程",
+            star={"degree": "本科"},
+        )
+
+        with patch.object(agent_pdf_helpers, "_education_major", return_value="patched-major") as mocked_major:
+            snapshots = agent_pdf_helpers._resume_item_education_snapshots(
+                [item],
+                {"education-1": ExperienceCategory.EDUCATION},
+            )
+
+        mocked_major.assert_called_once_with("计算机科学", {"degree": "本科"}, "软件工程")
+        self.assertEqual(snapshots[0].major, "patched-major")
+
+    def test_legacy_pdf_helper_cert_and_skill_payload_patches_still_affect_summary_payload(self) -> None:
+        resume = SimpleNamespace(config={})
+        bank = {
+            "profile": None,
+            "experiences": [],
+            "certifications": [SimpleNamespace(id="cert-1")],
+            "skills": [(SimpleNamespace(id="skill-link-1"), SimpleNamespace(name="Python", category="语言"))],
+        }
+
+        with (
+            patch.object(agent_pdf_helpers, "_certifications_payload", return_value=[{"id": "patched-cert"}]) as mocked_certs,
+            patch.object(agent_pdf_helpers, "_skills_payload", return_value=[{"id": "patched-skill"}]) as mocked_skills,
+        ):
+            payload = agent_pdf_helpers._summary_generation_payload(bank, resume, None, None)
+
+        mocked_certs.assert_called_once_with(bank["certifications"])
+        mocked_skills.assert_called_once_with(bank["skills"])
+        self.assertEqual(payload["certifications"], [{"id": "patched-cert"}])
+        self.assertEqual(payload["skills"], [{"id": "patched-skill"}])
+
+    def test_legacy_pdf_helper_cert_and_skill_snapshot_patches_still_affect_pdf_snapshot(self) -> None:
+        resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端", config={})
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_前端实习_90",
+        )
+        bank = {
+            "profile": None,
+            "experiences": [],
+            "certifications": [SimpleNamespace(id="cert-1")],
+            "skills": [(SimpleNamespace(id="skill-link-1"), SimpleNamespace(name="Python", category="语言"))],
+        }
+        patched_cert = CertificationViewSnapshot(id="patched-cert", name="证书", date="")
+        patched_group = SkillGroupViewSnapshot(name="patched-skills", skills=[])
+
+        with (
+            patch.object(agent_pdf_helpers, "_certification_snapshots", return_value=[patched_cert]) as mocked_certs,
+            patch.object(agent_pdf_helpers, "_skill_group_snapshots", return_value=[patched_group]) as mocked_skills,
+        ):
+            snapshot = agent_pdf_helpers._build_resume_pdf_snapshot(resume, bank, payload, analysis, "")
+
+        mocked_certs.assert_called_once_with(bank["certifications"])
+        mocked_skills.assert_called_once_with(bank["skills"])
+        self.assertEqual(snapshot.sortedCertifications, [patched_cert])
+        self.assertEqual(snapshot.selectedSkillGroups, [patched_group])
+
+
+class AgentAutoAssemblyServiceBoundaryTests(unittest.TestCase):
+    def test_auto_assembly_service_imports_directly_without_agent_service(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import app.domain.agent.agent_auto_assembly_service",
+            ],
+            cwd=os.getcwd(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_agent_service_preserves_legacy_auto_assembly_helper_patch_names(self) -> None:
+        self.assertIs(
+            agent_service._agent_auto_assembly_selection,
+            agent_pdf_helpers._agent_auto_assembly_selection,
+        )
+        self.assertIs(
+            agent_service._resume_with_agent_auto_assembly_selection,
+            agent_pdf_helpers._resume_with_agent_auto_assembly_selection,
+        )
+
+    def test_legacy_pdf_helper_selection_patches_still_affect_auto_assembly(self) -> None:
+        config = {
+            "selection": {
+                "experienceIds": ["exp-fallback"],
+                "certificationIds": ["cert-fallback"],
+                "skillIds": ["skill-fallback"],
+            }
+        }
+
+        with patch.object(
+            agent_pdf_helpers,
+            "_positive_experience_ids_by_score",
+            return_value=["exp-primary"],
+        ) as mocked_experience_ids:
+            with patch.object(
+                agent_pdf_helpers,
+                "_threshold_match_ids",
+                side_effect=[["cert-primary"], ["skill-primary"]],
+            ) as mocked_threshold_ids:
+                selection = agent_pdf_helpers._agent_auto_assembly_selection(
+                    config,
+                    {
+                        "experienceMatches": [],
+                        "certificationMatches": [],
+                        "skillMatches": [],
+                    },
+                )
+
+        mocked_experience_ids.assert_called_once_with([])
+        self.assertEqual(mocked_threshold_ids.call_count, 2)
+        self.assertEqual(selection["experienceIds"], ["exp-primary", "exp-fallback"])
+        self.assertEqual(selection["certificationIds"], ["cert-primary", "cert-fallback"])
+        self.assertEqual(selection["skillIds"], ["skill-primary", "skill-fallback"])
+
+    def test_legacy_pdf_helper_auto_assembly_patch_still_affects_resume_wrapper(self) -> None:
+        resume = SimpleNamespace(
+            id="resume-1",
+            title="主简历",
+            target_role="产品",
+            config={"selection": {"experienceIds": ["old-exp"]}},
+        )
+
+        with patch.object(
+            agent_pdf_helpers,
+            "_agent_auto_assembly_selection",
+            return_value={"experienceIds": ["patched-exp"]},
+        ) as mocked_selection:
+            assembled_resume = agent_pdf_helpers._resume_with_agent_auto_assembly_selection(
+                resume,
+                {"experienceMatches": []},
+            )
+
+        mocked_selection.assert_called_once_with(resume.config, {"experienceMatches": []})
+        self.assertEqual(assembled_resume.config["selection"]["experienceIds"], ["patched-exp"])
+        self.assertEqual(
+            assembled_resume.config["layout"]["orders"]["workExperienceIds"],
+            ["patched-exp"],
+        )
+
+    def test_auto_assembly_returns_original_resume_without_usable_experience_matches(self) -> None:
+        resume = SimpleNamespace(
+            id="resume-1",
+            title="主简历",
+            target_role="产品",
+            config={"selection": {"experienceIds": ["old-exp"]}},
+        )
+
+        self.assertIs(
+            agent_auto_assembly_service._resume_with_agent_auto_assembly_selection(resume, None),
+            resume,
+        )
+        self.assertIs(
+            agent_auto_assembly_service._resume_with_agent_auto_assembly_selection(
+                resume,
+                {"experienceMatches": [{"id": "exp-zero", "score": 0}]},
+            ),
+            resume,
+        )
+
+    def test_auto_assembly_score_order_and_merge_dedupe_stay_stable(self) -> None:
+        selection = agent_auto_assembly_service._agent_auto_assembly_selection(
+            {"selection": {"experienceIds": ["exp-b", "exp-fallback", "exp-a"]}},
+            {
+                "experienceMatches": [
+                    {"id": "exp-a", "score": 90},
+                    {"id": "exp-b", "score": 90},
+                    {"id": "exp-a", "score": 95},
+                    {"id": "exp-c", "score": 70},
+                ],
+            },
+        )
+
+        self.assertEqual(selection["experienceIds"], ["exp-a", "exp-b", "exp-fallback"])
+
+
+class AgentPdfTrimServiceBoundaryTests(unittest.TestCase):
+    def test_trim_service_imports_directly_and_agent_service_reexports_trim_helpers(self) -> None:
+        self.assertIs(
+            agent_service._build_snapshot_trim_plan,
+            agent_pdf_trim_service._build_snapshot_trim_plan,
+        )
+        self.assertIs(
+            agent_service._apply_snapshot_trim,
+            agent_pdf_trim_service._apply_snapshot_trim,
+        )
+
+    def test_trim_service_remove_skill_patch_still_affects_apply_trim(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        with patch.object(agent_pdf_trim_service, "_remove_snapshot_skill", return_value=True) as mocked_remove:
+            changed = agent_pdf_trim_service._apply_snapshot_trim(snapshot, ("skill", "skill-1"))
+
+        mocked_remove.assert_called_once_with(snapshot, "skill-1")
+        self.assertTrue(changed)
+
+    def test_trim_service_score_map_patch_still_affects_trim_plan(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[
+                agent_service.ResumeExperienceViewSnapshot(
+                    id="exp-low",
+                    title="低分",
+                    company="示例公司",
+                    date="2024",
+                    category="work",
+                ),
+                agent_service.ResumeExperienceViewSnapshot(
+                    id="exp-high",
+                    title="高分",
+                    company="示例公司",
+                    date="2025",
+                    category="work",
+                ),
+            ],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        def fake_score_map(entries):
+            return {"exp-high": 100, "exp-low": 10} if entries == "patched" else {}
+
+        with patch.object(agent_pdf_trim_service, "_analysis_score_map", side_effect=fake_score_map) as mocked_score_map:
+            plan = agent_pdf_trim_service._build_snapshot_trim_plan(
+                snapshot,
+                {"experienceMatches": "patched"},
+            )
+
+        mocked_score_map.assert_called()
+        self.assertIn(("experience", "exp-low"), plan)
+
+    def test_trim_service_sort_and_experience_id_patches_still_affect_trim_plan(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        with patch.object(agent_pdf_trim_service, "_snapshot_experience_ids", return_value=["exp-a", "exp-b"]) as mocked_ids:
+            with patch.object(agent_pdf_trim_service, "_sort_selected_ids_by_score_asc", side_effect=lambda ids, _: list(ids)) as mocked_sort:
+                plan = agent_pdf_trim_service._build_snapshot_trim_plan(snapshot, {})
+
+        mocked_ids.assert_called_once_with(snapshot)
+        self.assertTrue(any(call.args[0] == ["exp-a", "exp-b"] for call in mocked_sort.call_args_list))
+        self.assertIn(("experience", "exp-a"), plan)
+
+    def test_trim_service_remove_certification_and_experience_patches_still_affect_apply_trim(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        with patch.object(agent_pdf_trim_service, "_remove_snapshot_certification", return_value=True) as mocked_remove_cert:
+            cert_changed = agent_pdf_trim_service._apply_snapshot_trim(snapshot, ("certification", "cert-1"))
+        with patch.object(agent_pdf_trim_service, "_remove_snapshot_experience", return_value=True) as mocked_remove_exp:
+            exp_changed = agent_pdf_trim_service._apply_snapshot_trim(snapshot, ("experience", "exp-1"))
+
+        mocked_remove_cert.assert_called_once_with(snapshot, "cert-1")
+        mocked_remove_exp.assert_called_once_with(snapshot, "exp-1")
+        self.assertTrue(cert_changed)
+        self.assertTrue(exp_changed)
 
 
 class AgentPluginConfigTests(unittest.IsolatedAsyncioTestCase):
@@ -1634,7 +2340,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
     def test_generated_resume_config_persists_final_expanded_layout_values(self) -> None:
         snapshot = agent_service.ResumePdfRenderSnapshot(
             resumeName="示例公司_产品实习_90",
-            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三", summary="生成摘要"),
             lineHeight=1.7,
             fontSize=17,
             listSpacingValue="1.5em",
@@ -1642,32 +2348,71 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             topPaddingPx=85,
             sectionSpacingClass="mb-8",
             listSpacingClass="space-y-2",
-            sectionOrder=[],
-            selectedWorkItems=[],
-            selectedProjectItems=[],
+            sectionOrder=["summary", "work", "skills"],
+            selectedWorkItems=[
+                agent_service.ResumeExperienceViewSnapshot(
+                    id="work-1",
+                    title="产品实习",
+                    company="示例公司",
+                    date="2025",
+                    category="work",
+                ),
+            ],
+            selectedProjectItems=[
+                agent_service.ResumeExperienceViewSnapshot(
+                    id="project-1",
+                    title="项目",
+                    company="学校",
+                    date="2024",
+                    category="project",
+                ),
+            ],
             educations=[],
+            selectedEduIds=["edu-1"],
+            selectedCertIds=["cert-1"],
+            selectedSkillGroups=[
+                agent_service.SkillGroupViewSnapshot(
+                    name="产品",
+                    skills=[agent_service.SkillItemViewSnapshot(id="skill-1", name="SQL")],
+                ),
+            ],
         )
         payload = agent_router.AgentJobGenerateRequest(
             job_title="产品实习",
             company_name="示例公司",
-            jd_text="产品 JD",
+            jd_text=" 产品 JD ",
             job_url="https://example.com/jobs/1",
         )
         analysis = agent_router.AgentJobAnalysisResponse(
             match_percentage=90,
             evaluation="匹配",
-            strengths=[],
-            gaps=[],
-            missing_keywords=[],
+            strengths=["沟通"],
+            gaps=["数据"],
+            missing_keywords=["SQL"],
             recommendation="generate",
             suggested_folder_name="示例公司_产品实习_90",
         )
 
-        config = agent_service._build_agent_generated_resume_config({}, snapshot, payload, analysis)
+        config = agent_service._build_agent_generated_resume_config(
+            {"layout": {"orders": {"work": ["work-1"], "project": ["project-1"]}}},
+            snapshot,
+            payload,
+            analysis,
+        )
 
         self.assertEqual(config["layout"]["sectionSpacingKey"], 8)
         self.assertEqual(config["layout"]["itemSpacingEm"], 1.5)
         self.assertEqual(config["layout"]["sectionSpacingClass"], "mb-8")
+        self.assertEqual(config["selection"]["experienceIds"], ["work-1", "project-1"])
+        self.assertEqual(config["selection"]["educationIds"], ["edu-1"])
+        self.assertEqual(config["selection"]["certificationIds"], ["cert-1"])
+        self.assertEqual(config["selection"]["skillIds"], ["skill-1"])
+        self.assertEqual(config["layout"]["orders"]["work"], ["work-1"])
+        self.assertEqual(config["jdAnalysis"]["jdText"], "产品 JD")
+        self.assertTrue(config["jdAnalysis"]["jdInputSignature"])
+        self.assertEqual(config["agentJob"]["jobTitle"], "产品实习")
+        self.assertEqual(config["agentJob"]["strengths"], ["沟通"])
+        datetime.fromisoformat(config["agentJob"]["generatedAt"])
 
     def test_agent_auto_assembly_selection_uses_match_scores(self) -> None:
         resume = SimpleNamespace(
@@ -1745,6 +2490,161 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             ["exp-current-2", "exp-current-1", "exp-current-3"],
         )
         self.assertEqual(selection["skillIds"], ["skill-current"])
+
+    async def test_agent_pdf_generation_skips_auto_assembly_when_force_one_page_disabled(self) -> None:
+        resume = SimpleNamespace(
+            id="resume-1",
+            title="主简历",
+            target_role="产品",
+            config={"selection": {"experienceIds": ["old-exp"]}},
+        )
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_产品实习_90",
+        )
+        options = agent_service.AgentGenerateOptions(
+            template_id="modern-slate",
+            polish_before_output=False,
+            polish_level="标准",
+            force_one_page=False,
+        )
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        with patch.object(agent_service, "resolve_agent_generate_options", AsyncMock(return_value=options)):
+            with patch.object(agent_service, "resolve_agent_resume_detail", AsyncMock(return_value=(resume, []))):
+                with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value={"profile": None, "experiences": [], "certifications": [], "skills": []})):
+                    with patch.object(agent_service, "_load_resume_item_categories", AsyncMock(return_value={})):
+                        with patch.object(agent_service, "_build_personal_summary", AsyncMock(return_value="")):
+                            with patch.object(agent_service, "_resume_with_agent_auto_assembly_selection") as mocked_auto_assembly:
+                                with patch.object(agent_service, "_build_resume_pdf_snapshot", return_value=snapshot) as mocked_build_snapshot:
+                                    with patch.object(agent_service, "_polish_snapshot_experiences", AsyncMock(return_value=snapshot)):
+                                        with patch.object(agent_service, "_fit_snapshot_to_one_page", AsyncMock(return_value=snapshot)):
+                                            with patch.object(
+                                                agent_service,
+                                                "_persist_agent_generated_resume",
+                                                AsyncMock(return_value=SimpleNamespace(id="generated-resume-1", title="岗位简历")),
+                                            ):
+                                                with patch.object(
+                                                    agent_service,
+                                                    "create_render_snapshot",
+                                                    AsyncMock(return_value=(SimpleNamespace(id="snapshot-1"), "token")),
+                                                ):
+                                                    await agent_service.build_agent_resume_pdf(
+                                                        SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                                        SimpleNamespace(),
+                                                        "user-1",
+                                                        payload,
+                                                        analysis,
+                                                        analysis_result={"experienceMatches": [{"id": "new-exp", "score": 100}]},
+                                                    )
+
+        mocked_auto_assembly.assert_not_called()
+        self.assertIs(mocked_build_snapshot.call_args.args[0], resume)
+
+    async def test_agent_pdf_generation_preserves_legacy_pdf_helper_auto_assembly_patch(self) -> None:
+        resume = SimpleNamespace(
+            id="resume-1",
+            title="主简历",
+            target_role="产品",
+            config={"selection": {"experienceIds": ["old-exp"]}},
+        )
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_产品实习_90",
+        )
+        options = agent_service.AgentGenerateOptions(
+            template_id="modern-slate",
+            polish_before_output=False,
+            polish_level="标准",
+            force_one_page=True,
+        )
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="示例公司_产品实习_90",
+            profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=[],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+
+        with patch.object(agent_service, "resolve_agent_generate_options", AsyncMock(return_value=options)):
+            with patch.object(agent_service, "resolve_agent_resume_detail", AsyncMock(return_value=(resume, []))):
+                with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value={"profile": None, "experiences": [], "certifications": [], "skills": []})):
+                    with patch.object(agent_service, "_load_resume_item_categories", AsyncMock(return_value={})):
+                        with patch.object(agent_service, "_build_personal_summary", AsyncMock(return_value="")):
+                            with patch.object(
+                                agent_pdf_helpers,
+                                "_agent_auto_assembly_selection",
+                                return_value={"experienceIds": ["patched-exp"]},
+                            ) as mocked_selection:
+                                with patch.object(agent_service, "_build_resume_pdf_snapshot", return_value=snapshot) as mocked_build_snapshot:
+                                    with patch.object(agent_service, "_polish_snapshot_experiences", AsyncMock(return_value=snapshot)):
+                                        with patch.object(agent_service, "_fit_snapshot_to_one_page", AsyncMock(return_value=snapshot)):
+                                            with patch.object(
+                                                agent_service,
+                                                "_persist_agent_generated_resume",
+                                                AsyncMock(return_value=SimpleNamespace(id="generated-resume-1", title="岗位简历")),
+                                            ):
+                                                with patch.object(
+                                                    agent_service,
+                                                    "create_render_snapshot",
+                                                    AsyncMock(return_value=(SimpleNamespace(id="snapshot-1"), "token")),
+                                                ):
+                                                    await agent_service.build_agent_resume_pdf(
+                                                        SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                                        SimpleNamespace(),
+                                                        "user-1",
+                                                        payload,
+                                                        analysis,
+                                                        analysis_result={"experienceMatches": []},
+                                                    )
+
+        mocked_selection.assert_called_once_with(resume.config, {"experienceMatches": []})
+        generation_resume = mocked_build_snapshot.call_args.args[0]
+        self.assertEqual(generation_resume.config["selection"]["experienceIds"], ["patched-exp"])
 
     async def test_agent_pdf_generation_applies_auto_assembly_selection(self) -> None:
         resume = SimpleNamespace(

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { Database } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
@@ -44,16 +43,6 @@ import {
     DEFAULT_SKILL_NAME,
     EDUCATION_DRAFT_PREFIX,
     EXPERIENCE_DRAFT_PREFIX,
-    FONT_SIZE_MAX,
-    FONT_SIZE_MIN,
-    FONT_SIZE_STEP,
-    LINE_HEIGHT_MAX,
-    LINE_HEIGHT_MIN,
-    LINE_HEIGHT_STEP,
-    SIDEBAR_WIDTH_CLASS,
-    SMART_PAGE_ITEM_SPACING_MIN,
-    SMART_PAGE_ITEM_SPACING_STEP,
-    SMART_PAGE_TOP_PADDING_STEP_PX,
 } from './constants';
 import {
     buildCertificationDraft,
@@ -85,14 +74,6 @@ import {
     sortByCategory,
 } from './helpers';
 import {
-    FONT_SIZE_OPTIONS,
-    ITEM_SPACING_SELECT_OPTIONS,
-    LINE_HEIGHT_OPTIONS,
-    MAX_ITEM_SPACING_EM,
-    SECTION_SPACING_OPTIONS,
-    TOP_PADDING_MIN_PX,
-    TOP_PADDING_SELECT_OPTIONS,
-    TOP_PADDING_SLIDER_MAX,
     buildDefaultSmartPageLayout,
     resolveDefaultItemSpacingEm,
     resolveDefaultSectionSpacingKey,
@@ -110,17 +91,15 @@ import {
     waitForNextFrame,
 } from './snapshotUtils';
 import {
-    RESUME_THEME_COLOR_PRESETS,
-} from '../../constants/resumeTemplates';
-import {
     buildPreferredResumeCreateConfig,
 } from '../resumeTemplateStorage';
-import EditorSidebar, { type EditorSidebarProps } from './components/EditorSidebar';
+import type { EditorSidebarProps } from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
-import LayoutAdjustToolbar from './components/LayoutAdjustToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
+import ResumeEditorDesktopWorkspace from './components/ResumeEditorDesktopWorkspace';
+import ResumeEditorMeasurePreview from './components/ResumeEditorMeasurePreview';
+import ResumeEditorMobileDrawer from './components/ResumeEditorMobileDrawer';
 import TemplateSelectorModal from './components/TemplateSelectorModal';
-import ResumePreview from './components/ResumePreview';
 import buildExperiencePolishToolbars from './components/ExperiencePolishToolbars';
 import type { AssistantLaunchRequest } from '../AIAssistant/types';
 import { useMobileEditorDrawer } from './hooks/useMobileEditorDrawer';
@@ -151,6 +130,10 @@ import { useEditorThemeState } from './hooks/useEditorThemeState';
 import { usePersistedBossGreetingSync } from './hooks/usePersistedBossGreetingSync';
 import { useCommittedResumeConfigSnapshot } from './hooks/useCommittedResumeConfigSnapshot';
 import { useResumeEditorPreviewModel } from './hooks/useResumeEditorPreviewModel';
+import {
+    useResumeEditorPreviewWorkspaceProps,
+    type SharedResumePreviewProps,
+} from './hooks/useResumeEditorPreviewWorkspaceProps';
 import { useResumeEditorAssistantLaunch } from './hooks/useResumeEditorAssistantLaunch';
 import { useResumeEditorCoreState } from './hooks/useResumeEditorCoreState';
 import { useResumeEditorTransientReset } from './hooks/useResumeEditorTransientReset';
@@ -1401,6 +1384,76 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
     const canCreateResume = !isLoadingResume;
     const isEditorBusy = isLoadingResume || isCreatingResume;
+    const sharedPreviewProps: SharedResumePreviewProps = {
+        templateId: resumeTemplateId,
+        themeColorPresetId,
+        experienceListMarkerStyle,
+        skillTagSeparator,
+        profile: previewProfile,
+        listSpacingClass,
+        sectionOrder,
+        selectedWorkItems,
+        selectedProjectItems,
+        educations,
+        selectedEduIds,
+        sortedCertifications,
+        selectedCertIds,
+        selectedSkillGroups,
+        onNavigateTab: handlePreviewNavigateTab,
+        resumeDisplayTitle: resolveResumeDisplayTitle(resumeName),
+    };
+    const {
+        layoutAdjustProps,
+        editorPreviewProps,
+        measurePreviewProps,
+    } = useResumeEditorPreviewWorkspaceProps({
+        sharedPreviewProps,
+        isLayoutAdjustToolbarOpen,
+        lineHeight,
+        fontSize,
+        topPaddingPx,
+        sectionSpacingKey,
+        itemSpacingEm,
+        themeColorPresetId,
+        onLineHeightChange: handleLineHeightChange,
+        onFontSizeChange: handleFontSizeChange,
+        onTopPaddingChange: handleTopPaddingChange,
+        onSectionSpacingChange: handleSectionSpacingChange,
+        onItemSpacingChange: handleItemSpacingChange,
+        onThemeColorChange: setThemeColorPresetId,
+        previewRef,
+        previewContentRef,
+        isPreviewOverflowing,
+        overflowingSectionIds,
+        floatingPolishHighlightItemIds,
+        isPreviewInteractionLocked,
+        listSpacingValue,
+        bulletSpacingValue,
+        sectionSpacingClass,
+        isDragging,
+        draggedItemKey,
+        draggedSectionId,
+        onSectionDragStart: handleSectionDragStart,
+        onSectionDragHover: handleSectionDragHover,
+        onSectionDrop: handleSectionDrop,
+        onTouchSectionDragStart: startSectionReorder,
+        onItemDragStart: handleDragStart,
+        onItemDragHover: handleItemDragHover,
+        onItemDrop: handleItemDrop,
+        onTouchItemDragStart: startItemReorder,
+        onTouchDragEnd: finishDragInteraction,
+        onTouchDragCancel: cancelTouchDragInteraction,
+        onDragEnd: clearDragState,
+        onEditExperience: handleEditExperience,
+        onEditCertification: handleEditCertification,
+        onEditSkill: handleEditSkill,
+        measurePreviewRef,
+        measurePreviewContentRef,
+        measureLayout,
+        measureListSpacingValue,
+        measureBulletSpacingValue,
+        measureSectionSpacingClass,
+    });
     const commonEditorSidebarProps: Omit<EditorSidebarProps, 'layoutMode' | 'showJDPanel'> = {
         sidebarTab,
         onSelectTab: handleSidebarTabSelect,
@@ -1589,110 +1642,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
                 />
             </div>
-            <div className="flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
-                <div className={`hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden ${SIDEBAR_WIDTH_CLASS}`}>
-                    <EditorSidebar
-                        {...commonEditorSidebarProps}
-                    />
-                </div>
-                <div className="flex flex-1 flex-col overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0">
-                    {isLayoutAdjustToolbarOpen ? (
-                        <LayoutAdjustToolbar
-                            lineHeight={lineHeight}
-                            fontSize={fontSize}
-                            topPaddingPx={topPaddingPx}
-                            sectionSpacingKey={sectionSpacingKey}
-                            itemSpacingEm={itemSpacingEm}
-                            lineHeightOptions={LINE_HEIGHT_OPTIONS}
-                            fontSizeOptions={FONT_SIZE_OPTIONS}
-                            topPaddingOptions={TOP_PADDING_SELECT_OPTIONS}
-                            sectionSpacingOptions={SECTION_SPACING_OPTIONS}
-                            itemSpacingOptions={ITEM_SPACING_SELECT_OPTIONS}
-                            lineHeightSlider={{
-                                min: LINE_HEIGHT_MIN,
-                                max: LINE_HEIGHT_MAX,
-                                step: LINE_HEIGHT_STEP,
-                            }}
-                            fontSizeSlider={{
-                                min: FONT_SIZE_MIN,
-                                max: FONT_SIZE_MAX,
-                                step: FONT_SIZE_STEP,
-                            }}
-                            topPaddingSlider={{
-                                min: TOP_PADDING_MIN_PX,
-                                max: TOP_PADDING_SLIDER_MAX,
-                                step: SMART_PAGE_TOP_PADDING_STEP_PX,
-                            }}
-                            sectionSpacingSlider={{
-                                min: 2,
-                                max: 12,
-                                step: 1,
-                            }}
-                            itemSpacingSlider={{
-                                min: SMART_PAGE_ITEM_SPACING_MIN,
-                                max: MAX_ITEM_SPACING_EM,
-                                step: SMART_PAGE_ITEM_SPACING_STEP,
-                            }}
-                            themeColorPresetId={themeColorPresetId}
-                            themeColorOptions={RESUME_THEME_COLOR_PRESETS}
-                            onLineHeightChange={handleLineHeightChange}
-                            onFontSizeChange={handleFontSizeChange}
-                            onTopPaddingChange={handleTopPaddingChange}
-                            onSectionSpacingChange={handleSectionSpacingChange}
-                            onItemSpacingChange={handleItemSpacingChange}
-                            onThemeColorChange={setThemeColorPresetId}
-                        />
-                    ) : null}
-                    <ResumePreview
-                        previewRef={previewRef}
-                        previewContentRef={previewContentRef}
-                        previewScope="editor"
-                        showOverflowGuide={isPreviewOverflowing}
-                        overflowHighlightSectionIds={overflowingSectionIds}
-                        polishHighlightItemIds={floatingPolishHighlightItemIds}
-                        readOnly={isPreviewInteractionLocked}
-                        lineHeight={lineHeight}
-                        fontSize={fontSize}
-                        listSpacingValue={listSpacingValue}
-                        bulletSpacingValue={bulletSpacingValue}
-                        topPaddingPx={topPaddingPx}
-                        templateId={resumeTemplateId}
-                        themeColorPresetId={themeColorPresetId}
-                        experienceListMarkerStyle={experienceListMarkerStyle}
-                        skillTagSeparator={skillTagSeparator}
-                        profile={previewProfile}
-                        sectionSpacingClass={sectionSpacingClass}
-                        listSpacingClass={listSpacingClass}
-                        sectionOrder={sectionOrder}
-                        selectedWorkItems={selectedWorkItems}
-                        selectedProjectItems={selectedProjectItems}
-                        educations={educations}
-                        selectedEduIds={selectedEduIds}
-                        sortedCertifications={sortedCertifications}
-                        selectedCertIds={selectedCertIds}
-                        selectedSkillGroups={selectedSkillGroups}
-                        isDragging={isDragging}
-                        draggedItemKey={draggedItemKey}
-                        draggedSectionId={draggedSectionId}
-                        onSectionDragStart={handleSectionDragStart}
-                        onSectionDragHover={handleSectionDragHover}
-                        onSectionDrop={handleSectionDrop}
-                        onTouchSectionDragStart={startSectionReorder}
-                        onItemDragStart={handleDragStart}
-                        onItemDragHover={handleItemDragHover}
-                        onItemDrop={handleItemDrop}
-                        onTouchItemDragStart={startItemReorder}
-                        onTouchDragEnd={finishDragInteraction}
-                        onTouchDragCancel={cancelTouchDragInteraction}
-                        onDragEnd={clearDragState}
-                        onNavigateTab={handlePreviewNavigateTab}
-                        onEditExperience={handleEditExperience}
-                        onEditCertification={handleEditCertification}
-                        onEditSkill={handleEditSkill}
-                        resumeDisplayTitle={resolveResumeDisplayTitle(resumeName)}
-                    />
-                </div>
-            </div>
+            <ResumeEditorDesktopWorkspace
+                sidebarProps={commonEditorSidebarProps}
+                layoutAdjustProps={layoutAdjustProps}
+                previewProps={editorPreviewProps}
+            />
             <TemplateSelectorModal
                 isOpen={isTemplateSelectorOpen}
                 selectedTemplateId={resumeTemplateId}
@@ -1709,90 +1663,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onSaveTemplatePreset={handleSaveTemplatePreset}
             />
 
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 md:hidden">
-                <div className="pointer-events-auto rounded-t-[28px] border border-b-0 border-border-light bg-surface-light/96 px-4 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2 shadow-[0_-18px_40px_rgba(15,23,42,0.14)] backdrop-blur dark:border-border-dark dark:bg-surface-dark/96">
-                    <button
-                        type="button"
-                        onClick={mobileEditorDrawer.open}
-                        className="mx-auto flex w-full max-w-[240px] flex-col items-center rounded-t-[20px] px-6 pb-1 pt-0.5 text-center"
-                    >
-                        <span className="mb-2 h-1.5 w-14 rounded-full bg-gray-300 dark:bg-gray-700" />
-                        <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                            <Database className="h-4 w-4 text-primary" />
-                            经历库
-                        </span>
-                    </button>
-                </div>
-            </div>
-            <div className="fixed left-[-200vw] top-0 w-screen md:w-[calc(100vw-600px)] pointer-events-none opacity-0" aria-hidden="true">
-                <ResumePreview
-                    previewRef={measurePreviewRef}
-                    previewContentRef={measurePreviewContentRef}
-                    previewScope="measure"
-                    lineHeight={measureLayout.lineHeight}
-                    fontSize={measureLayout.fontSize}
-                    listSpacingValue={measureListSpacingValue}
-                    bulletSpacingValue={measureBulletSpacingValue}
-                    topPaddingPx={measureLayout.topPaddingPx}
-                    templateId={resumeTemplateId}
-                    themeColorPresetId={themeColorPresetId}
-                    experienceListMarkerStyle={experienceListMarkerStyle}
-                    skillTagSeparator={skillTagSeparator}
-                    profile={previewProfile}
-                    sectionSpacingClass={measureSectionSpacingClass}
-                    listSpacingClass={listSpacingClass}
-                    sectionOrder={sectionOrder}
-                    selectedWorkItems={selectedWorkItems}
-                    selectedProjectItems={selectedProjectItems}
-                    educations={educations}
-                    selectedEduIds={selectedEduIds}
-                    sortedCertifications={sortedCertifications}
-                    selectedCertIds={selectedCertIds}
-                    selectedSkillGroups={selectedSkillGroups}
-                    readOnly
-                    isDragging={false}
-                    draggedItemKey={null}
-                    draggedSectionId={null}
-                    onSectionDragStart={() => { }}
-                    onSectionDragHover={() => { }}
-                    onSectionDrop={() => { }}
-                    onTouchSectionDragStart={() => { }}
-                    onItemDragStart={() => { }}
-                    onItemDragHover={() => { }}
-                    onItemDrop={() => { }}
-                    onTouchItemDragStart={() => { }}
-                    onTouchDragEnd={() => { }}
-                    onTouchDragCancel={() => { }}
-                    onDragEnd={() => { }}
-                    onNavigateTab={handlePreviewNavigateTab}
-                    onEditExperience={() => { }}
-                    onEditCertification={() => { }}
-                    onEditSkill={() => { }}
-                    resumeDisplayTitle={resolveResumeDisplayTitle(resumeName)}
-                />
-            </div>
-            {mobileEditorDrawer.isOpen ? (
-                <div className={`fixed inset-0 z-[70] transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${mobileEditorDrawer.isVisible ? 'bg-black/35 opacity-100 backdrop-blur-[1px]' : 'bg-black/0 opacity-0'}`}>
-                    <button
-                        type="button"
-                        aria-label="关闭经历库抽屉遮罩"
-                        className="absolute inset-0 h-full w-full cursor-default"
-                        onClick={mobileEditorDrawer.close}
-                    />
-                    <div className={`absolute inset-x-0 bottom-0 h-[82vh] rounded-t-[28px] border border-border-light bg-surface-light shadow-[0_-24px_60px_rgba(15,23,42,0.22)] will-change-transform transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] dark:border-border-dark dark:bg-surface-dark ${mobileEditorDrawer.isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
-                        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-t-[28px]">
-                            <div className="shrink-0 px-4 pb-2 pt-2">
-                                <div className="mx-auto h-1.5 w-14 rounded-full bg-gray-300 dark:bg-gray-700" />
-                            </div>
-                            <EditorSidebar
-                                {...commonEditorSidebarProps}
-                                layoutMode="drawer"
-                                showJDPanel={false}
-                            />
-                        </div>
-                    </div>
-                </div>
-            ) : null}
+            <ResumeEditorMobileDrawer
+                isOpen={mobileEditorDrawer.isOpen}
+                isVisible={mobileEditorDrawer.isVisible}
+                onOpen={mobileEditorDrawer.open}
+                onClose={mobileEditorDrawer.close}
+                sidebarProps={commonEditorSidebarProps}
+            />
+            <ResumeEditorMeasurePreview {...measurePreviewProps} />
             {isEditorBusy ? (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-[1px]">
                     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-200 shadow-sm">

@@ -592,10 +592,21 @@ class AssistantFrontendSourceTests(unittest.TestCase):
             / "ai"
             / "llm_transport.py"
         ).read_text(encoding="utf-8")
+        assistant_tool_source = (
+            REPO_ROOT
+            / "backend"
+            / "app"
+            / "domain"
+            / "ai"
+            / "assistant_tool_utils.py"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("from .llm_transport import (", ai_service_source)
         self.assertIn("_call_llm", ai_service_source)
-        self.assertIn("_post_chat_completion", ai_service_source)
+        self.assertIn("from .assistant_tool_utils import (", ai_service_source)
+        self.assertNotIn("_post_chat_completion", ai_service_source)
+        self.assertIn("_post_chat_completion", assistant_tool_source)
+        self.assertIn("async def _call_llm_with_tools", assistant_tool_source)
         self.assertIn("_stream_gemini_json_response", ai_service_source)
         self.assertNotIn("async with httpx.AsyncClient", ai_service_source)
         self.assertNotIn("def _build_headers", ai_service_source)
