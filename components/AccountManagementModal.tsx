@@ -86,6 +86,19 @@ type AccountManagementDraft = {
 
 const formatAccountValue = (value?: string | null) => value?.trim() || '未绑定';
 
+const formatAccountPhoneValue = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return '未绑定';
+  }
+
+  if (trimmedValue.startsWith('86') && normalizeLogtoPhoneIdentifier(value) === trimmedValue) {
+    return trimmedValue.slice(2);
+  }
+
+  return trimmedValue;
+};
+
 const getCodeCooldownButtonText = (label: string, seconds: number) => (
   seconds > 0 ? `${seconds} 秒后重试` : label
 );
@@ -963,7 +976,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
         <TaskCard
           icon={<Phone className="h-5 w-5" />}
           title={account?.primaryPhone ? '更换手机号' : '绑定手机号'}
-          value={`当前手机号：${formatAccountValue(account?.primaryPhone)}`}
+          value={`当前手机号：${formatAccountPhoneValue(account?.primaryPhone)}`}
           description="用于短信验证和账号恢复。更新前需要验证新手机号验证码。"
           actionText="选择"
           onClick={() => beginAction('phone')}
@@ -1177,7 +1190,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">填写并更新</p>
           <h3 className="mt-1 text-lg font-semibold text-white">{account?.primaryPhone ? '更换手机号' : '绑定手机号'}</h3>
-          <p className="mt-2 text-sm text-slate-400">当前手机号：{formatAccountValue(account?.primaryPhone)}</p>
+          <p className="mt-2 text-sm text-slate-400">当前手机号：{formatAccountPhoneValue(account?.primaryPhone)}</p>
         </div>
         <button className={SECONDARY_BUTTON_CLASS} onClick={() => setFlowStep('verify')} type="button" disabled={mutationInProgress}>
           <ArrowLeft className="h-4 w-4" />
@@ -1335,7 +1348,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <AccountSummaryItem label="邮箱" value={account?.primaryEmail} />
-            <AccountSummaryItem label="手机号" value={account?.primaryPhone} />
+            <AccountSummaryItem label="手机号" value={formatAccountPhoneValue(account?.primaryPhone)} />
             <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
               <div className="text-xs text-slate-500">二次验证</div>
               <div className="mt-1">

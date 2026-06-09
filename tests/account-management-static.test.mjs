@@ -52,6 +52,12 @@ test('account management feature is wired through sidebar, app shell, service, a
   assert.match(service, /await releaseVerificationCodeCooldown\(normalizedIdentifier\)/);
   assert.match(service, /return `86\$\{nationalPhone\}`/);
   assert.match(service, /normalizedPhone\.startsWith\('86'\) \? normalizedPhone\.slice\(2\) : normalizedPhone/);
+  assert.match(modal, /const formatAccountPhoneValue = \(value\?: string \| null\) => \{/);
+  assert.match(modal, /normalizeLogtoPhoneIdentifier\(value\) === trimmedValue/);
+  assert.match(modal, /trimmedValue\.slice\(2\)/);
+  assert.match(modal, /value=\{`当前手机号：\$\{formatAccountPhoneValue\(account\?\.primaryPhone\)\}`\}/);
+  assert.match(modal, /<p className="mt-2 text-sm text-slate-400">当前手机号：\{formatAccountPhoneValue\(account\?\.primaryPhone\)\}<\/p>/);
+  assert.match(modal, /<AccountSummaryItem label="手机号" value=\{formatAccountPhoneValue\(account\?\.primaryPhone\)\} \/>/);
   assert.match(modal, /error\.status === 429/);
   assert.match(service, /body:\s*jsonBody\(\{\s*phone:\s*normalizedPhone,\s*newIdentifierVerificationRecordId,\s*\}\)/);
   assert.match(modal, /verificationCodeCooldowns/);
