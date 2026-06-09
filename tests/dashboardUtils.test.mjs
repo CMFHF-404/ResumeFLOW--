@@ -66,3 +66,24 @@ test('removeResumeIds and filterExistingResumeIds keep deletion cleanup determin
   assert.deepEqual(removeResumeIds(items, ['b']).map((item) => item.id), ['a', 'c']);
   assert.deepEqual(filterExistingResumeIds(['a', 'missing', 'c'], items), ['a', 'c']);
 });
+
+test('resolveDropdownPosition keeps the menu within the viewport and opens upward near the bottom', async () => {
+  const { resolveDropdownPosition } = await importDashboardUtils();
+  const position = resolveDropdownPosition(
+    { top: 520, right: 390, bottom: 560, left: 350 },
+    { width: 192, height: 180 },
+    { width: 400, height: 600 }
+  );
+
+  assert.deepEqual(position, { top: 336, left: 198 });
+});
+
+test('resolveDropdownPosition can be called without window when viewport is omitted', async () => {
+  const { resolveDropdownPosition } = await importDashboardUtils();
+  const position = resolveDropdownPosition(
+    { top: 10, right: 60, bottom: 30, left: 20 },
+    { width: 192, height: 180 }
+  );
+
+  assert.deepEqual(position, { top: 8, left: 8 });
+});

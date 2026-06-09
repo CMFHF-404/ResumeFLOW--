@@ -56,3 +56,75 @@ export const filterExistingResumeIds = (ids: string[], resumes: Resume[]) => {
   const existingIds = new Set(resumes.map((resume) => resume.id));
   return ids.filter((id) => existingIds.has(id));
 };
+
+const DROPDOWN_WIDTH = 192;
+const DROPDOWN_OFFSET = 4;
+const DROPDOWN_VIEWPORT_PADDING = 8;
+const DROPDOWN_ESTIMATED_HEIGHT = 200;
+
+export type DropdownAnchor = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+export type DropdownPosition = {
+  top: number;
+  left: number;
+};
+
+type DropdownViewport = {
+  width: number;
+  height: number;
+};
+
+const resolveDropdownViewport = (): DropdownViewport => {
+  if (typeof window === 'undefined') {
+    return { width: 0, height: 0 };
+  }
+  return { width: window.innerWidth, height: window.innerHeight };
+};
+
+export const buildDropdownAnchor = (rect: Pick<DOMRect, 'top' | 'right' | 'bottom' | 'left'>): DropdownAnchor => ({
+  top: rect.top,
+  right: rect.right,
+  bottom: rect.bottom,
+  left: rect.left,
+});
+
+const clampNumber = (value: number, min: number, max: number) => {
+  return Math.min(Math.max(value, min), max);
+};
+
+export const resolveDropdownPosition = (
+  anchor: DropdownAnchor,
+  menuSize: { width: number; height: number },
+  viewport: DropdownViewport = resolveDropdownViewport()
+): DropdownPosition => {
+  const menuWidth = menuSize.width || DROPDOWN_WIDTH;
+  const menuHeight = menuSize.height || DROPDOWN_ESTIMATED_HEIGHT;
+  const spaceBelow = viewport.height - anchor.bottom;
+  const spaceAbove = anchor.top;
+  const shouldOpenUp = spaceBelow < menuHeight + DROPDOWN_OFFSET && spaceAbove > spaceBelow;
+  const maxTop = Math.max(DROPDOWN_VIEWPORT_PADDING, viewport.height - menuHeight - DROPDOWN_VIEWPORT_PADDING);
+  const maxLeft = Math.max(DROPDOWN_VIEWPORT_PADDING, viewport.width - menuWidth - DROPDOWN_VIEWPORT_PADDING);
+  const top = shouldOpenUp
+    ? clampNumber(
+      anchor.top - menuHeight - DROPDOWN_OFFSET,
+      DROPDOWN_VIEWPORT_PADDING,
+      maxTop
+    )
+    : clampNumber(
+      anchor.bottom + DROPDOWN_OFFSET,
+      DROPDOWN_VIEWPORT_PADDING,
+      maxTop
+    );
+  const idealLeft = anchor.right - menuWidth;
+  const left = clampNumber(
+    idealLeft,
+    DROPDOWN_VIEWPORT_PADDING,
+    maxLeft
+  );
+  return { top, left };
+};

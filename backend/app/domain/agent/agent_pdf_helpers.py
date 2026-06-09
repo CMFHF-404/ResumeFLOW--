@@ -4,28 +4,51 @@ import hashlib
 import io
 import json
 import re
-from copy import deepcopy
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from pypdf import PdfReader
 
 from ...models import ExperienceCategory
 from ..export.schemas import (
-    CertificationViewSnapshot,
     EducationViewSnapshot,
-    ResumeEditorProfileSnapshot,
     ResumeExperienceViewSnapshot,
     ResumePdfRenderSnapshot,
-    SkillGroupViewSnapshot,
-    SkillItemViewSnapshot,
     StarFields,
 )
 from ..resume.models import Resume
 from ..resume.resume_schema import ResumeExperienceItem
 from .agent_common_helpers import _as_experience_category, _date_to_str
-from .agent_option_helpers import AGENT_RESUME_TEMPLATE_OPTIONS, _clamp_score
+from .agent_auto_assembly_service import AUTO_ASSEMBLY_MAX_EXPERIENCES
+from .agent_profile_snapshot_service import (
+    _layout_orders_config,
+    _profile_payload,
+    _profile_payload_for_resume,
+    _profile_snapshot,
+    _profile_template_preset,
+    _resume_layout_config,
+    _resume_personal_summary_override,
+    _resume_profile_config,
+    _resume_summary_visible,
+    _snapshot_layout_orders,
+    _template_default_theme_color_preset_id,
+    _template_layout_value,
+    _template_section_order,
+)
+from .agent_resume_item_snapshot_service import (
+    _build_education_snapshots,
+    _build_experience_snapshots,
+    _build_experiences_payload,
+    _build_resume_item_education_snapshots,
+    _build_resume_item_experience_snapshots,
+    _certification_snapshots,
+    _certifications_payload,
+    _education_major,
+    _skill_group_snapshots,
+    _skills_payload,
+    _star_fields,
+    _version_payload,
+)
 from .schemas import AgentJobAnalysisResponse, AgentJobGenerateRequest
 
 
@@ -38,8 +61,6 @@ SMART_ONE_PAGE_FONT_SIZE = 13
 SMART_ONE_PAGE_TOP_PADDING_PX = 15
 SMART_ONE_PAGE_ITEM_SPACING_EM = 0.25
 SMART_ONE_PAGE_SECTION_SPACING_KEY = 2
-AUTO_ASSEMBLY_MAX_EXPERIENCES = 3
-AUTO_ASSEMBLY_MATCH_THRESHOLD = 80
 CSS_PX_PER_MM = 96 / 25.4
 PREVIEW_PADDING_MM = 20
 SMART_PAGE_TOP_PADDING_DEFAULT_PX = CSS_PX_PER_MM * PREVIEW_PADDING_MM
@@ -63,9 +84,6 @@ SMART_PAGE_SECTION_SPACING_CLASS_BY_KEY = {
     3: "mb-3",
     2: "mb-2",
 }
-PROFILE_TEMPLATE_PRESETS_KEY = "resumeTemplatePresets"
-
-
 def _agent_analysis_bank_payload(bank: Dict[str, Any]) -> Dict[str, Any]:
     experiences = bank["experiences"]
     return {
@@ -264,327 +282,12 @@ def _snapshot_skill_ids(snapshot: ResumePdfRenderSnapshot) -> List[str]:
 def _pdf_page_count(pdf_bytes: bytes) -> int:
     return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
 
-def _analysis_score_map(entries: Any) -> Dict[str, int]:
-    if not isinstance(entries, list):
-        return {}
-    result: Dict[str, int] = {}
-    for entry in entries:
-        item_id = _score_entry_id(entry)
-        if item_id:
-            result[item_id] = _score_entry_score(entry)
-    return result
-
-def _sort_selected_ids_by_score_asc(ids: Iterable[str], score_map: Dict[str, int]) -> List[str]:
-    return sorted(
-        [item_id for item_id in ids if item_id],
-        key=lambda item_id: (score_map.get(item_id, 0), item_id),
-    )
-
-def _snapshot_experience_ids(snapshot: ResumePdfRenderSnapshot) -> List[str]:
-    return [item.id for item in [*snapshot.selectedWorkItems, *snapshot.selectedProjectItems] if item.id]
-
 def _snapshot_experience_star_overrides(snapshot: ResumePdfRenderSnapshot) -> Dict[str, Dict[str, Any]]:
     return {
         item.id: item.star.model_dump(mode="json")
         for item in [*snapshot.selectedWorkItems, *snapshot.selectedProjectItems]
         if item.id
     }
-
-def _build_snapshot_trim_plan(
-    snapshot: ResumePdfRenderSnapshot,
-    analysis_result: Optional[Dict[str, Any]],
-) -> List[Tuple[str, str]]:
-    analysis = analysis_result if isinstance(analysis_result, dict) else {}
-    plan: List[Tuple[str, str]] = []
-    skill_score_map = _analysis_score_map(analysis.get("skillMatches"))
-    cert_score_map = _analysis_score_map(analysis.get("certificationMatches"))
-    experience_score_map = _analysis_score_map(analysis.get("experienceMatches"))
-    skill_ids = _snapshot_skill_ids(snapshot)
-    cert_ids = [item.id for item in snapshot.sortedCertifications if item.id]
-    experience_ids = _snapshot_experience_ids(snapshot)
-
-    plan.extend(("skill", item_id) for item_id in _sort_selected_ids_by_score_asc(skill_ids, skill_score_map))
-    plan.extend(("certification", item_id) for item_id in _sort_selected_ids_by_score_asc(cert_ids, cert_score_map))
-    experience_removals = _sort_selected_ids_by_score_asc(experience_ids, experience_score_map)
-    if len(experience_removals) > 1:
-        plan.extend(("experience", item_id) for item_id in experience_removals[:-1])
-    return plan
-
-def _remove_snapshot_skill(snapshot: ResumePdfRenderSnapshot, item_id: str) -> bool:
-    changed = False
-    next_groups: List[SkillGroupViewSnapshot] = []
-    for group in snapshot.selectedSkillGroups:
-        next_skills = [skill for skill in group.skills if skill.id != item_id]
-        if len(next_skills) != len(group.skills):
-            changed = True
-        if next_skills:
-            next_groups.append(SkillGroupViewSnapshot(name=group.name, skills=next_skills))
-    if changed:
-        snapshot.selectedSkillGroups = next_groups
-    return changed
-
-def _remove_snapshot_certification(snapshot: ResumePdfRenderSnapshot, item_id: str) -> bool:
-    next_items = [item for item in snapshot.sortedCertifications if item.id != item_id]
-    if len(next_items) == len(snapshot.sortedCertifications):
-        return False
-    snapshot.sortedCertifications = next_items
-    snapshot.selectedCertIds = [item.id for item in next_items]
-    return True
-
-def _remove_snapshot_experience(snapshot: ResumePdfRenderSnapshot, item_id: str) -> bool:
-    current_ids = _snapshot_experience_ids(snapshot)
-    if len(current_ids) <= 1:
-        return False
-    next_work_items = [item for item in snapshot.selectedWorkItems if item.id != item_id]
-    next_project_items = [item for item in snapshot.selectedProjectItems if item.id != item_id]
-    if (
-        len(next_work_items) == len(snapshot.selectedWorkItems)
-        and len(next_project_items) == len(snapshot.selectedProjectItems)
-    ):
-        return False
-    snapshot.selectedWorkItems = next_work_items
-    snapshot.selectedProjectItems = next_project_items
-    return True
-
-def _apply_snapshot_trim(snapshot: ResumePdfRenderSnapshot, target: Tuple[str, str]) -> bool:
-    kind, item_id = target
-    if kind == "skill":
-        return _remove_snapshot_skill(snapshot, item_id)
-    if kind == "certification":
-        return _remove_snapshot_certification(snapshot, item_id)
-    if kind == "experience":
-        return _remove_snapshot_experience(snapshot, item_id)
-    return False
-
-def _build_agent_jd_analysis_config(
-    payload: AgentJobGenerateRequest,
-    analysis: AgentJobAnalysisResponse,
-) -> Dict[str, Any]:
-    jd_text = payload.jd_text.strip()
-    result = {
-        "matchPercentage": analysis.match_percentage,
-        "jobKeywords": [],
-        "missingKeywords": analysis.missing_keywords,
-        "jobTitle": payload.job_title,
-        "company": payload.company_name,
-        "summary": analysis.evaluation,
-        "extractedJdText": jd_text,
-    }
-    return {
-        "jdText": jd_text,
-        "jdInputSignature": _hash_agent_text(jd_text),
-        "experienceSignature": _hash_agent_text(json.dumps(result, ensure_ascii=False, sort_keys=True)),
-        "result": result,
-        "itemSignatures": {
-            "experiences": {},
-            "certifications": {},
-            "skills": {},
-        },
-        "experienceText": "",
-        "inputMode": "text",
-        "updatedAt": _now_aware().isoformat(),
-    }
-
-def _build_agent_generated_resume_config(
-    source_config: Any,
-    snapshot: ResumePdfRenderSnapshot,
-    payload: AgentJobGenerateRequest,
-    analysis: AgentJobAnalysisResponse,
-) -> Dict[str, Any]:
-    source = deepcopy(source_config) if isinstance(source_config, dict) else {}
-    layout = source.get("layout") if isinstance(source.get("layout"), dict) else {}
-    item_spacing_em = _layout_float(
-        {"itemSpacingEm": snapshot.listSpacingValue.replace("em", "")},
-        "itemSpacingEm",
-        SMART_PAGE_ITEM_SPACING_DEFAULT,
-    )
-    section_spacing_key = _layout_section_spacing_key(
-        {"sectionSpacingClass": snapshot.sectionSpacingClass}
-    )
-    return {
-        "profile": snapshot.profile.model_dump(mode="json"),
-        "personalSummary": snapshot.profile.summary,
-        "profileSyncMode": "local",
-        "selection": {
-            "experienceIds": [item.id for item in [*snapshot.selectedWorkItems, *snapshot.selectedProjectItems]],
-            "educationIds": snapshot.selectedEduIds,
-            "certificationIds": snapshot.selectedCertIds,
-            "skillIds": _snapshot_skill_ids(snapshot),
-        },
-        "layout": {
-            "sectionOrder": snapshot.sectionOrder,
-            "density": "compact",
-            "topPaddingPx": snapshot.topPaddingPx,
-            "sectionSpacingKey": section_spacing_key,
-            "sectionSpacingClass": snapshot.sectionSpacingClass,
-            "itemSpacingEm": item_spacing_em,
-            "lineHeight": snapshot.lineHeight,
-            "fontSize": snapshot.fontSize,
-            "isSmartPageApplied": True,
-            "isSummaryVisible": bool(snapshot.profile.summary.strip()),
-            "orders": _snapshot_layout_orders(layout, snapshot),
-            "templateId": snapshot.templateId,
-            "themeColorPresetId": snapshot.themeColorPresetId,
-            "experienceListMarkerStyle": snapshot.experienceListMarkerStyle,
-            "skillTagSeparator": snapshot.skillTagSeparator,
-        },
-        "jdAnalysis": _build_agent_jd_analysis_config(payload, analysis),
-        "agentJob": {
-            "jobTitle": payload.job_title,
-            "companyName": payload.company_name,
-            "jobUrl": str(payload.job_url),
-            "source": payload.source,
-            "matchPercentage": analysis.match_percentage,
-            "recommendation": analysis.recommendation,
-            "suggestedFolderName": analysis.suggested_folder_name,
-            "strengths": analysis.strengths,
-            "gaps": analysis.gaps,
-            "missingKeywords": analysis.missing_keywords,
-            "generatedAt": _now_aware().isoformat(),
-        },
-    }
-
-def _resume_selection(config: Dict[str, Any]) -> Dict[str, Any]:
-    selection = config.get("selection")
-    return selection if isinstance(selection, dict) else {}
-
-def _score_entry_id(entry: Any) -> str:
-    if not isinstance(entry, dict):
-        return ""
-    return str(entry.get("id") or "").strip()
-
-def _score_entry_score(entry: Any) -> int:
-    if not isinstance(entry, dict):
-        return 0
-    return _clamp_score(entry.get("score"))
-
-def _positive_experience_ids_by_score(entries: Any) -> List[str]:
-    if not isinstance(entries, list):
-        return []
-    scored: List[Tuple[str, int, int]] = []
-    for index, entry in enumerate(entries):
-        item_id = _score_entry_id(entry)
-        score = _score_entry_score(entry)
-        if item_id and score > 0:
-            scored.append((item_id, score, index))
-    scored.sort(key=lambda item: (-item[1], item[2]))
-    return [item_id for item_id, _score, _index in scored[:AUTO_ASSEMBLY_MAX_EXPERIENCES]]
-
-def _threshold_match_ids(entries: Any) -> List[str]:
-    if not isinstance(entries, list):
-        return []
-    selected: List[str] = []
-    for entry in entries:
-        item_id = _score_entry_id(entry)
-        if item_id and _score_entry_score(entry) > AUTO_ASSEMBLY_MATCH_THRESHOLD:
-            selected.append(item_id)
-    return selected
-
-def _selection_list(selection: Dict[str, Any], key: str) -> List[str]:
-    value = selection.get(key)
-    if not isinstance(value, list):
-        return []
-    return [str(item_id) for item_id in value if str(item_id or "").strip()]
-
-def _merge_selected_ids(
-    primary_ids: Iterable[str],
-    fallback_ids: Iterable[str],
-    limit: Optional[int] = None,
-) -> List[str]:
-    selected: List[str] = []
-    seen: set[str] = set()
-    for item_id in [*primary_ids, *fallback_ids]:
-        normalized = str(item_id or "").strip()
-        if not normalized or normalized in seen:
-            continue
-        selected.append(normalized)
-        seen.add(normalized)
-        if limit is not None and len(selected) >= limit:
-            break
-    return selected
-
-def _agent_auto_assembly_selection(
-    source_config: Any,
-    analysis_result: Optional[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    if not isinstance(analysis_result, dict):
-        return None
-    experience_ids = _positive_experience_ids_by_score(analysis_result.get("experienceMatches"))
-    if not experience_ids:
-        return None
-
-    config = source_config if isinstance(source_config, dict) else {}
-    current_selection = _resume_selection(config)
-    cert_ids = _merge_selected_ids(
-        _threshold_match_ids(analysis_result.get("certificationMatches")),
-        _selection_list(current_selection, "certificationIds"),
-    )
-    skill_ids = _merge_selected_ids(
-        _threshold_match_ids(analysis_result.get("skillMatches")),
-        _selection_list(current_selection, "skillIds"),
-    )
-    return {
-        **deepcopy(current_selection),
-        "experienceIds": _merge_selected_ids(
-            experience_ids,
-            _selection_list(current_selection, "experienceIds"),
-            AUTO_ASSEMBLY_MAX_EXPERIENCES,
-        ),
-        **({"certificationIds": cert_ids} if cert_ids or "certificationIds" in current_selection else {}),
-        **({"skillIds": skill_ids} if skill_ids or "skillIds" in current_selection else {}),
-    }
-
-def _resume_with_agent_auto_assembly_selection(
-    resume: Resume,
-    analysis_result: Optional[Dict[str, Any]],
-) -> Any:
-    config = getattr(resume, "config", None)
-    selection = _agent_auto_assembly_selection(config, analysis_result)
-    if selection is None:
-        return resume
-    next_config = deepcopy(config) if isinstance(config, dict) else {}
-    next_config["selection"] = selection
-    layout = next_config.get("layout") if isinstance(next_config.get("layout"), dict) else {}
-    orders = deepcopy(layout.get("orders")) if isinstance(layout.get("orders"), dict) else {}
-    experience_ids = selection.get("experienceIds") if isinstance(selection.get("experienceIds"), list) else []
-    orders["workExperienceIds"] = experience_ids
-    orders["projectExperienceIds"] = experience_ids
-    next_config["layout"] = {
-        **layout,
-        "density": "compact",
-        "isSmartPageApplied": True,
-        "orders": orders,
-    }
-    return SimpleNamespace(
-        id=getattr(resume, "id", None),
-        title=getattr(resume, "title", None),
-        target_role=getattr(resume, "target_role", None),
-        config=next_config,
-    )
-
-def _resume_profile_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    profile = config.get("profile")
-    return profile if isinstance(profile, dict) else {}
-
-def _resume_layout_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    layout = config.get("layout")
-    return layout if isinstance(layout, dict) else {}
-
-def _layout_orders_config(layout: Dict[str, Any]) -> Dict[str, Any]:
-    orders = layout.get("orders")
-    return orders if isinstance(orders, dict) else {}
-
-def _resume_summary_visible(config: Dict[str, Any]) -> bool:
-    return _resume_layout_config(config).get("isSummaryVisible") is not False
-
-def _resume_personal_summary(config: Dict[str, Any]) -> str:
-    value = config.get("personalSummary")
-    return str(value).strip() if value is not None else ""
-
-def _resume_personal_summary_override(config: Dict[str, Any]) -> Optional[str]:
-    if "personalSummary" not in config:
-        return None
-    return _resume_personal_summary(config)
 
 def _resume_items_or_none(
     resume_items: Optional[List[ResumeExperienceItem]],
@@ -614,41 +317,6 @@ def _selected_id_order(selection: Dict[str, Any], key: str) -> Optional[List[str
         used.add(item_id)
         ordered.append(item_id)
     return ordered
-
-def _profile_extra_json(profile: Any) -> Dict[str, Any]:
-    extra_json = getattr(profile, "extra_json", {}) if profile is not None else {}
-    return extra_json if isinstance(extra_json, dict) else {}
-
-def _profile_template_preset(profile: Any, template_id: str) -> Dict[str, Any]:
-    presets = _profile_extra_json(profile).get(PROFILE_TEMPLATE_PRESETS_KEY)
-    if not isinstance(presets, dict):
-        return {}
-    preset = presets.get(template_id)
-    return preset if isinstance(preset, dict) else {}
-
-def _template_layout_value(layout: Dict[str, Any], preset: Dict[str, Any], key: str, fallback: str) -> str:
-    preset_value = preset.get(key)
-    if isinstance(preset_value, str) and preset_value:
-        return preset_value
-    layout_value = layout.get(key)
-    if isinstance(layout_value, str) and layout_value:
-        return layout_value
-    return fallback
-
-def _template_default_theme_color_preset_id(template_id: str) -> str:
-    for template in AGENT_RESUME_TEMPLATE_OPTIONS:
-        if template["id"] == template_id:
-            return str(template["default_theme_color_preset_id"])
-    return "slate"
-
-def _template_section_order(layout: Dict[str, Any], preset: Dict[str, Any]) -> List[str]:
-    preset_order = preset.get("sectionOrder")
-    if isinstance(preset_order, list) and preset_order:
-        return [str(section_id) for section_id in preset_order if str(section_id)]
-    layout_order = layout.get("sectionOrder")
-    if isinstance(layout_order, list) and layout_order:
-        return [str(section_id) for section_id in layout_order if str(section_id)]
-    return ["summary", "work", "project", "education", "certifications", "skills"]
 
 def _experience_category_map(rows: List[Tuple[Any, Any]]) -> Dict[str, ExperienceCategory]:
     result: Dict[str, ExperienceCategory] = {}
@@ -850,54 +518,22 @@ def _resume_item_experience_snapshots(
     category_by_master_id: Dict[str, ExperienceCategory],
     category: ExperienceCategory,
 ) -> List[ResumeExperienceViewSnapshot]:
-    items: List[ResumeExperienceViewSnapshot] = []
-    for item in rows:
-        experience = item.experience
-        master_id = str(getattr(experience, "master_experience_id", ""))
-        if category_by_master_id.get(master_id) != category:
-            continue
-        start = _date_to_str(getattr(experience, "start_date", None))
-        end = "至今" if getattr(experience, "is_current", False) else _date_to_str(getattr(experience, "end_date", None))
-        items.append(
-            ResumeExperienceViewSnapshot(
-                id=master_id,
-                title=getattr(experience, "title", "") or "",
-                company=getattr(experience, "org", "") or "",
-                date=" - ".join(part for part in [start, end] if part),
-                startDate=start or None,
-                endDate=end or None,
-                isCurrent=bool(getattr(experience, "is_current", False)),
-                star=_star_fields(getattr(experience, "star", {}) or {}),
-                category=category.value,
-            )
-        )
-    return items
+    return _build_resume_item_experience_snapshots(
+        rows,
+        category_by_master_id,
+        category,
+        star_fields=_star_fields,
+    )
 
 def _resume_item_education_snapshots(
     rows: List[ResumeExperienceItem],
     category_by_master_id: Dict[str, ExperienceCategory],
 ) -> List[EducationViewSnapshot]:
-    items: List[EducationViewSnapshot] = []
-    for item in rows:
-        experience = item.experience
-        master_id = str(getattr(experience, "master_experience_id", ""))
-        if category_by_master_id.get(master_id) != ExperienceCategory.EDUCATION:
-            continue
-        star = getattr(experience, "star", {}) or {}
-        items.append(
-            EducationViewSnapshot(
-                id=master_id,
-                school=getattr(experience, "org", "") or getattr(experience, "title", "") or "",
-                major=_education_major(getattr(experience, "title", ""), star, getattr(experience, "summary", "")),
-                degree=str(star.get("degree") or ""),
-                startDate=_date_to_str(getattr(experience, "start_date", None)),
-                endDate=_date_to_str(getattr(experience, "end_date", None)),
-                isCurrent=bool(getattr(experience, "is_current", False)),
-                gpa=str(star.get("gpa") or "") or None,
-                courses=str(star.get("courses") or "") or None,
-            )
-        )
-    return items
+    return _build_resume_item_education_snapshots(
+        rows,
+        category_by_master_id,
+        education_major=_education_major,
+    )
 
 def _filter_certifications(certs: List[Any], selected_ids: Optional[set[str]]) -> List[Any]:
     if selected_ids is None:
@@ -954,20 +590,6 @@ def _apply_explicit_order(
         used.add(key)
         ordered.append(by_key[key])
     return ordered + [item for item in items if str(key_fn(item)) not in used]
-
-def _snapshot_layout_orders(
-    layout: Dict[str, Any],
-    snapshot: ResumePdfRenderSnapshot,
-) -> Dict[str, Any]:
-    source_orders = layout.get("orders") if isinstance(layout.get("orders"), dict) else {}
-    return {
-        **deepcopy(source_orders),
-        "workExperienceIds": [item.id for item in snapshot.selectedWorkItems],
-        "projectExperienceIds": [item.id for item in snapshot.selectedProjectItems],
-        "educationIds": snapshot.selectedEduIds,
-        "certificationIds": snapshot.selectedCertIds,
-        "skillGroupNames": [group.name for group in snapshot.selectedSkillGroups],
-    }
 
 def _build_resume_pdf_snapshot(
     resume: Resume,
@@ -1084,219 +706,114 @@ def _build_resume_pdf_snapshot(
         skillTagSeparator=_template_layout_value(layout, template_preset, "skillTagSeparator", "，"),
     )
 
-def _profile_payload(profile: Any) -> Dict[str, Any]:
-    if profile is None:
-        return {}
-    extra_json = getattr(profile, "extra_json", {}) or {}
-    avatar_data_url = (
-        extra_json.get("avatar_data_url")
-        if isinstance(extra_json, dict)
-        else ""
-    )
-    return {
-        "full_name": getattr(profile, "full_name", "") or "",
-        "title": getattr(profile, "title", "") or "",
-        "summary": getattr(profile, "summary", "") or "",
-        "location": getattr(profile, "location", "") or "",
-        "email": getattr(profile, "email", "") or "",
-        "phone": getattr(profile, "phone", "") or "",
-        "social_links": getattr(profile, "social_links", {}) or {},
-        "avatar_data_url": avatar_data_url if isinstance(avatar_data_url, str) else "",
-    }
-
-def _social_link_url(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        url = value.get("url")
-        return url if isinstance(url, str) else ""
-    return ""
-
-def _string_field(config: Dict[str, Any], key: str, fallback: Any = "") -> str:
-    if key in config:
-        value = config.get(key)
-        return str(value) if value is not None else ""
-    return str(fallback or "")
-
-def _profile_payload_for_resume(profile: Any, config: Dict[str, Any]) -> Dict[str, Any]:
-    base = _profile_payload(profile)
-    summary_visible = _resume_summary_visible(config)
-    personal_summary_override = _resume_personal_summary_override(config)
-    config_profile = _resume_profile_config(config)
-    if config.get("profileSyncMode") == "local" and config_profile:
-        social_links = dict(base.get("social_links") or {})
-        linkedin = str(config_profile.get("linkedin") or "").strip()
-        if linkedin:
-            social_links["linkedin"] = linkedin
-        elif "linkedin" in config_profile:
-            social_links.pop("linkedin", None)
-        summary = personal_summary_override
-        if summary is None:
-            summary = str(config_profile.get("summary") or "")
-        return {
-            "full_name": str(config_profile.get("name") or ""),
-            "title": base.get("title", ""),
-            "summary": summary if summary_visible else "",
-            "location": str(config_profile.get("location") or ""),
-            "email": str(config_profile.get("email") or ""),
-            "phone": str(config_profile.get("phone") or ""),
-            "social_links": social_links,
-        }
-    if not summary_visible:
-        return {**base, "summary": ""}
-    if personal_summary_override is not None:
-        return {**base, "summary": personal_summary_override}
-    return base
-
-def _profile_snapshot(
-    profile: Any,
-    config: Dict[str, Any],
-    personal_summary: Optional[str],
-) -> ResumeEditorProfileSnapshot:
-    base = _profile_payload(profile)
-    social_links = base.get("social_links") if isinstance(base.get("social_links"), dict) else {}
-    linkedin = _string_field(
-        config,
-        "linkedin",
-        _social_link_url(social_links.get("linkedin")),
-    )
-    avatar_data_url = _string_field(config, "avatarDataUrl", base.get("avatar_data_url"))
-    summary = personal_summary
-    if summary is None:
-        summary = _string_field(config, "summary", base.get("summary"))
-    return ResumeEditorProfileSnapshot(
-        name=_string_field(config, "name", base.get("full_name")),
-        email=_string_field(config, "email", base.get("email")),
-        phone=_string_field(config, "phone", base.get("phone")),
-        location=_string_field(config, "location", base.get("location")),
-        linkedin=linkedin,
-        summary=summary,
-        avatarDataUrl=avatar_data_url,
-    )
-
 def _experiences_payload(rows: List[Tuple[Any, Any]], category: ExperienceCategory) -> List[Dict[str, Any]]:
-    payload = []
-    for master, version in rows:
-        if getattr(master, "category", None) != category or version is None:
-            continue
-        item = _version_payload(version)
-        item["id"] = str(getattr(master, "id", getattr(version, "id", "")))
-        payload.append(item)
-    return payload
+    return _build_experiences_payload(rows, category, version_payload=_version_payload)
 
-def _version_payload(version: Any) -> Dict[str, Any]:
-    return {
-        "id": str(getattr(version, "id", "")),
-        "title": getattr(version, "title", "") or "",
-        "org": getattr(version, "org", "") or "",
-        "start_date": _date_to_str(getattr(version, "start_date", None)),
-        "end_date": _date_to_str(getattr(version, "end_date", None)),
-        "is_current": bool(getattr(version, "is_current", False)),
-        "summary": getattr(version, "summary", "") or "",
-        "star": getattr(version, "star", {}) or {},
-        "tags": getattr(version, "tags", []) or [],
-    }
 
 def _experience_snapshots(rows: List[Tuple[Any, Any]], category: ExperienceCategory) -> List[ResumeExperienceViewSnapshot]:
-    items = []
-    for master, version in rows:
-        if getattr(master, "category", None) != category or version is None:
-            continue
-        start = _date_to_str(getattr(version, "start_date", None))
-        end = "至今" if getattr(version, "is_current", False) else _date_to_str(getattr(version, "end_date", None))
-        items.append(
-            ResumeExperienceViewSnapshot(
-                id=str(getattr(master, "id", getattr(version, "id", ""))),
-                title=getattr(version, "title", "") or "",
-                company=getattr(version, "org", "") or "",
-                date=" - ".join(part for part in [start, end] if part),
-                startDate=start or None,
-                endDate=end or None,
-                isCurrent=bool(getattr(version, "is_current", False)),
-                star=_star_fields(getattr(version, "star", {}) or {}),
-                category=category.value,
-            )
-        )
-    return items
+    return _build_experience_snapshots(rows, category, star_fields=_star_fields)
 
-def _education_major(title: Any, star: Dict[str, Any], summary: Any) -> str:
-    title_text = str(title or "")
-    degree_text = str(star.get("degree") or "")
-    if title_text and title_text != degree_text:
-        return title_text
-    return str(star.get("major") or summary or "")
 
 def _education_snapshots(rows: List[Tuple[Any, Any]]) -> List[EducationViewSnapshot]:
-    items = []
-    for master, version in rows:
-        if getattr(master, "category", None) != ExperienceCategory.EDUCATION or version is None:
-            continue
-        star = getattr(version, "star", {}) or {}
-        items.append(
-            EducationViewSnapshot(
-                id=str(getattr(master, "id", getattr(version, "id", ""))),
-                school=getattr(version, "org", "") or getattr(version, "title", "") or "",
-                major=_education_major(getattr(version, "title", ""), star, getattr(version, "summary", "")),
-                degree=str(star.get("degree") or ""),
-                startDate=_date_to_str(getattr(version, "start_date", None)),
-                endDate=_date_to_str(getattr(version, "end_date", None)),
-                isCurrent=bool(getattr(version, "is_current", False)),
-                gpa=str(star.get("gpa") or "") or None,
-                courses=str(star.get("courses") or "") or None,
-            )
-        )
-    return items
+    return _build_education_snapshots(rows, education_major=_education_major)
 
-def _certifications_payload(certs: List[Any]) -> List[Dict[str, Any]]:
-    return [
-        {
-            "id": str(getattr(cert, "id", "")),
-            "name": getattr(cert, "name", "") or "",
-            "issuer": getattr(cert, "issuer", "") or "",
-            "issue_date": _date_to_str(getattr(cert, "issue_date", None)),
-            "description": getattr(cert, "description", "") or "",
-        }
-        for cert in certs
-    ]
+def _resume_selection(config: Dict[str, Any]) -> Dict[str, Any]:
+    from .agent_auto_assembly_service import _resume_selection as read_selection
 
-def _certification_snapshots(certs: List[Any]) -> List[CertificationViewSnapshot]:
-    return [
-        CertificationViewSnapshot(
-            id=str(getattr(cert, "id", "")),
-            name=getattr(cert, "name", "") or "",
-            issuer=getattr(cert, "issuer", None),
-            date=_date_to_str(getattr(cert, "issue_date", None)),
-        )
-        for cert in certs
-    ]
+    return read_selection(config)
 
-def _skills_payload(rows: List[Tuple[Any, Any]]) -> List[Dict[str, Any]]:
-    return [
-        {
-            "id": str(getattr(user_skill, "id", "")),
-            "name": getattr(skill, "name", "") or "",
-            "category": getattr(skill, "category", "") or "",
-            "proficiency": getattr(user_skill, "proficiency", None),
-        }
-        for user_skill, skill in rows
-    ]
 
-def _skill_group_snapshots(rows: List[Tuple[Any, Any]]) -> List[SkillGroupViewSnapshot]:
-    grouped: Dict[str, List[SkillItemViewSnapshot]] = {}
-    for user_skill, skill in rows:
-        category = getattr(skill, "category", None) or "技能"
-        grouped.setdefault(category, []).append(
-            SkillItemViewSnapshot(
-                id=str(getattr(user_skill, "id", "")),
-                name=getattr(skill, "name", "") or "",
-            )
-        )
-    return [SkillGroupViewSnapshot(name=name, skills=items) for name, items in grouped.items()]
+def _score_entry_id(entry: Any) -> str:
+    from .agent_auto_assembly_service import _score_entry_id as read_id
 
-def _star_fields(star: Dict[str, Any]) -> StarFields:
-    return StarFields(
-        s=str(star.get("s") or ""),
-        t=str(star.get("t") or ""),
-        a=str(star.get("a") or ""),
-        r=str(star.get("r") or ""),
+    return read_id(entry)
+
+
+def _score_entry_score(entry: Any) -> int:
+    from .agent_auto_assembly_service import _score_entry_score as read_score
+
+    return read_score(entry)
+
+
+def _positive_experience_ids_by_score(entries: Any) -> List[str]:
+    from .agent_auto_assembly_service import _positive_experience_ids_by_score as select_ids
+
+    return select_ids(entries)
+
+
+def _threshold_match_ids(entries: Any) -> List[str]:
+    from .agent_auto_assembly_service import _threshold_match_ids as select_ids
+
+    return select_ids(entries)
+
+
+def _selection_list(selection: Dict[str, Any], key: str) -> List[str]:
+    from .agent_auto_assembly_service import _selection_list as read_list
+
+    return read_list(selection, key)
+
+
+def _merge_selected_ids(
+    primary_ids: Iterable[str],
+    fallback_ids: Iterable[str],
+    limit: Optional[int] = None,
+) -> List[str]:
+    from .agent_auto_assembly_service import _merge_selected_ids as merge_ids
+
+    return merge_ids(primary_ids, fallback_ids, limit)
+
+
+def _agent_auto_assembly_selection(
+    source_config: Any,
+    analysis_result: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    from .agent_auto_assembly_service import _build_agent_auto_assembly_selection
+
+    return _build_agent_auto_assembly_selection(
+        source_config,
+        analysis_result,
+        positive_experience_ids_by_score=_positive_experience_ids_by_score,
+        threshold_match_ids=_threshold_match_ids,
+        resume_selection=_resume_selection,
+        selection_list=_selection_list,
+        merge_selected_ids=_merge_selected_ids,
+    )
+
+
+def _resume_with_agent_auto_assembly_selection(
+    resume: Resume,
+    analysis_result: Optional[Dict[str, Any]],
+) -> Any:
+    from .agent_auto_assembly_service import _build_resume_with_agent_auto_assembly_selection
+
+    return _build_resume_with_agent_auto_assembly_selection(
+        resume,
+        analysis_result,
+        agent_auto_assembly_selection=_agent_auto_assembly_selection,
+    )
+
+
+def _build_agent_jd_analysis_config(
+    payload: AgentJobGenerateRequest,
+    analysis: AgentJobAnalysisResponse,
+) -> Dict[str, Any]:
+    from .agent_generated_resume_config import _build_agent_jd_analysis_config as build_config
+
+    return build_config(payload, analysis)
+
+
+def _build_agent_generated_resume_config(
+    source_config: Any,
+    snapshot: ResumePdfRenderSnapshot,
+    payload: AgentJobGenerateRequest,
+    analysis: AgentJobAnalysisResponse,
+) -> Dict[str, Any]:
+    from .agent_generated_resume_config import _build_agent_generated_resume_config as build_config
+
+    return build_config(
+        source_config,
+        snapshot,
+        payload,
+        analysis,
+        build_jd_analysis_config=_build_agent_jd_analysis_config,
     )

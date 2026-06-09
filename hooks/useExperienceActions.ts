@@ -1,68 +1,22 @@
 import {
     useCallback,
-    useRef,
     useState,
     type Dispatch,
-    type MutableRefObject,
     type SetStateAction,
 } from 'react';
-import { aiService } from '../services/aiService';
 import {
-    certificationsService,
-    Certification as CertificationRecord,
-    type CertificationCreatePayload,
-} from '../services/certificationsService';
-import {
-    experienceService,
-    type ExperienceDetail,
-    type ExperienceListItem,
-    type ExperienceUpdatePayload,
-    type ExperienceVersion,
-} from '../services/experienceService';
-import {
-    resumeService,
     type ResumeDetail,
-    type ResumeExperienceItem,
 } from '../services/resumeService';
-import type { UserSkill } from '../services/skillsService';
-import type { MatchTrend } from '../types/analysis';
-import { normalizeAiRichText } from '../utils/richText';
-import { extractThoughtHeadline } from '../utils/aiThought';
-import {
-    trackAiPolishApplied,
-    trackAiPolishResult,
-    trackAiPolishStart,
-    trackResumeCardChecked,
-} from '../utils/analyticsTracker';
 import type {
     CertificationEditDraft,
-    CertificationView,
     ConfirmDialogState,
-    DatePayloadFallback,
     EducationEditDraft,
-    EducationView,
     ExperienceEditDraft,
     ResumeExperienceView,
     SkillDraftContext,
     SkillEditDraft,
-    SkillGroupView,
     StarFieldKey,
-    StarFields,
 } from '../types/resume';
-import {
-    addToSet,
-    createDraftId,
-    deleteMapEntry,
-    isDraftId,
-    removeFromSet,
-    runWithFlag,
-    setMapEntry,
-    toggleInSet,
-} from './experienceActionHandlers/collectionUtils';
-import {
-    hasStarFieldsChange,
-    resolveStarPayload,
-} from './experienceActionHandlers/starPayload';
 import { runConfirmedDelete } from './experienceActionHandlers/deleteConfirm';
 import {
     createExperienceDeleteHandlers,
@@ -74,129 +28,45 @@ import {
 } from './experienceActionHandlers/experienceHandlers';
 import { createEducationHandlers, createCertificationHandlers } from './experienceActionHandlers/educationCertificationHandlers';
 import { createSkillHandlers } from './experienceActionHandlers/skillHandlers';
+import type {
+    CertificationDomain,
+    CertificationState,
+    ConfirmCopy,
+    DraftPrefixes,
+    EducationDomain,
+    EducationState,
+    ExperienceDefaults,
+    ExperienceDomain,
+    ExperienceHelpers,
+    ExperienceState,
+    MatchScoreDomain,
+    SkillDomain,
+    SkillState,
+    ToastApi,
+} from './experienceActionHandlers/types';
+import {
+    useCertificationState,
+    useEducationState,
+    useExperienceState,
+    useSkillState,
+} from './experienceActionHandlers/useExperienceActionState';
 
-export type ToastApi = {
-    success: (message: string, duration?: number) => string;
-    error: (message: string, duration?: number) => string;
-    loading: (message: string) => string;
-    updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
-    closeToast: (id: string) => void;
-};
-
-const JD_POLISH_TOAST_MESSAGES = {
-    loading: '正在基于 JD 润色...',
-    success: 'JD 润色完成',
-    noChange: 'JD 润色完成，但未产生可用调整',
-    error: 'JD 润色失败，请稍后重试',
-    emptyJd: '请先填写 JD 再润色',
-} as const;
-const JD_POLISH_TOAST_DURATION_MS = 2500;
-const JD_POLISH_TOAST_ERROR_DURATION_MS = 3000;
-
-export type ExperienceDefaults = {
-    experienceTitleByCategory: Record<ResumeExperienceView['category'], string>;
-    experienceCompanyByCategory: Record<ResumeExperienceView['category'], string>;
-    skillName: string;
-    skillCategory: string;
-};
-
-export type ExperienceHelpers = {
-    buildResumeExperienceView: (item: ExperienceListItem, resumeItem?: ResumeExperienceItem) => ResumeExperienceView;
-    buildDraftExperienceView: (category: ResumeExperienceView['category'], draftId: string) => ResumeExperienceView;
-    buildExperienceEditDraft: (item: ResumeExperienceView) => ExperienceEditDraft;
-    buildResumeExperienceMap: (detail: ResumeDetail | null) => Map<string, ResumeExperienceItem>;
-    buildExperienceDate: (start?: string, end?: string, isCurrent?: boolean) => string;
-    buildStarFields: (star?: Record<string, any>) => StarFields;
-    mergeStarFieldsWithSource: (draft: StarFields, sourceStar?: Record<string, any>) => StarFields;
-    mergeStarFields: (base: StarFields, updates: Partial<StarFields>) => StarFields;
-    resolveExperienceDatePayload: (draft: ExperienceEditDraft, fallback?: DatePayloadFallback) => {
-        startDate?: string;
-        endDate?: string;
-        isCurrent: boolean;
-    };
-    resolveEducationDatePayload: (draft: EducationEditDraft, fallback?: DatePayloadFallback) => {
-        startDate?: string;
-        endDate?: string;
-        isCurrent: boolean;
-    };
-    resolveSafeDateRange: (start: string, end: string) => { start: string; end: string };
-    isPresentLabel: (value?: string) => boolean;
-    sortByCategory: (
-        items: ResumeExperienceView[],
-        compare: (a: ResumeExperienceView, b: ResumeExperienceView) => number
-    ) => ResumeExperienceView[];
-    compareByDateDesc: (a: ResumeExperienceView, b: ResumeExperienceView) => number;
-    compareCertificationByDateDesc: (a: CertificationView, b: CertificationView) => number;
-    buildEducationDraft: (source?: ExperienceListItem, draftId?: string) => EducationEditDraft;
-    buildDraftEducationView: (draftId: string, draft: EducationEditDraft) => EducationView;
-    buildEducationView: (item: ExperienceListItem) => EducationView;
-    buildEducationVersionPayload: (
-        source: ExperienceListItem | null,
-        draft: EducationEditDraft
-    ) => ExperienceUpdatePayload['version'];
-    buildCertificationDraft: (source?: CertificationRecord) => CertificationEditDraft;
-    buildDraftCertificationView: (draftId: string, draft: CertificationEditDraft) => CertificationView;
-    buildCertificationView: (record: CertificationRecord) => CertificationView;
-    buildCertificationPayload: (draft: CertificationEditDraft) => CertificationCreatePayload;
-    buildSkillGroups: (skills: UserSkill[]) => SkillGroupView[];
-};
-
-export type ConfirmCopy = {
-    experience: { title: string; description: string };
-    education: { title: string; description: string };
-    certification: { title: string; description: string };
-    skill: { title: string; description: string };
-    skillCategory: { title: string; description: string };
-};
-
-export type DraftPrefixes = {
-    experience: string;
-    education: string;
-    certification: string;
-};
-
-export type ExperienceDomain = {
-    items: ResumeExperienceView[];
-    setItems: Dispatch<SetStateAction<ResumeExperienceView[]>>;
-    selectedIds: Set<string>;
-    setSelectedIds: Dispatch<SetStateAction<Set<string>>>;
-    resumeMap: Map<string, ResumeExperienceItem>;
-    setResumeMap: Dispatch<SetStateAction<Map<string, ResumeExperienceItem>>>;
-    sourceMap: Map<string, ExperienceListItem>;
-    setSourceMap: Dispatch<SetStateAction<Map<string, ExperienceListItem>>>;
-};
-
-export type EducationDomain = {
-    items: EducationView[];
-    setItems: Dispatch<SetStateAction<EducationView[]>>;
-    selectedIds: Set<string>;
-    setSelectedIds: Dispatch<SetStateAction<Set<string>>>;
-    sourceMap: Map<string, ExperienceListItem>;
-    setSourceMap: Dispatch<SetStateAction<Map<string, ExperienceListItem>>>;
-};
-
-export type CertificationDomain = {
-    items: CertificationView[];
-    setItems: Dispatch<SetStateAction<CertificationView[]>>;
-    selectedIds: Set<string>;
-    setSelectedIds: Dispatch<SetStateAction<Set<string>>>;
-    sourceMap: Map<string, CertificationRecord>;
-    setSourceMap: Dispatch<SetStateAction<Map<string, CertificationRecord>>>;
-};
-
-export type SkillDomain = {
-    groups: SkillGroupView[];
-    setGroups: Dispatch<SetStateAction<SkillGroupView[]>>;
-    selectedIds: Set<string>;
-    setSelectedIds: Dispatch<SetStateAction<Set<string>>>;
-};
-
-export type MatchScoreDomain = {
-    setCertificationMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
-    setCertificationMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
-    setSkillMatchScores: Dispatch<SetStateAction<Map<string, number>>>;
-    setSkillMatchTrends: Dispatch<SetStateAction<Map<string, MatchTrend>>>;
-};
+export type {
+    CertificationDomain,
+    CertificationState,
+    ConfirmCopy,
+    DraftPrefixes,
+    EducationDomain,
+    EducationState,
+    ExperienceDefaults,
+    ExperienceDomain,
+    ExperienceHelpers,
+    ExperienceState,
+    MatchScoreDomain,
+    SkillDomain,
+    SkillState,
+    ToastApi,
+} from './experienceActionHandlers/types';
 
 type UseExperienceActionsOptions = {
     resumeId: string | null;
@@ -295,163 +165,6 @@ type UseExperienceActionsResult = {
         toggleCertificationSelection: (id: string) => void;
         toggleSkillSelection: (id: string) => void;
         toggleSkillGroupSelection: (groupName: string, skillIds?: string[]) => void;
-    };
-};
-
-export type ExperienceState = {
-    editingExpId: string | null;
-    setEditingExpId: Dispatch<SetStateAction<string | null>>;
-    editingDraft: ExperienceEditDraft | null;
-    setEditingDraft: Dispatch<SetStateAction<ExperienceEditDraft | null>>;
-    syncToMaster: boolean;
-    setSyncToMaster: Dispatch<SetStateAction<boolean>>;
-    isSavingExperience: boolean;
-    setIsSavingExperience: Dispatch<SetStateAction<boolean>>;
-    isAddingExperience: boolean;
-    setIsAddingExperience: Dispatch<SetStateAction<boolean>>;
-    isPolishing: boolean;
-    setIsPolishing: Dispatch<SetStateAction<boolean>>;
-    deletingExperienceIds: Set<string>;
-    setDeletingExperienceIds: Dispatch<SetStateAction<Set<string>>>;
-    editSessionRef: MutableRefObject<number>;
-    collectionVersionRef: MutableRefObject<number>;
-};
-
-export type EducationState = {
-    editingEducationId: string | null;
-    setEditingEducationId: Dispatch<SetStateAction<string | null>>;
-    educationDraft: EducationEditDraft | null;
-    setEducationDraft: Dispatch<SetStateAction<EducationEditDraft | null>>;
-    isSavingEducation: boolean;
-    setIsSavingEducation: Dispatch<SetStateAction<boolean>>;
-    deletingEducationIds: Set<string>;
-    setDeletingEducationIds: Dispatch<SetStateAction<Set<string>>>;
-};
-
-export type CertificationState = {
-    editingCertificationId: string | null;
-    setEditingCertificationId: Dispatch<SetStateAction<string | null>>;
-    certificationDraft: CertificationEditDraft | null;
-    setCertificationDraft: Dispatch<SetStateAction<CertificationEditDraft | null>>;
-    isSavingCertification: boolean;
-    setIsSavingCertification: Dispatch<SetStateAction<boolean>>;
-    deletingCertificationIds: Set<string>;
-    setDeletingCertificationIds: Dispatch<SetStateAction<Set<string>>>;
-};
-
-export type SkillState = {
-    editingSkillId: string | null;
-    setEditingSkillId: Dispatch<SetStateAction<string | null>>;
-    skillDraft: SkillEditDraft | null;
-    setSkillDraft: Dispatch<SetStateAction<SkillEditDraft | null>>;
-    skillDraftContext: SkillDraftContext | null;
-    setSkillDraftContext: Dispatch<SetStateAction<SkillDraftContext | null>>;
-    isSavingSkill: boolean;
-    setIsSavingSkill: Dispatch<SetStateAction<boolean>>;
-    deletingSkillIds: Set<string>;
-    setDeletingSkillIds: Dispatch<SetStateAction<Set<string>>>;
-    deletingSkillCategories: Set<string>;
-    setDeletingSkillCategories: Dispatch<SetStateAction<Set<string>>>;
-    renamingCategoryTarget: string | null;
-    setRenamingCategoryTarget: Dispatch<SetStateAction<string | null>>;
-    renamingCategoryDraft: string;
-    setRenamingCategoryDraft: Dispatch<SetStateAction<string>>;
-};
-
-const useExperienceState = (): ExperienceState => {
-    const [editingExpId, setEditingExpId] = useState<string | null>(null);
-    const [editingDraft, setEditingDraft] = useState<ExperienceEditDraft | null>(null);
-    const [syncToMaster, setSyncToMaster] = useState(false);
-    const [isSavingExperience, setIsSavingExperience] = useState(false);
-    const [isAddingExperience, setIsAddingExperience] = useState(false);
-    const [isPolishing, setIsPolishing] = useState(false);
-    const [deletingExperienceIds, setDeletingExperienceIds] = useState<Set<string>>(new Set());
-    const editSessionRef = useRef(0);
-    const collectionVersionRef = useRef(0);
-
-    return {
-        editingExpId,
-        setEditingExpId,
-        editingDraft,
-        setEditingDraft,
-        syncToMaster,
-        setSyncToMaster,
-        isSavingExperience,
-        setIsSavingExperience,
-        isAddingExperience,
-        setIsAddingExperience,
-        isPolishing,
-        setIsPolishing,
-        deletingExperienceIds,
-        setDeletingExperienceIds,
-        editSessionRef,
-        collectionVersionRef,
-    };
-};
-
-const useEducationState = (): EducationState => {
-    const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
-    const [educationDraft, setEducationDraft] = useState<EducationEditDraft | null>(null);
-    const [isSavingEducation, setIsSavingEducation] = useState(false);
-    const [deletingEducationIds, setDeletingEducationIds] = useState<Set<string>>(new Set());
-
-    return {
-        editingEducationId,
-        setEditingEducationId,
-        educationDraft,
-        setEducationDraft,
-        isSavingEducation,
-        setIsSavingEducation,
-        deletingEducationIds,
-        setDeletingEducationIds,
-    };
-};
-
-const useCertificationState = (): CertificationState => {
-    const [editingCertificationId, setEditingCertificationId] = useState<string | null>(null);
-    const [certificationDraft, setCertificationDraft] = useState<CertificationEditDraft | null>(null);
-    const [isSavingCertification, setIsSavingCertification] = useState(false);
-    const [deletingCertificationIds, setDeletingCertificationIds] = useState<Set<string>>(new Set());
-
-    return {
-        editingCertificationId,
-        setEditingCertificationId,
-        certificationDraft,
-        setCertificationDraft,
-        isSavingCertification,
-        setIsSavingCertification,
-        deletingCertificationIds,
-        setDeletingCertificationIds,
-    };
-};
-
-const useSkillState = (): SkillState => {
-    const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
-    const [skillDraft, setSkillDraft] = useState<SkillEditDraft | null>(null);
-    const [skillDraftContext, setSkillDraftContext] = useState<SkillDraftContext | null>(null);
-    const [isSavingSkill, setIsSavingSkill] = useState(false);
-    const [deletingSkillIds, setDeletingSkillIds] = useState<Set<string>>(new Set());
-    const [deletingSkillCategories, setDeletingSkillCategories] = useState<Set<string>>(new Set());
-    const [renamingCategoryTarget, setRenamingCategoryTarget] = useState<string | null>(null);
-    const [renamingCategoryDraft, setRenamingCategoryDraft] = useState('');
-
-    return {
-        editingSkillId,
-        setEditingSkillId,
-        skillDraft,
-        setSkillDraft,
-        skillDraftContext,
-        setSkillDraftContext,
-        isSavingSkill,
-        setIsSavingSkill,
-        deletingSkillIds,
-        setDeletingSkillIds,
-        deletingSkillCategories,
-        setDeletingSkillCategories,
-        renamingCategoryTarget,
-        setRenamingCategoryTarget,
-        renamingCategoryDraft,
-        setRenamingCategoryDraft,
     };
 };
 

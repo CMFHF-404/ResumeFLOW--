@@ -9,7 +9,7 @@ import type {
     MatchScoreDomain,
     SkillDomain,
     SkillState,
-} from '../useExperienceActions';
+} from './types';
 
 type SkillDraftHandlers = {
     beginCreateSkillType: () => void;

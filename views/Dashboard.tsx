@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
@@ -12,6 +12,7 @@ import {
   removeResumeIds,
 } from './Dashboard/dashboardUtils';
 import { useDashboardResumeList } from './Dashboard/useDashboardResumeList';
+import { useDashboardDropdown } from './Dashboard/useDashboardDropdown';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
@@ -50,67 +51,6 @@ const DELETE_VERIFY_MESSAGES = {
   notRemoved: '删除未生效，已重新同步列表',
   syncFailed: '删除完成，但同步列表失败，请稍后重试',
 } as const;
-const DROPDOWN_WIDTH = 192;
-const DROPDOWN_OFFSET = 4;
-const DROPDOWN_VIEWPORT_PADDING = 8;
-// 首次定位时的预估高度，实际渲染后会用真实高度校正，避免菜单被视口裁切。
-const DROPDOWN_ESTIMATED_HEIGHT = 200;
-
-type DropdownAnchor = {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-};
-
-type DropdownPosition = {
-  top: number;
-  left: number;
-};
-
-const buildDropdownAnchor = (rect: DOMRect): DropdownAnchor => ({
-  top: rect.top,
-  right: rect.right,
-  bottom: rect.bottom,
-  left: rect.left,
-});
-
-const clampNumber = (value: number, min: number, max: number) => {
-  return Math.min(Math.max(value, min), max);
-};
-
-const resolveDropdownPosition = (
-  anchor: DropdownAnchor,
-  menuSize: { width: number; height: number }
-): DropdownPosition => {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const menuWidth = menuSize.width || DROPDOWN_WIDTH;
-  const menuHeight = menuSize.height || DROPDOWN_ESTIMATED_HEIGHT;
-  const spaceBelow = viewportHeight - anchor.bottom;
-  const spaceAbove = anchor.top;
-  const shouldOpenUp = spaceBelow < menuHeight + DROPDOWN_OFFSET && spaceAbove > spaceBelow;
-  const maxTop = Math.max(DROPDOWN_VIEWPORT_PADDING, viewportHeight - menuHeight - DROPDOWN_VIEWPORT_PADDING);
-  const maxLeft = Math.max(DROPDOWN_VIEWPORT_PADDING, viewportWidth - menuWidth - DROPDOWN_VIEWPORT_PADDING);
-  const top = shouldOpenUp
-    ? clampNumber(
-      anchor.top - menuHeight - DROPDOWN_OFFSET,
-      DROPDOWN_VIEWPORT_PADDING,
-      maxTop
-    )
-    : clampNumber(
-      anchor.bottom + DROPDOWN_OFFSET,
-      DROPDOWN_VIEWPORT_PADDING,
-      maxTop
-    );
-  const idealLeft = anchor.right - menuWidth;
-  const left = clampNumber(
-    idealLeft,
-    DROPDOWN_VIEWPORT_PADDING,
-    maxLeft
-  );
-  return { top, left };
-};
 
 const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
   return value === 'list' ? 'list' : 'grid';
@@ -134,10 +74,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     resolveStoredViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
   );
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const [dropdownAnchor, setDropdownAnchor] = useState<DropdownAnchor | null>(null);
-  const [dropdownPos, setDropdownPos] = useState<DropdownPosition | null>(null);
   const [isDeletingResume, setIsDeletingResume] = useState(false);
   const [isBatchEditMode, setIsBatchEditMode] = useState(false);
   const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>([]);
@@ -147,6 +83,13 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
+  const {
+    closeDropdown,
+    dropdownPos,
+    dropdownRef,
+    openDropdown,
+    openDropdownId,
+  } = useDashboardDropdown();
   const welcomeName = resolveDisplayName(userProfile?.full_name, DEFAULT_WELCOME_NAME);
   const {
     toasts,
@@ -222,12 +165,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     void createResume();
   };
 
-  const closeDropdown = useCallback(() => {
-    setOpenDropdownId(null);
-    setDropdownPos(null);
-    setDropdownAnchor(null);
-  }, []);
-
   const exitBatchEditMode = useCallback(() => {
     clearLongPressTimer();
     longPressTriggeredRef.current = false;
@@ -287,20 +224,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     setBatchDeleteTargetIds(selectedResumeIds);
   }, [closeDropdown, selectedResumeIds, showToastLoading, updateToast]);
 
-  const syncDropdownPosition = useCallback((anchor: DropdownAnchor) => {
-    if (!dropdownRef.current) {
-      return;
-    }
-    const rect = dropdownRef.current.getBoundingClientRect();
-    const nextPos = resolveDropdownPosition(anchor, { width: rect.width, height: rect.height });
-    setDropdownPos((prev) => {
-      if (prev && prev.top === nextPos.top && prev.left === nextPos.left) {
-        return prev;
-      }
-      return nextPos;
-    });
-  }, []);
-
   const handleDropdownClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (isBatchEditMode) {
@@ -311,10 +234,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-    const anchor = buildDropdownAnchor(rect);
-    setOpenDropdownId(id);
-    setDropdownAnchor(anchor);
-    setDropdownPos(resolveDropdownPosition(anchor, { width: DROPDOWN_WIDTH, height: DROPDOWN_ESTIMATED_HEIGHT }));
+    openDropdown(id, rect);
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -487,41 +407,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     setDeleteTargetId(null);
     setBatchDeleteTargetIds([]);
   };
-
-  useLayoutEffect(() => {
-    if (!openDropdownId || !dropdownAnchor) {
-      return;
-    }
-    syncDropdownPosition(dropdownAnchor);
-  }, [dropdownAnchor, openDropdownId, syncDropdownPosition]);
-
-  useEffect(() => {
-    if (!openDropdownId || !dropdownAnchor) {
-      return;
-    }
-    const handleResize = () => syncDropdownPosition(dropdownAnchor);
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [dropdownAnchor, openDropdownId, syncDropdownPosition]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // If clicking outside the dropdown menu
-      const target = event.target as Element;
-      if (!target.closest('.dropdown-menu') && !target.closest('.dropdown-trigger')) {
-        closeDropdown();
-      }
-    };
-    const handleScroll = () => closeDropdown();
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('scroll', handleScroll, true); // Close on scroll
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [closeDropdown]);
 
   useEffect(() => {
     setSelectedResumeIds((prev) => {
