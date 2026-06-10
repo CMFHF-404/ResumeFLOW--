@@ -210,6 +210,33 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 512)
         self.assertEqual(stream_mock.await_args.kwargs["request_label"], "star_polish")
 
+    async def test_split_experience_text_uses_split_only_prompt(self) -> None:
+        call_mock = AsyncMock(
+            return_value={
+                "s": "原文 **情境**",
+                "t": "原文 [任务](https://example.com)",
+                "a": "原文行动",
+                "r": 123,
+                "extra": "ignored",
+            }
+        )
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            result = await ai_service.split_experience_text("原文 **情境** [任务](https://example.com)", "work")
+
+        system_prompt = call_mock.await_args.args[0][0]["content"]
+        user_payload = json.loads(call_mock.await_args.args[0][1]["content"])
+        self.assertIn("split only", system_prompt.lower())
+        self.assertIn("Do not rewrite", system_prompt)
+        self.assertNotIn(ai_prompts.STAR_GENERAL_REWRITE_NO_JD, system_prompt)
+        self.assertEqual(user_payload["raw_text"], "原文 **情境** [任务](https://example.com)")
+        self.assertEqual(result, {
+            "s": "原文 **情境**",
+            "t": "原文 [任务](https://example.com)",
+            "a": "原文行动",
+            "r": "",
+        })
+
     async def test_boss_greeting_bypasses_thinking_when_budget_is_zero(self) -> None:
         fake_settings = SimpleNamespace(
             gemini_api_key="gemini-key",

@@ -324,6 +324,15 @@ STAR_SMART_COMPLETE_REWRITE = (
     "'evidenceDiagnosis', and 'followUpQuestions'."
 )
 
+STAR_SPLIT_ONLY = (
+    "You are a split only parser for resume experience text. Do not rewrite, polish, translate, summarize, "
+    "reorder facts beyond assigning them to fields, add facts, remove facts, alter hyperlinks, or alter Markdown/HTML emphasis syntax. "
+    "Given raw_text and optional category/org/title, split the original content into STAR fields: s, t, a, and r. "
+    "Preserve the user's exact wording, links, Markdown markers such as **bold** and *italic*, HTML inline tags, and line breaks. "
+    "If a fragment cannot be confidently assigned, put it in a rather than dropping it. "
+    "Return JSON only with string keys: 's', 't', 'a', 'r'."
+)
+
 TAG_GENERATION = (
     "You are a resume coach. Given work experience text, return JSON only with key "
     "'tags' as an array of 3-8 short skill tags. Avoid duplicates. Use the same "

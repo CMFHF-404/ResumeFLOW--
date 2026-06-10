@@ -122,6 +122,7 @@ from .prompts import (
     BOSS_GREETING_GENERATION,
     PERSONAL_SUMMARY_GENERATION,
     SKILL_ASSISTANT_PROMPT,
+    STAR_SPLIT_ONLY,
     TAG_GENERATION,
 )
 
@@ -157,6 +158,38 @@ async def polish_experience(
     ]
     result = await _call_llm(messages, json_mode=True)
     return _normalize_polish_result(result, mode)
+
+
+def _normalize_split_experience_result(result: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        key: result.get(key).strip() if isinstance(result.get(key), str) else ""
+        for key in ("s", "t", "a", "r")
+    }
+
+
+async def split_experience_text(
+    raw_text: str,
+    category: str,
+    org: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Dict[str, str]:
+    messages = [
+        {"role": "system", "content": STAR_SPLIT_ONLY},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "raw_text": raw_text,
+                    "category": category,
+                    "org": org or "",
+                    "title": title or "",
+                },
+                ensure_ascii=False,
+            ),
+        },
+    ]
+    result = await _call_llm(messages, json_mode=True)
+    return _normalize_split_experience_result(result)
 
 
 async def polish_experience_with_thoughts(

@@ -14,6 +14,7 @@ from .domain.ai.ai_router import router as ai_router
 from .domain.assistant.assistant_router import router as assistant_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
+from .domain.experience.draft_router import router as experience_draft_router
 from .domain.export.export_router import router as export_router
 from .domain.export.schemas import (
     ExperienceBankPdfExportRequest,
@@ -29,6 +30,7 @@ from contextlib import asynccontextmanager
 from .database import (
     ensure_agent_api_keys_table,
     ensure_ai_assistant_tables,
+    ensure_experience_drafts_table,
     ensure_experience_version_tags_column,
     ensure_feedback_contact_type_column,
     ensure_feedback_images_column,
@@ -47,6 +49,7 @@ async def lifespan(app: FastAPI):
     try:
         await verify_db_connection()
         await ensure_experience_version_tags_column()
+        await ensure_experience_drafts_table()
         await ensure_export_render_snapshots_table()
         await ensure_ai_assistant_tables()
         await ensure_agent_api_keys_table()
@@ -82,6 +85,7 @@ app.add_middleware(
 app.include_router(profile_router.router)
 app.include_router(account_router)
 app.include_router(experience_router.router)
+app.include_router(experience_draft_router)
 app.include_router(experience_versions.router)
 app.include_router(resumes.router)
 app.include_router(skills_router)

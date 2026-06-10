@@ -49,7 +49,7 @@ const SECONDARY_BUTTON_CLASS =
   'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
 const PRIMARY_BUTTON_CLASS =
   'inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50';
-const PANEL_CLASS = 'rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-lg shadow-slate-950/20';
+const PANEL_CLASS = 'rounded-lg border border-slate-800 bg-slate-900/70 p-3 shadow-lg shadow-slate-950/20 sm:p-4';
 const DEFAULT_VERIFICATION_CODE_COOLDOWN_SECONDS = 60;
 const IDENTITY_VERIFICATION_CACHE_TTL_MS = 10 * 60 * 1000;
 const IDENTITY_VERIFICATION_CACHE_PREFIX = 'resumeflow.account.identityVerification';
@@ -309,7 +309,7 @@ const AccountSummaryItem: React.FC<{
   label: string;
   value?: string | null;
 }> = ({ label, value }) => (
-  <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+  <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-950/50 px-2.5 py-1.5 sm:px-3 sm:py-2">
     <div className="text-xs text-slate-500">{label}</div>
     <div className="mt-1 truncate text-sm font-medium text-slate-100">{formatAccountValue(value)}</div>
   </div>
@@ -328,32 +328,33 @@ const StepRail: React.FC<{
   const activeIndex = steps.findIndex((step) => step.key === currentStep);
 
   return (
-    <div className="grid gap-2 sm:grid-cols-3">
+    <div className="relative grid grid-cols-3 gap-2 pt-1" aria-label="账号更新步骤">
+      <div className="absolute left-0 right-0 top-[14px] h-px bg-slate-800" aria-hidden="true" />
       {steps.map((step, index) => {
         const isActive = index === activeIndex;
         const isDone = index < activeIndex;
         const canSelect = step.key === 'select' && currentStep !== 'select' && !disabled;
-        const className = `flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+        const className = `relative z-10 flex min-w-0 flex-col items-center text-center text-xs font-medium transition ${
           isActive
-            ? 'border-cyan-400/70 bg-cyan-400/10 text-cyan-200'
+            ? 'text-cyan-200'
             : isDone
-              ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
-              : 'border-slate-800 bg-slate-950/40 text-slate-500'
-        } ${canSelect ? 'hover:border-cyan-400/70 hover:bg-cyan-400/10 hover:text-cyan-200' : ''}`;
+              ? 'text-emerald-200'
+              : 'text-slate-500'
+        } ${canSelect ? 'hover:text-cyan-200' : ''}`;
         const content = (
           <>
             <span
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] ${
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs shadow-sm shadow-slate-950/30 ${
                 isActive
-                  ? 'bg-cyan-400 text-slate-950'
+                  ? 'border-cyan-300 bg-cyan-400 text-slate-950'
                   : isDone
-                    ? 'bg-emerald-400 text-slate-950'
-                    : 'bg-slate-800 text-slate-500'
+                    ? 'border-emerald-300 bg-emerald-400 text-slate-950'
+                    : 'border-slate-700 bg-slate-800 text-slate-500'
               }`}
             >
               {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
             </span>
-            <span>{step.label}</span>
+            <span className="mt-2 block max-w-full truncate">{step.label}</span>
           </>
         );
 
@@ -393,19 +394,19 @@ const TaskCard: React.FC<{
   disabled: boolean;
 }> = ({ icon, title, value, description, actionText, onClick, disabled }) => (
   <button
-    className="group flex w-full items-start justify-between gap-4 rounded-lg border border-slate-800 bg-slate-950/40 p-4 text-left transition hover:border-cyan-400/60 hover:bg-slate-900/90 disabled:cursor-not-allowed disabled:opacity-50"
+    className="group flex w-full items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-left transition hover:border-cyan-400/60 hover:bg-slate-900/90 disabled:cursor-not-allowed disabled:opacity-50 sm:gap-4 sm:p-4"
     onClick={onClick}
     type="button"
     disabled={disabled}
   >
-    <span className="flex min-w-0 gap-3">
-      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-200">
+    <span className="flex min-w-0 gap-2.5 sm:gap-3">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-200 sm:h-9 sm:w-9">
         {icon}
       </span>
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-slate-100">{title}</span>
         <span className="mt-1 block truncate text-xs text-slate-400">{value}</span>
-        <span className="mt-2 block text-xs leading-5 text-slate-500">{description}</span>
+        <span className="mt-1.5 block text-xs leading-4 text-slate-500 sm:mt-2 sm:leading-5">{description}</span>
       </span>
     </span>
     <span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-semibold text-cyan-300 transition group-hover:text-cyan-200">
@@ -962,8 +963,8 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
   const canUsePhoneCode = Boolean(account?.primaryPhone);
 
   const renderSelectionStep = () => (
-    <div className="space-y-4">
-      <div className="grid gap-3">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="grid gap-2.5 sm:gap-3">
         <TaskCard
           icon={<Mail className="h-5 w-5" />}
           title="更换邮箱"
@@ -996,20 +997,25 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
   );
 
   const renderVerificationStep = () => (
-    <div className={PANEL_CLASS}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+    <div className={`${PANEL_CLASS} relative`}>
+      <div className="pr-20 sm:pr-24">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">二次验证</p>
           <h3 className="mt-1 text-lg font-semibold text-white">{actionTitle}</h3>
           <p className="mt-2 text-sm leading-6 text-slate-400">
             为了保护账号安全，请先验证当前账号归属。当前密码优先，也可使用验证码。
           </p>
         </div>
-        <button className={SECONDARY_BUTTON_CLASS} onClick={returnToSelection} type="button" disabled={mutationInProgress}>
-          <ArrowLeft className="h-4 w-4" />
-          返回
-        </button>
       </div>
+      <button
+        className={`${SECONDARY_BUTTON_CLASS} absolute right-3 top-3 px-2.5 py-1.5 text-xs sm:right-4 sm:top-4 sm:px-3 sm:py-2 sm:text-sm`}
+        onClick={returnToSelection}
+        type="button"
+        disabled={mutationInProgress}
+      >
+        <ArrowLeft className="h-4 w-4" />
+        返回
+      </button>
 
       <div className="mt-5 grid grid-cols-2 rounded-lg border border-slate-800 bg-slate-950/80 p-1">
         <button
@@ -1155,7 +1161,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
           </div>
           <div className="flex items-end">
             <button
-              className={SECONDARY_BUTTON_CLASS}
+              className={`${SECONDARY_BUTTON_CLASS} w-full sm:w-auto`}
               disabled={mutationInProgress || verificationCodeCooldowns.email > 0}
               onClick={sendNewEmailCode}
               type="button"
@@ -1175,7 +1181,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
             inputMode="numeric"
             disabled={mutationInProgress}
           />
-          <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updateEmailWithCode} type="button">
+          <button className={`${PRIMARY_BUTTON_CLASS} w-full sm:w-auto`} disabled={mutationInProgress} onClick={updateEmailWithCode} type="button">
             {activeMutation === 'email-update' ? <Spinner /> : <Mail className="h-4 w-4" />}
             确认更新
           </button>
@@ -1220,7 +1226,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
           </div>
           <div className="flex items-end">
             <button
-              className={SECONDARY_BUTTON_CLASS}
+              className={`${SECONDARY_BUTTON_CLASS} w-full sm:w-auto`}
               disabled={mutationInProgress || verificationCodeCooldowns.phone > 0}
               onClick={sendNewPhoneCode}
               type="button"
@@ -1240,7 +1246,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
             inputMode="numeric"
             disabled={mutationInProgress}
           />
-          <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updatePhoneWithCode} type="button">
+          <button className={`${PRIMARY_BUTTON_CLASS} w-full sm:w-auto`} disabled={mutationInProgress} onClick={updatePhoneWithCode} type="button">
             {activeMutation === 'phone-update' ? <Spinner /> : <Phone className="h-4 w-4" />}
             确认更新
           </button>
@@ -1292,7 +1298,7 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
             />
           </div>
         </div>
-        <button className={PRIMARY_BUTTON_CLASS} disabled={mutationInProgress} onClick={updateAccountPassword} type="button">
+        <button className={`${PRIMARY_BUTTON_CLASS} w-full sm:w-auto`} disabled={mutationInProgress} onClick={updateAccountPassword} type="button">
           {activeMutation === 'password-update' ? <Spinner /> : <KeyRound className="h-4 w-4" />}
           确认更新密码
         </button>
@@ -1315,23 +1321,26 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 px-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] pt-[max(12px,env(safe-area-inset-top,0px))] backdrop-blur-sm sm:px-4 sm:py-6"
       onMouseDown={closeAccountManagement}
       role="dialog"
       aria-modal="true"
       aria-labelledby="account-management-title"
     >
       <div
-        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-950/70"
+        className="flex max-h-[calc(100dvh_-_env(safe-area-inset-top,0px)_-_env(safe-area-inset-bottom,0px)_-_24px)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-950/70 sm:max-h-[92vh]"
         onMouseDown={(event) => event.stopPropagation()}
         tabIndex={-1}
       >
-        <div className="border-b border-slate-800 px-5 py-4">
+        <div className="border-b border-slate-800 px-3 py-3 sm:px-5 sm:py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 id="account-management-title" className="text-lg font-semibold">
-                账号管理
-              </h2>
+              <div className="flex min-w-0 items-center gap-2">
+                <h2 id="account-management-title" className="text-lg font-semibold">
+                  账号管理
+                </h2>
+                <VerificationBadge record={identityVerification} />
+              </div>
               <p className="mt-1 text-sm text-slate-400">选择要更新的信息，再完成二次验证和更新。</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -1346,22 +1355,16 @@ const AccountManagementModal: React.FC<AccountManagementModalProps> = ({ isOpen,
               </button>
             </div>
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="mt-3 grid grid-cols-2 gap-1.5 sm:mt-4 sm:gap-2">
             <AccountSummaryItem label="邮箱" value={account?.primaryEmail} />
             <AccountSummaryItem label="手机号" value={formatAccountPhoneValue(account?.primaryPhone)} />
-            <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-              <div className="text-xs text-slate-500">二次验证</div>
-              <div className="mt-1">
-                <VerificationBadge record={identityVerification} />
-              </div>
-            </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-3 sm:mt-4">
             <StepRail currentStep={flowStep} onSelectStep={handleStepSelect} disabled={mutationInProgress} />
           </div>
         </div>
 
-        <div className="min-h-0 overflow-y-auto p-5">
+        <div className="min-h-0 touch-pan-y overflow-y-auto overscroll-contain px-3 pb-[calc(env(safe-area-inset-bottom,0px)_+_12px)] pt-3 [-webkit-overflow-scrolling:touch] sm:p-5">
           {error ? (
             <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-200">
               {error}

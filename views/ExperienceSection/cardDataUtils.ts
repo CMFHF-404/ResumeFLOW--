@@ -3,8 +3,22 @@ import type { ExperienceListItem } from '../../services/experienceService';
 import type { ExperienceCardData, StarFieldKey } from '../ExperienceCard';
 import { convertDateToISO, parseYearMonthValue } from '../experienceUtils';
 import { stripRichTextToText } from '../../utils/richText';
+import type { ExperienceDraftRecord } from '../../services/experienceDraftService';
 
 export const isTempId = (id: string) => id.startsWith('temp_');
+export const isDraftId = (id: string) => id.startsWith('draft_');
+export const isLocalExperienceId = (id: string) => isTempId(id) || isDraftId(id);
+
+export const mergeFormalAndLocalExperiences = (
+  formalItems: ExperienceListItem[],
+  currentItems: ExperienceListItem[]
+) => {
+  const formalIds = new Set(formalItems.map((item) => item.master.id));
+  const localItems = currentItems.filter(
+    (item) => isLocalExperienceId(item.master.id) && !formalIds.has(item.master.id)
+  );
+  return localItems.length ? [...localItems, ...formalItems] : formalItems;
+};
 
 export const sortExperiencesByStartDate = (experiences: ExperienceListItem[]) => {
   return [...experiences].sort((a, b) => {
@@ -29,6 +43,9 @@ export const buildExperienceCardData = (item: ExperienceListItem): ExperienceCar
       a: star.a || '',
       r: star.r || '',
     },
+    editMode: 'expert',
+    simpleText: '',
+    draftStatus: 'idle',
   };
 };
 
@@ -38,6 +55,9 @@ export const createEmptyCardData = (): ExperienceCardData => ({
   start_date: '',
   end_date: '',
   star: { s: '', t: '', a: '', r: '' },
+  editMode: 'expert',
+  simpleText: '',
+  draftStatus: 'idle',
 });
 
 export const cloneExperienceCardData = (data: ExperienceCardData) => JSON.parse(JSON.stringify(data));
@@ -95,6 +115,22 @@ export const buildVersionPayload = (data: ExperienceCardData) => ({
   start_date: convertDateToISO(data.start_date),
   end_date: convertDateToISO(data.end_date),
   star: data.star || {},
+});
+
+export const buildDraftCardData = (draft: ExperienceDraftRecord): ExperienceCardData => ({
+  ...createEmptyCardData(),
+  ...(draft.card_data || {}),
+  star: {
+    s: draft.card_data?.star?.s || '',
+    t: draft.card_data?.star?.t || '',
+    a: draft.card_data?.star?.a || '',
+    r: draft.card_data?.star?.r || '',
+  },
+  editMode: draft.mode || 'simple',
+  simpleText: draft.simple_text || '',
+  draftId: draft.id,
+  clientDraftKey: draft.client_draft_key,
+  draftStatus: 'saved',
 });
 
 export const applyOptimisticSave = (

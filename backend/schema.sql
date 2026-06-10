@@ -157,6 +157,20 @@ CREATE TABLE IF NOT EXISTS experience_version_skills (
     PRIMARY KEY (experience_version_id, skill_id)
 );
 
+CREATE TABLE IF NOT EXISTS experience_drafts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category experience_category NOT NULL,
+    client_draft_key TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'simple',
+    simple_text TEXT NOT NULL DEFAULT '',
+    card_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    target_master_id UUID REFERENCES master_experiences(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_experience_drafts_user_category_key UNIQUE (user_id, category, client_draft_key)
+);
+
 CREATE TABLE IF NOT EXISTS resume_skills (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     resume_id UUID NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
@@ -243,6 +257,7 @@ CREATE TABLE IF NOT EXISTS ai_assistant_messages (
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_master_experiences_user_id ON master_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_experience_versions_master_id ON experience_versions(master_experience_id);
+CREATE INDEX IF NOT EXISTS idx_experience_drafts_user_category ON experience_drafts(user_id, category);
 CREATE INDEX IF NOT EXISTS idx_resume_experiences_resume_id ON resume_experiences(resume_id);
 CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);

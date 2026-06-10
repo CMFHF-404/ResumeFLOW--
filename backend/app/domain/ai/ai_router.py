@@ -22,6 +22,7 @@ from .ai_service import (
     generate_tags,
     polish_experience,
     polish_experience_with_thoughts,
+    split_experience_text,
 )
 from . import jd_attachment_service
 
@@ -51,6 +52,13 @@ class PolishTextRequest(BaseModel):
     mode: Optional[str] = None
     custom_prompt: Optional[str] = None
     entry_source: Optional[str] = None
+
+
+class SplitExperienceTextRequest(BaseModel):
+    raw_text: str
+    category: str
+    org: Optional[str] = None
+    title: Optional[str] = None
 
 
 class GenerateTagsRequest(BaseModel):
@@ -248,6 +256,19 @@ async def polish_text_endpoint(
         payload.jd_text,
         payload.mode,
         payload.custom_prompt,
+    )
+
+
+@router.post("/split-experience-text", response_model=Dict[str, str])
+async def split_experience_text_endpoint(
+    payload: SplitExperienceTextRequest,
+    current_user=Depends(get_current_user),
+):
+    return await split_experience_text(
+        payload.raw_text,
+        payload.category,
+        payload.org,
+        payload.title,
     )
 
 
