@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { experienceService, type ExperienceListItem } from '../../services/experienceService';
 import { runDedupedRefresh } from '../experienceUtils';
-import { sortExperiencesByStartDate } from './cardDataUtils';
+import { mergeFormalAndLocalExperiences, sortExperiencesByStartDate } from './cardDataUtils';
 import type { ExperienceSectionProps } from './types';
 
 export const useExperienceList = (category: ExperienceSectionProps['category'], refreshSignal?: number) => {
@@ -18,7 +18,7 @@ export const useExperienceList = (category: ExperienceSectionProps['category'], 
   const refreshExperiences = useCallback(async () => {
     return runDedupedRefresh(refreshInFlightRef, async () => {
       const data = await experienceService.list(category, { force: true });
-      setExperiences(data);
+      setExperiences((prev) => mergeFormalAndLocalExperiences(data, prev));
       return data;
     });
   }, [category]);
@@ -34,7 +34,7 @@ export const useExperienceList = (category: ExperienceSectionProps['category'], 
         }
         hasLoadedRef.current = true;
         const data = await experienceService.list(category);
-        setExperiences(data);
+        setExperiences((prev) => mergeFormalAndLocalExperiences(data, prev));
       } catch (error) {
         console.error(`[ExperienceSection] 加载${category}经历失败:`, error);
         hasLoadedRef.current = false;

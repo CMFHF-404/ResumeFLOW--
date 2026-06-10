@@ -40,7 +40,7 @@ export type ExperienceSectionModel = {
   expandedCards: Set<string>;
   collapsingCards: Set<string>;
   modifiedCards: Set<string>;
-  savingCardId: string | null;
+  isCardBusy: (cardId: string) => boolean;
   deletingCardId: string | null;
   setCardRef: (cardId: string, element: HTMLDivElement | null) => void;
   isPolishing: (cardId: string) => boolean;
@@ -51,8 +51,10 @@ export type ExperienceSectionModel = {
   onToggle: (cardId: string) => void;
   onDeleteRequest: (cardId: string) => void;
   onSave: (cardId: string) => void;
+  onFormalizeSimpleEntry: (cardId: string) => void;
   onCancel: (cardId: string) => void;
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
+  onEditModeChange: (cardId: string, mode: 'simple' | 'expert') => void;
   onPolishModeChange: (cardId: string, mode: CardPolishMode) => void;
   onCustomPromptChange: (cardId: string, value: string) => void;
   onRunPolish: (cardId: string) => void;

@@ -68,6 +68,42 @@ async def ensure_experience_version_tags_column() -> None:
         )
 
 
+async def ensure_experience_drafts_table() -> None:
+    """确保经历库实时草稿表存在，兼容老环境升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS experience_drafts (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    category experience_category NOT NULL,
+                    client_draft_key TEXT NOT NULL,
+                    mode TEXT NOT NULL DEFAULT 'simple',
+                    simple_text TEXT NOT NULL DEFAULT '',
+                    card_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    target_master_id UUID REFERENCES master_experiences(id) ON DELETE SET NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    CONSTRAINT uq_experience_drafts_user_category_key UNIQUE (user_id, category, client_draft_key)
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_experience_drafts_user_category
+                ON experience_drafts(user_id, category)
+                """
+            )
+        )
+
+
 async def ensure_export_render_snapshots_table() -> None:
     """确保 export_render_snapshots 表存在，兼容老环境直接升级。"""
     if engine.dialect.name != "postgresql":
@@ -352,6 +388,7 @@ async def ensure_dev_schema() -> None:
     """开发环境下的结构自检与补齐。"""
     await init_db()
     await ensure_experience_version_tags_column()
+    await ensure_experience_drafts_table()
     await ensure_export_render_snapshots_table()
     await ensure_ai_assistant_tables()
     await ensure_agent_api_keys_table()

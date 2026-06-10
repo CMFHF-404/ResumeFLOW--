@@ -87,7 +87,7 @@ const ExperienceCardList: React.FC<{
           isExpanded={model.expandedCards.has(cardId)}
           isCollapsing={model.collapsingCards.has(cardId)}
           isModified={model.modifiedCards.has(cardId)}
-          isSaving={model.savingCardId === cardId}
+          isSaving={model.isCardBusy(cardId)}
           isPolishing={model.isPolishing(cardId)}
           isPolishPreviewing={model.isPreviewingPolish(cardId)}
           activePolishMode={model.getPolishMode(cardId)}
@@ -95,8 +95,10 @@ const ExperienceCardList: React.FC<{
           onToggle={() => model.onToggle(cardId)}
           onDelete={() => model.onDeleteRequest(cardId)}
           onSave={() => model.onSave(cardId)}
+          onFormalizeSimpleEntry={() => model.onFormalizeSimpleEntry(cardId)}
           onCancel={() => model.onCancel(cardId)}
           onFieldChange={(field, value) => model.onFieldChange(cardId, field, value)}
+          onEditModeChange={(mode) => model.onEditModeChange(cardId, mode)}
           onPolishModeChange={(mode) => model.onPolishModeChange(cardId, mode)}
           onCustomPolishPromptChange={(value) => model.onCustomPromptChange(cardId, value)}
           onRunPolish={() => model.onRunPolish(cardId)}

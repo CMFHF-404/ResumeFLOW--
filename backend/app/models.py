@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from sqlalchemy import Column, DateTime, Text, Enum as SAEnum
+from sqlalchemy import Column, DateTime, Text, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlmodel import Field, SQLModel
 
@@ -124,6 +124,34 @@ class ExperienceVersionSkill(SQLModel, table=True):
         foreign_key="experience_versions.id", primary_key=True
     )
     skill_id: uuid.UUID = Field(foreign_key="skills.id", primary_key=True)
+
+
+class ExperienceDraft(SQLModel, table=True):
+    __tablename__ = "experience_drafts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "category", "client_draft_key", name="uq_experience_drafts_user_category_key"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    category: ExperienceCategory = Field(
+        sa_column=Column(
+            SAEnum(
+                ExperienceCategory,
+                name="experience_category",
+                create_type=False,
+                values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            ),
+            nullable=False,
+        )
+    )
+    client_draft_key: str = Field(sa_column=Column(Text, nullable=False))
+    mode: str = Field(default="simple", sa_column=Column(Text, nullable=False))
+    simple_text: str = Field(default="", sa_column=Column(Text, nullable=False))
+    card_data: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    target_master_id: Optional[uuid.UUID] = Field(default=None, foreign_key="master_experiences.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
 class ResumeSkill(SQLModel, table=True):

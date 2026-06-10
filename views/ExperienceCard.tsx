@@ -31,6 +31,11 @@ export type ExperienceCardData = {
   start_date: string;
   end_date: string;
   star: Record<StarFieldKey, string>;
+  editMode: 'simple' | 'expert';
+  simpleText: string;
+  draftId?: string | null;
+  clientDraftKey?: string | null;
+  draftStatus?: 'idle' | 'saving' | 'saved' | 'error';
 };
 
 export type ExperienceCardLabels = {
@@ -76,8 +81,10 @@ type ExperienceCardProps = {
   onToggle: () => void;
   onDelete: () => void;
   onSave: () => void;
+  onFormalizeSimpleEntry: () => void;
   onCancel: () => void;
   onFieldChange: (field: string, value: string | string[]) => void;
+  onEditModeChange: (mode: 'simple' | 'expert') => void;
   onPolishModeChange: (mode: Exclude<PolishMode, 'assistant'>) => void;
   onCustomPolishPromptChange: (value: string) => void;
   onRunPolish: () => void;
@@ -178,8 +185,9 @@ const ExperienceCardHeader: React.FC<{
   data: ExperienceCardData;
   labels: ExperienceCardLabels;
   onFieldChange: (field: string, value: string | string[]) => void;
+  isLocked: boolean;
   themeColor?: string;
-}> = ({ data, labels, onFieldChange, themeColor }) => (
+}> = ({ data, labels, onFieldChange, isLocked, themeColor }) => (
   <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
     <div className="flex flex-col lg:flex-row gap-6 mb-4">
       <div className="flex-1">
@@ -192,6 +200,7 @@ const ExperienceCardHeader: React.FC<{
           type="text"
           value={data.org}
           onChange={(e) => onFieldChange('org', e.target.value)}
+          disabled={isLocked}
         />
       </div>
       <div className="flex-1">
@@ -204,6 +213,7 @@ const ExperienceCardHeader: React.FC<{
           type="text"
           value={data.title}
           onChange={(e) => onFieldChange('title', e.target.value)}
+          disabled={isLocked}
         />
       </div>
       <div className="w-full lg:w-auto shrink-0">
@@ -222,6 +232,7 @@ const ExperienceCardHeader: React.FC<{
               }}
               placeholder="开始时间"
               className="h-full"
+              disabled={isLocked}
             />
           </div>
           <span className="text-gray-400">-</span>
@@ -233,6 +244,7 @@ const ExperienceCardHeader: React.FC<{
               allowPresent
               className="h-full"
               minDate={data.start_date}
+              disabled={isLocked}
             />
           </div>
         </div>
@@ -247,8 +259,9 @@ const StarSectionItem: React.FC<{
   value: string;
   onChange: (value: string) => void;
   onUndo: () => boolean;
+  readOnly: boolean;
   themeColor?: string;
-}> = ({ section, isLast, value, onChange, onUndo, themeColor }) => (
+}> = ({ section, isLast, value, onChange, onUndo, readOnly, themeColor }) => (
   <div className="relative flex gap-0 pb-3 md:gap-4 md:pb-0">
     {!isLast && <div className="absolute left-[19px] top-10 bottom-0 hidden w-[2px] bg-gray-100 dark:bg-gray-800 md:block"></div>}
     <div
@@ -273,6 +286,7 @@ const StarSectionItem: React.FC<{
         ariaLabel={`${section.label} 输入`}
         enableList={false}
         onUndo={onUndo}
+        readOnly={readOnly}
       />
     </div>
   </div>
@@ -282,8 +296,9 @@ const StarSectionList: React.FC<{
   data: ExperienceCardData;
   onFieldChange: (field: string, value: string | string[]) => void;
   onUndo: (field: StarFieldKey) => boolean;
+  readOnly: boolean;
   themeColor?: string;
-}> = ({ data, onFieldChange, onUndo, themeColor }) => (
+}> = ({ data, onFieldChange, onUndo, readOnly, themeColor }) => (
   <div className="space-y-4">
     {STAR_SECTIONS.map((section, idx) => (
       <StarSectionItem
@@ -293,9 +308,62 @@ const StarSectionList: React.FC<{
         value={data.star?.[section.id] || ''}
         onChange={(value) => onFieldChange(`star.${section.id}`, value)}
         onUndo={() => onUndo(section.id)}
+        readOnly={readOnly}
         themeColor={themeColor}
       />
     ))}
+  </div>
+);
+
+const ExperienceModeTabs: React.FC<{
+  mode: 'simple' | 'expert';
+  onChange: (mode: 'simple' | 'expert') => void;
+  disabled: boolean;
+}> = ({ mode, onChange, disabled }) => (
+  <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1 text-sm dark:border-gray-700 dark:bg-gray-800">
+    <button
+      type="button"
+      onClick={() => onChange('simple')}
+      disabled={disabled}
+      className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+        mode === 'simple'
+          ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+          : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+      }`}
+    >
+      简易模式
+    </button>
+    <button
+      type="button"
+      onClick={() => onChange('expert')}
+      disabled={disabled}
+      className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+        mode === 'expert'
+          ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+          : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+      }`}
+    >
+      专家模式
+    </button>
+  </div>
+);
+
+const SimpleExperienceEditor: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  readOnly: boolean;
+  themeColor?: string;
+}> = ({ value, onChange, readOnly, themeColor }) => (
+  <div className="space-y-2">
+    <RichTextEditor
+      className={`min-h-[260px] w-full rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-700 shadow-sm transition-all hover:bg-white focus:ring-2 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300 dark:hover:bg-gray-800 ${getThemeClasses(themeColor).focus}`}
+      value={value}
+      placeholder="直接写下完整经历，支持 Markdown、加粗、斜体、链接。可使用 S/T/A/R 标题，或用 --- 分隔四段。"
+      onChange={onChange}
+      ariaLabel="简易模式经历输入"
+      enableList={false}
+      readOnly={readOnly}
+    />
   </div>
 );
 
@@ -310,6 +378,7 @@ const ExperienceCardFooter: React.FC<{
   onDelete: () => void;
   onCancel: () => void;
   onSave: () => void;
+  onFormalizeSimpleEntry: () => void;
   onToggle: () => void;
   onPolishModeChange: (mode: Exclude<PolishMode, 'assistant'>) => void;
   onCustomPolishPromptChange: (value: string) => void;
@@ -329,6 +398,7 @@ const ExperienceCardFooter: React.FC<{
   onDelete,
   onCancel,
   onSave,
+  onFormalizeSimpleEntry,
   onToggle,
   onPolishModeChange,
   onCustomPolishPromptChange,
@@ -550,23 +620,26 @@ const ExperienceCardFooter: React.FC<{
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
             title="删除"
             type="button"
+            disabled={isSaving}
           >
             <Trash2 className="h-4 w-4" />
           </button>
-          <button
-            ref={polishButtonRef}
-            onClick={() => setIsPolishDialogOpen((prev) => !prev)}
-            className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
-              isPolishDialogOpen
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700'
-            }`}
-            title="打开 AI 润色工具栏"
-            aria-label="打开 AI 润色工具栏"
-            type="button"
-          >
-            <Sparkles className={`h-4 w-4 ${isPolishing ? 'animate-pulse' : ''}`} />
-          </button>
+          {data.editMode === 'expert' ? (
+            <button
+              ref={polishButtonRef}
+              onClick={() => setIsPolishDialogOpen((prev) => !prev)}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
+                isPolishDialogOpen
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700'
+              }`}
+              title="打开 AI 润色工具栏"
+              aria-label="打开 AI 润色工具栏"
+              type="button"
+            >
+              <Sparkles className={`h-4 w-4 ${isPolishing ? 'animate-pulse' : ''}`} />
+            </button>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -581,13 +654,13 @@ const ExperienceCardFooter: React.FC<{
                 取消
               </button>
               <button
-                onClick={onSave}
+                onClick={data.editMode === 'simple' ? onFormalizeSimpleEntry : onSave}
                 className={`flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-medium shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${getThemeClasses(themeColor).button}`}
                 disabled={isSaving || isPolishPreviewing}
                 title={isPolishPreviewing ? '请先确认或撤销当前润色预览' : undefined}
                 type="button"
               >
-                {isSaving ? '保存中...' : '保存'}
+                {isSaving ? '保存中...' : data.editMode === 'simple' ? '正式录入' : '保存'}
               </button>
             </>
           ) : (
@@ -619,8 +692,10 @@ const ExpandedExperienceCard: React.FC<{
   onToggle: () => void;
   onDelete: () => void;
   onSave: () => void;
+  onFormalizeSimpleEntry: () => void;
   onCancel: () => void;
   onFieldChange: (field: string, value: string | string[]) => void;
+  onEditModeChange: (mode: 'simple' | 'expert') => void;
   onPolishModeChange: (mode: Exclude<PolishMode, 'assistant'>) => void;
   onCustomPolishPromptChange: (value: string) => void;
   onRunPolish: () => void;
@@ -642,8 +717,10 @@ const ExpandedExperienceCard: React.FC<{
   onToggle,
   onDelete,
   onSave,
+  onFormalizeSimpleEntry,
   onCancel,
   onFieldChange,
+  onEditModeChange,
   onPolishModeChange,
   onCustomPolishPromptChange,
   onRunPolish,
@@ -658,15 +735,38 @@ const ExpandedExperienceCard: React.FC<{
         data={data}
         labels={labels}
         onFieldChange={onFieldChange}
+        isLocked={isSaving}
         themeColor={themeColor}
       />
       <div className="p-6 pt-4 space-y-4">
-        <StarSectionList
-          data={data}
-          onFieldChange={onFieldChange}
-          onUndo={onUndo}
-          themeColor={themeColor}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ExperienceModeTabs mode={data.editMode} onChange={onEditModeChange} disabled={isSaving} />
+          {data.draftStatus && data.draftStatus !== 'idle' ? (
+            <span className="text-xs text-gray-400">
+              {data.draftStatus === 'saving'
+                ? '草稿保存中...'
+                : data.draftStatus === 'saved'
+                  ? '草稿已保存'
+                  : '草稿保存失败'}
+            </span>
+          ) : null}
+        </div>
+        {data.editMode === 'simple' ? (
+          <SimpleExperienceEditor
+            value={data.simpleText}
+            onChange={(value) => onFieldChange('simpleText', value)}
+            readOnly={isSaving}
+            themeColor={themeColor}
+          />
+        ) : (
+          <StarSectionList
+            data={data}
+            onFieldChange={onFieldChange}
+            onUndo={onUndo}
+            readOnly={isSaving}
+            themeColor={themeColor}
+          />
+        )}
       </div>
       <ExperienceCardFooter
         data={data}
@@ -679,6 +779,7 @@ const ExpandedExperienceCard: React.FC<{
         onDelete={onDelete}
         onCancel={onCancel}
         onSave={onSave}
+        onFormalizeSimpleEntry={onFormalizeSimpleEntry}
         onToggle={onToggle}
         onPolishModeChange={onPolishModeChange}
         onCustomPolishPromptChange={onCustomPolishPromptChange}
@@ -707,8 +808,10 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
       onToggle,
       onDelete,
       onSave,
+      onFormalizeSimpleEntry,
       onCancel,
       onFieldChange,
+      onEditModeChange,
       onPolishModeChange,
       onCustomPolishPromptChange,
       onRunPolish,
@@ -748,8 +851,10 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
             onToggle={onToggle}
             onDelete={onDelete}
             onSave={onSave}
+            onFormalizeSimpleEntry={onFormalizeSimpleEntry}
             onCancel={onCancel}
             onFieldChange={onFieldChange}
+            onEditModeChange={onEditModeChange}
             onPolishModeChange={onPolishModeChange}
             onCustomPolishPromptChange={onCustomPolishPromptChange}
             onRunPolish={onRunPolish}

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type React from 'react';
 import { experienceService, type ExperienceListItem } from '../../services/experienceService';
+import { experienceDraftService } from '../../services/experienceDraftService';
 import { trackAiPolishApplied } from '../../utils/analyticsTracker';
 import type { ExperienceCardData } from '../ExperienceCard';
 import { getTodayLocalISODate } from '../experienceUtils';
@@ -18,7 +19,6 @@ import type { ExperienceSectionProps, ToastApi } from './types';
 type ExperienceCreateParams = {
   category: ExperienceSectionProps['category'];
   defaultOrg: string;
-  defaultTitle: string;
   toast: ToastApi;
   setExperiences: React.Dispatch<React.SetStateAction<ExperienceListItem[]>>;
   setCardData: React.Dispatch<React.SetStateAction<Map<string, ExperienceCardData>>>;
@@ -30,7 +30,6 @@ type ExperienceCreateParams = {
 export const useExperienceCreate = ({
   category,
   defaultOrg,
-  defaultTitle,
   toast,
   setExperiences,
   setCardData,
@@ -56,7 +55,7 @@ export const useExperienceCreate = ({
         },
         latest_version: {
           id: tempId,
-          title: defaultTitle,
+          title: '',
           org: defaultOrg,
           start_date: getTodayLocalISODate(),
           star: { s: '', t: '', a: '', r: '' },
@@ -65,7 +64,13 @@ export const useExperienceCreate = ({
 
       setExperiences((prev) => [newExperience, ...prev]);
 
-      const initialData = buildExperienceCardData(newExperience);
+      const initialData: ExperienceCardData = {
+        ...buildExperienceCardData(newExperience),
+        editMode: 'simple',
+        simpleText: '',
+        clientDraftKey: tempId,
+        draftStatus: 'idle',
+      };
       setCardData((prev) => new Map(prev).set(tempId, initialData));
       setOriginalCardData((prev) => new Map(prev).set(tempId, cloneExperienceCardData(initialData)));
 
@@ -80,7 +85,7 @@ export const useExperienceCreate = ({
     } finally {
       setIsCreating(false);
     }
-  }, [category, defaultOrg, defaultTitle, isCreating, setCardData, setExpandedCards, setExperiences, setModifiedCards, setOriginalCardData, toast]);
+  }, [category, defaultOrg, isCreating, setCardData, setExpandedCards, setExperiences, setModifiedCards, setOriginalCardData, toast]);
 
   return { isCreating, handleAddNew };
 };
@@ -119,10 +124,10 @@ export const useExperienceSave = ({
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
   const handleSaveCard = useCallback(
-    async (cardId: string) => {
+    async (cardId: string, overrideData?: ExperienceCardData) => {
       let toastId: string | null = null;
       try {
-        const data = cardData.get(cardId);
+        const data = overrideData ?? cardData.get(cardId);
         if (!data) {
           return;
         }
@@ -134,9 +139,10 @@ export const useExperienceSave = ({
 
         setSavingCardId(cardId);
 
-        if (isTempId(cardId)) {
+        if (isTempId(cardId) || cardId.startsWith('draft_')) {
           // Handle Creation
           toastId = toast.loading('正在创建...');
+          let draftCleanupFailed = false;
           const createdExperience = await experienceService.create({
             category,
             version: buildVersionPayload(data),
@@ -172,6 +178,14 @@ export const useExperienceSave = ({
             trackAiPolishApplied({ source: POLISH_SOURCE, field: 'all', category });
             clearPendingAiPolishApply(cardId);
           }
+          if (data.draftId) {
+            try {
+              await experienceDraftService.delete(data.draftId);
+            } catch (error) {
+              draftCleanupFailed = true;
+              console.error('[ExperienceSection] 删除已录入草稿失败:', error);
+            }
+          }
 
           // Close the card (standard behavior is toggle)
           // If we call toggleCard(cardId), it will try to collapse 'temp_...' which is fine if it's in expanded set.
@@ -181,9 +195,17 @@ export const useExperienceSave = ({
           toggleCard(cardId);
 
           if (toastId) {
-            toast.updateToast(toastId, { message: '已创建', type: 'success', duration: 2000 });
+            toast.updateToast(toastId, {
+              message: draftCleanupFailed ? '已创建，但草稿清理失败，请刷新后手动删除重复草稿' : '已创建',
+              type: draftCleanupFailed ? 'error' : 'success',
+              duration: draftCleanupFailed ? 5000 : 2000,
+            });
           } else {
-            toast.success('已创建', 2000);
+            if (draftCleanupFailed) {
+              toast.error('已创建，但草稿清理失败，请刷新后手动删除重复草稿', 5000);
+            } else {
+              toast.success('已创建', 2000);
+            }
           }
 
           // We don't strictly need to refresh full list since we just got the fresh item, 
@@ -235,6 +257,7 @@ export const useExperienceSave = ({
 
 type ExperienceDeleteParams = {
   category: ExperienceSectionProps['category'];
+  cardData: Map<string, ExperienceCardData>;
   toast: ToastApi;
   refreshExperiences: () => Promise<ExperienceListItem[]>;
   /** 删除请求时（确认 dialog 出现前）高亮提示卡片位置，替代 scrollToCard */
@@ -242,16 +265,19 @@ type ExperienceDeleteParams = {
   setExperiences: React.Dispatch<React.SetStateAction<ExperienceListItem[]>>;
   removeCardState: (cardId: string) => void;
   removeCardExpansion: (cardId: string) => void;
+  onBeforeRemoveLocal?: (cardId: string) => Promise<{ id: string } | null>;
 };
 
 export const useExperienceDelete = ({
   category,
+  cardData,
   toast,
   refreshExperiences,
   highlightCard,
   setExperiences,
   removeCardState,
   removeCardExpansion,
+  onBeforeRemoveLocal,
 }: ExperienceDeleteParams) => {
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
 
@@ -271,14 +297,22 @@ export const useExperienceDelete = ({
     const cardId = deletingCardId;
     try {
       setDeletingCardId(null);
-      setExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
-      removeCardExpansion(cardId);
-      removeCardState(cardId);
-
-      if (isTempId(cardId)) {
+      if (isTempId(cardId) || cardId.startsWith('draft_')) {
+        const discardedDraft = await onBeforeRemoveLocal?.(cardId) ?? null;
+        const draftId = discardedDraft?.id ?? cardData.get(cardId)?.draftId;
+        if (draftId) {
+          await experienceDraftService.delete(draftId);
+        }
+        setExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
+        removeCardExpansion(cardId);
+        removeCardState(cardId);
         toast.success('已删除', 2000);
         return;
       }
+
+      setExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
+      removeCardExpansion(cardId);
+      removeCardState(cardId);
 
       toastId = toast.loading('正在删除...');
       await experienceService.delete(cardId);
@@ -298,7 +332,7 @@ export const useExperienceDelete = ({
         console.error(`[ExperienceSection] 恢复${category}经历失败:`, refreshError);
       });
     }
-  }, [category, deletingCardId, refreshExperiences, removeCardExpansion, removeCardState, setExperiences, toast]);
+  }, [cardData, category, deletingCardId, onBeforeRemoveLocal, refreshExperiences, removeCardExpansion, removeCardState, setExperiences, toast]);
 
   const cancelDelete = useCallback(() => setDeletingCardId(null), []);
 

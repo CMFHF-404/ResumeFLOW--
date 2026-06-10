@@ -33,6 +33,13 @@ export interface PolishExperienceResponse {
     followUpQuestions?: string[];
 }
 
+export interface SplitExperienceTextResponse {
+    s: string;
+    t: string;
+    a: string;
+    r: string;
+}
+
 export interface JDAnalysisResult {
     matchPercentage: number;
     matchTrend?: MatchTrend;
@@ -591,6 +598,24 @@ const streamAssistantRequest = async (
 };
 
 export const aiService = {
+    async splitExperienceText(data: {
+        rawText: string;
+        category: ExperienceCategory;
+        org?: string;
+        title?: string;
+    }) {
+        const response = await apiClient.post<SplitExperienceTextResponse>(
+            '/api/split-experience-text',
+            {
+                raw_text: data.rawText,
+                category: data.category,
+                org: data.org,
+                title: data.title,
+            }
+        );
+        return response.data;
+    },
+
     async polishExperience(data: PolishExperiencePayload) {
         const { rawText, ...rest } = data.content;
         const payload = {
