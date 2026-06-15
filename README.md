@@ -1,3 +1,5 @@
+> 在线使用：[https://resumeflow.preview.aliyun-zeabur.cn/](https://resumeflow.preview.aliyun-zeabur.cn/)
+
 # ResumeFLOW
 
 ResumeFLOW 是一个面向求职材料管理的 AI 简历工作台。它把简历版本、经历库、JD 匹配分析、AI 助手、PDF 导出和账户管理放在同一个工作流里，适合用来沉淀个人经历资产，并针对不同岗位快速生成和优化简历。
