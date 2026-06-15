@@ -34,6 +34,7 @@
 ## Verification
 
 - Frontend: `npm run build`
+- Frontend targeted tests are plain Node test files under `tests/`. Run focused checks with `node --test tests/<file>.test.mjs`; for example `node --test tests/account-management-static.test.mjs` for account management or `node --test tests/experienceBankDrafts.test.mjs tests/experienceSimpleModeParser.test.mjs` for experience draft/simple-mode work.
 - Backend env and connectivity checks from `backend/`:
   - `python verify_env.py`
   - `python verify_db.py`
@@ -41,6 +42,7 @@
   - `python verify_timeout.py`
 - Backend tests are `unittest`-style files under `backend/`. Prefer `python -m unittest <module>` from `backend/` for targeted runs, for example `python -m unittest test_assistant_features` or `python -m unittest test_parser_service`.
 - Agent and AI backend checks commonly use `python -m unittest test_agent_api` and `python -m unittest test_ai_service` from `backend/`.
+- Account and experience draft backend checks commonly use `python -m unittest test_account_verification_cooldown` and `python -m unittest test_experience_drafts` from `backend/`.
 
 ## Guardrails
 
