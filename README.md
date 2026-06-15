@@ -169,4 +169,6 @@ python -m unittest test_experience_drafts
 
 ## 许可证
 
-当前仓库尚未声明开源许可证。公开仓库不等于授予再分发或商用许可；如需正式开源，请补充合适的 `LICENSE` 文件。
+本项目采用 GNU Affero General Public License v3.0 or later（`AGPL-3.0-or-later`）。
+
+AGPL 是强 copyleft 许可证。分发本项目或基于本项目的修改版本时，需要按 AGPL 条款开放相应源代码；如果修改版本通过网络服务提供给用户使用，也需要向这些用户提供对应源代码。完整条款见 [LICENSE](LICENSE)。
