@@ -17,6 +17,7 @@ import {
 import { resumeService } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
+import { devLog } from './services/devLogger';
 import { clearActiveResumeId, setActiveResumeId } from './views/resumeStorage';
 import {
   readStoredAuthUserKey,
@@ -227,18 +228,14 @@ const App: React.FC = () => {
 
   // 处理简历数据更新的回调
   const handleResumesUpdate = useCallback((resumes: Resume[]) => {
-    if (import.meta.env.DEV) {
-      console.log('[App] 更新全局简历缓存，共', resumes.length, '份简历');
-    }
+    devLog('[App] 更新全局简历缓存，共', resumes.length, '份简历');
     setCachedResumes(resumes);
     setCachedResumesOwnerKey(authUserKey ?? null);
   }, [authUserKey]);
 
   // 处理经历库数据更新的回调
   const handleProfileUpdate = useCallback((data: any) => {
-    if (import.meta.env.DEV) {
-      console.log('[App] 更新经历库缓存');
-    }
+    devLog('[App] 更新经历库缓存');
     setProfileCache(data);
   }, []);
   const handleOpenFeedback = useCallback(() => {
