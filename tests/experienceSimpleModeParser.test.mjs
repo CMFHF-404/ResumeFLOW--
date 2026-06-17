@@ -102,6 +102,46 @@ test('splits simple text by four separator sections', async () => {
   });
 });
 
+test('removes adjacent duplicate lines inside simple separator sections', async () => {
+  const { parseSimpleExperienceText } = await importParser();
+  const task = '独立负责防窜货风控模块的从0到1设计与落地。';
+  const resultText = '该模块最终按时交付并投入生产。';
+
+  const result = parseSimpleExperienceText([
+    '情境内容',
+    '---',
+    task,
+    task,
+    '---',
+    '行动内容',
+    '---',
+    resultText,
+    resultText,
+  ].join('\n'));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.star.t, task);
+  assert.equal(result.star.r, resultText);
+});
+
+test('removes adjacent duplicate sentences on the same rich text line', async () => {
+  const { parseSimpleExperienceText } = await importParser();
+  const task = '独立负责防窜货风控模块的从0到1设计与落地。';
+
+  const result = parseSimpleExperienceText([
+    '情境内容',
+    '---',
+    `${task} ${task}`,
+    '---',
+    '行动内容',
+    '---',
+    '结果内容',
+  ].join('\n'));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.star.t, task);
+});
+
 test('falls back to putting unparseable content into action', async () => {
   const { parseSimpleExperienceText } = await importParser();
   const input = '这是一整段暂时没有 STAR 标题的经历，含 **重点** 和 [链接](https://example.com)。';
@@ -168,6 +208,20 @@ test('joins expert STAR fields into simple text with separators', async () => {
   });
 
   assert.equal(result, '情境\n---\n\n---\n行动\n---\n结果');
+});
+
+test('joining expert STAR fields preserves adjacent duplicate content', async () => {
+  const { joinStarFieldsForSimpleMode } = await importParser();
+  const task = '独立负责防窜货风控模块的从0到1设计与落地。';
+
+  const result = joinStarFieldsForSimpleMode({
+    s: '情境',
+    t: `${task} ${task}`,
+    a: '行动',
+    r: '结果',
+  });
+
+  assert.equal(result, `情境\n---\n${task} ${task}\n---\n行动\n---\n结果`);
 });
 
 test('preserves empty STAR field boundaries when joining expert fields', async () => {
@@ -249,5 +303,25 @@ test('rejects small unsupported facts appended to long AI split output', async (
     t: '建立数字化溯源链路',
     a: '推动跨部门协同完成上线支撑监管验收提升数据质量减少人工核对时间',
     r: '获奖',
+  }), false);
+});
+
+test('rejects AI split output that repeats a source sentence while dropping other details', async () => {
+  const { validateSplitCoverage } = await importParser();
+  const repeatedTask = '独立负责防窜货风控模块的从0到1设计与落地';
+  const omittedResult = '模块按时交付并投入生产';
+  const source = [
+    '针对跨国销售场景下门店库存管理混乱及跨区窜货的业务痛点',
+    repeatedTask,
+    '通过重构销售后台核心流程实现项目的全周期管理',
+    '独立负责风控模块设计与销售后台流程落地',
+    omittedResult,
+  ].join('。');
+
+  assert.equal(validateSplitCoverage(source, {
+    s: '针对跨国销售场景下门店库存管理混乱及跨区窜货的业务痛点',
+    t: `${repeatedTask}\n${repeatedTask}`,
+    a: '通过重构销售后台核心流程实现项目的全周期管理\n独立负责风控模块设计与销售后台流程落地',
+    r: '',
   }), false);
 });

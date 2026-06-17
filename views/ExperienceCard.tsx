@@ -66,6 +66,7 @@ const STAR_SECTIONS: Array<{
   ];
 
 const EXPERIENCE_BANK_POLISH_MODES: Array<Exclude<PolishMode, 'assistant'>> = ['default', 'custom'];
+const SIMPLE_PARSING_EDITOR_CLASS = 'border-purple-300 bg-purple-50/40 shadow-[0_0_0_3px_rgba(168,85,247,0.18),0_0_30px_rgba(168,85,247,0.35)] dark:border-purple-500/60 dark:bg-purple-950/20';
 
 type ExperienceCardProps = {
   data: ExperienceCardData;
@@ -260,8 +261,9 @@ const StarSectionItem: React.FC<{
   onChange: (value: string) => void;
   onUndo: () => boolean;
   readOnly: boolean;
+  modeTabs?: React.ReactNode;
   themeColor?: string;
-}> = ({ section, isLast, value, onChange, onUndo, readOnly, themeColor }) => (
+}> = ({ section, isLast, value, onChange, onUndo, readOnly, modeTabs, themeColor }) => (
   <div className="relative flex gap-0 pb-3 md:gap-4 md:pb-0">
     {!isLast && <div className="absolute left-[19px] top-10 bottom-0 hidden w-[2px] bg-gray-100 dark:bg-gray-800 md:block"></div>}
     <div
@@ -270,12 +272,13 @@ const StarSectionItem: React.FC<{
       {section.id.toUpperCase()}
     </div>
     <div className="min-w-0 flex-1 pb-0 pt-0 md:pb-4 md:pt-1">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <span
           className={`text-xs font-bold text-${section.color}-600 dark:text-${section.color}-400 uppercase tracking-widest`}
         >
           {section.label}
         </span>
+        {section.id === 's' ? modeTabs : null}
       </div>
       <RichTextEditor
         className={`w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 resize-none leading-relaxed transition-all hover:bg-white dark:hover:bg-gray-800 shadow-sm focus:ring-2 ${getThemeClasses(themeColor).focus
@@ -297,8 +300,9 @@ const StarSectionList: React.FC<{
   onFieldChange: (field: string, value: string | string[]) => void;
   onUndo: (field: StarFieldKey) => boolean;
   readOnly: boolean;
+  modeTabs: React.ReactNode;
   themeColor?: string;
-}> = ({ data, onFieldChange, onUndo, readOnly, themeColor }) => (
+}> = ({ data, onFieldChange, onUndo, readOnly, modeTabs, themeColor }) => (
   <div className="space-y-4">
     {STAR_SECTIONS.map((section, idx) => (
       <StarSectionItem
@@ -309,6 +313,7 @@ const StarSectionList: React.FC<{
         onChange={(value) => onFieldChange(`star.${section.id}`, value)}
         onUndo={() => onUndo(section.id)}
         readOnly={readOnly}
+        modeTabs={idx === 0 ? modeTabs : null}
         themeColor={themeColor}
       />
     ))}
@@ -352,11 +357,12 @@ const SimpleExperienceEditor: React.FC<{
   value: string;
   onChange: (value: string) => void;
   readOnly: boolean;
+  isProcessingSimpleEntry: boolean;
   themeColor?: string;
-}> = ({ value, onChange, readOnly, themeColor }) => (
-  <div className="space-y-2">
+}> = ({ value, onChange, readOnly, isProcessingSimpleEntry, themeColor }) => (
+  <div className="space-y-3">
     <RichTextEditor
-      className={`min-h-[260px] w-full rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-700 shadow-sm transition-all hover:bg-white focus:ring-2 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300 dark:hover:bg-gray-800 ${getThemeClasses(themeColor).focus}`}
+      className={`min-h-[260px] w-full rounded-lg border p-4 text-sm leading-relaxed text-gray-700 transition-all focus:ring-2 dark:text-gray-300 ${isProcessingSimpleEntry ? SIMPLE_PARSING_EDITOR_CLASS : `border-gray-200 bg-gray-50 shadow-sm hover:bg-white dark:border-gray-700 dark:bg-gray-800/50 dark:hover:bg-gray-800 ${getThemeClasses(themeColor).focus}`}`}
       value={value}
       placeholder="直接写下完整经历，支持 Markdown、加粗、斜体、链接。可使用 S/T/A/R 标题，或用 --- 分隔四段。"
       onChange={onChange}
@@ -408,6 +414,7 @@ const ExperienceCardFooter: React.FC<{
   onOpenAssistant,
   themeColor,
 }) => {
+  const isProcessingSimpleEntry = isSaving && data.editMode === 'simple';
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [dialogStyle, setDialogStyle] = useState<React.CSSProperties>();
   const [isDialogMobile, setIsDialogMobile] = useState(false);
@@ -660,7 +667,7 @@ const ExperienceCardFooter: React.FC<{
                 title={isPolishPreviewing ? '请先确认或撤销当前润色预览' : undefined}
                 type="button"
               >
-                {isSaving ? '保存中...' : data.editMode === 'simple' ? '正式录入' : '保存'}
+                {isProcessingSimpleEntry ? '解析中...' : isSaving ? '保存中...' : data.editMode === 'simple' ? '正式录入' : '保存'}
               </button>
             </>
           ) : (
@@ -729,7 +736,24 @@ const ExpandedExperienceCard: React.FC<{
   onOpenAssistant,
   onUndo,
   themeColor,
-}) => (
+}) => {
+  const modeTabs = (
+    <div className="flex flex-wrap items-center gap-3">
+      <ExperienceModeTabs mode={data.editMode} onChange={onEditModeChange} disabled={isSaving} />
+      {data.draftStatus && data.draftStatus !== 'idle' ? (
+        <span className="text-xs text-gray-400">
+          {data.draftStatus === 'saving'
+            ? '草稿保存中...'
+            : data.draftStatus === 'saved'
+              ? '草稿已保存'
+              : '草稿保存失败'}
+        </span>
+      ) : null}
+    </div>
+  );
+  const isProcessingSimpleEntry = isSaving && data.editMode === 'simple';
+
+  return (
     <div className={resolveCardMotionClass(isCollapsing)}>
       <ExperienceCardHeader
         data={data}
@@ -739,23 +763,20 @@ const ExpandedExperienceCard: React.FC<{
         themeColor={themeColor}
       />
       <div className="p-6 pt-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <ExperienceModeTabs mode={data.editMode} onChange={onEditModeChange} disabled={isSaving} />
-          {data.draftStatus && data.draftStatus !== 'idle' ? (
-            <span className="text-xs text-gray-400">
-              {data.draftStatus === 'saving'
-                ? '草稿保存中...'
-                : data.draftStatus === 'saved'
-                  ? '草稿已保存'
-                  : '草稿保存失败'}
-            </span>
-          ) : null}
-        </div>
+        {data.editMode === 'simple' ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+              解析规则：可用 S/T/A/R 标题，或用 --- 分隔情境、任务、行动、结果。
+            </p>
+            {modeTabs}
+          </div>
+        ) : null}
         {data.editMode === 'simple' ? (
           <SimpleExperienceEditor
             value={data.simpleText}
             onChange={(value) => onFieldChange('simpleText', value)}
             readOnly={isSaving}
+            isProcessingSimpleEntry={isProcessingSimpleEntry}
             themeColor={themeColor}
           />
         ) : (
@@ -764,6 +785,7 @@ const ExpandedExperienceCard: React.FC<{
             onFieldChange={onFieldChange}
             onUndo={onUndo}
             readOnly={isSaving}
+            modeTabs={modeTabs}
             themeColor={themeColor}
           />
         )}
@@ -791,6 +813,7 @@ const ExpandedExperienceCard: React.FC<{
       />
     </div>
   );
+};
 
 const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
   (

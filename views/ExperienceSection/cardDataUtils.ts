@@ -37,12 +37,7 @@ export const buildExperienceCardData = (item: ExperienceListItem): ExperienceCar
     title: item.latest_version?.title || '',
     start_date: item.latest_version?.start_date || '',
     end_date: item.latest_version?.end_date || '',
-    star: {
-      s: star.s || '',
-      t: star.t || '',
-      a: star.a || '',
-      r: star.r || '',
-    },
+    star: buildStarFieldState({ star } as ExperienceCardData),
     editMode: 'expert',
     simpleText: '',
     draftStatus: 'idle',
@@ -114,18 +109,13 @@ export const buildVersionPayload = (data: ExperienceCardData) => ({
   org: data.org || undefined,
   start_date: convertDateToISO(data.start_date),
   end_date: convertDateToISO(data.end_date),
-  star: data.star || {},
+  star: buildStarFieldState(data),
 });
 
 export const buildDraftCardData = (draft: ExperienceDraftRecord): ExperienceCardData => ({
   ...createEmptyCardData(),
   ...(draft.card_data || {}),
-  star: {
-    s: draft.card_data?.star?.s || '',
-    t: draft.card_data?.star?.t || '',
-    a: draft.card_data?.star?.a || '',
-    r: draft.card_data?.star?.r || '',
-  },
+  star: buildStarFieldState({ star: draft.card_data?.star || {} } as ExperienceCardData),
   editMode: draft.mode || 'simple',
   simpleText: draft.simple_text || '',
   draftId: draft.id,
