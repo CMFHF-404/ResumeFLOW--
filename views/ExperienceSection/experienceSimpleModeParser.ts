@@ -52,6 +52,47 @@ const stripInlineHtml = (value: string) => stripRichTextToText(value.replace(HTM
 
 const trimRichLine = (value: string) => value.replace(/^[\s\u00a0]+|[\s\u00a0]+$/g, '');
 
+const normalizeComparableLine = (value: string) => stripInlineHtml(value).replace(/\s+/g, '');
+const normalizeComparableSentence = (value: string) => normalizeComparableLine(value).replace(/[。！？!?]+$/g, '');
+const SENTENCE_CHUNK_PATTERN = /[^。！？!?]+[。！？!?]?/g;
+const MIN_DUPLICATE_SENTENCE_CHARS = 8;
+
+const dedupeAdjacentDuplicateSentences = (line: string) => {
+  const chunks = line.match(SENTENCE_CHUNK_PATTERN);
+  if (!chunks || chunks.length <= 1) {
+    return line;
+  }
+  const result: string[] = [];
+  let previousComparable = '';
+  chunks.forEach((chunk) => {
+    const comparable = normalizeComparableSentence(chunk);
+    if (
+      comparable
+      && comparable === previousComparable
+      && comparable.length >= MIN_DUPLICATE_SENTENCE_CHARS
+    ) {
+      return;
+    }
+    result.push(chunk);
+    previousComparable = comparable;
+  });
+  return result.join('').replace(/[ \t]+$/g, '');
+};
+
+const dedupeAdjacentDuplicateLines = (lines: string[]) => {
+  const result: string[] = [];
+  let previousComparable = '';
+  lines.forEach((line) => {
+    const comparable = normalizeComparableLine(line);
+    if (comparable && comparable === previousComparable) {
+      return;
+    }
+    result.push(line);
+    previousComparable = comparable;
+  });
+  return result;
+};
+
 const trimRichBlock = (value: string) => {
   const lines = splitLines(value).map(trimRichLine);
   while (lines.length && !stripInlineHtml(lines[0])) {
@@ -61,6 +102,11 @@ const trimRichBlock = (value: string) => {
     lines.pop();
   }
   return lines.join('\n').trim();
+};
+
+export const dedupeAdjacentRepeatedContent = (value: string) => {
+  const lines = splitLines(trimRichBlock(value));
+  return dedupeAdjacentDuplicateLines(lines.map(dedupeAdjacentDuplicateSentences)).join('\n').trim();
 };
 
 const isLabelOnlyContent = (key: StarFieldKey, value: string) =>
@@ -148,16 +194,16 @@ const parseByHeadings = (value: string): SimpleModeParseResult | null => {
     return null;
   }
 
-  const preHeadingContent = trimRichBlock(preHeadingLines.join('\n'));
+  const preHeadingContent = dedupeAdjacentRepeatedContent(preHeadingLines.join('\n'));
   if (preHeadingContent) {
     star.a = star.a ? `${preHeadingContent}\n${star.a}` : preHeadingContent;
   }
 
   const normalized = {
-    s: trimRichBlock(star.s) || trimRichBlock(labelFallbacks.s),
-    t: trimRichBlock(star.t) || trimRichBlock(labelFallbacks.t),
-    a: trimRichBlock(star.a) || trimRichBlock(labelFallbacks.a),
-    r: trimRichBlock(star.r) || trimRichBlock(labelFallbacks.r),
+    s: dedupeAdjacentRepeatedContent(star.s) || dedupeAdjacentRepeatedContent(labelFallbacks.s),
+    t: dedupeAdjacentRepeatedContent(star.t) || dedupeAdjacentRepeatedContent(labelFallbacks.t),
+    a: dedupeAdjacentRepeatedContent(star.a) || dedupeAdjacentRepeatedContent(labelFallbacks.a),
+    r: dedupeAdjacentRepeatedContent(star.r) || dedupeAdjacentRepeatedContent(labelFallbacks.r),
   };
   const hasAnyContent = STAR_KEYS.some((key) => stripInlineHtml(normalized[key]));
   return hasAnyContent ? { ok: true, star: normalized } : null;
@@ -179,10 +225,10 @@ const parseBySeparators = (value: string): SimpleModeParseResult | null => {
   }
 
   const star = {
-    s: trimRichBlock(parts[0]),
-    t: trimRichBlock(parts[1]),
-    a: trimRichBlock(parts[2]),
-    r: trimRichBlock(parts[3]),
+    s: dedupeAdjacentRepeatedContent(parts[0]),
+    t: dedupeAdjacentRepeatedContent(parts[1]),
+    a: dedupeAdjacentRepeatedContent(parts[2]),
+    r: dedupeAdjacentRepeatedContent(parts[3]),
   };
   const hasAnyContent = STAR_KEYS.some((key) => stripInlineHtml(star[key]));
   return hasAnyContent ? { ok: true, star } : null;

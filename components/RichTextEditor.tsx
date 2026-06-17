@@ -617,17 +617,26 @@ const useTextFormatting = ({
     return { applyWrap, applyList };
 };
 
-const useEditorSync = (editorRef: React.RefObject<HTMLDivElement>, value: string) => {
+const useEditorSync = (
+    editorRef: React.RefObject<HTMLDivElement>,
+    value: string,
+    isFocused: boolean,
+    lastLocalValueRef: React.MutableRefObject<string | null>
+) => {
     useEffect(() => {
         const editor = editorRef.current;
         if (!editor) {
             return;
         }
         const sanitized = sanitizeRichTextHtml(value);
+        if (isFocused && sanitized === lastLocalValueRef.current) {
+            return;
+        }
         if (editor.innerHTML !== sanitized) {
             editor.innerHTML = sanitized;
+            lastLocalValueRef.current = null;
         }
-    }, [editorRef, value]);
+    }, [editorRef, value, isFocused, lastLocalValueRef]);
 };
 
 const useRichTextHandlers = ({
@@ -636,6 +645,7 @@ const useRichTextHandlers = ({
     updateSelectionState,
     hideToolbar,
     setIsFocused,
+    lastLocalValueRef,
     enableList,
     onUndo,
 }: {
@@ -644,6 +654,7 @@ const useRichTextHandlers = ({
     updateSelectionState: () => void;
     hideToolbar: () => void;
     setIsFocused: (state: boolean) => void;
+    lastLocalValueRef: React.MutableRefObject<string | null>;
     enableList: boolean;
     onUndo?: () => boolean;
 }) => {
@@ -654,8 +665,9 @@ const useRichTextHandlers = ({
             return;
         }
         const sanitized = sanitizeRichTextHtml(editor.innerHTML);
+        lastLocalValueRef.current = sanitized;
         onChange(sanitized);
-    }, [editorRef, onChange]);
+    }, [editorRef, lastLocalValueRef, onChange]);
 
     const handleInput = useCallback(() => {
         saveContent();
@@ -828,6 +840,7 @@ const useRichTextHandlers = ({
             }
             event.preventDefault();
             document.execCommand('insertLineBreak');
+            saveContent();
             updateSelectionState();
         }
         if (event.key === 'Backspace') {
@@ -872,12 +885,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     readOnly = false,
 }) => {
     const editorRef = useRef<HTMLDivElement | null>(null);
+    const lastLocalValueRef = useRef<string | null>(null);
     const [isFocused, setIsFocused] = useState(false);
     const listStylesClass =
         '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1';
     const editorClassName = `${className ?? ''} whitespace-pre-wrap break-words outline-none overflow-y-auto ${listStylesClass} ${RICH_TEXT_INLINE_STYLES_CLASS}`;
 
-    useEditorSync(editorRef, value);
+    useEditorSync(editorRef, value, isFocused, lastLocalValueRef);
     const { toolbar, hideToolbar, updateSelectionState } = useToolbarState(editorRef);
     const { applyWrap, applyList } = useTextFormatting({
         editorRef,
@@ -1046,6 +1060,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         updateSelectionState,
         hideToolbar,
         setIsFocused,
+        lastLocalValueRef,
         enableList,
         onUndo,
     });

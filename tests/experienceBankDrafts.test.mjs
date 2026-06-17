@@ -45,6 +45,30 @@ test('persisted experience cards default to expert edit mode', async () => {
   assert.equal(card.simpleText, '');
 });
 
+test('persisted and saved expert cards preserve adjacent duplicate STAR text', async () => {
+  const { buildExperienceCardData, buildVersionPayload } = await importCardUtils();
+  const task = '独立负责防窜货风控模块的从0到1设计与落地。';
+  const duplicateTask = `${task} ${task}`;
+
+  const card = buildExperienceCardData({
+    master: { id: 'exp-1', category: 'work', is_archived: false },
+    latest_version: {
+      id: 'ver-1',
+      title: '产品助理',
+      org: '原子简历',
+      star: {
+        s: '情境',
+        t: duplicateTask,
+        a: '行动',
+        r: '结果',
+      },
+    },
+  });
+
+  assert.equal(card.star.t, duplicateTask);
+  assert.equal(buildVersionPayload(card).star.t, duplicateTask);
+});
+
 test('formal experience save still blocks blank titles on the frontend', () => {
   const source = read('views/ExperienceSection/experienceActions.ts');
   const modelSource = read('views/ExperienceSection/model.ts');
@@ -138,6 +162,28 @@ test('formalizing simple entries disables the card before AI splitting returns',
   assert.match(cardSource, /isLocked=\{isSaving\}/);
   assert.match(cardSource, /disabled=\{isLocked\}/);
   assert.match(cardSource, /disabled=\{isSaving\}/);
+});
+
+test('formalizing simple entries shows parsing affordances in the card UI', () => {
+  const cardSource = read('views/ExperienceCard.tsx');
+
+  assert.match(cardSource, /isProcessingSimpleEntry/);
+  assert.match(cardSource, /解析中\.\.\./);
+  assert.match(cardSource, /shadow-\[0_0_0_3px_rgba\(168,85,247,0\.18\),0_0_30px_rgba\(168,85,247,0\.35\)\]/);
+  assert.match(cardSource, /解析规则/);
+});
+
+test('mode tabs align on the right while simple parsing rules stay on the left', () => {
+  const cardSource = read('views/ExperienceCard.tsx');
+
+  assert.match(cardSource, /const modeTabs = \(/);
+  assert.match(cardSource, /modeTabs\?: React\.ReactNode/);
+  assert.match(cardSource, /section\.id === 's' \? modeTabs : null/);
+  assert.match(
+    cardSource,
+    /<div className="flex flex-wrap items-center justify-between gap-3">[\s\S]*解析规则：可用 S\/T\/A\/R 标题，或用 --- 分隔情境、任务、行动、结果。[\s\S]*\{modeTabs\}/
+  );
+  assert.doesNotMatch(cardSource, /<div className="flex flex-wrap items-center gap-3">\s*\{modeTabs\}/);
 });
 
 test('draft autosaves for the same card are serialized to avoid stale overwrites', () => {
