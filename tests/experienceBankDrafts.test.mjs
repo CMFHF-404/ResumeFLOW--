@@ -123,61 +123,115 @@ test('formalized draft creation waits for draft cleanup and surfaces cleanup fai
   assert.doesNotMatch(source, /experienceDraftService\.delete\(data\.draftId\)\.catch/);
 });
 
-test('formalizing simple entries waits for any in-flight draft autosave before creating', () => {
+test('previewing simple entries switches to STAR without immediately saving', () => {
   const source = read('views/ExperienceSection/model.ts');
+  const previewBlock = source.match(
+    /const handlePreviewSimpleEntry = useCallback[\s\S]*?\n  const handleCancel = useCallback/
+  )?.[0] ?? '';
 
-  assert.match(source, /draftSaveRequestsRef/);
-  assert.match(source, /flushDraftSave\(cardId\)/);
-  assert.match(source, /const flushedDraft = await flushDraftSave\(cardId\)/);
-  assert.match(source, /await handleSaveCard\(cardId, \{[\s\S]*\.\.\.nextData[\s\S]*draftId: flushedDraft\?\.draftId \?\? nextData\.draftId/);
+  assert.match(source, /const handlePreviewSimpleEntry = useCallback\(async \(cardId: string\) => \{/);
+  assert.match(source, /editMode:\s*['"]expert['"]/);
+  assert.match(source, /updateCardData\(cardId, nextData\)/);
+  assert.doesNotMatch(previewBlock, /const flushedDraft = await flushDraftSave\(cardId\)/);
+  assert.doesNotMatch(previewBlock, /await (?:handleSaveCard|saveExperienceCard)\(cardId, \{/);
 });
 
-test('formalizing simple entries validates title before AI splitting', () => {
+test('saving a previewed local draft flushes queued draft autosave before formal creation', () => {
   const source = read('views/ExperienceSection/model.ts');
 
+  assert.match(source, /const \{ savingCardId, handleSaveCard: saveExperienceCard \} = useExperienceSave\(/);
+  assert.match(source, /const handleSaveCard = useCallback\(async \(cardId: string\) => \{/);
   assert.match(
+    source,
+    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*const flushedDraft = await flushDraftSave\(cardId\)/
+  );
+  assert.match(
+    source,
+    /await saveExperienceCard\(cardId, \{[\s\S]*\.\.\.data[\s\S]*draftId: flushedDraft\?\.draftId \?\? data\.draftId[\s\S]*clientDraftKey: flushedDraft\?\.clientDraftKey \?\? data\.clientDraftKey/
+  );
+});
+
+test('saving a previewed local draft with blank title keeps queued autosave intact', () => {
+  const source = read('views/ExperienceSection/model.ts');
+  const saveBlock = source.match(
+    /const handleSaveCard = useCallback\(async \(cardId: string\) => \{[\s\S]*?\n  \}, \[flushDraftSave/
+  )?.[0] ?? '';
+
+  assert.match(
+    saveBlock,
+    /if \(\(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) && \(!data\.title \|\| !data\.title\.trim\(\)\)\) \{[\s\S]*await saveExperienceCard\(cardId\);[\s\S]*return;[\s\S]*\}[\s\S]*const flushedDraft = await flushDraftSave\(cardId\)/
+  );
+});
+
+test('previewing simple entries does not require a title before parsing', () => {
+  const source = read('views/ExperienceSection/model.ts');
+
+  assert.doesNotMatch(
     source,
     /if \(!data\.title \|\| !data\.title\.trim\(\)\) \{[\s\S]*toast\.error\(emptyTitleError\);[\s\S]*return;[\s\S]*\}[\s\S]*const localResult = parseSimpleExperienceText/
   );
+  assert.match(source, /const localResult = parseSimpleExperienceText\(data\.simpleText \|\| ''\)/);
 });
 
-test('formalizing simple entries disables the card before AI splitting returns', () => {
+test('previewing simple entries disables the card before AI splitting returns', () => {
   const source = read('views/ExperienceSection/model.ts');
   const cardSource = read('views/ExperienceCard.tsx');
 
-  assert.match(source, /const \[formalizingCardId, setFormalizingCardId\] = useState<string \| null>\(null\)/);
-  assert.match(source, /savingCardId === cardId \|\| formalizingCardId === cardId/);
+  assert.match(source, /const \[previewingCardId, setPreviewingCardId\] = useState<string \| null>\(null\)/);
+  assert.match(source, /savingCardId === cardId \|\| previewingCardId === cardId/);
   assert.match(
     source,
-    /setFormalizingCardId\(cardId\);[\s\S]*const localResult = parseSimpleExperienceText/
+    /setPreviewingCardId\(cardId\);[\s\S]*const localResult = parseSimpleExperienceText/
   );
   assert.match(
     source,
-    /isCardBusy:\s*\(cardId\) => savingCardId === cardId \|\| formalizingCardId === cardId/
+    /isCardBusy:\s*\(cardId\) => savingCardId === cardId \|\| previewingCardId === cardId/
   );
   assert.match(
     source,
-    /setFormalizingCardId\(\(current\) => current === cardId \? null : current\)/
+    /setPreviewingCardId\(\(current\) => current === cardId \? null : current\)/
   );
   assert.match(cardSource, /isLocked=\{isSaving\}/);
   assert.match(cardSource, /disabled=\{isLocked\}/);
   assert.match(cardSource, /disabled=\{isSaving\}/);
 });
 
-test('formalizing simple entries shows parsing affordances in the card UI', () => {
+test('previewing simple entries shows parsing affordances in the card UI', () => {
   const cardSource = read('views/ExperienceCard.tsx');
   const htmlSource = read('index.html');
 
   assert.match(cardSource, /isProcessingSimpleEntry/);
   assert.match(cardSource, /解析中\.\.\./);
+  assert.match(cardSource, /预览 STAR/);
   assert.match(cardSource, /simple-parsing-flow/);
   assert.match(htmlSource, /@keyframes simpleParsingGlow/);
   assert.match(htmlSource, /simpleParsingShimmer/);
   assert.match(cardSource, /AI 会智能介入解析/);
 });
 
-test('mode tabs align on the right while simple parsing rules stay on the left', () => {
+test('A action field shows gray unordered bullet cues and alone enables list editing', () => {
   const cardSource = read('views/ExperienceCard.tsx');
+  const htmlSource = read('index.html');
+
+  assert.match(cardSource, /section\.id === ['"]a['"] \? ['"]star-action-bullet-cue['"] : ['"]['"]/);
+  assert.match(cardSource, /enableList=\{section\.id === ['"]a['"]\}/);
+  assert.match(cardSource, /showLineBulletCue=\{section\.id === ['"]a['"]\}/);
+  const richTextEditorSource = read('components/RichTextEditor.tsx');
+  assert.match(richTextEditorSource, /measurePlainLineBulletTops/);
+  assert.match(richTextEditorSource, /measureCaretBulletTop/);
+  assert.match(richTextEditorSource, /inferLineBulletTop/);
+  assert.match(richTextEditorSource, /includeCaretLine/);
+  assert.match(richTextEditorSource, /measuredLineTops/);
+  assert.match(richTextEditorSource, /document\.activeElement === editor/);
+  assert.match(htmlSource, /\.rich-text-line-bullet-cue-dot/);
+  assert.match(htmlSource, /\.star-action-bullet-cue li::marker/);
+  assert.doesNotMatch(htmlSource, /\.star-action-bullet-cue\s*\{[\s\S]*background-image/);
+  assert.doesNotMatch(htmlSource, /\.star-action-bullet-cue\s*\{[\s\S]*repeat-y/);
+});
+
+test('mode tabs align on the right and wire fold-expand transition classes', () => {
+  const cardSource = read('views/ExperienceCard.tsx');
+  const htmlSource = read('index.html');
 
   assert.match(cardSource, /const modeTabs = \(/);
   assert.match(cardSource, /modeTabs\?: React\.ReactNode/);
@@ -190,6 +244,10 @@ test('mode tabs align on the right while simple parsing rules stay on the left',
     /<div className="flex flex-wrap items-center justify-between gap-3">[\s\S]*解析规则：可用 S\/T\/A\/R 标题，或用 --- 分隔情境、任务、行动、结果，也可随意填写，AI 会智能介入解析。[\s\S]*\{modeTabs\}/
   );
   assert.doesNotMatch(cardSource, /<div className="flex flex-wrap items-center gap-3">\s*\{modeTabs\}/);
+  assert.match(cardSource, /star-mode-panel/);
+  assert.match(cardSource, /simple-mode-panel/);
+  assert.match(htmlSource, /@keyframes starPanelExpand/);
+  assert.match(htmlSource, /@keyframes simplePanelFoldIn/);
 });
 
 test('draft autosaves for the same card are serialized to avoid stale overwrites', () => {
@@ -234,28 +292,28 @@ test('canceling unsaved draft cards keeps local state when server draft deletion
   );
 });
 
-test('formalizing lock is evaluated per card instead of through one saving id', () => {
+test('previewing lock is evaluated per card instead of through one saving id', () => {
   const modelSource = read('views/ExperienceSection/model.ts');
   const typeSource = read('views/ExperienceSection/types.ts');
   const viewSource = read('views/ExperienceSection/ExperienceSectionView.tsx');
 
   assert.match(typeSource, /isCardBusy: \(cardId: string\) => boolean/);
-  assert.match(modelSource, /isCardBusy:\s*\(cardId\) => savingCardId === cardId \|\| formalizingCardId === cardId/);
+  assert.match(modelSource, /isCardBusy:\s*\(cardId\) => savingCardId === cardId \|\| previewingCardId === cardId/);
   assert.match(viewSource, /isSaving=\{model\.isCardBusy\(cardId\)\}/);
-  assert.doesNotMatch(modelSource, /savingCardId:\s*savingCardId \?\? formalizingCardId/);
+  assert.doesNotMatch(modelSource, /savingCardId:\s*savingCardId \?\? previewingCardId/);
 });
 
-test('formalizing one card blocks starting a second formalize request', () => {
+test('previewing one card blocks starting a second preview request', () => {
   const source = read('views/ExperienceSection/model.ts');
 
   assert.match(
     source,
-    /if \(!data \|\| savingCardId === cardId \|\| formalizingCardId === cardId \|\| formalizingCardIdRef\.current\) \{[\s\S]*return;[\s\S]*\}/
+    /if \(!data \|\| savingCardId === cardId \|\| previewingCardId === cardId \|\| previewingCardIdRef\.current\) \{[\s\S]*return;[\s\S]*\}/
   );
-  assert.match(source, /formalizingCardIdRef\.current = cardId/);
+  assert.match(source, /previewingCardIdRef\.current = cardId/);
 });
 
-test('formalizing simple entries only calls AI as fallback and caches split results', () => {
+test('previewing simple entries only calls AI as fallback and caches split results', () => {
   const source = read('views/ExperienceSection/model.ts');
 
   assert.match(source, /splitExperienceCacheRef/);

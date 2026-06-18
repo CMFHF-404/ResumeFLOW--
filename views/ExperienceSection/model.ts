@@ -80,7 +80,7 @@ type SectionModelInput = {
   onToggle: (cardId: string) => void;
   onDeleteRequest: (cardId: string) => void;
   onSave: (cardId: string) => void;
-  onFormalizeSimpleEntry: (cardId: string) => void;
+  onPreviewSimpleEntry: (cardId: string) => void;
   onCancel: (cardId: string) => void;
   onFieldChange: (cardId: string, field: string, value: string | string[]) => void;
   onEditModeChange: (cardId: string, mode: 'simple' | 'expert') => void;
@@ -115,7 +115,7 @@ const buildSectionModel = (input: SectionModelInput): ExperienceSectionModel => 
   onToggle: input.onToggle,
   onDeleteRequest: input.onDeleteRequest,
   onSave: input.onSave,
-  onFormalizeSimpleEntry: input.onFormalizeSimpleEntry,
+  onPreviewSimpleEntry: input.onPreviewSimpleEntry,
   onCancel: input.onCancel,
   onFieldChange: input.onFieldChange,
   onEditModeChange: input.onEditModeChange,
@@ -142,8 +142,8 @@ export const useExperienceSectionModel = ({
   const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(category, refreshSignal);
   const { setCardRef, scrollToCard, highlightCard } = useCardRefs();
   const store = useCardDataStore();
-  const [formalizingCardId, setFormalizingCardId] = useState<string | null>(null);
-  const formalizingCardIdRef = useRef<string | null>(null);
+  const [previewingCardId, setPreviewingCardId] = useState<string | null>(null);
+  const previewingCardIdRef = useRef<string | null>(null);
   const pendingAiPolishApplyRef = useRef(new Set<string>());
   const draftSaveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const draftSaveRequestsRef = useRef<Map<string, Promise<ExperienceDraftRecord | null>>>(new Map());
@@ -236,13 +236,33 @@ export const useExperienceSectionModel = ({
     markPendingAiPolishApply,
     clearPendingAiPolishApply,
   });
-  const { savingCardId, handleSaveCard } = useExperienceSave({
+  const { savingCardId, handleSaveCard: saveExperienceCard } = useExperienceSave({
     category, cardData: store.cardData, emptyTitleError, toast, refreshExperiences,
     toggleCard: expansion.toggleCard, clearPreviewState, hasPendingAiPolishApply, clearPendingAiPolishApply, setExperiences,
     setCardData: store.setCardData,
     setOriginalCardData: store.setOriginalCardData,
     setModifiedCards: store.setModifiedCards,
   });
+  const handleSaveCard = useCallback(async (cardId: string) => {
+    const data = store.cardData.get(cardId);
+    if (!data) {
+      return;
+    }
+    if ((isTempId(cardId) || cardId.startsWith('draft_')) && (!data.title || !data.title.trim())) {
+      await saveExperienceCard(cardId);
+      return;
+    }
+    if (isTempId(cardId) || cardId.startsWith('draft_')) {
+      const flushedDraft = await flushDraftSave(cardId);
+      await saveExperienceCard(cardId, {
+        ...data,
+        draftId: flushedDraft?.draftId ?? data.draftId,
+        clientDraftKey: flushedDraft?.clientDraftKey ?? data.clientDraftKey,
+      });
+      return;
+    }
+    await saveExperienceCard(cardId);
+  }, [flushDraftSave, saveExperienceCard, store.cardData]);
   const sortedExperiences = useSortedExperiences(experiences);
 
   useEffect(() => {
@@ -446,17 +466,13 @@ export const useExperienceSectionModel = ({
     scheduleDraftSave(cardId, nextData);
   }, [scheduleDraftSave, store.cardData, updateCardData]);
 
-  const handleFormalizeSimpleEntry = useCallback(async (cardId: string) => {
+  const handlePreviewSimpleEntry = useCallback(async (cardId: string) => {
     const data = store.cardData.get(cardId);
-    if (!data || savingCardId === cardId || formalizingCardId === cardId || formalizingCardIdRef.current) {
+    if (!data || savingCardId === cardId || previewingCardId === cardId || previewingCardIdRef.current) {
       return;
     }
-    if (!data.title || !data.title.trim()) {
-      toast.error(emptyTitleError);
-      return;
-    }
-    formalizingCardIdRef.current = cardId;
-    setFormalizingCardId(cardId);
+    previewingCardIdRef.current = cardId;
+    setPreviewingCardId(cardId);
     try {
       const localResult = parseSimpleExperienceText(data.simpleText || '');
       let nextStar = localResult.star;
@@ -491,19 +507,14 @@ export const useExperienceSectionModel = ({
         star: nextStar,
       };
       updateCardData(cardId, nextData);
-      const flushedDraft = await flushDraftSave(cardId);
-      await handleSaveCard(cardId, {
-        ...nextData,
-        draftId: flushedDraft?.draftId ?? nextData.draftId,
-        clientDraftKey: flushedDraft?.clientDraftKey ?? nextData.clientDraftKey,
-      });
+      scheduleDraftSave(cardId, nextData);
     } finally {
-      if (formalizingCardIdRef.current === cardId) {
-        formalizingCardIdRef.current = null;
+      if (previewingCardIdRef.current === cardId) {
+        previewingCardIdRef.current = null;
       }
-      setFormalizingCardId((current) => current === cardId ? null : current);
+      setPreviewingCardId((current) => current === cardId ? null : current);
     }
-  }, [category, emptyTitleError, flushDraftSave, formalizingCardId, handleSaveCard, savingCardId, store.cardData, toast, updateCardData]);
+  }, [category, previewingCardId, savingCardId, scheduleDraftSave, store.cardData, toast, updateCardData]);
 
   const handleCancel = useCallback(async (cardId: string) => {
     clearPendingAiPolishApply(cardId);
@@ -553,7 +564,7 @@ export const useExperienceSectionModel = ({
     expandedCards: expansion.expandedCards,
     collapsingCards: expansion.collapsingCards,
     modifiedCards: store.modifiedCards,
-    isCardBusy: (cardId) => savingCardId === cardId || formalizingCardId === cardId,
+    isCardBusy: (cardId) => savingCardId === cardId || previewingCardId === cardId,
     deletingCardId: deleteActions.deletingCardId,
     setCardRef,
     isPolishing,
@@ -564,7 +575,7 @@ export const useExperienceSectionModel = ({
     onToggle: expansion.toggleCard,
     onDeleteRequest: deleteActions.requestDelete,
     onSave: handleSaveCard,
-    onFormalizeSimpleEntry: handleFormalizeSimpleEntry,
+    onPreviewSimpleEntry: handlePreviewSimpleEntry,
     onCancel: handleCancel,
     onFieldChange: handleFieldChange,
     onEditModeChange: handleEditModeChange,

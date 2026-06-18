@@ -95,7 +95,7 @@ const ExperienceCardList: React.FC<{
           onToggle={() => model.onToggle(cardId)}
           onDelete={() => model.onDeleteRequest(cardId)}
           onSave={() => model.onSave(cardId)}
-          onFormalizeSimpleEntry={() => model.onFormalizeSimpleEntry(cardId)}
+          onPreviewSimpleEntry={() => model.onPreviewSimpleEntry(cardId)}
           onCancel={() => model.onCancel(cardId)}
           onFieldChange={(field, value) => model.onFieldChange(cardId, field, value)}
           onEditModeChange={(mode) => model.onEditModeChange(cardId, mode)}
