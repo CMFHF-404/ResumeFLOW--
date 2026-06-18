@@ -9,6 +9,7 @@ type RichTextEditorProps = {
     placeholder?: string;
     ariaLabel?: string;
     enableList?: boolean;
+    showLineBulletCue?: boolean;
     onUndo?: () => boolean;
     readOnly?: boolean;
 };
@@ -41,6 +42,11 @@ type TextSegment = {
     startOffset: number;
     endOffset: number;
     text: string;
+};
+
+type LineBulletTop = {
+    lineIndex: number;
+    top: number;
 };
 
 type MarkdownHandleResult = 'handled' | 'not_handled' | 'abort';
@@ -520,6 +526,217 @@ const RichTextLinkPopover: React.FC<{
     );
 };
 
+const collectTextNodes = (root: Node) => {
+    const nodes: Text[] = [];
+    const visit = (node: Node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            nodes.push(node as Text);
+            return;
+        }
+        node.childNodes.forEach(visit);
+    };
+    visit(root);
+    return nodes;
+};
+
+const resolveTextPosition = (nodes: Text[], targetOffset: number) => {
+    let offset = targetOffset;
+    for (const node of nodes) {
+        if (offset <= node.data.length) {
+            return { node, offset };
+        }
+        offset -= node.data.length;
+    }
+    const lastNode = nodes[nodes.length - 1];
+    return lastNode ? { node: lastNode, offset: lastNode.data.length } : null;
+};
+
+const getEditorLineHeight = (editor: HTMLDivElement) => {
+    const styles = getComputedStyle(editor);
+    const lineHeight = parseFloat(styles.lineHeight);
+    if (Number.isFinite(lineHeight)) {
+        return lineHeight;
+    }
+    const fontSize = parseFloat(styles.fontSize);
+    return Number.isFinite(fontSize) ? fontSize * 1.5 : 20;
+};
+
+const getCollapsedRangeTop = (range: Range, editor: HTMLDivElement) => {
+    const editorRect = editor.getBoundingClientRect();
+    const rects = Array.from(range.getClientRects());
+    const rect = rects.find((item) => item.width || item.height) ?? range.getBoundingClientRect();
+    if (rect && (rect.width || rect.height)) {
+        return rect.top - editorRect.top + editor.scrollTop;
+    }
+    return null;
+};
+
+const inferLineBulletTop = (editor: HTMLDivElement, measuredLineTops: LineBulletTop[], lineIndex: number) => {
+    const lineHeight = getEditorLineHeight(editor);
+    const exactLine = measuredLineTops.find((entry) => entry.lineIndex === lineIndex);
+    if (exactLine) {
+        return exactLine.top;
+    }
+    const previousLines = measuredLineTops.filter((entry) => entry.lineIndex < lineIndex);
+    const previousLine = previousLines[previousLines.length - 1];
+    if (previousLine) {
+        return previousLine.top + (lineIndex - previousLine.lineIndex) * lineHeight;
+    }
+    const nextLine = measuredLineTops.find((entry) => entry.lineIndex > lineIndex);
+    if (nextLine) {
+        return nextLine.top - (nextLine.lineIndex - lineIndex) * lineHeight;
+    }
+    return editor.scrollTop;
+};
+
+const measureCaretBulletTop = (editor: HTMLDivElement, measuredLineTops: LineBulletTop[], lines: string[]) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+        return null;
+    }
+    const anchorNode = selection.anchorNode;
+    if (!anchorNode || !editor.contains(anchorNode) || isSelectionInsideList(selection)) {
+        return null;
+    }
+
+    const range = selection.getRangeAt(0).cloneRange();
+    const beforeRange = document.createRange();
+    beforeRange.selectNodeContents(editor);
+    try {
+        beforeRange.setEnd(range.startContainer, range.startOffset);
+    } catch {
+        return measuredLineTops.length ? measuredLineTops[measuredLineTops.length - 1].top + getEditorLineHeight(editor) : 0;
+    }
+
+    const lineIndex = beforeRange.toString().split('\n').length - 1;
+    const isBlankCaretLine = !(lines[lineIndex] ?? '').trim();
+    if (!isBlankCaretLine) {
+        const measuredTop = getCollapsedRangeTop(range, editor);
+        if (measuredTop !== null) {
+            return measuredTop;
+        }
+    }
+
+    return inferLineBulletTop(editor, measuredLineTops, lineIndex);
+};
+
+const measurePlainLineBulletTops = (editor: HTMLDivElement, includeCaretLine = false) => {
+    if (editor.querySelector('li')) {
+        return [];
+    }
+
+    const text = editor.innerText || editor.textContent || '';
+    const lines = text.split('\n');
+    if (!includeCaretLine && !lines.some((line) => line.trim())) {
+        return [];
+    }
+
+    const textNodes = collectTextNodes(editor);
+    if (!textNodes.length && !includeCaretLine) {
+        return [];
+    }
+
+    const editorRect = editor.getBoundingClientRect();
+    const tops: number[] = [];
+    const measuredLineTops: LineBulletTop[] = [];
+    let textOffset = 0;
+
+    for (const [lineIndex, line] of lines.entries()) {
+        const firstTextIndex = line.search(/\S/);
+        if (firstTextIndex >= 0) {
+            const position = resolveTextPosition(textNodes, textOffset + firstTextIndex);
+            if (position) {
+                const range = document.createRange();
+                range.setStart(position.node, position.offset);
+                range.setEnd(position.node, Math.min(position.offset + 1, position.node.data.length));
+                const rect = range.getBoundingClientRect();
+                if (rect && (rect.width || rect.height)) {
+                    const top = rect.top - editorRect.top + editor.scrollTop;
+                    if (!tops.some((value) => Math.abs(value - top) < 1)) {
+                        tops.push(top);
+                        measuredLineTops.push({ lineIndex, top });
+                    }
+                }
+            }
+        }
+        textOffset += line.length + 1;
+    }
+
+    if (includeCaretLine) {
+        for (const [lineIndex, line] of lines.entries()) {
+            if (line.trim() || measuredLineTops.some((entry) => entry.lineIndex === lineIndex)) {
+                continue;
+            }
+            const inferredTop = inferLineBulletTop(editor, measuredLineTops, lineIndex);
+            if (!tops.some((value) => Math.abs(value - inferredTop) < 1)) {
+                tops.push(inferredTop);
+                measuredLineTops.push({ lineIndex, top: inferredTop });
+                measuredLineTops.sort((a, b) => a.lineIndex - b.lineIndex);
+            }
+        }
+        const caretTop = measureCaretBulletTop(editor, measuredLineTops, lines);
+        if (caretTop !== null && !tops.some((value) => Math.abs(value - caretTop) < 1)) {
+            tops.push(caretTop);
+            tops.sort((a, b) => a - b);
+        }
+    }
+
+    return tops;
+};
+
+const useLineBulletCueTops = (
+    editorRef: React.RefObject<HTMLDivElement>,
+    enabled: boolean,
+    value: string,
+    isFocused: boolean
+) => {
+    const [tops, setTops] = useState<number[]>([]);
+
+    const updateTops = useCallback(() => {
+        const editor = editorRef.current;
+        if (!enabled || !editor) {
+            setTops((prev) => (prev.length ? [] : prev));
+            return;
+        }
+        const selection = window.getSelection();
+        const hasEditorFocus =
+            document.activeElement === editor ||
+            Boolean(selection?.anchorNode && editor.contains(selection.anchorNode));
+        const nextTops = measurePlainLineBulletTops(editor, isFocused || hasEditorFocus);
+        setTops((prev) => {
+            if (prev.length === nextTops.length && prev.every((top, index) => Math.abs(top - nextTops[index]) < 0.5)) {
+                return prev;
+            }
+            return nextTops;
+        });
+    }, [editorRef, enabled, isFocused]);
+
+    useEffect(() => {
+        updateTops();
+        const frameId = requestAnimationFrame(updateTops);
+        return () => cancelAnimationFrame(frameId);
+    }, [updateTops, value, isFocused]);
+
+    useEffect(() => {
+        if (!enabled) {
+            return;
+        }
+        const editor = editorRef.current;
+        if (!editor) {
+            return;
+        }
+        const handleResize = () => updateTops();
+        window.addEventListener('resize', handleResize);
+        editor.addEventListener('scroll', handleResize);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            editor.removeEventListener('scroll', handleResize);
+        };
+    }, [editorRef, enabled, updateTops]);
+
+    return { tops, updateTops };
+};
+
 const useToolbarState = (editorRef: React.RefObject<HTMLDivElement>) => {
     const [toolbar, setToolbar] = useState<ToolbarState>({ visible: false, x: 0, y: 0 });
 
@@ -881,6 +1098,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     placeholder,
     ariaLabel,
     enableList = true,
+    showLineBulletCue = false,
     onUndo,
     readOnly = false,
 }) => {
@@ -892,6 +1110,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const editorClassName = `${className ?? ''} whitespace-pre-wrap break-words outline-none overflow-y-auto ${listStylesClass} ${RICH_TEXT_INLINE_STYLES_CLASS}`;
 
     useEditorSync(editorRef, value, isFocused, lastLocalValueRef);
+    const { tops: lineBulletCueTops, updateTops: updateLineBulletCueTops } = useLineBulletCueTops(
+        editorRef,
+        showLineBulletCue,
+        value,
+        isFocused
+    );
     const { toolbar, hideToolbar, updateSelectionState } = useToolbarState(editorRef);
     const { applyWrap, applyList } = useTextFormatting({
         editorRef,
@@ -1065,6 +1289,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         onUndo,
     });
 
+    const handleEditorInput = useCallback(
+        () => {
+            handleInput();
+            if (showLineBulletCue) {
+                requestAnimationFrame(updateLineBulletCueTops);
+            }
+        },
+        [handleInput, showLineBulletCue, updateLineBulletCueTops]
+    );
+
+    const handleEditorKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            handleKeyDown(event);
+            if (showLineBulletCue) {
+                requestAnimationFrame(updateLineBulletCueTops);
+            }
+        },
+        [handleKeyDown, showLineBulletCue, updateLineBulletCueTops]
+    );
+
     const isEmpty = !stripRichTextToText(value).trim();
 
     useEffect(() => {
@@ -1086,9 +1330,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 aria-label={ariaLabel}
                 aria-readonly={readOnly}
                 data-placeholder={placeholder}
-                onInput={readOnly ? undefined : handleInput}
+                onInput={readOnly ? undefined : handleEditorInput}
                 onPaste={readOnly ? undefined : handlePaste}
-                onKeyDown={readOnly ? undefined : handleKeyDown}
+                onKeyDown={readOnly ? undefined : handleEditorKeyDown}
                 onMouseUp={readOnly ? undefined : updateSelectionState}
                 onTouchEnd={readOnly ? undefined : updateSelectionState}
                 onKeyUp={readOnly ? undefined : updateSelectionState}
@@ -1097,6 +1341,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onBlur={readOnly ? undefined : handleBlur}
                 suppressContentEditableWarning
             />
+            {showLineBulletCue && lineBulletCueTops.length ? (
+                <div className="rich-text-line-bullet-cues" aria-hidden="true">
+                    {lineBulletCueTops.map((top, index) => (
+                        <span
+                            key={`${index}-${Math.round(top)}`}
+                            className="rich-text-line-bullet-cue-dot"
+                            style={{ top }}
+                        >
+                            •
+                        </span>
+                    ))}
+                </div>
+            ) : null}
             {isEmpty && !isFocused && placeholder ? (
                 <div className="pointer-events-none absolute left-3 top-2 text-sm text-gray-400">
                     {placeholder}
