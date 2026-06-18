@@ -234,28 +234,6 @@ const parseBySeparators = (value: string): SimpleModeParseResult | null => {
   return hasAnyContent ? { ok: true, star } : null;
 };
 
-export const parseSimpleExperienceText = (value: string): SimpleModeParseResult => {
-  const source = value || '';
-  const parsed = parseByHeadings(source) ?? parseBySeparators(source);
-  if (parsed) {
-    return parsed;
-  }
-  return {
-    ok: false,
-    star: {
-      s: '',
-      t: '',
-      a: source,
-      r: '',
-    },
-  };
-};
-
-export const joinStarFieldsForSimpleMode = (star: Record<StarFieldKey, string>) =>
-  STAR_KEYS
-    .map((key) => trimRichBlock(star[key] || ''))
-    .join('\n---\n');
-
 const normalizeCoverageText = (value: string) =>
   stripRichTextToText(value)
     .replace(/https?:\/\/\S+/g, '')
@@ -312,3 +290,25 @@ export const validateSplitCoverage = (
   }
   return covered / sourceText.length >= 0.85 && supported === splitText.length;
 };
+
+export const parseSimpleExperienceText = (value: string): SimpleModeParseResult => {
+  const source = value || '';
+  const parsed = parseByHeadings(source) ?? parseBySeparators(source);
+  if (parsed) {
+    return parsed;
+  }
+  return {
+    ok: false,
+    star: {
+      s: '',
+      t: '',
+      a: source,
+      r: '',
+    },
+  };
+};
+
+export const joinStarFieldsForSimpleMode = (star: Record<StarFieldKey, string>) =>
+  STAR_KEYS
+    .map((key) => trimRichBlock(star[key] || ''))
+    .join('\n---\n');

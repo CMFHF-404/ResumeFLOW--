@@ -303,9 +303,44 @@
             transform-origin: top;
         }
 
+        @keyframes simpleParsingGlow {
+            0% {
+                box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.14), 0 0 22px rgba(168, 85, 247, 0.26);
+            }
+
+            50% {
+                box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.16), 0 0 36px rgba(14, 165, 233, 0.38);
+            }
+
+            100% {
+                box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.14), 0 0 22px rgba(168, 85, 247, 0.26);
+            }
+        }
+
+        @keyframes simpleParsingShimmer {
+            from {
+                background-position: 0% 50%;
+            }
+
+            to {
+                background-position: 200% 50%;
+            }
+        }
+
+        .simple-parsing-flow {
+            background-image: linear-gradient(110deg, rgba(250, 245, 255, 0.92) 0%, rgba(224, 242, 254, 0.88) 42%, rgba(245, 243, 255, 0.92) 70%, rgba(250, 245, 255, 0.92) 100%);
+            background-size: 200% 100%;
+            animation: simpleParsingGlow 1.6s ease-in-out infinite, simpleParsingShimmer 2.8s linear infinite;
+        }
+
+        .dark .simple-parsing-flow {
+            background-image: linear-gradient(110deg, rgba(88, 28, 135, 0.2) 0%, rgba(12, 74, 110, 0.22) 42%, rgba(76, 29, 149, 0.18) 70%, rgba(88, 28, 135, 0.2) 100%);
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .card-highlight,
-            .ai-polish-card-expand {
+            .ai-polish-card-expand,
+            .simple-parsing-flow {
                 animation: none;
             }
         }

@@ -1,6 +1,9 @@
+import asyncio
+import hashlib
 import logging
 import json
 import re
+from collections import OrderedDict
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ...config import load_settings
@@ -131,6 +134,11 @@ logger = logging.getLogger(__name__)
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
+SPLIT_EXPERIENCE_TEXT_CACHE_VERSION = "split-experience-text-v1"
+SPLIT_EXPERIENCE_TEXT_CACHE_MAX_ENTRIES = 128
+SPLIT_HINT_SEPARATOR_PATTERN = re.compile(r"^\s*---+\s*$")
+_SPLIT_EXPERIENCE_TEXT_CACHE: "OrderedDict[str, Dict[str, str]]" = OrderedDict()
+_SPLIT_EXPERIENCE_TEXT_IN_FLIGHT: Dict[str, asyncio.Task[Dict[str, str]]] = {}
 
 
 async def call_llm_json(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -161,13 +169,66 @@ async def polish_experience(
 
 
 def _normalize_split_experience_result(result: Dict[str, Any]) -> Dict[str, str]:
-    return {
-        key: result.get(key).strip() if isinstance(result.get(key), str) else ""
-        for key in ("s", "t", "a", "r")
+    normalized: Dict[str, str] = {}
+    for key in ("s", "t", "a", "r"):
+        value = result.get(key)
+        if not isinstance(value, str):
+            normalized[key] = ""
+            continue
+        lines = [
+            line
+            for line in value.splitlines()
+            if not SPLIT_HINT_SEPARATOR_PATTERN.match(line)
+        ]
+        normalized[key] = "\n".join(lines).strip()
+    return normalized
+
+
+def clear_split_experience_text_cache() -> None:
+    _SPLIT_EXPERIENCE_TEXT_CACHE.clear()
+    _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.clear()
+
+
+def _clone_split_experience_result(result: Dict[str, str]) -> Dict[str, str]:
+    return {key: result.get(key, "") for key in ("s", "t", "a", "r")}
+
+
+def _build_split_experience_text_cache_key(
+    raw_text: str,
+    category: str,
+    org: Optional[str],
+    title: Optional[str],
+) -> str:
+    payload = {
+        "version": SPLIT_EXPERIENCE_TEXT_CACHE_VERSION,
+        "model": settings.ai_model,
+        "prompt": hashlib.sha256(STAR_SPLIT_ONLY.encode("utf-8")).hexdigest(),
+        "raw_text": raw_text,
+        "category": category,
+        "org": org or "",
+        "title": title or "",
     }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
-async def split_experience_text(
+def _get_cached_split_experience_text(cache_key: str) -> Optional[Dict[str, str]]:
+    cached = _SPLIT_EXPERIENCE_TEXT_CACHE.get(cache_key)
+    if cached is None:
+        return None
+    _SPLIT_EXPERIENCE_TEXT_CACHE.move_to_end(cache_key)
+    return _clone_split_experience_result(cached)
+
+
+def _store_cached_split_experience_text(cache_key: str, result: Dict[str, str]) -> None:
+    _SPLIT_EXPERIENCE_TEXT_CACHE[cache_key] = _clone_split_experience_result(result)
+    _SPLIT_EXPERIENCE_TEXT_CACHE.move_to_end(cache_key)
+    while len(_SPLIT_EXPERIENCE_TEXT_CACHE) > SPLIT_EXPERIENCE_TEXT_CACHE_MAX_ENTRIES:
+        _SPLIT_EXPERIENCE_TEXT_CACHE.popitem(last=False)
+
+
+async def _split_experience_text_uncached(
     raw_text: str,
     category: str,
     org: Optional[str] = None,
@@ -190,6 +251,37 @@ async def split_experience_text(
     ]
     result = await _call_llm(messages, json_mode=True)
     return _normalize_split_experience_result(result)
+
+
+async def split_experience_text(
+    raw_text: str,
+    category: str,
+    org: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Dict[str, str]:
+    if not raw_text.strip():
+        return {"s": "", "t": "", "a": "", "r": ""}
+
+    cache_key = _build_split_experience_text_cache_key(raw_text, category, org, title)
+    cached = _get_cached_split_experience_text(cache_key)
+    if cached is not None:
+        return cached
+
+    in_flight = _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.get(cache_key)
+    if in_flight is not None:
+        return _clone_split_experience_result(await asyncio.shield(in_flight))
+
+    task = asyncio.create_task(
+        _split_experience_text_uncached(raw_text, category, org, title)
+    )
+    _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT[cache_key] = task
+    try:
+        result = await asyncio.shield(task)
+    finally:
+        if _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.get(cache_key) is task:
+            _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.pop(cache_key, None)
+    _store_cached_split_experience_text(cache_key, result)
+    return _clone_split_experience_result(result)
 
 
 async def polish_experience_with_thoughts(

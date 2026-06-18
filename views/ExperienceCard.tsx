@@ -66,7 +66,13 @@ const STAR_SECTIONS: Array<{
   ];
 
 const EXPERIENCE_BANK_POLISH_MODES: Array<Exclude<PolishMode, 'assistant'>> = ['default', 'custom'];
-const SIMPLE_PARSING_EDITOR_CLASS = 'border-purple-300 bg-purple-50/40 shadow-[0_0_0_3px_rgba(168,85,247,0.18),0_0_30px_rgba(168,85,247,0.35)] dark:border-purple-500/60 dark:bg-purple-950/20';
+const SIMPLE_PARSING_EDITOR_CLASS = 'simple-parsing-flow border-purple-300 bg-purple-50/40 shadow-[0_0_0_3px_rgba(168,85,247,0.18),0_0_30px_rgba(168,85,247,0.35)] dark:border-purple-500/60 dark:bg-purple-950/20';
+const STAR_MODE_LETTERS = [
+  { letter: 'S', className: 'text-blue-600 dark:text-blue-400' },
+  { letter: 'T', className: 'text-orange-600 dark:text-orange-400' },
+  { letter: 'A', className: 'text-amber-600 dark:text-amber-400' },
+  { letter: 'R', className: 'text-emerald-600 dark:text-emerald-400' },
+];
 
 type ExperienceCardProps = {
   data: ExperienceCardData;
@@ -336,19 +342,26 @@ const ExperienceModeTabs: React.FC<{
           : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
       }`}
     >
-      简易模式
+      原始文本
     </button>
     <button
       type="button"
       onClick={() => onChange('expert')}
       disabled={disabled}
+      aria-label="切换到 STAR"
       className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
         mode === 'expert'
           ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
           : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
       }`}
     >
-      专家模式
+      <span className="inline-flex items-center gap-0.5 font-bold">
+        {STAR_MODE_LETTERS.map((item) => (
+          <span key={item.letter} className={item.className}>
+            {item.letter}
+          </span>
+        ))}
+      </span>
     </button>
   </div>
 );
@@ -766,7 +779,7 @@ const ExpandedExperienceCard: React.FC<{
         {data.editMode === 'simple' ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs leading-relaxed text-gray-400 dark:text-gray-500">
-              解析规则：可用 S/T/A/R 标题，或用 --- 分隔情境、任务、行动、结果。
+              解析规则：可用 S/T/A/R 标题，或用 --- 分隔情境、任务、行动、结果，也可随意填写，AI 会智能介入解析。
             </p>
             {modeTabs}
           </div>

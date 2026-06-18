@@ -1,5 +1,6 @@
 import json
 import os
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -182,6 +183,14 @@ class GeminiThinkingConfigTests(unittest.TestCase):
 
 
 class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        if hasattr(ai_service, "clear_split_experience_text_cache"):
+            ai_service.clear_split_experience_text_cache()
+
+    def tearDown(self) -> None:
+        if hasattr(ai_service, "clear_split_experience_text_cache"):
+            ai_service.clear_split_experience_text_cache()
+
     async def test_analyze_jd_with_thoughts_uses_jd_budget(self) -> None:
         fake_settings = SimpleNamespace(
             gemini_api_key="gemini-key",
@@ -236,6 +245,87 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
             "a": "原文行动",
             "r": "",
         })
+
+    async def test_split_experience_text_returns_empty_result_without_ai_for_blank_text(self) -> None:
+        call_mock = AsyncMock()
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            result = await ai_service.split_experience_text(" \n\t ", "work")
+
+        self.assertEqual(result, {"s": "", "t": "", "a": "", "r": ""})
+        call_mock.assert_not_awaited()
+
+    async def test_split_experience_text_removes_standalone_hint_separators(self) -> None:
+        call_mock = AsyncMock(
+            return_value={
+                "s": "针对门店库存管理混乱的业务痛点。\n---",
+                "t": "---\n独立负责风控模块从 0 到 1 设计落地。",
+                "a": "参与技术评审并梳理多级码关联架构。\n---\n输出中保真原型与 PRD 文档。",
+                "r": "成功投入生产，提供核心数据支撑。",
+            }
+        )
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            result = await ai_service.split_experience_text(
+                "针对门店库存管理混乱的业务痛点。\n---\n独立负责风控模块从 0 到 1 设计落地。",
+                "work",
+            )
+
+        self.assertEqual(result["s"], "针对门店库存管理混乱的业务痛点。")
+        self.assertEqual(result["t"], "独立负责风控模块从 0 到 1 设计落地。")
+        self.assertEqual(result["a"], "参与技术评审并梳理多级码关联架构。\n输出中保真原型与 PRD 文档。")
+        self.assertNotIn("---", "\n".join(result.values()))
+
+    async def test_split_experience_text_reuses_cached_result_for_same_payload(self) -> None:
+        call_mock = AsyncMock(
+            return_value={
+                "s": "情境",
+                "t": "任务",
+                "a": "行动",
+                "r": "结果",
+            }
+        )
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            first = await ai_service.split_experience_text("原始文本", "project", "原子简历", "独立开发")
+            second = await ai_service.split_experience_text("原始文本", "project", "原子简历", "独立开发")
+
+        self.assertEqual(first, second)
+        call_mock.assert_awaited_once()
+
+    async def test_split_experience_text_cache_is_scoped_by_model(self) -> None:
+        call_mock = AsyncMock(
+            side_effect=[
+                {"s": "模型一", "t": "", "a": "", "r": ""},
+                {"s": "模型二", "t": "", "a": "", "r": ""},
+            ]
+        )
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            with patch.object(ai_service, "settings", SimpleNamespace(ai_model="model-one")):
+                first = await ai_service.split_experience_text("原始文本", "work")
+            with patch.object(ai_service, "settings", SimpleNamespace(ai_model="model-two")):
+                second = await ai_service.split_experience_text("原始文本", "work")
+
+        self.assertEqual(first["s"], "模型一")
+        self.assertEqual(second["s"], "模型二")
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_split_experience_text_coalesces_concurrent_same_payload_requests(self) -> None:
+        async def delayed_result(_messages, json_mode=True):
+            await asyncio.sleep(0.01)
+            return {"s": "情境", "t": "", "a": "行动", "r": ""}
+
+        call_mock = AsyncMock(side_effect=delayed_result)
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            first, second = await asyncio.gather(
+                ai_service.split_experience_text("同一段原始文本", "work", "机构", "岗位"),
+                ai_service.split_experience_text("同一段原始文本", "work", "机构", "岗位"),
+            )
+
+        self.assertEqual(first, second)
+        call_mock.assert_awaited_once()
 
     async def test_boss_greeting_bypasses_thinking_when_budget_is_zero(self) -> None:
         fake_settings = SimpleNamespace(
