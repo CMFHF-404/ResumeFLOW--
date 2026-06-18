@@ -166,11 +166,14 @@ test('formalizing simple entries disables the card before AI splitting returns',
 
 test('formalizing simple entries shows parsing affordances in the card UI', () => {
   const cardSource = read('views/ExperienceCard.tsx');
+  const htmlSource = read('index.html');
 
   assert.match(cardSource, /isProcessingSimpleEntry/);
   assert.match(cardSource, /解析中\.\.\./);
-  assert.match(cardSource, /shadow-\[0_0_0_3px_rgba\(168,85,247,0\.18\),0_0_30px_rgba\(168,85,247,0\.35\)\]/);
-  assert.match(cardSource, /解析规则/);
+  assert.match(cardSource, /simple-parsing-flow/);
+  assert.match(htmlSource, /@keyframes simpleParsingGlow/);
+  assert.match(htmlSource, /simpleParsingShimmer/);
+  assert.match(cardSource, /AI 会智能介入解析/);
 });
 
 test('mode tabs align on the right while simple parsing rules stay on the left', () => {
@@ -179,9 +182,12 @@ test('mode tabs align on the right while simple parsing rules stay on the left',
   assert.match(cardSource, /const modeTabs = \(/);
   assert.match(cardSource, /modeTabs\?: React\.ReactNode/);
   assert.match(cardSource, /section\.id === 's' \? modeTabs : null/);
+  assert.match(cardSource, />\s*原始文本\s*</);
+  assert.match(cardSource, /aria-label="切换到 STAR"/);
+  assert.match(cardSource, /STAR_MODE_LETTERS\.map/);
   assert.match(
     cardSource,
-    /<div className="flex flex-wrap items-center justify-between gap-3">[\s\S]*解析规则：可用 S\/T\/A\/R 标题，或用 --- 分隔情境、任务、行动、结果。[\s\S]*\{modeTabs\}/
+    /<div className="flex flex-wrap items-center justify-between gap-3">[\s\S]*解析规则：可用 S\/T\/A\/R 标题，或用 --- 分隔情境、任务、行动、结果，也可随意填写，AI 会智能介入解析。[\s\S]*\{modeTabs\}/
   );
   assert.doesNotMatch(cardSource, /<div className="flex flex-wrap items-center gap-3">\s*\{modeTabs\}/);
 });
@@ -247,6 +253,22 @@ test('formalizing one card blocks starting a second formalize request', () => {
     /if \(!data \|\| savingCardId === cardId \|\| formalizingCardId === cardId \|\| formalizingCardIdRef\.current\) \{[\s\S]*return;[\s\S]*\}/
   );
   assert.match(source, /formalizingCardIdRef\.current = cardId/);
+});
+
+test('formalizing simple entries only calls AI as fallback and caches split results', () => {
+  const source = read('views/ExperienceSection/model.ts');
+
+  assert.match(source, /splitExperienceCacheRef/);
+  assert.match(source, /buildSplitExperienceCacheKey/);
+  assert.match(source, /const localResult = parseSimpleExperienceText\(data\.simpleText \|\| ''\)/);
+  assert.match(
+    source,
+    /let nextStar = localResult\.star;[\s\S]*if \(!localResult\.ok\) \{[\s\S]*splitExperienceCacheRef\.current\.get\(splitCacheKey\)[\s\S]*aiService\.splitExperienceText/
+  );
+  assert.doesNotMatch(
+    source,
+    /const localResult = parseSimpleExperienceText\(data\.simpleText \|\| ''\)[\s\S]*aiService\.splitExperienceText[\s\S]*if \(!localResult\.ok\)/
+  );
 });
 
 test('confirm delete waits for draft delete before removing local draft cards', () => {

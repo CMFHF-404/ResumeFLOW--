@@ -28,6 +28,38 @@ import { useExperienceList, useSortedExperiences } from './experienceListHooks';
 import { usePolishActions } from './polishActions';
 import type { CardPolishMode, ExperienceSectionModel, ExperienceSectionProps } from './types';
 
+const MAX_SPLIT_EXPERIENCE_CACHE_ENTRIES = 24;
+
+const normalizeSplitExperienceCacheText = (value?: string | null) => (value || '').trim();
+
+const buildSplitExperienceCacheKey = (
+  cardId: string,
+  category: string,
+  data: ExperienceCardData
+) => JSON.stringify([
+  cardId,
+  category,
+  normalizeSplitExperienceCacheText(data.org),
+  normalizeSplitExperienceCacheText(data.title),
+  data.simpleText || '',
+]);
+
+const rememberSplitExperienceResult = (
+  cache: Map<string, Record<StarFieldKey, string>>,
+  key: string,
+  value: Record<StarFieldKey, string>
+) => {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > MAX_SPLIT_EXPERIENCE_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+};
+
 type SectionModelInput = {
   experiences: ExperienceListItem[];
   sortedExperiences: ExperienceListItem[];
@@ -118,6 +150,7 @@ export const useExperienceSectionModel = ({
   const draftSaveQueueRef = useRef<Map<string, Promise<ExperienceDraftRecord | null>>>(new Map());
   const latestSavedDraftsRef = useRef<Map<string, ExperienceDraftRecord>>(new Map());
   const invalidatedDraftSaveCardsRef = useRef(new Set<string>());
+  const splitExperienceCacheRef = useRef<Map<string, Record<StarFieldKey, string>>>(new Map());
   const { ensureCardState } = useCardInitializer(experiences, store.setCardData, store.setOriginalCardData);
   const { updateCardField, updateCardStar, updateCardData, resetCard } = useCardEditors(
     store.originalCardData,
@@ -428,21 +461,28 @@ export const useExperienceSectionModel = ({
       const localResult = parseSimpleExperienceText(data.simpleText || '');
       let nextStar = localResult.star;
       if (!localResult.ok) {
-        try {
-          const aiResult = await aiService.splitExperienceText({
-            rawText: data.simpleText || '',
-            category,
-            org: data.org,
-            title: data.title,
-          });
-          if (validateSplitCoverage(data.simpleText || '', aiResult)) {
-            nextStar = aiResult;
-          } else {
-            toast.error('AI 拆分可能遗漏内容，已全部放入 A 部分，请手动调整', 3000);
+        const splitCacheKey = buildSplitExperienceCacheKey(cardId, category, data);
+        const cachedSplit = splitExperienceCacheRef.current.get(splitCacheKey);
+        if (cachedSplit) {
+          nextStar = cachedSplit;
+        } else {
+          try {
+            const aiResult = await aiService.splitExperienceText({
+              rawText: data.simpleText || '',
+              category,
+              org: data.org,
+              title: data.title,
+            });
+            if (validateSplitCoverage(data.simpleText || '', aiResult)) {
+              nextStar = aiResult;
+              rememberSplitExperienceResult(splitExperienceCacheRef.current, splitCacheKey, aiResult);
+            } else {
+              toast.error('AI 拆分可能遗漏内容，已全部放入 A 部分，请手动调整', 3000);
+            }
+          } catch (error) {
+            console.error('[ExperienceSection] AI 拆分经历失败:', error);
+            toast.error('AI 拆分失败，已全部放入 A 部分，请手动调整', 3000);
           }
-        } catch (error) {
-          console.error('[ExperienceSection] AI 拆分经历失败:', error);
-          toast.error('AI 拆分失败，已全部放入 A 部分，请手动调整', 3000);
         }
       }
       const nextData: ExperienceCardData = {
