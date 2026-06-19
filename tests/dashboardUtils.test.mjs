@@ -22,7 +22,9 @@ const resume = (overrides = {}) => ({
   targetRole: 'PM',
   matchRate: 0,
   createdAt: '2026-01-01',
+  createdAtValue: '2026-01-01T00:00:00.000Z',
   lastModified: 'today',
+  updatedAtValue: '2026-01-01T12:00:00.000Z',
   status: 'draft',
   type: 'standard',
   ...overrides,
@@ -65,6 +67,117 @@ test('removeResumeIds and filterExistingResumeIds keep deletion cleanup determin
 
   assert.deepEqual(removeResumeIds(items, ['b']).map((item) => item.id), ['a', 'c']);
   assert.deepEqual(filterExistingResumeIds(['a', 'missing', 'c'], items), ['a', 'c']);
+});
+
+test('filterSelectedDashboardResumeIds drops hidden filtered selections', async () => {
+  const { filterSelectedDashboardResumeIds } = await importDashboardUtils();
+  const visible = [resume({ id: 'visible-a' }), resume({ id: 'visible-b' })];
+
+  assert.deepEqual(
+    filterSelectedDashboardResumeIds(['hidden', 'visible-b', 'visible-a'], visible),
+    ['visible-b', 'visible-a']
+  );
+});
+
+test('mergeDashboardResumeServerUpdate preserves the raw updated timestamp for sorting', async () => {
+  const { mergeDashboardResumeServerUpdate } = await importDashboardUtils();
+  const updatedAt = '2026-06-19T12:30:00.000Z';
+  const current = resume({
+    id: 'resume-1',
+    name: 'Old title',
+    updatedAtValue: '2026-01-01T00:00:00.000Z',
+  });
+
+  const merged = mergeDashboardResumeServerUpdate(current, {
+    id: 'resume-1',
+    title: 'New title',
+    updated_at: updatedAt,
+  });
+
+  assert.equal(merged.name, 'New title');
+  assert.equal(merged.updatedAtValue, updatedAt);
+});
+
+test('getVisibleDashboardResumes searches names with trimmed case-insensitive text', async () => {
+  const { getVisibleDashboardResumes } = await importDashboardUtils();
+  const items = [
+    resume({ id: 'a', name: 'AI Product Manager' }),
+    resume({ id: 'b', name: 'User Operations' }),
+    resume({ id: 'c', name: 'ai research intern' }),
+  ];
+
+  const visible = getVisibleDashboardResumes(items, { searchQuery: '  AI  ' });
+
+  assert.deepEqual(visible.map((item) => item.id), ['a', 'c']);
+});
+
+test('getVisibleDashboardResumes filters creation time by presets and custom ranges', async () => {
+  const { getVisibleDashboardResumes } = await importDashboardUtils();
+  const items = [
+    resume({ id: 'old', createdAtValue: '2026-01-01T00:00:00.000Z' }),
+    resume({ id: 'recent', createdAtValue: '2026-06-15T00:00:00.000Z' }),
+    resume({ id: 'range', createdAtValue: '2026-05-20T00:00:00.000Z' }),
+  ];
+
+  const recent = getVisibleDashboardResumes(items, {
+    nowMs: Date.parse('2026-06-19T00:00:00.000Z'),
+    timeFilter: { preset: '7d', startDate: '', endDate: '' },
+  });
+  const custom = getVisibleDashboardResumes(items, {
+    timeFilter: { preset: 'custom', startDate: '2026-05-01', endDate: '2026-05-31' },
+  });
+
+  assert.deepEqual(recent.map((item) => item.id), ['recent']);
+  assert.deepEqual(custom.map((item) => item.id), ['range']);
+});
+
+test('getVisibleDashboardResumes filters match rate by presets and clamped custom ranges', async () => {
+  const { getVisibleDashboardResumes } = await importDashboardUtils();
+  const items = [
+    resume({ id: 'draft', matchRate: 0 }),
+    resume({ id: 'good', matchRate: 82 }),
+    resume({ id: 'great', matchRate: 94 }),
+  ];
+
+  const preset = getVisibleDashboardResumes(items, {
+    matchFilter: { preset: '80', min: '', max: '' },
+  });
+  const custom = getVisibleDashboardResumes(items, {
+    matchFilter: { preset: 'custom', min: '90', max: '160' },
+  });
+
+  assert.deepEqual(preset.map((item) => item.id), ['good', 'great']);
+  assert.deepEqual(custom.map((item) => item.id), ['great']);
+});
+
+test('getVisibleDashboardResumes sorts by creation time, updated time, and match rate stably', async () => {
+  const { getVisibleDashboardResumes } = await importDashboardUtils();
+  const items = [
+    resume({
+      id: 'a',
+      matchRate: 80,
+      createdAtValue: '2026-01-01T00:00:00.000Z',
+      updatedAtValue: '2026-02-01T00:00:00.000Z',
+    }),
+    resume({
+      id: 'b',
+      matchRate: 95,
+      createdAtValue: '2026-03-01T00:00:00.000Z',
+      updatedAtValue: '2026-01-15T00:00:00.000Z',
+    }),
+    resume({
+      id: 'c',
+      matchRate: 80,
+      createdAtValue: '2026-02-01T00:00:00.000Z',
+      updatedAtValue: '2026-04-01T00:00:00.000Z',
+    }),
+  ];
+
+  assert.deepEqual(getVisibleDashboardResumes(items, { sortMode: 'created-desc' }).map((item) => item.id), ['b', 'c', 'a']);
+  assert.deepEqual(getVisibleDashboardResumes(items, { sortMode: 'created-asc' }).map((item) => item.id), ['a', 'c', 'b']);
+  assert.deepEqual(getVisibleDashboardResumes(items, { sortMode: 'updated-desc' }).map((item) => item.id), ['c', 'a', 'b']);
+  assert.deepEqual(getVisibleDashboardResumes(items, { sortMode: 'match-desc' }).map((item) => item.id), ['b', 'a', 'c']);
+  assert.deepEqual(getVisibleDashboardResumes(items, { sortMode: 'match-asc' }).map((item) => item.id), ['a', 'c', 'b']);
 });
 
 test('resolveDropdownPosition keeps the menu within the viewport and opens upward near the bottom', async () => {

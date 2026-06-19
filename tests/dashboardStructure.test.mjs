@@ -18,3 +18,46 @@ test('Dashboard delegates dropdown state and global listeners to useDashboardDro
   assert.match(dropdownHook, /resolveDropdownPosition/);
   assert.match(dropdownHook, /document\.addEventListener\('mousedown'/);
 });
+
+test('Dashboard derives visible resumes for search, filters, sort, and rendering', () => {
+  const dashboard = read('views/Dashboard.tsx');
+
+  assert.match(dashboard, /getVisibleDashboardResumes/);
+  assert.match(dashboard, /const visibleResumes = useMemo/);
+  assert.match(dashboard, /searchQuery/);
+  assert.match(dashboard, /sortMode/);
+  assert.match(dashboard, /timeFilter/);
+  assert.match(dashboard, /matchFilter/);
+  assert.match(dashboard, /visibleResumes\.map/);
+  assert.doesNotMatch(dashboard, /resumes\.map\(resume => \(/);
+});
+
+test('Dashboard batch select all and empty results target filtered visible resumes', () => {
+  const dashboard = read('views/Dashboard.tsx');
+
+  assert.match(dashboard, /allVisibleSelected \? \[\] : visibleResumes\.map\(\(resume\) => resume\.id\)/);
+  assert.match(dashboard, /allVisibleSelected/);
+  assert.match(dashboard, /搜索简历名称/);
+  assert.match(dashboard, /清空筛选/);
+  assert.match(dashboard, /没有找到匹配的简历/);
+});
+
+test('Dashboard keeps search in the header and opens filters from a search-side button', () => {
+  const dashboard = read('views/Dashboard.tsx');
+
+  assert.match(dashboard, /const \[isFilterToolbarOpen, setIsFilterToolbarOpen\]/);
+  assert.match(dashboard, /data-dashboard-search="top"/);
+  assert.match(dashboard, /aria-label="筛选简历"/);
+  assert.match(dashboard, /setIsFilterToolbarOpen\(\(prev\) => !prev\)/);
+  assert.match(dashboard, /data-dashboard-filter-popover="advanced"/);
+  assert.match(dashboard, /absolute right-0 top-full/);
+  assert.match(dashboard, /flex flex-col gap-3/);
+});
+
+test('Dashboard shows custom filter inputs only after custom presets are selected', () => {
+  const dashboard = read('views/Dashboard.tsx');
+
+  assert.match(dashboard, /timeFilter\.preset === 'custom' && \(/);
+  assert.match(dashboard, /matchFilter\.preset === 'custom' && \(/);
+  assert.doesNotMatch(dashboard, /data-dashboard-filter-toolbar="advanced"/);
+});

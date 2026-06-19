@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles } from 'lucide-react';
+import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
 import { devLog } from '../services/devLogger';
@@ -8,8 +8,15 @@ import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
 import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
 import {
+  filterSelectedDashboardResumeIds,
+  getVisibleDashboardResumes,
   filterExistingResumeIds,
   removeResumeIds,
+} from './Dashboard/dashboardUtils';
+import type {
+  DashboardMatchFilter,
+  DashboardSortMode,
+  DashboardTimeFilter,
 } from './Dashboard/dashboardUtils';
 import { useDashboardResumeList } from './Dashboard/useDashboardResumeList';
 import { useDashboardDropdown } from './Dashboard/useDashboardDropdown';
@@ -38,6 +45,9 @@ const DELETE_CANCEL_LABEL = '取消';
 const VIEW_MODE_STORAGE_KEY = 'yuanzijianli.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
 const MOBILE_LONG_PRESS_DURATION = 450;
+const DEFAULT_SORT_MODE: DashboardSortMode = 'created-desc';
+const DEFAULT_TIME_FILTER: DashboardTimeFilter = { preset: 'all', startDate: '', endDate: '' };
+const DEFAULT_MATCH_FILTER: DashboardMatchFilter = { preset: 'all', min: '', max: '' };
 const DELETE_TOAST_MESSAGES = {
   loading: '正在删除简历...',
   success: '删除成功',
@@ -74,6 +84,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     resolveStoredViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
   );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<DashboardSortMode>(DEFAULT_SORT_MODE);
+  const [timeFilter, setTimeFilter] = useState<DashboardTimeFilter>(DEFAULT_TIME_FILTER);
+  const [matchFilter, setMatchFilter] = useState<DashboardMatchFilter>(DEFAULT_MATCH_FILTER);
+  const [isFilterToolbarOpen, setIsFilterToolbarOpen] = useState(false);
   const [isDeletingResume, setIsDeletingResume] = useState(false);
   const [isBatchEditMode, setIsBatchEditMode] = useState(false);
   const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>([]);
@@ -138,9 +153,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     return () => mediaQuery.removeListener(handleChange);
   }, []);
   const effectiveViewMode = isMobile ? 'list' : viewMode;
+  const visibleResumes = useMemo(
+    () => getVisibleDashboardResumes(resumes, {
+      searchQuery,
+      sortMode,
+      timeFilter,
+      matchFilter,
+    }),
+    [matchFilter, resumes, searchQuery, sortMode, timeFilter]
+  );
   const selectedResumeIdSet = useMemo(() => new Set(selectedResumeIds), [selectedResumeIds]);
   const selectedCount = selectedResumeIds.length;
-  const allSelected = resumes.length > 0 && selectedCount === resumes.length;
+  const allVisibleSelected = visibleResumes.length > 0
+    && visibleResumes.every((resume) => selectedResumeIdSet.has(resume.id));
+  const hasActiveFilters = searchQuery.trim() !== ''
+    || sortMode !== DEFAULT_SORT_MODE
+    || timeFilter.preset !== DEFAULT_TIME_FILTER.preset
+    || (timeFilter.preset === 'custom' && timeFilter.startDate !== '')
+    || (timeFilter.preset === 'custom' && timeFilter.endDate !== '')
+    || matchFilter.preset !== DEFAULT_MATCH_FILTER.preset
+    || (matchFilter.preset === 'custom' && matchFilter.min !== '')
+    || (matchFilter.preset === 'custom' && matchFilter.max !== '');
+  const hasEmptyFilterResult = resumes.length > 0 && visibleResumes.length === 0 && hasActiveFilters;
   const pendingDeleteIds = useMemo(() => {
     if (batchDeleteTargetIds.length > 0) {
       return batchDeleteTargetIds;
@@ -148,6 +182,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     return deleteTargetId ? [deleteTargetId] : [];
   }, [batchDeleteTargetIds, deleteTargetId]);
   const isBatchDeleting = pendingDeleteIds.length > 1;
+
+  useEffect(() => {
+    if (!isBatchEditMode || selectedResumeIds.length === 0) {
+      return;
+    }
+    setSelectedResumeIds((prev) => {
+      const next = filterSelectedDashboardResumeIds(prev, visibleResumes);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [isBatchEditMode, selectedResumeIds.length, visibleResumes]);
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current !== null) {
@@ -204,10 +248,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [toggleResumeSelection]);
 
   const handleSelectAllToggle = useCallback(() => {
-    setSelectedResumeIds((prev) => (
-      prev.length === resumes.length ? [] : resumes.map((resume) => resume.id)
+    setSelectedResumeIds(() => (
+      allVisibleSelected ? [] : visibleResumes.map((resume) => resume.id)
     ));
-  }, [resumes]);
+  }, [allVisibleSelected, visibleResumes]);
+
+  const handleClearSearchFilters = useCallback(() => {
+    setSearchQuery('');
+    setSortMode(DEFAULT_SORT_MODE);
+    setTimeFilter(DEFAULT_TIME_FILTER);
+    setMatchFilter(DEFAULT_MATCH_FILTER);
+  }, []);
 
   const handleBatchDeleteRequest = useCallback(() => {
     if (selectedResumeIds.length === 0) {
@@ -594,7 +645,174 @@ const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end md:gap-4">
+              {resumes.length > 0 && (
+                <div
+                  className="relative flex w-full items-center gap-2 md:w-[360px] lg:w-[440px]"
+                  data-dashboard-search="top"
+                >
+                  <label className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="搜索简历名称"
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:border-primary dark:border-gray-700 dark:bg-surface-dark dark:text-white dark:focus:border-primary"
+                      type="search"
+                    />
+                  </label>
+                  <button
+                    aria-expanded={isFilterToolbarOpen}
+                    aria-label="筛选简历"
+                    onClick={() => setIsFilterToolbarOpen((prev) => !prev)}
+                    className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-sm font-semibold shadow-sm transition-colors ${isFilterToolbarOpen || hasActiveFilters
+                      ? 'border-primary/30 bg-primary/10 text-primary dark:border-primary/40 dark:bg-primary/15 dark:text-primary-light'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-300 dark:hover:bg-gray-800'
+                      }`}
+                    type="button"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                    <span className="hidden sm:inline">筛选</span>
+                  </button>
+                  {isFilterToolbarOpen && (
+                    <div
+                      className="absolute right-0 top-full z-40 mt-3 w-[min(92vw,360px)] rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-2xl shadow-gray-900/15 dark:border-gray-700 dark:bg-surface-dark dark:shadow-black/30"
+                      data-dashboard-filter-popover="advanced"
+                    >
+                      <div className="flex flex-col gap-3">
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                          排序
+                          <select
+                            value={sortMode}
+                            onChange={(event) => setSortMode(event.target.value as DashboardSortMode)}
+                            className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                          >
+                            <option value="created-desc">创建时间：新到旧</option>
+                            <option value="created-asc">创建时间：旧到新</option>
+                            <option value="updated-desc">最近修改：新到旧</option>
+                            <option value="match-desc">匹配度：高到低</option>
+                            <option value="match-asc">匹配度：低到高</option>
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                          创建时间
+                          <select
+                            value={timeFilter.preset}
+                            onChange={(event) => setTimeFilter((prev) => ({
+                              ...prev,
+                              preset: event.target.value as DashboardTimeFilter['preset'],
+                            }))}
+                            className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                          >
+                            <option value="all">全部时间</option>
+                            <option value="7d">近7天</option>
+                            <option value="30d">近30天</option>
+                            <option value="90d">近90天</option>
+                            <option value="custom">自定义</option>
+                          </select>
+                        </label>
+                        {timeFilter.preset === 'custom' && (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                              开始日期
+                              <input
+                                value={timeFilter.startDate}
+                                onChange={(event) => setTimeFilter((prev) => ({
+                                  ...prev,
+                                  startDate: event.target.value,
+                                }))}
+                                className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                                type="date"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                              结束日期
+                              <input
+                                value={timeFilter.endDate}
+                                onChange={(event) => setTimeFilter((prev) => ({
+                                  ...prev,
+                                  endDate: event.target.value,
+                                }))}
+                                className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                                type="date"
+                              />
+                            </label>
+                          </div>
+                        )}
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                          匹配度
+                          <select
+                            value={matchFilter.preset}
+                            onChange={(event) => setMatchFilter((prev) => ({
+                              ...prev,
+                              preset: event.target.value as DashboardMatchFilter['preset'],
+                            }))}
+                            className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                          >
+                            <option value="all">全部匹配度</option>
+                            <option value="scored">有匹配度</option>
+                            <option value="80">80%以上</option>
+                            <option value="90">90%以上</option>
+                            <option value="custom">自定义</option>
+                          </select>
+                        </label>
+                        {matchFilter.preset === 'custom' && (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                              最低匹配度
+                              <input
+                                value={matchFilter.min}
+                                onChange={(event) => setMatchFilter((prev) => ({
+                                  ...prev,
+                                  min: event.target.value,
+                                }))}
+                                className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                                inputMode="numeric"
+                                max="100"
+                                min="0"
+                                placeholder="0"
+                                type="number"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                              最高匹配度
+                              <input
+                                value={matchFilter.max}
+                                onChange={(event) => setMatchFilter((prev) => ({
+                                  ...prev,
+                                  max: event.target.value,
+                                }))}
+                                className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
+                                inputMode="numeric"
+                                max="100"
+                                min="0"
+                                placeholder="100"
+                                type="number"
+                              />
+                            </label>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                          <span className="inline-flex items-center gap-2">
+                            <SlidersHorizontal className="h-4 w-4" />
+                            显示 {visibleResumes.length} / {resumes.length} 份
+                          </span>
+                          {hasActiveFilters && (
+                            <button
+                              onClick={handleClearSearchFilters}
+                              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                              type="button"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              清空
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="hidden md:flex items-center bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
                 <button
                   onClick={() => setViewMode('grid')}
@@ -647,10 +865,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <div className="flex items-center gap-2 md:hidden">
                     <button
                       onClick={handleSelectAllToggle}
+                      disabled={visibleResumes.length === 0}
                       className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                       type="button"
                     >
-                      {allSelected ? '取消全选' : '全选'}
+                      {allVisibleSelected ? '取消全选' : '全选'}
                     </button>
                     <button
                       onClick={handleBatchDeleteRequest}
@@ -665,10 +884,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div className="hidden items-center gap-2 md:flex">
                   <button
                     onClick={handleSelectAllToggle}
+                    disabled={visibleResumes.length === 0}
                     className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                     type="button"
                   >
-                    {allSelected ? '取消全选' : '全选'}
+                    {allVisibleSelected ? '取消全选' : '全选'}
                   </button>
                   <button
                     onClick={handleBatchDeleteRequest}
@@ -683,9 +903,25 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           )}
 
-          {effectiveViewMode === 'grid' ? (
+          {hasEmptyFilterResult ? (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center shadow-sm dark:border-gray-700 dark:bg-surface-dark">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Search className="h-5 w-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">没有找到匹配的简历</h3>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">调整名称、时间或匹配度条件后再试。</p>
+              <button
+                onClick={handleClearSearchFilters}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary-dark"
+                type="button"
+              >
+                <RotateCcw className="h-4 w-4" />
+                清空筛选
+              </button>
+            </div>
+          ) : effectiveViewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-              {resumes.map(resume => (
+              {visibleResumes.map(resume => (
                 <div
                   key={resume.id}
                   onClick={() => handleResumeCardClick(resume.id)}
@@ -794,7 +1030,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {resumes.map(resume => (
+                    {visibleResumes.map(resume => (
                       <tr
                         key={resume.id}
                         className={`group transition-colors cursor-pointer ${selectedResumeIdSet.has(resume.id)
@@ -864,7 +1100,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </table>
               </div>
               <div className="space-y-3 md:hidden">
-                {resumes.map((resume) => (
+                {visibleResumes.map((resume) => (
                   <div
                     key={resume.id}
                     className={`rounded-2xl border bg-white p-4 shadow-sm transition-colors dark:bg-surface-dark touch-manipulation select-none ${selectedResumeIdSet.has(resume.id)
