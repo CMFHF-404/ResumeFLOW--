@@ -60,7 +60,9 @@ export const mapResumeToDashboard = (
         targetRole: resume.target_role || '通用',
         matchRate,
         createdAt: formatDateLabel(resume.created_at),
+        createdAtValue: resume.created_at,
         lastModified: formatRelativeTime(resume.updated_at),
+        updatedAtValue: resume.updated_at,
         status: matchRate > 0 ? 'final' : 'draft',
         type: 'general',
     };

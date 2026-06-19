@@ -11,7 +11,9 @@ export interface Resume {
   targetRole: string;
   matchRate: number;
   createdAt: string;
+  createdAtValue?: string;
   lastModified: string;
+  updatedAtValue?: string;
   status: 'draft' | 'final';
   type: 'internship' | 'fulltime' | 'general';
 }

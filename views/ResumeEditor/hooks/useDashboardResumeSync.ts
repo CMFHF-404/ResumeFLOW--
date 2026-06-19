@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Resume as DashboardResume } from '../../../types';
 import { resumeService, type Resume as ResumeRecord } from '../../../services/resumeService';
 import { mapResumesToDashboard } from '../../../utils/dashboardResumeMapper';
-import { formatRelativeTime } from '../../../utils/timeUtils';
+import { mergeDashboardResumeServerUpdate } from '../../Dashboard/dashboardUtils';
 
 export type DashboardResumesSyncResult =
     | { status: 'success' | 'skipped' }
@@ -26,11 +26,7 @@ export const useDashboardResumeSync = ({
             }
             const next = cachedResumes.map((resume) =>
                 resume.id === updated.id
-                    ? {
-                        ...resume,
-                        name: updated.title,
-                        lastModified: formatRelativeTime(updated.updated_at),
-                    }
+                    ? mergeDashboardResumeServerUpdate(resume, updated)
                     : resume
             );
             onResumesUpdate(next);

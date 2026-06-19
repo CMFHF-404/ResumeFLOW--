@@ -12,11 +12,11 @@ import {
   mapResumeToDashboard,
   mapResumesToDashboard,
 } from '../../utils/dashboardResumeMapper';
-import { formatRelativeTime } from '../../utils/timeUtils';
 import { setActiveResumeId } from '../resumeStorage';
 import { buildPreferredResumeCreateConfig } from '../resumeTemplateStorage';
 import {
   areResumeListsEqual,
+  mergeDashboardResumeServerUpdate,
   mergeMatchRatesIntoResumes,
 } from './dashboardUtils';
 
@@ -210,11 +210,7 @@ export const useDashboardResumeList = ({
       const updated = await resumeService.update(resumeId, { title: nextName });
       setResumes((prev) => prev.map((resume) =>
         resume.id === updated.id
-          ? {
-            ...resume,
-            name: updated.title,
-            lastModified: formatRelativeTime(updated.updated_at),
-          }
+          ? mergeDashboardResumeServerUpdate(resume, updated)
           : resume
       ));
       updateToast(toastId, { message: RENAME_TOAST_MESSAGES.success, type: 'success', duration: 2000 });
