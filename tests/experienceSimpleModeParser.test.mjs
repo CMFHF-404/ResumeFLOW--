@@ -102,6 +102,80 @@ test('splits simple text by four separator sections', async () => {
   });
 });
 
+test('ignores extra simple separators and blank lines without putting them into STAR fields', async () => {
+  const { parseSimpleExperienceText } = await importParser();
+  const input = [
+    '',
+    '情境内容',
+    '',
+    '---',
+    '',
+    '---',
+    '',
+    '任务内容',
+    '',
+    '----',
+    '',
+    '行动一',
+    '',
+    '行动二',
+    '',
+    '---',
+    '',
+    '结果内容',
+    '',
+    '---',
+  ].join('\n');
+
+  const result = parseSimpleExperienceText(input);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.star, {
+    s: '情境内容',
+    t: '任务内容',
+    a: '行动一\n行动二',
+    r: '结果内容',
+  });
+  assert.equal(Object.values(result.star).join('\n').includes('---'), false);
+  assert.equal(Object.values(result.star).join('\n').includes('\n\n'), false);
+});
+
+test('removes separators and blank lines from heading-parsed STAR fields', async () => {
+  const { parseSimpleExperienceText } = await importParser();
+  const input = [
+    'S：',
+    '',
+    '情境内容',
+    '',
+    '---',
+    'T：',
+    '',
+    '任务内容',
+    '',
+    'A：',
+    '',
+    '行动一',
+    '',
+    '---',
+    '',
+    '行动二',
+    'R：',
+    '',
+    '结果内容',
+    '',
+  ].join('\n');
+
+  const result = parseSimpleExperienceText(input);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.star, {
+    s: '情境内容',
+    t: '任务内容',
+    a: '行动一\n行动二',
+    r: '结果内容',
+  });
+});
+
 test('removes adjacent duplicate lines inside simple separator sections', async () => {
   const { parseSimpleExperienceText } = await importParser();
   const task = '独立负责防窜货风控模块的从0到1设计与落地。';

@@ -31,7 +31,7 @@ const WORD_HEADING_PATTERNS: Record<StarFieldKey, RegExp> = {
 const HTML_BLOCK_BREAK_PATTERN = /(?:<br\s*\/?>|<\/(?:div|p|li)>|<li[^>]*>)/gi;
 const HTML_BLOCK_TAG_PATTERN = /<\/?(?:div|p|ul|ol)[^>]*>/gi;
 const HTML_TAG_PATTERN = /<[^>]*>/g;
-const SEPARATOR_PATTERN = /^\s*---+\s*$/;
+const SEPARATOR_PATTERN = /^\s*--+\s*$/;
 
 const createEmptyStar = (): Record<StarFieldKey, string> => ({
   s: '',
@@ -107,6 +107,16 @@ const trimRichBlock = (value: string) => {
 export const dedupeAdjacentRepeatedContent = (value: string) => {
   const lines = splitLines(trimRichBlock(value));
   return dedupeAdjacentDuplicateLines(lines.map(dedupeAdjacentDuplicateSentences)).join('\n').trim();
+};
+
+const normalizeStarFieldContent = (value: string) => {
+  const lines = splitLines(dedupeAdjacentRepeatedContent(value))
+    .map(trimRichLine)
+    .filter((line) => {
+      const plain = stripInlineHtml(line);
+      return plain && !SEPARATOR_PATTERN.test(plain);
+    });
+  return lines.join('\n');
 };
 
 const isLabelOnlyContent = (key: StarFieldKey, value: string) =>
@@ -200,17 +210,17 @@ const parseByHeadings = (value: string): SimpleModeParseResult | null => {
   }
 
   const normalized = {
-    s: dedupeAdjacentRepeatedContent(star.s) || dedupeAdjacentRepeatedContent(labelFallbacks.s),
-    t: dedupeAdjacentRepeatedContent(star.t) || dedupeAdjacentRepeatedContent(labelFallbacks.t),
-    a: dedupeAdjacentRepeatedContent(star.a) || dedupeAdjacentRepeatedContent(labelFallbacks.a),
-    r: dedupeAdjacentRepeatedContent(star.r) || dedupeAdjacentRepeatedContent(labelFallbacks.r),
+    s: normalizeStarFieldContent(star.s) || normalizeStarFieldContent(labelFallbacks.s),
+    t: normalizeStarFieldContent(star.t) || normalizeStarFieldContent(labelFallbacks.t),
+    a: normalizeStarFieldContent(star.a) || normalizeStarFieldContent(labelFallbacks.a),
+    r: normalizeStarFieldContent(star.r) || normalizeStarFieldContent(labelFallbacks.r),
   };
   const hasAnyContent = STAR_KEYS.some((key) => stripInlineHtml(normalized[key]));
   return hasAnyContent ? { ok: true, star: normalized } : null;
 };
 
 const parseBySeparators = (value: string): SimpleModeParseResult | null => {
-  const parts: string[] = [''];
+  let parts: string[] = [''];
   splitLines(value).forEach((line) => {
     if (SEPARATOR_PATTERN.test(stripInlineHtml(line))) {
       parts.push('');
@@ -221,14 +231,18 @@ const parseBySeparators = (value: string): SimpleModeParseResult | null => {
   });
 
   if (parts.length !== 4) {
-    return null;
+    const nonEmptyParts = parts.filter((part) => normalizeStarFieldContent(part));
+    if (nonEmptyParts.length !== 4) {
+      return null;
+    }
+    parts = nonEmptyParts;
   }
 
   const star = {
-    s: dedupeAdjacentRepeatedContent(parts[0]),
-    t: dedupeAdjacentRepeatedContent(parts[1]),
-    a: dedupeAdjacentRepeatedContent(parts[2]),
-    r: dedupeAdjacentRepeatedContent(parts[3]),
+    s: normalizeStarFieldContent(parts[0]),
+    t: normalizeStarFieldContent(parts[1]),
+    a: normalizeStarFieldContent(parts[2]),
+    r: normalizeStarFieldContent(parts[3]),
   };
   const hasAnyContent = STAR_KEYS.some((key) => stripInlineHtml(star[key]));
   return hasAnyContent ? { ok: true, star } : null;
@@ -302,7 +316,7 @@ export const parseSimpleExperienceText = (value: string): SimpleModeParseResult 
     star: {
       s: '',
       t: '',
-      a: source,
+      a: normalizeStarFieldContent(source),
       r: '',
     },
   };

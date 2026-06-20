@@ -3,7 +3,6 @@ import AuthGuard from './components/AuthGuard';
 import FeedbackModal from './components/FeedbackModal';
 import AppreciationModal from './components/AppreciationModal';
 import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
-import AccountManagementModal from './components/AccountManagementModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest } from './views/AIAssistant/types';
@@ -26,7 +25,6 @@ import {
 } from './hooks/useAuthUserKey';
 
 const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
-const ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY = 'resumeflow.accountManagement.isOpen';
 
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const ExperienceBank = lazy(() => import('./views/ExperienceBank'));
@@ -58,11 +56,6 @@ const buildFeedbackContext = (view: ViewState) => {
   };
 };
 
-const readStoredAccountManagementOpen = () => (
-  typeof window !== 'undefined' &&
-  window.sessionStorage.getItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY) === 'true'
-);
-
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(() => {
     const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
@@ -82,7 +75,6 @@ const App: React.FC = () => {
   const [isAppreciationOpen, setIsAppreciationOpen] = useState(false);
   const [appreciationReturnFocusElement, setAppreciationReturnFocusElement] = useState<HTMLElement | null>(null);
   const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
-  const [isAccountManagementOpen, setIsAccountManagementOpen] = useState(readStoredAccountManagementOpen);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
@@ -106,8 +98,6 @@ const App: React.FC = () => {
     setIsAppreciationOpen(false);
     setAppreciationReturnFocusElement(null);
     setIsAgentPluginConfigOpen(false);
-    setIsAccountManagementOpen(false);
-    sessionStorage.removeItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY);
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
     setEditorMobileDrawerOpenRequest(0);
@@ -257,14 +247,6 @@ const App: React.FC = () => {
   const handleCloseAgentPluginConfig = useCallback(() => {
     setIsAgentPluginConfigOpen(false);
   }, []);
-  const handleOpenAccountManagement = useCallback(() => {
-    sessionStorage.setItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY, 'true');
-    setIsAccountManagementOpen(true);
-  }, []);
-  const handleCloseAccountManagement = useCallback(() => {
-    sessionStorage.removeItem(ACCOUNT_MANAGEMENT_OPEN_STORAGE_KEY);
-    setIsAccountManagementOpen(false);
-  }, []);
   const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);
 
   const renderView = () => {
@@ -337,7 +319,6 @@ const App: React.FC = () => {
           onOpenFeedback={handleOpenFeedback}
           onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
           onOpenAppreciation={handleOpenAppreciation}
-          onOpenAccountManagement={handleOpenAccountManagement}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
@@ -359,10 +340,6 @@ const App: React.FC = () => {
         <AgentApiPluginConfigModal
           isOpen={isAgentPluginConfigOpen}
           onClose={handleCloseAgentPluginConfig}
-        />
-        <AccountManagementModal
-          isOpen={isAccountManagementOpen}
-          onClose={handleCloseAccountManagement}
         />
       </div>
     </AuthGuard>
