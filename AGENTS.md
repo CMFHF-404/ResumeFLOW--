@@ -14,7 +14,7 @@
   - Build with `npm run build`
   - Preview with `npm run preview`
   - Copy settings from `.env.example` when local env vars are needed.
-  - For Logto account management, set `VITE_LOGTO_ACCOUNT_API_RESOURCE` and add `http://localhost:5173` to the Logto "Post Sign-out Redirect URI" list for local logout.
+  - For Logto account management, set `VITE_LOGTO_ACCOUNT_CENTER_URL` to the hosted Logto Account Center URL and add `http://localhost:5173` to the Logto "Post Sign-out Redirect URI" list for local logout.
 - The Vite dev server binds to `0.0.0.0:5173` and proxies `/api` to `VITE_API_BASE_URL`, falling back to `http://localhost:8000`.
 - Backend:
   - Install with `pip install -r requirements.txt` from `backend/`
@@ -34,7 +34,8 @@
 ## Verification
 
 - Frontend: `npm run build`
-- Frontend targeted tests are plain Node test files under `tests/`. Run focused checks with `node --test tests/<file>.test.mjs`; for example `node --test tests/account-management-static.test.mjs` for account management or `node --test tests/experienceBankDrafts.test.mjs tests/experienceSimpleModeParser.test.mjs` for experience draft/simple-mode work.
+- Frontend type-only checks: `npx tsc --noEmit --pretty false`
+- Frontend targeted tests are plain Node test files under `tests/`. Run focused checks with `node --test tests/<file>.test.mjs`; for example `node --test tests/account-management-static.test.mjs` for account management, `node --test tests/experienceBankDrafts.test.mjs tests/experienceSimpleModeParser.test.mjs` for experience draft/simple-mode work, `node --test tests/dashboardStructure.test.mjs tests/dashboardUtils.test.mjs` for Dashboard list/filter work, or `node --test tests/appDevLoggingStructure.test.mjs` for app-shell development logging.
 - Backend env and connectivity checks from `backend/`:
   - `python verify_env.py`
   - `python verify_db.py`
@@ -46,7 +47,7 @@
 
 ## Guardrails
 
-- Do not hand-edit generated artifacts or caches: `dist/`, `backend/__pycache__/`, `backend/.assistant_attachment_cache/`, `vite-dev.log`, `git-status.txt`, `git-diff.txt`.
+- Do not hand-edit generated artifacts or caches: `dist/`, `backend/__pycache__/`, `backend/.assistant_attachment_cache/`, `vite-dev.log`, `vite-dev.err.log`, `git-status.txt`, `git-diff.txt`.
 - Do not mix package managers across workspaces: the repo root uses npm and `package-lock.json`; `magic-resume-inspect/` uses pnpm and `pnpm-lock.yaml`.
 - Treat `backend/migrate_postgres_best_effort.py` as a manual high-impact database migration tool. It requires explicit `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL`; do not run it as part of default setup.
 - TODO: There is no repo-owned command yet that starts the root frontend and `backend/` together. If a unified local workflow is added later, document it here instead of guessing.

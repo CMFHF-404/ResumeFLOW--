@@ -136,7 +136,7 @@ ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
 SPLIT_EXPERIENCE_TEXT_CACHE_VERSION = "split-experience-text-v1"
 SPLIT_EXPERIENCE_TEXT_CACHE_MAX_ENTRIES = 128
-SPLIT_HINT_SEPARATOR_PATTERN = re.compile(r"^\s*---+\s*$")
+SPLIT_HINT_SEPARATOR_PATTERN = re.compile(r"^\s*-{2,}\s*$")
 _SPLIT_EXPERIENCE_TEXT_CACHE: "OrderedDict[str, Dict[str, str]]" = OrderedDict()
 _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT: Dict[str, asyncio.Task[Dict[str, str]]] = {}
 
@@ -176,11 +176,11 @@ def _normalize_split_experience_result(result: Dict[str, Any]) -> Dict[str, str]
             normalized[key] = ""
             continue
         lines = [
-            line
+            line.strip()
             for line in value.splitlines()
-            if not SPLIT_HINT_SEPARATOR_PATTERN.match(line)
+            if line.strip() and not SPLIT_HINT_SEPARATOR_PATTERN.match(line)
         ]
-        normalized[key] = "\n".join(lines).strip()
+        normalized[key] = "\n".join(lines)
     return normalized
 
 

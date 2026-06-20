@@ -276,6 +276,32 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["a"], "参与技术评审并梳理多级码关联架构。\n输出中保真原型与 PRD 文档。")
         self.assertNotIn("---", "\n".join(result.values()))
 
+    async def test_split_experience_text_compacts_separators_and_blank_lines(self) -> None:
+        call_mock = AsyncMock(
+            return_value={
+                "s": "\n\n针对门店库存管理混乱的业务痛点。\n\n----\n",
+                "t": "\n---\n\n独立负责风控模块从 0 到 1 设计落地。\n\n",
+                "a": "\n参与技术评审并梳理多级码关联架构。\n\n---\n\n输出中保真原型与 PRD 文档。\n",
+                "r": "\n--\n该模块最终按时交付并投入生产。\n\n",
+            }
+        )
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            result = await ai_service.split_experience_text(
+                "针对门店库存管理混乱的业务痛点。\n---\n独立负责风控模块从 0 到 1 设计落地。",
+                "work",
+            )
+
+        self.assertEqual(result["s"], "针对门店库存管理混乱的业务痛点。")
+        self.assertEqual(result["t"], "独立负责风控模块从 0 到 1 设计落地。")
+        self.assertEqual(
+            result["a"],
+            "参与技术评审并梳理多级码关联架构。\n输出中保真原型与 PRD 文档。",
+        )
+        self.assertEqual(result["r"], "该模块最终按时交付并投入生产。")
+        self.assertNotIn("---", "\n".join(result.values()))
+        self.assertNotIn("\n\n", "\n".join(result.values()))
+
     async def test_split_experience_text_reuses_cached_result_for_same_payload(self) -> None:
         call_mock = AsyncMock(
             return_value={

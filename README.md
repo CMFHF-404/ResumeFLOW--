@@ -59,7 +59,7 @@ http://localhost:5173
 并按需设置：
 
 ```text
-VITE_LOGTO_ACCOUNT_API_RESOURCE
+VITE_LOGTO_ACCOUNT_CENTER_URL
 ```
 
 ### 2. 后端
@@ -109,6 +109,7 @@ pnpm dev
 
 - `VITE_API_BASE_URL`：前端访问后端的 API 地址
 - `VITE_LOGTO_*`：Logto 前端鉴权配置
+- `VITE_LOGTO_ACCOUNT_CENTER_URL`：Logto 托管账号中心地址
 - `DATABASE_URL`：PostgreSQL 连接字符串
 - `LOGTO_ISSUER` / `LOGTO_AUDIENCE`：后端鉴权校验配置
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：主要 AI 服务配置

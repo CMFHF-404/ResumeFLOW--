@@ -329,6 +329,8 @@ STAR_SPLIT_ONLY = (
     "reorder facts beyond assigning them to fields, add facts, remove facts, alter hyperlinks, or alter Markdown/HTML emphasis syntax. "
     "Given raw_text and optional category/org/title, split the original content into STAR fields: s, t, a, and r. "
     "Preserve the user's exact wording, links, Markdown markers such as **bold** and *italic*, HTML inline tags, and line breaks. "
+    "Do not output Markdown horizontal-rule separators such as --- in any field. "
+    "Field values must not start with blank lines and must not contain blank lines between content lines. "
     "If a fragment cannot be confidently assigned, put it in a rather than dropping it. "
     "Return JSON only with string keys: 's', 't', 'a', 'r'."
 )
