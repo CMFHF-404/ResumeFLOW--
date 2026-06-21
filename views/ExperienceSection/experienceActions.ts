@@ -94,6 +94,7 @@ type ExperienceSaveParams = {
   category: ExperienceSectionProps['category'];
   cardData: Map<string, ExperienceCardData>;
   emptyTitleError: string;
+  titleRequired: boolean;
   toast: ToastApi;
   refreshExperiences: () => Promise<ExperienceListItem[]>;
   toggleCard: (cardId: string) => void;
@@ -110,6 +111,7 @@ export const useExperienceSave = ({
   category,
   cardData,
   emptyTitleError,
+  titleRequired,
   toast,
   refreshExperiences,
   toggleCard,
@@ -132,7 +134,7 @@ export const useExperienceSave = ({
           return;
         }
         const shouldTrackAiPolishApplied = hasPendingAiPolishApply(cardId);
-        if (!data.title || !data.title.trim()) {
+        if (titleRequired && (!data.title || !data.title.trim())) {
           toast.error(emptyTitleError);
           return;
         }
@@ -249,7 +251,7 @@ export const useExperienceSave = ({
         setSavingCardId(null);
       }
     },
-    [cardData, category, clearPendingAiPolishApply, clearPreviewState, emptyTitleError, hasPendingAiPolishApply, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, toast, toggleCard]
+    [cardData, category, clearPendingAiPolishApply, clearPreviewState, emptyTitleError, hasPendingAiPolishApply, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, titleRequired, toast, toggleCard]
   );
 
   return { savingCardId, handleSaveCard };

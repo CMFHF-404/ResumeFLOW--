@@ -255,7 +255,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
           </div>
           <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 sm:text-sm">经历库 / Experience Bank</span>
+            <span className="text-xs font-medium text-gray-500 sm:text-sm">经历库</span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
@@ -627,6 +627,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             }}
             addButtonLabel="新增项目经历"
             emptyTitleError="角色名称不能为空"
+            titleRequired={false}
             deleteConfirmText="确定要删除这条项目经历吗？"
             defaultOrg="新项目"
             defaultTitle="新角色"

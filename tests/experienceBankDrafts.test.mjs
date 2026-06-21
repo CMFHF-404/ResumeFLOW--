@@ -73,10 +73,23 @@ test('formal experience save still blocks blank titles on the frontend', () => {
   const source = read('views/ExperienceSection/experienceActions.ts');
   const modelSource = read('views/ExperienceSection/model.ts');
 
-  assert.match(modelSource, /emptyTitleError,\s*toast/);
+  assert.match(modelSource, /titleRequired\s*=\s*true/);
+  assert.match(modelSource, /emptyTitleError,\s*titleRequired,\s*toast/);
   assert.match(source, /emptyTitleError/);
-  assert.match(source, /!data\.title\s*\|\|\s*!data\.title\.trim\(\)/);
+  assert.match(source, /titleRequired && \(!data\.title\s*\|\|\s*!data\.title\.trim\(\)\)/);
   assert.match(source, /toast\.error\(emptyTitleError\)/);
+});
+
+test('project experience role is optional while work titles remain required', () => {
+  const bankSource = read('views/ExperienceBank.tsx');
+  const typeSource = read('views/ExperienceSection/types.ts');
+
+  const workSection = bankSource.match(/<ExperienceSection\s*category="work"[\s\S]*?\/>/)?.[0] ?? '';
+  const projectSection = bankSource.match(/<ExperienceSection\s*category="project"[\s\S]*?onCountChange=\{setProjectExperienceCount\}/)?.[0] ?? '';
+
+  assert.match(typeSource, /titleRequired\?: boolean/);
+  assert.doesNotMatch(workSection, /titleRequired=\{false\}/);
+  assert.match(projectSection, /titleRequired=\{false\}/);
 });
 
 test('experience section wires server draft load and autosave services', () => {
@@ -159,7 +172,7 @@ test('saving a previewed local draft with blank title keeps queued autosave inta
 
   assert.match(
     saveBlock,
-    /if \(\(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) && \(!data\.title \|\| !data\.title\.trim\(\)\)\) \{[\s\S]*await saveExperienceCard\(cardId\);[\s\S]*return;[\s\S]*\}[\s\S]*const flushedDraft = await flushDraftSave\(cardId\)/
+    /if \(titleRequired && \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) && \(!data\.title \|\| !data\.title\.trim\(\)\)\) \{[\s\S]*await saveExperienceCard\(cardId\);[\s\S]*return;[\s\S]*\}[\s\S]*const flushedDraft = await flushDraftSave\(cardId\)/
   );
 });
 

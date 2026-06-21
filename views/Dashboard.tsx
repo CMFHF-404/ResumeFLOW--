@@ -567,7 +567,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
           <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 sm:text-sm">仪表盘 / Dashboard</span>
+            <span className="text-xs font-medium text-gray-500 sm:text-sm">我的简历</span>
           </div>
         </div>
         <div className="flex items-center justify-between gap-4 md:justify-end">
