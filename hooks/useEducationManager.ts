@@ -37,6 +37,11 @@ export type EducationToastApi = {
     ) => void;
 };
 
+type EducationGuestOptions = {
+    isAuthenticated: boolean;
+    onRequireAuth: () => void | Promise<void>;
+};
+
 export type EducationManager = {
     educations: ExperienceListItem[];
     sortedEducations: ExperienceListItem[];
@@ -119,28 +124,40 @@ const updateEducationVersion = (
     });
 };
 
-const useEducationList = () => {
+const useEducationList = (isAuthenticated: boolean) => {
     const initialEducationRef = useRef<ExperienceListItem[] | null>(
-        experienceService.peekList(EDU_CATEGORY)
+        isAuthenticated ? experienceService.peekList(EDU_CATEGORY) : null
     );
     const [educations, setEducations] = useState<ExperienceListItem[]>(
         () => initialEducationRef.current ?? []
     );
     const [isLoading, setIsLoading] = useState(
-        () => !initialEducationRef.current
+        () => isAuthenticated && !initialEducationRef.current
     );
     const refreshInFlightRef = useRef<Promise<ExperienceListItem[]> | null>(null);
     const hasLoadedRef = useRef(false);
 
     const refreshEducation = useCallback(async () => {
+        if (!isAuthenticated) {
+            setEducations([]);
+            setIsLoading(false);
+            return [];
+        }
         return runDedupedRefresh(refreshInFlightRef, async () => {
             const data = await experienceService.list(EDU_CATEGORY, { force: true });
             setEducations(data);
             return data;
         });
-    }, []);
+    }, [isAuthenticated]);
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            hasLoadedRef.current = false;
+            initialEducationRef.current = null;
+            setEducations([]);
+            setIsLoading(false);
+            return;
+        }
         const loadEducationExperiences = async () => {
             if (hasLoadedRef.current) return;
             try {
@@ -158,7 +175,7 @@ const useEducationList = () => {
             }
         };
         loadEducationExperiences();
-    }, []);
+    }, [isAuthenticated]);
 
     return { educations, setEducations, isLoading, refreshEducation };
 };
@@ -521,8 +538,14 @@ const useEducationDelete = (
 /**
  * 统一管理教育经历的列表与编辑状态，避免 ExperienceBank 内部堆积状态与副作用。
  */
-export const useEducationManager = (toast: EducationToastApi): EducationManager => {
-    const { educations, setEducations, isLoading, refreshEducation } = useEducationList();
+export const useEducationManager = (
+    toast: EducationToastApi,
+    {
+        isAuthenticated = true,
+        onRequireAuth = () => undefined,
+    }: Partial<EducationGuestOptions> = {}
+): EducationManager => {
+    const { educations, setEducations, isLoading, refreshEducation } = useEducationList(isAuthenticated);
     const { setCardRef, scrollToCard, highlightCard } = useEducationCardRefs();
     const store = useEducationStore();
     const { ensureEduCardState } = useEducationInitializer(
@@ -572,6 +595,51 @@ export const useEducationManager = (toast: EducationToastApi): EducationManager 
         [educations]
     );
 
+    const requireAuth = useCallback(async () => {
+        if (!isAuthenticated) {
+            await onRequireAuth();
+            return true;
+        }
+        return false;
+    }, [isAuthenticated, onRequireAuth]);
+
+    const updateEduField = useCallback((eduId: string, field: keyof EduCardData, value: string) => {
+        if (!isAuthenticated) {
+            void onRequireAuth();
+            return;
+        }
+        editors.updateEduField(eduId, field, value);
+    }, [editors, isAuthenticated, onRequireAuth]);
+
+    const handleAddEdu = useCallback(async () => {
+        if (await requireAuth()) {
+            return;
+        }
+        await createActions.handleAddEdu();
+    }, [createActions, requireAuth]);
+
+    const handleSaveEdu = useCallback(async (eduId: string) => {
+        if (await requireAuth()) {
+            return;
+        }
+        await saveActions.handleSaveEdu(eduId);
+    }, [requireAuth, saveActions]);
+
+    const requestDeleteEdu = useCallback((eduId: string) => {
+        if (!isAuthenticated) {
+            void onRequireAuth();
+            return;
+        }
+        deleteActions.requestDeleteEdu(eduId);
+    }, [deleteActions, isAuthenticated, onRequireAuth]);
+
+    const handleConfirmDelete = useCallback(async () => {
+        if (await requireAuth()) {
+            return;
+        }
+        await deleteActions.handleConfirmDelete();
+    }, [deleteActions, requireAuth]);
+
     const getEduCardData = useCallback(
         (item: ExperienceListItem) => (
             store.eduData.get(item.master.id) || buildEduCardData(item)
@@ -593,13 +661,13 @@ export const useEducationManager = (toast: EducationToastApi): EducationManager 
         getEduCardData,
         buildDateLabel: buildEducationDateLabel,
         setCardRef,
-        updateEduField: editors.updateEduField,
+        updateEduField,
         toggleEduCard: expansion.toggleEduCard,
-        handleAddEdu: createActions.handleAddEdu,
-        handleSaveEdu: saveActions.handleSaveEdu,
+        handleAddEdu,
+        handleSaveEdu,
         handleCancelEditEdu: editors.resetEduCard,
-        requestDeleteEdu: deleteActions.requestDeleteEdu,
-        handleConfirmDelete: deleteActions.handleConfirmDelete,
+        requestDeleteEdu,
+        handleConfirmDelete,
         handleCancelDelete: deleteActions.handleCancelDelete,
         refreshEducation,
     };

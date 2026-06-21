@@ -16,7 +16,6 @@ import {
   Wand2,
 } from 'lucide-react';
 import { ImageCropModal, ProfileAvatarZone } from '../components/ImageCropModal';
-import { useLogto } from '@logto/react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { ToastContainer, useToast } from '../components/Toast';
 import UnAuthPrompt from '../components/UnAuthPrompt';
@@ -29,9 +28,6 @@ import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
-import {
-  trackLoginStart,
-} from '../utils/analyticsTracker';
 import { useExperienceBankProfile } from './ExperienceBank/useExperienceBankProfile';
 import { buildExperienceBankSummaryPayload } from './ExperienceBank/summaryPayloadUtils';
 import {
@@ -46,6 +42,8 @@ import {
 } from './ExperienceBank/exportSnapshotLoaders';
 import { useExperienceBankPdfExport } from './ExperienceBank/useExperienceBankPdfExport';
 interface ExperienceBankProps {
+  isAuthenticated: boolean;
+  onRequireAuth: () => void | Promise<void>;
   cachedProfile?: Profile;
   onProfileUpdate?: (data: Profile) => void;
   shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
@@ -53,24 +51,28 @@ interface ExperienceBankProps {
 }
 
 const ExperienceBank: React.FC<ExperienceBankProps> = ({
+  isAuthenticated,
+  onRequireAuth,
   cachedProfile,
   onProfileUpdate,
   shouldOpenResumeUpload = false,
   onLaunchAssistant,
 }) => {
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
-  const { isAuthenticated, signIn } = useLogto();
+
+  const handleSignIn = useCallback(async () => {
+    await onRequireAuth();
+  }, [onRequireAuth]);
 
   const handleImportResumeClick = useCallback(async () => {
     if (!isAuthenticated) {
       writePendingResumeUpload(true);
-      await trackLoginStart('experience_bank_upload');
-      await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
+      await handleSignIn();
       return;
     }
     writePendingResumeUpload(false);
     setIsResumeModalOpen(true);
-  }, [isAuthenticated, signIn]);
+  }, [handleSignIn, isAuthenticated]);
 
   const launchEmptyStateAssistant = useCallback(() => {
     if (!onLaunchAssistant) {
@@ -93,14 +95,23 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
   const [workExperienceCount, setWorkExperienceCount] = useState<number | null>(() => {
+    if (!isAuthenticated) {
+      return 0;
+    }
     const cached = experienceService.peekList('work');
     return cached ? cached.length : null;
   });
   const [projectExperienceCount, setProjectExperienceCount] = useState<number | null>(() => {
+    if (!isAuthenticated) {
+      return 0;
+    }
     const cached = experienceService.peekList('project');
     return cached ? cached.length : null;
   });
   const [educationExperienceCount, setEducationExperienceCount] = useState<number | null>(() => {
+    if (!isAuthenticated) {
+      return 0;
+    }
     const cached = experienceService.peekList('education');
     return cached ? cached.length : null;
   });
@@ -110,7 +121,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     [success, toastError, info, loading, updateToast]
   );
 
-  const education = useEducationManager(toastApi);
+  const education = useEducationManager(toastApi, { isAuthenticated, onRequireAuth: handleSignIn });
   const { refreshEducation } = education;
 
   const {
@@ -151,6 +162,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     handleAvatarDelete,
     handleCropCancel,
   } = useExperienceBankProfile({
+    isAuthenticated,
+    onRequireAuth: handleSignIn,
     cachedProfile,
     onProfileUpdate,
     refreshEducation,
@@ -172,6 +185,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     loading,
     updateToast,
   });
+
+  const handleExportAllClick = useCallback(() => {
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
+    void handleExportAll();
+  }, [handleExportAll, handleSignIn, isAuthenticated]);
 
   const handleResumeImported = useCallback(async (
     ...args: Parameters<typeof handleProfileResumeImported>
@@ -199,13 +220,12 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const handleLaunchEmptyStateAssistant = useCallback(async () => {
     if (!isAuthenticated) {
       writePendingAssistantLaunch(true);
-      await trackLoginStart('experience_bank_empty_state');
-      await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
+      await handleSignIn();
       return;
     }
     writePendingAssistantLaunch(false);
     launchEmptyStateAssistant();
-  }, [isAuthenticated, launchEmptyStateAssistant, signIn]);
+  }, [handleSignIn, isAuthenticated, launchEmptyStateAssistant]);
 
   useEffect(() => {
     if (!isAuthenticated || !readPendingAssistantLaunch()) {
@@ -250,7 +270,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
           </button>
           <button
             className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
-            onClick={handleExportAll}
+            onClick={handleExportAllClick}
             disabled={isExportingPdf || isLoadingProfile}
             type="button"
           >
@@ -274,7 +294,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             </button>
             <button
               className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-200 dark:hover:bg-gray-800"
-              onClick={handleExportAll}
+              onClick={handleExportAllClick}
               disabled={isExportingPdf || isLoadingProfile}
               type="button"
             >
@@ -587,6 +607,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             defaultTitle="新职位"
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleSignIn}
             onLaunchAssistant={onLaunchAssistant}
             onCountChange={setWorkExperienceCount}
           />
@@ -610,6 +632,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             defaultTitle="新角色"
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleSignIn}
             themeColor="indigo"
             onLaunchAssistant={onLaunchAssistant}
             onCountChange={setProjectExperienceCount}
@@ -620,9 +644,19 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             onCountChange={setEducationExperienceCount}
           />
 
-          <CertificationSection refreshSignal={experienceRefreshSignal} toast={toastApi} />
+          <CertificationSection
+            refreshSignal={experienceRefreshSignal}
+            toast={toastApi}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleSignIn}
+          />
 
-          <SkillsSection refreshSignal={experienceRefreshSignal} toast={toastApi} />
+          <SkillsSection
+            refreshSignal={experienceRefreshSignal}
+            toast={toastApi}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleSignIn}
+          />
 
         </div>
       </main>

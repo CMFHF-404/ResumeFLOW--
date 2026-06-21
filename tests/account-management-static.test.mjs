@@ -51,13 +51,13 @@ test('account management uses hosted Logto Account Center without a second API r
   assert.match(service, /digits\.startsWith\('86'\) \? digits\.slice\(2\) : digits/);
 });
 
-test('auth guard blocks protected app while the Logto session is unauthenticated', () => {
+test('auth guard keeps session bridge behavior without blocking guest preview', () => {
   const authGuard = read('components/AuthGuard.tsx');
 
   assert.match(authGuard, /auth_guard_unauthenticated/);
-  assert.match(authGuard, /onClick=\{handleUnauthenticatedSignIn\}/);
-  assert.match(
-    authGuard,
-    /if \(!isAuthenticated\) \{[\s\S]+return <>\{children\}<\/>;/
-  );
+  assert.match(authGuard, /subscribeLoginRequired/);
+  assert.match(authGuard, /setAuthTokenProvider/);
+  assert.doesNotMatch(authGuard, /需要登录/);
+  assert.doesNotMatch(authGuard, /if \(!isAuthenticated\) \{[\s\S]+return \(/);
+  assert.match(authGuard, /return <>\{children\}<\/>;/);
 });

@@ -57,15 +57,22 @@ interface SkillsSectionProps {
         loading: (message: string) => string;
         updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
     };
+    isAuthenticated?: boolean;
+    onRequireAuth?: () => void | Promise<void>;
 }
 
-const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) => {
+const SkillsSection: React.FC<SkillsSectionProps> = ({
+    refreshSignal,
+    toast,
+    isAuthenticated = true,
+    onRequireAuth = () => undefined,
+}) => {
     const { error, loading, updateToast } = toast;
 
     // Data State
     const [skills, setSkills] = useState<UserSkill[]>([]);
     const [extraCategories, setExtraCategories] = useState<string[]>([]); // New empty categories
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(isAuthenticated);
     const hasLoadedRef = useRef(false);
     const refreshInFlightRef = useRef<Promise<UserSkill[]> | null>(null);
 
@@ -88,14 +95,27 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
     const categoryOrder = useMemo(() => buildSkillCategoryOrder(skills, extraCategories), [skills, extraCategories]);
 
     const refreshSkills = useCallback(async () => {
+        if (!isAuthenticated) {
+            setSkills([]);
+            setExtraCategories([]);
+            setIsLoading(false);
+            return [];
+        }
         return runDedupedRefresh(refreshInFlightRef, async () => {
             const data = await skillsService.list({ force: true });
             setSkills(data);
             return data;
         });
-    }, []);
+    }, [isAuthenticated]);
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            hasLoadedRef.current = false;
+            setSkills([]);
+            setExtraCategories([]);
+            setIsLoading(false);
+            return;
+        }
         const loadSkills = async () => {
             if (hasLoadedRef.current) return;
             try {
@@ -111,13 +131,13 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
             }
         };
         loadSkills();
-    }, []);
+    }, [isAuthenticated]);
 
     useEffect(() => {
-        if (refreshSignal) {
+        if (refreshSignal && isAuthenticated) {
             refreshSkills().catch(err => console.error('Refresh failed', err));
         }
-    }, [refreshSignal, refreshSkills]);
+    }, [isAuthenticated, refreshSignal, refreshSkills]);
 
 
     // Helpers
@@ -162,6 +182,10 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
     };
 
     const updateCardData = (category: string, updates: Partial<SkillCategoryCardData>) => {
+        if (!isAuthenticated) {
+            void onRequireAuth();
+            return;
+        }
         setCategoryData(prev => {
             const next = new Map(prev);
             const current = next.get(category) || { name: category, skills: [] };
@@ -188,7 +212,16 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
         });
     };
 
+    const requireAuth = useCallback(() => {
+        if (!isAuthenticated) {
+            void onRequireAuth();
+            return true;
+        }
+        return false;
+    }, [isAuthenticated, onRequireAuth]);
+
     const handleCreateCategory = () => {
+        if (requireAuth()) return;
         const newName = "新分类"; // simple duplicate check needed?
         let uniqueName = newName;
         let count = 1;
@@ -205,6 +238,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
     };
 
     const handleSave = async (originalCategoryName: string) => {
+        if (requireAuth()) return;
         const data = categoryData.get(originalCategoryName);
         if (!data) return;
         const newName = data.name.trim();
@@ -299,6 +333,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
     };
 
     const handleDeleteCategory = async () => {
+        if (requireAuth()) return;
         if (!deletingCategory) return;
         const category = deletingCategory;
         setDeletingCategory(null);
@@ -369,7 +404,10 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({ refreshSignal, toast }) =
                                         isModified={modifiedCategories.has(category)}
                                         isSaving={savingCategories.has(category)}
                                         onToggle={() => toggleCard(category)}
-                                        onDelete={() => setDeletingCategory(category)}
+                                        onDelete={() => {
+                                            if (requireAuth()) return;
+                                            setDeletingCategory(category);
+                                        }}
                                         onSave={() => handleSave(category)}
                                         onCancel={() => handleCancel(category)}
                                         onNameChange={(val) => updateCardData(category, { name: val })}

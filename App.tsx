@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLogto } from '@logto/react';
 import AuthGuard from './components/AuthGuard';
 import FeedbackModal from './components/FeedbackModal';
 import AppreciationModal from './components/AppreciationModal';
@@ -7,9 +8,11 @@ import GlobalSidebar from './components/GlobalSidebar';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest } from './views/AIAssistant/types';
 import Callback from './views/Callback';
+import GuestResumeEditorPreview from './views/GuestResumeEditorPreview';
 import { ViewState, Resume } from './types';
 import {
   consumeJustLoggedIn,
+  trackLoginStart,
   trackAuthenticatedVisit,
   trackPageView,
 } from './utils/analyticsTracker';
@@ -57,6 +60,9 @@ const buildFeedbackContext = (view: ViewState) => {
 };
 
 const App: React.FC = () => {
+  const logto = useLogto();
+  const { isAuthenticated, signIn } = logto;
+  const isAuthLoading = logto.isLoading;
   const [currentView, setCurrentView] = useState<ViewState>(() => {
     const storedView = resolveStoredView(localStorage.getItem(VIEW_STORAGE_KEY));
     return storedView ?? ViewState.DASHBOARD;
@@ -83,6 +89,14 @@ const App: React.FC = () => {
   const authVisitSourceRef = useRef<'post_login' | 'session_restore'>('session_restore');
   const authVisitAwaitingResetRef = useRef(false);
   const assistantLaunchRequestIdRef = useRef(0);
+
+  const handleRequireAuth = useCallback(async () => {
+    if (isAuthLoading) {
+      return;
+    }
+    await trackLoginStart('guest_preview');
+    await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
+  }, [isAuthLoading, signIn]);
 
   const resetUserScopedState = useCallback(() => {
     resumeService.clearListCache();
@@ -258,6 +272,8 @@ const App: React.FC = () => {
             cachedResumes={cachedResumes}
             cachedResumesOwnerKey={cachedResumesOwnerKey}
             authUserKey={authUserKey}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleRequireAuth}
             onResumesUpdate={handleResumesUpdate}
             onLaunchAssistant={handleLaunchAssistant}
             onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
@@ -267,13 +283,15 @@ const App: React.FC = () => {
         return (
           <ExperienceBank
             cachedProfile={profileCache}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleRequireAuth}
             onProfileUpdate={handleProfileUpdate}
             shouldOpenResumeUpload={shouldOpenResumeUpload}
             onLaunchAssistant={handleLaunchAssistant}
           />
         );
       case ViewState.EDITOR:
-        return (
+        return isAuthenticated ? (
           <ResumeEditor
             cachedResumes={cachedResumes}
             cachedResumesOwnerKey={cachedResumesOwnerKey}
@@ -284,6 +302,8 @@ const App: React.FC = () => {
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
           />
+        ) : (
+          <GuestResumeEditorPreview onRequireAuth={handleRequireAuth} />
         );
       case ViewState.AI_ASSISTANT:
         return (
@@ -302,6 +322,8 @@ const App: React.FC = () => {
             cachedResumes={cachedResumes}
             cachedResumesOwnerKey={cachedResumesOwnerKey}
             authUserKey={authUserKey}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={handleRequireAuth}
             onResumesUpdate={handleResumesUpdate}
             onLaunchAssistant={handleLaunchAssistant}
           />

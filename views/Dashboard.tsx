@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
-import { useLogto } from '@logto/react';
 import { Resume, ViewState } from '../types';
 import { devLog } from '../services/devLogger';
 import { resumeService } from '../services/resumeService';
@@ -24,7 +23,6 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
-import { trackLoginStart } from '../utils/analyticsTracker';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
 
@@ -33,6 +31,8 @@ interface DashboardProps {
   cachedResumes?: Resume[]; // 从 App 传入的缓存数据
   cachedResumesOwnerKey?: string | null;
   authUserKey?: string | null;
+  isAuthenticated: boolean;
+  onRequireAuth: () => void | Promise<void>;
   onResumesUpdate?: (resumes: Resume[]) => void; // 更新缓存的回调
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
   onOpenAgentPluginConfig?: () => void;
@@ -71,16 +71,16 @@ const Dashboard: React.FC<DashboardProps> = ({
   cachedResumes = [],
   cachedResumesOwnerKey = null,
   authUserKey = null,
+  isAuthenticated,
+  onRequireAuth,
   onResumesUpdate,
   onLaunchAssistant,
 }) => {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
-  const { signIn, isAuthenticated } = useLogto();
   const handleSignIn = useCallback(async () => {
-    await trackLoginStart('dashboard_cta');
-    await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
-  }, [signIn]);
+    await onRequireAuth();
+  }, [onRequireAuth]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     resolveStoredViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
   );
@@ -128,6 +128,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     cachedResumes,
     cachedResumesOwnerKey,
     authUserKey,
+    isAuthenticated,
+    onRequireAuth: handleSignIn,
     userProfile,
     setView,
     onResumesUpdate,
@@ -201,6 +203,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, []);
 
   const openResume = (id: string) => {
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     setActiveResumeId(id);
     setView(ViewState.EDITOR);
   };
@@ -261,6 +267,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, []);
 
   const handleBatchDeleteRequest = useCallback(() => {
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     if (selectedResumeIds.length === 0) {
       const toastId = showToastLoading(BATCH_DELETE_TOAST_MESSAGES.empty);
       updateToast(toastId, {
@@ -273,7 +283,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     closeDropdown();
     setDeleteTargetId(null);
     setBatchDeleteTargetIds(selectedResumeIds);
-  }, [closeDropdown, selectedResumeIds, showToastLoading, updateToast]);
+  }, [closeDropdown, handleSignIn, isAuthenticated, selectedResumeIds, showToastLoading, updateToast]);
 
   const handleDropdownClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -290,6 +300,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     setBatchDeleteTargetIds([]);
     setDeleteTargetId(id);
     closeDropdown();
@@ -297,6 +311,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleCopy = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     if (isCopyingResume) {
       return;
     }
@@ -310,12 +328,20 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleRename = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     closeDropdown();
     setRenameTargetId(id);
   };
 
   const handlePreview = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     closeDropdown();
     setPreviewTargetId(id);
   };
@@ -504,6 +530,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleLaunchResumeAssistant = useCallback(() => {
+    if (!isAuthenticated) {
+      void handleSignIn();
+      return;
+    }
     if (!onLaunchAssistant) {
       return;
     }
@@ -519,7 +549,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       },
       initialUserMessage: '我还没有现成简历，请作为简历教练一步步引导我从 0 到 1 梳理经历、提炼亮点，并最终产出一份可继续编辑的简历内容。',
     });
-  }, [onLaunchAssistant]);
+  }, [handleSignIn, isAuthenticated, onLaunchAssistant]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">

@@ -44,14 +44,21 @@ type ToastApi = {
 interface CertificationSectionProps {
     refreshSignal?: number;
     toast: ToastApi;
+    isAuthenticated?: boolean;
+    onRequireAuth?: () => void | Promise<void>;
 }
 
-const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSignal, toast }) => {
+const CertificationSection: React.FC<CertificationSectionProps> = ({
+    refreshSignal,
+    toast,
+    isAuthenticated = true,
+    onRequireAuth = () => undefined,
+}) => {
     const { success, error, loading, updateToast } = toast;
 
     // State
     const [certifications, setCertifications] = useState<CertificationRecord[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(isAuthenticated);
     const hasLoadedRef = useRef(false);
     const refreshInFlightRef = useRef<Promise<CertificationRecord[]> | null>(null);
 
@@ -71,15 +78,26 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
     const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     const refreshCertifications = useCallback(async () => {
+        if (!isAuthenticated) {
+            setCertifications([]);
+            setIsLoading(false);
+            return [];
+        }
         return runDedupedRefresh(refreshInFlightRef, async () => {
             const data = await certificationsService.list({ force: true });
             setCertifications(data);
             return data;
         });
-    }, []);
+    }, [isAuthenticated]);
 
     // Initial Load
     useEffect(() => {
+        if (!isAuthenticated) {
+            hasLoadedRef.current = false;
+            setCertifications([]);
+            setIsLoading(false);
+            return;
+        }
         const loadCertifications = async () => {
             if (hasLoadedRef.current) return;
             try {
@@ -95,14 +113,14 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
             }
         };
         loadCertifications();
-    }, []);
+    }, [isAuthenticated]);
 
     // External Refresh
     useEffect(() => {
-        if (refreshSignal) {
+        if (refreshSignal && isAuthenticated) {
             refreshCertifications().catch(err => console.error('Refresh failed', err));
         }
-    }, [refreshSignal, refreshCertifications]);
+    }, [isAuthenticated, refreshSignal, refreshCertifications]);
 
     const sortedCertifications = useMemo(() => {
         return [...certifications].sort((a, b) => {
@@ -154,6 +172,10 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
     };
 
     const updateCardField = (id: string, field: keyof CertificationCardData, value: string) => {
+        if (!isAuthenticated) {
+            void onRequireAuth();
+            return;
+        }
         let nextData: CertificationCardData | null = null;
         setCardData(prev => {
             const next = new Map(prev);
@@ -188,8 +210,17 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
         });
     };
 
+    const requireAuth = useCallback(() => {
+        if (!isAuthenticated) {
+            void onRequireAuth();
+            return true;
+        }
+        return false;
+    }, [isAuthenticated, onRequireAuth]);
+
     // Actions
     const handleAdd = async () => {
+        if (requireAuth()) return;
         if (isCreating) return;
         let toastId: string | null = null;
         try {
@@ -230,6 +261,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
     };
 
     const handleSave = async (id: string) => {
+        if (requireAuth()) return;
         const data = cardData.get(id);
         if (!data) return;
 
@@ -298,6 +330,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
     };
 
     const handleDelete = async () => {
+        if (requireAuth()) return;
         if (!deletingId) return;
         const id = deletingId;
         let toastId: string | null = null;
@@ -374,7 +407,10 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({ refreshSign
                                         isModified={modifiedCards.has(id)}
                                         isSaving={savingCards.has(id)}
                                         onToggle={() => toggleCard(id)}
-                                        onDelete={() => setDeletingId(id)}
+                                        onDelete={() => {
+                                            if (requireAuth()) return;
+                                            setDeletingId(id);
+                                        }}
                                         onSave={() => handleSave(id)}
                                         onCancel={() => handleCancelEdit(id)}
                                         onFieldChange={(field, value) => updateCardField(id, field, value)}

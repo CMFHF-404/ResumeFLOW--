@@ -4,26 +4,42 @@ import { runDedupedRefresh } from '../experienceUtils';
 import { mergeFormalAndLocalExperiences, sortExperiencesByStartDate } from './cardDataUtils';
 import type { ExperienceSectionProps } from './types';
 
-export const useExperienceList = (category: ExperienceSectionProps['category'], refreshSignal?: number) => {
+export const useExperienceList = (
+  category: ExperienceSectionProps['category'],
+  refreshSignal: number | undefined,
+  isAuthenticated: boolean
+) => {
   const initialExperiencesRef = useRef<ExperienceListItem[] | null>(
-    experienceService.peekList(category)
+    isAuthenticated ? experienceService.peekList(category) : null
   );
   const [experiences, setExperiences] = useState<ExperienceListItem[]>(
     () => initialExperiencesRef.current ?? []
   );
-  const [isLoading, setIsLoading] = useState(() => !initialExperiencesRef.current);
+  const [isLoading, setIsLoading] = useState(() => isAuthenticated && !initialExperiencesRef.current);
   const refreshInFlightRef = useRef<Promise<ExperienceListItem[]> | null>(null);
   const hasLoadedRef = useRef(false);
 
   const refreshExperiences = useCallback(async () => {
+    if (!isAuthenticated) {
+      setExperiences([]);
+      setIsLoading(false);
+      return [];
+    }
     return runDedupedRefresh(refreshInFlightRef, async () => {
       const data = await experienceService.list(category, { force: true });
       setExperiences((prev) => mergeFormalAndLocalExperiences(data, prev));
       return data;
     });
-  }, [category]);
+  }, [category, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      hasLoadedRef.current = false;
+      initialExperiencesRef.current = null;
+      setExperiences([]);
+      setIsLoading(false);
+      return;
+    }
     const loadExperiences = async () => {
       if (hasLoadedRef.current) {
         return;
@@ -43,16 +59,16 @@ export const useExperienceList = (category: ExperienceSectionProps['category'], 
       }
     };
     loadExperiences();
-  }, [category]);
+  }, [category, isAuthenticated]);
 
   useEffect(() => {
-    if (!refreshSignal) {
+    if (!refreshSignal || !isAuthenticated) {
       return;
     }
     refreshExperiences().catch((error) => {
       console.error(`[ExperienceSection] 刷新${category}经历失败:`, error);
     });
-  }, [category, refreshExperiences, refreshSignal]);
+  }, [category, isAuthenticated, refreshExperiences, refreshSignal]);
 
   return { experiences, setExperiences, isLoading, refreshExperiences };
 };
