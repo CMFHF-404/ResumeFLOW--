@@ -137,9 +137,15 @@ export const useExperienceSectionModel = ({
   defaultTitle,
   emptyTitleError,
   toast,
+  isAuthenticated,
+  onRequireAuth,
   onLaunchAssistant,
 }: ExperienceSectionProps): ExperienceSectionModel => {
-  const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(category, refreshSignal);
+  const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(
+    category,
+    refreshSignal,
+    isAuthenticated
+  );
   const { setCardRef, scrollToCard, highlightCard } = useCardRefs();
   const store = useCardDataStore();
   const [previewingCardId, setPreviewingCardId] = useState<string | null>(null);
@@ -168,6 +174,13 @@ export const useExperienceSectionModel = ({
   }, []);
   const { removeCardState } = useCardRemoval(store.setCardData, store.setModifiedCards, store.setOriginalCardData);
   const expansion = useCardExpansionState(ensureCardState, scrollToCard, highlightCard);
+  const requireAuth = useCallback(() => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return true;
+    }
+    return false;
+  }, [isAuthenticated, onRequireAuth]);
   const clearDraftSaveTimer = useCallback((cardId: string) => {
     const pendingTimer = draftSaveTimersRef.current.get(cardId);
     if (!pendingTimer) {
@@ -266,6 +279,9 @@ export const useExperienceSectionModel = ({
   const sortedExperiences = useSortedExperiences(experiences);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
     let cancelled = false;
     experienceDraftService.list(category)
       .then((drafts) => {
@@ -326,6 +342,7 @@ export const useExperienceSectionModel = ({
     category,
     defaultOrg,
     expansion.setExpandedCards,
+    isAuthenticated,
     setExperiences,
     store.setCardData,
     store.setModifiedCards,
@@ -354,6 +371,9 @@ export const useExperienceSectionModel = ({
   }, [store.setCardData]);
 
   const scheduleDraftSave = useCallback((cardId: string, data: ExperienceCardData) => {
+    if (!isAuthenticated) {
+      return;
+    }
     if (!isTempId(cardId) && !cardId.startsWith('draft_')) {
       return;
     }
@@ -420,10 +440,13 @@ export const useExperienceSectionModel = ({
       draftSaveQueueRef.current.set(cardId, saveRequest);
     }, 700);
     draftSaveTimersRef.current.set(cardId, timer);
-  }, [category, setDraftStatus, store.setCardData]);
+  }, [category, isAuthenticated, setDraftStatus, store.setCardData]);
 
   const handleFieldChange = useCallback(
     (cardId: string, field: string, value: string | string[]) => {
+      if (requireAuth()) {
+        return;
+      }
       if (field.startsWith('star.')) {
         const starField = field.split('.')[1] as StarFieldKey;
         if (STAR_FIELD_KEYS.includes(starField)) {
@@ -443,10 +466,13 @@ export const useExperienceSectionModel = ({
         scheduleDraftSave(cardId, current);
       }
     },
-    [clearStarSnapshot, scheduleDraftSave, store.cardData, updateCardField]
+    [clearStarSnapshot, requireAuth, scheduleDraftSave, store.cardData, updateCardField]
   );
 
   const handleEditModeChange = useCallback((cardId: string, mode: 'simple' | 'expert') => {
+    if (requireAuth()) {
+      return;
+    }
     const data = store.cardData.get(cardId);
     if (!data || data.editMode === mode) {
       return;
@@ -464,9 +490,12 @@ export const useExperienceSectionModel = ({
       };
     updateCardData(cardId, nextData);
     scheduleDraftSave(cardId, nextData);
-  }, [scheduleDraftSave, store.cardData, updateCardData]);
+  }, [requireAuth, scheduleDraftSave, store.cardData, updateCardData]);
 
   const handlePreviewSimpleEntry = useCallback(async (cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
     const data = store.cardData.get(cardId);
     if (!data || savingCardId === cardId || previewingCardId === cardId || previewingCardIdRef.current) {
       return;
@@ -514,9 +543,12 @@ export const useExperienceSectionModel = ({
       }
       setPreviewingCardId((current) => current === cardId ? null : current);
     }
-  }, [category, previewingCardId, savingCardId, scheduleDraftSave, store.cardData, toast, updateCardData]);
+  }, [category, previewingCardId, requireAuth, savingCardId, scheduleDraftSave, store.cardData, toast, updateCardData]);
 
   const handleCancel = useCallback(async (cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
     clearPendingAiPolishApply(cardId);
     clearPreviewState(cardId);
     if (isTempId(cardId) || cardId.startsWith('draft_')) {
@@ -553,7 +585,56 @@ export const useExperienceSectionModel = ({
     } else {
       resetCard(cardId);
     }
-  }, [clearPendingAiPolishApply, clearPreviewState, discardDraftAutosave, resetCard, expansion, setExperiences, store, toast]);
+  }, [clearPendingAiPolishApply, clearPreviewState, discardDraftAutosave, expansion, requireAuth, resetCard, setExperiences, store, toast]);
+
+  const handleAdd = useCallback(() => {
+    if (requireAuth()) {
+      return;
+    }
+    void handleAddNew();
+  }, [handleAddNew, requireAuth]);
+
+  const handleToggle = useCallback((cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
+    expansion.toggleCard(cardId);
+  }, [expansion, requireAuth]);
+
+  const handleDeleteRequest = useCallback((cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
+    deleteActions.requestDelete(cardId);
+  }, [deleteActions, requireAuth]);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (requireAuth()) {
+      return;
+    }
+    void deleteActions.executeDelete();
+  }, [deleteActions, requireAuth]);
+
+  const handleRunPolishProtected = useCallback((cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
+    void handleRunPolish(cardId);
+  }, [handleRunPolish, requireAuth]);
+
+  const handleOpenAssistantProtected = useCallback((cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
+    handleOpenAssistant(cardId);
+  }, [handleOpenAssistant, requireAuth]);
+
+  const handleSaveProtected = useCallback((cardId: string) => {
+    if (requireAuth()) {
+      return;
+    }
+    void handleSaveCard(cardId);
+  }, [handleSaveCard, requireAuth]);
 
   return buildSectionModel({
     experiences,
@@ -571,22 +652,22 @@ export const useExperienceSectionModel = ({
     getPolishMode,
     getCustomPrompt,
     isPreviewingPolish,
-    onAdd: handleAddNew,
-    onToggle: expansion.toggleCard,
-    onDeleteRequest: deleteActions.requestDelete,
-    onSave: handleSaveCard,
+    onAdd: handleAdd,
+    onToggle: handleToggle,
+    onDeleteRequest: handleDeleteRequest,
+    onSave: handleSaveProtected,
     onPreviewSimpleEntry: handlePreviewSimpleEntry,
     onCancel: handleCancel,
     onFieldChange: handleFieldChange,
     onEditModeChange: handleEditModeChange,
     onPolishModeChange: handlePolishModeChange,
     onCustomPromptChange: handleCustomPromptChange,
-    onRunPolish: handleRunPolish,
+    onRunPolish: handleRunPolishProtected,
     onUndoPolishPreview: handleUndoPolishPreview,
     onConfirmPolishPreview: handleConfirmPolishPreview,
-    onOpenAssistant: handleOpenAssistant,
+    onOpenAssistant: handleOpenAssistantProtected,
     onUndo: handleUndo,
-    onDeleteConfirm: deleteActions.executeDelete,
+    onDeleteConfirm: handleConfirmDelete,
     onDeleteCancel: deleteActions.cancelDelete,
   });
 };

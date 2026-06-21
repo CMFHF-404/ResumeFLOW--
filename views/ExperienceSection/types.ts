@@ -24,6 +24,8 @@ export type ExperienceSectionProps = {
   defaultTitle: string;
   refreshSignal?: number;
   toast: ToastApi;
+  isAuthenticated: boolean;
+  onRequireAuth: () => void | Promise<void>;
   themeColor?: string;
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
   onCountChange?: (count: number | null) => void;

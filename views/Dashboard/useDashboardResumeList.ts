@@ -26,6 +26,8 @@ type UseDashboardResumeListOptions = {
   cachedResumes: Resume[];
   cachedResumesOwnerKey: string | null;
   authUserKey: string | null;
+  isAuthenticated: boolean;
+  onRequireAuth: () => void | Promise<void>;
   userProfile?: Profile | null;
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
   onResumesUpdate?: (resumes: Resume[]) => void;
@@ -51,6 +53,8 @@ export const useDashboardResumeList = ({
   cachedResumes,
   cachedResumesOwnerKey,
   authUserKey,
+  isAuthenticated,
+  onRequireAuth,
   userProfile,
   setView,
   onResumesUpdate,
@@ -63,7 +67,7 @@ export const useDashboardResumeList = ({
   const [resumes, setResumes] = useState<Resume[]>(() =>
     isCacheOwnerMatched ? cachedResumes : []
   );
-  const [isLoading, setIsLoading] = useState(!isCacheOwnerMatched);
+  const [isLoading, setIsLoading] = useState(isAuthenticated && !isCacheOwnerMatched);
   const [error, setError] = useState<string | null>(null);
   const [isCreatingResume, setIsCreatingResume] = useState(false);
   const [isCopyingResume, setIsCopyingResume] = useState(false);
@@ -103,6 +107,12 @@ export const useDashboardResumeList = ({
   }, []);
 
   const loadResumes = useCallback(async () => {
+    if (!isAuthenticated) {
+      setResumes([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     try {
       setIsLoading(true);
       setError(null);
@@ -116,9 +126,16 @@ export const useDashboardResumeList = ({
     } finally {
       setIsLoading(false);
     }
-  }, [fetchDashboardResumes]);
+  }, [fetchDashboardResumes, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      lastLoadKeyRef.current = 'guest';
+      setResumes([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     const loadKey = authUserKey ?? 'unknown';
     if (lastLoadKeyRef.current === loadKey) {
       return;
@@ -128,9 +145,13 @@ export const useDashboardResumeList = ({
       setResumes([]);
     }
     void loadResumes();
-  }, [authUserKey, isCacheOwnerMatched, loadResumes]);
+  }, [authUserKey, isAuthenticated, isCacheOwnerMatched, loadResumes]);
 
   const createResume = useCallback(async () => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return;
+    }
     if (isCreatingResume) {
       return;
     }
@@ -155,9 +176,13 @@ export const useDashboardResumeList = ({
     } finally {
       setIsCreatingResume(false);
     }
-  }, [authUserKey, isCreatingResume, setView, userProfile]);
+  }, [authUserKey, isAuthenticated, isCreatingResume, onRequireAuth, setView, userProfile]);
 
   const duplicateResume = useCallback(async (id: string, sourceName: string) => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return;
+    }
     if (isCopyingResume) {
       return;
     }
@@ -188,12 +213,16 @@ export const useDashboardResumeList = ({
     } finally {
       setIsCopyingResume(false);
     }
-  }, [isCopyingResume, showToastLoading, updateToast]);
+  }, [isAuthenticated, isCopyingResume, onRequireAuth, showToastLoading, updateToast]);
 
   const renameResume = useCallback(async (
     resumeId: string | null,
     nextName: string
   ): Promise<RenameResumeResult> => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return 'busy';
+    }
     if (!resumeId) {
       return 'missing';
     }
@@ -222,7 +251,7 @@ export const useDashboardResumeList = ({
     } finally {
       setIsRenamingResume(false);
     }
-  }, [isRenamingResume, resumes, showToastLoading, updateToast]);
+  }, [isAuthenticated, isRenamingResume, onRequireAuth, resumes, showToastLoading, updateToast]);
 
   return {
     resumes,

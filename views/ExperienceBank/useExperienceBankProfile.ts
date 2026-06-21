@@ -22,6 +22,8 @@ type LoadingToastFn = (message: string) => string;
 type UpdateToastFn = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
 
 type UseExperienceBankProfileParams = {
+  isAuthenticated: boolean;
+  onRequireAuth: () => void | Promise<void>;
   cachedProfile?: Profile | null;
   onProfileUpdate?: (data: Profile) => void;
   refreshEducation: () => Promise<unknown>;
@@ -107,6 +109,8 @@ const buildProfileSnapshot = (profile: Profile) => ({
 });
 
 export const useExperienceBankProfile = ({
+  isAuthenticated,
+  onRequireAuth,
   cachedProfile,
   onProfileUpdate,
   refreshEducation,
@@ -119,7 +123,7 @@ export const useExperienceBankProfile = ({
   updateToast,
   closeToast,
 }: UseExperienceBankProfileParams) => {
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(isAuthenticated);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [originalProfile, setOriginalProfile] = useState({
@@ -236,15 +240,24 @@ export const useExperienceBankProfile = ({
   }, [onProfileUpdate]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
     if (!cachedProfile) {
       return;
     }
     applyProfileSnapshot(cachedProfile);
     hasHydratedProfileRef.current = true;
     setIsLoadingProfile(false);
-  }, [cachedProfile, applyProfileSnapshot]);
+  }, [cachedProfile, applyProfileSnapshot, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      hasHydratedProfileRef.current = false;
+      isLoadingProfileRef.current = false;
+      setIsLoadingProfile(false);
+      return;
+    }
     const loadProfile = async () => {
       if (isLoadingProfileRef.current) {
         devLog('[ExperienceBank] 请求防抖：跳过重复请求');
@@ -274,9 +287,13 @@ export const useExperienceBankProfile = ({
     };
 
     void loadProfile();
-  }, [applyProfileSnapshot]);
+  }, [applyProfileSnapshot, isAuthenticated]);
 
   const handleEditProfile = useCallback(() => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return;
+    }
     if (isLoadingProfile) {
       return;
     }
@@ -291,12 +308,12 @@ export const useExperienceBankProfile = ({
       extraJson: profileExtraJson,
     });
     setIsEditingProfile(true);
-  }, [avatarDataUrl, email, isLoadingProfile, link, location, name, phone, profileExtraJson, summary]);
+  }, [avatarDataUrl, email, isAuthenticated, isLoadingProfile, link, location, name, onRequireAuth, phone, profileExtraJson, summary]);
 
   const {
     isGeneratingSummary,
     cancelSummaryGeneration,
-    handleGenerateSummary,
+    handleGenerateSummary: runGenerateSummary,
     handleSummaryChange,
   } = useExperienceBankSummaryGeneration({
     isLoadingProfile,
@@ -316,6 +333,14 @@ export const useExperienceBankProfile = ({
     closeToast,
   });
 
+  const handleGenerateSummary = useCallback(async () => {
+    if (!isAuthenticated) {
+      await onRequireAuth();
+      return;
+    }
+    await runGenerateSummary();
+  }, [isAuthenticated, onRequireAuth, runGenerateSummary]);
+
   const handleCancelProfile = useCallback(() => {
     cancelSummaryGeneration({ bumpDraftVersion: true });
     resetProfileDraftOverrides();
@@ -331,6 +356,10 @@ export const useExperienceBankProfile = ({
   }, [cancelSummaryGeneration, originalProfile, resetProfileDraftOverrides]);
 
   const handleSaveProfile = useCallback(async () => {
+    if (!isAuthenticated) {
+      await onRequireAuth();
+      return;
+    }
     try {
       cancelSummaryGeneration();
       setIsSavingProfile(true);
@@ -374,9 +403,14 @@ export const useExperienceBankProfile = ({
     success,
     summary,
     toastError,
+    isAuthenticated,
+    onRequireAuth,
   ]);
 
   const resolveCurrentProfileSnapshot = useCallback(async () => {
+    if (!isAuthenticated) {
+      return null;
+    }
     if (hasHydratedProfileRef.current && !isLoadingProfile) {
       return { name, email, phone, location };
     }
@@ -389,7 +423,7 @@ export const useExperienceBankProfile = ({
       console.error('[ExperienceBank] 刷新个人资料失败:', error);
       return null;
     }
-  }, [applyProfileSnapshot, email, isLoadingProfile, location, name, phone]);
+  }, [applyProfileSnapshot, email, isAuthenticated, isLoadingProfile, location, name, phone]);
 
   const handleResumeImported = useCallback(async (
     parsedPersonalInfo?: ParsedPersonalInfo,
@@ -443,16 +477,25 @@ export const useExperienceBankProfile = ({
     setLink(value);
   }, [markProfileFieldDraftTouched]);
 
-  const isAvatarInteractionEnabled = !isLoadingProfile && !isSavingProfile;
+  const isAvatarInteractionEnabled = isAuthenticated && !isLoadingProfile && !isSavingProfile;
 
   const handleAvatarUploadClick = useCallback(() => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return;
+    }
     if (!isAvatarInteractionEnabled) {
       return;
     }
     avatarFileInputRef.current?.click();
-  }, [isAvatarInteractionEnabled]);
+  }, [isAuthenticated, isAvatarInteractionEnabled, onRequireAuth]);
 
   const handleFileSelected = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAuthenticated) {
+      event.target.value = '';
+      void onRequireAuth();
+      return;
+    }
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -465,25 +508,33 @@ export const useExperienceBankProfile = ({
     };
     reader.readAsDataURL(file);
     event.target.value = '';
-  }, []);
+  }, [isAuthenticated, onRequireAuth]);
 
   const handleCropConfirm = useCallback((cropDataUrl: string) => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return;
+    }
     setAvatarDataUrl(cropDataUrl);
     setIsCropModalOpen(false);
     setPendingImageSrc(null);
     if (!isEditingProfile) {
       setIsEditingProfile(true);
     }
-  }, [isEditingProfile]);
+  }, [isAuthenticated, isEditingProfile, onRequireAuth]);
 
   const handleAvatarDelete = useCallback(() => {
+    if (!isAuthenticated) {
+      void onRequireAuth();
+      return;
+    }
     setAvatarDataUrl(null);
     setIsCropModalOpen(false);
     setPendingImageSrc(null);
     if (!isEditingProfile) {
       setIsEditingProfile(true);
     }
-  }, [isEditingProfile]);
+  }, [isAuthenticated, isEditingProfile, onRequireAuth]);
 
   const handleCropCancel = useCallback(() => {
     setIsCropModalOpen(false);
