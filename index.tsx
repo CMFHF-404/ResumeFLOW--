@@ -5,15 +5,10 @@ import App from './App';
 import ExperienceBankPdfExportPage from './views/ExperienceBankPdfExportPage';
 import ResumePdfExportPage from './views/ResumePdfExportPage';
 
-const logtoResources = [
-  import.meta.env.VITE_LOGTO_RESOURCE,
-].filter((resource): resource is string => Boolean(resource));
-
 const config: LogtoConfig = {
   endpoint: import.meta.env.VITE_LOGTO_ENDPOINT,
   appId: import.meta.env.VITE_LOGTO_APP_ID,
   scopes: [UserScope.Profile, UserScope.Email, UserScope.Phone, UserScope.Identities],
-  resources: logtoResources,
 };
 
 const rootElement = document.getElementById('root');

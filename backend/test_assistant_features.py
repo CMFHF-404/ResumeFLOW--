@@ -11,7 +11,7 @@ import json
 def _set_required_env_defaults() -> None:
     os.environ["DATABASE_URL"] = "postgresql+asyncpg://user:password@localhost:5432/resumeflow"
     os.environ.setdefault("LOGTO_ISSUER", "https://example.logto.app/oidc")
-    os.environ.setdefault("LOGTO_AUDIENCE", "https://api.example.com")
+    os.environ.setdefault("LOGTO_APP_ID", "resume-spa-app-id")
 
 
 _set_required_env_defaults()

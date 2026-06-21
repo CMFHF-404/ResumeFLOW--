@@ -111,7 +111,7 @@ pnpm dev
 - `VITE_LOGTO_*`：Logto 前端鉴权配置
 - `VITE_LOGTO_ACCOUNT_CENTER_URL`：Logto 托管账号中心地址
 - `DATABASE_URL`：PostgreSQL 连接字符串
-- `LOGTO_ISSUER` / `LOGTO_AUDIENCE`：后端鉴权校验配置
+- `LOGTO_ISSUER` / `LOGTO_APP_ID`：后端 ID token 鉴权校验配置；不需要自定义 Logto API Resource
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：主要 AI 服务配置
 - `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：Gemini 兼容配置
 - `EXPORT_TOKEN_SECRET`：导出快照令牌密钥
@@ -150,6 +150,7 @@ python verify_timeout.py
 cd backend
 python -m unittest test_assistant_features
 python -m unittest test_parser_service
+python -m unittest test_auth_middleware_id_token
 python -m unittest test_agent_api
 python -m unittest test_ai_service
 python -m unittest test_account_verification_cooldown
@@ -160,7 +161,7 @@ python -m unittest test_experience_drafts
 
 - 根目录 `Dockerfile` 构建前端静态产物，并用 Nginx 提供服务。
 - `backend/Dockerfile` 构建 FastAPI 服务，并安装 Playwright Chromium 以支持导出能力。
-- 生产部署需要分别配置前端构建参数、后端环境变量、PostgreSQL、Logto 回调地址和 CORS 允许来源。
+- 生产部署需要分别配置前端构建参数、后端环境变量、PostgreSQL、Logto 回调地址、Account Center 地址和 CORS 允许来源。
 - `backend/migrate_postgres_best_effort.py` 是手动高影响数据库迁移工具，只有在明确设置 `SOURCE_DATABASE_URL` 和 `TARGET_DATABASE_URL` 后才应运行。
 
 ## 开发约定

@@ -1,80 +1,40 @@
 import axios from 'axios';
-import { requestAccessToken } from './authTokenProvider';
+import { requestAuthToken } from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
 import { devLog } from './devLogger';
-import {
-    clearCachedLogtoAccessTokens,
-    getCachedLogtoAccessToken,
-    readAuthUserKeyFromAccessToken,
-} from './apiClientAuth';
+import { readAuthUserKeyFromToken } from './apiClientAuth';
 
-const DEFAULT_ACCESS_TOKEN_REQUEST_KEY = '__default__';
+let authTokenRequestInFlight: Promise<string | null> | null = null;
 
-const getLogtoAppId = (): string | undefined => {
-    return import.meta.env.VITE_LOGTO_APP_ID;
-};
-
-const getLogtoResource = (): string | undefined => {
-    return import.meta.env.VITE_LOGTO_RESOURCE;
-};
-
-const getLogtoAccessToken = (resource?: string): string | null => {
-    return getCachedLogtoAccessToken(getLogtoAppId(), resource);
-};
-
-const accessTokenRequestInFlight = new Map<string, Promise<string | null>>();
-
-const buildAccessTokenRequestKey = (resource?: string): string => {
-    const normalizedResource = resource?.trim();
-    return normalizedResource || DEFAULT_ACCESS_TOKEN_REQUEST_KEY;
-};
-
-export const readAuthUserKeyFromCachedAccessToken = (): string | null => {
-    const resource = getLogtoResource();
-    const token = getLogtoAccessToken(resource);
-    return readAuthUserKeyFromAccessToken(token);
-};
-
-const resolveAccessTokenFromActiveSession = async (resource?: string): Promise<string | null> => {
-    const requestKey = buildAccessTokenRequestKey(resource);
-    const inFlightRequest = accessTokenRequestInFlight.get(requestKey);
+const resolveAuthTokenFromActiveSession = async (): Promise<string | null> => {
+    const inFlightRequest = authTokenRequestInFlight;
     if (inFlightRequest) {
         return inFlightRequest;
     }
 
     const requestPromise = (async () => {
-        const providerToken = await requestAccessToken(resource);
+        const providerToken = await requestAuthToken();
         return providerToken ?? null;
     })();
 
-    accessTokenRequestInFlight.set(requestKey, requestPromise);
+    authTokenRequestInFlight = requestPromise;
 
     try {
         return await requestPromise;
     } finally {
-        if (accessTokenRequestInFlight.get(requestKey) === requestPromise) {
-            accessTokenRequestInFlight.delete(requestKey);
+        if (authTokenRequestInFlight === requestPromise) {
+            authTokenRequestInFlight = null;
         }
     }
 };
 
-const resolveAccessToken = async (resource?: string): Promise<string | null> => {
-    const cachedToken = getLogtoAccessToken(resource);
-    if (cachedToken) {
-        return cachedToken;
-    }
-
-    const providerToken = await resolveAccessTokenFromActiveSession(resource);
-    if (providerToken) {
-        return providerToken;
-    }
-    return getLogtoAccessToken(resource);
+const resolveAuthToken = async (): Promise<string | null> => {
+    return resolveAuthTokenFromActiveSession();
 };
 
 export const resolveAuthUserKeyFromActiveSession = async (): Promise<string | null> => {
-    const resource = getLogtoResource();
-    const token = await resolveAccessTokenFromActiveSession(resource);
-    return readAuthUserKeyFromAccessToken(token);
+    const token = await resolveAuthTokenFromActiveSession();
+    return readAuthUserKeyFromToken(token);
 };
 
 export const getApiBaseUrl = (): string => {
@@ -93,10 +53,8 @@ const isWriteMethod = (method?: string) => {
     return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod);
 };
 
-
 export const getAuthorizationHeader = async (): Promise<string | null> => {
-    const resource = getLogtoResource();
-    const token = await resolveAccessToken(resource);
+    const token = await resolveAuthToken();
     if (!token) {
         return null;
     }
@@ -111,9 +69,8 @@ const apiClient = axios.create({
 });
 
 export const getAuthCacheKey = async (): Promise<string> => {
-    const resource = getLogtoResource();
-    const token = await resolveAccessToken(resource);
-    return token ?? 'anonymous';
+    const token = await resolveAuthToken();
+    return readAuthUserKeyFromToken(token) ?? token ?? 'anonymous';
 };
 
 // 请求拦截器:自动添加JWT Token
@@ -124,9 +81,8 @@ apiClient.interceptors.request.use(
             config.headers.delete('Content-Type');
         }
 
-        const resource = getLogtoResource();
-        const token = await resolveAccessToken(resource);
-        devLog(`[API Client] Resource: ${resource}, Token found: ${!!token}`);
+        const token = await resolveAuthToken();
+        devLog(`[API Client] ID token found: ${!!token}`);
 
         const shouldRequireLogin = isWriteMethod(config.method);
 
@@ -152,8 +108,6 @@ apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            const resource = getLogtoResource();
-            clearCachedLogtoAccessTokens(getLogtoAppId(), resource);
             console.error('Authentication failed, redirecting to login...');
             dispatchLoginRequired(
                 isWriteMethod(error.config?.method) ? 'unauthorized-write' : 'unauthorized'

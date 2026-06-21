@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 DEFAULT_JWKS_PATH = "/jwks"
 ENV_DATABASE_URL = "DATABASE_URL"
 ENV_LOGTO_ISSUER = "LOGTO_ISSUER"
-ENV_LOGTO_AUDIENCE = "LOGTO_AUDIENCE"
+ENV_LOGTO_APP_ID = "LOGTO_APP_ID"
 ENV_LOGTO_JWKS_TTL = "LOGTO_JWKS_TTL_SECONDS"
 ENV_AI_API_KEY = "AI_API_KEY"
 ENV_AI_BASE_URL = "AI_BASE_URL"
@@ -111,13 +111,13 @@ def _resolve_frontend_origin(cors_allow_origins: List[str]) -> str:
 def _resolve_export_token_secret(
     database_url: str,
     logto_issuer: str,
-    logto_audience: str,
+    logto_app_id: str,
 ) -> str:
     configured_secret = os.getenv(ENV_EXPORT_TOKEN_SECRET)
     if configured_secret:
         return configured_secret
 
-    seed = "|".join([database_url, logto_issuer, logto_audience])
+    seed = "|".join([database_url, logto_issuer, logto_app_id])
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
@@ -125,7 +125,7 @@ def _resolve_export_token_secret(
 class Settings:
     database_url: str
     logto_issuer: str
-    logto_audience: str
+    logto_app_id: str
     jwks_url: str
     jwks_ttl_seconds: int
     ai_api_key: Optional[str]
@@ -161,7 +161,7 @@ def load_settings() -> Settings:
     _load_env()
     database_url = _normalize_database_url(_require_env(ENV_DATABASE_URL))
     logto_issuer = _normalize_issuer(_require_env(ENV_LOGTO_ISSUER))
-    logto_audience = _require_env(ENV_LOGTO_AUDIENCE)
+    logto_app_id = _require_env(ENV_LOGTO_APP_ID)
     jwks_url = f"{logto_issuer}{DEFAULT_JWKS_PATH}"
     jwks_ttl_seconds = int(os.getenv(ENV_LOGTO_JWKS_TTL, DEFAULT_JWKS_TTL_SECONDS))
     ai_api_key = os.getenv(ENV_AI_API_KEY)
@@ -205,7 +205,7 @@ def load_settings() -> Settings:
     export_token_secret = _resolve_export_token_secret(
         database_url,
         logto_issuer,
-        logto_audience,
+        logto_app_id,
     )
     export_render_timeout_seconds = int(
         os.getenv(ENV_EXPORT_RENDER_TIMEOUT_SECONDS, DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS)
@@ -214,7 +214,7 @@ def load_settings() -> Settings:
     _settings = Settings(
         database_url=database_url,
         logto_issuer=logto_issuer,
-        logto_audience=logto_audience,
+        logto_app_id=logto_app_id,
         jwks_url=jwks_url,
         jwks_ttl_seconds=jwks_ttl_seconds,
         ai_api_key=ai_api_key,
