@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 def _set_required_env_defaults() -> None:
     os.environ["DATABASE_URL"] = "postgresql+asyncpg://user:password@localhost:5432/resumeflow"
     os.environ.setdefault("LOGTO_ISSUER", "https://example.logto.app/oidc")
-    os.environ.setdefault("LOGTO_AUDIENCE", "https://api.example.com")
+    os.environ.setdefault("LOGTO_APP_ID", "resume-spa-app-id")
 
 
 _set_required_env_defaults()
@@ -163,7 +163,7 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             {
                 "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
                 "LOGTO_ISSUER": "https://example.logto.app/oidc",
-                "LOGTO_AUDIENCE": "https://api.example.com",
+                "LOGTO_APP_ID": "resume-spa-app-id",
                 "AI_THINKING_BUDGET_JD_ANALYSIS": "2048",
                 "AI_THINKING_BUDGET_POLISH": "256",
                 "AI_THINKING_BUDGET_BOSS_GREETING": "0",

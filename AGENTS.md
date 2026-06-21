@@ -14,11 +14,13 @@
   - Build with `npm run build`
   - Preview with `npm run preview`
   - Copy settings from `.env.example` when local env vars are needed.
+  - The frontend uses Logto ID tokens for backend auth; do not configure `VITE_LOGTO_RESOURCE`.
   - For Logto account management, set `VITE_LOGTO_ACCOUNT_CENTER_URL` to the hosted Logto Account Center URL and add `http://localhost:5173` to the Logto "Post Sign-out Redirect URI" list for local logout.
 - The Vite dev server binds to `0.0.0.0:5173` and proxies `/api` to `VITE_API_BASE_URL`, falling back to `http://localhost:8000`.
 - Backend:
   - Install with `pip install -r requirements.txt` from `backend/`
   - Copy settings from `backend/.env.example` to `backend/.env`
+  - Set `LOGTO_APP_ID` to the Logto SPA application ID; do not use `LOGTO_AUDIENCE` for backend auth.
   - Initialize a local PostgreSQL database with `python init_local_db.py` when you need the default `localhost:5432/resumeflow` setup.
   - Grant the first admin role with `python set_first_admin.py <logto-user-id>`, or set `FIRST_ADMIN_USER_ID` before running `python set_first_admin.py`.
   - Start from `backend/` with `sh prestart.sh` or `uvicorn app.main:app --host 0.0.0.0 --port 8000`

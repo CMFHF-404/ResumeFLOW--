@@ -14,7 +14,6 @@ const importJDAnalysisExecution = async () => {
       'import.meta.env.DEV': 'false',
       'import.meta.env.VITE_API_BASE_URL': '""',
       'import.meta.env.VITE_LOGTO_APP_ID': 'undefined',
-      'import.meta.env.VITE_LOGTO_RESOURCE': 'undefined',
     },
   });
   const source = result.outputFiles[0].text;

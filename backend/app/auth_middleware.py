@@ -118,8 +118,9 @@ async def _verify_token(token: str) -> Dict[str, Any]:
             token,
             key,
             algorithms=[alg],
-            audience=settings.logto_audience,
+            audience=settings.logto_app_id,
             issuer=settings.logto_issuer,
+            options={"verify_at_hash": False},
         )
     except JWTError as exc:
         raise AuthError("Invalid token") from exc
