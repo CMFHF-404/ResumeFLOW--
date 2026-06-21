@@ -19,6 +19,7 @@ export type ExperienceSectionProps = {
   labels: ExperienceCardLabels;
   addButtonLabel: string;
   emptyTitleError: string;
+  titleRequired?: boolean;
   deleteConfirmText: string;
   defaultOrg: string;
   defaultTitle: string;

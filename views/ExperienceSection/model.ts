@@ -136,6 +136,7 @@ export const useExperienceSectionModel = ({
   defaultOrg,
   defaultTitle,
   emptyTitleError,
+  titleRequired = true,
   toast,
   isAuthenticated,
   onRequireAuth,
@@ -250,7 +251,7 @@ export const useExperienceSectionModel = ({
     clearPendingAiPolishApply,
   });
   const { savingCardId, handleSaveCard: saveExperienceCard } = useExperienceSave({
-    category, cardData: store.cardData, emptyTitleError, toast, refreshExperiences,
+    category, cardData: store.cardData, emptyTitleError, titleRequired, toast, refreshExperiences,
     toggleCard: expansion.toggleCard, clearPreviewState, hasPendingAiPolishApply, clearPendingAiPolishApply, setExperiences,
     setCardData: store.setCardData,
     setOriginalCardData: store.setOriginalCardData,
@@ -261,7 +262,7 @@ export const useExperienceSectionModel = ({
     if (!data) {
       return;
     }
-    if ((isTempId(cardId) || cardId.startsWith('draft_')) && (!data.title || !data.title.trim())) {
+    if (titleRequired && (isTempId(cardId) || cardId.startsWith('draft_')) && (!data.title || !data.title.trim())) {
       await saveExperienceCard(cardId);
       return;
     }
@@ -275,7 +276,7 @@ export const useExperienceSectionModel = ({
       return;
     }
     await saveExperienceCard(cardId);
-  }, [flushDraftSave, saveExperienceCard, store.cardData]);
+  }, [flushDraftSave, saveExperienceCard, store.cardData, titleRequired]);
   const sortedExperiences = useSortedExperiences(experiences);
 
   useEffect(() => {
