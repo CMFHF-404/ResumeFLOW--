@@ -13,6 +13,7 @@ ENV_LOGTO_APP_ID = "LOGTO_APP_ID"
 ENV_LOGTO_JWKS_TTL = "LOGTO_JWKS_TTL_SECONDS"
 ENV_AI_API_KEY = "AI_API_KEY"
 ENV_AI_BASE_URL = "AI_BASE_URL"
+ENV_AI_RESPONSES_BASE_URL = "AI_RESPONSES_BASE_URL"
 ENV_AI_MODEL = "AI_MODEL"
 ENV_AI_TIMEOUT_SECONDS = "AI_TIMEOUT_SECONDS"
 ENV_GEMINI_API_KEY = "GEMINI_API_KEY"
@@ -68,6 +69,23 @@ def _normalize_database_url(value: str) -> str:
         if value.startswith(scheme):
             return f"{ASYNC_POSTGRES_SCHEME}{value[len(scheme):]}"
     return value
+
+
+def _resolve_ai_responses_base_url(ai_base_url: str) -> str:
+    configured = os.getenv(ENV_AI_RESPONSES_BASE_URL)
+    if configured:
+        return configured.rstrip("/")
+
+    normalized = ai_base_url.rstrip("/")
+    responses_suffix = "/api/v2/apps/protocols/compatible-mode/v1"
+    if normalized.endswith(responses_suffix):
+        return normalized
+
+    chat_suffix = "/compatible-mode/v1"
+    if normalized.endswith(chat_suffix):
+        return f"{normalized[: -len(chat_suffix)]}{responses_suffix}"
+
+    return normalized
 
 
 def _normalize_issuer(issuer: str) -> str:
@@ -130,6 +148,7 @@ class Settings:
     jwks_ttl_seconds: int
     ai_api_key: Optional[str]
     ai_base_url: str
+    ai_responses_base_url: str
     ai_model: str
     ai_timeout_seconds: int
     gemini_api_key: Optional[str]
@@ -166,6 +185,7 @@ def load_settings() -> Settings:
     jwks_ttl_seconds = int(os.getenv(ENV_LOGTO_JWKS_TTL, DEFAULT_JWKS_TTL_SECONDS))
     ai_api_key = os.getenv(ENV_AI_API_KEY)
     ai_base_url = os.getenv(ENV_AI_BASE_URL, DEFAULT_AI_BASE_URL)
+    ai_responses_base_url = _resolve_ai_responses_base_url(ai_base_url)
     ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
     ai_timeout_seconds = int(os.getenv(ENV_AI_TIMEOUT_SECONDS, DEFAULT_AI_TIMEOUT_SECONDS))
     gemini_api_key = os.getenv(ENV_GEMINI_API_KEY)
@@ -219,6 +239,7 @@ def load_settings() -> Settings:
         jwks_ttl_seconds=jwks_ttl_seconds,
         ai_api_key=ai_api_key,
         ai_base_url=ai_base_url,
+        ai_responses_base_url=ai_responses_base_url,
         ai_model=ai_model,
         ai_timeout_seconds=ai_timeout_seconds,
         gemini_api_key=gemini_api_key,
