@@ -81,3 +81,18 @@ test('caret top measurement is limited to blank caret rows', () => {
     /includeCaretLine &&\s*caretLineIndex !== null &&\s*cueLineIndexSet\.has\(caretLineIndex\) &&\s*!\(lines\[caretLineIndex\] \?\? ''\)\.trim\(\)/
   );
 });
+
+test('line bullet cues refresh after late layout and font changes', () => {
+  const richTextEditorSource = source();
+
+  assert.match(
+    richTextEditorSource,
+    /document\.fonts\?\.ready/,
+    'plain line bullet cues should remeasure after web fonts settle'
+  );
+  assert.match(
+    richTextEditorSource,
+    /new ResizeObserver/,
+    'plain line bullet cues should remeasure when the editor dimensions change'
+  );
+});

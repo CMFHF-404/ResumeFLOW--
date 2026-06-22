@@ -54,6 +54,7 @@ type MarkdownHandleResult = 'handled' | 'not_handled' | 'abort';
 const TOOLBAR_OFFSET_Y = 12;
 const TOOLBAR_MIN_PADDING = 24;
 const LINK_POPOVER_OFFSET_Y = 10;
+const LINE_BULLET_LAYOUT_REFRESH_DELAYS_MS = [80, 320];
 const DEFAULT_LINK_PROTOCOL = 'https://';
 const LINK_URL_PLACEHOLDER = '请输入链接地址';
 const LINK_TEXT_PLACEHOLDER = '请输入链接文字（可选）';
@@ -758,6 +759,56 @@ const useLineBulletCueTops = (
         const frameId = requestAnimationFrame(updateTops);
         return () => cancelAnimationFrame(frameId);
     }, [updateTops, value, isFocused]);
+
+    useEffect(() => {
+        if (!enabled) {
+            return;
+        }
+        const editor = editorRef.current;
+        if (!editor) {
+            return;
+        }
+
+        let cancelled = false;
+        const frameIds = new Set<number>();
+        const timeoutIds = new Set<number>();
+
+        const scheduleUpdate = () => {
+            if (cancelled) {
+                return;
+            }
+            const frameId = requestAnimationFrame(() => {
+                frameIds.delete(frameId);
+                if (!cancelled) {
+                    updateTops();
+                }
+            });
+            frameIds.add(frameId);
+        };
+
+        LINE_BULLET_LAYOUT_REFRESH_DELAYS_MS.forEach((delay) => {
+            const timeoutId = window.setTimeout(() => {
+                timeoutIds.delete(timeoutId);
+                scheduleUpdate();
+            }, delay);
+            timeoutIds.add(timeoutId);
+        });
+
+        document.fonts?.ready.then(scheduleUpdate).catch(() => undefined);
+
+        const resizeObserver =
+            typeof ResizeObserver === 'undefined'
+                ? null
+                : new ResizeObserver(scheduleUpdate);
+        resizeObserver?.observe(editor);
+
+        return () => {
+            cancelled = true;
+            resizeObserver?.disconnect();
+            frameIds.forEach((frameId) => cancelAnimationFrame(frameId));
+            timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+        };
+    }, [editorRef, enabled, updateTops, value]);
 
     useEffect(() => {
         if (!enabled) {
