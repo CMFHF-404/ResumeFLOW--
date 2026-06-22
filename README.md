@@ -113,7 +113,8 @@ pnpm dev
 - `DATABASE_URL`：PostgreSQL 连接字符串
 - `LOGTO_ISSUER` / `LOGTO_APP_ID`：后端 ID token 鉴权校验配置；不需要自定义 Logto API Resource
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：主要 AI 服务配置，默认走百炼 Qwen `qwen3.7-plus`
-- `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：可选 Gemini 回滚通道
+- `AI_RESPONSES_BASE_URL`：可选 Qwen Responses API 地址；不配置时会从 `AI_BASE_URL` 自动推导，思考摘要优先走 Responses API
+- `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：可选 Gemini 回滚通道；Qwen Responses 或 Chat Completions 思考流不可用时才使用
 - `EXPORT_TOKEN_SECRET`：导出快照令牌密钥
 - `POSTHOG_*`、`FEISHU_*`：分析和反馈通知相关配置
 

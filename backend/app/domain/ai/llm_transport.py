@@ -20,8 +20,37 @@ AI_POOL_TIMEOUT_SECONDS = 10.0
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 GEMINI_POOL_TIMEOUT_SECONDS = 10.0
 QWEN_THOUGHT_SUMMARY_MAX_LENGTH = 80
+QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH = 32
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 THOUGHT_TITLE_PATTERN = re.compile(r"\*\*([^*\n]+?)\*\*")
+THOUGHT_NOISE_PREFIX_PATTERN = re.compile(
+    r"^(?:思考中|思考过程|思考摘要|摘要|thinking process|reasoning summary|reasoning|summary)\s*[:：-]\s*",
+    re.IGNORECASE,
+)
+THOUGHT_JSON_FIELD_PREFIX_PATTERN = re.compile(
+    r"^[{,\[\s]*[\"']?(?:summary|text|reasoning|reasoning_summary|thought|title|content)[\"']?\s*[:：]\s*",
+    re.IGNORECASE,
+)
+THOUGHT_ACTION_PREFIXES = (
+    "读取",
+    "识别",
+    "解析",
+    "分析",
+    "匹配",
+    "对齐",
+    "比较",
+    "评估",
+    "提炼",
+    "归纳",
+    "整理",
+    "优化",
+    "生成",
+    "构建",
+    "检查",
+    "沉淀",
+    "记录",
+)
+THOUGHT_ACTIVE_PREFIXES = ("正在", "已", "完成", "开始", "继续", "准备")
 
 
 def _extract_content(response_data: Dict[str, Any]) -> str:
@@ -83,7 +112,83 @@ def _normalize_thought_summary(raw_text: str) -> str:
     return f"{summary[: QWEN_THOUGHT_SUMMARY_MAX_LENGTH - 3].rstrip()}..."
 
 
+def _is_junk_qwen_responses_thought_summary(summary: str) -> bool:
+    stripped = summary.strip()
+    if not stripped:
+        return True
+    compact = re.sub(r"\s+", "", stripped)
+    if re.fullmatch(
+        r"[:：,，;；{}\[\]()'\"`]*(?:true|false|null|none)[:：,，;；{}\[\]()'\"`]*",
+        compact,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.fullmatch(
+        r"[{,\[]?[\"']?[A-Za-z_][\w.-]*[\"']?[:=：](?:true|false|null|none)[,，}]?",
+        compact,
+        re.IGNORECASE,
+    ):
+        return True
+    generic = compact.lower().strip(":：-_*#`\"'{}[]()（）")
+    return generic in {
+        "thinkingprocess",
+        "reasoning",
+        "reasoningsummary",
+        "summary",
+        "thought",
+        "thoughts",
+        "includethoughts",
+        "enablethinking",
+        "enable_thinking",
+    }
+
+
+def _clean_qwen_responses_thought_summary(summary: str) -> str:
+    if _is_junk_qwen_responses_thought_summary(summary):
+        return ""
+
+    previous = None
+    while previous != summary:
+        previous = summary
+        summary = THOUGHT_JSON_FIELD_PREFIX_PATTERN.sub("", summary).strip()
+        summary = THOUGHT_NOISE_PREFIX_PATTERN.sub("", summary).strip()
+        summary = summary.strip(" \t`\"'“”‘’{}[]()（）")
+
+    if _is_junk_qwen_responses_thought_summary(summary):
+        return ""
+
+    summary = re.split(r"[，,。！？!?；;\n]", summary, maxsplit=1)[0].strip()
+    summary = re.sub(r"\s+", " ", summary).strip()
+    if _is_junk_qwen_responses_thought_summary(summary):
+        return ""
+
+    if (
+        summary.startswith(THOUGHT_ACTION_PREFIXES)
+        and not summary.startswith(THOUGHT_ACTIVE_PREFIXES)
+    ):
+        summary = f"正在{summary}"
+
+    if len(summary) <= QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH:
+        return summary
+    return f"{summary[: QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH - 3].rstrip()}..."
+
+
+def _normalize_qwen_responses_thought_summary(raw_text: str) -> str:
+    text = raw_text.replace("\r", "\n")
+    candidates = [text]
+    candidates.extend(line for line in text.splitlines() if line.strip())
+    for candidate in candidates:
+        summary = _clean_qwen_responses_thought_summary(
+            _normalize_thought_summary(candidate)
+        )
+        if summary:
+            return summary
+    return ""
+
+
 def _is_thought_summary_boundary(text: str) -> bool:
+    if re.search(r"[\n\r]\s*$", text):
+        return True
     stripped = text.strip()
     if not stripped:
         return False
@@ -112,6 +217,48 @@ def _convert_user_part_to_openai_content(part: Dict[str, Any]) -> Optional[Dict[
     return None
 
 
+def _convert_user_part_to_qwen_responses_content(
+    part: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    if "text" in part and isinstance(part.get("text"), str):
+        return {"type": "input_text", "text": part["text"]}
+    if part.get("type") == "input_text" and isinstance(part.get("text"), str):
+        return {"type": "input_text", "text": part["text"]}
+
+    image_url = part.get("image_url")
+    if part.get("type") == "input_image" and isinstance(image_url, str):
+        response_part: Dict[str, Any] = {
+            "type": "input_image",
+            "image_url": image_url,
+        }
+        detail = part.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            response_part["detail"] = detail
+        return response_part
+    if part.get("type") == "image_url" and isinstance(image_url, dict):
+        url = image_url.get("url")
+        if isinstance(url, str) and url.strip():
+            response_part = {
+                "type": "input_image",
+                "image_url": url,
+            }
+            detail = image_url.get("detail")
+            if isinstance(detail, str) and detail.strip():
+                response_part["detail"] = detail
+            return response_part
+
+    inline_data = part.get("inlineData")
+    if isinstance(inline_data, dict):
+        mime_type = str(inline_data.get("mimeType") or "").strip()
+        data = str(inline_data.get("data") or "").strip()
+        if mime_type and data:
+            return {
+                "type": "input_image",
+                "image_url": f"data:{mime_type};base64,{data}",
+            }
+    return None
+
+
 def _build_openai_messages(
     *,
     system_prompt: str,
@@ -134,6 +281,89 @@ def _build_openai_messages(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": content},
     ]
+
+
+def _build_qwen_responses_input_messages(
+    *,
+    system_prompt: str,
+    user_parts: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    content_parts = [
+        converted
+        for converted in (
+            _convert_user_part_to_qwen_responses_content(part) for part in user_parts
+        )
+        if converted is not None
+    ]
+    if not content_parts:
+        content: Any = ""
+    elif len(content_parts) == 1 and content_parts[0]["type"] == "input_text":
+        content = content_parts[0]["text"]
+    else:
+        content = content_parts
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": content},
+    ]
+
+
+def _derive_qwen_responses_base_url(ai_base_url: str) -> str:
+    normalized = (ai_base_url or "").rstrip("/")
+    responses_suffix = "/api/v2/apps/protocols/compatible-mode/v1"
+    if normalized.endswith(responses_suffix):
+        return normalized
+
+    chat_suffix = "/compatible-mode/v1"
+    if normalized.endswith(chat_suffix):
+        return f"{normalized[: -len(chat_suffix)]}{responses_suffix}"
+
+    return normalized
+
+
+def _build_qwen_responses_url() -> str:
+    base_url = (
+        getattr(settings, "ai_responses_base_url", None)
+        or _derive_qwen_responses_base_url(getattr(settings, "ai_base_url", ""))
+    )
+    return f"{base_url.rstrip('/')}/responses"
+
+
+def _extract_qwen_responses_message_text(item: Dict[str, Any]) -> str:
+    content = item.get("content")
+    if not isinstance(content, list):
+        return ""
+    text_parts = [
+        part.get("text")
+        for part in content
+        if isinstance(part, dict)
+        and part.get("type") in {"output_text", "text"}
+        and isinstance(part.get("text"), str)
+    ]
+    return "".join(text_parts)
+
+
+def _extract_qwen_responses_output_text(response_payload: Dict[str, Any]) -> str:
+    output = response_payload.get("output")
+    if not isinstance(output, list):
+        return ""
+    text_parts = [
+        _extract_qwen_responses_message_text(item)
+        for item in output
+        if isinstance(item, dict) and item.get("type") == "message"
+    ]
+    return "".join(part for part in text_parts if part)
+
+
+def _iter_qwen_responses_summary_texts(item: Dict[str, Any]):
+    summary_items = item.get("summary")
+    if not isinstance(summary_items, list):
+        return
+    for summary_item in summary_items:
+        if not isinstance(summary_item, dict):
+            continue
+        text = summary_item.get("text")
+        if isinstance(text, str) and text.strip():
+            yield text
 
 
 def _build_headers() -> Dict[str, str]:
@@ -406,6 +636,163 @@ async def _stream_gemini_json_response_legacy(
     return _parse_json_content_candidates(parse_candidates)
 
 
+async def _stream_qwen_responses_json_response(
+    *,
+    system_prompt: str,
+    user_parts: List[Dict[str, Any]],
+    error_message: str,
+    request_label: str,
+    thought_callback: ThoughtCallback = None,
+) -> Dict[str, Any]:
+    model = settings.ai_model
+    payload: Dict[str, Any] = {
+        "model": model,
+        "input": _build_qwen_responses_input_messages(
+            system_prompt=system_prompt,
+            user_parts=user_parts,
+        ),
+        "temperature": 0.2,
+        "stream": True,
+        "enable_thinking": True,
+    }
+
+    answer_parts: List[str] = []
+    answer_snapshots: List[str] = []
+    thought_buffer = ""
+    last_thought_summary = ""
+    url = _build_qwen_responses_url()
+
+    async def emit_summary(raw_text: str) -> None:
+        nonlocal last_thought_summary
+        thought_summary = _normalize_qwen_responses_thought_summary(raw_text)
+        if not thought_summary or thought_summary == last_thought_summary:
+            return
+        last_thought_summary = thought_summary
+        await _emit_thought(
+            thought_callback,
+            {"type": "thought", "summary": thought_summary},
+        )
+
+    async def flush_summary_buffer() -> None:
+        nonlocal thought_buffer
+        if not thought_buffer.strip():
+            return
+        await emit_summary(thought_buffer)
+        thought_buffer = ""
+
+    try:
+        async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
+            async with client.stream(
+                "POST",
+                url,
+                headers=_build_headers(),
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                content_type = (response.headers.get("content-type") or "").lower()
+                if "text/event-stream" not in content_type:
+                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
+                    logger.error(
+                        "[AI Stream] unexpected Qwen Responses content-type label=%s content_type=%s body=%s",
+                        request_label,
+                        content_type,
+                        body_preview,
+                    )
+                    raise ValueError("Qwen Responses 返回了非流式响应，请检查 AI_RESPONSES_BASE_URL 配置。")
+
+                async for stream_payload in _iter_sse_json_payloads(response):
+                    event_type = stream_payload.get("type")
+                    if event_type == "response.reasoning_summary_text.delta":
+                        delta = stream_payload.get("delta")
+                        if isinstance(delta, str) and delta:
+                            thought_buffer = f"{thought_buffer}{delta}"
+                            if _is_thought_summary_boundary(thought_buffer):
+                                await flush_summary_buffer()
+                        continue
+
+                    if event_type == "response.reasoning_summary_text.done":
+                        await flush_summary_buffer()
+                        text = stream_payload.get("text")
+                        if isinstance(text, str) and text.strip():
+                            await emit_summary(text)
+                        continue
+
+                    if event_type == "response.output_text.delta":
+                        delta = stream_payload.get("delta")
+                        if isinstance(delta, str) and delta:
+                            answer_parts.append(delta)
+                            answer_snapshots.append(delta)
+                        continue
+
+                    if event_type == "response.output_item.done":
+                        item = stream_payload.get("item")
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("type") == "reasoning":
+                            await flush_summary_buffer()
+                            for summary_text in _iter_qwen_responses_summary_texts(item):
+                                await emit_summary(summary_text)
+                            continue
+                        if item.get("type") == "message" and not answer_parts:
+                            message_text = _extract_qwen_responses_message_text(item)
+                            if message_text:
+                                answer_parts.append(message_text)
+                                answer_snapshots.append(message_text)
+                            continue
+
+                    if event_type == "response.completed":
+                        await flush_summary_buffer()
+                        response_payload = stream_payload.get("response")
+                        if isinstance(response_payload, dict):
+                            output = response_payload.get("output")
+                            if isinstance(output, list):
+                                for item in output:
+                                    if (
+                                        isinstance(item, dict)
+                                        and item.get("type") == "reasoning"
+                                    ):
+                                        for summary_text in _iter_qwen_responses_summary_texts(item):
+                                            await emit_summary(summary_text)
+                            if not answer_parts:
+                                message_text = _extract_qwen_responses_output_text(
+                                    response_payload
+                                )
+                                if message_text:
+                                    answer_parts.append(message_text)
+                                    answer_snapshots.append(message_text)
+                        continue
+
+                await flush_summary_buffer()
+    except httpx.HTTPStatusError as exc:
+        try:
+            await exc.response.aread()
+            error_text = exc.response.text[:1000]
+        except Exception:
+            error_text = "Failed to read response body."
+        logger.error(
+            "[AI Stream] Qwen Responses request failed label=%s status=%s body=%s",
+            request_label,
+            exc.response.status_code,
+            error_text,
+        )
+        raise ValueError(error_message) from exc
+    except httpx.TimeoutException as exc:
+        raise ValueError(error_message) from exc
+
+    answer_text = "".join(answer_parts).strip()
+    if not answer_text:
+        raise ValueError("Qwen Responses 未返回可解析的结构化结果。")
+    parse_candidates: List[str] = [answer_text]
+    if answer_snapshots:
+        parse_candidates.append(answer_snapshots[-1])
+        parse_candidates.extend(
+            snapshot
+            for snapshot in sorted(answer_snapshots, key=len, reverse=True)
+            if snapshot not in parse_candidates
+        )
+    return _parse_json_content_candidates(parse_candidates)
+
+
 async def _stream_qwen_json_response(
     *,
     system_prompt: str,
@@ -527,23 +914,22 @@ async def _stream_gemini_json_response(
 ) -> Dict[str, Any]:
     if _should_use_qwen_thinking():
         try:
-            return await _stream_qwen_json_response(
+            return await _stream_qwen_responses_json_response(
                 system_prompt=system_prompt,
                 user_parts=user_parts,
                 error_message=error_message,
                 request_label=request_label,
-                budget_tokens=budget_tokens,
                 thought_callback=thought_callback,
             )
         except Exception:
             logger.warning(
-                "[AI Stream] Qwen thought streaming failed for %s.",
+                "[AI Stream] Qwen Responses thought streaming failed for %s.",
                 request_label,
                 exc_info=True,
             )
             await _emit_thought(thought_callback, {"type": "thought_reset"})
-            if getattr(settings, "gemini_api_key", None):
-                return await _stream_gemini_json_response_legacy(
+            try:
+                return await _stream_qwen_json_response(
                     system_prompt=system_prompt,
                     user_parts=user_parts,
                     error_message=error_message,
@@ -551,7 +937,23 @@ async def _stream_gemini_json_response(
                     budget_tokens=budget_tokens,
                     thought_callback=thought_callback,
                 )
-            raise
+            except Exception:
+                logger.warning(
+                    "[AI Stream] Qwen Chat Completions thought streaming failed for %s.",
+                    request_label,
+                    exc_info=True,
+                )
+                await _emit_thought(thought_callback, {"type": "thought_reset"})
+                if getattr(settings, "gemini_api_key", None):
+                    return await _stream_gemini_json_response_legacy(
+                        system_prompt=system_prompt,
+                        user_parts=user_parts,
+                        error_message=error_message,
+                        request_label=request_label,
+                        budget_tokens=budget_tokens,
+                        thought_callback=thought_callback,
+                    )
+                raise
 
     return await _stream_gemini_json_response_legacy(
         system_prompt=system_prompt,

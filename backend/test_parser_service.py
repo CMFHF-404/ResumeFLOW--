@@ -204,6 +204,49 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
             {"type": "progress", "node": "request_ai", "title": "调用 AI 深度解析"}
         )
 
+    async def test_stream_resume_thinking_parse_for_qwen_preserves_summary_thought_events(self) -> None:
+        structured_payload = {
+            "personal_info": {},
+            "work_experiences": [{"title": "Qwen Responses", "org": "Example"}],
+            "project_experiences": [],
+            "education": [],
+            "certifications": [],
+            "skills": [],
+        }
+        thought_callback = AsyncMock()
+
+        async def fake_stream_thinking_json_response(**kwargs):
+            await kwargs["thought_callback"](
+                {"type": "thought", "summary": "正在读取简历结构"}
+            )
+            return structured_payload
+
+        qwen_settings = SimpleNamespace(
+            ai_model="qwen3.7-plus",
+            ai_api_key="dashscope-key",
+            gemini_model="gemini-thinking",
+            gemini_api_key=None,
+        )
+        with patch.object(parser_service, "settings", qwen_settings):
+            with patch.object(
+                parser_service,
+                "_stream_thinking_json_response",
+                new_callable=AsyncMock,
+                side_effect=fake_stream_thinking_json_response,
+            ) as stream_mock:
+                result = await parser_service._stream_resume_thinking_parse(
+                    cleaned_text="候选人简历内容",
+                    request_id="req-qwen-responses",
+                    thought_callback=thought_callback,
+                )
+
+        self.assertEqual(result, structured_payload)
+        thought_callback.assert_awaited_once_with(
+            {"type": "thought", "summary": "正在读取简历结构"}
+        )
+        stream_mock.assert_awaited_once()
+        self.assertEqual(stream_mock.await_args.kwargs["request_label"], "resume_parse")
+
     def test_thinking_parse_cache_key_uses_qwen_model_when_qwen_is_primary(self) -> None:
         with patch.object(
             parser_service,

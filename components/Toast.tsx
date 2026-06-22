@@ -83,6 +83,11 @@ const getToastStyles = (type: ToastType) => {
 export const Toast: React.FC<ToastProps> = ({ message, type, duration = 3000, id, onClose }) => {
     const style = getToastStyles(type);
     const Icon = style.icon;
+    const isAiThinkingToast = type === 'ai_thinking';
+    const layoutClass = isAiThinkingToast
+        ? 'items-start max-w-[min(92vw,42rem)]'
+        : 'items-center max-w-md';
+    const topAlignedClass = isAiThinkingToast ? 'mt-0.5' : '';
 
     useEffect(() => {
         if (duration > 0) {
@@ -97,24 +102,24 @@ export const Toast: React.FC<ToastProps> = ({ message, type, duration = 3000, id
         <div
             className={`
         ${style.bg} ${style.border} ${style.text}
-        flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg
-        animate-slideIn min-w-[300px] max-w-md transition-all duration-300
+        flex ${layoutClass} gap-3 px-4 py-3 rounded-lg border shadow-lg
+        animate-slideIn min-w-[300px] sm:min-w-[360px] transition-all duration-300
       `}
         >
-            <Icon className={`w-5 h-5 shrink-0 ${style.iconColor} ${style.spin ? 'animate-spin' : ''}`} />
-            {type === 'ai_thinking' ? (
+            <Icon className={`w-5 h-5 shrink-0 ${topAlignedClass} ${style.iconColor} ${style.spin ? 'animate-spin' : ''}`} />
+            {isAiThinkingToast ? (
                 <span
-                    className="flex-1 text-sm font-bold bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 bg-[length:200%_auto] bg-clip-text text-transparent"
+                    className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-5 font-bold bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 bg-[length:200%_auto] bg-clip-text text-transparent"
                     style={{ animation: 'toast-ai-gradient 3s linear infinite' }}
                 >
                     思考中：{message}
                 </span>
             ) : (
-                <span className="flex-1 text-sm font-medium">{message}</span>
+                <span className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-5 font-medium">{message}</span>
             )}
             <button
                 onClick={() => onClose(id)}
-                className="shrink-0 hover:opacity-70 transition-opacity"
+                className={`shrink-0 ${topAlignedClass} hover:opacity-70 transition-opacity`}
                 aria-label="关闭"
             >
                 <X className="w-4 h-4" />
