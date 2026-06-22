@@ -14,10 +14,20 @@ type RichTextEditorProps = {
     readOnly?: boolean;
 };
 
+type ToolbarPlacement = 'selection' | 'editor-bottom';
+
 type ToolbarState = {
     visible: boolean;
     x: number;
     y: number;
+    placement: ToolbarPlacement;
+};
+
+type ToolbarRect = Pick<DOMRect, 'bottom' | 'left' | 'top' | 'width'>;
+
+type ToolbarViewportInfo = {
+    width: number;
+    isCoarsePointer: boolean;
 };
 
 type LinkPopoverState = {
@@ -53,6 +63,8 @@ type MarkdownHandleResult = 'handled' | 'not_handled' | 'abort';
 
 const TOOLBAR_OFFSET_Y = 12;
 const TOOLBAR_MIN_PADDING = 24;
+const MOBILE_SELECTION_TOOLBAR_MAX_VIEWPORT_WIDTH = 767;
+const MOBILE_SELECTION_TOOLBAR_BOTTOM_OFFSET_Y = 8;
 const LINK_POPOVER_OFFSET_Y = 10;
 const LINE_BULLET_LAYOUT_REFRESH_DELAYS_MS = [80, 320];
 const DEFAULT_LINK_PROTOCOL = 'https://';
@@ -351,8 +363,43 @@ const applyListCommand = (command: 'insertUnorderedList' | 'insertOrderedList') 
     }
 };
 
-const clampPositionX = (x: number) =>
-    Math.min(Math.max(x, TOOLBAR_MIN_PADDING), window.innerWidth - TOOLBAR_MIN_PADDING);
+const clampPositionXForViewport = (x: number, viewportWidth: number) => {
+    const maxX = Math.max(TOOLBAR_MIN_PADDING, viewportWidth - TOOLBAR_MIN_PADDING);
+    return Math.min(Math.max(x, TOOLBAR_MIN_PADDING), maxX);
+};
+
+const clampPositionX = (x: number) => clampPositionXForViewport(x, window.innerWidth);
+
+export const shouldUseMobileSelectionToolbar = ({ width, isCoarsePointer }: ToolbarViewportInfo) =>
+    isCoarsePointer || width <= MOBILE_SELECTION_TOOLBAR_MAX_VIEWPORT_WIDTH;
+
+export const resolveRichTextToolbarState = (
+    selectionRect: ToolbarRect,
+    editorRect: ToolbarRect,
+    viewportInfo: ToolbarViewportInfo
+): ToolbarState => {
+    if (shouldUseMobileSelectionToolbar(viewportInfo)) {
+        return {
+            visible: true,
+            x: clampPositionXForViewport(editorRect.left + editorRect.width / 2, viewportInfo.width),
+            y: editorRect.bottom + MOBILE_SELECTION_TOOLBAR_BOTTOM_OFFSET_Y,
+            placement: 'editor-bottom',
+        };
+    }
+    return {
+        visible: true,
+        x: clampPositionXForViewport(selectionRect.left + selectionRect.width / 2, viewportInfo.width),
+        y: selectionRect.top - TOOLBAR_OFFSET_Y,
+        placement: 'selection',
+    };
+};
+
+const getToolbarViewportInfo = (): ToolbarViewportInfo => ({
+    width: window.innerWidth,
+    isCoarsePointer: Boolean(
+        window.matchMedia?.('(pointer: coarse)').matches || window.matchMedia?.('(hover: none)').matches
+    ),
+});
 
 const normalizeLink = (value: string) => {
     const trimmed = value.trim();
@@ -417,14 +464,18 @@ const updateLinkElement = (link: HTMLAnchorElement, href: string, label: string,
     }
 };
 
-const RichTextToolbar: React.FC<{ state: ToolbarState; buttons: ToolbarButton[] }> = ({ state, buttons }) => {
+const RichTextToolbar: React.FC<{
+    state: ToolbarState;
+    buttons: ToolbarButton[];
+    inline?: boolean;
+}> = ({ state, buttons, inline = false }) => {
     if (!state.visible || typeof document === 'undefined') {
         return null;
     }
-    return createPortal(
+    const toolbar = (
         <div
-            className="fixed z-[90] flex items-center gap-1 bg-emerald-700 text-white rounded-md shadow-lg px-2 py-1"
-            style={{ left: state.x, top: state.y, transform: 'translate(-50%, -100%)' }}
+            className={`${inline ? 'absolute left-1/2 top-full z-20 mt-2' : 'fixed z-[90]'} flex max-w-[calc(100vw-16px)] items-center gap-1 rounded-md bg-emerald-700 px-2 py-1 text-white shadow-lg`}
+            style={inline ? { transform: 'translateX(-50%)' } : { left: state.x, top: state.y, transform: 'translate(-50%, -100%)' }}
             onMouseDown={(event) => event.preventDefault()}
         >
             {buttons.map((button) => (
@@ -439,9 +490,9 @@ const RichTextToolbar: React.FC<{ state: ToolbarState; buttons: ToolbarButton[] 
                     {button.label}
                 </button>
             ))}
-        </div>,
-        document.body
+        </div>
     );
+    return inline ? toolbar : createPortal(toolbar, document.body);
 };
 
 const RichTextLinkPopover: React.FC<{
@@ -831,7 +882,12 @@ const useLineBulletCueTops = (
 };
 
 const useToolbarState = (editorRef: React.RefObject<HTMLDivElement>) => {
-    const [toolbar, setToolbar] = useState<ToolbarState>({ visible: false, x: 0, y: 0 });
+    const [toolbar, setToolbar] = useState<ToolbarState>({
+        visible: false,
+        x: 0,
+        y: 0,
+        placement: 'selection',
+    });
 
     const hideToolbar = useCallback(() => {
         setToolbar((prev) => (prev.visible ? { ...prev, visible: false } : prev));
@@ -858,9 +914,8 @@ const useToolbarState = (editorRef: React.RefObject<HTMLDivElement>) => {
             hideToolbar();
             return;
         }
-        const x = clampPositionX(rect.left + rect.width / 2);
-        const y = rect.top - TOOLBAR_OFFSET_Y;
-        setToolbar({ visible: true, x, y });
+        const editorRect = editor.getBoundingClientRect();
+        setToolbar(resolveRichTextToolbarState(rect, editorRect, getToolbarViewportInfo()));
     }, [editorRef, hideToolbar]);
 
     useEffect(() => {
@@ -1360,13 +1415,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onClick: () => applyList('insertUnorderedList'),
                 className: 'text-sm',
             },
-            {
-                id: 'ordered-list',
-                label: '1.',
-                title: '有序列表',
-                onClick: () => applyList('insertOrderedList'),
-                className: 'text-xs',
-            },
             baseButtons[3],
         ];
     }, [applyList, applyWrap, enableList, openLinkPopover]);
@@ -1403,6 +1451,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     );
 
     const isEmpty = !stripRichTextToText(value).trim();
+    const hasInlineToolbar = toolbar.visible && toolbar.placement === 'editor-bottom';
 
     useEffect(() => {
         if (!readOnly) {
@@ -1452,7 +1501,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                     {placeholder}
                 </div>
             ) : null}
-            {!readOnly ? <RichTextToolbar state={toolbar} buttons={toolbarButtons} /> : null}
+            {!readOnly ? <RichTextToolbar state={toolbar} buttons={toolbarButtons} inline={hasInlineToolbar} /> : null}
             {!readOnly ? (
                 <RichTextLinkPopover
                     state={linkPopover}

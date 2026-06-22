@@ -73,6 +73,37 @@ test('plain bullet cues keep focused blank lines to a single caret row', async (
   );
 });
 
+test('mobile selection toolbar anchors below the editor instead of the selection range', async () => {
+  const { resolveRichTextToolbarState } = await importRichTextEditorModule();
+
+  const state = resolveRichTextToolbarState(
+    { bottom: 650, left: 96, top: 620, width: 280 },
+    { bottom: 608, left: 60, top: 454, width: 768 },
+    { width: 599, isCoarsePointer: true }
+  );
+
+  assert.equal(state.placement, 'editor-bottom');
+  assert.equal(state.x, 444);
+  assert.equal(state.y, 616);
+});
+
+test('selection toolbar hides ordered list sorting action', () => {
+  const richTextEditorSource = source();
+  const toolbarButtonsBlock = richTextEditorSource.match(/const toolbarButtons = useMemo\(\(\) => \{[\s\S]*?\}, \[applyList/)?.[0] ?? '';
+
+  assert.doesNotMatch(toolbarButtonsBlock, /id: 'ordered-list'/);
+  assert.doesNotMatch(toolbarButtonsBlock, /label: '1\.'/);
+  assert.doesNotMatch(toolbarButtonsBlock, /applyList\('insertOrderedList'\)/);
+});
+
+test('mobile selection toolbar does not reserve editor space', () => {
+  const richTextEditorSource = source();
+
+  assert.match(richTextEditorSource, /top-full/);
+  assert.doesNotMatch(richTextEditorSource, /paddingTop/);
+  assert.doesNotMatch(richTextEditorSource, /style=\{editorStyle\}/);
+});
+
 test('caret top measurement is limited to blank caret rows', () => {
   const richTextEditorSource = source();
 
