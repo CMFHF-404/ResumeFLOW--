@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 
 
+def _has_thinking_stream_provider() -> bool:
+    ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
+    has_qwen = bool(getattr(settings, "ai_api_key", None)) and ai_model.startswith("qwen")
+    return has_qwen or bool(getattr(settings, "gemini_api_key", None))
+
+
 async def analyze_jd(
     text: str,
     resume_text: Optional[str] = None,
@@ -89,7 +95,7 @@ async def analyze_jd_with_thoughts(
     prev_experience_text: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    if not settings.gemini_api_key:
+    if not _has_thinking_stream_provider():
         return await analyze_jd(
             text,
             resume_text,
@@ -123,7 +129,7 @@ async def analyze_jd_with_thoughts(
         )
     except Exception:
         logger.warning(
-            "[AI Stream] Gemini thought streaming failed for jd_text_analysis, falling back to standard analysis.",
+            "[AI Stream] thought streaming failed for jd_text_analysis, falling back to standard analysis.",
             exc_info=True,
         )
         return await analyze_jd(
@@ -250,7 +256,7 @@ async def analyze_jd_with_image_thoughts(
     prev_experience_text: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    if not settings.gemini_api_key:
+    if not _has_thinking_stream_provider():
         return await analyze_jd_with_image(
             image_b64=image_b64,
             mime_type=mime_type,
@@ -288,7 +294,7 @@ async def analyze_jd_with_image_thoughts(
         )
     except Exception:
         logger.warning(
-            "[AI Stream] Gemini thought streaming failed for jd_image_analysis, falling back to standard image analysis.",
+            "[AI Stream] thought streaming failed for jd_image_analysis, falling back to standard image analysis.",
             exc_info=True,
         )
         return await analyze_jd_with_image(

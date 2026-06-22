@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 # Load .env
 load_dotenv()
 
-DEFAULT_MODEL = "gemini-3-flash"
+DEFAULT_MODEL = "qwen3.7-plus"
+
+
+def is_qwen_model(model: str) -> bool:
+    return model.strip().lower().startswith("qwen")
+
 
 def mask_secret(value: str) -> str:
     if len(value) <= 8:
@@ -35,6 +40,8 @@ async def test_endpoint(url, api_key: str, model: str):
         "messages": [{"role": "user", "content": "Hello, are you working?"}],
         "temperature": 0.7
     }
+    if is_qwen_model(model):
+        payload["enable_thinking"] = False
     
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -42,7 +49,12 @@ async def test_endpoint(url, api_key: str, model: str):
             print(f"Status Code: {response.status_code}")
             if response.status_code == 200:
                 print("Success!")
-                print("Response:", response.json())
+                data = response.json()
+                message = (data.get("choices") or [{}])[0].get("message") or {}
+                print("Response model:", data.get("model"))
+                print("Response content:", message.get("content", ""))
+                print("Reasoning present:", bool(message.get("reasoning_content")))
+                print("Usage:", data.get("usage"))
                 return True
             else:
                 print("Failed.")

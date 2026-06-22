@@ -163,6 +163,82 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         parse_from_text.assert_awaited_once()
         thinking_parse.assert_awaited_once()
 
+    async def test_parse_resume_with_thoughts_uses_qwen_without_gemini_key(self) -> None:
+        thinking_payload = {
+            "work_experiences": [{"title": "Qwen Thinking", "org": "Example"}],
+            "project_experiences": [],
+            "education": [],
+        }
+        progress_callback = AsyncMock()
+
+        parser_service.clear_parse_cache()
+        with patch.object(
+            parser_service,
+            "extract_resume_text",
+            return_value="简历正文 包含足够多的候选人经历文本\nQwen thinking details",
+        ):
+            qwen_settings = SimpleNamespace(
+                ai_model="qwen3.7-plus",
+                ai_api_key="dashscope-key",
+                gemini_model="gemini-thinking",
+                gemini_api_key=None,
+            )
+            with patch.object(parser_service, "settings", qwen_settings):
+                with patch.object(
+                    parser_service,
+                    "_stream_resume_thinking_parse",
+                    new_callable=AsyncMock,
+                    return_value=thinking_payload,
+                ) as thinking_parse:
+                    result = await parser_service.parse_resume_with_thoughts(
+                        b"%PDF-1.4 qwen thinking",
+                        "resume.pdf",
+                        "application/pdf",
+                        request_id="req-qwen-thinking",
+                        progress_callback=progress_callback,
+                    )
+
+        self.assertEqual(result, thinking_payload)
+        thinking_parse.assert_awaited_once()
+        progress_callback.assert_any_await(
+            {"type": "progress", "node": "request_ai", "title": "调用 AI 深度解析"}
+        )
+
+    def test_thinking_parse_cache_key_uses_qwen_model_when_qwen_is_primary(self) -> None:
+        with patch.object(
+            parser_service,
+            "settings",
+            SimpleNamespace(
+                ai_model="qwen3.7-plus",
+                ai_api_key="dashscope-key",
+                gemini_model="gemini-thinking",
+            ),
+        ):
+            qwen_plus_key = parser_service._build_parse_cache_key(
+                b"%PDF-1.4 same file",
+                "resume.pdf",
+                "application/pdf",
+                "thinking",
+            )
+
+        with patch.object(
+            parser_service,
+            "settings",
+            SimpleNamespace(
+                ai_model="qwen3.6-plus",
+                ai_api_key="dashscope-key",
+                gemini_model="gemini-thinking",
+            ),
+        ):
+            qwen_legacy_key = parser_service._build_parse_cache_key(
+                b"%PDF-1.4 same file",
+                "resume.pdf",
+                "application/pdf",
+                "thinking",
+            )
+
+        self.assertNotEqual(qwen_plus_key, qwen_legacy_key)
+
     async def test_parse_resume_chunked_runs_chunk_calls_concurrently(self) -> None:
         active_calls = 0
         max_active_calls = 0

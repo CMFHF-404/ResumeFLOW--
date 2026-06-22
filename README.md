@@ -112,8 +112,8 @@ pnpm dev
 - `VITE_LOGTO_ACCOUNT_CENTER_URL`：Logto 托管账号中心地址
 - `DATABASE_URL`：PostgreSQL 连接字符串
 - `LOGTO_ISSUER` / `LOGTO_APP_ID`：后端 ID token 鉴权校验配置；不需要自定义 Logto API Resource
-- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：主要 AI 服务配置
-- `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：Gemini 兼容配置
+- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：主要 AI 服务配置，默认走百炼 Qwen `qwen3.7-plus`
+- `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：可选 Gemini 回滚通道
 - `EXPORT_TOKEN_SECRET`：导出快照令牌密钥
 - `POSTHOG_*`、`FEISHU_*`：分析和反馈通知相关配置
 

@@ -141,6 +141,12 @@ _SPLIT_EXPERIENCE_TEXT_CACHE: "OrderedDict[str, Dict[str, str]]" = OrderedDict()
 _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT: Dict[str, asyncio.Task[Dict[str, str]]] = {}
 
 
+def _has_thinking_stream_provider() -> bool:
+    ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
+    has_qwen = bool(getattr(settings, "ai_api_key", None)) and ai_model.startswith("qwen")
+    return has_qwen or bool(getattr(settings, "gemini_api_key", None))
+
+
 async def call_llm_json(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     return await _call_llm(messages, json_mode=True)
 
@@ -292,7 +298,7 @@ async def polish_experience_with_thoughts(
     custom_prompt: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    if not settings.gemini_api_key:
+    if not _has_thinking_stream_provider():
         return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
 
     prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
@@ -317,7 +323,7 @@ async def polish_experience_with_thoughts(
         return _normalize_polish_result(result, mode)
     except Exception:
         logger.warning(
-            "[AI Stream] Gemini thought streaming failed for star_polish, falling back to standard polish.",
+            "[AI Stream] thought streaming failed for star_polish, falling back to standard polish.",
             exc_info=True,
         )
         return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
@@ -386,7 +392,7 @@ async def run_assistant_turn_with_thoughts(
     thought_callback: ThoughtCallback = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
-    if not settings.gemini_api_key:
+    if not _has_thinking_stream_provider():
         await _emit_thought(
             thought_callback,
             {"type": "thought", "summary": "正在整理上下文并生成回复"},
@@ -439,7 +445,7 @@ async def run_assistant_turn_with_thoughts(
         )
     except Exception:
         logger.warning(
-            "[AI Stream] Gemini thought streaming failed for assistant_%s, falling back to standard assistant turn.",
+            "[AI Stream] thought streaming failed for assistant_%s, falling back to standard assistant turn.",
             mode,
             exc_info=True,
         )
@@ -512,7 +518,7 @@ async def generate_boss_greeting_with_thoughts(
             resume_text,
         )
 
-    if not settings.gemini_api_key:
+    if not _has_thinking_stream_provider():
         return await generate_boss_greeting(
             jd_text,
             analysis_summary,
@@ -540,7 +546,7 @@ async def generate_boss_greeting_with_thoughts(
         )
     except Exception:
         logger.warning(
-            "[AI Stream] Gemini thought streaming failed for boss_greeting, falling back to standard generation.",
+            "[AI Stream] thought streaming failed for boss_greeting, falling back to standard generation.",
             exc_info=True,
         )
         return await generate_boss_greeting(
@@ -595,7 +601,7 @@ async def generate_personal_summary_with_thoughts(
     polish_level: Optional[str] = None,
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    if not settings.gemini_api_key:
+    if not _has_thinking_stream_provider():
         return await generate_personal_summary(
             mode=mode,
             profile=profile,
@@ -629,7 +635,7 @@ async def generate_personal_summary_with_thoughts(
         )
     except Exception:
         logger.warning(
-            "[AI Stream] Gemini thought streaming failed for personal_summary, falling back to standard generation.",
+            "[AI Stream] thought streaming failed for personal_summary, falling back to standard generation.",
             exc_info=True,
         )
         return await generate_personal_summary(

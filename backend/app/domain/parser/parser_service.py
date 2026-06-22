@@ -22,6 +22,7 @@ from ...config import load_settings
 from ...constants import MAX_LIMIT
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ..ai.ai_service import call_llm_json
+from ..ai.llm_transport import _stream_gemini_json_response as _stream_thinking_json_response
 from .chunking import (
     _chunk_paragraphs,
     _chunk_units,
@@ -286,6 +287,21 @@ def _prompt_signature() -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _has_qwen_thinking_provider() -> bool:
+    ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
+    return bool(getattr(settings, "ai_api_key", None)) and ai_model.startswith("qwen")
+
+
+def _has_thinking_stream_provider() -> bool:
+    return _has_qwen_thinking_provider() or bool(getattr(settings, "gemini_api_key", None))
+
+
+def _resolve_thinking_model_name() -> str:
+    if _has_qwen_thinking_provider():
+        return str(getattr(settings, "ai_model", "") or "")
+    return str(getattr(settings, "gemini_model", "") or getattr(settings, "ai_model", ""))
+
+
 def _build_parse_cache_key(
     file_data: bytes,
     filename: str,
@@ -293,7 +309,7 @@ def _build_parse_cache_key(
     parser_mode: str,
 ) -> str:
     file_hash = hashlib.sha256(file_data).hexdigest()
-    model = settings.gemini_model if parser_mode == "thinking" else settings.ai_model
+    model = _resolve_thinking_model_name() if parser_mode == "thinking" else settings.ai_model
     payload = {
         "version": PARSE_CACHE_VERSION,
         "file_hash": file_hash,
@@ -447,6 +463,35 @@ async def _stream_resume_thinking_parse(
     request_id: Optional[str],
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
+    if _has_qwen_thinking_provider():
+        call_start = perf_counter()
+        result = await _stream_thinking_json_response(
+            system_prompt=RESUME_PARSING_PROMPT,
+            user_parts=[
+                {
+                    "text": (
+                        "请解析以下简历正文，并严格输出 JSON。"
+                        "不要补充正文中不存在的信息。\n\n"
+                        f"{cleaned_text}"
+                    )
+                }
+            ],
+            error_message="AI 深度解析失败，请稍后重试。",
+            request_label="resume_parse",
+            thought_callback=thought_callback,
+        )
+        call_ms = (perf_counter() - call_start) * 1000
+        _log_timing(
+            "ai_call",
+            call_ms,
+            request_id,
+            {
+                "mode": "qwen_thinking",
+                "input_length": len(cleaned_text),
+            },
+        )
+        return _normalize_parse_result(result)
+
     return await thinking_transport.stream_resume_thinking_parse(
         cleaned_text=cleaned_text,
         request_id=request_id,
@@ -814,9 +859,9 @@ async def parse_resume_with_thoughts(
 
     async def parse_cleaned(cleaned_text: str) -> Dict[str, Any]:
         nonlocal did_use_thinking_parser
-        if not settings.gemini_api_key:
+        if not _has_thinking_stream_provider():
             logger.warning(
-                "[ResumeParse] GEMINI_API_KEY missing, fallback to standard parser request_id=%s",
+                "[ResumeParse] thinking stream provider missing, fallback to standard parser request_id=%s",
                 request_id,
             )
             return await _parse_resume_from_text(
@@ -827,7 +872,7 @@ async def parse_resume_with_thoughts(
 
         await _emit_progress(
             progress_callback,
-            {"type": "progress", "node": "request_ai", "title": "调用 Gemini Thinking 解析"},
+            {"type": "progress", "node": "request_ai", "title": "调用 AI 深度解析"},
         )
         try:
             result = await _stream_resume_thinking_parse(
@@ -837,7 +882,7 @@ async def parse_resume_with_thoughts(
             )
         except Exception as exc:
             logger.warning(
-                "[ResumeParse] Gemini fallback request_id=%s error_type=%s error=%s",
+                "[ResumeParse] thinking stream fallback request_id=%s error_type=%s error=%s",
                 request_id,
                 type(exc).__name__,
                 str(exc),
