@@ -50,7 +50,7 @@ export const STAGE_PROGRESS: Record<ParseStage, number> = {
   error: 0,
 };
 // Keep the client-side timeout above backend AI_TIMEOUT_SECONDS (300s),
-// so the backend can return the real parser/Gemini error instead of the
+// so the backend can return the real parser or model error instead of the
 // browser aborting the stream first.
 const PARSE_TIMEOUT_MS = 360_000;
 const TIMEOUT_ERROR_NAME = 'ResumeParseTimeout';

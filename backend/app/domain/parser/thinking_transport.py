@@ -20,7 +20,7 @@ ThoughtCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
 def _build_gemini_headers(settings: Any) -> Dict[str, str]:
     api_key = settings.gemini_api_key
     if not api_key:
-        raise ValueError("GEMINI_API_KEY 未配置，无法返回 Gemini 实时思考节点。")
+        raise ValueError("备用思考通道 API Key 未配置，无法返回实时思考节点。")
     return {
         "x-goog-api-key": api_key,
         "Content-Type": "application/json",
@@ -30,7 +30,7 @@ def _build_gemini_headers(settings: Any) -> Dict[str, str]:
 def _build_gemini_stream_url(settings: Any, model: str) -> str:
     base_url = (settings.gemini_base_url or "").rstrip("/")
     if not base_url:
-        raise ValueError("GEMINI_BASE_URL 未配置，无法调用 Gemini Thinking。")
+        raise ValueError("备用思考通道地址未配置，无法调用实时思考节点。")
     normalized = base_url.lower()
     if not normalized.endswith("/v1beta") and not normalized.endswith("/v1"):
         base_url = f"{base_url}/v1beta"
@@ -164,7 +164,7 @@ async def stream_resume_thinking_parse(
                         body_preview,
                     )
                     raise ValueError(
-                        "Gemini 中转站返回了非流式响应，请检查 GEMINI_BASE_URL 是否需要包含 /v1beta。"
+                        "备用思考通道返回了非流式响应，请检查服务地址配置。"
                     )
                 payload_iter = iter_sse_json_payloads(response).__aiter__()
                 while True:
@@ -177,7 +177,7 @@ async def stream_resume_thinking_parse(
                         break
                     except asyncio.TimeoutError as exc:
                         raise ValueError(
-                            "Gemini Thinking 长时间未收到新的解析流数据，请稍后重试。"
+                            "AI 深度解析长时间未收到新的解析流数据，请稍后重试。"
                         ) from exc
                     candidates = payload.get("candidates") or []
                     if not candidates:
@@ -206,9 +206,9 @@ async def stream_resume_thinking_parse(
             exc.response.status_code,
             error_text,
         )
-        raise ValueError("Gemini Thinking 解析失败，请稍后重试。") from exc
+        raise ValueError("AI 深度解析失败，请稍后重试。") from exc
     except httpx_module.TimeoutException as exc:
-        raise ValueError("Gemini Thinking 解析超时，请稍后重试。") from exc
+        raise ValueError("AI 深度解析超时，请稍后重试。") from exc
 
     call_ms = (perf_counter() - call_start) * 1000
     log_timing(
@@ -223,5 +223,5 @@ async def stream_resume_thinking_parse(
 
     answer_text = "".join(answer_parts).strip()
     if not answer_text:
-        raise ValueError("Gemini 未返回可解析的结构化结果。")
+        raise ValueError("备用思考通道未返回可解析的结构化结果。")
     return normalize_parse_result(parse_structured_response_text(answer_text))
