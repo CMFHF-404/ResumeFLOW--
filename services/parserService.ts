@@ -1,5 +1,6 @@
-import apiClient, { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
+import apiClient, { getAuthorizationHeader } from './apiClient';
 import { dispatchLoginRequired } from './authRedirect';
+import { parseNdjsonChunk, resolveApiUrl } from './apiStreamUtils';
 import type { ExperienceCategory } from './experienceService';
 
 export interface DuplicateMatch {
@@ -109,13 +110,6 @@ export type ResumeParseStreamEvent =
   | ResumeParseFinalEvent
   | ResumeParseErrorEvent;
 
-const parseNdjsonChunk = (chunk: string, flush = false) => {
-  const segments = chunk.split('\n');
-  const remainder = flush ? '' : segments.pop() ?? '';
-  const lines = segments.map((line) => line.trim()).filter(Boolean);
-  return { lines, remainder };
-};
-
 const readErrorMessage = async (response: Response) => {
   const contentType = response.headers.get('content-type') || '';
   try {
@@ -130,16 +124,6 @@ const readErrorMessage = async (response: Response) => {
   } catch {
     return null;
   }
-};
-
-const resolveApiUrl = (path: string) => {
-  const base = getApiBaseUrl();
-  if (!base) {
-    return path;
-  }
-  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${normalizedBase}${normalizedPath}`;
 };
 
 const streamResumeParseRequest = async (
