@@ -571,6 +571,29 @@ const getCollapsedRangeTop = (range: Range, editor: HTMLDivElement) => {
     return null;
 };
 
+export const resolvePlainLineBulletCueIndices = (
+    lines: string[],
+    includeCaretLine: boolean,
+    caretLineIndex: number | null
+) => {
+    const indices = new Set<number>();
+    lines.forEach((line, index) => {
+        if (line.trim()) {
+            indices.add(index);
+        }
+    });
+    if (
+        includeCaretLine &&
+        caretLineIndex !== null &&
+        caretLineIndex >= 0 &&
+        caretLineIndex < lines.length &&
+        !(lines[caretLineIndex] ?? '').trim()
+    ) {
+        indices.add(caretLineIndex);
+    }
+    return Array.from(indices).sort((a, b) => a - b);
+};
+
 const inferLineBulletTop = (editor: HTMLDivElement, measuredLineTops: LineBulletTop[], lineIndex: number) => {
     const lineHeight = getEditorLineHeight(editor);
     const exactLine = measuredLineTops.find((entry) => entry.lineIndex === lineIndex);
@@ -589,7 +612,7 @@ const inferLineBulletTop = (editor: HTMLDivElement, measuredLineTops: LineBullet
     return editor.scrollTop;
 };
 
-const measureCaretBulletTop = (editor: HTMLDivElement, measuredLineTops: LineBulletTop[], lines: string[]) => {
+const resolveCaretLineIndex = (editor: HTMLDivElement) => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
         return null;
@@ -605,10 +628,29 @@ const measureCaretBulletTop = (editor: HTMLDivElement, measuredLineTops: LineBul
     try {
         beforeRange.setEnd(range.startContainer, range.startOffset);
     } catch {
-        return measuredLineTops.length ? measuredLineTops[measuredLineTops.length - 1].top + getEditorLineHeight(editor) : 0;
+        return null;
     }
 
-    const lineIndex = beforeRange.toString().split('\n').length - 1;
+    return beforeRange.toString().split('\n').length - 1;
+};
+
+const measureCaretBulletTop = (
+    editor: HTMLDivElement,
+    measuredLineTops: LineBulletTop[],
+    lines: string[],
+    caretLineIndex: number
+) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+        return null;
+    }
+    const anchorNode = selection.anchorNode;
+    if (!anchorNode || !editor.contains(anchorNode) || isSelectionInsideList(selection)) {
+        return null;
+    }
+
+    const range = selection.getRangeAt(0).cloneRange();
+    const lineIndex = caretLineIndex;
     const isBlankCaretLine = !(lines[lineIndex] ?? '').trim();
     if (!isBlankCaretLine) {
         const measuredTop = getCollapsedRangeTop(range, editor);
@@ -627,21 +669,28 @@ const measurePlainLineBulletTops = (editor: HTMLDivElement, includeCaretLine = f
 
     const text = editor.innerText || editor.textContent || '';
     const lines = text.split('\n');
-    if (!includeCaretLine && !lines.some((line) => line.trim())) {
+    const caretLineIndex = includeCaretLine ? resolveCaretLineIndex(editor) : null;
+    const cueLineIndices = resolvePlainLineBulletCueIndices(lines, includeCaretLine, caretLineIndex);
+    if (!cueLineIndices.length) {
         return [];
     }
 
     const textNodes = collectTextNodes(editor);
-    if (!textNodes.length && !includeCaretLine) {
+    if (!textNodes.length && cueLineIndices.some((lineIndex) => (lines[lineIndex] ?? '').trim())) {
         return [];
     }
 
     const editorRect = editor.getBoundingClientRect();
     const tops: number[] = [];
     const measuredLineTops: LineBulletTop[] = [];
+    const cueLineIndexSet = new Set(cueLineIndices);
     let textOffset = 0;
 
     for (const [lineIndex, line] of lines.entries()) {
+        if (!cueLineIndexSet.has(lineIndex)) {
+            textOffset += line.length + 1;
+            continue;
+        }
         const firstTextIndex = line.search(/\S/);
         if (firstTextIndex >= 0) {
             const position = resolveTextPosition(textNodes, textOffset + firstTextIndex);
@@ -662,26 +711,19 @@ const measurePlainLineBulletTops = (editor: HTMLDivElement, includeCaretLine = f
         textOffset += line.length + 1;
     }
 
-    if (includeCaretLine) {
-        for (const [lineIndex, line] of lines.entries()) {
-            if (line.trim() || measuredLineTops.some((entry) => entry.lineIndex === lineIndex)) {
-                continue;
-            }
-            const inferredTop = inferLineBulletTop(editor, measuredLineTops, lineIndex);
-            if (!tops.some((value) => Math.abs(value - inferredTop) < 1)) {
-                tops.push(inferredTop);
-                measuredLineTops.push({ lineIndex, top: inferredTop });
-                measuredLineTops.sort((a, b) => a.lineIndex - b.lineIndex);
-            }
-        }
-        const caretTop = measureCaretBulletTop(editor, measuredLineTops, lines);
+    if (
+        includeCaretLine &&
+        caretLineIndex !== null &&
+        cueLineIndexSet.has(caretLineIndex) &&
+        !(lines[caretLineIndex] ?? '').trim()
+    ) {
+        const caretTop = measureCaretBulletTop(editor, measuredLineTops, lines, caretLineIndex);
         if (caretTop !== null && !tops.some((value) => Math.abs(value - caretTop) < 1)) {
             tops.push(caretTop);
-            tops.sort((a, b) => a - b);
         }
     }
 
-    return tops;
+    return tops.sort((a, b) => a - b);
 };
 
 const useLineBulletCueTops = (
