@@ -1,21 +1,12 @@
-import { getApiBaseUrl, getAuthorizationHeader } from './apiClient';
+import { getAuthorizationHeader } from './apiClient';
 import { dispatchLoginRequired } from './authRedirect';
+import { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
+
+export { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
 
 export type StreamEventBase = {
     type: string;
     message?: string;
-};
-
-export const parseNdjsonLines = (chunk: string) => chunk.split('\n').map((line) => line.trim()).filter(Boolean);
-
-export const resolveApiUrl = (path: string) => {
-    const base = getApiBaseUrl();
-    if (!base) {
-        return path;
-    }
-    const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    return `${normalizedBase}${normalizedPath}`;
 };
 
 export const ensureStreamResponseOk = (response: Response) => {
