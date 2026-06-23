@@ -5,8 +5,10 @@ import type { ExperienceCategory } from './experienceService';
 
 export interface DuplicateMatch {
   is_duplicate: boolean;
-  match_type?: 'exact' | 'similar';
+  match_type?: 'exact' | 'similar' | 'semantic';
   match_score?: number;
+  matched_existing_id?: string;
+  match_reason?: string;
 }
 
 export interface ParsedExperienceVersion {

@@ -37,7 +37,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   education: '教育经历',
   project: '项目经历',
 };
-const SKILL_DUPLICATE_LABEL = '可能重复';
+const DUPLICATE_LABEL = '可能重复';
 
 const STAGE_LABELS = {
   uploading: '上传中',
@@ -237,8 +237,9 @@ const PersonalInfoPreview: React.FC<{
 const CertificationItemCard: React.FC<{
   item: ParsedCertificationView;
   checked: boolean;
+  isDuplicate: boolean;
   onToggle: () => void;
-}> = ({ item, checked, onToggle }) => {
+}> = ({ item, checked, isDuplicate, onToggle }) => {
   const dateLabel = normalizeParsedText(item.issue_date) || '未知时间';
   const issuer = normalizeParsedOptionalText(item.issuer);
   return (
@@ -257,6 +258,11 @@ const CertificationItemCard: React.FC<{
       <div className="flex-1 space-y-2">
         <div className="text-sm font-semibold text-gray-900 dark:text-white">
           {normalizeParsedText(item.name)}
+          {isDuplicate && (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              {DUPLICATE_LABEL}
+            </span>
+          )}
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400">
           {issuer ? `${issuer} · ${dateLabel}` : dateLabel}
@@ -287,7 +293,7 @@ const SkillTagItem: React.FC<{
     <span>{normalizeParsedText(item.name)}</span>
     {isDuplicate && (
       <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-        {SKILL_DUPLICATE_LABEL}
+        {DUPLICATE_LABEL}
       </span>
     )}
   </label>
@@ -335,9 +341,10 @@ const ExperiencePreviewSection: React.FC<{
 const CertificationPreviewSection: React.FC<{
   items: ParsedCertificationView[];
   selectedIds: Set<string>;
+  duplicateIds: Set<string>;
   onToggleItem: (id: string) => void;
   onToggleAll: () => void;
-}> = ({ items, selectedIds, onToggleItem, onToggleAll }) => {
+}> = ({ items, selectedIds, duplicateIds, onToggleItem, onToggleAll }) => {
   const selectedCount = items.filter((item) => selectedIds.has(item.id)).length;
   const actionLabel = items.length
     ? selectedCount === items.length ? '取消全选' : '全选'
@@ -360,6 +367,7 @@ const CertificationPreviewSection: React.FC<{
               key={item.id}
               item={item}
               checked={selectedIds.has(item.id)}
+              isDuplicate={duplicateIds.has(item.id)}
               onToggle={() => onToggleItem(item.id)}
             />
           ))
@@ -793,6 +801,7 @@ export const PreviewPanel: React.FC<{
   onToggleExperienceGroup: (ids: string[]) => void;
   certifications: ParsedCertificationView[];
   selectedCertificationIds: Set<string>;
+  duplicateCertificationIds: Set<string>;
   onToggleCertification: (id: string) => void;
   onToggleAllCertifications: () => void;
   skillGroups: ParsedSkillGroupView[];
@@ -810,6 +819,7 @@ export const PreviewPanel: React.FC<{
   onToggleExperienceGroup,
   certifications,
   selectedCertificationIds,
+  duplicateCertificationIds,
   onToggleCertification,
   onToggleAllCertifications,
   skillGroups,
@@ -865,6 +875,7 @@ export const PreviewPanel: React.FC<{
           <CertificationPreviewSection
             items={certifications}
             selectedIds={selectedCertificationIds}
+            duplicateIds={duplicateCertificationIds}
             onToggleItem={onToggleCertification}
             onToggleAll={onToggleAllCertifications}
           />

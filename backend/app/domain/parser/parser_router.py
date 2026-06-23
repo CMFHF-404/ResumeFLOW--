@@ -25,6 +25,7 @@ from .parser_service import (
     parse_resume_with_thoughts,
 )
 from .schemas import ResumeParseResponse
+from .semantic_duplicate_detection import apply_semantic_duplicate_flags
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 logger = logging.getLogger(__name__)
@@ -60,6 +61,11 @@ async def _build_parse_response(
     dedupe_start = perf_counter()
     existing = await fetch_existing_experiences(session, user_id)
     enriched = apply_duplicate_flags(items, existing)
+    enriched = await apply_semantic_duplicate_flags(
+        enriched,
+        existing,
+        request_id=request_id,
+    )
     dedupe_ms = (perf_counter() - dedupe_start) * 1000
 
     logger.info(
@@ -178,6 +184,11 @@ async def parse_resume_stream_endpoint(
                 dedupe_start = perf_counter()
                 existing = await fetch_existing_experiences(session, current_user.id)
                 enriched = apply_duplicate_flags(items, existing)
+                enriched = await apply_semantic_duplicate_flags(
+                    enriched,
+                    existing,
+                    request_id=request_id,
+                )
                 dedupe_ms = (perf_counter() - dedupe_start) * 1000
 
                 response_payload = ResumeParseResponse(

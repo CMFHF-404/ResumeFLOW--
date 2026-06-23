@@ -282,6 +282,69 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotEqual(qwen_plus_key, qwen_legacy_key)
 
+    def test_standard_parse_cache_key_uses_fast_model_when_configured(self) -> None:
+        with patch.object(
+            parser_service,
+            "settings",
+            SimpleNamespace(
+                ai_model="qwen3.7-plus",
+                ai_fast_model="qwen-turbo",
+                ai_api_key="dashscope-key",
+                gemini_model="gemini-thinking",
+            ),
+        ):
+            fast_key = parser_service._build_parse_cache_key(
+                b"%PDF-1.4 same file",
+                "resume.pdf",
+                "application/pdf",
+                "standard",
+            )
+
+        with patch.object(
+            parser_service,
+            "settings",
+            SimpleNamespace(
+                ai_model="qwen3.7-plus",
+                ai_fast_model="qwen-plus",
+                ai_api_key="dashscope-key",
+                gemini_model="gemini-thinking",
+            ),
+        ):
+            plus_key = parser_service._build_parse_cache_key(
+                b"%PDF-1.4 same file",
+                "resume.pdf",
+                "application/pdf",
+                "standard",
+            )
+
+        self.assertNotEqual(fast_key, plus_key)
+
+    async def test_standard_parse_llm_call_uses_fast_model_when_configured(self) -> None:
+        with patch.object(
+            parser_service,
+            "settings",
+            SimpleNamespace(
+                ai_model="qwen3.7-plus",
+                ai_fast_model="qwen-turbo",
+                ai_api_key="dashscope-key",
+                gemini_model="gemini-thinking",
+            ),
+        ):
+            with patch.object(
+                parser_service,
+                "call_llm_json",
+                new_callable=AsyncMock,
+                return_value={"work_experiences": []},
+            ) as llm_call:
+                result = await parser_service._call_resume_llm(
+                    [{"role": "user", "content": "返回 JSON"}],
+                    "req-fast-model",
+                    "ai_call",
+                )
+
+        self.assertEqual(result, {"work_experiences": []})
+        self.assertEqual(llm_call.await_args.kwargs["model"], "qwen-turbo")
+
     async def test_parse_resume_chunked_runs_chunk_calls_concurrently(self) -> None:
         active_calls = 0
         max_active_calls = 0

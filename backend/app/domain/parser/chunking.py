@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Iterable, List, Optional
 
 CHUNK_MAX_CHARS = 3_200
@@ -16,7 +17,8 @@ SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？!?;；.])\s+")
 def _normalize_text(value: Optional[str]) -> str:
     if not value:
         return ""
-    compact = WHITESPACE_PATTERN.sub(" ", value).strip().lower()
+    normalized = unicodedata.normalize("NFKC", value)
+    compact = WHITESPACE_PATTERN.sub(" ", normalized).strip().lower()
     compact = re.sub(
         rf"(?<=[{CJK_INLINE_PATTERN}])\s+(?=[{CJK_INLINE_PATTERN}])",
         "",

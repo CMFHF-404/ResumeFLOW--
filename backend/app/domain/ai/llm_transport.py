@@ -965,9 +965,14 @@ async def _stream_gemini_json_response(
     )
 
 
-async def _call_llm(messages: List[Dict[str, Any]], json_mode: bool = True) -> Dict[str, Any]:
+async def _call_llm(
+    messages: List[Dict[str, Any]],
+    json_mode: bool = True,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    resolved_model = model or settings.ai_model
     payload = _prepare_chat_completion_payload({
-        "model": settings.ai_model,
+        "model": resolved_model,
         "messages": messages,
         "temperature": 0.3,
     })

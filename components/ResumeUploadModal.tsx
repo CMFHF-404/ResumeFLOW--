@@ -56,6 +56,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
     items: parsedCertifications,
     selectedIds: selectedCertificationIds,
     selectedItems: selectedCertifications,
+    duplicateIds: duplicateCertificationIds,
     applyParsedCertifications,
     resetSelection: resetCertifications,
     toggleSelection: toggleCertification,
@@ -261,6 +262,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
                     onToggleExperienceGroup={toggleSelectionBatch}
                     certifications={parsedCertifications}
                     selectedCertificationIds={selectedCertificationIds}
+                    duplicateCertificationIds={duplicateCertificationIds}
                     onToggleCertification={toggleCertification}
                     onToggleAllCertifications={toggleAllCertifications}
                     skillGroups={parsedSkillGroups}
@@ -284,6 +286,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
                     onToggleExperienceGroup={toggleSelectionBatch}
                     certifications={parsedCertifications}
                     selectedCertificationIds={selectedCertificationIds}
+                    duplicateCertificationIds={duplicateCertificationIds}
                     onToggleCertification={toggleCertification}
                     onToggleAllCertifications={toggleAllCertifications}
                     skillGroups={parsedSkillGroups}

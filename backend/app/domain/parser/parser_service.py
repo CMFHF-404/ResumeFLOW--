@@ -262,6 +262,7 @@ _PARSE_RESULT_CACHE: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 
 @dataclass(frozen=True)
 class ExistingExperience:
+    id: str
     category: ExperienceCategory
     title: str
     org: str
@@ -302,6 +303,10 @@ def _resolve_thinking_model_name() -> str:
     return str(getattr(settings, "gemini_model", "") or getattr(settings, "ai_model", ""))
 
 
+def _resolve_standard_parse_model_name() -> str:
+    return str(getattr(settings, "ai_fast_model", None) or getattr(settings, "ai_model", ""))
+
+
 def _build_parse_cache_key(
     file_data: bytes,
     filename: str,
@@ -309,7 +314,11 @@ def _build_parse_cache_key(
     parser_mode: str,
 ) -> str:
     file_hash = hashlib.sha256(file_data).hexdigest()
-    model = _resolve_thinking_model_name() if parser_mode == "thinking" else settings.ai_model
+    model = (
+        _resolve_thinking_model_name()
+        if parser_mode == "thinking"
+        else _resolve_standard_parse_model_name()
+    )
     payload = {
         "version": PARSE_CACHE_VERSION,
         "file_hash": file_hash,
@@ -518,8 +527,9 @@ async def _call_resume_llm(
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     call_start = perf_counter()
+    model = _resolve_standard_parse_model_name()
     try:
-        result = await call_llm_json(messages)
+        result = await call_llm_json(messages, model=model)
     except Exception as exc:
         call_ms = (perf_counter() - call_start) * 1000
         payload = {"status": "error", "error": type(exc).__name__}
@@ -528,7 +538,7 @@ async def _call_resume_llm(
         _log_timing(step, call_ms, request_id, payload)
         raise
     call_ms = (perf_counter() - call_start) * 1000
-    payload = {"status": "ok"}
+    payload = {"status": "ok", "model": model}
     if extra:
         payload.update(extra)
     _log_timing(step, call_ms, request_id, payload)
@@ -926,6 +936,7 @@ async def fetch_existing_experiences(
                 continue
             results.append(
                 ExistingExperience(
+                    id=str(master.id),
                     category=master.category,
                     title=version.title,
                     org=version.org or "",
