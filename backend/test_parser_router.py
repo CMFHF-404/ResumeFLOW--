@@ -37,15 +37,22 @@ class ParserRouterStreamTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(parser_router, "parse_resume", new_callable=AsyncMock, return_value=payload) as standard_parse:
                 with patch.object(parser_router, "parse_resume_with_thoughts", new_callable=AsyncMock) as thinking_parse:
                     with patch.object(parser_router, "fetch_existing_experiences", new_callable=AsyncMock, return_value=[]):
-                        response = await parser_router.parse_resume_stream_endpoint(
-                            file=file,
-                            session=SimpleNamespace(),
-                            current_user=SimpleNamespace(id="user-1"),
-                        )
-                        events = await self._consume_stream(response)
+                        with patch.object(
+                            parser_router,
+                            "apply_semantic_duplicate_flags",
+                            new_callable=AsyncMock,
+                            side_effect=lambda items, existing, request_id=None: items,
+                        ) as semantic_dedupe:
+                            response = await parser_router.parse_resume_stream_endpoint(
+                                file=file,
+                                session=SimpleNamespace(),
+                                current_user=SimpleNamespace(id="user-1"),
+                            )
+                            events = await self._consume_stream(response)
 
         standard_parse.assert_awaited_once()
         thinking_parse.assert_not_awaited()
+        semantic_dedupe.assert_awaited_once()
         self.assertEqual(events[-1]["type"], "final")
 
     async def test_stream_parse_uses_thinking_parser_when_enabled(self) -> None:
@@ -61,17 +68,47 @@ class ParserRouterStreamTests(unittest.IsolatedAsyncioTestCase):
                     return_value=payload,
                 ) as thinking_parse:
                     with patch.object(parser_router, "fetch_existing_experiences", new_callable=AsyncMock, return_value=[]):
-                        response = await parser_router.parse_resume_stream_endpoint(
-                            file=file,
-                            enable_thinking=True,
-                            session=SimpleNamespace(),
-                            current_user=SimpleNamespace(id="user-1"),
-                        )
-                        events = await self._consume_stream(response)
+                        with patch.object(
+                            parser_router,
+                            "apply_semantic_duplicate_flags",
+                            new_callable=AsyncMock,
+                            side_effect=lambda items, existing, request_id=None: items,
+                        ) as semantic_dedupe:
+                            response = await parser_router.parse_resume_stream_endpoint(
+                                file=file,
+                                enable_thinking=True,
+                                session=SimpleNamespace(),
+                                current_user=SimpleNamespace(id="user-1"),
+                            )
+                            events = await self._consume_stream(response)
 
         thinking_parse.assert_awaited_once()
         standard_parse.assert_not_awaited()
+        semantic_dedupe.assert_awaited_once()
         self.assertEqual(events[-1]["type"], "final")
+
+    async def test_non_stream_parse_applies_semantic_dedupe(self) -> None:
+        file = SimpleNamespace(filename="resume.pdf", content_type="application/pdf")
+        payload = {"work_experiences": [], "project_experiences": [], "education": []}
+
+        with patch.object(parser_router, "extract_text", new_callable=AsyncMock, return_value=b"%PDF-1.4"):
+            with patch.object(parser_router, "parse_resume", new_callable=AsyncMock, return_value=payload):
+                with patch.object(parser_router, "fetch_existing_experiences", new_callable=AsyncMock, return_value=[]):
+                    with patch.object(
+                        parser_router,
+                        "apply_semantic_duplicate_flags",
+                        new_callable=AsyncMock,
+                        side_effect=lambda items, existing, request_id=None: items,
+                    ) as semantic_dedupe:
+                        response = await parser_router._build_parse_response(
+                            file=file,
+                            session=SimpleNamespace(),
+                            user_id="user-1",
+                            request_id="req-non-stream",
+                        )
+
+        semantic_dedupe.assert_awaited_once()
+        self.assertEqual(response.items, [])
 
 
 if __name__ == "__main__":

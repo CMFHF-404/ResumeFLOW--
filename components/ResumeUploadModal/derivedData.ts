@@ -1,4 +1,5 @@
 import { certificationsService } from '../../services/certificationsService';
+import type { Certification } from '../../services/certificationsService';
 import { skillsService, type UserSkill } from '../../services/skillsService';
 import type {
   ParsedCertification,
@@ -16,6 +17,11 @@ import {
 
 const SUPPORTED_EXTENSIONS = ['pdf', 'docx'];
 const DEFAULT_SKILL_CATEGORY = '未分类';
+const SKILL_DUPLICATE_MIN_CONTAINMENT_LENGTH = 4;
+const SKILL_PROFICIENCY_PREFIX_PATTERN =
+  /^(熟练掌握|熟练使用|熟练运用|熟悉|了解|掌握|具备|擅长|精通|能够|可独立|独立完成)\s*/i;
+const CERTIFICATION_ISSUER_SUFFIX_PATTERN =
+  /(股份有限公司|有限责任公司|有限公司|公司|集团)$/;
 
 export type ParsedCertificationView = ParsedCertification & { id: string };
 
@@ -105,6 +111,16 @@ const normalizeCertificationDate = (value?: string) => {
   return convertDateToISO(value) || value.trim();
 };
 
+const normalizeCertificationIssuerForDuplicate = (value?: string) => {
+  let normalized = normalizeKey(value || '');
+  let previous = '';
+  while (normalized && normalized !== previous) {
+    previous = normalized;
+    normalized = normalized.replace(CERTIFICATION_ISSUER_SUFFIX_PATTERN, '');
+  }
+  return normalized;
+};
+
 const buildCertificationSignature = (item: {
   name: string;
   issuer?: string;
@@ -112,7 +128,7 @@ const buildCertificationSignature = (item: {
 }) => {
   return [
     normalizeKey(item.name),
-    normalizeKey(item.issuer || ''),
+    normalizeCertificationIssuerForDuplicate(item.issuer),
     normalizeKey(normalizeCertificationDate(item.issue_date)),
   ].join('::');
 };
@@ -124,6 +140,35 @@ const buildSkillSignature = (item: { name: string; category?: string }) => {
   ].join('::');
 };
 
+const normalizeSkillDuplicateName = (value: string) => {
+  let normalized = normalizeKey(value).replace(SKILL_PROFICIENCY_PREFIX_PATTERN, '').trim();
+  normalized = normalized
+    .replace(/文档/g, '')
+    .replace(/[\s\-_/\\()[\]{}（）【】《》<>·•、，,.;；:：]/g, '');
+  return normalized;
+};
+
+const isDuplicateSkillName = (candidateName: string, existingName: string) => {
+  const candidate = normalizeSkillDuplicateName(candidateName);
+  const existing = normalizeSkillDuplicateName(existingName);
+  if (!candidate || !existing) {
+    return false;
+  }
+  if (candidate === existing) {
+    return true;
+  }
+  const shorterLength = Math.min(candidate.length, existing.length);
+  return (
+    shorterLength >= SKILL_DUPLICATE_MIN_CONTAINMENT_LENGTH
+    && (candidate.includes(existing) || existing.includes(candidate))
+  );
+};
+
+const isDuplicateSkillTag = (
+  item: { name: string },
+  existingSkills: Array<Pick<UserSkill, 'name'>>
+) => existingSkills.some((skill) => isDuplicateSkillName(item.name, skill.name));
+
 export const buildSkillDuplicateIds = (
   groups: ParsedSkillGroupView[],
   existingSkills: UserSkill[]
@@ -131,16 +176,35 @@ export const buildSkillDuplicateIds = (
   if (!groups.length || !existingSkills.length) {
     return buildEmptySet();
   }
+  const duplicates = new Set<string>();
+  flattenSkillTags(groups).forEach((tag) => {
+    if (isDuplicateSkillTag(tag, existingSkills)) {
+      duplicates.add(tag.id);
+    }
+  });
+  return duplicates;
+};
+
+export const buildCertificationDuplicateIds = (
+  items: ParsedCertificationView[],
+  existingCertifications: Array<Pick<Certification, 'name' | 'issuer' | 'issue_date'>>
+) => {
+  if (!items.length || !existingCertifications.length) {
+    return buildEmptySet();
+  }
   const existingSignatures = new Set(
-    existingSkills.map((skill) =>
-      buildSkillSignature({ name: skill.name, category: skill.category })
+    existingCertifications.map((cert) =>
+      buildCertificationSignature({
+        name: cert.name,
+        issuer: cert.issuer,
+        issue_date: cert.issue_date || undefined,
+      })
     )
   );
   const duplicates = new Set<string>();
-  flattenSkillTags(groups).forEach((tag) => {
-    const signature = buildSkillSignature({ name: tag.name, category: tag.category });
-    if (existingSignatures.has(signature)) {
-      duplicates.add(tag.id);
+  items.forEach((item) => {
+    if (existingSignatures.has(buildCertificationSignature(item))) {
+      duplicates.add(item.id);
     }
   });
   return duplicates;
@@ -201,24 +265,11 @@ export const buildSkillImportPayloads = async (items: ParsedSkillTagView[]) => {
     return [];
   }
   const existing = await skillsService.list({ force: true });
-  const existingSignatures = new Set(
-    existing.map((skill) =>
-      buildSkillSignature({
-        name: skill.name,
-        category: skill.category,
-      })
-    )
-  );
   return dedupeBySignature(
     validItems,
     (item) => buildSkillSignature({ name: item.name, category: item.category })
   )
-    .filter(
-      (item) =>
-        !existingSignatures.has(
-          buildSkillSignature({ name: item.name, category: item.category })
-        )
-    )
+    .filter((item) => !isDuplicateSkillTag(item, existing))
     .map((item) => ({
       name: normalizeParsedText(item.name),
       category: normalizeParsedText(normalizeSkillCategoryName(item.category)),

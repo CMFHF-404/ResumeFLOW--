@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { experienceService } from '../../services/experienceService';
 import { certificationsService } from '../../services/certificationsService';
+import type { Certification } from '../../services/certificationsService';
 import { skillsService, type UserSkill } from '../../services/skillsService';
 import {
   type ParsedExperienceItem,
@@ -26,6 +27,7 @@ import {
 } from './parseUtils';
 import {
   buildCertificationImportPayloads,
+  buildCertificationDuplicateIds,
   buildDefaultSelection,
   buildParsedCertifications,
   buildParsedSkillGroups,
@@ -220,21 +222,30 @@ export const useResumeItems = () => {
 export const useParsedCertifications = () => {
   const [items, setItems] = useState<ParsedCertificationView[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(buildEmptySet);
+  const [duplicateIds, setDuplicateIds] = useState<Set<string>>(buildEmptySet);
 
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
     [items, selectedIds]
   );
 
-  const applyParsedCertifications = useCallback((nextItems: ParsedCertification[]) => {
+  const applyParsedCertifications = useCallback((
+    nextItems: ParsedCertification[],
+    existingCertifications?: Certification[]
+  ) => {
     const next = buildParsedCertifications(nextItems);
+    const nextDuplicates = existingCertifications
+      ? buildCertificationDuplicateIds(next, existingCertifications)
+      : buildEmptySet();
     setItems(next);
-    setSelectedIds(new Set(next.map((item) => item.id)));
+    setDuplicateIds(nextDuplicates);
+    setSelectedIds(new Set(next.filter((item) => !nextDuplicates.has(item.id)).map((item) => item.id)));
   }, []);
 
   const resetSelection = useCallback(() => {
     setItems([]);
     setSelectedIds(buildEmptySet());
+    setDuplicateIds(buildEmptySet());
   }, []);
 
   const toggleSelection = useCallback((id: string) => {
@@ -262,6 +273,7 @@ export const useParsedCertifications = () => {
     items,
     selectedIds,
     selectedItems,
+    duplicateIds,
     applyParsedCertifications,
     resetSelection,
     toggleSelection,
@@ -340,7 +352,10 @@ export const useParsedSkills = () => {
 export const useResumeParsing = (
   applyParsedItems: (items: ParsedExperienceItem[]) => void,
   applyParsedPersonalInfo: (info?: ParsedPersonalInfo) => void,
-  applyParsedCertifications: (items: ParsedCertification[]) => void,
+  applyParsedCertifications: (
+    items: ParsedCertification[],
+    existingCertifications?: Certification[]
+  ) => void,
   applyParsedSkills: (items: ParsedSkillGroup[], existingSkills?: UserSkill[]) => void,
   toast: ToastHandlers
 ) => {
@@ -395,6 +410,15 @@ export const useResumeParsing = (
       return await skillsService.list({ force: true });
     } catch (error) {
       console.error('[ResumeUploadModal] Failed to fetch skills for dedupe:', error);
+      return [];
+    }
+  }, []);
+
+  const fetchExistingCertifications = useCallback(async () => {
+    try {
+      return await certificationsService.list({ force: true });
+    } catch (error) {
+      console.error('[ResumeUploadModal] Failed to fetch certifications for dedupe:', error);
       return [];
     }
   }, []);
@@ -474,11 +498,14 @@ export const useResumeParsing = (
         }
         applyParsedItems(response.items || []);
         applyParsedPersonalInfo(response.personal_info);
-        applyParsedCertifications(response.certifications || []);
-        const existingSkills = await fetchExistingSkills();
+        const [existingCertifications, existingSkills] = await Promise.all([
+          fetchExistingCertifications(),
+          fetchExistingSkills(),
+        ]);
         if (!isCurrentParseRun()) {
           return;
         }
+        applyParsedCertifications(response.certifications || [], existingCertifications);
         applyParsedSkills(response.skills || [], existingSkills);
         setThinkingNodes((prev) => completeThinkingNodes(prev));
         setStage('ready');
@@ -517,6 +544,7 @@ export const useResumeParsing = (
       cancelActiveParse,
       clearLongParseNotice,
       fetchExistingSkills,
+      fetchExistingCertifications,
       enableThinking,
       scheduleLongParseNotice,
       toast,

@@ -147,8 +147,11 @@ def _has_thinking_stream_provider() -> bool:
     return has_qwen or bool(getattr(settings, "gemini_api_key", None))
 
 
-async def call_llm_json(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-    return await _call_llm(messages, json_mode=True)
+async def call_llm_json(
+    messages: List[Dict[str, Any]],
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    return await _call_llm(messages, json_mode=True, model=model)
 
 
 async def polish_experience(

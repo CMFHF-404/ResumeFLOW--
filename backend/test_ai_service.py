@@ -292,6 +292,77 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
         )
 
+    def test_load_settings_reads_fast_model_env(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_MODEL": "qwen3.7-plus",
+                "AI_FAST_MODEL": "qwen-turbo",
+            },
+            clear=True,
+        ):
+            with patch.object(config_module, "_load_env", return_value=None):
+                config_module._settings = None
+                try:
+                    settings = config_module.load_settings()
+                finally:
+                    config_module._settings = None
+
+        self.assertEqual(settings.ai_model, "qwen3.7-plus")
+        self.assertEqual(settings.ai_fast_model, "qwen-turbo")
+
+    def test_load_settings_reads_semantic_dedupe_envs(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_MODEL": "qwen3.7-plus",
+                "AI_FAST_MODEL": "qwen-turbo",
+                "AI_DEDUPE_ENABLED": "false",
+                "AI_DEDUPE_MODEL": "qwen-plus",
+                "AI_DEDUPE_MAX_CANDIDATES": "12",
+            },
+            clear=True,
+        ):
+            with patch.object(config_module, "_load_env", return_value=None):
+                config_module._settings = None
+                try:
+                    settings = config_module.load_settings()
+                finally:
+                    config_module._settings = None
+
+        self.assertFalse(settings.ai_dedupe_enabled)
+        self.assertEqual(settings.ai_dedupe_model, "qwen-plus")
+        self.assertEqual(settings.ai_dedupe_max_candidates, 12)
+
+    def test_load_settings_defaults_semantic_dedupe_model_to_fast_model(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_MODEL": "qwen3.7-plus",
+                "AI_FAST_MODEL": "qwen-turbo",
+            },
+            clear=True,
+        ):
+            with patch.object(config_module, "_load_env", return_value=None):
+                config_module._settings = None
+                try:
+                    settings = config_module.load_settings()
+                finally:
+                    config_module._settings = None
+
+        self.assertTrue(settings.ai_dedupe_enabled)
+        self.assertEqual(settings.ai_dedupe_model, "qwen-turbo")
+        self.assertEqual(settings.ai_dedupe_max_candidates, 24)
+
 
 class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_call_llm_disables_qwen_thinking_for_standard_json_requests(self) -> None:
@@ -324,6 +395,39 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"ok": True})
         sent_payload = fake_client.posts[0][1]["json"]
         self.assertEqual(sent_payload["model"], "qwen3.7-plus")
+        self.assertIs(sent_payload["enable_thinking"], False)
+
+    async def test_call_llm_accepts_model_override_for_standard_json_requests(self) -> None:
+        response = _FakeJsonResponse(
+            {
+                "choices": [
+                    {"message": {"content": json.dumps({"ok": True})}},
+                ],
+            }
+        )
+        fake_client = _FakePostClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+        )
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._call_llm(
+                    [{"role": "user", "content": "返回 JSON"}],
+                    json_mode=True,
+                    model="qwen-turbo",
+                )
+
+        self.assertEqual(result, {"ok": True})
+        sent_payload = fake_client.posts[0][1]["json"]
+        self.assertEqual(sent_payload["model"], "qwen-turbo")
         self.assertIs(sent_payload["enable_thinking"], False)
 
     async def test_qwen_responses_stream_emits_reasoning_summary_and_returns_json(self) -> None:

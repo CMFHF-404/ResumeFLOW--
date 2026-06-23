@@ -113,7 +113,8 @@ export const extractThinkingHeadline = (text: string) => {
 };
 
 export const normalizeCjkSpacing = (value: string) => {
-  const compact = value.replace(/\s+/g, ' ').trim();
+  const normalized = value.normalize('NFKC');
+  const compact = normalized.replace(/\s+/g, ' ').trim();
   return compact
     .replace(CJK_INLINE_REGEX, '$1$2')
     .replace(CJK_LEFT_PUNCT_REGEX, '$1$2')

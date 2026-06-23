@@ -15,6 +15,10 @@ ENV_AI_API_KEY = "AI_API_KEY"
 ENV_AI_BASE_URL = "AI_BASE_URL"
 ENV_AI_RESPONSES_BASE_URL = "AI_RESPONSES_BASE_URL"
 ENV_AI_MODEL = "AI_MODEL"
+ENV_AI_FAST_MODEL = "AI_FAST_MODEL"
+ENV_AI_DEDUPE_ENABLED = "AI_DEDUPE_ENABLED"
+ENV_AI_DEDUPE_MODEL = "AI_DEDUPE_MODEL"
+ENV_AI_DEDUPE_MAX_CANDIDATES = "AI_DEDUPE_MAX_CANDIDATES"
 ENV_AI_TIMEOUT_SECONDS = "AI_TIMEOUT_SECONDS"
 ENV_GEMINI_API_KEY = "GEMINI_API_KEY"
 ENV_GEMINI_BASE_URL = "GEMINI_BASE_URL"
@@ -36,6 +40,7 @@ DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_AI_MODEL = "qwen3.7-plus"
 DEFAULT_AI_TIMEOUT_SECONDS = 300
+DEFAULT_AI_DEDUPE_MAX_CANDIDATES = 24
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_AI_THINKING_BUDGET_JD_ANALYSIS = 4096
@@ -150,6 +155,10 @@ class Settings:
     ai_base_url: str
     ai_responses_base_url: str
     ai_model: str
+    ai_fast_model: str
+    ai_dedupe_enabled: bool
+    ai_dedupe_model: str
+    ai_dedupe_max_candidates: int
     ai_timeout_seconds: int
     gemini_api_key: Optional[str]
     gemini_base_url: str
@@ -187,6 +196,12 @@ def load_settings() -> Settings:
     ai_base_url = os.getenv(ENV_AI_BASE_URL, DEFAULT_AI_BASE_URL)
     ai_responses_base_url = _resolve_ai_responses_base_url(ai_base_url)
     ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
+    ai_fast_model = os.getenv(ENV_AI_FAST_MODEL) or ai_model
+    ai_dedupe_enabled = _get_bool_env(ENV_AI_DEDUPE_ENABLED, True)
+    ai_dedupe_model = os.getenv(ENV_AI_DEDUPE_MODEL) or ai_fast_model or ai_model
+    ai_dedupe_max_candidates = int(
+        os.getenv(ENV_AI_DEDUPE_MAX_CANDIDATES, DEFAULT_AI_DEDUPE_MAX_CANDIDATES)
+    )
     ai_timeout_seconds = int(os.getenv(ENV_AI_TIMEOUT_SECONDS, DEFAULT_AI_TIMEOUT_SECONDS))
     gemini_api_key = os.getenv(ENV_GEMINI_API_KEY)
     gemini_base_url = os.getenv(ENV_GEMINI_BASE_URL, DEFAULT_GEMINI_BASE_URL)
@@ -241,6 +256,10 @@ def load_settings() -> Settings:
         ai_base_url=ai_base_url,
         ai_responses_base_url=ai_responses_base_url,
         ai_model=ai_model,
+        ai_fast_model=ai_fast_model,
+        ai_dedupe_enabled=ai_dedupe_enabled,
+        ai_dedupe_model=ai_dedupe_model,
+        ai_dedupe_max_candidates=ai_dedupe_max_candidates,
         ai_timeout_seconds=ai_timeout_seconds,
         gemini_api_key=gemini_api_key,
         gemini_base_url=gemini_base_url,

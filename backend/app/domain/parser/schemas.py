@@ -24,6 +24,8 @@ class DuplicateMatch(BaseModel):
     is_duplicate: bool = False
     match_type: Optional[str] = None
     match_score: Optional[float] = None
+    matched_existing_id: Optional[str] = None
+    match_reason: Optional[str] = None
 
 
 class ParsedExperienceItem(BaseModel):
