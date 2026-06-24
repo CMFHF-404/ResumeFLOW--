@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, Plus, Trash2, Wrench, ChevronDown } from 'lucide-react';
+import { Edit3, Plus, Trash2, Wrench, ChevronDown, Gauge } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import type {
     EducationEditDraft,
@@ -9,6 +9,7 @@ import type {
 } from '../../../types/resume';
 import { buildExperienceDate } from '../../../utils/dateUtils';
 import { ADD_EDUCATION_LABEL, PROFILE_SYNC_MODES } from '../constants';
+import type { TokenQuotaSummary } from '../../../services/billingService';
 
 type ProfileTabProps = {
     profile: ResumeEditorProfile;
@@ -37,6 +38,19 @@ type ProfileTabProps = {
     onToggleEducationSelection: (id: string) => void;
     onEducationDragStart?: (id: string) => void;
     onEducationDragEnd?: () => void;
+    quotaSummary?: TokenQuotaSummary | null;
+    onOpenTokenQuota?: () => void;
+};
+
+const formatTokenAmount = (value?: number | null) => {
+    const safeValue = Math.max(Number(value || 0), 0);
+    if (safeValue >= 1_000_000) {
+        return `${(safeValue / 1_000_000).toFixed(safeValue % 1_000_000 === 0 ? 0 : 1)}M`;
+    }
+    if (safeValue >= 1_000) {
+        return `${(safeValue / 1_000).toFixed(safeValue % 1_000 === 0 ? 0 : 1)}k`;
+    }
+    return safeValue.toLocaleString();
 };
 
 const ProfileTab: React.FC<ProfileTabProps> = ({
@@ -66,6 +80,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
     onToggleEducationSelection,
     onEducationDragStart,
     onEducationDragEnd,
+    quotaSummary,
+    onOpenTokenQuota,
 }) => (
     <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
@@ -165,6 +181,36 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                         onChange={(event) => setProfile({ ...profile, linkedin: event.target.value })}
                         disabled={isProfileReadOnly}
                     />
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Gauge className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-200">AI 额度</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onOpenTokenQuota}
+                            className="shrink-0 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={!onOpenTokenQuota}
+                        >
+                            查看额度
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-md bg-white/75 p-2 dark:bg-gray-950/30">
+                            <div className="text-gray-500 dark:text-gray-400">剩余额度</div>
+                            <div className="mt-1 font-bold text-gray-900 dark:text-white">
+                                {formatTokenAmount(quotaSummary?.remaining_tokens)}
+                            </div>
+                        </div>
+                        <div className="rounded-md bg-white/75 p-2 dark:bg-gray-950/30">
+                            <div className="text-gray-500 dark:text-gray-400">当前用量</div>
+                            <div className="mt-1 font-bold text-gray-900 dark:text-white">
+                                {formatTokenAmount(quotaSummary?.used_tokens)}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

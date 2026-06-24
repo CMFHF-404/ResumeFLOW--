@@ -4,11 +4,14 @@ import EditorSidebar, { type EditorSidebarProps } from './EditorSidebar';
 import ResumeEditorLayoutAdjustPanel from './ResumeEditorLayoutAdjustPanel';
 import ResumeEditorPreviewStage from './ResumeEditorPreviewStage';
 import type { ResumePreviewProps } from './ResumePreview';
+import type { TokenQuotaSummary } from '../../../services/billingService';
 
 type ResumeEditorDesktopWorkspaceProps = {
     sidebarProps: Omit<EditorSidebarProps, 'layoutMode' | 'showJDPanel'>;
     layoutAdjustProps: React.ComponentProps<typeof ResumeEditorLayoutAdjustPanel>;
     previewProps: ResumePreviewProps;
+    quotaSummary?: TokenQuotaSummary | null;
+    onOpenTokenQuota?: () => void;
 };
 
 const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> = ({

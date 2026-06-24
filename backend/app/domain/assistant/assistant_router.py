@@ -16,6 +16,7 @@ from starlette.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST, HTTP_404
 from ...database import get_session as get_db_session
 from ...dependencies import get_current_user
 from ...models import AIAssistantImageBlob
+from ..billing import billing_service
 from ..ai import jd_attachment_service
 from ..ai.ai_service import _normalize_selected_experiences, _normalize_selected_resume, run_assistant_turn_with_thoughts
 from ..certifications.certification_service import list_certifications
@@ -739,6 +740,7 @@ async def stream_assistant_session_turn(
     current_user=Depends(get_current_user),
 ):
     payload, raw_attachment_files = await _parse_stream_payload(request)
+    await billing_service.ensure_quota_available(session, current_user.id)
     attachment_files = (
         raw_attachment_files
         if isinstance(raw_attachment_files, list)
@@ -753,63 +755,69 @@ async def stream_assistant_session_turn(
 
         async def run_turn() -> None:
             try:
-                assistant_session = await get_assistant_session(session, current_user.id, session_id)
-                messages = (await get_session_detail(session, current_user.id, session_id))[1]
-                attachment_payloads: list[Dict[str, Any]] = []
-                persisted_attachments: list[Dict[str, Any]] = []
-                prepared_attachments: list[Any] = []
-                if attachment_files:
-                    await emit({"type": "progress", "node": "read_attachment", "title": "解析对话附件"})
-                    for attachment_file in attachment_files:
-                        prepared_attachments.append(await _prepare_attachment_result(attachment_file))
-                await emit({"type": "progress", "node": "prepare_context", "title": "准备对话上下文"})
-                bank_context = await _build_bank_context(session, user_id=current_user.id)
-                if attachment_files:
-                    attachment_payloads, persisted_attachments = await _build_attachment_payloads(
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="ai_assistant",
+                    metadata={"route": f"/api/assistant/sessions/{session_id}/stream"},
+                ):
+                    assistant_session = await get_assistant_session(session, current_user.id, session_id)
+                    messages = (await get_session_detail(session, current_user.id, session_id))[1]
+                    attachment_payloads: list[Dict[str, Any]] = []
+                    persisted_attachments: list[Dict[str, Any]] = []
+                    prepared_attachments: list[Any] = []
+                    if attachment_files:
+                        await emit({"type": "progress", "node": "read_attachment", "title": "解析对话附件"})
+                        for attachment_file in attachment_files:
+                            prepared_attachments.append(await _prepare_attachment_result(attachment_file))
+                    await emit({"type": "progress", "node": "prepare_context", "title": "准备对话上下文"})
+                    bank_context = await _build_bank_context(session, user_id=current_user.id)
+                    if attachment_files:
+                        attachment_payloads, persisted_attachments = await _build_attachment_payloads(
+                            session,
+                            assistant_session_id=assistant_session.id,
+                            files=attachment_files,
+                            prepared_attachments=prepared_attachments,
+                        )
+                    selected_experiences_for_ai = await _hydrate_selected_experiences_for_ai(
                         session,
-                        assistant_session_id=assistant_session.id,
-                        files=attachment_files,
-                        prepared_attachments=prepared_attachments,
+                        user_id=current_user.id,
+                        selected_experiences=payload.selected_experiences,
                     )
-                selected_experiences_for_ai = await _hydrate_selected_experiences_for_ai(
-                    session,
-                    user_id=current_user.id,
-                    selected_experiences=payload.selected_experiences,
-                )
-                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
-                result = await run_assistant_turn_with_thoughts(
-                    mode=payload.mode or assistant_session.mode,
-                    user_message=payload.user_message,
-                    session_title=assistant_session.title,
-                    entry_source=assistant_session.entry_source,
-                    context_json=assistant_session.context_json,
-                    bank_context=bank_context,
-                    selected_experiences=selected_experiences_for_ai,
-                    selected_resume=payload.selected_resume,
-                    skill_id=payload.skill_id,
-                    history=_build_history_messages(messages),
-                    attachments=attachment_payloads,
-                    thought_callback=emit,
-                    attachment_hydrator=lambda attachments: _hydrate_attachment_payloads(
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
+                    result = await run_assistant_turn_with_thoughts(
+                        mode=payload.mode or assistant_session.mode,
+                        user_message=payload.user_message,
+                        session_title=assistant_session.title,
+                        entry_source=assistant_session.entry_source,
+                        context_json=assistant_session.context_json,
+                        bank_context=bank_context,
+                        selected_experiences=selected_experiences_for_ai,
+                        selected_resume=payload.selected_resume,
+                        skill_id=payload.skill_id,
+                        history=_build_history_messages(messages),
+                        attachments=attachment_payloads,
+                        thought_callback=emit,
+                        attachment_hydrator=lambda attachments: _hydrate_attachment_payloads(
+                            session,
+                            assistant_session_id=assistant_session.id,
+                            attachments=attachments,
+                        ),
+                    )
+                    await persist_assistant_turn(
                         session,
-                        assistant_session_id=assistant_session.id,
-                        attachments=attachments,
-                    ),
-                )
-                await persist_assistant_turn(
-                    session,
-                    assistant_session,
-                    user_message=payload.user_message,
-                    display_message=payload.display_message,
-                    user_attachments=persisted_attachments,
-                    user_selected_experiences=payload.selected_experiences,
-                    user_selected_resume=payload.selected_resume,
-                    user_skill_id=payload.skill_id,
-                    assistant_text=result["assistantText"],
-                    draft_card=result.get("draftCard"),
-                    suggested_followups=result.get("suggestedFollowups"),
-                    title=result.get("title"),
-                )
+                        assistant_session,
+                        user_message=payload.user_message,
+                        display_message=payload.display_message,
+                        user_attachments=persisted_attachments,
+                        user_selected_experiences=payload.selected_experiences,
+                        user_selected_resume=payload.selected_resume,
+                        user_skill_id=payload.skill_id,
+                        assistant_text=result["assistantText"],
+                        draft_card=result.get("draftCard"),
+                        suggested_followups=result.get("suggestedFollowups"),
+                        title=result.get("title"),
+                    )
                 await emit({"type": "progress", "node": "persist_result", "title": "保存会话记录"})
                 await emit({"type": "final", "result": result})
             except NotFoundError as exc:

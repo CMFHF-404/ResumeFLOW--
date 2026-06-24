@@ -449,6 +449,51 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent_payload["model"], "qwen-turbo")
         self.assertIs(sent_payload["enable_thinking"], False)
 
+    async def test_call_llm_reports_usage_for_standard_json_requests(self) -> None:
+        response = _FakeJsonResponse(
+            {
+                "choices": [
+                    {"message": {"content": json.dumps({"ok": True})}},
+                ],
+                "usage": {
+                    "prompt_tokens": 21,
+                    "completion_tokens": 9,
+                    "total_tokens": 30,
+                },
+            }
+        )
+        fake_client = _FakePostClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+        )
+        usage_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._call_llm(
+                    [{"role": "user", "content": "返回 JSON"}],
+                    json_mode=True,
+                    usage_callback=usage_callback,
+                    request_label="standard_json",
+                )
+
+        self.assertEqual(result, {"ok": True})
+        usage_callback.assert_awaited_once()
+        usage_event = usage_callback.await_args.args[0]
+        self.assertEqual(usage_event["prompt_tokens"], 21)
+        self.assertEqual(usage_event["completion_tokens"], 9)
+        self.assertEqual(usage_event["total_tokens"], 30)
+        self.assertEqual(usage_event["request_label"], "standard_json")
+        self.assertEqual(usage_event["status"], "success")
+
     async def test_qwen_responses_stream_emits_reasoning_summary_and_returns_json(self) -> None:
         thought_event_a = {
             "type": "response.reasoning_summary_text.delta",
@@ -519,6 +564,68 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("thinking_budget", sent_payload)
         self.assertEqual(sent_payload["input"][0]["role"], "system")
         self.assertEqual(sent_payload["input"][1]["role"], "user")
+
+    async def test_qwen_responses_stream_reports_completed_usage(self) -> None:
+        answer_event = {
+            "type": "response.output_text.delta",
+            "delta": json.dumps({"summary": "ok"}, ensure_ascii=False),
+        }
+        completed_event = {
+            "type": "response.completed",
+            "response": {
+                "usage": {
+                    "input_tokens": 37,
+                    "output_tokens": 243,
+                    "total_tokens": 280,
+                },
+            },
+        }
+        response = _FakeStreamResponse(
+            [
+                f"data: {json.dumps(answer_event, ensure_ascii=False)}",
+                "",
+                f"data: {json.dumps(completed_event, ensure_ascii=False)}",
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        usage_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._stream_gemini_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="qwen_response_usage",
+                    usage_callback=usage_callback,
+                )
+
+        self.assertEqual(result, {"summary": "ok"})
+        usage_callback.assert_awaited_once()
+        usage_event = usage_callback.await_args.args[0]
+        self.assertEqual(usage_event["prompt_tokens"], 37)
+        self.assertEqual(usage_event["completion_tokens"], 243)
+        self.assertEqual(usage_event["total_tokens"], 280)
+        self.assertEqual(usage_event["request_label"], "qwen_response_usage")
+        self.assertEqual(usage_event["status"], "success")
 
     async def test_qwen_responses_stream_emits_reasoning_item_summary_when_delta_is_missing(self) -> None:
         thought_event = {
@@ -858,6 +965,64 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                 call({"type": "thought", "summary": "匹配岗位要求"}),
             ],
         )
+
+    async def test_qwen_chat_stream_requests_usage_and_reports_final_usage(self) -> None:
+        answer_event = {
+            "choices": [
+                {"delta": {"content": json.dumps({"summary": "ok"}, ensure_ascii=False)}}
+            ]
+        }
+        usage_event = {
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 40,
+                "completion_tokens": 12,
+                "total_tokens": 52,
+            },
+        }
+        response = _FakeStreamResponse(
+            [
+                f"data: {json.dumps(answer_event, ensure_ascii=False)}",
+                "",
+                f"data: {json.dumps(usage_event, ensure_ascii=False)}",
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+        )
+        usage_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._stream_qwen_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="qwen_chat_usage",
+                    usage_callback=usage_callback,
+                )
+
+        self.assertEqual(result, {"summary": "ok"})
+        sent_payload = fake_client.stream_calls[0][1]["json"]
+        self.assertEqual(sent_payload["stream_options"], {"include_usage": True})
+        usage_callback.assert_awaited_once()
+        recorded = usage_callback.await_args.args[0]
+        self.assertEqual(recorded["prompt_tokens"], 40)
+        self.assertEqual(recorded["completion_tokens"], 12)
+        self.assertEqual(recorded["total_tokens"], 52)
+        self.assertEqual(recorded["request_label"], "qwen_chat_usage")
 
     async def test_qwen_responses_stream_converts_inline_image_parts_to_responses_image_input(self) -> None:
         answer_event = {

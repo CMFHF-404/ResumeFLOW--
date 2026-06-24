@@ -1,11 +1,12 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, HeartHandshake, UserCog } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, HeartHandshake, UserCog, Gauge } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { markUserSignInStarted, markUserSignOutStarted } from '../services/authFlowState';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
 import { trackLoginStart } from '../utils/analyticsTracker';
+import type { TokenQuotaSummary } from '../services/billingService';
 
 interface GlobalSidebarProps {
   currentView: ViewState;
@@ -13,10 +14,24 @@ interface GlobalSidebarProps {
   onOpenFeedback: () => void;
   onOpenAgentPluginConfig: () => void;
   onOpenAppreciation: (returnFocusElement?: HTMLElement | null) => void;
+  quotaSummary?: TokenQuotaSummary | null;
+  onOpenTokenQuota: () => void;
 }
 
 const DEFAULT_PROFILE_NAME = '即刻开始';
 const DEFAULT_AVATAR_PLACEHOLDER = '?';
+const TOKEN_RING_CIRCUMFERENCE = 138;
+
+const formatTokenAmount = (value?: number | null) => {
+  const safeValue = Math.max(Number(value || 0), 0);
+  if (safeValue >= 1_000_000) {
+    return `${(safeValue / 1_000_000).toFixed(safeValue % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (safeValue >= 1_000) {
+    return `${(safeValue / 1_000).toFixed(safeValue % 1_000 === 0 ? 0 : 1)}k`;
+  }
+  return safeValue.toLocaleString();
+};
 
 const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   currentView,
@@ -24,6 +39,8 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   onOpenFeedback,
   onOpenAgentPluginConfig,
   onOpenAppreciation,
+  quotaSummary,
+  onOpenTokenQuota,
 }) => {
   const { signOut, signIn, isAuthenticated } = useLogto();
   const { profile } = useProfile();
@@ -38,6 +55,11 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   const desktopAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
   const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
   const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
+  const quotaPercent = Math.max(0, Math.min(quotaSummary?.remaining_percent ?? 0, 100));
+  const quotaDash = Math.round((quotaPercent / 100) * TOKEN_RING_CIRCUMFERENCE);
+  const quotaTitle = quotaSummary
+    ? `剩余 ${formatTokenAmount(quotaSummary.remaining_tokens)} / ${formatTokenAmount(quotaSummary.token_limit)}，当前用量 ${formatTokenAmount(quotaSummary.used_tokens)}`
+    : '剩余额度未加载';
 
   const getButtonClass = (view: ViewState) => {
     const baseClass = "flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-2 transition-all relative group md:p-3";
@@ -153,6 +175,11 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     onOpenAgentPluginConfig();
   };
 
+  const handleOpenTokenQuota = () => {
+    setIsAvatarMenuOpen(false);
+    onOpenTokenQuota();
+  };
+
   const handleOpenAccountManagement = () => {
     setIsAvatarMenuOpen(false);
     if (accountCenterUrl) {
@@ -206,6 +233,15 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         >
           <MessageSquare className="h-4 w-4" />
           <span>反馈</span>
+        </button>
+        <button
+          className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
+          onClick={handleOpenTokenQuota}
+          type="button"
+          role="menuitem"
+        >
+          <Gauge className="h-4 w-4" />
+          <span>额度</span>
         </button>
         <button
           className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
@@ -265,7 +301,22 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
               aria-label="打开头像工具栏"
               aria-expanded={isAvatarMenuOpen}
               aria-haspopup="menu"
+              title={quotaTitle}
             >
+              <svg className="pointer-events-none absolute -inset-1 h-14 w-14 -rotate-90" viewBox="0 0 48 48" aria-hidden="true">
+                <circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-700" />
+                <circle
+                  cx="24"
+                  cy="24"
+                  r="22"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  className="text-emerald-400 transition-all"
+                  strokeDasharray={`${quotaDash} ${TOKEN_RING_CIRCUMFERENCE}`}
+                />
+              </svg>
               {avatarInitial}
             </button>
             {isAvatarMenuOpen ? renderAvatarMenu('mobile') : null}
@@ -306,11 +357,28 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             aria-expanded={isAvatarMenuOpen}
             aria-haspopup="menu"
             onClick={handleAvatarClick}
-            title={displayName}
+            title={`${displayName} · ${quotaTitle}`}
             type="button"
           >
+            <svg className="pointer-events-none absolute -inset-1 h-12 w-12 -rotate-90" viewBox="0 0 48 48" aria-hidden="true">
+              <circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-700" />
+              <circle
+                cx="24"
+                cy="24"
+                r="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                className="text-emerald-400 transition-all"
+                strokeDasharray={`${quotaDash} ${TOKEN_RING_CIRCUMFERENCE}`}
+              />
+            </svg>
             {avatarInitial}
-            <div className="nav-tooltip hidden md:block">{displayName}</div>
+            <div className="nav-tooltip hidden md:block">
+              <div>{displayName}</div>
+              <div className="mt-1 text-[10px] font-medium text-emerald-200">{quotaTitle}</div>
+            </div>
           </button>
           {isAvatarMenuOpen ? renderAvatarMenu('desktop') : null}
         </div>

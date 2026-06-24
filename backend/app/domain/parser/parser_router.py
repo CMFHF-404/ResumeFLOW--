@@ -11,6 +11,7 @@ from starlette.status import HTTP_400_BAD_REQUEST
 
 from ...database import get_session
 from ...dependencies import get_current_user
+from ..billing import billing_service
 from .parser_service import (
     apply_duplicate_flags,
     build_resume_items,
@@ -100,12 +101,19 @@ async def parse_resume_endpoint(
         file.content_type or "",
     )
     try:
-        response_payload = await _build_parse_response(
-            file=file,
-            session=session,
-            user_id=current_user.id,
-            request_id=request_id,
-        )
+        async with billing_service.ai_billing_context(
+            session,
+            current_user.id,
+            entrypoint="resume_parse",
+            metadata={"route": "/parser/parse", "request_id": request_id},
+        ):
+            await billing_service.ensure_current_quota()
+            response_payload = await _build_parse_response(
+                file=file,
+                session=session,
+                user_id=current_user.id,
+                request_id=request_id,
+            )
     except ValueError as exc:
         total_ms = (perf_counter() - total_start) * 1000
         logger.warning(
@@ -141,6 +149,7 @@ async def parse_resume_stream_endpoint(
         file.content_type or "",
         enable_thinking,
     )
+    await billing_service.ensure_quota_available(session, current_user.id)
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -150,53 +159,59 @@ async def parse_resume_stream_endpoint(
 
         async def run_parse_pipeline() -> None:
             try:
-                await emit(
-                    {"type": "progress", "node": "receive_file", "title": "接收简历附件"}
-                )
-                file_data = await extract_text(file, request_id)
-                file_kind = _resolve_file_kind(file)
-                common_parse_kwargs = {
-                    "file_data": file_data,
-                    "filename": file.filename or "resume",
-                    "file_mime_type": _resolve_file_mime(file, file_kind),
-                    "request_id": request_id,
-                    "progress_callback": emit,
-                }
-                if enable_thinking is True:
-                    payload = await parse_resume_with_thoughts(
-                        **common_parse_kwargs,
-                        thought_callback=emit,
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="resume_parse",
+                    metadata={"route": "/parser/parse/stream", "request_id": request_id},
+                ):
+                    await emit(
+                        {"type": "progress", "node": "receive_file", "title": "接收简历附件"}
                     )
-                else:
-                    payload = await parse_resume(**common_parse_kwargs)
-
-                build_start = perf_counter()
-                items = build_resume_items(payload)
-                build_ms = (perf_counter() - build_start) * 1000
-
-                await emit(
-                    {
-                        "type": "progress",
-                        "node": "dedupe_result",
-                        "title": "匹配并标记重复经历",
+                    file_data = await extract_text(file, request_id)
+                    file_kind = _resolve_file_kind(file)
+                    common_parse_kwargs = {
+                        "file_data": file_data,
+                        "filename": file.filename or "resume",
+                        "file_mime_type": _resolve_file_mime(file, file_kind),
+                        "request_id": request_id,
+                        "progress_callback": emit,
                     }
-                )
-                dedupe_start = perf_counter()
-                existing = await fetch_existing_experiences(session, current_user.id)
-                enriched = apply_duplicate_flags(items, existing)
-                enriched = await apply_semantic_duplicate_flags(
-                    enriched,
-                    existing,
-                    request_id=request_id,
-                )
-                dedupe_ms = (perf_counter() - dedupe_start) * 1000
+                    if enable_thinking is True:
+                        payload = await parse_resume_with_thoughts(
+                            **common_parse_kwargs,
+                            thought_callback=emit,
+                        )
+                    else:
+                        payload = await parse_resume(**common_parse_kwargs)
 
-                response_payload = ResumeParseResponse(
-                    items=enriched,
-                    personal_info=normalize_personal_info(payload),
-                    certifications=normalize_certifications(payload),
-                    skills=normalize_skill_groups(payload),
-                )
+                    build_start = perf_counter()
+                    items = build_resume_items(payload)
+                    build_ms = (perf_counter() - build_start) * 1000
+
+                    await emit(
+                        {
+                            "type": "progress",
+                            "node": "dedupe_result",
+                            "title": "匹配并标记重复经历",
+                        }
+                    )
+                    dedupe_start = perf_counter()
+                    existing = await fetch_existing_experiences(session, current_user.id)
+                    enriched = apply_duplicate_flags(items, existing)
+                    enriched = await apply_semantic_duplicate_flags(
+                        enriched,
+                        existing,
+                        request_id=request_id,
+                    )
+                    dedupe_ms = (perf_counter() - dedupe_start) * 1000
+
+                    response_payload = ResumeParseResponse(
+                        items=enriched,
+                        personal_info=normalize_personal_info(payload),
+                        certifications=normalize_certifications(payload),
+                        skills=normalize_skill_groups(payload),
+                    )
                 await emit(
                     {"type": "progress", "node": "finalize", "title": "生成可导入结果"}
                 )

@@ -12,6 +12,7 @@ from .domain.account.account_router import router as account_router
 from .domain.agent.agent_router import router as agent_router
 from .domain.ai.ai_router import router as ai_router
 from .domain.assistant.assistant_router import router as assistant_router
+from .domain.billing.billing_router import router as billing_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
 from .domain.experience.draft_router import router as experience_draft_router
@@ -30,6 +31,7 @@ from contextlib import asynccontextmanager
 from .database import (
     ensure_agent_api_keys_table,
     ensure_ai_assistant_tables,
+    ensure_ai_token_billing_tables,
     ensure_experience_drafts_table,
     ensure_experience_version_tags_column,
     ensure_feedback_contact_type_column,
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI):
         await ensure_export_render_snapshots_table()
         await ensure_ai_assistant_tables()
         await ensure_agent_api_keys_table()
+        await ensure_ai_token_billing_tables()
         await ensure_feedback_contact_type_column()
         await ensure_feedback_images_column()
     except Exception as e:
@@ -93,6 +96,7 @@ app.include_router(certifications_router)
 app.include_router(agent_router)
 app.include_router(ai_router)
 app.include_router(assistant_router)
+app.include_router(billing_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
 app.include_router(export_router)

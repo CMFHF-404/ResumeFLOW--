@@ -223,6 +223,53 @@ class AgentPluginConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
+class AITokenWallet(SQLModel, table=True):
+    __tablename__ = "ai_token_wallets"
+
+    user_id: str = Field(primary_key=True, foreign_key="users.id")
+    token_limit: int = Field(default=0, nullable=False)
+    remaining_tokens: int = Field(default=0, nullable=False)
+    used_tokens: int = Field(default=0, nullable=False)
+    last_purchase_id: Optional[uuid.UUID] = Field(default=None, index=True)
+    last_purchase_tokens: int = Field(default=0, nullable=False)
+    last_purchase_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class AITokenUsageEvent(SQLModel, table=True):
+    __tablename__ = "ai_token_usage_events"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    entrypoint: str = Field(default="unknown", sa_column=Column(Text, nullable=False))
+    request_label: str = Field(default="ai_request", sa_column=Column(Text, nullable=False))
+    provider: str = Field(default="unknown", sa_column=Column(Text, nullable=False))
+    model: str = Field(default="", sa_column=Column(Text, nullable=False))
+    status: str = Field(default="success", sa_column=Column(Text, nullable=False))
+    prompt_tokens: int = Field(default=0, nullable=False)
+    completion_tokens: int = Field(default=0, nullable=False)
+    total_tokens: int = Field(default=0, nullable=False)
+    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class AITokenPurchaseEvent(SQLModel, table=True):
+    __tablename__ = "ai_token_purchase_events"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    option_id: str = Field(sa_column=Column(Text, nullable=False))
+    label: str = Field(sa_column=Column(Text, nullable=False))
+    tokens: int = Field(nullable=False)
+    status: str = Field(default="placeholder_succeeded", sa_column=Column(Text, nullable=False))
+    before_remaining_tokens: int = Field(default=0, nullable=False)
+    after_remaining_tokens: int = Field(default=0, nullable=False)
+    before_token_limit: int = Field(default=0, nullable=False)
+    after_token_limit: int = Field(default=0, nullable=False)
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 class ExportRenderSnapshot(SQLModel, table=True):
     __tablename__ = "export_render_snapshots"
 
