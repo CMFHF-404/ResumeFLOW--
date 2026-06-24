@@ -40,6 +40,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     onEvent,
     onParsedEvent,
     getFinalResult,
+    signal,
 }: {
     path: string;
     body: BodyInit;
@@ -47,6 +48,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     onEvent?: (event: TEvent) => void;
     onParsedEvent?: (event: TEvent) => void;
     getFinalResult: (event: TEvent) => TResult | null;
+    signal?: AbortSignal;
 }): Promise<TResult> => {
     const headers = await createStreamHeaders(contentType);
 
@@ -54,6 +56,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
         method: 'POST',
         headers,
         body,
+        signal,
     });
 
     ensureStreamResponseOk(response);

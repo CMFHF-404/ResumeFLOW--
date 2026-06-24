@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bot, Check, RotateCcw, Sparkles } from 'lucide-react';
 import type { PolishMode } from '../services/aiService';
+import { SmoothHeightContainer } from './SmoothHeightContainer';
 
 type ToolbarMode = Exclude<PolishMode, 'assistant'>;
 
@@ -34,6 +35,8 @@ export type AIPolishToolbarProps = {
   onOpenAssistant: () => void;
   className?: string;
   compact?: boolean;
+  thinkingText?: string;
+  onStop?: () => void;
 };
 
 const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];
@@ -90,6 +93,8 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   onOpenAssistant,
   className,
   compact = false,
+  thinkingText,
+  onStop,
 }) => {
   const hasPreviewContent = Boolean(previewContent);
   const previewHeading = previewTitle ?? 'AI 润色结果';
@@ -100,6 +105,29 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   const resolvedConfirmLabel = confirmLabel ?? '确认';
   const modeDescriptions = hasJdContext ? MODE_DESCRIPTIONS_WITH_JD : MODE_DESCRIPTIONS_NO_JD;
   const modeDescription = runHint ?? modeDescriptions[activeMode];
+  const canStopRunning = isRunning && typeof onStop === 'function' && !isPreviewing;
+
+  if (canStopRunning) {
+    return (
+      <div className={`flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 backdrop-blur-sm dark:bg-primary-dark/10 transition-all duration-300 ${className ?? ''}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+          <Sparkles className="h-4 w-4 shrink-0 animate-spin text-primary" />
+          <SmoothHeightContainer className="flex-1 min-w-0">
+            <span className="break-all whitespace-pre-wrap font-semibold leading-relaxed block">
+              思考中：{thinkingText || '正在进行 AI 润色...'}
+            </span>
+          </SmoothHeightContainer>
+        </div>
+        <button
+          type="button"
+          onClick={onStop}
+          className="flex shrink-0 items-center gap-1 rounded bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400"
+        >
+          停止
+        </button>
+      </div>
+    );
+  }
 
   if (isPreviewing) {
     return (

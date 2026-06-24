@@ -269,6 +269,25 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             "https://responses.example.com/compatible-mode/v1",
         )
 
+    def test_load_settings_defaults_jd_thinking_budget_to_fast_half_budget(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+            },
+            clear=True,
+        ):
+            with patch.object(config_module, "_load_env", return_value=None):
+                config_module._settings = None
+                try:
+                    settings = config_module.load_settings()
+                finally:
+                    config_module._settings = None
+
+        self.assertEqual(settings.ai_thinking_budget_jd_analysis, 2048)
+
     def test_load_settings_derives_qwen_responses_base_url_from_ai_base_url(self) -> None:
         with patch.dict(
             os.environ,

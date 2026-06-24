@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { ToastConfig } from '../../../components/Toast';
 import { aiService, type PolishMode } from '../../../services/aiService';
 import type { ExperienceEditDraft, ResumeExperienceView } from '../../../types/resume';
@@ -22,6 +22,13 @@ import type { FloatingExperiencePolishSessionItem } from './useFloatingExperienc
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
 type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
+
+const isAbortError = (error: unknown) => (
+    typeof error === 'object'
+    && error !== null
+    && 'name' in error
+    && (error as { name?: unknown }).name === 'AbortError'
+);
 
 type UseFloatingExperiencePolishActionsParams = {
     activeFloatingPolishExperienceId: string | null;
@@ -50,6 +57,8 @@ type UseFloatingExperiencePolishActionsParams = {
     showToastError: (message: string) => void;
     showToastLoading: (message: string) => string;
     updateToast: UpdateToast;
+    showToastSuccess?: (message: string, duration?: number) => string;
+    closeToast: (id: string) => void;
 };
 
 export const useFloatingExperiencePolishActions = ({
@@ -71,11 +80,35 @@ export const useFloatingExperiencePolishActions = ({
     showToastError,
     showToastLoading,
     updateToast,
+    showToastSuccess,
+    closeToast,
 }: UseFloatingExperiencePolishActionsParams) => {
+    const [floatingThinkingText, setFloatingThinkingText] = useState('');
+    const floatingAbortControllerRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (floatingAbortControllerRef.current) {
+                floatingAbortControllerRef.current.abort();
+            }
+        };
+    }, []);
+
+    const handleStopFloating = useCallback(() => {
+        if (floatingAbortControllerRef.current) {
+            floatingAbortControllerRef.current.abort();
+            floatingAbortControllerRef.current = null;
+        }
+        setIsFloatingExperiencePolishRunning(false);
+        setFloatingThinkingText('');
+    }, [setIsFloatingExperiencePolishRunning]);
+
     const handleRunFloatingExperiencePolish = useCallback(async () => {
         if (!activeFloatingPolishExperienceId || floatingExperiencePolishRunningRef.current) {
             return;
         }
+        floatingAbortControllerRef.current = new AbortController();
+        setFloatingThinkingText('');
         const targetItem = experienceItems.find((item) => item.id === activeFloatingPolishExperienceId);
         if (!targetItem) {
             return;
@@ -88,10 +121,11 @@ export const useFloatingExperiencePolishActions = ({
         }
 
         const draft = buildExperienceEditDraft(targetItem);
-        const toastId = showToastLoading('正在为简历预览生成润色结果...');
+        let toastId: string | null = null;
         let hasError = false;
         let applied = false;
         let requestedSmartCompletion = false;
+        let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
 
@@ -111,14 +145,12 @@ export const useFloatingExperiencePolishActions = ({
                 }),
                 entrySource: 'resume_editor',
             }, (event) => {
-                if (event.type !== 'thought') {
-                    return;
+                if (event.type === 'thought') {
+                    if (event.summary) {
+                        setFloatingThinkingText(event.summary);
+                    }
                 }
-                const title = extractThoughtHeadline(event.summary);
-                if (title) {
-                    updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
-                }
-            });
+            }, floatingAbortControllerRef.current?.signal);
 
             if (shouldAskBeforeSmartCompletionRewrite(floatingPolishMode, result)) {
                 requestedSmartCompletion = true;
@@ -134,17 +166,31 @@ export const useFloatingExperiencePolishActions = ({
                 setFloatingSmartCompletionPrompt(null);
             }
         } catch (error) {
+            if (isAbortError(error)) {
+                wasAborted = true;
+                return;
+            }
             hasError = true;
             console.error('[ResumeEditor] 浮动润色预览失败:', error);
         } finally {
+            if (wasAborted) {
+                floatingExperiencePolishRunningRef.current = false;
+                setIsFloatingExperiencePolishRunning(false);
+                setFloatingThinkingText('');
+                floatingAbortControllerRef.current = null;
+                return;
+            }
+            const message = hasError
+                ? 'AI 润色失败，请稍后重试'
+                : applied
+                    ? '已生成润色预览结果，请在右侧简历中确认'
+                    : 'AI 已完成润色，但没有生成可用调整';
+            const duration = 2500;
+
             if (hasError) {
-                updateToast(toastId, { message: 'AI 润色失败，请稍后重试', type: 'error', duration: 3000 });
-            } else if (applied) {
-                updateToast(toastId, { message: '已同步到简历预览，请确认或撤销', type: 'success', duration: 2500 });
-            } else if (requestedSmartCompletion) {
-                updateToast(toastId, { message: '请在智能补全卡片内补充信息后再执行', type: 'success', duration: 2500 });
+                showToastError(message);
             } else {
-                updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
+                showToastSuccess?.(message, duration);
             }
             trackAiPolishResult({
                 source: 'resume_editor',
@@ -154,52 +200,52 @@ export const useFloatingExperiencePolishActions = ({
             });
             floatingExperiencePolishRunningRef.current = false;
             setIsFloatingExperiencePolishRunning(false);
+            setFloatingThinkingText('');
+            floatingAbortControllerRef.current = null;
         }
     }, [
         activeFloatingPolishExperienceId,
         applyFloatingPolishPreview,
         buildFloatingPolishSessionItem,
         experienceItems,
-        floatingExperiencePolishRunningRef,
         floatingPolishCustomPrompt,
         floatingPolishMode,
         floatingSmartCompletionPrompt,
         jdCapabilityPolishContext,
         jdPolishContext,
-        setFloatingSmartCompletionPrompt,
+        floatingExperiencePolishRunningRef,
         setIsFloatingExperiencePolishRunning,
+        setFloatingSmartCompletionPrompt,
         showToastError,
         showToastLoading,
         updateToast,
+        showToastSuccess,
+        closeToast,
     ]);
 
     const handleRunBatchExperiencePolish = useCallback(async () => {
-        if (floatingExperiencePolishRunningRef.current) {
+        const targetItems = experienceItems.filter((item) => selectedExpIds.has(item.id));
+        if (targetItems.length === 0 || floatingExperiencePolishRunningRef.current) {
             return;
         }
+
         const trimmedJd = jdPolishContext.trim();
         if (!trimmedJd) {
             showToastError('请先填写 JD 再润色');
             return;
         }
-        if (floatingPolishMode === 'smart_complete') {
-            setFloatingPolishMode(defaultFloatingPolishMode);
-            setFloatingSmartCompletionPrompt(null);
-            showToastError('批量润色暂不支持智能补全，请使用单条经历补充事实');
-            return;
-        }
-        const targetItems = experienceItems.filter((item) => selectedExpIds.has(item.id));
-        if (!targetItems.length) {
-            showToastError('请先至少选中一条经历');
-            return;
-        }
 
         const toastId = showToastLoading('正在批量润色中……');
         let hasError = false;
+        let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
+        let sessionItems: FloatingExperiencePolishSessionItem[] = [];
+        let failedItemCount = 0;
 
         try {
+            floatingAbortControllerRef.current = new AbortController();
+            setFloatingThinkingText('');
             floatingExperiencePolishRunningRef.current = true;
             setIsFloatingExperiencePolishRunning(true);
             trackAiPolishStart({ source: 'resume_editor', field: 'all' });
@@ -215,14 +261,15 @@ export const useFloatingExperiencePolishActions = ({
                         customPrompt: floatingPolishCustomPrompt,
                     }),
                     entrySource: 'resume_editor',
-                });
+                }, undefined, floatingAbortControllerRef.current?.signal);
 
                 const nextDraft = buildPolishedExperienceDraft(draft, result);
                 return buildFloatingPolishSessionItem(item, nextDraft, draft);
             }));
 
-            const sessionItems: FloatingExperiencePolishSessionItem[] = [];
+            sessionItems = [];
             const failedIds: string[] = [];
+            const abortedIds: string[] = [];
             const unchangedIds: string[] = [];
 
             results.forEach((result, index) => {
@@ -238,34 +285,44 @@ export const useFloatingExperiencePolishActions = ({
                     }
                     return;
                 }
+                if (isAbortError(result.reason)) {
+                    abortedIds.push(targetId);
+                    return;
+                }
                 failedIds.push(targetId);
             });
 
+            if (abortedIds.length > 0) {
+                wasAborted = true;
+                updateToast(toastId, { message: '已停止批量润色', type: 'info', duration: 2000 });
+                return;
+            }
             if (sessionItems.length > 0) {
                 applyFloatingPolishPreview('batch', sessionItems, failedIds);
                 action = 'applied';
-                updateToast(toastId, {
-                    message: failedIds.length > 0
-                        ? `已完成 ${sessionItems.length} 条，${failedIds.length} 条失败，请确认可用结果`
-                        : '批量润色完成，请确认是否保存',
-                    type: 'success',
-                    duration: 2500,
-                });
-            } else if (unchangedIds.length > 0 && failedIds.length === 0) {
+            }
+            if (failedIds.length > 0) {
+                failedItemCount = failedIds.length;
+                if (sessionItems.length === 0) {
+                    updateToast(toastId, {
+                        message: `批量润色失败，${failedIds.length} 条经历未成功，请稍后重试`,
+                        type: 'error',
+                        duration: 3000,
+                    });
+                }
+            } else if (sessionItems.length === 0 && unchangedIds.length > 0) {
                 updateToast(toastId, {
                     message: 'AI 已完成批量润色，但没有生成可用调整',
                     type: 'success',
                     duration: 2500,
                 });
-            } else {
-                hasError = true;
-                updateToast(toastId, {
-                    message: '批量润色失败，请稍后重试',
-                    type: 'error',
-                    duration: 3000,
-                });
             }
         } catch (error) {
+            if (isAbortError(error)) {
+                wasAborted = true;
+                updateToast(toastId, { message: '已停止批量润色', type: 'info', duration: 2000 });
+                return;
+            }
             hasError = true;
             console.error('[ResumeEditor] 批量润色失败:', error);
             updateToast(toastId, {
@@ -274,6 +331,13 @@ export const useFloatingExperiencePolishActions = ({
                 duration: 3000,
             });
         } finally {
+            if (wasAborted) {
+                floatingExperiencePolishRunningRef.current = false;
+                setIsFloatingExperiencePolishRunning(false);
+                setFloatingThinkingText('');
+                floatingAbortControllerRef.current = null;
+                return;
+            }
             if (!hasError) {
                 trackAiPolishResult({
                     source: 'resume_editor',
@@ -281,30 +345,30 @@ export const useFloatingExperiencePolishActions = ({
                     action,
                     durationMs: Date.now() - startTime,
                 });
-            } else {
-                trackAiPolishResult({
-                    source: 'resume_editor',
-                    field: 'all',
-                    action: 'discarded',
-                    durationMs: Date.now() - startTime,
-                });
+                if (sessionItems.length > 0) {
+                    updateToast(toastId, {
+                        message: failedItemCount > 0
+                            ? `已完成 ${sessionItems.length} 条，${failedItemCount} 条失败，请确认可用结果`
+                            : '批量润色结果已应用到简历预览',
+                        type: 'success',
+                        duration: 2500,
+                    });
+                }
             }
             floatingExperiencePolishRunningRef.current = false;
             setIsFloatingExperiencePolishRunning(false);
+            setFloatingThinkingText('');
+            floatingAbortControllerRef.current = null;
         }
     }, [
         applyFloatingPolishPreview,
         buildFloatingPolishSessionItem,
-        defaultFloatingPolishMode,
         experienceItems,
-        floatingExperiencePolishRunningRef,
         floatingPolishCustomPrompt,
         floatingPolishMode,
-        jdPolishContext,
-        selectedExpIds,
-        setFloatingPolishMode,
-        setFloatingSmartCompletionPrompt,
+        floatingExperiencePolishRunningRef,
         setIsFloatingExperiencePolishRunning,
+        selectedExpIds,
         showToastError,
         showToastLoading,
         updateToast,
@@ -313,5 +377,7 @@ export const useFloatingExperiencePolishActions = ({
     return {
         handleRunFloatingExperiencePolish,
         handleRunBatchExperiencePolish,
+        floatingThinkingText,
+        handleStopFloating,
     };
 };

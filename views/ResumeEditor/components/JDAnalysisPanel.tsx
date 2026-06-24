@@ -34,6 +34,7 @@ import JDAttachmentUploader, {
     isAcceptedJDAttachmentFile,
     prepareJDAttachmentFile,
 } from './JDAttachmentUploader';
+import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
 const JD_PANEL_CONTENT_ID = 'jd-analysis-panel-content';
 const Pill: React.FC<{ children: React.ReactNode; tone?: 'emerald' | 'slate' | 'amber' }> = ({
@@ -324,6 +325,8 @@ type JDAnalysisPanelProps = {
     debugInfo?: any;
     showDebugInfo?: boolean;
     isOutdated?: boolean;
+    thinkingText?: string;
+    onStopAnalyze?: () => void;
 };
 
 type JDAnalysisDetailsModalProps = {
@@ -628,7 +631,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     debugInfo,
     showDebugInfo = false,
     isOutdated = false,
+    thinkingText,
+    onStopAnalyze,
 }) => {
+    const jdAnalysisMotion = useJDAnalysisMotion(isAnalyzing);
     const collapsedProfileTags = useMemo(
         () => buildProfileTags(analysisResult?.jdInterpretation),
         [analysisResult?.jdInterpretation]
@@ -778,84 +784,104 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
             </div>
             <div className="px-4" id={JD_PANEL_CONTENT_ID}>
                 {isCollapsed ? (
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                {isOutdated ? (
-                                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                                        待更新
-                                    </span>
-                                ) : (
-                                    <MatchBadge
-                                        score={analysisResult?.matchPercentage ?? 0}
-                                        trend={analysisResult?.matchTrend}
-                                    />
-                                )}
-                                <button
-                                    onClick={onAnalyze}
-                                    disabled={isAnalyzing}
-                                    className="p-1 text-gray-400 hover:text-emerald-600"
-                                >
-                                    <RefreshCw className={`h-3 w-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                </button>
+                    jdAnalysisMotion.shouldRenderStatus ? (
+                        <div className={`flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 dark:bg-primary-dark/10 transition-all duration-300 ease-in-out ${jdAnalysisMotion.statusMotionClass}`}>
+                            <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] text-gray-700 dark:text-gray-300">
+                                <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+                                <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-relaxed">
+                                    思考中：{thinkingText || '正在分析岗位要求...'}
+                                </span>
                             </div>
-                            <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
-                                <div className="truncate text-[12px] font-semibold text-gray-800 dark:text-gray-100">
-                                    {collapsedTitle}
+                            <button
+                                type="button"
+                                onClick={onStopAnalyze}
+                                disabled={!isAnalyzing || !onStopAnalyze}
+                                className="flex shrink-0 items-center gap-1 rounded bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-60 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60"
+                            >
+                                <X className="h-3 w-3" />
+                                停止
+                            </button>
+                        </div>
+                    ) : (
+                        <div className={`space-y-2 ${jdAnalysisMotion.idleControlsMotionClass}`}>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    {isOutdated ? (
+                                        <span className="inline-flex items-center whitespace-nowrap rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                                            待更新
+                                        </span>
+                                    ) : (
+                                        <MatchBadge
+                                            score={analysisResult?.matchPercentage ?? 0}
+                                            trend={analysisResult?.matchTrend}
+                                        />
+                                    )}
+                                    <button
+                                        onClick={onAnalyze}
+                                        disabled={isAnalyzing}
+                                        className="p-1 text-gray-400 hover:text-emerald-600"
+                                    >
+                                        <RefreshCw className={`h-3 w-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                    </button>
                                 </div>
-                                {collapsedMeta ? (
-                                    <div className="truncate text-[11px] text-gray-500 dark:text-gray-400">
-                                        {collapsedMeta}
+                                <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
+                                    <div className="truncate text-[12px] font-semibold text-gray-800 dark:text-gray-100">
+                                        {collapsedTitle}
                                     </div>
-                                ) : (
-                                    <div className="flex flex-wrap gap-1 overflow-hidden">
-                                        {collapsedProfileTags.length > 0 ? (
-                                            collapsedProfileTags.slice(0, 3).map((tag) => (
-                                                <span
-                                                    key={tag}
-                                                    className="rounded bg-gray-100 px-2 py-1 text-[11.5px] text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                                                >
-                                                    {tag}
+                                    {collapsedMeta ? (
+                                        <div className="truncate text-[11px] text-gray-500 dark:text-gray-400">
+                                            {collapsedMeta}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-1 overflow-hidden">
+                                            {collapsedProfileTags.length > 0 ? (
+                                                collapsedProfileTags.slice(0, 3).map((tag) => (
+                                                    <span
+                                                        key={tag}
+                                                        className="rounded bg-gray-100 px-2 py-1 text-[11.5px] text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                                    >
+                                                        {tag}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="rounded bg-gray-100 px-2 py-1 text-[11.5px] text-gray-400 dark:bg-gray-800">
+                                                    暂无 JD 解读
                                                 </span>
-                                            ))
-                                        ) : (
-                                            <span className="rounded bg-gray-100 px-2 py-1 text-[11.5px] text-gray-400 dark:bg-gray-800">
-                                                暂无 JD 解读
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {analysisResult ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsDetailsModalOpen(true)}
+                                        className="shrink-0 rounded-md border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-800/70 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                                    >
+                                        查看分析详情
+                                    </button>
+                                ) : null}
                             </div>
-                            {analysisResult ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsDetailsModalOpen(true)}
-                                    className="shrink-0 rounded-md border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-800/70 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                                >
-                                    查看分析详情
-                                </button>
+                            {analysisResult?.summary ? (
+                                <div className="space-y-2">
+                                    <p className="text-[11.5px] leading-relaxed text-emerald-800 dark:text-emerald-300/80">
+                                        {analysisResult.summary}
+                                        <CapabilityFollowUpCommentLine analysisResult={analysisResult} />
+                                    </p>
+                                    <BossGreetingSection
+                                        analysisResult={analysisResult}
+                                        bossGreeting={bossGreeting}
+                                        isBossGreetingVisible={isBossGreetingVisible}
+                                        isBossGreetingOutdated={isBossGreetingOutdated}
+                                        isGeneratingBossGreeting={isGeneratingBossGreeting}
+                                        onGenerateBossGreeting={onGenerateBossGreeting}
+                                        onRefreshBossGreeting={onRefreshBossGreeting}
+                                        onCopyBossGreeting={onCopyBossGreeting}
+                                        onCollapseBossGreeting={onCollapseBossGreeting}
+                                    />
+                                </div>
                             ) : null}
                         </div>
-                        {analysisResult?.summary ? (
-                            <div className="space-y-2">
-                                <p className="text-[11.5px] leading-relaxed text-emerald-800 dark:text-emerald-300/80">
-                                    {analysisResult.summary}
-                                    <CapabilityFollowUpCommentLine analysisResult={analysisResult} />
-                                </p>
-                                <BossGreetingSection
-                                    analysisResult={analysisResult}
-                                    bossGreeting={bossGreeting}
-                                    isBossGreetingVisible={isBossGreetingVisible}
-                                    isBossGreetingOutdated={isBossGreetingOutdated}
-                                    isGeneratingBossGreeting={isGeneratingBossGreeting}
-                                    onGenerateBossGreeting={onGenerateBossGreeting}
-                                    onRefreshBossGreeting={onRefreshBossGreeting}
-                                    onCopyBossGreeting={onCopyBossGreeting}
-                                    onCollapseBossGreeting={onCollapseBossGreeting}
-                                />
-                            </div>
-                        ) : null}
-                    </div>
+                    )
                 ) : (
                     <div className="animate-in space-y-3 fade-in slide-in-from-top-2">
                         <div
@@ -878,21 +904,41 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 onChange={(event) => onJdTextChange(event.target.value)}
                                 onPaste={handleTextareaPaste}
                             />
-                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                                <JDAttachmentUploader
-                                    file={jdFile}
-                                    onFileChange={onFileChange}
-                                    disabled={isAnalyzing}
-                                />
-                                <button
-                                    onClick={onAnalyze}
-                                    disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
-                                    className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
-                                >
-                                    <Wand2 className="h-3 w-3" />
-                                    {isAnalyzing ? '分析中...' : '开始分析'}
-                                </button>
-                            </div>
+                            {jdAnalysisMotion.shouldRenderStatus ? (
+                                <div className={`absolute bottom-3 right-3 left-3 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-1.5 backdrop-blur-sm dark:bg-primary-dark/10 transition-all duration-300 ease-in-out ${jdAnalysisMotion.statusMotionClass}`}>
+                                    <div className="flex min-w-0 flex-1 items-center gap-2 text-[11.5px] text-gray-700 dark:text-gray-300">
+                                        <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+                                        <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-relaxed">
+                                            思考中：{thinkingText || '正在分析岗位要求...'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={onStopAnalyze}
+                                        disabled={!isAnalyzing || !onStopAnalyze}
+                                        className="flex shrink-0 items-center gap-1 rounded bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-60 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60"
+                                    >
+                                        <X className="h-3 w-3" />
+                                        停止
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className={`absolute bottom-3 right-3 flex items-center gap-2 ${jdAnalysisMotion.idleControlsMotionClass}`}>
+                                    <JDAttachmentUploader
+                                        file={jdFile}
+                                        onFileChange={onFileChange}
+                                        disabled={isAnalyzing}
+                                    />
+                                    <button
+                                        onClick={onAnalyze}
+                                        disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
+                                        className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
+                                    >
+                                        <Wand2 className="h-3 w-3" />
+                                        开始分析
+                                    </button>
+                                </div>
+                            )}
                             {isAttachmentDragOver ? (
                                 <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-lg border border-dashed border-emerald-300 bg-emerald-50/70 text-xs font-medium text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
                                     松开以上传为 JD 附件

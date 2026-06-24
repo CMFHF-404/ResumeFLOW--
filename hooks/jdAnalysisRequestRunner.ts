@@ -38,11 +38,13 @@ export type JDAnalyzeRequestSnapshot = {
 export type JDAnalysisRequestService = {
   analyzeJD: (
     params: AnalyzeJDParams,
-    onEvent?: (event: AnalyzeStreamEvent) => void
+    onEvent?: (event: AnalyzeStreamEvent) => void,
+    signal?: AbortSignal
   ) => Promise<JDAnalysisResult>;
   analyzeJDWithAttachment: (
     params: AnalyzeJDWithAttachmentParams,
-    onEvent?: (event: AnalyzeStreamEvent) => void
+    onEvent?: (event: AnalyzeStreamEvent) => void,
+    signal?: AbortSignal
   ) => Promise<JDAnalysisResult>;
 };
 
@@ -54,6 +56,7 @@ type RunJDAnalysisRequestParams = {
   onProgress?: JDAnalyzeProgressHandler;
   onEvent?: JDAnalyzeStreamHandler;
   service: JDAnalysisRequestService;
+  signal?: AbortSignal;
 };
 
 export type RunJDAnalysisRequestResult = {
@@ -87,6 +90,7 @@ export const runJDAnalysisRequest = async ({
   onProgress,
   onEvent,
   service,
+  signal,
 }: RunJDAnalysisRequestParams): Promise<RunJDAnalysisRequestResult> => {
   const payload = buildAnalyzePayload(
     snapshot.experiences,
@@ -117,14 +121,14 @@ export const runJDAnalysisRequest = async ({
       experienceText: snapshot.experienceText,
       prevResult: shouldUsePrev ? prevResultPayload : undefined,
       prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-    }, handleEvent)
+    }, handleEvent, signal)
     : await service.analyzeJD({
       text: snapshot.jdText,
       resumeText,
       prevResult: shouldUsePrev ? prevResultPayload : undefined,
       experienceText: snapshot.experienceText,
       prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-    }, handleEvent);
+    }, handleEvent, signal);
   const extractedAttachmentText = currentFile
     ? result.extractedJdText?.trim() ?? ""
     : "";

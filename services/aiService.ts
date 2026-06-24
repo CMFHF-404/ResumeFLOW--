@@ -486,6 +486,7 @@ const streamAnalyzeRequest = async (
         onEvent?: (event: AnalyzeStreamEvent) => void;
         onProgress?: (event: AnalyzeProgressEvent) => void;
         contentType?: string | null;
+        signal?: AbortSignal;
     } = {}
 ): Promise<JDAnalysisResult> => {
     return postStreamRequest<AnalyzeStreamEvent, JDAnalysisResult>({
@@ -493,6 +494,7 @@ const streamAnalyzeRequest = async (
         body,
         contentType: options.contentType,
         onEvent: options.onEvent,
+        signal: options.signal,
         onParsedEvent: (parsed) => {
             if (parsed.type === 'progress') {
                 options.onProgress?.(parsed);
@@ -511,6 +513,7 @@ const streamPolishRequest = async (
     payload: Record<string, unknown>,
     options: {
         onEvent?: (event: PolishStreamEvent) => void;
+        signal?: AbortSignal;
     } = {}
 ): Promise<PolishExperienceResponse> => {
     return postStreamRequest<PolishStreamEvent, PolishExperienceResponse>({
@@ -518,6 +521,7 @@ const streamPolishRequest = async (
         body: JSON.stringify(payload),
         contentType: 'application/json',
         onEvent: options.onEvent,
+        signal: options.signal,
         getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
                 return parsed.result;
@@ -638,7 +642,8 @@ export const aiService = {
 
     async polishExperienceStream(
         data: PolishExperiencePayload,
-        onEvent?: (event: PolishStreamEvent) => void
+        onEvent?: (event: PolishStreamEvent) => void,
+        signal?: AbortSignal
     ) {
         const { rawText, ...rest } = data.content;
         const payload = {
@@ -652,7 +657,7 @@ export const aiService = {
             ...(data.customPrompt ? { custom_prompt: data.customPrompt } : {}),
             ...(data.entrySource ? { entry_source: data.entrySource } : {}),
         };
-        return streamPolishRequest(payload, { onEvent });
+        return streamPolishRequest(payload, { onEvent, signal });
     },
 
     async listAssistantSessions() {
@@ -751,7 +756,7 @@ export const aiService = {
         prevResult,
         experienceText,
         prevExperienceText,
-    }: AnalyzeJDParams, onEvent?: (event: AnalyzeStreamEvent) => void) {
+    }: AnalyzeJDParams, onEvent?: (event: AnalyzeStreamEvent) => void, signal?: AbortSignal) {
         const payload = {
             text,
             resume_text: resumeText,
@@ -762,6 +767,7 @@ export const aiService = {
         return streamAnalyzeRequest('/api/analyze-jd/stream', JSON.stringify(payload), {
             onEvent,
             contentType: 'application/json',
+            signal,
         });
     },
 
@@ -825,7 +831,7 @@ export const aiService = {
         experienceText,
         prevResult,
         prevExperienceText,
-    }: AnalyzeJDWithAttachmentParams, onEvent?: (event: AnalyzeStreamEvent) => void): Promise<JDAnalysisResult> {
+    }: AnalyzeJDWithAttachmentParams, onEvent?: (event: AnalyzeStreamEvent) => void, signal?: AbortSignal): Promise<JDAnalysisResult> {
         const formData = new FormData();
         formData.append('file', file);
         if (jdText) {
@@ -846,6 +852,7 @@ export const aiService = {
         return streamAnalyzeRequest('/api/analyze-jd-attachment/stream', formData, {
             onEvent,
             contentType: null,
+            signal,
         });
     },
 };

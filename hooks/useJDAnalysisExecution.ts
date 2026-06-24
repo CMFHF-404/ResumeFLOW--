@@ -33,6 +33,7 @@ export type JDAnalyzeOutcome =
   | { status: "success"; result: JDAnalysisResult }
   | { status: "no_change" }
   | { status: "missing_attachment" }
+  | { status: "aborted" }
   | { status: "error" };
 
 export type JDAnalyzeProgressHandler = (node: JDAnalyzeProgressNode) => void;
@@ -74,7 +75,15 @@ export type JDAnalysisExecutionParams = {
   trackComplete?: typeof trackJDAnalysisComplete;
   now?: () => number;
   logError?: (...args: unknown[]) => void;
+  signal?: AbortSignal;
 };
+
+const isAbortError = (error: unknown) => (
+  typeof error === "object"
+  && error !== null
+  && "name" in error
+  && (error as { name?: unknown }).name === "AbortError"
+);
 
 export const runJDAnalysisExecution = async ({
   mode = "full",
@@ -101,6 +110,7 @@ export const runJDAnalysisExecution = async ({
   trackComplete = trackJDAnalysisComplete,
   now = Date.now,
   logError = console.error,
+  signal,
 }: JDAnalysisExecutionParams): Promise<JDAnalyzeOutcome> => {
   if (mode === "partial" && !hasDiff(diff)) {
     return { status: "no_change" };
@@ -126,6 +136,7 @@ export const runJDAnalysisExecution = async ({
       onProgress,
       onEvent,
       service,
+      signal,
     });
     const latestSnapshot = buildAnalyzeSnapshot();
     const changedDuringAnalyze = recordPostAnalyzeDiff(
@@ -191,6 +202,9 @@ export const runJDAnalysisExecution = async ({
     }
     return { status: "success", result: finalResult };
   } catch (error) {
+    if (isAbortError(error)) {
+      return { status: "aborted" };
+    }
     logError("Failed to analyze JD", error);
     return { status: "error" };
   } finally {

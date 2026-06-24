@@ -565,6 +565,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         hasMissingAttachmentContext,
         debugInfo,
         isOutdated,
+        thinkingText,
+        handleStopAnalysis,
     } = useJDAnalysis({
         resumeId,
         experienceItems,
@@ -770,6 +772,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         handleUndoBatchExperiencePolish,
         floatingPolishHighlightItemIds,
         isPreviewInteractionLocked,
+        editingThinkingText,
+        handleStopEditing,
+        floatingThinkingText,
+        handleStopFloating,
     } = useResumeEditorExperiencePolishCoordinator({
         resumeId,
         isLoadingExperiences,
@@ -788,6 +794,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastError,
         showToastLoading,
         updateToast,
+        showToastSuccess,
+        closeToast,
         resumeExperienceMap,
         experienceSourceMap,
         applyResumeDetail,
@@ -859,7 +867,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastLoading,
         showToastSuccess,
         updateToast,
+        closeToast,
     });
+    const handleStopAnalysisWithToast = useCallback(() => {
+        handleStopAnalysis();
+        showToastInfo('分析中止', 2000);
+    }, [handleStopAnalysis, showToastInfo]);
     const {
         beginProfileEdit,
         cancelProfileEdit,
@@ -1094,6 +1107,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onRunBatch: () => void handleRunBatchExperiencePolish(),
         onUndoBatch: handleUndoBatchExperiencePolish,
         onConfirmBatch: () => void handleConfirmBatchExperiencePolish(),
+        editingThinkingText,
+        onStopEditing: handleStopEditing,
+        floatingThinkingText,
+        onStopFloating: handleStopFloating,
     });
     const {
         isPreviewOverflowing,
@@ -1481,6 +1498,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             debugInfo,
             showDebugInfo,
             isOutdated,
+            thinkingText,
+            onStopAnalyze: handleStopAnalysisWithToast,
         },
         profileTabProps: {
             profile,
@@ -1640,6 +1659,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onJDCollapseChange={setIsJDCollapsed}
                     onLaunchAssistant={handleLaunchResumeAssistant}
                     canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
+                    thinkingText={thinkingText}
+                    onStopAnalyze={handleStopAnalysisWithToast}
                 />
             </div>
             <ResumeEditorDesktopWorkspace
