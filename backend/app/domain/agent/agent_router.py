@@ -16,6 +16,7 @@ from starlette.status import (
 from ...database import get_session
 from ...dependencies import get_current_user
 from ...auth_middleware import BEARER_PREFIX
+from ..billing import billing_service
 from ..export.browser_pdf_service import BrowserPdfRenderError, BrowserPdfRenderTimeoutError
 from .agent_service import (
     AgentAuthenticatedUser,
@@ -174,7 +175,14 @@ async def analyze_agent_job(
     session: AsyncSession = Depends(get_session),
     agent_user: AgentAuthenticatedUser = Depends(get_agent_user),
 ):
-    return await build_agent_job_analysis_or_raise(session, agent_user.id, payload)
+    async with billing_service.ai_billing_context(
+        session,
+        agent_user.id,
+        entrypoint="agent_job_analysis",
+        metadata={"route": "/agent/v1/jobs/analyze"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await build_agent_job_analysis_or_raise(session, agent_user.id, payload)
 
 
 @router.post("/v1/jobs/generate", response_model=AgentJobGenerateResponse)
@@ -184,7 +192,14 @@ async def generate_agent_job_resume(
     session: AsyncSession = Depends(get_session),
     agent_user: AgentAuthenticatedUser = Depends(get_agent_user),
 ):
-    analysis_build = await build_agent_job_analysis_detail_or_raise(session, agent_user.id, payload)
+    async with billing_service.ai_billing_context(
+        session,
+        agent_user.id,
+        entrypoint="agent_job_generate",
+        metadata={"route": "/agent/v1/jobs/generate"},
+    ):
+        await billing_service.ensure_current_quota()
+        analysis_build = await build_agent_job_analysis_detail_or_raise(session, agent_user.id, payload)
     analysis = analysis_build.response
     try:
         resume_pdf: AgentResumePdf = await build_agent_resume_pdf(

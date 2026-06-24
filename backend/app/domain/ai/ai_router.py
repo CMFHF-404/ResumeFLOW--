@@ -9,6 +9,7 @@ from starlette.status import HTTP_400_BAD_REQUEST
 
 from ...database import get_session
 from ...dependencies import get_current_user
+from ..billing import billing_service
 from ..resume.resume_service import NotFoundError, persist_resume_boss_greeting
 from .ai_service import (
     analyze_jd,
@@ -89,22 +90,33 @@ class GeneratePersonalSummaryRequest(BaseModel):
 @router.post("/analyze-jd", response_model=Dict[str, Any])
 async def analyze_jd_endpoint(
     payload: AnalyzeJDRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    return await analyze_jd(
-        payload.text,
-        payload.resume_text,
-        payload.prev_result,
-        payload.experience_text,
-        payload.prev_experience_text,
-    )
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="jd_analysis",
+        metadata={"route": "/api/analyze-jd"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await analyze_jd(
+            payload.text,
+            payload.resume_text,
+            payload.prev_result,
+            payload.experience_text,
+            payload.prev_experience_text,
+        )
 
 
 @router.post("/analyze-jd/stream")
 async def analyze_jd_stream_endpoint(
     payload: AnalyzeJDRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
+    await billing_service.ensure_quota_available(session, current_user.id)
+
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
 
@@ -113,16 +125,22 @@ async def analyze_jd_stream_endpoint(
 
         async def run_analysis() -> None:
             try:
-                await emit({"type": "progress", "node": "prepare_context", "title": "准备分析上下文"})
-                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
-                result = await analyze_jd_with_thoughts(
-                    payload.text,
-                    payload.resume_text,
-                    payload.prev_result,
-                    payload.experience_text,
-                    payload.prev_experience_text,
-                    thought_callback=emit,
-                )
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="jd_analysis",
+                    metadata={"route": "/api/analyze-jd/stream"},
+                ):
+                    await emit({"type": "progress", "node": "prepare_context", "title": "准备分析上下文"})
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
+                    result = await analyze_jd_with_thoughts(
+                        payload.text,
+                        payload.resume_text,
+                        payload.prev_result,
+                        payload.experience_text,
+                        payload.prev_experience_text,
+                        thought_callback=emit,
+                    )
                 await emit({"type": "progress", "node": "merge_result", "title": "合并分析结果"})
                 await emit({"type": "progress", "node": "apply_score", "title": "生成匹配分与建议"})
                 await emit({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
@@ -158,8 +176,11 @@ async def analyze_jd_attachment_stream_endpoint(
     experience_text: Optional[str] = Form(None),
     prev_result: Optional[str] = Form(None),
     prev_experience_text: Optional[str] = Form(None),
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
+    await billing_service.ensure_quota_available(session, current_user.id)
+
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
 
@@ -168,53 +189,59 @@ async def analyze_jd_attachment_stream_endpoint(
 
         async def run_analysis() -> None:
             try:
-                await emit({"type": "progress", "node": "prepare_context", "title": "解析 JD 附件"})
-                attachment = await jd_attachment_service.extract_jd_from_attachment(file)
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="jd_attachment_analysis",
+                    metadata={"route": "/api/analyze-jd-attachment/stream"},
+                ):
+                    await emit({"type": "progress", "node": "prepare_context", "title": "解析 JD 附件"})
+                    attachment = await jd_attachment_service.extract_jd_from_attachment(file)
 
-                prev_result_dict: Optional[Dict[str, Any]] = None
-                if prev_result:
-                    import json as _json
-                    try:
-                        prev_result_dict = _json.loads(prev_result)
-                    except Exception:
-                        prev_result_dict = None
+                    prev_result_dict: Optional[Dict[str, Any]] = None
+                    if prev_result:
+                        import json as _json
+                        try:
+                            prev_result_dict = _json.loads(prev_result)
+                        except Exception:
+                            prev_result_dict = None
 
-                supplemental_jd_text = (jd_text or "").strip()
-                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
+                    supplemental_jd_text = (jd_text or "").strip()
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
 
-                if attachment.is_image:
-                    result = await analyze_jd_with_image_thoughts(
-                        image_b64=attachment.image_b64,
-                        mime_type=attachment.mime_type,
-                        resume_text=resume_text,
-                        prev_result=prev_result_dict,
-                        experience_text=experience_text,
-                        prev_experience_text=prev_experience_text,
-                        jd_text=supplemental_jd_text or None,
-                        thought_callback=emit,
-                    )
-                    extracted_jd_text = result.pop("extractedJdText", None)
-                    if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
-                        result["extracted_jd_text"] = extracted_jd_text.strip()
-                else:
-                    extracted_jd_text = (attachment.text or "").strip()
-                    combined_jd_text = extracted_jd_text
-                    if supplemental_jd_text:
-                        combined_jd_text = (
-                            f"{extracted_jd_text}\n\n补充 JD 说明：\n{supplemental_jd_text}"
-                            if extracted_jd_text
-                            else supplemental_jd_text
+                    if attachment.is_image:
+                        result = await analyze_jd_with_image_thoughts(
+                            image_b64=attachment.image_b64,
+                            mime_type=attachment.mime_type,
+                            resume_text=resume_text,
+                            prev_result=prev_result_dict,
+                            experience_text=experience_text,
+                            prev_experience_text=prev_experience_text,
+                            jd_text=supplemental_jd_text or None,
+                            thought_callback=emit,
                         )
-                    result = await analyze_jd_with_thoughts(
-                        text=combined_jd_text,
-                        resume_text=resume_text,
-                        prev_result=prev_result_dict,
-                        experience_text=experience_text,
-                        prev_experience_text=prev_experience_text,
-                        thought_callback=emit,
-                    )
-                    if extracted_jd_text:
-                        result["extracted_jd_text"] = extracted_jd_text
+                        extracted_jd_text = result.pop("extractedJdText", None)
+                        if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
+                            result["extracted_jd_text"] = extracted_jd_text.strip()
+                    else:
+                        extracted_jd_text = (attachment.text or "").strip()
+                        combined_jd_text = extracted_jd_text
+                        if supplemental_jd_text:
+                            combined_jd_text = (
+                                f"{extracted_jd_text}\n\n补充 JD 说明：\n{supplemental_jd_text}"
+                                if extracted_jd_text
+                                else supplemental_jd_text
+                            )
+                        result = await analyze_jd_with_thoughts(
+                            text=combined_jd_text,
+                            resume_text=resume_text,
+                            prev_result=prev_result_dict,
+                            experience_text=experience_text,
+                            prev_experience_text=prev_experience_text,
+                            thought_callback=emit,
+                        )
+                        if extracted_jd_text:
+                            result["extracted_jd_text"] = extracted_jd_text
 
                 await emit({"type": "progress", "node": "merge_result", "title": "合并分析结果"})
                 await emit({"type": "progress", "node": "apply_score", "title": "生成匹配分与建议"})
@@ -248,35 +275,54 @@ async def analyze_jd_attachment_stream_endpoint(
 @router.post("/polish-text", response_model=Dict[str, Any])
 async def polish_text_endpoint(
     payload: PolishTextRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    return await polish_experience(
-        payload.content,
-        payload.target_field,
-        payload.jd_text,
-        payload.mode,
-        payload.custom_prompt,
-    )
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint=payload.entry_source or "experience_polish",
+        metadata={"route": "/api/polish-text"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await polish_experience(
+            payload.content,
+            payload.target_field,
+            payload.jd_text,
+            payload.mode,
+            payload.custom_prompt,
+        )
 
 
 @router.post("/split-experience-text", response_model=Dict[str, str])
 async def split_experience_text_endpoint(
     payload: SplitExperienceTextRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    return await split_experience_text(
-        payload.raw_text,
-        payload.category,
-        payload.org,
-        payload.title,
-    )
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="experience_split",
+        metadata={"route": "/api/split-experience-text"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await split_experience_text(
+            payload.raw_text,
+            payload.category,
+            payload.org,
+            payload.title,
+        )
 
 
 @router.post("/polish-text/stream")
 async def polish_text_stream_endpoint(
     payload: PolishTextRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
+    await billing_service.ensure_quota_available(session, current_user.id)
+
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
 
@@ -285,16 +331,22 @@ async def polish_text_stream_endpoint(
 
         async def run_polish() -> None:
             try:
-                await emit({"type": "progress", "node": "prepare_context", "title": "准备润色上下文"})
-                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行润色"})
-                result = await polish_experience_with_thoughts(
-                    payload.content,
-                    payload.target_field,
-                    payload.jd_text,
-                    payload.mode,
-                    payload.custom_prompt,
-                    thought_callback=emit,
-                )
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint=payload.entry_source or "experience_polish",
+                    metadata={"route": "/api/polish-text/stream"},
+                ):
+                    await emit({"type": "progress", "node": "prepare_context", "title": "准备润色上下文"})
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行润色"})
+                    result = await polish_experience_with_thoughts(
+                        payload.content,
+                        payload.target_field,
+                        payload.jd_text,
+                        payload.mode,
+                        payload.custom_prompt,
+                        thought_callback=emit,
+                    )
                 await emit({"type": "progress", "node": "persist_result", "title": "整理润色结果"})
                 await emit({"type": "final", "result": result})
             except Exception as exc:
@@ -323,9 +375,17 @@ async def polish_text_stream_endpoint(
 @router.post("/generate-tags", response_model=Dict[str, Any])
 async def generate_tags_endpoint(
     payload: GenerateTagsRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    return await generate_tags(payload.text)
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="tag_generation",
+        metadata={"route": "/api/generate-tags"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await generate_tags(payload.text)
 
 
 @router.post("/generate-boss-greeting", response_model=Dict[str, Any])
@@ -334,13 +394,20 @@ async def generate_boss_greeting_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    result = await generate_boss_greeting(
-        payload.jd_text,
-        payload.analysis_summary,
-        payload.job_title,
-        payload.company,
-        payload.resume_text,
-    )
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="boss_greeting",
+        metadata={"route": "/api/generate-boss-greeting"},
+    ):
+        await billing_service.ensure_current_quota()
+        result = await generate_boss_greeting(
+            payload.jd_text,
+            payload.analysis_summary,
+            payload.job_title,
+            payload.company,
+            payload.resume_text,
+        )
     if payload.resume_id and result.get("greeting"):
         try:
             await persist_resume_boss_greeting(
@@ -361,6 +428,8 @@ async def generate_boss_greeting_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
+    await billing_service.ensure_quota_available(session, current_user.id)
+
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
 
@@ -369,16 +438,22 @@ async def generate_boss_greeting_stream_endpoint(
 
         async def run_generate() -> None:
             try:
-                await emit({"type": "progress", "node": "prepare_context", "title": "准备 BOSS 招呼语上下文"})
-                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成 BOSS 招呼语"})
-                result = await generate_boss_greeting_with_thoughts(
-                    payload.jd_text,
-                    payload.analysis_summary,
-                    payload.job_title,
-                    payload.company,
-                    payload.resume_text,
-                    thought_callback=emit,
-                )
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="boss_greeting",
+                    metadata={"route": "/api/generate-boss-greeting/stream"},
+                ):
+                    await emit({"type": "progress", "node": "prepare_context", "title": "准备 BOSS 招呼语上下文"})
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成 BOSS 招呼语"})
+                    result = await generate_boss_greeting_with_thoughts(
+                        payload.jd_text,
+                        payload.analysis_summary,
+                        payload.job_title,
+                        payload.company,
+                        payload.resume_text,
+                        thought_callback=emit,
+                    )
                 if payload.resume_id and result.get("greeting"):
                     await persist_resume_boss_greeting(
                         session,
@@ -417,25 +492,36 @@ async def generate_boss_greeting_stream_endpoint(
 @router.post("/generate-personal-summary", response_model=Dict[str, Any])
 async def generate_personal_summary_endpoint(
     payload: GeneratePersonalSummaryRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    return await generate_personal_summary(
-        mode=payload.mode,
-        profile=payload.profile,
-        work_experiences=payload.work_experiences,
-        project_experiences=payload.project_experiences,
-        education_experiences=payload.education_experiences,
-        certifications=payload.certifications,
-        skills=payload.skills,
-        jd_text=payload.jd_text,
-    )
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="personal_summary",
+        metadata={"route": "/api/generate-personal-summary"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await generate_personal_summary(
+            mode=payload.mode,
+            profile=payload.profile,
+            work_experiences=payload.work_experiences,
+            project_experiences=payload.project_experiences,
+            education_experiences=payload.education_experiences,
+            certifications=payload.certifications,
+            skills=payload.skills,
+            jd_text=payload.jd_text,
+        )
 
 
 @router.post("/generate-personal-summary/stream")
 async def generate_personal_summary_stream_endpoint(
     payload: GeneratePersonalSummaryRequest,
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
+    await billing_service.ensure_quota_available(session, current_user.id)
+
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
 
@@ -444,19 +530,25 @@ async def generate_personal_summary_stream_endpoint(
 
         async def run_generate() -> None:
             try:
-                await emit({"type": "progress", "node": "prepare_context", "title": "准备个人评价上下文"})
-                await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成个人评价"})
-                result = await generate_personal_summary_with_thoughts(
-                    mode=payload.mode,
-                    profile=payload.profile,
-                    work_experiences=payload.work_experiences,
-                    project_experiences=payload.project_experiences,
-                    education_experiences=payload.education_experiences,
-                    certifications=payload.certifications,
-                    skills=payload.skills,
-                    jd_text=payload.jd_text,
-                    thought_callback=emit,
-                )
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="personal_summary",
+                    metadata={"route": "/api/generate-personal-summary/stream"},
+                ):
+                    await emit({"type": "progress", "node": "prepare_context", "title": "准备个人评价上下文"})
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成个人评价"})
+                    result = await generate_personal_summary_with_thoughts(
+                        mode=payload.mode,
+                        profile=payload.profile,
+                        work_experiences=payload.work_experiences,
+                        project_experiences=payload.project_experiences,
+                        education_experiences=payload.education_experiences,
+                        certifications=payload.certifications,
+                        skills=payload.skills,
+                        jd_text=payload.jd_text,
+                        thought_callback=emit,
+                    )
                 await emit({"type": "progress", "node": "persist_result", "title": "整理个人评价结果"})
                 await emit({"type": "final", "result": result})
             except Exception as exc:
@@ -490,6 +582,7 @@ async def analyze_jd_attachment_endpoint(
     experience_text: Optional[str] = Form(None),
     prev_result: Optional[str] = Form(None),
     prev_experience_text: Optional[str] = Form(None),
+    session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
     """
@@ -514,38 +607,45 @@ async def analyze_jd_attachment_endpoint(
 
     supplemental_jd_text = (jd_text or "").strip()
 
-    if attachment.is_image:
-        result = await analyze_jd_with_image(
-            image_b64=attachment.image_b64,
-            mime_type=attachment.mime_type,
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="jd_attachment_analysis",
+        metadata={"route": "/api/analyze-jd-attachment"},
+    ):
+        await billing_service.ensure_current_quota()
+        if attachment.is_image:
+            result = await analyze_jd_with_image(
+                image_b64=attachment.image_b64,
+                mime_type=attachment.mime_type,
+                resume_text=resume_text,
+                prev_result=prev_result_dict,
+                experience_text=experience_text,
+                prev_experience_text=prev_experience_text,
+                jd_text=supplemental_jd_text or None,
+            )
+            extracted_jd_text = result.pop("extractedJdText", None)
+            if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
+                result["extracted_jd_text"] = extracted_jd_text.strip()
+            return result
+
+        # 文本路径：将文档提取的文字与手动输入拼接
+        extracted_jd_text = (attachment.text or "").strip()
+        combined_jd_text = extracted_jd_text
+        if supplemental_jd_text:
+            combined_jd_text = (
+                f"{extracted_jd_text}\n\n补充 JD 说明：\n{supplemental_jd_text}"
+                if extracted_jd_text
+                else supplemental_jd_text
+            )
+        result = await analyze_jd(
+            text=combined_jd_text,
             resume_text=resume_text,
             prev_result=prev_result_dict,
             experience_text=experience_text,
             prev_experience_text=prev_experience_text,
-            jd_text=supplemental_jd_text or None,
         )
-        extracted_jd_text = result.pop("extractedJdText", None)
-        if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
-            result["extracted_jd_text"] = extracted_jd_text.strip()
+        if extracted_jd_text:
+            result["extracted_jd_text"] = extracted_jd_text
         return result
-
-    # 文本路径：将文档提取的文字与手动输入拼接
-    extracted_jd_text = (attachment.text or "").strip()
-    combined_jd_text = extracted_jd_text
-    if supplemental_jd_text:
-        combined_jd_text = (
-            f"{extracted_jd_text}\n\n补充 JD 说明：\n{supplemental_jd_text}"
-            if extracted_jd_text
-            else supplemental_jd_text
-        )
-    result = await analyze_jd(
-        text=combined_jd_text,
-        resume_text=resume_text,
-        prev_result=prev_result_dict,
-        experience_text=experience_text,
-        prev_experience_text=prev_experience_text,
-    )
-    if extracted_jd_text:
-        result["extracted_jd_text"] = extracted_jd_text
-    return result
 

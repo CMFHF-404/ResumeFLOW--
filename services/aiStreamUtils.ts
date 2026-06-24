@@ -9,14 +9,34 @@ export type StreamEventBase = {
     message?: string;
 };
 
-export const ensureStreamResponseOk = (response: Response) => {
+const readStreamErrorMessage = async (response: Response) => {
+    try {
+        const payload = await response.clone().json();
+        const detail = payload?.detail;
+        if (typeof detail === 'string' && detail.trim()) {
+            return detail;
+        }
+        if (detail && typeof detail.message === 'string' && detail.message.trim()) {
+            return detail.message;
+        }
+    } catch {
+        return '';
+    }
+    return '';
+};
+
+export const ensureStreamResponseOk = async (response: Response) => {
     if (response.ok) {
         return;
     }
     if (response.status === 401) {
         dispatchLoginRequired('unauthorized-write');
     }
-    throw new Error(`AI stream request failed: ${response.status}`);
+    const message = await readStreamErrorMessage(response);
+    if (response.status === 402) {
+        throw new Error(message || 'AI token 额度已用完，请打开额度入口购买后继续。');
+    }
+    throw new Error(message || `AI stream request failed: ${response.status}`);
 };
 
 const createStreamHeaders = async (contentType?: string | null) => {
@@ -59,7 +79,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
         signal,
     });
 
-    ensureStreamResponseOk(response);
+    await ensureStreamResponseOk(response);
     if (!response.body) {
         throw new Error('AI stream response body is empty');
     }

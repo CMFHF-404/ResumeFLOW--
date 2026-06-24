@@ -5,6 +5,7 @@ import FeedbackModal from './components/FeedbackModal';
 import AppreciationModal from './components/AppreciationModal';
 import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
 import GlobalSidebar from './components/GlobalSidebar';
+import TokenQuotaModal from './components/TokenQuotaModal';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest } from './views/AIAssistant/types';
 import Callback from './views/Callback';
@@ -19,6 +20,7 @@ import {
 import { resumeService } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
+import { billingService, type TokenQuotaSummary } from './services/billingService';
 import { devLog } from './services/devLogger';
 import { clearActiveResumeId, setActiveResumeId } from './views/resumeStorage';
 import {
@@ -81,6 +83,8 @@ const App: React.FC = () => {
   const [isAppreciationOpen, setIsAppreciationOpen] = useState(false);
   const [appreciationReturnFocusElement, setAppreciationReturnFocusElement] = useState<HTMLElement | null>(null);
   const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
+  const [isTokenQuotaOpen, setIsTokenQuotaOpen] = useState(false);
+  const [quotaSummary, setQuotaSummary] = useState<TokenQuotaSummary | null>(null);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
@@ -102,6 +106,7 @@ const App: React.FC = () => {
     resumeService.clearListCache();
     profileService.clearProfileCache();
     experienceService.clearListCache();
+    billingService.clearBillingCache();
     clearActiveResumeId();
 
     setCachedResumes([]);
@@ -112,6 +117,8 @@ const App: React.FC = () => {
     setIsAppreciationOpen(false);
     setAppreciationReturnFocusElement(null);
     setIsAgentPluginConfigOpen(false);
+    setIsTokenQuotaOpen(false);
+    setQuotaSummary(null);
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
     setEditorMobileDrawerOpenRequest(0);
@@ -261,7 +268,34 @@ const App: React.FC = () => {
   const handleCloseAgentPluginConfig = useCallback(() => {
     setIsAgentPluginConfigOpen(false);
   }, []);
+  const handleOpenTokenQuota = useCallback(() => {
+    setIsTokenQuotaOpen(true);
+  }, []);
+  const handleCloseTokenQuota = useCallback(() => {
+    setIsTokenQuotaOpen(false);
+  }, []);
   const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);
+
+  useEffect(() => {
+    if (!authUserKey || !isAuthenticated) {
+      setQuotaSummary(null);
+      billingService.clearBillingCache();
+      return;
+    }
+    let cancelled = false;
+    billingService.getSummary({ force: true })
+      .then((summary) => {
+        if (!cancelled) {
+          setQuotaSummary(summary);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load token quota summary', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUserKey, isAuthenticated]);
 
   const renderView = () => {
     switch (currentView) {
@@ -301,6 +335,8 @@ const App: React.FC = () => {
             onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
+            quotaSummary={quotaSummary}
+            onOpenTokenQuota={handleOpenTokenQuota}
           />
         ) : (
           <GuestResumeEditorPreview onRequireAuth={handleRequireAuth} />
@@ -341,6 +377,8 @@ const App: React.FC = () => {
           onOpenFeedback={handleOpenFeedback}
           onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
           onOpenAppreciation={handleOpenAppreciation}
+          quotaSummary={quotaSummary}
+          onOpenTokenQuota={handleOpenTokenQuota}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
@@ -362,6 +400,12 @@ const App: React.FC = () => {
         <AgentApiPluginConfigModal
           isOpen={isAgentPluginConfigOpen}
           onClose={handleCloseAgentPluginConfig}
+        />
+        <TokenQuotaModal
+          isOpen={isTokenQuotaOpen}
+          onClose={handleCloseTokenQuota}
+          summary={quotaSummary}
+          onSummaryChange={setQuotaSummary}
         />
       </div>
     </AuthGuard>

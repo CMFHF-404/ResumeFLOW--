@@ -122,7 +122,7 @@ test('JD analysis running status aligns the thinking label with the stop control
   }
 });
 
-test('JD analysis thinking text uses normal wrapping flow', () => {
+test('JD analysis thinking text stays on a single truncated line', () => {
   const panelSource = readSource('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const mobileSource = readSource('views/ResumeEditor/components/MobileEditorHeader.tsx');
 
@@ -133,10 +133,11 @@ test('JD analysis thinking text uses normal wrapping flow', () => {
     );
     assert.ok(snippets.length > 0, 'JD thinking status should be rendered');
     for (const snippet of snippets) {
-      assert.match(snippet, /whitespace-normal/);
-      assert.match(snippet, /break-words/);
+      assert.match(snippet, /min-w-0 flex-1 truncate/);
       assert.doesNotMatch(snippet, /SmoothHeightContainer/);
+      assert.doesNotMatch(snippet, /whitespace-normal/);
       assert.doesNotMatch(snippet, /whitespace-pre-wrap/);
+      assert.doesNotMatch(snippet, /break-words/);
       assert.doesNotMatch(snippet, /break-all/);
     }
   }

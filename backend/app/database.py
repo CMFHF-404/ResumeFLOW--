@@ -324,6 +324,95 @@ async def ensure_agent_api_keys_table() -> None:
         )
 
 
+async def ensure_ai_token_billing_tables() -> None:
+    """确保 AI token 钱包、用量与占位购买表存在，兼容老环境升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS ai_token_wallets (
+                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    token_limit INTEGER NOT NULL DEFAULT 0,
+                    remaining_tokens INTEGER NOT NULL DEFAULT 0,
+                    used_tokens INTEGER NOT NULL DEFAULT 0,
+                    last_purchase_id UUID,
+                    last_purchase_tokens INTEGER NOT NULL DEFAULT 0,
+                    last_purchase_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS ai_token_usage_events (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    entrypoint TEXT NOT NULL DEFAULT 'unknown',
+                    request_label TEXT NOT NULL DEFAULT 'ai_request',
+                    provider TEXT NOT NULL DEFAULT 'unknown',
+                    model TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'success',
+                    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                    completion_tokens INTEGER NOT NULL DEFAULT 0,
+                    total_tokens INTEGER NOT NULL DEFAULT 0,
+                    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS ai_token_purchase_events (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    option_id TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    tokens INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'placeholder_succeeded',
+                    before_remaining_tokens INTEGER NOT NULL DEFAULT 0,
+                    after_remaining_tokens INTEGER NOT NULL DEFAULT 0,
+                    before_token_limit INTEGER NOT NULL DEFAULT 0,
+                    after_token_limit INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_token_usage_events_user_created
+                ON ai_token_usage_events(user_id, created_at DESC)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_token_usage_events_entrypoint
+                ON ai_token_usage_events(entrypoint)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ai_token_purchase_events_user_created
+                ON ai_token_purchase_events(user_id, created_at DESC)
+                """
+            )
+        )
+
+
 async def ensure_feedback_images_column() -> None:
     """确保 feedback.image_base64_list 列存在，兼容老环境升级。"""
     if engine.dialect.name != "postgresql":
@@ -392,5 +481,6 @@ async def ensure_dev_schema() -> None:
     await ensure_export_render_snapshots_table()
     await ensure_ai_assistant_tables()
     await ensure_agent_api_keys_table()
+    await ensure_ai_token_billing_tables()
     await ensure_feedback_contact_type_column()
     await ensure_feedback_images_column()

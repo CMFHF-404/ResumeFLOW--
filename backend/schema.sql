@@ -224,6 +224,47 @@ CREATE TABLE IF NOT EXISTS agent_plugin_configs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS ai_token_wallets (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token_limit INTEGER NOT NULL DEFAULT 0,
+    remaining_tokens INTEGER NOT NULL DEFAULT 0,
+    used_tokens INTEGER NOT NULL DEFAULT 0,
+    last_purchase_id UUID,
+    last_purchase_tokens INTEGER NOT NULL DEFAULT 0,
+    last_purchase_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_token_usage_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entrypoint TEXT NOT NULL DEFAULT 'unknown',
+    request_label TEXT NOT NULL DEFAULT 'ai_request',
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    model TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'success',
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_token_purchase_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    option_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    tokens INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'placeholder_succeeded',
+    before_remaining_tokens INTEGER NOT NULL DEFAULT 0,
+    after_remaining_tokens INTEGER NOT NULL DEFAULT 0,
+    before_token_limit INTEGER NOT NULL DEFAULT 0,
+    after_token_limit INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS export_render_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -258,6 +299,9 @@ CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_master_experiences_user_id ON master_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_experience_versions_master_id ON experience_versions(master_experience_id);
 CREATE INDEX IF NOT EXISTS idx_experience_drafts_user_category ON experience_drafts(user_id, category);
+CREATE INDEX IF NOT EXISTS idx_ai_token_usage_events_user_created ON ai_token_usage_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_token_usage_events_entrypoint ON ai_token_usage_events(entrypoint);
+CREATE INDEX IF NOT EXISTS idx_ai_token_purchase_events_user_created ON ai_token_purchase_events(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_resume_experiences_resume_id ON resume_experiences(resume_id);
 CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);

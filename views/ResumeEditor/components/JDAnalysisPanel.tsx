@@ -788,7 +788,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                         <div className={`flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 dark:bg-primary-dark/10 transition-all duration-300 ease-in-out ${jdAnalysisMotion.statusMotionClass}`}>
                             <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] text-gray-700 dark:text-gray-300">
                                 <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-                                <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-relaxed">
+                                <span
+                                    className="min-w-0 flex-1 truncate font-medium leading-5"
+                                    title={`思考中：${thinkingText || '正在分析岗位要求...'}`}
+                                >
                                     思考中：{thinkingText || '正在分析岗位要求...'}
                                 </span>
                             </div>
@@ -908,7 +911,10 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 <div className={`absolute bottom-3 right-3 left-3 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-1.5 backdrop-blur-sm dark:bg-primary-dark/10 transition-all duration-300 ease-in-out ${jdAnalysisMotion.statusMotionClass}`}>
                                     <div className="flex min-w-0 flex-1 items-center gap-2 text-[11.5px] text-gray-700 dark:text-gray-300">
                                         <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-                                        <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-relaxed">
+                                        <span
+                                            className="min-w-0 flex-1 truncate font-medium leading-5"
+                                            title={`思考中：${thinkingText || '正在分析岗位要求...'}`}
+                                        >
                                             思考中：{thinkingText || '正在分析岗位要求...'}
                                         </span>
                                     </div>

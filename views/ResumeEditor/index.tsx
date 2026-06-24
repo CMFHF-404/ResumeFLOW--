@@ -5,6 +5,7 @@ import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeData } from '../../hooks/useResumeData';
 import { experienceService } from '../../services/experienceService';
+import type { TokenQuotaSummary } from '../../services/billingService';
 import type {
     CertificationView,
     EducationView,
@@ -152,6 +153,8 @@ type ResumeEditorProps = {
     onOpenAgentPluginConfig?: () => void;
     mobileDrawerOpenRequest?: number;
     onMobileDrawerOpenRequestConsumed?: () => void;
+    quotaSummary?: TokenQuotaSummary | null;
+    onOpenTokenQuota?: () => void;
 };
 
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
@@ -174,6 +177,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     onOpenAgentPluginConfig,
     mobileDrawerOpenRequest = 0,
     onMobileDrawerOpenRequestConsumed,
+    quotaSummary,
+    onOpenTokenQuota,
 }) => {
     const { isDarkMode, toggleTheme } = useEditorThemeState();
     const {
@@ -1526,6 +1531,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             onSaveEducation: education.handleSaveEducation,
             onRequestDeleteEducation: education.requestDeleteEducation,
             onToggleEducationSelection: trackedSelection.toggleEducationSelection,
+            quotaSummary,
+            onOpenTokenQuota,
         },
         experienceTabProps: {
             experience,
@@ -1667,6 +1674,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 sidebarProps={commonEditorSidebarProps}
                 layoutAdjustProps={layoutAdjustProps}
                 previewProps={editorPreviewProps}
+                quotaSummary={quotaSummary}
+                onOpenTokenQuota={onOpenTokenQuota}
             />
             <TemplateSelectorModal
                 isOpen={isTemplateSelectorOpen}
