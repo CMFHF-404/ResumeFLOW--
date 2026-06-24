@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { ToastConfig } from '../../../components/Toast';
 import type { AnalyzeStreamEvent, JDAnalysisResult } from '../../../services/aiService';
-import { extractThoughtHeadline } from '../../../utils/aiThought';
 import { resolveAutoResumeName } from '../autoNameUtils';
 import {
     JD_ANALYSIS_PROGRESS_NODE_TITLES,
@@ -14,6 +13,7 @@ type JDAnalyzeOutcome =
     | { status: 'success'; result: JDAnalysisResult }
     | { status: 'no_change' }
     | { status: 'missing_attachment' }
+    | { status: 'aborted' }
     | { status: 'error' };
 
 type UseJdAnalyzeWithToastParams = {
@@ -30,6 +30,7 @@ type UseJdAnalyzeWithToastParams = {
     showToastLoading: (message: string) => string;
     showToastSuccess: (message: string, duration?: number) => string;
     updateToast: (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
+    closeToast: (id: string) => void;
 };
 
 export const useJdAnalyzeWithToast = ({
@@ -46,6 +47,7 @@ export const useJdAnalyzeWithToast = ({
     showToastLoading,
     showToastSuccess,
     updateToast,
+    closeToast,
 }: UseJdAnalyzeWithToastParams) => {
     const lastPolishAutoAnalyzeSeqRef = useRef(0);
 
@@ -57,52 +59,15 @@ export const useJdAnalyzeWithToast = ({
             showToastError(JD_ANALYSIS_TOAST_MESSAGES.empty, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
             return null;
         }
-        const toastId = showToastLoading(JD_ANALYSIS_TOAST_MESSAGES.loading);
+        let toastId: string | null = null;
         try {
-            let hasThoughtTitle = false;
-            const result = await handleAnalyze({
-                onEvent: (event) => {
-                    if (!toastId) {
-                        return;
-                    }
-                    if (event.type === 'thought') {
-                        const title = extractThoughtHeadline(event.summary);
-                        if (!title) {
-                            return;
-                        }
-                        hasThoughtTitle = true;
-                        updateToast(toastId, {
-                            message: title,
-                            type: 'ai_thinking',
-                            duration: 0,
-                        });
-                        return;
-                    }
-                    if (event.type !== 'progress' || hasThoughtTitle) {
-                        return;
-                    }
-                    const title = JD_ANALYSIS_PROGRESS_NODE_TITLES[event.node];
-                    if (!title) {
-                        return;
-                    }
-                    updateToast(toastId, {
-                        message: title,
-                        type: 'loading',
-                        duration: 0,
-                    });
-                },
-            });
+            const result = await handleAnalyze();
             if (result.status === 'success') {
-                if (toastId) {
-                    updateToast(toastId, {
-                        message: JD_ANALYSIS_TOAST_MESSAGES.success,
-                        type: 'success',
-                        duration: JD_ANALYSIS_TOAST_DURATION_MS,
-                    });
-                } else {
-                    showToastSuccess(JD_ANALYSIS_TOAST_MESSAGES.success, JD_ANALYSIS_TOAST_DURATION_MS);
-                }
+                showToastSuccess(JD_ANALYSIS_TOAST_MESSAGES.success, JD_ANALYSIS_TOAST_DURATION_MS);
                 return result.result;
+            }
+            if (result.status === 'aborted') {
+                return null;
             }
             const isError = result.status === 'error' || result.status === 'missing_attachment';
             const message = result.status === 'missing_attachment'
@@ -113,10 +78,7 @@ export const useJdAnalyzeWithToast = ({
             const duration = isError
                 ? JD_ANALYSIS_TOAST_ERROR_DURATION_MS
                 : JD_ANALYSIS_TOAST_DURATION_MS;
-            const type = isError ? 'error' : 'success';
-            if (toastId) {
-                updateToast(toastId, { message, type, duration });
-            } else if (isError) {
+            if (isError) {
                 showToastError(message, duration);
             } else {
                 showToastSuccess(message, duration);
@@ -124,15 +86,7 @@ export const useJdAnalyzeWithToast = ({
             return null;
         } catch (error) {
             console.error('[ResumeEditor] JD 分析失败:', error);
-            if (toastId) {
-                updateToast(toastId, {
-                    message: JD_ANALYSIS_TOAST_MESSAGES.error,
-                    type: 'error',
-                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
-                });
-            } else {
-                showToastError(JD_ANALYSIS_TOAST_MESSAGES.error, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
-            }
+            showToastError(JD_ANALYSIS_TOAST_MESSAGES.error, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
             return null;
         }
     }, [

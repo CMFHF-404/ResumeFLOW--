@@ -303,6 +303,67 @@
             transform-origin: top;
         }
 
+        @keyframes jdAnalysisStatusEnter {
+            from {
+                clip-path: inset(0 0 0 72%);
+                opacity: 0.7;
+                transform: translateX(10px) scaleY(0.96);
+            }
+
+            to {
+                clip-path: inset(0 0 0 0);
+                opacity: 1;
+                transform: translateX(0) scaleY(1);
+            }
+        }
+
+        @keyframes jdAnalysisStatusExit {
+            from {
+                clip-path: inset(0 0 0 0);
+                opacity: 1;
+                transform: translateX(0) scaleY(1);
+            }
+
+            to {
+                clip-path: inset(0 0 0 72%);
+                opacity: 0.55;
+                transform: translateX(10px) scaleY(0.96);
+            }
+        }
+
+        @keyframes jdAnalysisControlsReturn {
+            from {
+                clip-path: inset(0 72% 0 0);
+                opacity: 0.65;
+                transform: translateX(-10px) scaleY(0.96);
+            }
+
+            to {
+                clip-path: inset(0 0 0 0);
+                opacity: 1;
+                transform: translateX(0) scaleY(1);
+            }
+        }
+
+        .jd-analysis-status-motion,
+        .jd-analysis-controls-return {
+            backface-visibility: hidden;
+            transform-origin: bottom right;
+            will-change: clip-path, opacity, transform;
+        }
+
+        .jd-analysis-status-enter {
+            animation: jdAnalysisStatusEnter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .jd-analysis-status-exit {
+            animation: jdAnalysisStatusExit 180ms cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards;
+        }
+
+        .jd-analysis-controls-return {
+            animation: jdAnalysisControlsReturn 180ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
         @keyframes simpleParsingGlow {
             0% {
                 box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.14), 0 0 22px rgba(168, 85, 247, 0.26);
@@ -410,10 +471,19 @@
         @media (prefers-reduced-motion: reduce) {
             .card-highlight,
             .ai-polish-card-expand,
+            .jd-analysis-status-enter,
+            .jd-analysis-status-exit,
+            .jd-analysis-controls-return,
             .simple-parsing-flow,
             .star-mode-panel,
             .simple-mode-panel {
                 animation: none;
+            }
+
+            .jd-analysis-status-motion,
+            .jd-analysis-controls-return {
+                clip-path: none;
+                transform: none;
             }
         }
         /* AI 按钮渐变绿背景（无流光动画） */

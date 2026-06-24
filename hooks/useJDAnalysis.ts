@@ -70,6 +70,7 @@ import {
   type JDAnalyzeProgressHandler,
   type JDAnalyzeStreamHandler,
 } from "./useJDAnalysisExecution";
+import { appendJDThinkingText } from "./jdAnalysisThinkingText";
 
 const DEFAULT_JD_TEXT = "";
 type UseJDAnalysisOptions = {
@@ -116,6 +117,8 @@ type UseJDAnalysisResult = {
   persistedJDAnalysis: ResumeJDAnalysis | null | undefined;
   debugInfo?: any;
   isOutdated: boolean;
+  thinkingText: string;
+  handleStopAnalysis: () => void;
 };
 
 export const useJDAnalysis = ({
@@ -144,6 +147,10 @@ export const useJDAnalysis = ({
   const [persistedJDAnalysis, setPersistedJDAnalysis] =
     useState<ResumeJDAnalysis | null | undefined>(undefined);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [thinkingText, setThinkingText] = useState("");
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const analysisRunIdRef = useRef(0);
+  const activeAnalysisRunIdRef = useRef(0);
   const [isJDCollapsed, setIsJDCollapsed] = useState(false);
   const [analysisContext, setAnalysisContext] =
     useState<JDAnalysisContext | null>(null);
@@ -351,6 +358,15 @@ export const useJDAnalysis = ({
     restoredAttachmentContext,
     resumeId,
   ]);
+
+  useEffect(() => {
+    return () => {
+      activeAnalysisRunIdRef.current = 0;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!resumeId) {
@@ -644,6 +660,16 @@ export const useJDAnalysis = ({
     setRestoredAttachmentContext(null);
   }, []);
 
+  const handleStopAnalysis = useCallback(() => {
+    activeAnalysisRunIdRef.current = 0;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsAnalyzing(false);
+    setThinkingText("");
+  }, []);
+
   const runAnalyze = useCallback(
     async (
       options?: AnalyzeOptions & {
@@ -651,6 +677,25 @@ export const useJDAnalysis = ({
         onEvent?: JDAnalyzeStreamHandler;
       }
     ): Promise<JDAnalyzeOutcome> => {
+      const runId = analysisRunIdRef.current + 1;
+      analysisRunIdRef.current = runId;
+      activeAnalysisRunIdRef.current = runId;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setThinkingText("");
+      const setIsAnalyzingForRun = (value: boolean) => {
+        if (activeAnalysisRunIdRef.current !== runId) {
+          return;
+        }
+        setIsAnalyzing(value);
+        if (!value) {
+          activeAnalysisRunIdRef.current = 0;
+          if (abortControllerRef.current === controller) {
+            abortControllerRef.current = null;
+          }
+          setThinkingText("");
+        }
+      };
       return runJDAnalysisExecution({
         mode: options?.mode,
         diff: options?.diff,
@@ -666,11 +711,22 @@ export const useJDAnalysis = ({
         applyMatchScoresForResult,
         promoteAttachmentToText,
         clearFullAnalysisDiffState,
-        setIsAnalyzing,
+        setIsAnalyzing: setIsAnalyzingForRun,
         setIsJDCollapsed,
         setDebugInfo,
         onProgress: options?.onProgress,
-        onEvent: options?.onEvent,
+        onEvent: (event) => {
+          if (activeAnalysisRunIdRef.current !== runId) {
+            return;
+          }
+          if (event.type === "thought") {
+            if (event.summary) {
+              setThinkingText((current) => appendJDThinkingText(current, event.summary));
+            }
+          }
+          options?.onEvent?.(event);
+        },
+        signal: controller.signal,
       });
     },
     [
@@ -750,9 +806,7 @@ export const useJDAnalysis = ({
     persistedJDAnalysis,
     debugInfo,
     isOutdated,
+    thinkingText,
+    handleStopAnalysis,
   };
 };
-
-
-
-

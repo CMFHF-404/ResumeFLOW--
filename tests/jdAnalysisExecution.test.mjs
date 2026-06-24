@@ -179,6 +179,27 @@ test('request errors return error and always clear analyzing state', async () =>
   assert.deepEqual(calls.updates, []);
 });
 
+test('request aborts return aborted without logging as an analysis failure', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  const abortError = Object.assign(new Error('The operation was aborted'), {
+    name: 'AbortError',
+  });
+  const { calls, params } = buildDeps({
+    requestRunner: async () => {
+      calls.requestRuns += 1;
+      throw abortError;
+    },
+  });
+
+  const outcome = await runJDAnalysisExecution(params);
+
+  assert.deepEqual(outcome, { status: 'aborted' });
+  assert.deepEqual(calls.analyzing, [true, false]);
+  assert.equal(calls.requestRuns, 1);
+  assert.deepEqual(calls.errors, []);
+  assert.deepEqual(calls.updates, []);
+});
+
 test('full execution applies result, persists state, and tracks analytics lifecycle', async () => {
   const { runJDAnalysisExecution } = await importJDAnalysisExecution();
   const finalResult = buildResult({

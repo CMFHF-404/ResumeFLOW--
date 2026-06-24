@@ -51,6 +51,10 @@ type ExperiencePolishToolbarsProps = {
     onRunBatch: () => void;
     onUndoBatch: () => void;
     onConfirmBatch: () => void;
+    editingThinkingText?: string;
+    onStopEditing?: () => void;
+    floatingThinkingText?: string;
+    onStopFloating?: () => void;
 };
 
 type ExperiencePolishToolbarElements = {
@@ -111,11 +115,17 @@ const buildExperiencePolishToolbars = ({
     onRunBatch,
     onUndoBatch,
     onConfirmBatch,
+    editingThinkingText,
+    onStopEditing,
+    floatingThinkingText,
+    onStopFloating,
 }: ExperiencePolishToolbarsProps): ExperiencePolishToolbarElements => {
     const editingSuggestionToolbar = hasEditingItem ? (
         <AIPolishToolbar
             isPreviewing={false}
             isRunning={isEditingRunning}
+            thinkingText={editingThinkingText}
+            onStop={onStopEditing}
             activeMode={editingMode}
             modeOptions={editingModeOptions}
             customPrompt={editingCustomPrompt}
@@ -139,6 +149,8 @@ const buildExperiencePolishToolbars = ({
         <AIPolishToolbar
             isPreviewing={Boolean(singlePreviewDraft)}
             isRunning={isFloatingRunning}
+            thinkingText={floatingThinkingText}
+            onStop={onStopFloating}
             activeMode={floatingMode}
             modeOptions={floatingModeOptions}
             customPrompt={floatingCustomPrompt}
@@ -168,6 +180,8 @@ const buildExperiencePolishToolbars = ({
         <AIPolishToolbar
             isPreviewing={batchPreviewItemCount !== null}
             isRunning={isFloatingRunning}
+            thinkingText={floatingThinkingText}
+            onStop={onStopFloating}
             activeMode={batchActiveMode}
             modeOptions={batchModeOptions}
             customPrompt={floatingCustomPrompt}

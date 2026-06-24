@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { ToastConfig } from '../../../components/Toast';
 import { aiService, type PolishMode } from '../../../services/aiService';
 import type { ExperienceEditDraft, PolishPreviewState } from '../../../types/resume';
@@ -7,7 +7,6 @@ import {
     trackAiPolishStart,
     trackAiPolishUndone,
 } from '../../../utils/analyticsTracker';
-import { extractThoughtHeadline } from '../../../utils/aiThought';
 import {
     buildExperiencePolishPayloadContent,
     buildPolishedExperienceDraft,
@@ -22,61 +21,91 @@ import {
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
 type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
 
+const isAbortError = (error: unknown) => (
+    typeof error === 'object'
+    && error !== null
+    && 'name' in error
+    && (error as { name?: unknown }).name === 'AbortError'
+);
+
 type UseEditingExperiencePolishActionsParams = {
     editingDraft: ExperienceEditDraft | null;
     setEditingDraft: Dispatch<SetStateAction<ExperienceEditDraft | null>>;
+    setIsRunning: Dispatch<SetStateAction<boolean>>;
+    isRunningRef: MutableRefObject<boolean>;
+    jdPolishContext: string;
+    jdCapabilityPolishContext: string;
     polishMode: ResumePolishMode;
     customPrompt: string;
     smartCompletionPrompt: SmartCompletionPromptState | null;
     setSmartCompletionPrompt: Dispatch<SetStateAction<SmartCompletionPromptState | null>>;
     polishPreview: PolishPreviewState<ExperienceEditDraft> | null;
     setPolishPreview: Dispatch<SetStateAction<PolishPreviewState<ExperienceEditDraft> | null>>;
-    isRunningRef: MutableRefObject<boolean>;
-    setIsRunning: Dispatch<SetStateAction<boolean>>;
     pendingAiPolishApplyRef: MutableRefObject<Set<string>>;
-    jdPolishContext: string;
-    jdCapabilityPolishContext: string;
     showToastError: (message: string) => void;
     showToastLoading: (message: string) => string;
     updateToast: UpdateToast;
+    showToastSuccess?: (message: string, duration?: number) => string;
+    closeToast: (id: string) => void;
 };
 
 export const useEditingExperiencePolishActions = ({
     editingDraft,
     setEditingDraft,
+    setIsRunning,
+    isRunningRef,
+    jdPolishContext,
+    jdCapabilityPolishContext,
     polishMode,
     customPrompt,
     smartCompletionPrompt,
     setSmartCompletionPrompt,
     polishPreview,
     setPolishPreview,
-    isRunningRef,
-    setIsRunning,
     pendingAiPolishApplyRef,
-    jdPolishContext,
-    jdCapabilityPolishContext,
     showToastError,
     showToastLoading,
     updateToast,
+    showToastSuccess,
+    closeToast,
 }: UseEditingExperiencePolishActionsParams) => {
+    const [editingThinkingText, setEditingThinkingText] = useState('');
+    const editingAbortControllerRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (editingAbortControllerRef.current) {
+                editingAbortControllerRef.current.abort();
+            }
+        };
+    }, []);
+
+    const handleStopEditing = useCallback(() => {
+        if (editingAbortControllerRef.current) {
+            editingAbortControllerRef.current.abort();
+            editingAbortControllerRef.current = null;
+        }
+        setIsRunning(false);
+        setEditingThinkingText('');
+    }, [setIsRunning]);
+
     const handleRunEditingExperiencePolish = useCallback(async () => {
         if (!editingDraft || isRunningRef.current) {
             return;
         }
+        editingAbortControllerRef.current = new AbortController();
+        setEditingThinkingText('');
         const trimmedJd = jdPolishContext.trim();
         if (!trimmedJd) {
             showToastError('请先填写 JD 再润色');
             return;
         }
 
-        const toastId = showToastLoading(
-            polishMode === 'default'
-                ? '正在根据 JD 突出重点...'
-                : '正在基于 JD 润色...'
-        );
+        let toastId: string | null = null;
         let hasError = false;
         let applied = false;
         let requestedSmartCompletion = false;
+        let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
 
@@ -97,14 +126,12 @@ export const useEditingExperiencePolishActions = ({
                 }),
                 entrySource: 'resume_editor',
             }, (event) => {
-                if (event.type !== 'thought') {
-                    return;
+                if (event.type === 'thought') {
+                    if (event.summary) {
+                        setEditingThinkingText(event.summary);
+                    }
                 }
-                const title = extractThoughtHeadline(event.summary);
-                if (title) {
-                    updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
-                }
-            });
+            }, editingAbortControllerRef.current?.signal);
 
             if (shouldAskBeforeSmartCompletionRewrite(polishMode, result)) {
                 requestedSmartCompletion = true;
@@ -122,17 +149,33 @@ export const useEditingExperiencePolishActions = ({
                 pendingAiPolishApplyRef.current.add(draft.masterId);
             }
         } catch (error) {
+            if (isAbortError(error)) {
+                wasAborted = true;
+                return;
+            }
             hasError = true;
             console.error('[ResumeEditor] 编辑态 AI 润色失败:', error);
         } finally {
+            if (wasAborted) {
+                isRunningRef.current = false;
+                setIsRunning(false);
+                setEditingThinkingText('');
+                editingAbortControllerRef.current = null;
+                return;
+            }
+            const message = hasError
+                ? 'JD 润色失败，请稍后重试'
+                : applied
+                    ? '已应用到当前编辑内容'
+                    : requestedSmartCompletion
+                        ? '请在智能补全卡片内补充信息后再执行'
+                        : 'AI 已完成润色，但没有生成可用调整';
+            const duration = hasError ? 3000 : 2500;
+
             if (hasError) {
-                updateToast(toastId, { message: 'JD 润色失败，请稍后重试', type: 'error', duration: 3000 });
-            } else if (applied) {
-                updateToast(toastId, { message: '已应用到当前编辑内容', type: 'success', duration: 2500 });
-            } else if (requestedSmartCompletion) {
-                updateToast(toastId, { message: '请在智能补全卡片内补充信息后再执行', type: 'success', duration: 2500 });
+                showToastError(message);
             } else {
-                updateToast(toastId, { message: 'AI 已完成润色，但没有生成可用调整', type: 'success', duration: 2500 });
+                showToastSuccess?.(message, duration);
             }
             trackAiPolishResult({
                 source: 'resume_editor',
@@ -142,6 +185,8 @@ export const useEditingExperiencePolishActions = ({
             });
             isRunningRef.current = false;
             setIsRunning(false);
+            setEditingThinkingText('');
+            editingAbortControllerRef.current = null;
         }
     }, [
         customPrompt,
@@ -158,6 +203,8 @@ export const useEditingExperiencePolishActions = ({
         showToastLoading,
         smartCompletionPrompt,
         updateToast,
+        showToastSuccess,
+        closeToast,
     ]);
 
     const handleUndoEditingExperiencePolish = useCallback(() => {
@@ -197,5 +244,7 @@ export const useEditingExperiencePolishActions = ({
         handleRunEditingExperiencePolish,
         handleUndoEditingExperiencePolish,
         handleConfirmEditingExperiencePolish,
+        editingThinkingText,
+        handleStopEditing,
     };
 };

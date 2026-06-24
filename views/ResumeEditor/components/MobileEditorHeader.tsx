@@ -28,6 +28,7 @@ import JDAttachmentUploader, {
     isAcceptedJDAttachmentFile,
     prepareJDAttachmentFile,
 } from './JDAttachmentUploader';
+import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
 export type MobileEditorHeaderProps = {
     resumeId?: string | null;
@@ -76,6 +77,8 @@ export type MobileEditorHeaderProps = {
     onOpenTemplateSelector: () => void;
     onLaunchAssistant?: () => void;
     canLaunchAssistant?: boolean;
+    thinkingText?: string;
+    onStopAnalyze?: () => void;
 };
 
 const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
@@ -125,7 +128,10 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onOpenTemplateSelector,
     onLaunchAssistant,
     canLaunchAssistant = false,
+    thinkingText,
+    onStopAnalyze,
 }) => {
+    const jdAnalysisMotion = useJDAnalysisMotion(isAnalyzing);
     const [isEditing, setIsEditing] = useState(false);
     const [draftName, setDraftName] = useState(resumeName);
     const [isEditingJd, setIsEditingJd] = useState(false);
@@ -425,24 +431,45 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                         onChange={(event) => onJdTextChange(event.target.value)}
                                         onPaste={handleTextareaPaste}
                                     />
-                                    <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                                        <JDAttachmentUploader
-                                            file={jdFile}
-                                            onFileChange={onFileChange}
-                                            disabled={isAnalyzing}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                onAnalyze();
-                                            }}
-                                            disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
-                                            className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
-                                        >
-                                            <Wand2 className="h-3 w-3" />
-                                            {isAnalyzing ? '分析中...' : '开始分析'}
-                                        </button>
-                                    </div>
+                                    {jdAnalysisMotion.shouldRenderStatus ? (
+                                        <div className={`absolute bottom-3 right-3 left-3 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5 backdrop-blur-sm dark:bg-primary-dark/10 transition-all duration-300 ${jdAnalysisMotion.statusMotionClass}`}>
+                                            <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-gray-700 dark:text-gray-300">
+                                                <Wand2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+                                                <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-relaxed">
+                                                    思考中：{thinkingText || '正在分析岗位要求...'}
+                                                </span>
+                                            </div>
+                                            {onStopAnalyze ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={onStopAnalyze}
+                                                    disabled={!isAnalyzing}
+                                                    className="flex shrink-0 items-center gap-1 rounded bg-red-50 px-2 py-0.5 text-[10.5px] font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-60 dark:bg-red-950/40 dark:text-red-400"
+                                                >
+                                                    停止
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    ) : (
+                                        <div className={`absolute bottom-3 right-3 flex items-center gap-2 ${jdAnalysisMotion.idleControlsMotionClass}`}>
+                                            <JDAttachmentUploader
+                                                file={jdFile}
+                                                onFileChange={onFileChange}
+                                                disabled={isAnalyzing}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onAnalyze();
+                                                }}
+                                                disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
+                                                className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
+                                            >
+                                                <Wand2 className="h-3 w-3" />
+                                                开始分析
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                                 {jdFile && (
                                     <JDAttachmentPreview

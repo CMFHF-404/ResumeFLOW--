@@ -46,7 +46,7 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     staleExperienceIds,
     toolbar,
 }) => {
-    const [isPolishCardCollapsed, setIsPolishCardCollapsed] = React.useState(false);
+    const [isPolishCardCollapsed, setIsPolishCardCollapsed] = React.useState(true);
     if (!editingItem) {
         return null;
     }
@@ -62,36 +62,53 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     ) : (
         <span className="text-[11px] font-semibold text-gray-400">匹配度 --</span>
     );
+    const renderToggleButton = (className = '') => {
+        if (!toolbar) {
+            return null;
+        }
+        return (
+            <button
+                type="button"
+                onClick={() => setIsPolishCardCollapsed((current) => !current)}
+                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200${className ? ` ${className}` : ''}`}
+                aria-label={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}
+                title={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}
+            >
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isPolishCardCollapsed ? '-rotate-90' : 'rotate-0'}`} />
+            </button>
+        );
+    };
 
     return (
         <div className={EDITING_SUGGESTION_NAV_CLASS}>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/60">
                 <div
-                    className={isPolishCardCollapsed ? 'flex items-start gap-3' : 'flex items-start justify-between gap-3 md:items-center'}
+                    className={isPolishCardCollapsed ? 'flex flex-col gap-2 md:flex-row md:items-start md:gap-3' : 'flex items-start justify-between gap-3 md:items-center'}
                 >
-                    <div className="shrink-0">
-                        {matchBadge}
-                    </div>
                     {isPolishCardCollapsed ? (
-                        <div className="min-w-0 flex-1 rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300">
-                            {suggestion}
-                        </div>
+                        <>
+                            <div className="flex items-center justify-between gap-2 md:block md:shrink-0">
+                                <div className="shrink-0">
+                                    {matchBadge}
+                                </div>
+                                {renderToggleButton('md:hidden')}
+                            </div>
+                            <div className="w-full min-w-0 rounded-md bg-white/80 px-3 py-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-black/10 dark:text-gray-300 md:flex-1">
+                                {suggestion}
+                            </div>
+                            {renderToggleButton('hidden md:inline-flex')}
+                        </>
                     ) : (
-                        <div className="min-w-0 flex-1 text-[11px] font-semibold text-primary">
-                            AI 润色工具栏
-                        </div>
+                        <>
+                            <div className="shrink-0">
+                                {matchBadge}
+                            </div>
+                            <div className="min-w-0 flex-1 text-[11px] font-semibold text-primary">
+                                AI 润色工具栏
+                            </div>
+                            {renderToggleButton()}
+                        </>
                     )}
-                    {toolbar ? (
-                        <button
-                            type="button"
-                            onClick={() => setIsPolishCardCollapsed((current) => !current)}
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                            aria-label={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}
-                            title={isPolishCardCollapsed ? '展开 AI 润色工具栏' : '折叠 AI 润色工具栏'}
-                        >
-                            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isPolishCardCollapsed ? '-rotate-90' : 'rotate-0'}`} />
-                        </button>
-                    ) : null}
                 </div>
                 <div
                     aria-hidden={isPolishCardCollapsed}

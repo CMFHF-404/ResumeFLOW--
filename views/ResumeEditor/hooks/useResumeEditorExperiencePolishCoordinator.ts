@@ -33,6 +33,8 @@ export const useResumeEditorExperiencePolishCoordinator = ({
     showToastError,
     showToastLoading,
     updateToast,
+    showToastSuccess,
+    closeToast,
     resumeExperienceMap,
     experienceSourceMap,
     applyResumeDetail,
@@ -80,6 +82,8 @@ export const useResumeEditorExperiencePolishCoordinator = ({
         showToastError,
         showToastLoading,
         updateToast,
+        showToastSuccess,
+        closeToast,
     });
 
     const floatingActions = useFloatingExperiencePolishActions({
@@ -101,6 +105,8 @@ export const useResumeEditorExperiencePolishCoordinator = ({
         showToastError,
         showToastLoading,
         updateToast,
+        showToastSuccess,
+        closeToast,
     });
 
     const handleUndoFloatingExperiencePolish = useCallback(() => {
