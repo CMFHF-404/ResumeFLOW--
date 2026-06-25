@@ -11,6 +11,16 @@ test('token quota modal guards zero quota progress', () => {
   assert.match(modal, /const usedPercent = limit > 0\s+\? Math\.max\(0, Math\.min\(\(used \/ limit\) \* 100, 100\)\)\s+: 0;/);
 });
 
+test('usage trend chart fills its card height and reserves space for date labels', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+
+  assert.match(modal, /const axisMax = maxVal > 0 \? maxVal \* 1\.25 : 1000;/);
+  assert.match(modal, /const labelBandHeight = usageByDay\.length >= 2 \? 18 : 0;/);
+  assert.match(modal, /const chartBottom = height - labelBandHeight - 1;/);
+  assert.match(modal, /item\.total_tokens \/ axisMax/);
+  assert.match(modal, /<svg viewBox=\{`0 0 \$\{width\} \$\{height\}`\} className="h-full w-full overflow-visible"/);
+});
+
 test('token quota modal uses supported Tailwind CDN utilities', () => {
   const modal = read('components/TokenQuotaModal.tsx');
   const unsupportedUtilityClasses = [

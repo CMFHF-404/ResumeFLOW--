@@ -36,6 +36,14 @@ test('TokenQuotaModal renders summary, charts, usage detail, and redemption acti
   assert.doesNotMatch(modal, /createPlaceholderPurchase/);
 });
 
+test('TokenQuotaModal keeps the usage analysis title on one line and hides chart tabs on desktop', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+
+  assert.match(modal, /<h3 className="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b[^"]*">用量分析<\/h3>/);
+  assert.match(modal, /<span className="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b[^"]*\bmd:hidden\b[^"]*">用量分析<\/span>/);
+  assert.match(modal, /<div className="[^"]*\binline-flex\b[^"]*\bmd:hidden\b[^"]*">/);
+});
+
 test('billingService uses the backend billing API surface and refreshes after redemption', () => {
   const service = read('services/billingService.ts');
 

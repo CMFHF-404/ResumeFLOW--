@@ -126,14 +126,19 @@ const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usage
   const width = 500;
   const height = 130;
   const padding = 15;
+  const chartTop = 8;
+  const labelBandHeight = usageByDay.length >= 2 ? 18 : 0;
+  const chartBottom = height - labelBandHeight - 1;
+  const chartHeight = chartBottom - chartTop;
   const maxVal = Math.max(...usageByDay.map((item) => item.total_tokens), 1000);
+  const axisMax = maxVal > 0 ? maxVal * 1.25 : 1000;
 
   // 生成三次贝塞尔曲线路径
   const bezierPath = React.useMemo(() => {
     if (!usageByDay.length) return '';
     const coords = usageByDay.map((item, index) => {
       const x = usageByDay.length === 1 ? width / 2 : (index / (usageByDay.length - 1)) * (width - padding * 2) + padding;
-      const y = height - padding - (item.total_tokens / maxVal) * (height - padding * 2);
+      const y = chartBottom - (item.total_tokens / axisMax) * chartHeight;
       return { x, y };
     });
 
@@ -152,15 +157,15 @@ const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usage
       path += ` C ${cpX1.toFixed(1)} ${cpY1.toFixed(1)}, ${cpX2.toFixed(1)} ${cpY2.toFixed(1)}, ${next.x.toFixed(1)} ${next.y.toFixed(1)}`;
     }
     return path;
-  }, [usageByDay, maxVal]);
+  }, [usageByDay, axisMax, chartHeight, chartBottom]);
 
   // 生成渐变封闭区域路径
   const closedPath = React.useMemo(() => {
     if (!bezierPath || !usageByDay.length) return '';
     const firstX = usageByDay.length === 1 ? width / 2 : padding;
     const lastX = usageByDay.length === 1 ? width / 2 : width - padding;
-    return `${bezierPath} L ${lastX.toFixed(1)} ${(height - padding).toFixed(1)} L ${firstX.toFixed(1)} ${(height - padding).toFixed(1)} Z`;
-  }, [bezierPath, usageByDay]);
+    return `${bezierPath} L ${lastX.toFixed(1)} ${chartBottom.toFixed(1)} L ${firstX.toFixed(1)} ${chartBottom.toFixed(1)} Z`;
+  }, [bezierPath, chartBottom, usageByDay]);
 
   // 日期标签
   const labels = React.useMemo(() => {
@@ -183,48 +188,46 @@ const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usage
   }, [usageByDay]);
 
   return (
-    <div className="flex h-full flex-col justify-between">
-      <div className="relative flex-1">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full overflow-visible" role="img">
-          <defs>
-            <linearGradient id="chartLineGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
+    <div className="relative h-full">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible" role="img">
+        <defs>
+          <linearGradient id="chartLineGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
 
-          {/* 网格线 */}
-          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="currentColor" className="text-gray-200 dark:text-gray-800" strokeWidth="1" />
-          <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeDasharray="3,3" strokeWidth="1" />
-          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeDasharray="3,3" strokeWidth="1" />
+        {/* 网格线 */}
+        <line x1={padding} y1={chartBottom} x2={width - padding} y2={chartBottom} stroke="currentColor" className="text-gray-200 dark:text-gray-800" strokeWidth="1" />
+        <line x1={padding} y1={chartTop + chartHeight / 2} x2={width - padding} y2={chartTop + chartHeight / 2} stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeDasharray="3,3" strokeWidth="1" />
+        <line x1={padding} y1={chartTop} x2={width - padding} y2={chartTop} stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeDasharray="3,3" strokeWidth="1" />
 
-          {/* 刻度数值 */}
-          <text x={padding + 4} y={padding + 9} className="fill-gray-400 text-[10px] font-medium">{formatTokens(maxVal)}</text>
-          <text x={padding + 4} y={height / 2 + 3} className="fill-gray-400 text-[10px] font-medium">{formatTokens(maxVal / 2)}</text>
+        {/* 刻度数值 */}
+        <text x={padding + 4} y={chartTop + 9} className="fill-gray-400 text-[10px] font-medium">{formatTokens(axisMax)}</text>
+        <text x={padding + 4} y={chartTop + chartHeight / 2 + 3} className="fill-gray-400 text-[10px] font-medium">{formatTokens(axisMax / 2)}</text>
 
-          {usageByDay.length ? (
-            <>
-              {closedPath && <path d={closedPath} fill="url(#chartLineGrad)" />}
-              {bezierPath && <path d={bezierPath} fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-500 dark:text-emerald-400" />}
-              {usageByDay.map((item, index) => {
-                const cx = usageByDay.length === 1 ? width / 2 : (index / (usageByDay.length - 1)) * (width - padding * 2) + padding;
-                const cy = height - padding - (item.total_tokens / maxVal) * (height - padding * 2);
-                return (
-                  <g key={index} className="group/dot">
-                    <circle cx={cx} cy={cy} r="3" fill="currentColor" className="text-emerald-500 dark:text-emerald-400 transition hover:scale-150" />
-                    <title>{`${item.key}: ${item.total_tokens.toLocaleString()} Tokens`}</title>
-                  </g>
-                );
-              })}
-            </>
-          ) : (
-            <text x={width / 2} y={height / 2} textAnchor="middle" className="fill-gray-400 text-xs">暂无消耗趋势数据</text>
-          )}
-        </svg>
-      </div>
+        {usageByDay.length ? (
+          <>
+            {closedPath && <path d={closedPath} fill="url(#chartLineGrad)" />}
+            {bezierPath && <path d={bezierPath} fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-500 dark:text-emerald-400" />}
+            {usageByDay.map((item, index) => {
+              const cx = usageByDay.length === 1 ? width / 2 : (index / (usageByDay.length - 1)) * (width - padding * 2) + padding;
+              const cy = chartBottom - (item.total_tokens / axisMax) * chartHeight;
+              return (
+                <g key={index} className="group/dot">
+                  <circle cx={cx} cy={cy} r="3" fill="currentColor" className="text-emerald-500 dark:text-emerald-400 transition hover:scale-150" />
+                  <title>{`${item.key}: ${item.total_tokens.toLocaleString()} Tokens`}</title>
+                </g>
+              );
+            })}
+          </>
+        ) : (
+          <text x={width / 2} y={height / 2} textAnchor="middle" className="fill-gray-400 text-xs">暂无消耗趋势数据</text>
+        )}
+      </svg>
 
       {labels.length > 0 && (
-        <div className="relative mt-1.5 h-4 text-[10px] font-semibold text-gray-400">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 text-[10px] font-semibold text-gray-400">
           {labels.map((lbl, idx) => (
             <span
               key={idx}
@@ -283,10 +286,10 @@ const QuotaCharts: React.FC<{
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
       <div className="mb-3.5 flex items-center justify-between">
-        <h3 className="text-xs font-bold text-gray-700 dark:text-gray-300 md:block hidden">用量分析</h3>
-        <div className="flex w-full items-center justify-between md:justify-end">
-          <span className="text-xs font-bold text-gray-700 dark:text-gray-300 md:hidden">用量分析</span>
-          <div className="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900">
+        <h3 className="hidden shrink-0 whitespace-nowrap text-xs font-bold text-gray-700 dark:text-gray-300 md:block">用量分析</h3>
+        <div className="flex w-full items-center justify-between md:w-auto md:justify-end">
+          <span className="shrink-0 whitespace-nowrap text-xs font-bold text-gray-700 dark:text-gray-300 md:hidden">用量分析</span>
+          <div className="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900 md:hidden">
             <button
               type="button"
               onClick={() => setActiveTab('trend')}
