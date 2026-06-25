@@ -2,6 +2,7 @@ import json
 import os
 import asyncio
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call, patch
 
@@ -269,7 +270,7 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             "https://responses.example.com/compatible-mode/v1",
         )
 
-    def test_load_settings_defaults_jd_thinking_budget_to_fast_half_budget(self) -> None:
+    def test_load_settings_defaults_jd_thinking_budget_to_reduced_budget(self) -> None:
         with patch.dict(
             os.environ,
             {
@@ -286,7 +287,14 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 finally:
                     config_module._settings = None
 
-        self.assertEqual(settings.ai_thinking_budget_jd_analysis, 2048)
+        self.assertEqual(settings.ai_thinking_budget_jd_analysis, 1024)
+
+    def test_backend_env_example_uses_reduced_jd_thinking_budget(self) -> None:
+        env_example = (Path(__file__).resolve().parent / ".env.example").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("AI_THINKING_BUDGET_JD_ANALYSIS=1024", env_example)
 
     def test_load_settings_derives_qwen_responses_base_url_from_ai_base_url(self) -> None:
         with patch.dict(
