@@ -21,27 +21,31 @@ test('GlobalSidebar exposes token quota ring and quota menu entry', () => {
   assert.match(app, /handleOpenTokenQuota/);
 });
 
-test('TokenQuotaModal renders summary, charts, usage detail, and placeholder purchase actions', () => {
+test('TokenQuotaModal renders summary, charts, usage detail, and redemption actions', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 
   assert.match(modal, /TokenQuotaModal/);
   assert.match(modal, /usageByDay/);
   assert.match(modal, /usageByEntrypoint/);
-  assert.match(modal, /purchaseOptions/);
-  assert.match(modal, /createPlaceholderPurchase/);
+  assert.match(modal, /redeemCode/);
   assert.match(modal, /svg/);
   assert.match(modal, /用量明细/);
+  assert.match(modal, /兑换卡密/);
   assert.match(modal, /购买额度/);
+  assert.doesNotMatch(modal, /立即购买/);
+  assert.doesNotMatch(modal, /createPlaceholderPurchase/);
 });
 
-test('billingService uses the backend billing API surface and refreshes after purchase', () => {
+test('billingService uses the backend billing API surface and refreshes after redemption', () => {
   const service = read('services/billingService.ts');
 
   assert.match(service, /\/api\/billing\/summary/);
   assert.match(service, /\/api\/billing\/usage/);
-  assert.match(service, /\/api\/billing\/purchases\/options/);
-  assert.match(service, /\/api\/billing\/purchases/);
-  assert.match(service, /createPlaceholderPurchase/);
+  assert.match(service, /\/api\/billing\/redemptions/);
+  assert.match(service, /redeemCode/);
+  assert.doesNotMatch(service, /\/api\/billing\/purchases\/options/);
+  assert.doesNotMatch(service, /\/api\/billing\/purchases/);
+  assert.doesNotMatch(service, /createPlaceholderPurchase/);
   assert.match(service, /clearBillingCache/);
   assert.match(service, /TokenQuotaSummary/);
 });

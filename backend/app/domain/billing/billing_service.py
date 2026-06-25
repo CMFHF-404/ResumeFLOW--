@@ -209,7 +209,7 @@ async def ensure_quota_available(session: AsyncSession, user_id: str) -> TokenQu
             status_code=402,
             detail={
                 "code": "ai_token_quota_exhausted",
-                "message": "AI token 额度已用完，请购买额度后继续。",
+                "message": "AI token 额度已用完，请打开额度入口兑换卡密或联系管理员。",
             },
         )
     return _to_summary(wallet)

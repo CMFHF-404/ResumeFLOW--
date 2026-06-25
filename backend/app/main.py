@@ -13,6 +13,8 @@ from .domain.agent.agent_router import router as agent_router
 from .domain.ai.ai_router import router as ai_router
 from .domain.assistant.assistant_router import router as assistant_router
 from .domain.billing.billing_router import router as billing_router
+from .domain.billing.redemption_router import admin_router as redemption_admin_router
+from .domain.billing.redemption_router import router as redemption_router
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
 from .domain.experience.draft_router import router as experience_draft_router
@@ -37,6 +39,7 @@ from .database import (
     ensure_feedback_contact_type_column,
     ensure_feedback_images_column,
     ensure_export_render_snapshots_table,
+    ensure_redemption_code_tables,
     verify_db_connection,
 )
 from .domain.export.browser_pdf_service import close_browser
@@ -56,6 +59,7 @@ async def lifespan(app: FastAPI):
         await ensure_ai_assistant_tables()
         await ensure_agent_api_keys_table()
         await ensure_ai_token_billing_tables()
+        await ensure_redemption_code_tables()
         await ensure_feedback_contact_type_column()
         await ensure_feedback_images_column()
     except Exception as e:
@@ -97,6 +101,8 @@ app.include_router(agent_router)
 app.include_router(ai_router)
 app.include_router(assistant_router)
 app.include_router(billing_router)
+app.include_router(redemption_router)
+app.include_router(redemption_admin_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
 app.include_router(export_router)

@@ -39,29 +39,10 @@ export interface TokenUsageListResponse {
   usage_by_entrypoint: TokenUsageAggregate[];
 }
 
-export interface TokenPurchaseOption {
-  id: string;
-  label: string;
+export interface TokenRedemptionResponse {
   tokens: number;
-  price_label: string;
-  is_placeholder: boolean;
-  description?: string;
-}
-
-export interface TokenPurchaseResponse {
+  package_name: string;
   summary: TokenQuotaSummary;
-  purchase: {
-    id: string;
-    option_id: string;
-    label: string;
-    tokens: number;
-    status: string;
-    before_remaining_tokens: number;
-    after_remaining_tokens: number;
-    before_token_limit: number;
-    after_token_limit: number;
-    created_at: string;
-  };
 }
 
 const BILLING_CACHE_TTL_MS = 10_000;
@@ -120,14 +101,9 @@ export const billingService = {
     return response.data;
   },
 
-  async getPurchaseOptions(): Promise<TokenPurchaseOption[]> {
-    const response = await apiClient.get<TokenPurchaseOption[]>('/api/billing/purchases/options');
-    return response.data;
-  },
-
-  async createPlaceholderPurchase(optionId: string): Promise<TokenPurchaseResponse> {
-    const response = await apiClient.post<TokenPurchaseResponse>('/api/billing/purchases', {
-      option_id: optionId,
+  async redeemCode(code: string): Promise<TokenRedemptionResponse> {
+    const response = await apiClient.post<TokenRedemptionResponse>('/api/billing/redemptions', {
+      code,
     });
     const ownerKey = await getAuthCacheKey();
     quotaSummaryCache = { ownerKey, data: response.data.summary, fetchedAt: Date.now() };

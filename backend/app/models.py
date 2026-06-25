@@ -267,7 +267,59 @@ class AITokenPurchaseEvent(SQLModel, table=True):
     after_remaining_tokens: int = Field(default=0, nullable=False)
     before_token_limit: int = Field(default=0, nullable=False)
     after_token_limit: int = Field(default=0, nullable=False)
+    source: str = Field(default="placeholder_purchase", sa_column=Column(Text, nullable=False))
+    source_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class RedemptionPackage(SQLModel, table=True):
+    __tablename__ = "redemption_packages"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(sa_column=Column(Text, nullable=False))
+    token_amount: int = Field(nullable=False)
+    is_active: bool = Field(default=True, nullable=False)
+    notes: str = Field(default="", sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class RedemptionBatch(SQLModel, table=True):
+    __tablename__ = "redemption_batches"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    package_id: Optional[uuid.UUID] = Field(default=None, foreign_key="redemption_packages.id", index=True)
+    name: str = Field(sa_column=Column(Text, nullable=False))
+    channel: str = Field(default="", sa_column=Column(Text, nullable=False))
+    package_name: str = Field(sa_column=Column(Text, nullable=False))
+    token_amount: int = Field(nullable=False)
+    code_count: int = Field(nullable=False)
+    status: str = Field(default="active", sa_column=Column(Text, nullable=False))
+    created_by_user_id: str = Field(sa_column=Column(Text, nullable=False))
+    exported_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class RedemptionCode(SQLModel, table=True):
+    __tablename__ = "redemption_codes"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    batch_id: Optional[uuid.UUID] = Field(default=None, foreign_key="redemption_batches.id", index=True)
+    package_id: Optional[uuid.UUID] = Field(default=None, foreign_key="redemption_packages.id", index=True)
+    code_hash: str = Field(sa_column=Column(Text, nullable=False, unique=True))
+    code_ciphertext: str = Field(sa_column=Column(Text, nullable=False))
+    code_prefix: str = Field(default="", sa_column=Column(Text, nullable=False, index=True))
+    token_amount: int = Field(nullable=False)
+    package_name: str = Field(sa_column=Column(Text, nullable=False))
+    status: str = Field(default="unused", sa_column=Column(Text, nullable=False, index=True))
+    redeemed_by_user_id: Optional[str] = Field(default=None, foreign_key="users.id", index=True)
+    redeemed_at: Optional[datetime] = None
+    revoked_by_user_id: Optional[str] = Field(default=None, foreign_key="users.id", index=True)
+    revoked_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
 class ExportRenderSnapshot(SQLModel, table=True):
