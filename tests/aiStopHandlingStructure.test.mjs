@@ -226,6 +226,7 @@ test('experience internal polish toolbar starts collapsed with mobile full-width
   const source = readSource('views/ResumeEditor/components/EditorSidebar.tsx');
 
   assert.match(source, /const \[isPolishCardCollapsed, setIsPolishCardCollapsed\] = React\.useState\(true\);/);
-  assert.match(source, /flex flex-col gap-2 md:flex-row/);
+  assert.match(source, /isPolishCardCollapsed \? 'flex items-start gap-3'/);
+  assert.match(source, /isPolishCardCollapsed \? 'flex-col md:flex-row md:items-start'/);
   assert.match(source, /w-full[^"']*md:flex-1/);
 });
