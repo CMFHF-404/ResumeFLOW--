@@ -16,6 +16,8 @@ def _set_required_env_defaults() -> None:
 
 _set_required_env_defaults()
 
+from fastapi import HTTPException  # noqa: E402
+
 from app.models import ExperienceCategory, ExperienceVersion, MasterExperience, Skill, UserSkill  # noqa: E402
 from app.domain.ai import ai_service  # noqa: E402
 from app.domain.assistant import assistant_router, assistant_service  # noqa: E402
@@ -58,6 +60,37 @@ class _FakeAsyncSession:
 
     def add(self, value):
         self.added.append(value)
+
+
+class AssistantStreamQuotaTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stream_rejects_exhausted_quota_before_streaming_response(self) -> None:
+        session = object()
+        current_user = SimpleNamespace(id="user-1")
+        quota_error = HTTPException(
+            status_code=402,
+            detail={"code": "ai_token_quota_exhausted", "message": "quota exhausted"},
+        )
+
+        with patch.object(
+            assistant_router,
+            "_parse_stream_payload",
+            AsyncMock(return_value=(SimpleNamespace(), [])),
+        ):
+            with patch.object(
+                assistant_router.billing_service,
+                "ensure_quota_available",
+                AsyncMock(side_effect=quota_error),
+            ) as mocked_quota_check:
+                with self.assertRaises(HTTPException) as raised:
+                    await assistant_router.stream_assistant_session_turn(
+                        uuid.uuid4(),
+                        request=object(),
+                        session=session,
+                        current_user=current_user,
+                    )
+
+        self.assertEqual(raised.exception.status_code, 402)
+        mocked_quota_check.assert_awaited_once_with(session, "user-1")
 
 
 class AssistantFrontendSourceTests(unittest.TestCase):
@@ -1186,15 +1219,20 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                         "_build_bank_context",
                         AsyncMock(return_value={}),
                     ) as build_bank_context_mock:
-                        response = await assistant_router.stream_assistant_session_turn(  # type: ignore[attr-defined]
-                            uuid.uuid4(),
-                            AsyncMock(),
-                            session=AsyncMock(),
-                            current_user=current_user,
-                        )
-                        chunks: list[str] = []
-                        async for chunk in response.body_iterator:
-                            chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
+                        with patch.object(
+                            assistant_router.billing_service,
+                            "ensure_quota_available",
+                            AsyncMock(return_value=SimpleNamespace()),
+                        ):
+                            response = await assistant_router.stream_assistant_session_turn(  # type: ignore[attr-defined]
+                                uuid.uuid4(),
+                                AsyncMock(),
+                                session=AsyncMock(),
+                                current_user=current_user,
+                            )
+                            chunks: list[str] = []
+                            async for chunk in response.body_iterator:
+                                chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
 
         self.assertEqual(build_bank_context_mock.await_count, 0)
         parsed_events = [json.loads(chunk) for chunk in chunks]
@@ -1246,19 +1284,24 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                         AsyncMock(return_value={}),
                     ) as build_bank_context_mock:
                         with patch.object(
-                            assistant_router.jd_attachment_service,
-                            "extract_jd_from_attachment",
-                            AsyncMock(side_effect=ValueError("文件「broken.pdf」无法解析")),
+                            assistant_router.billing_service,
+                            "ensure_quota_available",
+                            AsyncMock(return_value=SimpleNamespace()),
                         ):
-                            response = await assistant_router.stream_assistant_session_turn(  # type: ignore[attr-defined]
-                                uuid.uuid4(),
-                                AsyncMock(),
-                                session=AsyncMock(),
-                                current_user=current_user,
-                            )
-                            chunks: list[str] = []
-                            async for chunk in response.body_iterator:
-                                chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
+                            with patch.object(
+                                assistant_router.jd_attachment_service,
+                                "extract_jd_from_attachment",
+                                AsyncMock(side_effect=ValueError("文件「broken.pdf」无法解析")),
+                            ):
+                                response = await assistant_router.stream_assistant_session_turn(  # type: ignore[attr-defined]
+                                    uuid.uuid4(),
+                                    AsyncMock(),
+                                    session=AsyncMock(),
+                                    current_user=current_user,
+                                )
+                                chunks: list[str] = []
+                                async for chunk in response.body_iterator:
+                                    chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
 
         self.assertEqual(build_bank_context_mock.await_count, 0)
         parsed_events = [json.loads(chunk) for chunk in chunks]

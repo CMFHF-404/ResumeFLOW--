@@ -34,7 +34,7 @@ export const ensureStreamResponseOk = async (response: Response) => {
     }
     const message = await readStreamErrorMessage(response);
     if (response.status === 402) {
-        throw new Error(message || 'AI token 额度已用完，请打开额度入口购买后继续。');
+        throw new Error(message || 'AI token 额度已用完，请打开额度入口兑换卡密或联系管理员。');
     }
     throw new Error(message || `AI stream request failed: ${response.status}`);
 };

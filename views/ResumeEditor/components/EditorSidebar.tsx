@@ -83,7 +83,9 @@ const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
         <div className={EDITING_SUGGESTION_NAV_CLASS}>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/60">
                 <div
-                    className={isPolishCardCollapsed ? 'flex flex-col gap-2 md:flex-row md:items-start md:gap-3' : 'flex items-start justify-between gap-3 md:items-center'}
+                    className={`${isPolishCardCollapsed ? 'flex items-start gap-3' : 'flex items-start justify-between gap-3 md:items-center'} ${
+                        isPolishCardCollapsed ? 'flex-col md:flex-row md:items-start' : ''
+                    }`}
                 >
                     {isPolishCardCollapsed ? (
                         <>

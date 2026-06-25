@@ -1,8 +1,7 @@
 import React from 'react';
-import { BarChart3, RefreshCw, TrendingUp, Wallet, X } from 'lucide-react';
+import { BarChart3, HeartHandshake, KeyRound, RefreshCw, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   billingService,
-  type TokenPurchaseOption,
   type TokenQuotaSummary,
   type TokenUsageAggregate,
   type TokenUsageEvent,
@@ -13,6 +12,7 @@ type TokenQuotaModalProps = {
   onClose: () => void;
   summary: TokenQuotaSummary | null;
   onSummaryChange: (summary: TokenQuotaSummary) => void;
+  onOpenAppreciation?: () => void;
 };
 
 // 格式化 Tokens 数量显示，如 1.1M, 48.3k
@@ -38,7 +38,11 @@ const formatDateTime = (value?: string | null): string => {
 // ==========================================
 // 1. 额度主看板组件 (合并指标并优化高度)
 // ==========================================
-const QuotaDashboard: React.FC<{ summary: TokenQuotaSummary | null }> = ({ summary }) => {
+const QuotaDashboard: React.FC<{
+  summary: TokenQuotaSummary | null;
+  onOpenRedeem: () => void;
+  isRedeemOpen: boolean;
+}> = ({ summary, onOpenRedeem, isRedeemOpen }) => {
   const remaining = Math.max(Number(summary?.remaining_tokens ?? 0), 0);
   const used = Math.max(Number(summary?.used_tokens ?? 0), 0);
   const limit = Math.max(Number(summary?.token_limit ?? 0), 0);
@@ -83,18 +87,34 @@ const QuotaDashboard: React.FC<{ summary: TokenQuotaSummary | null }> = ({ summa
         </div>
       </div>
 
-      {/* 底部融合的最近购买小字展示 */}
-      {summary?.last_purchase_tokens ? (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 border-t border-gray-100 pt-2.5 text-[11px] text-gray-400 dark:border-gray-800">
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            最近一次购买: <strong className="font-semibold text-gray-600 dark:text-gray-300">{formatTokens(summary.last_purchase_tokens)}</strong>
-          </span>
-          {summary.last_purchase_at && (
-            <span>时间: {formatDateTime(summary.last_purchase_at)}</span>
+      {/* 底部融合的最近入账与购买额度 */}
+      <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2.5 text-[11px] text-gray-400 dark:border-gray-800">
+        <div className="flex flex-wrap items-center gap-x-4">
+          {summary?.last_purchase_tokens ? (
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                最近一次入账: <strong className="font-semibold text-gray-600 dark:text-gray-300">{formatTokens(summary.last_purchase_tokens)}</strong>
+              </span>
+              {summary.last_purchase_at && (
+                <span>时间: {formatDateTime(summary.last_purchase_at)}</span>
+              )}
+            </>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-gray-300 dark:bg-gray-700" />
+              暂无入账记录
+            </span>
           )}
         </div>
-      ) : null}
+        <button
+          type="button"
+          onClick={onOpenRedeem}
+          className="inline-flex items-center gap-1 font-bold text-emerald-600 transition hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 focus:outline-none"
+        >
+          <span>{isRedeemOpen ? '收起兑换' : '购买额度 / 兑换卡密'}</span>
+        </button>
+      </div>
     </div>
   );
 };
@@ -409,45 +429,101 @@ const UsageDetailList: React.FC<{ usageEvents: TokenUsageEvent[] }> = ({ usageEv
 };
 
 // ==========================================
-// 6. 购买额度区 (自适应：移动端横滑动)
+// 6. 卡密兑换区
 // ==========================================
-const PurchaseSection: React.FC<{
-  purchaseOptions: TokenPurchaseOption[];
-  purchasingOptionId: string | null;
-  onPurchase: (option: TokenPurchaseOption) => void;
-}> = ({ purchaseOptions, purchasingOptionId, onPurchase }) => {
+// ==========================================
+// 6. 卡密兑换卡片 (优化样式并融入购买引导)
+// ==========================================
+const RedemptionCard: React.FC<{
+  code: string;
+  isRedeeming: boolean;
+  redemptionMessage: string;
+  onCodeChange: (value: string) => void;
+  onRedeem: () => void;
+  onOpenAppreciation?: () => void;
+}> = ({
+  code,
+  isRedeeming,
+  redemptionMessage,
+  onCodeChange,
+  onRedeem,
+  onOpenAppreciation,
+}) => {
   return (
-    <div className="mt-5">
-      <h3 className="mb-2.5 text-xs font-bold text-gray-900 dark:text-white">购买额度</h3>
-      <div className="flex overflow-x-auto pb-1.5 gap-3 snap-x md:grid md:grid-cols-3 md:overflow-visible md:pb-0">
-        {purchaseOptions.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => void onPurchase(option)}
-            disabled={purchasingOptionId !== null}
-            className="flex-shrink-0 w-[210px] snap-start rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/10 p-3.5 text-left transition hover:border-emerald-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/10 dark:from-emerald-950/20 dark:to-teal-950/5 dark:hover:border-emerald-500/30 md:w-auto"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300">
-                {option.label}
+    <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 p-4 shadow-sm dark:border-emerald-500/10 dark:from-emerald-950/10 dark:to-teal-950/5">
+      <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:divide-x md:divide-emerald-100/50 dark:md:divide-emerald-900/20">
+        {/* 左侧：如何获取额度 */}
+        <div className="flex flex-1 flex-col justify-between pr-0 md:pr-4">
+          <div>
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+              <span className="flex h-5 w-5 items-center justify-center rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
+                <HeartHandshake className="h-3 w-3" />
               </span>
-              <span className="rounded-full bg-emerald-100/70 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
-                {option.price_label}
-              </span>
+              <span>如何获取额度</span>
             </div>
-            {option.description && (
-              <p className="mt-2 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-2 min-h-[30px]">
-                {option.description}
-              </p>
+            <p className="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              本项目为开源软件。您可以赞赏作者以支持本项目的维护与算力支出。赞赏后系统将自动或由管理员手动发送卡密至您的邮箱。
+            </p>
+          </div>
+          {onOpenAppreciation && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={onOpenAppreciation}
+                className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-amber-600 active:scale-95 focus:outline-none"
+              >
+                <span>立即赞赏获取卡密</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 右侧：卡密兑换 */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onRedeem();
+          }}
+          className="flex flex-1 flex-col justify-between pl-0 pt-3 md:pl-4 md:pt-0"
+        >
+          <div>
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-900 dark:text-white">
+              <span className="flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                <KeyRound className="h-3 w-3" />
+              </span>
+              <span>兑换卡密</span>
+            </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2.5">
+              输入您的卡密以兑换对应的 AI 服务额度。
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => onCodeChange(e.target.value)}
+                placeholder="RF-XXXX-XXXX-XXXX-XXXX"
+                className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold tracking-wide text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-gray-800 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-700 dark:focus:border-emerald-500 dark:focus:ring-emerald-500/10"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="submit"
+                disabled={isRedeeming || !code.trim()}
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white transition hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 focus:outline-none"
+              >
+                {isRedeeming ? '兑换中' : '确认兑换'}
+              </button>
+            </div>
+            {redemptionMessage && (
+              <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                {redemptionMessage}
+              </div>
             )}
-            <div className="mt-3 flex justify-end">
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                立即购买 →
-              </span>
-            </div>
-          </button>
-        ))}
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -461,29 +537,30 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   onClose,
   summary,
   onSummaryChange,
+  onOpenAppreciation,
 }) => {
   const [usageEvents, setUsageEvents] = React.useState<TokenUsageEvent[]>([]);
   const [usageByDay, setUsageByDay] = React.useState<TokenUsageAggregate[]>([]);
   const [usageByEntrypoint, setUsageByEntrypoint] = React.useState<TokenUsageAggregate[]>([]);
-  const [purchaseOptions, setPurchaseOptions] = React.useState<TokenPurchaseOption[]>([]);
+  const [redemptionCode, setRedemptionCode] = React.useState('');
+  const [redemptionMessage, setRedemptionMessage] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
-  const [purchasingOptionId, setPurchasingOptionId] = React.useState<string | null>(null);
+  const [isRedeeming, setIsRedeeming] = React.useState(false);
+  const [isRedeemOpen, setIsRedeemOpen] = React.useState(false);
   const [error, setError] = React.useState('');
 
   const refresh = React.useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
-      const [nextSummary, usage, options] = await Promise.all([
+      const [nextSummary, usage] = await Promise.all([
         billingService.getSummary({ force: true }),
         billingService.getUsage(80),
-        billingService.getPurchaseOptions(),
       ]);
       onSummaryChange(nextSummary);
       setUsageEvents(usage.events);
       setUsageByDay(usage.usage_by_day);
       setUsageByEntrypoint(usage.usage_by_entrypoint);
-      setPurchaseOptions(options);
     } catch (fetchError) {
       console.error(fetchError);
       setError('额度信息加载失败，请稍后重试。');
@@ -498,18 +575,25 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     }
   }, [isOpen, refresh]);
 
-  const handlePurchase = async (option: TokenPurchaseOption) => {
-    setPurchasingOptionId(option.id);
+  const handleRedeem = async () => {
+    const code = redemptionCode.trim();
+    if (!code || isRedeeming) {
+      return;
+    }
+    setIsRedeeming(true);
     setError('');
+    setRedemptionMessage('');
     try {
-      const result = await billingService.createPlaceholderPurchase(option.id);
+      const result = await billingService.redeemCode(code);
       onSummaryChange(result.summary);
-      await refresh();
-    } catch (purchaseError) {
-      console.error(purchaseError);
-      setError('购买额度失败，请稍后重试。');
+      setRedemptionCode('');
+      setRedemptionMessage(`已兑换 ${formatTokens(result.tokens)} Tokens，来自 ${result.package_name}`);
+      void refresh();
+    } catch (redeemError) {
+      console.error(redeemError);
+      setError('卡密兑换失败，请检查卡密或联系管理员。');
     } finally {
-      setPurchasingOptionId(null);
+      setIsRedeeming(false);
     }
   };
 
@@ -552,7 +636,24 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
         {/* 内容滚动区域 */}
         <div className="min-h-0 overflow-y-auto p-4 space-y-4">
-          <QuotaDashboard summary={summary} />
+          <QuotaDashboard
+            summary={summary}
+            onOpenRedeem={() => setIsRedeemOpen(!isRedeemOpen)}
+            isRedeemOpen={isRedeemOpen}
+          />
+
+          {isRedeemOpen && (
+            <div className="animate-in fade-in slide-in-from-top-3 duration-200">
+              <RedemptionCard
+                code={redemptionCode}
+                isRedeeming={isRedeeming}
+                redemptionMessage={redemptionMessage}
+                onCodeChange={setRedemptionCode}
+                onRedeem={handleRedeem}
+                onOpenAppreciation={onOpenAppreciation}
+              />
+            </div>
+          )}
 
           {error && (
             <div className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
@@ -571,13 +672,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
             <UsageDetailTable usageEvents={usageEvents} />
             <UsageDetailList usageEvents={usageEvents} />
           </div>
-
-          {/* 购买额度区 */}
-          <PurchaseSection
-            purchaseOptions={purchaseOptions}
-            purchasingOptionId={purchasingOptionId}
-            onPurchase={handlePurchase}
-          />
         </div>
       </div>
     </div>

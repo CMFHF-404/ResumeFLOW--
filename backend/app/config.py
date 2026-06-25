@@ -36,6 +36,7 @@ ENV_FRONTEND_ORIGIN = "FRONTEND_ORIGIN"
 ENV_EXPORT_SNAPSHOT_TTL_SECONDS = "EXPORT_SNAPSHOT_TTL_SECONDS"
 ENV_EXPORT_TOKEN_SECRET = "EXPORT_TOKEN_SECRET"
 ENV_EXPORT_RENDER_TIMEOUT_SECONDS = "EXPORT_RENDER_TIMEOUT_SECONDS"
+ENV_REDEMPTION_CODE_ENCRYPTION_KEY = "REDEMPTION_CODE_ENCRYPTION_KEY"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_AI_MODEL = "qwen3.7-plus"
@@ -176,6 +177,7 @@ class Settings:
     export_snapshot_ttl_seconds: int
     export_token_secret: str
     export_render_timeout_seconds: int
+    redemption_code_encryption_key: Optional[str]
 
 
 _settings: Optional[Settings] = None
@@ -245,6 +247,7 @@ def load_settings() -> Settings:
     export_render_timeout_seconds = int(
         os.getenv(ENV_EXPORT_RENDER_TIMEOUT_SECONDS, DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS)
     )
+    redemption_code_encryption_key = os.getenv(ENV_REDEMPTION_CODE_ENCRYPTION_KEY)
 
     _settings = Settings(
         database_url=database_url,
@@ -277,6 +280,7 @@ def load_settings() -> Settings:
         export_snapshot_ttl_seconds=export_snapshot_ttl_seconds,
         export_token_secret=export_token_secret,
         export_render_timeout_seconds=export_render_timeout_seconds,
+        redemption_code_encryption_key=redemption_code_encryption_key,
     )
     return _settings
 
