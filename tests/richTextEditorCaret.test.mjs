@@ -18,6 +18,18 @@ const importRichTextEditorModule = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+const importRichTextUtilsModule = async () => {
+  const result = await build({
+    entryPoints: ['utils/richText.ts'],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const encoded = Buffer.from(result.outputFiles[0].text).toString('base64');
+  return import(`data:text/javascript;base64,${encoded}`);
+};
+
 test('plain Enter saves the inserted line break before selection state updates', () => {
   const richTextEditorSource = source();
 
@@ -125,5 +137,122 @@ test('line bullet cues refresh after late layout and font changes', () => {
     richTextEditorSource,
     /new ResizeObserver/,
     'plain line bullet cues should remeasure when the editor dimensions change'
+  );
+});
+
+test('clipboard paste prefers sanitized rich html and copy exposes html plus plain text', () => {
+  const richTextEditorSource = source();
+
+  assert.match(richTextEditorSource, /event\.clipboardData\.getData\('text\/html'\)/);
+  assert.match(richTextEditorSource, /event\.clipboardData\.getData\('text\/plain'\)/);
+  assert.match(richTextEditorSource, /resolveClipboardPasteHtml\(html, text\)/);
+  assert.match(richTextEditorSource, /insertClipboardContent\(editor, resolveClipboardPasteHtml\(html, text\)\)/);
+  assert.match(richTextEditorSource, /event\.clipboardData\.setData\('text\/html', html\)/);
+  assert.match(richTextEditorSource, /event\.clipboardData\.setData\('text\/plain', stripRichTextToText\(html\)\)/);
+  assert.match(richTextEditorSource, /onCopy=\{readOnly \? undefined : handleCopy\}/);
+});
+
+test('clipboard paste uses native insertion so browser undo can revert the paste', () => {
+  const richTextEditorSource = source();
+  const clipboardInsertBlock = richTextEditorSource.match(/const insertClipboardContent = [\s\S]*?\n\};/)?.[0] ?? '';
+
+  assert.match(clipboardInsertBlock, /document\.execCommand\('insertHTML', false, html\)/);
+  assert.doesNotMatch(clipboardInsertBlock, /range\.deleteContents\(\)/);
+  assert.doesNotMatch(clipboardInsertBlock, /range\.insertNode\(/);
+});
+
+test('rich text sanitizer recognizes clipboard inline font styles', async () => {
+  const { resolveRichTextInlineStyleTags } = await importRichTextUtilsModule();
+
+  assert.deepEqual(
+    resolveRichTextInlineStyleTags({
+      fontWeight: '700',
+      fontStyle: 'italic',
+      textDecoration: '',
+      textDecorationLine: 'underline',
+    }),
+    ['b', 'i', 'u']
+  );
+  assert.deepEqual(
+    resolveRichTextInlineStyleTags({
+      fontWeight: '400',
+      fontStyle: 'normal',
+      textDecoration: 'none',
+      textDecorationLine: '',
+    }),
+    []
+  );
+});
+
+test('clipboard paste html drops only synthetic boundary block line breaks', async () => {
+  const {
+    buildPlainTextPasteHtml,
+    normalizeClipboardPlainTextForPaste,
+    resolveClipboardPasteHtml,
+    resolveSanitizedClipboardPasteHtml,
+    trimSyntheticClipboardBoundaryLineBreaks,
+  } = await importRichTextUtilsModule();
+
+  assert.equal(normalizeClipboardPlainTextForPaste('普通文本\r\n'), '普通文本');
+  assert.equal(normalizeClipboardPlainTextForPaste('\n普通文本\n\n'), '普通文本');
+  assert.equal(normalizeClipboardPlainTextForPaste('第一行\r\n第二行\r\n'), '第一行\n第二行');
+  assert.equal(
+    trimSyntheticClipboardBoundaryLineBreaks(
+      '<a href="https://example.com" target="_blank" rel="noreferrer">原子简历</a><br>',
+      '原子简历'
+    ),
+    '<a href="https://example.com" target="_blank" rel="noreferrer">原子简历</a>'
+  );
+  assert.equal(
+    trimSyntheticClipboardBoundaryLineBreaks('第一行<br>第二行<br>', '第一行\n第二行'),
+    '第一行<br>第二行'
+  );
+  assert.equal(
+    trimSyntheticClipboardBoundaryLineBreaks('第一行<br>第二行<br><br>', '第一行\n第二行'),
+    '第一行<br>第二行'
+  );
+  assert.equal(
+    trimSyntheticClipboardBoundaryLineBreaks('第一行<br>第二行', '第一行\n第二行'),
+    '第一行<br>第二行'
+  );
+  assert.equal(
+    trimSyntheticClipboardBoundaryLineBreaks('第一行<br>', '第一行\n'),
+    '第一行'
+  );
+  assert.equal(
+    resolveSanitizedClipboardPasteHtml('普通文本', '普通文本'),
+    ''
+  );
+  assert.equal(
+    resolveSanitizedClipboardPasteHtml('<a href="https://example.com" target="_blank" rel="noreferrer">原子简历</a><br>', '原子简历'),
+    '<a href="https://example.com" target="_blank" rel="noreferrer">原子简历</a>'
+  );
+  assert.equal(
+    resolveSanitizedClipboardPasteHtml('第一行<br>第二行<br>', '第一行\n第二行'),
+    '第一行<br>第二行'
+  );
+  assert.equal(
+    resolveSanitizedClipboardPasteHtml('<a href="https://example.com" target="_blank" rel="noreferrer">原子简历</a><br>', '原子简历\n'),
+    '<a href="https://example.com" target="_blank" rel="noreferrer">原子简历</a>'
+  );
+  assert.equal(
+    resolveSanitizedClipboardPasteHtml('<br><b>行动</b><br>', '\n行动\n'),
+    '<b>行动</b>'
+  );
+  assert.equal(
+    resolveSanitizedClipboardPasteHtml('<br>行动<br>', '\n行动\n'),
+    ''
+  );
+  assert.equal(
+    buildPlainTextPasteHtml('第一行\n第二行 & <tag>'),
+    '第一行<br>第二行 &amp; &lt;tag&gt;'
+  );
+  assert.equal(
+    resolveClipboardPasteHtml('', '\n行动\n'),
+    '行动'
+  );
+  assert.equal(
+    resolveClipboardPasteHtml('', '<script>alert(1)</script>\n'),
+    '&lt;script&gt;alert(1)&lt;/script&gt;'
   );
 });

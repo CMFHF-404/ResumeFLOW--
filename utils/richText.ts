@@ -9,6 +9,8 @@ const RICH_TEXT_DECODE_PATTERN = /&(lt|gt|amp;lt|amp;gt);/i;
 const MAX_HTML_DECODE_PASSES = 2;
 const RICH_TEXT_HTML_TAG_PATTERN = /<\/?(?:b|strong|i|em|u|a|br|ul|ol|li)\b/i;
 const RICH_TEXT_MARKDOWN_TOKEN_PATTERN = /(\*\*|＊＊|__|\]\(|\*[^*\r\n]+\*)/;
+type RichTextInlineStyleTag = 'b' | 'i' | 'u';
+type RichTextInlineStyleSource = Pick<CSSStyleDeclaration, 'fontWeight' | 'fontStyle' | 'textDecoration' | 'textDecorationLine'>;
 
 export const RICH_TEXT_INLINE_STYLES_CLASS =
     '[&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_a]:text-blue-600 [&_a]:underline';
@@ -41,6 +43,74 @@ const decodeHtmlEntities = (value: string) => {
 const normalizeTextNode = (value: string) => value.replace(/\u00a0/g, ' ');
 
 const EDGE_WHITESPACE_PATTERN = /^[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]+|[\s\u00a0\u200b\u200c\u200d\u3000\uFEFF]+$/g;
+const TRAILING_LINE_BREAK_HTML_PATTERN = /(?:<br\s*\/?>\s*)+$/i;
+const LEADING_LINE_BREAK_HTML_PATTERN = /^(?:\s*<br\s*\/?>)+/i;
+
+const isBoldFontWeight = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+    if (normalized === 'bold' || normalized === 'bolder') {
+        return true;
+    }
+    const numericWeight = Number.parseInt(normalized, 10);
+    return Number.isFinite(numericWeight) && numericWeight >= 600;
+};
+
+export const resolveRichTextInlineStyleTags = (
+    style: Partial<RichTextInlineStyleSource>
+): RichTextInlineStyleTag[] => {
+    const tags: RichTextInlineStyleTag[] = [];
+    if (isBoldFontWeight(style.fontWeight ?? '')) {
+        tags.push('b');
+    }
+    if (/^(italic|oblique)\b/.test((style.fontStyle ?? '').trim().toLowerCase())) {
+        tags.push('i');
+    }
+    const textDecoration = `${style.textDecorationLine ?? ''} ${style.textDecoration ?? ''}`.toLowerCase();
+    if (/\bunderline\b/.test(textDecoration)) {
+        tags.push('u');
+    }
+    return tags;
+};
+
+const normalizeClipboardText = (value: string) => value.replace(/\r\n?/g, '\n');
+
+export const normalizeClipboardPlainTextForPaste = (value: string) =>
+    normalizeClipboardText(value).replace(/^\n+|\n+$/g, '');
+
+export const trimSyntheticClipboardBoundaryLineBreaks = (sanitizedHtml: string, plainText: string) => {
+    if (!TRAILING_LINE_BREAK_HTML_PATTERN.test(sanitizedHtml) && !LEADING_LINE_BREAK_HTML_PATTERN.test(sanitizedHtml)) {
+        return sanitizedHtml;
+    }
+    const normalizedPlainText = normalizeClipboardPlainTextForPaste(plainText);
+    if (!normalizedPlainText) {
+        return sanitizedHtml;
+    }
+    const normalizedRichText = normalizeClipboardPlainTextForPaste(stripRichTextToText(sanitizedHtml));
+    if (normalizedRichText !== normalizedPlainText) {
+        return sanitizedHtml;
+    }
+    return sanitizedHtml
+        .replace(LEADING_LINE_BREAK_HTML_PATTERN, '')
+        .replace(TRAILING_LINE_BREAK_HTML_PATTERN, '');
+};
+
+export const resolveSanitizedClipboardPasteHtml = (sanitizedHtml: string, plainText: string) => {
+    const normalizedHtml = trimSyntheticClipboardBoundaryLineBreaks(sanitizedHtml, plainText);
+    return hasRichTextDecoration(normalizedHtml) ? normalizedHtml : '';
+};
+
+export const buildPlainTextPasteHtml = (text: string) =>
+    escapeHtml(text).replace(/\n/g, '<br>');
+
+export const resolveClipboardPasteHtml = (html: string, plainText: string) => {
+    const text = normalizeClipboardPlainTextForPaste(plainText);
+    const sanitizedHtml = html ? sanitizeRichTextHtml(html) : '';
+    const pasteHtml = sanitizedHtml ? resolveSanitizedClipboardPasteHtml(sanitizedHtml, text) : '';
+    return pasteHtml || buildPlainTextPasteHtml(text);
+};
 
 const normalizeMarkdownToken = (value: string) =>
     value.replace(/[\u00a0\u3000]/g, ' ').replace(EDGE_WHITESPACE_PATTERN, '');
@@ -165,6 +235,33 @@ const mapInlineTag = (tag: string) => {
     return tag;
 };
 
+const appendInlineStyleWrappers = (
+    source: HTMLElement,
+    parent: HTMLElement,
+    skippedTags = new Set<RichTextInlineStyleTag>()
+) => {
+    let currentParent = parent;
+    resolveRichTextInlineStyleTags(source.style).forEach((tag) => {
+        if (skippedTags.has(tag)) {
+            return;
+        }
+        const wrapper = document.createElement(tag);
+        currentParent.appendChild(wrapper);
+        currentParent = wrapper;
+    });
+    return currentParent;
+};
+
+const appendStyledInlineElement = (
+    source: HTMLElement,
+    parent: HTMLElement,
+    element: HTMLElement,
+    skippedTags?: Set<RichTextInlineStyleTag>
+) => {
+    const wrapperParent = appendInlineStyleWrappers(source, parent, skippedTags);
+    wrapperParent.appendChild(element);
+};
+
 const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
     nodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) {
@@ -185,6 +282,16 @@ const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
 
         if (ALLOWED_INLINE_TAGS.has(tag)) {
             const mappedTag = mapInlineTag(tag);
+            const skippedStyleTags = new Set<RichTextInlineStyleTag>();
+            if (mappedTag === 'B') {
+                skippedStyleTags.add('b');
+            }
+            if (mappedTag === 'I') {
+                skippedStyleTags.add('i');
+            }
+            if (mappedTag === 'U') {
+                skippedStyleTags.add('u');
+            }
             if (mappedTag === 'A') {
                 const href = element.getAttribute('href');
                 if (!isSafeHref(href)) {
@@ -196,13 +303,13 @@ const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
                 link.setAttribute('target', '_blank');
                 link.setAttribute('rel', 'noreferrer');
                 sanitizeNodeList(Array.from(element.childNodes), link);
-                parent.appendChild(link);
+                appendStyledInlineElement(element, parent, link);
                 return;
             }
 
             const inline = document.createElement(mappedTag.toLowerCase());
             sanitizeNodeList(Array.from(element.childNodes), inline);
-            parent.appendChild(inline);
+            appendStyledInlineElement(element, parent, inline, skippedStyleTags);
             return;
         }
 
@@ -214,7 +321,8 @@ const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
         }
 
         const isBlock = BLOCK_TAGS.has(tag);
-        sanitizeNodeList(Array.from(element.childNodes), parent);
+        const contentParent = appendInlineStyleWrappers(element, parent);
+        sanitizeNodeList(Array.from(element.childNodes), contentParent);
         if (isBlock) {
             appendLineBreak(parent);
         }
