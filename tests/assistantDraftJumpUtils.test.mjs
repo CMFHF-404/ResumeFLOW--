@@ -184,3 +184,42 @@ test('manual non-experience jump handler falls back to resume id from session co
 
   assert.deepEqual(jumpedResumeIds, ['resume-2']);
 });
+
+test('applied draft navigation jumps back to the experience bank target', async () => {
+  const { createAppliedDraftNavigationHandler } = await importAssistantDraftJumpUtils();
+  const jumps = [];
+
+  const handler = createAppliedDraftNavigationHandler({
+    navigation: {
+      targetView: 'experience_bank',
+      targetId: 'master-1',
+      category: 'project',
+    },
+    onJumpToExperienceBank: (category, targetId) => jumps.push({ category, targetId }),
+    notifyError: (message) => assert.fail(`unexpected error: ${message}`),
+  });
+
+  assert.equal(typeof handler, 'function');
+  handler();
+
+  assert.deepEqual(jumps, [{ category: 'project', targetId: 'master-1' }]);
+});
+
+test('applied draft navigation jumps back to the resume editor target', async () => {
+  const { createAppliedDraftNavigationHandler } = await importAssistantDraftJumpUtils();
+  const jumps = [];
+
+  const handler = createAppliedDraftNavigationHandler({
+    navigation: {
+      targetView: 'resume_editor',
+      resumeId: 'resume-1',
+      targetId: 'master-1',
+    },
+    onJumpToResumeEditor: (resumeId, targetId) => jumps.push({ resumeId, targetId }),
+    notifyError: (message) => assert.fail(`unexpected error: ${message}`),
+  });
+
+  handler();
+
+  assert.deepEqual(jumps, [{ resumeId: 'resume-1', targetId: 'master-1' }]);
+});

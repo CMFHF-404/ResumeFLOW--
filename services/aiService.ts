@@ -275,8 +275,16 @@ export interface AssistantMessage {
     created_at: string;
 }
 
+export interface AssistantDraftApplyNavigation {
+    targetView: 'experience_bank' | 'resume_editor';
+    targetId?: string | null;
+    resumeId?: string | null;
+    category?: ExperienceCategory | null;
+}
+
 export interface AssistantMessageApplyResponse {
     message: AssistantMessage;
+    navigation?: AssistantDraftApplyNavigation | null;
 }
 
 export interface AssistantSelectedExperience {
@@ -601,6 +609,18 @@ const streamAssistantRequest = async (
     });
 };
 
+const applyAssistantMessageDraftRequest = async (
+    sessionId: string,
+    messageId: string,
+    options?: { skipApply?: boolean },
+) => {
+    const query = options?.skipApply ? '?skip_apply=true' : '';
+    const response = await apiClient.post<AssistantMessageApplyResponse>(
+        `/api/assistant/sessions/${sessionId}/messages/${messageId}/apply${query}`
+    );
+    return response.data;
+};
+
 export const aiService = {
     async splitExperienceText(data: {
         rawText: string;
@@ -694,9 +714,16 @@ export const aiService = {
         messageId: string,
         options?: { skipApply?: boolean },
     ) {
-        const query = options?.skipApply ? '?skip_apply=true' : '';
-        const response = await apiClient.post<AssistantMessageApplyResponse>(`/api/assistant/sessions/${sessionId}/messages/${messageId}/apply${query}`);
-        return response.data.message;
+        const response = await applyAssistantMessageDraftRequest(sessionId, messageId, options);
+        return response.message;
+    },
+
+    async applyAssistantMessageDraft(
+        sessionId: string,
+        messageId: string,
+        options?: { skipApply?: boolean },
+    ) {
+        return applyAssistantMessageDraftRequest(sessionId, messageId, options);
     },
 
     async sendAssistantMessage(
@@ -706,6 +733,7 @@ export const aiService = {
             displayMessage?: string;
             mode?: AssistantMode;
             skillId?: AssistantSkillId | null;
+            enableThinking?: boolean;
             attachments?: File[];
             selectedExperiences?: AssistantSelectedExperience[];
             selectedResume?: AssistantSelectedResume | null;
@@ -722,6 +750,7 @@ export const aiService = {
             if (payload.skillId) {
                 formData.append('skill_id', payload.skillId);
             }
+            formData.append('enable_thinking', payload.enableThinking ? 'true' : 'false');
             if (payload.selectedExperiences?.length) {
                 formData.append('selected_experiences', JSON.stringify(payload.selectedExperiences));
             }
@@ -742,6 +771,7 @@ export const aiService = {
             display_message: payload.displayMessage ?? payload.userMessage,
             ...(payload.mode ? { mode: payload.mode } : {}),
             ...(payload.skillId ? { skill_id: payload.skillId } : {}),
+            enable_thinking: Boolean(payload.enableThinking),
             ...(payload.selectedExperiences?.length ? { selected_experiences: payload.selectedExperiences } : {}),
             ...(payload.selectedResume ? { selected_resume: payload.selectedResume } : {}),
         }), {

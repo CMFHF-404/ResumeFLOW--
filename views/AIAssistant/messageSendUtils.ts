@@ -9,6 +9,7 @@ import type { AssistantComposerAttachment } from './attachmentUtils';
 export type AssistantSendPayload = {
   userMessage: string;
   skillId?: AssistantSkillId | null;
+  enableThinking?: boolean;
   attachments?: AssistantComposerAttachment[];
   selectedExperiences?: AssistantSelectedExperience[];
   selectedResume?: AssistantSelectedResume | null;
@@ -18,6 +19,7 @@ export type PreparedAssistantSendPayload = {
   trimmedMessage: string;
   effectiveMessage: string;
   skillId: AssistantSkillId | null;
+  enableThinking: boolean;
   attachments: AssistantComposerAttachment[];
   selectedExperienceItems: AssistantSelectedExperience[];
   selectedResumeItem: AssistantSelectedResume | null;
@@ -31,6 +33,7 @@ const SELECTED_EXPERIENCE_DEFAULT_MESSAGE = '请优先参考我选中的经历�
 export const prepareAssistantSendPayload = (payload: AssistantSendPayload): PreparedAssistantSendPayload | null => {
   const trimmedMessage = payload.userMessage.trim();
   const skillId = payload.skillId ?? null;
+  const enableThinking = Boolean(payload.enableThinking);
   const attachments = payload.attachments ?? [];
   const selectedExperienceItems = payload.selectedExperiences ?? [];
   const selectedResumeItem = payload.selectedResume ?? null;
@@ -49,6 +52,7 @@ export const prepareAssistantSendPayload = (payload: AssistantSendPayload): Prep
     trimmedMessage,
     effectiveMessage,
     skillId,
+    enableThinking,
     attachments,
     selectedExperienceItems,
     selectedResumeItem,

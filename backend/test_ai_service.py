@@ -319,6 +319,27 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
         )
 
+    def test_verify_ai_derives_qwen_responses_route_from_ai_base_url(self) -> None:
+        import verify_ai
+
+        with patch.dict(
+            os.environ,
+            {
+                "AI_ROUTE_PROFILE": "qwen_primary",
+                "AI_API_KEY": "dashscope-key",
+                "AI_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "AI_MODEL": "qwen3.7-plus",
+            },
+            clear=True,
+        ):
+            route = verify_ai.resolve_route("thinking")
+
+        self.assertEqual(route.transport, "qwen_responses_stream")
+        self.assertEqual(
+            route.base_url,
+            "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+        )
+
     def test_load_settings_reads_fast_model_env(self) -> None:
         with patch.dict(
             os.environ,
@@ -327,6 +348,10 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "LOGTO_ISSUER": "https://example.logto.app/oidc",
                 "LOGTO_APP_ID": "resume-spa-app-id",
                 "AI_MODEL": "qwen3.7-plus",
+                "AI_API_KEY": "dashscope-key",
+                "AI_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "AI_FAST_API_KEY": "aifast-key",
+                "AI_FAST_BASE_URL": "https://aifast.example.com/v1",
                 "AI_FAST_MODEL": "qwen-turbo",
             },
             clear=True,
@@ -339,7 +364,37 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                     config_module._settings = None
 
         self.assertEqual(settings.ai_model, "qwen3.7-plus")
+        self.assertEqual(settings.ai_route_profile, "hybrid_gemini_aifast")
+        self.assertEqual(settings.ai_fast_api_key, "aifast-key")
+        self.assertEqual(settings.ai_fast_base_url, "https://aifast.example.com/v1")
         self.assertEqual(settings.ai_fast_model, "qwen-turbo")
+
+    def test_load_settings_reads_qwen_route_profile_for_explicit_gray_release(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_ROUTE_PROFILE": "qwen_primary",
+            },
+            clear=True,
+        ):
+            with patch.object(config_module, "_load_env", return_value=None):
+                config_module._settings = None
+                try:
+                    settings = config_module.load_settings()
+                finally:
+                    config_module._settings = None
+
+        self.assertEqual(settings.ai_route_profile, "qwen_primary")
+
+    def test_verify_ai_rejects_invalid_route_profile(self) -> None:
+        import verify_ai
+
+        with patch.dict(os.environ, {"AI_ROUTE_PROFILE": "typo_profile"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "Invalid AI_ROUTE_PROFILE"):
+                verify_ai.route_profile()
 
     def test_load_settings_reads_semantic_dedupe_envs(self) -> None:
         with patch.dict(
@@ -391,7 +446,368 @@ class GeminiThinkingConfigTests(unittest.TestCase):
         self.assertEqual(settings.ai_dedupe_max_candidates, 24)
 
 
+class VerifyAiGeminiProbeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_generate_probe_omits_response_mime_type_for_gemini3(self) -> None:
+        import verify_ai
+
+        fake_client = _FakePostClient(_FakeJsonResponse({"usageMetadata": {}}))
+        route = verify_ai.ProbeRoute(
+            lane="default",
+            provider="gemini",
+            api_key="gemini-key",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            model="gemini-3-flash-preview",
+            transport="gemini_generate_content",
+        )
+
+        with patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client):
+            await verify_ai.test_gemini_generate(route)
+
+        sent_payload = fake_client.posts[0][1]["json"]
+        self.assertNotIn("responseMimeType", sent_payload["generationConfig"])
+
+    async def test_stream_probe_omits_response_mime_type_for_gemini3(self) -> None:
+        import verify_ai
+
+        fake_client = _FakeStreamClient(
+            _FakeStreamResponse(['data: {"usageMetadata": {"totalTokenCount": 1}}'])
+        )
+        route = verify_ai.ProbeRoute(
+            lane="thinking",
+            provider="gemini",
+            api_key="gemini-key",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            model="gemini-3-flash-preview",
+            transport="gemini_stream_generate_content",
+        )
+
+        with patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client):
+            await verify_ai.test_gemini_stream(route)
+
+        sent_payload = fake_client.stream_calls[0][1]["json"]
+        self.assertNotIn("responseMimeType", sent_payload["generationConfig"])
+
+
 class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_hybrid_standard_json_requests_use_gemini_generate_content(self) -> None:
+        response = _FakeJsonResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": json.dumps({"ok": True}, ensure_ascii=False)}
+                            ]
+                        }
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 12,
+                    "candidatesTokenCount": 8,
+                    "totalTokenCount": 20,
+                },
+            }
+        )
+        fake_client = _FakePostClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+        usage_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._call_llm(
+                    [
+                        {"role": "system", "content": "严格输出 JSON"},
+                        {"role": "user", "content": "返回 JSON"},
+                    ],
+                    json_mode=True,
+                    usage_callback=usage_callback,
+                    request_label="standard_json",
+                )
+
+        self.assertEqual(result, {"ok": True})
+        sent_url = fake_client.posts[0][0][0]
+        sent_headers = fake_client.posts[0][1]["headers"]
+        sent_payload = fake_client.posts[0][1]["json"]
+        self.assertEqual(
+            sent_url,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        )
+        self.assertEqual(sent_headers["x-goog-api-key"], "gemini-key")
+        self.assertEqual(sent_payload["systemInstruction"]["parts"][0]["text"], "严格输出 JSON")
+        self.assertEqual(sent_payload["contents"][0]["parts"][0]["text"], "返回 JSON")
+        usage_event = usage_callback.await_args.args[0]
+        self.assertEqual(usage_event["provider"], "gemini")
+        self.assertEqual(usage_event["model"], "gemini-2.5-flash")
+        self.assertEqual(usage_event["prompt_tokens"], 12)
+        self.assertEqual(usage_event["completion_tokens"], 8)
+        self.assertEqual(usage_event["total_tokens"], 20)
+        self.assertEqual(usage_event["metadata"]["transport"], "gemini_generate_content")
+
+    async def test_resume_parse_lane_uses_aifast_route_and_usage_metadata(self) -> None:
+        response = _FakeJsonResponse(
+            {
+                "choices": [
+                    {"message": {"content": json.dumps({"ok": True})}},
+                ],
+                "usage": {
+                    "prompt_tokens": 31,
+                    "completion_tokens": 14,
+                    "total_tokens": 45,
+                },
+            }
+        )
+        fake_client = _FakePostClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_fast_api_key="aifast-key",
+            ai_fast_base_url="https://aifast.example.com/v1",
+            ai_fast_model="aifast-resume-parser",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+        usage_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._call_llm(
+                    [{"role": "user", "content": "解析简历"}],
+                    json_mode=True,
+                    lane="resume_parse",
+                    usage_callback=usage_callback,
+                    request_label="ai_call",
+                )
+
+        self.assertEqual(result, {"ok": True})
+        sent_url = fake_client.posts[0][0][0]
+        sent_headers = fake_client.posts[0][1]["headers"]
+        sent_payload = fake_client.posts[0][1]["json"]
+        self.assertEqual(sent_url, "https://aifast.example.com/v1/chat/completions")
+        self.assertEqual(sent_headers["Authorization"], "Bearer aifast-key")
+        self.assertEqual(sent_payload["model"], "aifast-resume-parser")
+        usage_event = usage_callback.await_args.args[0]
+        self.assertEqual(usage_event["provider"], "aifast")
+        self.assertEqual(usage_event["model"], "aifast-resume-parser")
+        self.assertEqual(usage_event["total_tokens"], 45)
+
+    async def test_hybrid_thinking_stream_uses_gemini_even_when_ai_model_is_qwen(self) -> None:
+        answer_event = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"text": json.dumps({"summary": "ok"}, ensure_ascii=False)}
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 3,
+                "candidatesTokenCount": 4,
+                "totalTokenCount": 7,
+            },
+        }
+        response = _FakeStreamResponse(
+            [
+                f"data: {json.dumps(answer_event, ensure_ascii=False)}",
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._stream_gemini_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="hybrid_thinking",
+                    budget_tokens=1024,
+                )
+
+        self.assertEqual(result, {"summary": "ok"})
+        sent_url = fake_client.stream_calls[0][0][1]
+        self.assertEqual(
+            sent_url,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+        )
+
+    async def test_hybrid_tool_call_route_maps_gemini_function_call(self) -> None:
+        response = _FakeJsonResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "functionCall": {
+                                        "name": "get_bank_context",
+                                        "args": {},
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 11,
+                    "candidatesTokenCount": 2,
+                    "totalTokenCount": 13,
+                },
+            }
+        )
+        fake_client = _FakePostClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+        usage_callback = AsyncMock()
+        payload = {
+            "model": "qwen3.7-plus",
+            "messages": [{"role": "user", "content": "读取上下文"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_bank_context",
+                        "description": "Return bank context.",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
+        }
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                data = await llm_transport._post_chat_completion(
+                    payload,
+                    usage_callback=usage_callback,
+                    request_label="assistant_tool_call",
+                )
+
+        sent_payload = fake_client.posts[0][1]["json"]
+        self.assertEqual(
+            sent_payload["tools"][0]["functionDeclarations"][0]["name"],
+            "get_bank_context",
+        )
+        message = data["choices"][0]["message"]
+        self.assertEqual(message["tool_calls"][0]["function"]["name"], "get_bank_context")
+        self.assertEqual(message["tool_calls"][0]["function"]["arguments"], "{}")
+        usage_event = usage_callback.await_args.args[0]
+        self.assertEqual(usage_event["provider"], "gemini")
+        self.assertEqual(usage_event["metadata"]["transport"], "gemini_generate_content")
+
+    def test_gemini_followup_body_preserves_function_call_and_response_parts(self) -> None:
+        body = llm_transport._build_gemini_generate_body(
+            [
+                {"role": "system", "content": "严格输出 JSON"},
+                {"role": "user", "content": "读取上下文"},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "gemini-call-0",
+                            "type": "function",
+                            "function": {
+                                "name": "get_bank_context",
+                                "arguments": json.dumps(
+                                    {"masterId": "exp-1"},
+                                    ensure_ascii=False,
+                                ),
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "gemini-call-0",
+                    "name": "get_bank_context",
+                    "content": json.dumps(
+                        {"items": [{"id": "exp-1"}]},
+                        ensure_ascii=False,
+                    ),
+                },
+            ]
+        )
+
+        self.assertEqual(body["contents"][1]["role"], "model")
+        self.assertEqual(
+            body["contents"][1]["parts"][0]["functionCall"],
+            {
+                "name": "get_bank_context",
+                "args": {"masterId": "exp-1"},
+            },
+        )
+        self.assertNotIn({"text": ""}, body["contents"][1]["parts"])
+        self.assertEqual(body["contents"][2]["role"], "user")
+        self.assertEqual(
+            body["contents"][2]["parts"][0]["functionResponse"],
+            {
+                "name": "get_bank_context",
+                "response": {"items": [{"id": "exp-1"}]},
+            },
+        )
+
+    def test_gemini_generate_body_omits_response_mime_type_for_gemini3_models(self) -> None:
+        body = llm_transport._build_gemini_generate_body(
+            [{"role": "user", "content": "返回 JSON"}],
+            model="gemini-3-flash-preview",
+        )
+
+        self.assertNotIn("responseMimeType", body["generationConfig"])
+
     async def test_call_llm_disables_qwen_thinking_for_standard_json_requests(self) -> None:
         response = _FakeJsonResponse(
             {
@@ -407,6 +823,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_model="qwen3.7-plus",
@@ -439,6 +856,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_model="qwen3.7-plus",
@@ -477,6 +895,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_model="qwen3.7-plus",
@@ -534,6 +953,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
@@ -605,6 +1025,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
@@ -677,6 +1098,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
@@ -735,6 +1157,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
@@ -805,6 +1228,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
@@ -881,6 +1305,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_model="qwen3.7-plus",
@@ -945,6 +1370,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_model="qwen3.7-plus",
@@ -1005,6 +1431,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_model="qwen3.7-plus",
@@ -1052,6 +1479,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             return fake_client
 
         fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_api_key="dashscope-key",
             ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",

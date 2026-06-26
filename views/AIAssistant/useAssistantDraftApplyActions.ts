@@ -4,6 +4,7 @@ import {
   aiService,
   type AssistantDraftCard,
   type AssistantMessage,
+  type AssistantMessageApplyResponse,
   type AssistantSession,
 } from '../../services/aiService';
 import { experienceService } from '../../services/experienceService';
@@ -89,6 +90,7 @@ export const useAssistantDraftApplyActions = ({
     try {
       let applied = false;
       let appliedMessage: AssistantMessage | null = null;
+      let appliedResponse: AssistantMessageApplyResponse | null = null;
       let shouldPersistAppliedMarker = true;
       let handledByCustomApply = false;
       if (
@@ -156,14 +158,16 @@ export const useAssistantDraftApplyActions = ({
         });
         applied = true;
       } else if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
-        appliedMessage = await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
+        appliedResponse = await aiService.applyAssistantMessageDraft(selectedSession.id, messageId);
+        appliedMessage = appliedResponse.message;
         experienceService.clearListCache();
         applied = true;
       } else if (!handledByCustomApply && callbackOnly) {
         error('这个草稿需要在原编辑上下文中确认，请从对应入口重新打开会话。');
         return;
       } else if (!handledByCustomApply) {
-        appliedMessage = await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
+        appliedResponse = await aiService.applyAssistantMessageDraft(selectedSession.id, messageId);
+        appliedMessage = appliedResponse.message;
         applied = true;
       }
 
@@ -194,7 +198,15 @@ export const useAssistantDraftApplyActions = ({
           success('草稿已回填到编辑区，保存后才会正式生效');
           return;
         }
-        const updatedMessage = appliedMessage ?? await aiService.markAssistantMessageApplied(selectedSession.id, messageId);
+        const updatedResponse = appliedResponse ?? (
+          appliedMessage
+            ? { message: appliedMessage, navigation: null }
+            : await aiService.applyAssistantMessageDraft(selectedSession.id, messageId)
+        );
+        const updatedMessage = updatedResponse.message;
+        if (updatedResponse.navigation?.targetView === 'experience_bank') {
+          experienceService.clearListCache();
+        }
         markMessagesMutated();
         setMessages((prev) => prev.map((message) => (
           message.id === messageId

@@ -35,11 +35,23 @@ test('uses trimmed user text as the effective message when present', async () =>
 
   const prepared = prepareAssistantSendPayload({
     userMessage: '  请优化这段经历  ',
+    enableThinking: true,
     attachments: [buildAttachment('att-1', 'resume.pdf')],
   });
 
   assert.equal(prepared.effectiveMessage, '请优化这段经历');
   assert.equal(prepared.trimmedMessage, '请优化这段经历');
+  assert.equal(prepared.enableThinking, true);
+});
+
+test('defaults assistant send payloads to standard mode when deep thinking is off', async () => {
+  const { prepareAssistantSendPayload } = await importAssistantMessageSendUtils();
+
+  const prepared = prepareAssistantSendPayload({
+    userMessage: '继续优化',
+  });
+
+  assert.equal(prepared.enableThinking, false);
 });
 
 test('uses attachment and selected resume fallback messages without user text', async () => {

@@ -3,7 +3,7 @@ import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ...config import load_settings
-from .llm_transport import _call_llm, _stream_gemini_json_response
+from .llm_transport import AI_ROUTE_PROFILE_QWEN, _call_llm, _stream_gemini_json_response
 from .prompts import JD_ANALYSIS, JD_ANALYSIS_IMAGE
 from .response_normalizers import (
     _ensure_skill_matches,
@@ -19,7 +19,12 @@ ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]
 
 def _has_thinking_stream_provider() -> bool:
     ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
-    has_qwen = bool(getattr(settings, "ai_api_key", None)) and ai_model.startswith("qwen")
+    route_profile = str(getattr(settings, "ai_route_profile", "") or "").strip().lower()
+    has_qwen = (
+        route_profile == AI_ROUTE_PROFILE_QWEN
+        and bool(getattr(settings, "ai_api_key", None))
+        and ai_model.startswith("qwen")
+    )
     return has_qwen or bool(getattr(settings, "gemini_api_key", None))
 
 

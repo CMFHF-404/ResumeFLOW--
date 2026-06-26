@@ -178,6 +178,7 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
             return_value="简历正文 包含足够多的候选人经历文本\nQwen thinking details",
         ):
             qwen_settings = SimpleNamespace(
+                ai_route_profile="qwen_primary",
                 ai_model="qwen3.7-plus",
                 ai_api_key="dashscope-key",
                 gemini_model="gemini-thinking",
@@ -222,6 +223,7 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
             return structured_payload
 
         qwen_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
             ai_model="qwen3.7-plus",
             ai_api_key="dashscope-key",
             gemini_model="gemini-thinking",
@@ -252,6 +254,7 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
             parser_service,
             "settings",
             SimpleNamespace(
+                ai_route_profile="qwen_primary",
                 ai_model="qwen3.7-plus",
                 ai_api_key="dashscope-key",
                 gemini_model="gemini-thinking",
@@ -268,6 +271,7 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
             parser_service,
             "settings",
             SimpleNamespace(
+                ai_route_profile="qwen_primary",
                 ai_model="qwen3.6-plus",
                 ai_api_key="dashscope-key",
                 gemini_model="gemini-thinking",
@@ -324,9 +328,12 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
             parser_service,
             "settings",
             SimpleNamespace(
+                ai_route_profile="hybrid_gemini_aifast",
                 ai_model="qwen3.7-plus",
-                ai_fast_model="qwen-turbo",
+                ai_fast_model="aifast-resume",
                 ai_api_key="dashscope-key",
+                ai_fast_api_key="aifast-key",
+                ai_fast_base_url="https://aifast.example.com/v1",
                 gemini_model="gemini-thinking",
             ),
         ):
@@ -343,7 +350,8 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertEqual(result, {"work_experiences": []})
-        self.assertEqual(llm_call.await_args.kwargs["model"], "qwen-turbo")
+        self.assertEqual(llm_call.await_args.kwargs["model"], "aifast-resume")
+        self.assertEqual(llm_call.await_args.kwargs["lane"], "resume_parse")
 
     async def test_parse_resume_chunked_runs_chunk_calls_concurrently(self) -> None:
         active_calls = 0

@@ -135,19 +135,19 @@ export const buildSelectedExperience = (item: ExperienceListItem): AssistantSele
     summary: buildSelectedExperienceSummary(item),
     star: {
       s: clipSelectedExperienceText(
-        stripRichTextToText(typeof star.s === 'string' ? star.s : ''),
+        typeof star.s === 'string' ? star.s : '',
         SELECTED_EXPERIENCE_STAR_LIMIT,
       ),
       t: clipSelectedExperienceText(
-        stripRichTextToText(typeof star.t === 'string' ? star.t : ''),
+        typeof star.t === 'string' ? star.t : '',
         SELECTED_EXPERIENCE_STAR_LIMIT,
       ),
       a: clipSelectedExperienceText(
-        stripRichTextToText(typeof star.a === 'string' ? star.a : ''),
+        typeof star.a === 'string' ? star.a : '',
         SELECTED_EXPERIENCE_STAR_LIMIT,
       ),
       r: clipSelectedExperienceText(
-        stripRichTextToText(typeof star.r === 'string' ? star.r : ''),
+        typeof star.r === 'string' ? star.r : '',
         SELECTED_EXPERIENCE_STAR_LIMIT,
       ),
     },

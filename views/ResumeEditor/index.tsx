@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
@@ -153,6 +153,10 @@ type ResumeEditorProps = {
     onOpenAgentPluginConfig?: () => void;
     mobileDrawerOpenRequest?: number;
     onMobileDrawerOpenRequestConsumed?: () => void;
+    focusExperienceRequest?: {
+        requestId: number;
+        targetId?: string;
+    } | null;
     quotaSummary?: TokenQuotaSummary | null;
     onOpenTokenQuota?: () => void;
 };
@@ -177,6 +181,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     onOpenAgentPluginConfig,
     mobileDrawerOpenRequest = 0,
     onMobileDrawerOpenRequestConsumed,
+    focusExperienceRequest = null,
     quotaSummary,
     onOpenTokenQuota,
 }) => {
@@ -275,6 +280,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         updateToast,
         closeToast,
     } = useToast();
+    const lastFocusExperienceRequestIdRef = useRef<number | null>(null);
     const {
         templatePresetMap,
         setTemplatePresetMap,
@@ -1403,6 +1409,33 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         beginCreateEducation: education.beginCreateEducation,
         beginEditEducation: education.beginEditEducation,
     });
+
+    useEffect(() => {
+        if (!focusExperienceRequest?.targetId || isLoadingResume || isLoadingExperiences) {
+            return;
+        }
+        if (lastFocusExperienceRequestIdRef.current === focusExperienceRequest.requestId) {
+            return;
+        }
+        setSidebarTab('experience');
+        mobileEditorDrawer.open();
+        const targetExists = experienceItems.some((item) => item.id === focusExperienceRequest.targetId);
+        if (!targetExists) {
+            showToastError('未找到目标经历，已打开简历工厂');
+            return;
+        }
+        lastFocusExperienceRequestIdRef.current = focusExperienceRequest.requestId;
+        experience.startEditingExperience(focusExperienceRequest.targetId);
+    }, [
+        experience,
+        experienceItems,
+        focusExperienceRequest,
+        isLoadingExperiences,
+        isLoadingResume,
+        mobileEditorDrawer,
+        setSidebarTab,
+        showToastError,
+    ]);
 
     const canCreateResume = !isLoadingResume;
     const isEditorBusy = isLoadingResume || isCreatingResume;

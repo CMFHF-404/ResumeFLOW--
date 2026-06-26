@@ -3,6 +3,7 @@ import {
   Plus,
   Mic,
   ArrowUp,
+  BrainCircuit,
   Paperclip,
   X,
   Briefcase,
@@ -27,6 +28,8 @@ export type ChatInputBoxProps = {
   onChange: (value: string) => void;
   onSubmit: () => void;
   isSending: boolean;
+  isDeepThinkingEnabled?: boolean;
+  onDeepThinkingChange?: (enabled: boolean) => void;
   placeholder?: string;
   plusActions?: { key: string; label: string; onClick?: () => void }[];
   attachments?: ChatInputAttachmentPreview[];
@@ -56,6 +59,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onChange,
   onSubmit,
   isSending,
+  isDeepThinkingEnabled = false,
+  onDeepThinkingChange,
   placeholder = '有问题，尽管问',
   plusActions = [],
   attachments = [],
@@ -352,6 +357,21 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pr-1">
+            <button
+              type="button"
+              onClick={() => onDeepThinkingChange?.(!isDeepThinkingEnabled)}
+              disabled={isSending}
+              aria-pressed={isDeepThinkingEnabled}
+              aria-label="深度思考"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-55 ${
+                isDeepThinkingEnabled
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none'
+                  : 'border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+              }`}
+              title="深度思考"
+            >
+              <BrainCircuit className="h-5 w-5" />
+            </button>
             <button
               type="button"
               className="hidden rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"

@@ -93,6 +93,254 @@ class AssistantStreamQuotaTests(unittest.IsolatedAsyncioTestCase):
         mocked_quota_check.assert_awaited_once_with(session, "user-1")
 
 
+class _AsyncBillingContext:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+async def _collect_streaming_response_lines(response) -> list[dict]:
+    events: list[dict] = []
+    async for chunk in response.body_iterator:
+        text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+        for line in text.splitlines():
+            if line.strip():
+                events.append(json.loads(line))
+    return events
+
+
+class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
+    async def _run_stream_with_payload(self, payload):
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            mode="general",
+            title="AI 助理",
+            entry_source="direct",
+            context_json={},
+        )
+        session = object()
+        current_user = SimpleNamespace(id="user-1")
+        standard_turn = AsyncMock(return_value={
+            "assistantText": "标准回复",
+            "draftCard": None,
+            "title": "AI 助理",
+            "suggestedFollowups": [],
+        })
+        thinking_turn = AsyncMock(return_value={
+            "assistantText": "深度回复",
+            "draftCard": None,
+            "title": "AI 助理",
+            "suggestedFollowups": [],
+        })
+
+        with patch.object(
+            assistant_router,
+            "_parse_stream_payload",
+            AsyncMock(return_value=(payload, [])),
+        ), patch.object(
+            assistant_router.billing_service,
+            "ensure_quota_available",
+            AsyncMock(),
+        ), patch.object(
+            assistant_router.billing_service,
+            "ai_billing_context",
+            return_value=_AsyncBillingContext(),
+        ), patch.object(
+            assistant_router,
+            "get_assistant_session",
+            AsyncMock(return_value=assistant_session),
+        ), patch.object(
+            assistant_router,
+            "get_session_detail",
+            AsyncMock(return_value=(assistant_session, [])),
+        ), patch.object(
+            assistant_router,
+            "_build_bank_context",
+            AsyncMock(return_value={}),
+        ), patch.object(
+            assistant_router,
+            "_hydrate_selected_experiences_for_ai",
+            AsyncMock(return_value=[]),
+        ), patch.object(
+            assistant_router,
+            "run_assistant_turn",
+            standard_turn,
+            create=True,
+        ), patch.object(
+            assistant_router,
+            "run_assistant_turn_with_thoughts",
+            thinking_turn,
+        ), patch.object(
+            assistant_router,
+            "persist_assistant_turn",
+            AsyncMock(),
+        ):
+            response = await assistant_router.stream_assistant_session_turn(
+                uuid.uuid4(),
+                request=object(),
+                session=session,
+                current_user=current_user,
+            )
+            events = await _collect_streaming_response_lines(response)
+        return standard_turn, thinking_turn, events
+
+    async def test_stream_uses_standard_assistant_turn_by_default(self) -> None:
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=False,
+        )
+
+        standard_turn, thinking_turn, events = await self._run_stream_with_payload(payload)
+
+        standard_turn.assert_awaited_once()
+        thinking_turn.assert_not_awaited()
+        self.assertEqual(events[-1]["type"], "final")
+        self.assertEqual(events[-1]["result"]["assistantText"], "标准回复")
+
+    async def test_stream_uses_thinking_turn_when_enabled(self) -> None:
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=True,
+        )
+
+        standard_turn, thinking_turn, events = await self._run_stream_with_payload(payload)
+
+        standard_turn.assert_not_awaited()
+        thinking_turn.assert_awaited_once()
+        self.assertEqual(events[-1]["type"], "final")
+        self.assertEqual(events[-1]["result"]["assistantText"], "深度回复")
+
+
+class AssistantDraftLinkPreservationTests(unittest.TestCase):
+    def test_preserves_missing_markdown_links_in_same_star_field(self) -> None:
+        from app.domain.ai.assistant_link_preservation import preserve_draft_card_star_links
+
+        draft_card = {
+            "type": "experience",
+            "status": "draft_ready",
+            "data": {
+                "category": "project",
+                "star": {
+                    "s": "背景",
+                    "t": "目标",
+                    "a": "执行",
+                    "r": "将单份简历的组装效率提升 95% 以上。（项目链接）",
+                },
+            },
+        }
+
+        preserved = preserve_draft_card_star_links(
+            draft_card,
+            [{"r": "将单份简历的组装效率提升 95% 以上。（[项目链接](https://example.com/project)）"}],
+        )
+
+        self.assertIn("[项目链接](https://example.com/project)", preserved["data"]["star"]["r"])
+
+    def test_preserves_markdown_links_with_parentheses_in_href(self) -> None:
+        from app.domain.ai.assistant_link_preservation import preserve_draft_card_star_links
+
+        draft_card = {
+            "type": "experience",
+            "status": "draft_ready",
+            "data": {
+                "category": "project",
+                "star": {
+                    "s": "",
+                    "t": "",
+                    "a": "",
+                    "r": "参考项目链接完成交付。",
+                },
+            },
+        }
+
+        preserved = preserve_draft_card_star_links(
+            draft_card,
+            [{"r": "参考[项目链接](https://example.com/report(v2).pdf)完成交付。"}],
+        )
+
+        self.assertIn(
+            "[项目链接](https://example.com/report(v2).pdf)",
+            preserved["data"]["star"]["r"],
+        )
+
+    def test_appends_source_link_when_anchor_is_already_linked_with_different_href(self) -> None:
+        from app.domain.ai.assistant_link_preservation import preserve_draft_card_star_links
+
+        draft_card = {
+            "type": "experience",
+            "status": "draft_ready",
+            "data": {
+                "category": "project",
+                "star": {
+                    "s": "",
+                    "t": "",
+                    "a": "",
+                    "r": "查看[项目链接](https://new.example)",
+                },
+            },
+        }
+
+        preserved = preserve_draft_card_star_links(
+            draft_card,
+            [{"r": "[项目链接](https://old.example)"}],
+        )
+
+        self.assertIn("[项目链接](https://new.example)", preserved["data"]["star"]["r"])
+        self.assertIn("[项目链接](https://old.example)", preserved["data"]["star"]["r"])
+        self.assertNotIn("[[项目链接]", preserved["data"]["star"]["r"])
+
+    def test_appends_source_link_when_existing_href_only_shares_prefix(self) -> None:
+        from app.domain.ai.assistant_link_preservation import preserve_draft_card_star_links
+
+        draft_card = {
+            "type": "experience",
+            "status": "draft_ready",
+            "data": {
+                "category": "project",
+                "star": {
+                    "s": "",
+                    "t": "",
+                    "a": "",
+                    "r": "查看[项目链接](https://example.com/project-extra)",
+                },
+            },
+        }
+
+        preserved = preserve_draft_card_star_links(
+            draft_card,
+            [{"r": "[项目链接](https://example.com/project)"}],
+        )
+
+        self.assertIn("[项目链接](https://example.com/project-extra)", preserved["data"]["star"]["r"])
+        self.assertIn("[项目链接](https://example.com/project)", preserved["data"]["star"]["r"])
+
+    def test_preserves_missing_html_links_in_same_star_field(self) -> None:
+        from app.domain.ai.assistant_link_preservation import preserve_draft_card_star_links
+
+        draft_card = {
+            "type": "experience",
+            "status": "draft_ready",
+            "data": {
+                "category": "work",
+                "star": {
+                    "s": "参考案例完成竞品分析",
+                    "t": "",
+                    "a": "",
+                    "r": "",
+                },
+            },
+        }
+
+        preserved = preserve_draft_card_star_links(
+            draft_card,
+            [{"s": '参考 <a href="https://example.com/case">案例</a> 完成竞品分析'}],
+        )
+
+        self.assertIn('href="https://example.com/case"', preserved["data"]["star"]["s"])
+
+
 class AssistantFrontendSourceTests(unittest.TestCase):
     def test_editor_sidebar_ai_polish_card_can_collapse_to_match_and_suggestion(self) -> None:
         source = (REPO_ROOT / "views" / "ResumeEditor" / "components" / "EditorSidebar.tsx").read_text(encoding="utf-8")
@@ -1145,7 +1393,7 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                 ],
             )
 
-        self.assertEqual(result[0]["star"]["s"], "完整背景")
+        self.assertEqual(result[0]["star"]["s"], "<p>完整背景</p>")
         self.assertEqual(result[0]["star"]["a"], full_action)
 
     async def test_build_bank_context_keeps_profile_empty_when_user_has_no_profile(self) -> None:

@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from ...config import load_settings
 from ...models import ExperienceCategory
 from ..ai.ai_service import call_llm_json
+from ..ai.llm_transport import LANE_RESUME_PARSE
 from .chunking import _normalize_text
 from .duplicate_detection import _build_match_signatures, _similarity
 from .schemas import DuplicateMatch, ParsedExperienceItem
@@ -222,7 +223,12 @@ async def apply_semantic_duplicate_flags(
         or getattr(settings, "ai_model", "")
     )
     try:
-        result = await call_llm_json(messages, model=model)
+        result = await call_llm_json(
+            messages,
+            model=model,
+            lane=LANE_RESUME_PARSE,
+            request_label="resume_semantic_dedupe",
+        )
     except Exception as exc:
         logger.warning(
             "[ResumeParse] semantic dedupe fallback request_id=%s error_type=%s error=%s",

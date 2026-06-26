@@ -107,11 +107,13 @@ from .star_polish_utils import (
     _resolve_star_prompt,
 )
 from .llm_transport import (
+    AI_ROUTE_PROFILE_QWEN,
     _build_gemini_generation_config,
     _call_llm,
     _emit_thought,
     _stream_gemini_json_response,
 )
+from .assistant_link_preservation import preserve_assistant_result_star_links
 from .jd_analysis_service import (
     analyze_jd,
     analyze_jd_with_image,
@@ -143,15 +145,29 @@ _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT: Dict[str, asyncio.Task[Dict[str, str]]] = {}
 
 def _has_thinking_stream_provider() -> bool:
     ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
-    has_qwen = bool(getattr(settings, "ai_api_key", None)) and ai_model.startswith("qwen")
+    route_profile = str(getattr(settings, "ai_route_profile", "") or "").strip().lower()
+    has_qwen = (
+        route_profile == AI_ROUTE_PROFILE_QWEN
+        and bool(getattr(settings, "ai_api_key", None))
+        and ai_model.startswith("qwen")
+    )
     return has_qwen or bool(getattr(settings, "gemini_api_key", None))
 
 
 async def call_llm_json(
     messages: List[Dict[str, Any]],
     model: Optional[str] = None,
+    *,
+    lane: str = "default",
+    request_label: str = "chat_completion",
 ) -> Dict[str, Any]:
-    return await _call_llm(messages, json_mode=True, model=model)
+    return await _call_llm(
+        messages,
+        json_mode=True,
+        model=model,
+        lane=lane,
+        request_label=request_label,
+    )
 
 
 async def polish_experience(
@@ -345,6 +361,7 @@ async def run_assistant_turn(
     skill_id: Optional[str] = None,
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
+    source_stars: Optional[List[Dict[str, Any]]] = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
     resolved_attachments = _resolve_relevant_attachments(history, attachments, user_message=user_message)
@@ -376,7 +393,8 @@ async def run_assistant_turn(
         )
     else:
         result = await _call_llm(messages, json_mode=True)
-    return _normalize_assistant_result(result, skill_id=skill_id)
+    normalized = _normalize_assistant_result(result, skill_id=skill_id)
+    return preserve_assistant_result_star_links(normalized, source_stars)
 
 
 async def run_assistant_turn_with_thoughts(
@@ -392,6 +410,7 @@ async def run_assistant_turn_with_thoughts(
     skill_id: Optional[str] = None,
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
+    source_stars: Optional[List[Dict[str, Any]]] = None,
     thought_callback: ThoughtCallback = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
@@ -412,6 +431,7 @@ async def run_assistant_turn_with_thoughts(
             skill_id=skill_id,
             history=history,
             attachments=attachments,
+            source_stars=source_stars,
             attachment_hydrator=attachment_hydrator,
         )
 
@@ -468,9 +488,11 @@ async def run_assistant_turn_with_thoughts(
             skill_id=skill_id,
             history=history,
             attachments=attachments,
+            source_stars=source_stars,
             attachment_hydrator=attachment_hydrator,
         )
-    return _normalize_assistant_result(result, skill_id=skill_id)
+    normalized = _normalize_assistant_result(result, skill_id=skill_id)
+    return preserve_assistant_result_star_links(normalized, source_stars)
 
 
 async def generate_tags(text: str) -> Dict[str, Any]:
