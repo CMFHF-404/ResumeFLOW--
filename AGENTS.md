@@ -25,6 +25,7 @@
   - Grant the first admin role with `python set_first_admin.py <logto-user-id>`, or set `FIRST_ADMIN_USER_ID` before running `python set_first_admin.py`.
   - Start from `backend/` with `sh prestart.sh` or `uvicorn app.main:app --host 0.0.0.0 --port 8000`
   - `prestart.sh` runs `python app/init_db.py` before starting Uvicorn
+  - Manage token packages and redemption codes from `backend/` with `python manage_redemption_codes.py --help`; the CLI requires the configured backend environment, including `DATABASE_URL` and `REDEMPTION_CODE_ENCRYPTION_KEY`.
 - `magic-resume-inspect/`:
   - Install with `pnpm install`
   - Start with `pnpm dev`
@@ -38,6 +39,8 @@
 - Frontend: `npm run build`
 - Frontend type-only checks: `npx tsc --noEmit --pretty false`
 - Frontend targeted tests are plain Node test files under `tests/`. Run focused checks with `node --test tests/<file>.test.mjs`; for example `node --test tests/account-management-static.test.mjs` for account management, `node --test tests/experienceBankDrafts.test.mjs tests/experienceSimpleModeParser.test.mjs` for experience draft/simple-mode work, `node --test tests/dashboardStructure.test.mjs tests/dashboardUtils.test.mjs` for Dashboard list/filter work, or `node --test tests/appDevLoggingStructure.test.mjs` for app-shell development logging.
+- AI thinking and JD-analysis UI checks commonly use `node --test tests/aiStopHandlingStructure.test.mjs tests/jdAnalysisThinkingText.test.mjs tests/jdAnalysisToastThinking.test.mjs`; assistant thinking persistence commonly uses `node --test tests/assistantMessageSendUtils.test.mjs tests/assistantThinkingDisplay.test.mjs`.
+- Billing and quota UI checks commonly use `node --test tests/billing-ui-structure.test.mjs tests/tokenQuotaModalStatic.test.mjs`.
 - Backend env and connectivity checks from `backend/`:
   - `python verify_env.py`
   - `python verify_db.py`
@@ -46,10 +49,12 @@
 - Backend tests are `unittest`-style files under `backend/`. Prefer `python -m unittest <module>` from `backend/` for targeted runs, for example `python -m unittest test_assistant_features` or `python -m unittest test_parser_service`.
 - Agent and AI backend checks commonly use `python -m unittest test_agent_api` and `python -m unittest test_ai_service` from `backend/`.
 - Account and experience draft backend checks commonly use `python -m unittest test_account_verification_cooldown` and `python -m unittest test_experience_drafts` from `backend/`.
+- Billing and redemption backend checks commonly use `python -m unittest test_billing_service test_redemption_code_service test_redemption_router` from `backend/`.
 
 ## Guardrails
 
 - Do not hand-edit generated artifacts or caches: `dist/`, `backend/__pycache__/`, `backend/.assistant_attachment_cache/`, `vite-dev.log`, `vite-dev.err.log`, `git-status.txt`, `git-diff.txt`.
 - Do not mix package managers across workspaces: the repo root uses npm and `package-lock.json`; `magic-resume-inspect/` uses pnpm and `pnpm-lock.yaml`.
 - Treat `backend/migrate_postgres_best_effort.py` as a manual high-impact database migration tool. It requires explicit `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL`; do not run it as part of default setup.
+- Treat `backend/manage_redemption_codes.py` as a manual admin tool for token packages and card codes. Do not run mutating subcommands or export plaintext redemption codes unless the target database and operator intent are explicit.
 - TODO: There is no repo-owned command yet that starts the root frontend and `backend/` together. If a unified local workflow is added later, document it here instead of guessing.

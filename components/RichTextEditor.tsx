@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { RICH_TEXT_INLINE_STYLES_CLASS, sanitizeRichTextHtml, stripRichTextToText } from '../utils/richText';
+import {
+    RICH_TEXT_INLINE_STYLES_CLASS,
+    resolveClipboardPasteHtml,
+    sanitizeRichTextHtml,
+    stripRichTextToText,
+} from '../utils/richText';
 
 type RichTextEditorProps = {
     value: string;
@@ -329,6 +334,34 @@ const replaceRangeWithHtml = (range: Range, html: string) => {
         document.execCommand('insertHTML', false, html);
     }
     return true;
+};
+
+const isNodeWithinEditor = (node: Node | null, editor: HTMLDivElement) =>
+    Boolean(node && (node === editor || editor.contains(node)));
+
+const isSelectionWithinEditor = (selection: Selection, editor: HTMLDivElement) =>
+    isNodeWithinEditor(selection.anchorNode, editor) && isNodeWithinEditor(selection.focusNode, editor);
+
+const ensureEditorSelection = (selection: Selection, editor: HTMLDivElement) => {
+    if (selection.rangeCount > 0 && isSelectionWithinEditor(selection, editor)) {
+        return selection.getRangeAt(0);
+    }
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return range;
+};
+
+const insertClipboardContent = (editor: HTMLDivElement, html: string) => {
+    const selection = window.getSelection();
+    if (!selection || !html) {
+        return false;
+    }
+    ensureEditorSelection(selection, editor);
+    return document.execCommand('insertHTML', false, html);
 };
 
 const findMarkdownMatchInLine = (lineText: string, segments: TextSegment[], pattern: RegExp) => {
@@ -1173,9 +1206,35 @@ const useRichTextHandlers = ({
 
     const handlePaste = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
         event.preventDefault();
+        const editor = event.currentTarget;
+        const html = event.clipboardData.getData('text/html');
         const text = event.clipboardData.getData('text/plain');
-        document.execCommand('insertText', false, text);
-    }, []);
+        insertClipboardContent(editor, resolveClipboardPasteHtml(html, text));
+        saveContent();
+        updateSelectionState();
+    }, [saveContent, updateSelectionState]);
+
+    const handleCopy = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+        const editor = editorRef.current;
+        const selection = window.getSelection();
+        if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
+            return;
+        }
+        const anchorNode = selection.anchorNode;
+        const focusNode = selection.focusNode;
+        if (!anchorNode || !focusNode || !editor.contains(anchorNode) || !editor.contains(focusNode)) {
+            return;
+        }
+        const container = document.createElement('div');
+        container.appendChild(selection.getRangeAt(0).cloneContents());
+        const html = sanitizeRichTextHtml(container.innerHTML);
+        if (!html) {
+            return;
+        }
+        event.clipboardData.setData('text/html', html);
+        event.clipboardData.setData('text/plain', stripRichTextToText(html));
+        event.preventDefault();
+    }, [editorRef]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
         const isUndo = (event.ctrlKey || event.metaKey)
@@ -1236,7 +1295,7 @@ const useRichTextHandlers = ({
         saveContent();
     }, [saveContent, hideToolbar, setIsFocused]);
 
-    return { handleInput, handlePaste, handleKeyDown, handleFocus, handleBlur };
+    return { handleInput, handlePaste, handleCopy, handleKeyDown, handleFocus, handleBlur };
 };
 
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
@@ -1419,7 +1478,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         ];
     }, [applyList, applyWrap, enableList, openLinkPopover]);
 
-    const { handleInput, handlePaste, handleKeyDown, handleFocus, handleBlur } = useRichTextHandlers({
+    const { handleInput, handlePaste, handleCopy, handleKeyDown, handleFocus, handleBlur } = useRichTextHandlers({
         editorRef,
         onChange,
         updateSelectionState,
@@ -1473,6 +1532,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 aria-readonly={readOnly}
                 data-placeholder={placeholder}
                 onInput={readOnly ? undefined : handleEditorInput}
+                onCopy={readOnly ? undefined : handleCopy}
                 onPaste={readOnly ? undefined : handlePaste}
                 onKeyDown={readOnly ? undefined : handleEditorKeyDown}
                 onMouseUp={readOnly ? undefined : updateSelectionState}
