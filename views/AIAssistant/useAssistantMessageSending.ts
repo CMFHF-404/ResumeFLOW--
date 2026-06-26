@@ -15,9 +15,9 @@ import {
   buildAssistantTextMessage,
   buildOptimisticAssistantUserMessage,
   prepareAssistantSendPayload,
+  reduceAssistantThoughtStreamState,
   type AssistantSendPayload,
 } from './messageSendUtils';
-import { resolveAssistantStreamThought } from './streamUtils';
 
 const ASSISTANT_SEND_ERROR_FALLBACK = 'AI 助理回复失败，请稍后重试';
 
@@ -95,6 +95,10 @@ export const useAssistantMessageSending = ({
       Math.random(),
     );
     const optimisticMessageId = optimisticUserMessage.id;
+    let thoughtStreamState = {
+      activeThought: '',
+      streamedThoughtText: '',
+    };
     setSendingCount((count) => count + 1);
     if (selectedSessionIdRef.current === sessionId) {
       setActiveThought('');
@@ -123,23 +127,15 @@ export const useAssistantMessageSending = ({
           if (selectedSessionIdRef.current !== sessionId) {
             return;
           }
-          if (event.type !== 'thought' && event.type !== 'progress') {
+          if (event.type !== 'thought' && event.type !== 'progress' && event.type !== 'thought_reset') {
             return;
           }
-          const headline = resolveAssistantStreamThought(event);
-          setActiveThought((current) => {
-            if (!headline.trim()) {
-              return current;
-            }
-            if (!current) {
-              return headline;
-            }
-            const segments = current.split('\n');
-            if (segments[segments.length - 1] === headline) {
-              return current;
-            }
-            return `${current}\n${headline}`;
-          });
+          thoughtStreamState = reduceAssistantThoughtStreamState(
+            thoughtStreamState,
+            event,
+            enableThinking,
+          );
+          setActiveThought(thoughtStreamState.activeThought);
         },
       );
       if (options?.shouldAbort?.()) {
@@ -155,6 +151,7 @@ export const useAssistantMessageSending = ({
             result.suggestedFollowups,
             new Date().toISOString(),
             Math.random(),
+            thoughtStreamState.streamedThoughtText,
           )]);
         }
         setActiveThought('');

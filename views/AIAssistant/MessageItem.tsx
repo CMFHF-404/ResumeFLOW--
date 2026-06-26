@@ -24,6 +24,7 @@ export type MessageAttachmentPreview = {
 export type MessageItemProps = {
   isUser: boolean;
   content: string;
+  thinking?: string;
   attachments?: MessageAttachmentPreview[];
   selectedExperiences?: AssistantSelectedExperience[];
   selectedResume?: AssistantSelectedResume | null;
@@ -39,6 +40,12 @@ const normalizeAssistantMarkdown = (value: string) => value
   .replace(/\r\n/g, '\n')
   .replace(/^[ \t]*[-*][ \t]*\n[ \t]*\n(?=[ \t]*\*\*)/gm, '')
   .replace(/^[ \t]*[-*][ \t]*\n(?=[ \t]*\*\*)/gm, '');
+
+const normalizeThinkingText = (value: string) => value
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .join('\n');
 
 const MarkdownParagraph: React.FC<React.HTMLAttributes<HTMLParagraphElement>> = (props) => (
   <p className="m-0 whitespace-pre-wrap leading-7 text-slate-700 dark:text-slate-200" {...props} />
@@ -143,6 +150,7 @@ const AttachmentRail: React.FC<{
 export const MessageItem: React.FC<MessageItemProps> = ({
   isUser,
   content,
+  thinking = '',
   attachments = [],
   selectedExperiences = [],
   selectedResume = null,
@@ -166,12 +174,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     );
   }
 
+  const normalizedThinking = normalizeThinkingText(thinking);
+
   return (
     <div className="mb-6 flex w-full min-w-0 justify-start gap-3 sm:gap-4">
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300 sm:h-8 sm:w-8">
         <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
       </div>
       <div className="min-w-0 flex-1 max-w-full sm:max-w-[85%]">
+        {normalizedThinking ? (
+          <CompletedThoughtBlock thought={normalizedThinking} />
+        ) : null}
         <div className="overflow-hidden rounded-2xl rounded-tl-sm border border-slate-100 bg-white px-4 py-3 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:shadow-[0_16px_40px_-24px_rgba(2,6,23,0.95)] sm:px-5 sm:py-4">
           <div className="space-y-3 overflow-hidden break-words text-sm leading-7">
             <ReactMarkdown
@@ -208,6 +221,36 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+export const CompletedThoughtBlock: React.FC<{ thought: string }> = ({ thought }) => {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="mb-2">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="group flex items-center gap-2 outline-none"
+      >
+        <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 shadow-sm transition group-hover:border-emerald-200 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:group-hover:border-emerald-500/35">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-200">思考过程</span>
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-300" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-300" />
+          )}
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="ml-1.5 mt-2 whitespace-pre-wrap border-l-2 border-emerald-100 py-1 pl-4 text-sm leading-6 text-slate-500 dark:border-emerald-500/25 dark:text-slate-400">
+          {thought}
+        </div>
+      ) : null}
     </div>
   );
 };

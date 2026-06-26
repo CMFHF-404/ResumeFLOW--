@@ -1537,6 +1537,25 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 2048)
         self.assertEqual(stream_mock.await_args.kwargs["request_label"], "jd_text_analysis")
 
+    async def test_analyze_jd_with_thoughts_emits_initial_visible_thought(self) -> None:
+        fake_settings = SimpleNamespace(
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_jd_analysis=2048,
+        )
+        stream_mock = AsyncMock(return_value={})
+        thought_callback = AsyncMock()
+
+        with patch.object(jd_analysis_service, "settings", fake_settings):
+            with patch.object(jd_analysis_service, "_stream_gemini_json_response", stream_mock):
+                await jd_analysis_service.analyze_jd_with_thoughts(
+                    "JD text",
+                    thought_callback=thought_callback,
+                )
+
+        thought_callback.assert_awaited_once_with(
+            {"type": "thought", "summary": "正在拆解岗位要求"}
+        )
+
     async def test_polish_experience_with_thoughts_uses_polish_budget(self) -> None:
         fake_settings = SimpleNamespace(
             gemini_api_key="gemini-key",

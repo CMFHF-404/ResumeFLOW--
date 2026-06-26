@@ -813,8 +813,27 @@ async def stream_assistant_session_turn(
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        assistant_thinking_summaries: list[str] = []
+
+        def record_assistant_thinking(event: Dict[str, Any]) -> None:
+            event_type = event.get("type")
+            if event_type == "thought_reset":
+                assistant_thinking_summaries.clear()
+                return
+            if event_type != "thought":
+                return
+            summary = event.get("summary")
+            if not isinstance(summary, str):
+                return
+            normalized = re.sub(r"\s+", " ", summary).strip()
+            if not normalized:
+                return
+            if assistant_thinking_summaries and assistant_thinking_summaries[-1] == normalized:
+                return
+            assistant_thinking_summaries.append(normalized)
 
         async def emit(event: Dict[str, Any]) -> None:
+            record_assistant_thinking(event)
             await queue.put(event)
 
         async def run_turn() -> None:
@@ -896,6 +915,7 @@ async def stream_assistant_session_turn(
                         user_skill_id=payload.skill_id,
                         assistant_text=result["assistantText"],
                         draft_card=result.get("draftCard"),
+                        assistant_thinking="\n".join(assistant_thinking_summaries),
                         suggested_followups=result.get("suggestedFollowups"),
                         title=result.get("title"),
                     )

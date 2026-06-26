@@ -868,6 +868,7 @@ async def persist_assistant_turn(
     user_skill_id: str | None = None,
     assistant_text: str,
     draft_card: dict | None,
+    assistant_thinking: str | None = None,
     suggested_followups: list[dict] | None = None,
     title: str | None = None,
 ) -> list[AIAssistantMessage]:
@@ -890,6 +891,16 @@ async def persist_assistant_turn(
     if normalized_selected_resume:
         user_content_json["selected_resume"] = normalized_selected_resume
 
+    normalized_assistant_thinking = (
+        "\n".join(
+            line.strip()
+            for line in assistant_thinking.splitlines()
+            if line.strip()
+        )
+        if isinstance(assistant_thinking, str)
+        else ""
+    )
+
     created_messages: list[AIAssistantMessage] = []
     created_messages.append(
         AIAssistantMessage(
@@ -906,6 +917,7 @@ async def persist_assistant_turn(
             message_type="assistant_text",
             content_json={
                 "text": assistant_text,
+                **({"thinking": normalized_assistant_thinking} if normalized_assistant_thinking else {}),
                 **({"skill_id": user_skill_id} if user_skill_id else {}),
                 **({"suggestedFollowups": suggested_followups} if suggested_followups else {}),
             },

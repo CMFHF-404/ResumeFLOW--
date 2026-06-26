@@ -369,6 +369,7 @@ type AssistantErrorEvent = {
 export type AssistantStreamEvent =
     | AssistantProgressEvent
     | AIThoughtEvent
+    | AIThoughtResetEvent
     | AssistantFinalEvent
     | AssistantErrorEvent;
 
@@ -382,6 +383,10 @@ export type JDAnalyzeProgressNode =
 export type AIThoughtEvent = {
     type: 'thought';
     summary: string;
+};
+
+export type AIThoughtResetEvent = {
+    type: 'thought_reset';
 };
 
 export type AnalyzeProgressEvent = {
@@ -403,6 +408,7 @@ type AnalyzeErrorEvent = {
 export type AnalyzeStreamEvent =
     | AnalyzeProgressEvent
     | AIThoughtEvent
+    | AIThoughtResetEvent
     | AnalyzeFinalEvent
     | AnalyzeErrorEvent;
 

@@ -3,7 +3,7 @@ import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ...config import load_settings
-from .llm_transport import AI_ROUTE_PROFILE_QWEN, _call_llm, _stream_gemini_json_response
+from .llm_transport import AI_ROUTE_PROFILE_QWEN, _call_llm, _emit_thought, _stream_gemini_json_response
 from .prompts import JD_ANALYSIS, JD_ANALYSIS_IMAGE
 from .response_normalizers import (
     _ensure_skill_matches,
@@ -117,6 +117,10 @@ async def analyze_jd_with_thoughts(
         else "None"
     )
     previous_experience_payload = prev_experience_text or "None"
+    await _emit_thought(
+        thought_callback,
+        {"type": "thought", "summary": "正在拆解岗位要求"},
+    )
     try:
         result = await _stream_gemini_json_response(
             system_prompt=JD_ANALYSIS,
@@ -280,6 +284,10 @@ async def analyze_jd_with_image_thoughts(
         else "None"
     )
     previous_experience_payload = prev_experience_text or "None"
+    await _emit_thought(
+        thought_callback,
+        {"type": "thought", "summary": "正在拆解岗位要求"},
+    )
     try:
         result = await _stream_gemini_json_response(
             system_prompt=JD_ANALYSIS_IMAGE,
