@@ -21,6 +21,7 @@ import { ToastContainer, useToast } from '../components/Toast';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { devLog } from '../services/devLogger';
 import type { Profile } from '../services/profileService';
+import type { AssistantDraftApplyNavigation } from '../services/aiService';
 import { experienceService } from '../services/experienceService';
 import { useEducationManager } from '../hooks/useEducationManager';
 import EducationSection from './EducationSection';
@@ -48,6 +49,11 @@ interface ExperienceBankProps {
   onProfileUpdate?: (data: Profile) => void;
   shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
+  focusRequest?: {
+    requestId: number;
+    category?: AssistantDraftApplyNavigation['category'];
+    targetId?: string;
+  } | null;
 }
 
 const ExperienceBank: React.FC<ExperienceBankProps> = ({
@@ -57,6 +63,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   onProfileUpdate,
   shouldOpenResumeUpload = false,
   onLaunchAssistant,
+  focusRequest,
 }) => {
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
 
@@ -207,6 +214,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
       void handleImportResumeClick();
     }
   }, [handleImportResumeClick, shouldOpenResumeUpload]);
+
+  useEffect(() => {
+    if (!focusRequest) {
+      return;
+    }
+    setExperienceRefreshSignal((prev) => prev + 1);
+    if (focusRequest.category === 'education') {
+      void refreshEducation();
+    }
+  }, [focusRequest, refreshEducation]);
 
   useEffect(() => {
     if (!isAuthenticated || !readPendingResumeUpload()) {
@@ -611,6 +628,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             onRequireAuth={handleSignIn}
             onLaunchAssistant={onLaunchAssistant}
             onCountChange={setWorkExperienceCount}
+            focusRequest={focusRequest?.category === 'work' ? focusRequest : null}
           />
 
           <ExperienceSection
@@ -638,11 +656,13 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             themeColor="indigo"
             onLaunchAssistant={onLaunchAssistant}
             onCountChange={setProjectExperienceCount}
+            focusRequest={focusRequest?.category === 'project' ? focusRequest : null}
           />
 
           <EducationSection
             model={education}
             onCountChange={setEducationExperienceCount}
+            focusRequest={focusRequest?.category === 'education' ? focusRequest : null}
           />
 
           <CertificationSection

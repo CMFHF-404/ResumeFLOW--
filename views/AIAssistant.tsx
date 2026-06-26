@@ -7,7 +7,7 @@ import {
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { MAX_ASSISTANT_SELECTED_EXPERIENCES, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSkillId } from '../services/aiService';
+import { MAX_ASSISTANT_SELECTED_EXPERIENCES, type AssistantDraftApplyNavigation, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSkillId } from '../services/aiService';
 import { formatRelativeTime } from '../utils/timeUtils';
 import {
   readPendingAssistantManualSaveDrafts,
@@ -56,7 +56,8 @@ import type {
 type AIAssistantProps = {
   pendingLaunchRequest?: AssistantLaunchRequest | null;
   onConsumeLaunchRequest?: (requestId?: string) => void;
-  onJumpToResumeEditor?: (resumeId?: string) => void;
+  onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
+  onJumpToExperienceBank?: (category?: AssistantDraftApplyNavigation['category'], targetId?: string) => void;
   draftInput?: string;
   onDraftInputChange?: (value: string) => void;
 };
@@ -65,6 +66,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   pendingLaunchRequest,
   onConsumeLaunchRequest,
   onJumpToResumeEditor,
+  onJumpToExperienceBank,
   draftInput = '',
   onDraftInputChange,
 }) => {
@@ -74,6 +76,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [activeComposerSkillId, setActiveComposerSkillId] = useState<AssistantSkillId | null>(null);
   const [lastAssistantSkillId, setLastAssistantSkillId] = useState<AssistantSkillId | null>(null);
   const [activeThought, setActiveThought] = useState<string>('');
+  const [draftDeepThinkingEnabled, setDraftDeepThinkingEnabled] = useState(false);
+  const [deepThinkingBySessionId, setDeepThinkingBySessionId] = useState<Record<string, boolean>>({});
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
   const [manualSaveMessageIds, setManualSaveMessageIds] = useState<Set<string>>(new Set());
   const [selectedResume, setSelectedResume] = useState<AssistantSelectedResume | null>(null);
@@ -156,19 +160,33 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const latestSuggestedFollowups = useMemo(() => {
     return deriveLatestSuggestedFollowups(messages);
   }, [messages]);
+  const isDeepThinkingEnabled = selectedSessionId
+    ? Boolean(deepThinkingBySessionId[selectedSessionId])
+    : draftDeepThinkingEnabled;
+  const handleDeepThinkingChange = useCallback((enabled: boolean) => {
+    if (selectedSessionId) {
+      setDeepThinkingBySessionId((current) => ({
+        ...current,
+        [selectedSessionId]: enabled,
+      }));
+      return;
+    }
+    setDraftDeepThinkingEnabled(enabled);
+  }, [selectedSessionId]);
   const draftMessageItems = useMemo<AssistantDraftMessageItem[]>(() => (
     attachDraftJumpHandlers(
       deriveDraftMessageItems(messages, selectedSession, callbackOnlySessionIdsRef.current),
       {
         selectedSession,
         onJumpToResumeEditor,
+        onJumpToExperienceBank,
         markManualSaveMessage: (messageId) => {
           setManualSaveMessageIds((prev) => new Set(prev).add(messageId));
         },
         notifyError: (message) => error(message, 6000),
       }
     )
-  ), [callbackOnlySessionIdsRef, error, messages, onJumpToResumeEditor, selectedSession]);
+  ), [callbackOnlySessionIdsRef, error, messages, onJumpToExperienceBank, onJumpToResumeEditor, selectedSession]);
   const draftGroups = useMemo(
     () => groupDraftItems(draftMessageItems),
     [draftMessageItems]
@@ -284,6 +302,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!nextInput && composerAttachments.length === 0 && selectedExperiences.length === 0 && !selectedResume) {
       return;
     }
+    const enableThinking = isDeepThinkingEnabled;
     let activeSessionId = selectedSessionId;
     let activeMode: AssistantMode | undefined = selectedSession?.mode;
     if (!activeSessionId) {
@@ -300,6 +319,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       if (draftLaunchRequest?.callbackOnly) {
         callbackOnlySessionIdsRef.current.add(created.id);
       }
+      setDeepThinkingBySessionId((current) => ({
+        ...current,
+        [created.id]: enableThinking,
+      }));
       draftLaunchRequestRef.current = null;
       activeSessionId = created.id;
       activeMode = created.mode;
@@ -312,13 +335,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       {
         userMessage: nextInput,
         skillId: activeComposerSkillId,
+        enableThinking,
         attachments: composerAttachments,
         selectedExperiences,
         selectedResume,
       },
       activeMode,
     );
-  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
+  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, isDeepThinkingEnabled, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleSelectSkillPreset = useCallback((skillId: AssistantSkillId, prompt: string) => {
     setActiveComposerSkillId(skillId);
@@ -553,6 +577,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onChange={setInputValue}
                   onSubmit={() => void handleSubmit()}
                   isSending={isSending}
+                  isDeepThinkingEnabled={isDeepThinkingEnabled}
+                  onDeepThinkingChange={handleDeepThinkingChange}
                   placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
                   plusActions={[
                     { key: 'pick-resume', label: '选择简历', onClick: () => void openResumePicker() },

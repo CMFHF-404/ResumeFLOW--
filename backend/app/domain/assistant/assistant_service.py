@@ -124,6 +124,48 @@ def _read_draft_experience_category(data: Dict[str, Any]) -> ExperienceCategory:
     raise InvalidMessageError("Draft experience category is invalid")
 
 
+def _build_apply_navigation(
+    *,
+    target_view: str,
+    target_id: str | None = None,
+    category: ExperienceCategory | str | None = None,
+    resume_id: str | None = None,
+) -> Dict[str, str]:
+    navigation: Dict[str, str] = {"targetView": target_view}
+    if target_id:
+        navigation["targetId"] = str(target_id)
+    if resume_id:
+        navigation["resumeId"] = str(resume_id)
+    if category:
+        navigation["category"] = category.value if isinstance(category, ExperienceCategory) else str(category)
+    return navigation
+
+
+def _build_existing_experience_navigation(
+    assistant_session: AIAssistantSession,
+    data: Dict[str, Any],
+    *,
+    default_view: str,
+    allow_unbound_target: bool,
+) -> Dict[str, str] | None:
+    category = _read_draft_experience_category(data)
+    master_id = _resolve_bound_experience_master_id(
+        assistant_session,
+        data,
+        allow_unbound_target=allow_unbound_target,
+    )
+    if not master_id:
+        return None
+    resume_id = _read_context_string(assistant_session.context_json or {}, "resumeId")
+    target_view = "resume_editor" if default_view == "resume_editor" and resume_id else default_view
+    return _build_apply_navigation(
+        target_view=target_view,
+        target_id=master_id,
+        category=category,
+        resume_id=resume_id,
+    )
+
+
 async def _get_user_master_experience(
     session: AsyncSession,
     *,
@@ -431,7 +473,7 @@ async def _apply_direct_draft_card(
     user_id: str,
     assistant_session: AIAssistantSession,
     message: AIAssistantMessage,
-) -> None:
+) -> Dict[str, str] | None:
     content = _normalize_apply_draft_content(message.content_json or {})
     card_type = content.get("type")
     data = content.get("data")
@@ -464,7 +506,11 @@ async def _apply_direct_draft_card(
                 master=master,
                 payload=payload,
             )
-            return
+            return _build_apply_navigation(
+                target_view="experience_bank",
+                target_id=str(master.id),
+                category=master.category,
+            )
 
         payload = ExperienceCreate.model_validate(
             {
@@ -483,7 +529,11 @@ async def _apply_direct_draft_card(
             master=master,
             payload=payload.version,
         )
-        return
+        return _build_apply_navigation(
+            target_view="experience_bank",
+            target_id=str(master.id),
+            category=payload.category,
+        )
 
     if card_type == "certification":
         payload = CertificationCreate.model_validate(
@@ -498,7 +548,7 @@ async def _apply_direct_draft_card(
             }
         )
         session.add(Certification(user_id=user_id, **payload.model_dump()))
-        return
+        return None
 
     if card_type == "skill_group":
         await _apply_skill_group_draft_card(
@@ -506,7 +556,7 @@ async def _apply_direct_draft_card(
             user_id=user_id,
             data=data,
         )
-        return
+        return None
 
     raise InvalidMessageError(f"Unsupported draft card type: {card_type}")
 
@@ -517,7 +567,7 @@ async def _apply_experience_bank_draft_card(
     user_id: str,
     assistant_session: AIAssistantSession,
     message: AIAssistantMessage,
-) -> None:
+) -> Dict[str, str] | None:
     content = _normalize_apply_draft_content(message.content_json or {})
     if content.get("type") != "experience":
         raise InvalidMessageError("Experience bank sessions only support experience draft cards")
@@ -531,13 +581,12 @@ async def _apply_experience_bank_draft_card(
         allow_unbound_target=True,
     )
     if not master_id:
-        await _apply_direct_draft_card(
+        return await _apply_direct_draft_card(
             session,
             user_id=user_id,
             assistant_session=assistant_session,
             message=message,
         )
-        return
 
     master = await _get_user_master_experience(
         session,
@@ -557,6 +606,11 @@ async def _apply_experience_bank_draft_card(
         session,
         master=master,
         payload=payload,
+    )
+    return _build_apply_navigation(
+        target_view="experience_bank",
+        target_id=str(master.id),
+        category=master.category,
     )
 
 
@@ -697,6 +751,7 @@ async def mark_message_applied(
             message.id,
         )
         return message
+    apply_navigation: Dict[str, str] | None = None
     if skip_apply:
         if assistant_session.entry_source == "direct":
             raise InvalidMessageError("Direct assistant sessions must apply content before marking as applied")
@@ -709,13 +764,19 @@ async def mark_message_applied(
                     data,
                     allow_unbound_target=False,
                 )
+                apply_navigation = _build_existing_experience_navigation(
+                    assistant_session,
+                    data,
+                    default_view=assistant_session.entry_source,
+                    allow_unbound_target=False,
+                )
     elif assistant_session.entry_source == "direct":
         logger.info(
             "Assistant draft apply branch: direct session_id=%s message_id=%s",
             assistant_session.id,
             message.id,
         )
-        await _apply_direct_draft_card(
+        apply_navigation = await _apply_direct_draft_card(
             session,
             user_id=user_id,
             assistant_session=assistant_session,
@@ -728,7 +789,7 @@ async def mark_message_applied(
             message.id,
             context_master_id,
         )
-        await _apply_experience_bank_draft_card(
+        apply_navigation = await _apply_experience_bank_draft_card(
             session,
             user_id=user_id,
             assistant_session=assistant_session,
@@ -750,10 +811,18 @@ async def mark_message_applied(
                     data,
                     allow_unbound_target=False,
                 )
+            apply_navigation = _build_existing_experience_navigation(
+                assistant_session,
+                data,
+                default_view="resume_editor",
+                allow_unbound_target=not bool(context_master_id),
+            )
 
     previous_content = dict(message.content_json or {})
     next_content = dict(previous_content)
     next_content["applied_at"] = utc_now().astimezone(timezone.utc).isoformat()
+    if apply_navigation:
+        next_content["apply_navigation"] = apply_navigation
     message.content_json = next_content
     session.add(message)
     if _latest_preview_matches_message(assistant_session.latest_preview, previous_content):

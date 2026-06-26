@@ -22,7 +22,11 @@ from ...config import load_settings
 from ...constants import MAX_LIMIT
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ..ai.ai_service import call_llm_json
-from ..ai.llm_transport import _stream_gemini_json_response as _stream_thinking_json_response
+from ..ai.llm_transport import (
+    AI_ROUTE_PROFILE_QWEN,
+    LANE_RESUME_PARSE,
+    _stream_gemini_json_response as _stream_thinking_json_response,
+)
 from .chunking import (
     _chunk_paragraphs,
     _chunk_units,
@@ -290,7 +294,12 @@ def _prompt_signature() -> str:
 
 def _has_qwen_thinking_provider() -> bool:
     ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
-    return bool(getattr(settings, "ai_api_key", None)) and ai_model.startswith("qwen")
+    route_profile = str(getattr(settings, "ai_route_profile", "") or "").strip().lower()
+    return (
+        route_profile == AI_ROUTE_PROFILE_QWEN
+        and bool(getattr(settings, "ai_api_key", None))
+        and ai_model.startswith("qwen")
+    )
 
 
 def _has_thinking_stream_provider() -> bool:
@@ -529,7 +538,12 @@ async def _call_resume_llm(
     call_start = perf_counter()
     model = _resolve_standard_parse_model_name()
     try:
-        result = await call_llm_json(messages, model=model)
+        result = await call_llm_json(
+            messages,
+            model=model,
+            lane=LANE_RESUME_PARSE,
+            request_label=step,
+        )
     except Exception as exc:
         call_ms = (perf_counter() - call_start) * 1000
         payload = {"status": "error", "error": type(exc).__name__}

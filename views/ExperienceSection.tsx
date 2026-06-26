@@ -12,6 +12,12 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = (props) => {
     props.onCountChange?.(model.isLoading ? null : model.experiences.length);
   }, [model.experiences.length, model.isLoading, props.onCountChange]);
 
+  useEffect(() => {
+    if (props.focusRequest?.targetId && props.focusRequest.category === props.category) {
+      setIsCollapsed(false);
+    }
+  }, [props.category, props.focusRequest]);
+
   return (
     <ExperienceSectionView
       title={props.title}

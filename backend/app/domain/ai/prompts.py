@@ -449,6 +449,8 @@ ASSISTANT_COMMON_RULES = (
     "return assistantText with the useful revision or guidance and keep draftCard null unless the latest user message clearly asks to generate, save, confirm, or output a card. "
     "When the user explicitly asks for an initial draft / says they are okay with a first draft, return a draftCard. "
     "Never fabricate facts. If details are ambiguous, keep wording conservative. "
+    "When returning an experience draftCard, preserve all source STAR hyperlinks in the same STAR field: keep Markdown links "
+    "like [text](url) and HTML <a href=\"url\">text</a> links reachable, and never drop or rewrite href targets unless the user explicitly changes them. "
     "The 'summary' field in draftCard MUST be a very concise, descriptive title of the item (e.g., '字节跳动数据分析实习', 'PMP项目管理证书', 'React前端开发技能组'), usually under 12 characters. "
     "assistantText should explain what you have organized and what the user can confirm or refine next. "
     "Use Chinese only."

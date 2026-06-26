@@ -10,6 +10,7 @@ AssistantEntrySource = Literal["direct", "experience_bank", "resume_editor"]
 AssistantMessageRole = Literal["user", "assistant"]
 AssistantMessageType = Literal["user_text", "assistant_text", "draft_card"]
 AssistantDraftCardType = Literal["experience", "certification", "skill_group"]
+AssistantApplyTargetView = Literal["experience_bank", "resume_editor"]
 
 
 class AssistantSessionCreate(BaseModel):
@@ -53,9 +54,18 @@ class AssistantSessionStreamRequest(BaseModel):
     display_message: Optional[str] = None
     mode: Optional[AssistantMode] = None
     skill_id: Optional[AssistantSkillId] = None
+    enable_thinking: bool = False
     selected_experiences: List[Dict[str, Any]] = Field(default_factory=list)
     selected_resume: Optional[Dict[str, Any]] = None
 
 
+class AssistantDraftApplyNavigation(BaseModel):
+    targetView: AssistantApplyTargetView
+    targetId: Optional[str] = None
+    resumeId: Optional[str] = None
+    category: Optional[str] = None
+
+
 class AssistantMessageApplyRead(BaseModel):
     message: AssistantMessageRead
+    navigation: Optional[AssistantDraftApplyNavigation] = None

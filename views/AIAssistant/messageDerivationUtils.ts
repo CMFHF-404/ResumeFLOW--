@@ -1,4 +1,5 @@
 import type {
+  AssistantDraftApplyNavigation,
   AssistantDraftCard,
   AssistantMessage,
   AssistantSession,
@@ -12,7 +13,7 @@ import {
 import type { AssistantDraftMessageItem } from './sessionUtils';
 import { isPersistedCallbackOnlySession } from './sessionContextUtils';
 
-export type DerivedDraftMessageItem = Omit<AssistantDraftMessageItem, 'onJumpToEditor'>;
+export type DerivedDraftMessageItem = Omit<AssistantDraftMessageItem, 'onJumpToEditor' | 'onViewAppliedDraft'>;
 
 export const deriveLatestSuggestedFollowups = (
   messages: AssistantMessage[],
@@ -48,6 +49,32 @@ export const isResumeEditorManualSaveDraft = (
   )
 );
 
+const normalizeDraftApplyNavigation = (value: unknown): AssistantDraftApplyNavigation | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  const targetView = candidate.targetView;
+  if (targetView !== 'experience_bank' && targetView !== 'resume_editor') {
+    return undefined;
+  }
+  const navigation: AssistantDraftApplyNavigation = { targetView };
+  if (typeof candidate.targetId === 'string' && candidate.targetId.trim()) {
+    navigation.targetId = candidate.targetId.trim();
+  }
+  if (typeof candidate.resumeId === 'string' && candidate.resumeId.trim()) {
+    navigation.resumeId = candidate.resumeId.trim();
+  }
+  if (
+    candidate.category === 'work'
+    || candidate.category === 'project'
+    || candidate.category === 'education'
+  ) {
+    navigation.category = candidate.category;
+  }
+  return navigation;
+};
+
 export const deriveDraftMessageItems = (
   messages: AssistantMessage[],
   selectedSession: AssistantSession | null,
@@ -65,6 +92,7 @@ export const deriveDraftMessageItems = (
       message,
       card,
       isManualSaveMode: isResumeEditorManualSaveDraft(selectedSession, callbackOnlySessionIds, card),
+      navigation: normalizeDraftApplyNavigation(message.content_json?.apply_navigation),
     }];
   })
 );

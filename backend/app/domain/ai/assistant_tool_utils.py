@@ -37,7 +37,7 @@ async def _call_llm_with_tools(
         "tool_choice": "auto",
     }
     try:
-        data = await _post_chat_completion(payload)
+        data = await _post_chat_completion(payload, request_label="assistant_tool_call")
         message = _extract_message(data)
         tool_calls = message.get("tool_calls") or []
         if tool_calls:
@@ -61,14 +61,22 @@ async def _call_llm_with_tools(
                         "content": json.dumps(tool_result, ensure_ascii=False),
                     }
                 )
-            return await _call_llm(follow_up_messages, json_mode=json_mode)
+            return await _call_llm(
+                follow_up_messages,
+                json_mode=json_mode,
+                request_label="assistant_tool_followup",
+            )
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("LLM response missing content")
         return _parse_json_content(content) if json_mode else {"content": content}
     except Exception:
         logger.warning("[AI Tools] tool calling unavailable; falling back to standard assistant generation.", exc_info=True)
-        return await _call_llm(messages, json_mode=json_mode)
+        return await _call_llm(
+            messages,
+            json_mode=json_mode,
+            request_label="assistant_tool_fallback",
+        )
 
 
 def _build_assistant_context_tools() -> List[Dict[str, Any]]:

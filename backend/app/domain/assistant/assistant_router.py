@@ -18,7 +18,12 @@ from ...dependencies import get_current_user
 from ...models import AIAssistantImageBlob
 from ..billing import billing_service
 from ..ai import jd_attachment_service
-from ..ai.ai_service import _normalize_selected_experiences, _normalize_selected_resume, run_assistant_turn_with_thoughts
+from ..ai.ai_service import (
+    _normalize_selected_experiences,
+    _normalize_selected_resume,
+    run_assistant_turn,
+    run_assistant_turn_with_thoughts,
+)
 from ..certifications.certification_service import list_certifications
 from ..experience.experience_service import (
     NotFoundError as ExperienceNotFoundError,
@@ -137,6 +142,14 @@ def _to_message_read(message) -> AssistantMessageRead:
     )
 
 
+def _read_apply_navigation(message) -> Dict[str, Any] | None:
+    content_json = getattr(message, "content_json", None)
+    if not isinstance(content_json, dict):
+        return None
+    navigation = content_json.get("apply_navigation")
+    return navigation if isinstance(navigation, dict) else None
+
+
 def _clip_text(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
@@ -167,6 +180,14 @@ def _normalize_bank_text(value: Any, limit: int) -> str | None:
     if len(normalized) > limit:
         normalized = normalized[:limit].rstrip() + "..."
     return normalized
+
+
+def _parse_form_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _serialize_optional_date(value: Any) -> str | None:
@@ -210,10 +231,49 @@ def _build_full_star_snapshot(raw_star: Any) -> Dict[str, str]:
         return {}
     snapshot: Dict[str, str] = {}
     for key in ("s", "t", "a", "r"):
-        normalized = _normalize_full_experience_text(raw_star.get(key))
-        if normalized:
-            snapshot[key] = normalized
+        value = raw_star.get(key)
+        if isinstance(value, str) and value.strip():
+            snapshot[key] = value.strip()
     return snapshot
+
+
+def _collect_source_star_snapshots(
+    *,
+    context_json: Dict[str, Any],
+    selected_experiences: list[Dict[str, Any]],
+    target_latest_star: Dict[str, str] | None = None,
+) -> list[Dict[str, str]]:
+    sources: list[Dict[str, str]] = []
+
+    context_star = _build_full_star_snapshot(context_json.get("star"))
+    if context_star:
+        sources.append(context_star)
+
+    for item in selected_experiences:
+        selected_star = _build_full_star_snapshot(item.get("star"))
+        if selected_star:
+            sources.append(selected_star)
+
+    if target_latest_star:
+        sources.append(target_latest_star)
+
+    return sources
+
+
+async def _load_context_target_star(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    context_json: Dict[str, Any],
+) -> Dict[str, str] | None:
+    master_id = str(context_json.get("masterId") or "").strip()
+    if not master_id:
+        return None
+    try:
+        _, latest_version, _ = await get_experience_detail(session, user_id, master_id)
+    except ExperienceNotFoundError:
+        return None
+    return _build_full_star_snapshot(getattr(latest_version, "star", None))
 
 
 async def _hydrate_selected_experiences_for_ai(
@@ -400,6 +460,7 @@ async def _parse_stream_payload(
             "display_message": str(form.get("display_message") or ""),
             "mode": str(form.get("mode") or "") or None,
             "skill_id": str(form.get("skill_id") or "") or None,
+            "enable_thinking": _parse_form_bool(form.get("enable_thinking")),
             "selected_experiences": selected_experiences,
             "selected_resume": selected_resume,
         }
@@ -729,7 +790,10 @@ async def mark_assistant_message_applied(
         session_id,
         message_id,
     )
-    return AssistantMessageApplyRead(message=_to_message_read(message))
+    return AssistantMessageApplyRead(
+        message=_to_message_read(message),
+        navigation=_read_apply_navigation(message),
+    )
 
 
 @router.post("/sessions/{session_id}/stream")
@@ -784,26 +848,43 @@ async def stream_assistant_session_turn(
                         user_id=current_user.id,
                         selected_experiences=payload.selected_experiences,
                     )
-                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
-                    result = await run_assistant_turn_with_thoughts(
-                        mode=payload.mode or assistant_session.mode,
-                        user_message=payload.user_message,
-                        session_title=assistant_session.title,
-                        entry_source=assistant_session.entry_source,
-                        context_json=assistant_session.context_json,
-                        bank_context=bank_context,
+                    target_latest_star = await _load_context_target_star(
+                        session,
+                        user_id=current_user.id,
+                        context_json=assistant_session.context_json or {},
+                    )
+                    source_stars = _collect_source_star_snapshots(
+                        context_json=assistant_session.context_json or {},
                         selected_experiences=selected_experiences_for_ai,
-                        selected_resume=payload.selected_resume,
-                        skill_id=payload.skill_id,
-                        history=_build_history_messages(messages),
-                        attachments=attachment_payloads,
-                        thought_callback=emit,
-                        attachment_hydrator=lambda attachments: _hydrate_attachment_payloads(
+                        target_latest_star=target_latest_star,
+                    )
+                    await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 助理"})
+                    turn_kwargs = {
+                        "mode": payload.mode or assistant_session.mode,
+                        "user_message": payload.user_message,
+                        "session_title": assistant_session.title,
+                        "entry_source": assistant_session.entry_source,
+                        "context_json": assistant_session.context_json,
+                        "bank_context": bank_context,
+                        "selected_experiences": selected_experiences_for_ai,
+                        "selected_resume": payload.selected_resume,
+                        "skill_id": payload.skill_id,
+                        "history": _build_history_messages(messages),
+                        "attachments": attachment_payloads,
+                        "source_stars": source_stars,
+                        "attachment_hydrator": lambda attachments: _hydrate_attachment_payloads(
                             session,
                             assistant_session_id=assistant_session.id,
                             attachments=attachments,
                         ),
-                    )
+                    }
+                    if payload.enable_thinking:
+                        result = await run_assistant_turn_with_thoughts(
+                            **turn_kwargs,
+                            thought_callback=emit,
+                        )
+                    else:
+                        result = await run_assistant_turn(**turn_kwargs)
                     await persist_assistant_turn(
                         session,
                         assistant_session,

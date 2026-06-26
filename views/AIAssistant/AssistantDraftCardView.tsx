@@ -37,8 +37,9 @@ export const AssistantDraftCardView: React.FC<{
   showManualSaveHint?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onJumpToEditor?: () => void;
+  onViewAppliedDraft?: () => void;
   onApply: () => void;
-}> = ({ card, disabled, defaultExpanded = true, expanded, isApplied, isApplying, isManualSaveMode, showManualSaveHint, onExpandedChange, onJumpToEditor, onApply }) => {
+}> = ({ card, disabled, defaultExpanded = true, expanded, isApplied, isApplying, isManualSaveMode, showManualSaveHint, onExpandedChange, onJumpToEditor, onViewAppliedDraft, onApply }) => {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const isExpanded = expanded ?? uncontrolledExpanded;
   const setIsExpanded = (nextExpanded: boolean) => {
@@ -57,11 +58,15 @@ export const AssistantDraftCardView: React.FC<{
     : null;
   const applyButtonLabel = isApplying
     ? '录入中...'
-    : isApplied
-      ? '已录入'
+    : isApplied && onViewAppliedDraft
+      ? '查看经历'
+      : isApplied
+        ? '已录入'
       : showManualSaveHint
         ? '已同步'
         : '确认录入';
+  const handlePrimaryAction = isApplied && onViewAppliedDraft ? onViewAppliedDraft : onApply;
+  const isPrimaryActionDisabled = isApplying || (disabled && !(isApplied && onViewAppliedDraft));
   const experienceCategoryLabel = card.type === 'experience'
     ? (EXPERIENCE_CATEGORY_LABELS[card.data.category] || card.data.category)
     : null;
@@ -301,9 +306,13 @@ export const AssistantDraftCardView: React.FC<{
 
           <button
             type="button"
-            onClick={onApply}
-            disabled={disabled || isApplying}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-emerald-950/60"
+            onClick={handlePrimaryAction}
+            disabled={isPrimaryActionDisabled}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 ${
+              isApplied && onViewAppliedDraft
+                ? 'border border-emerald-200 bg-white text-emerald-700 shadow-slate-100 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-950 dark:text-emerald-200 dark:shadow-none dark:hover:bg-emerald-500/10'
+                : 'bg-emerald-600 text-white shadow-emerald-100 hover:bg-emerald-700 dark:shadow-emerald-950/60'
+            }`}
           >
             <Check className="h-3.5 w-3.5" />
             {applyButtonLabel}

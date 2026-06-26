@@ -15,6 +15,9 @@ ENV_AI_API_KEY = "AI_API_KEY"
 ENV_AI_BASE_URL = "AI_BASE_URL"
 ENV_AI_RESPONSES_BASE_URL = "AI_RESPONSES_BASE_URL"
 ENV_AI_MODEL = "AI_MODEL"
+ENV_AI_ROUTE_PROFILE = "AI_ROUTE_PROFILE"
+ENV_AI_FAST_API_KEY = "AI_FAST_API_KEY"
+ENV_AI_FAST_BASE_URL = "AI_FAST_BASE_URL"
 ENV_AI_FAST_MODEL = "AI_FAST_MODEL"
 ENV_AI_DEDUPE_ENABLED = "AI_DEDUPE_ENABLED"
 ENV_AI_DEDUPE_MODEL = "AI_DEDUPE_MODEL"
@@ -40,6 +43,8 @@ ENV_REDEMPTION_CODE_ENCRYPTION_KEY = "REDEMPTION_CODE_ENCRYPTION_KEY"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_AI_MODEL = "qwen3.7-plus"
+DEFAULT_AI_ROUTE_PROFILE = "hybrid_gemini_aifast"
+VALID_AI_ROUTE_PROFILES = {"hybrid_gemini_aifast", "gemini_primary", "qwen_primary"}
 DEFAULT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_AI_DEDUPE_MAX_CANDIDATES = 24
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -103,6 +108,14 @@ def _get_bool_env(name: str, default: bool) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _resolve_ai_route_profile(value: Optional[str]) -> str:
+    normalized = (value or DEFAULT_AI_ROUTE_PROFILE).strip().lower()
+    if normalized not in VALID_AI_ROUTE_PROFILES:
+        valid = ", ".join(sorted(VALID_AI_ROUTE_PROFILES))
+        raise RuntimeError(f"Invalid {ENV_AI_ROUTE_PROFILE}: {normalized}. Expected one of: {valid}")
+    return normalized
+
 def _parse_csv_env(name: str, default: List[str]) -> List[str]:
     value = os.getenv(name)
     if not value:
@@ -156,6 +169,9 @@ class Settings:
     ai_base_url: str
     ai_responses_base_url: str
     ai_model: str
+    ai_route_profile: str
+    ai_fast_api_key: Optional[str]
+    ai_fast_base_url: str
     ai_fast_model: str
     ai_dedupe_enabled: bool
     ai_dedupe_model: str
@@ -198,6 +214,9 @@ def load_settings() -> Settings:
     ai_base_url = os.getenv(ENV_AI_BASE_URL, DEFAULT_AI_BASE_URL)
     ai_responses_base_url = _resolve_ai_responses_base_url(ai_base_url)
     ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
+    ai_route_profile = _resolve_ai_route_profile(os.getenv(ENV_AI_ROUTE_PROFILE))
+    ai_fast_api_key = os.getenv(ENV_AI_FAST_API_KEY) or ai_api_key
+    ai_fast_base_url = os.getenv(ENV_AI_FAST_BASE_URL) or ai_base_url
     ai_fast_model = os.getenv(ENV_AI_FAST_MODEL) or ai_model
     ai_dedupe_enabled = _get_bool_env(ENV_AI_DEDUPE_ENABLED, True)
     ai_dedupe_model = os.getenv(ENV_AI_DEDUPE_MODEL) or ai_fast_model or ai_model
@@ -259,6 +278,9 @@ def load_settings() -> Settings:
         ai_base_url=ai_base_url,
         ai_responses_base_url=ai_responses_base_url,
         ai_model=ai_model,
+        ai_route_profile=ai_route_profile,
+        ai_fast_api_key=ai_fast_api_key,
+        ai_fast_base_url=ai_fast_base_url,
         ai_fast_model=ai_fast_model,
         ai_dedupe_enabled=ai_dedupe_enabled,
         ai_dedupe_model=ai_dedupe_model,

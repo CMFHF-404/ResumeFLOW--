@@ -65,6 +65,7 @@ export type EducationManager = {
     handleConfirmDelete: () => Promise<void>;
     handleCancelDelete: () => void;
     refreshEducation: () => Promise<ExperienceListItem[]>;
+    focusEduCard: (eduId: string) => void;
 };
 
 const addToSet = (prev: Set<string>, id: string) => {
@@ -323,7 +324,14 @@ const useEducationExpansion = (
         setCollapsingEduCards((prev) => removeFromSet(prev, eduId));
     }, []);
 
-    return { expandedEduCards, collapsingEduCards, toggleEduCard, removeEduExpansion };
+    const focusEduCard = useCallback((eduId: string) => {
+        setExpandedEduCards((prev) => addToSet(prev, eduId));
+        ensureEduCardState(eduId);
+        scrollToCard(eduId, EDU_SCROLL_EXPAND_DELAY_MS);
+        highlightCard(eduId, EDU_SCROLL_EXPAND_DELAY_MS + 250);
+    }, [ensureEduCardState, highlightCard, scrollToCard]);
+
+    return { expandedEduCards, collapsingEduCards, toggleEduCard, removeEduExpansion, focusEduCard };
 };
 
 const useEducationCreate = (
@@ -670,5 +678,6 @@ export const useEducationManager = (
         handleConfirmDelete,
         handleCancelDelete: deleteActions.handleCancelDelete,
         refreshEducation,
+        focusEduCard: expansion.focusEduCard,
     };
 };

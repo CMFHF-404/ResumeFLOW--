@@ -21,6 +21,7 @@ import { resumeService } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
 import { billingService, type TokenQuotaSummary } from './services/billingService';
+import type { AssistantDraftApplyNavigation } from './services/aiService';
 import { devLog } from './services/devLogger';
 import { clearActiveResumeId, setActiveResumeId } from './views/resumeStorage';
 import {
@@ -35,6 +36,17 @@ const Dashboard = lazy(() => import('./views/Dashboard'));
 const ExperienceBank = lazy(() => import('./views/ExperienceBank'));
 const ResumeEditor = lazy(() => import('./views/ResumeEditor'));
 const AIAssistant = lazy(() => import('./views/AIAssistant'));
+
+type ExperienceFocusRequest = {
+  requestId: number;
+  category?: AssistantDraftApplyNavigation['category'];
+  targetId?: string;
+};
+
+type ResumeEditorFocusRequest = {
+  requestId: number;
+  targetId?: string;
+};
 
 const resolveStoredView = (value: string | null): ViewState | null => {
   if (!value) {
@@ -88,11 +100,14 @@ const App: React.FC = () => {
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
+  const [experienceBankFocusRequest, setExperienceBankFocusRequest] = useState<ExperienceFocusRequest | null>(null);
+  const [resumeEditorFocusRequest, setResumeEditorFocusRequest] = useState<ResumeEditorFocusRequest | null>(null);
   const authUserKey = useAuthUserKey();
   const authUserKeyRef = useRef<string | null>(null);
   const authVisitSourceRef = useRef<'post_login' | 'session_restore'>('session_restore');
   const authVisitAwaitingResetRef = useRef(false);
   const assistantLaunchRequestIdRef = useRef(0);
+  const focusRequestIdRef = useRef(0);
 
   const handleRequireAuth = useCallback(async () => {
     if (isAuthLoading) {
@@ -122,6 +137,8 @@ const App: React.FC = () => {
     setAssistantLaunchRequest(null);
     setAssistantDraftInput('');
     setEditorMobileDrawerOpenRequest(0);
+    setExperienceBankFocusRequest(null);
+    setResumeEditorFocusRequest(null);
     setCurrentView(ViewState.DASHBOARD);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.DASHBOARD);
   }, []);
@@ -171,13 +188,32 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const handleJumpToResumeEditor = useCallback((resumeId?: string) => {
+  const handleJumpToResumeEditor = useCallback((resumeId?: string, targetId?: string) => {
     if (resumeId) {
       setActiveResumeId(resumeId);
+    }
+    if (targetId) {
+      focusRequestIdRef.current += 1;
+      setResumeEditorFocusRequest({
+        requestId: focusRequestIdRef.current,
+        targetId,
+      });
     }
     setEditorMobileDrawerOpenRequest((current) => current + 1);
     setCurrentView(ViewState.EDITOR);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.EDITOR);
+  }, []);
+
+  const handleJumpToExperienceBank = useCallback((category?: AssistantDraftApplyNavigation['category'], targetId?: string) => {
+    experienceService.clearListCache();
+    focusRequestIdRef.current += 1;
+    setExperienceBankFocusRequest({
+      requestId: focusRequestIdRef.current,
+      category,
+      targetId,
+    });
+    setCurrentView(ViewState.EXPERIENCE_BANK);
+    localStorage.setItem(VIEW_STORAGE_KEY, ViewState.EXPERIENCE_BANK);
   }, []);
 
   const handleConsumeEditorMobileDrawerOpenRequest = useCallback(() => {
@@ -322,6 +358,7 @@ const App: React.FC = () => {
             onProfileUpdate={handleProfileUpdate}
             shouldOpenResumeUpload={shouldOpenResumeUpload}
             onLaunchAssistant={handleLaunchAssistant}
+            focusRequest={experienceBankFocusRequest}
           />
         );
       case ViewState.EDITOR:
@@ -335,6 +372,7 @@ const App: React.FC = () => {
             onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
+            focusExperienceRequest={resumeEditorFocusRequest}
             quotaSummary={quotaSummary}
             onOpenTokenQuota={handleOpenTokenQuota}
           />
@@ -347,6 +385,7 @@ const App: React.FC = () => {
             pendingLaunchRequest={assistantLaunchRequest}
             onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
             onJumpToResumeEditor={handleJumpToResumeEditor}
+            onJumpToExperienceBank={handleJumpToExperienceBank}
             draftInput={assistantDraftInput}
             onDraftInputChange={setAssistantDraftInput}
           />

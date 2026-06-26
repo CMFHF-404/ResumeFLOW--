@@ -305,6 +305,37 @@ test('canceling unsaved draft cards keeps local state when server draft deletion
   );
 });
 
+test('applied draft focus requests stay pending until refreshed lists contain the target', () => {
+  const modelSource = read('views/ExperienceSection/model.ts');
+  const educationSource = read('views/EducationSection.tsx');
+  const resumeEditorSource = read('views/ResumeEditor/index.tsx');
+
+  assert.match(
+    modelSource,
+    /const targetExists = experiences\.some\(\(item\) => item\.master\.id === focusRequest\.targetId\);[\s\S]*if \(!targetExists\) \{[\s\S]*return;[\s\S]*\}[\s\S]*lastFocusRequestIdRef\.current = focusRequest\.requestId/
+  );
+  assert.doesNotMatch(
+    modelSource,
+    /lastFocusRequestIdRef\.current = focusRequest\.requestId;[\s\S]*const targetExists = experiences\.some/
+  );
+  assert.match(
+    educationSource,
+    /const targetExists = model\.educations\.some\(\(item\) => item\.master\.id === focusRequest\.targetId\);[\s\S]*if \(!targetExists\) \{[\s\S]*return;[\s\S]*\}[\s\S]*lastFocusRequestIdRef\.current = focusRequest\.requestId/
+  );
+  assert.doesNotMatch(
+    educationSource,
+    /lastFocusRequestIdRef\.current = focusRequest\.requestId;[\s\S]*const targetExists = model\.educations\.some/
+  );
+  assert.match(
+    resumeEditorSource,
+    /const targetExists = experienceItems\.some\(\(item\) => item\.id === focusExperienceRequest\.targetId\);[\s\S]*if \(!targetExists\) \{[\s\S]*return;[\s\S]*\}[\s\S]*lastFocusExperienceRequestIdRef\.current = focusExperienceRequest\.requestId/
+  );
+  assert.doesNotMatch(
+    resumeEditorSource,
+    /lastFocusExperienceRequestIdRef\.current = focusExperienceRequest\.requestId;[\s\S]*const targetExists = experienceItems\.some/
+  );
+});
+
 test('previewing lock is evaluated per card instead of through one saving id', () => {
   const modelSource = read('views/ExperienceSection/model.ts');
   const typeSource = read('views/ExperienceSection/types.ts');

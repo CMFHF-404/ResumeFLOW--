@@ -2,6 +2,7 @@ import inspect
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
@@ -24,6 +25,13 @@ QWEN_THOUGHT_SUMMARY_MAX_LENGTH = 80
 QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH = 32
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 UsageCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
+AI_ROUTE_PROFILE_HYBRID = "hybrid_gemini_aifast"
+AI_ROUTE_PROFILE_GEMINI = "gemini_primary"
+AI_ROUTE_PROFILE_QWEN = "qwen_primary"
+LANE_DEFAULT = "default"
+LANE_TOOL_CALL = "tool_call"
+LANE_THINKING = "thinking"
+LANE_RESUME_PARSE = "resume_parse"
 THOUGHT_TITLE_PATTERN = re.compile(r"\*\*([^*\n]+?)\*\*")
 THOUGHT_NOISE_PREFIX_PATTERN = re.compile(
     r"^(?:思考中|思考过程|思考摘要|摘要|thinking process|reasoning summary|reasoning|summary)\s*[:：-]\s*",
@@ -55,6 +63,15 @@ THOUGHT_ACTION_PREFIXES = (
 THOUGHT_ACTIVE_PREFIXES = ("正在", "已", "完成", "开始", "继续", "准备")
 
 
+@dataclass(frozen=True)
+class AIRoute:
+    provider: str
+    api_key: Optional[str]
+    base_url: str
+    model: str
+    transport: str
+
+
 def _extract_content(response_data: Dict[str, Any]) -> str:
     choices = response_data.get("choices") or []
     if not choices:
@@ -70,8 +87,96 @@ def _is_qwen_model(model: Optional[str]) -> bool:
     return (model or "").strip().lower().startswith("qwen")
 
 
+def _route_profile() -> str:
+    return str(
+        getattr(settings, "ai_route_profile", AI_ROUTE_PROFILE_HYBRID)
+        or AI_ROUTE_PROFILE_HYBRID
+    ).strip().lower()
+
+
+def _has_gemini_provider() -> bool:
+    return bool(getattr(settings, "gemini_api_key", None))
+
+
+def _is_gemini_route(route: AIRoute) -> bool:
+    return route.provider == "gemini"
+
+
+def _resolve_openai_compatible_route(
+    *,
+    lane: str,
+    model: Optional[str] = None,
+) -> AIRoute:
+    if lane == LANE_RESUME_PARSE:
+        base_url = str(
+            getattr(settings, "ai_fast_base_url", None)
+            or getattr(settings, "ai_base_url", "")
+            or ""
+        )
+        resolved_model = str(
+            model
+            or getattr(settings, "ai_fast_model", None)
+            or getattr(settings, "ai_model", "")
+            or ""
+        )
+        return AIRoute(
+            provider=_provider_from_base_url(base_url, resolved_model),
+            api_key=(
+                getattr(settings, "ai_fast_api_key", None)
+                or getattr(settings, "ai_api_key", None)
+            ),
+            base_url=base_url,
+            model=resolved_model,
+            transport="chat_completion",
+        )
+
+    base_url = str(getattr(settings, "ai_base_url", "") or "")
+    resolved_model = str(model or getattr(settings, "ai_model", "") or "")
+    return AIRoute(
+        provider=_provider_from_base_url(base_url, resolved_model),
+        api_key=getattr(settings, "ai_api_key", None),
+        base_url=base_url,
+        model=resolved_model,
+        transport="chat_completion",
+    )
+
+
+def _resolve_gemini_route(*, model: Optional[str] = None) -> AIRoute:
+    requested_model = str(model or "").strip()
+    resolved_model = (
+        requested_model
+        if requested_model.lower().startswith("gemini")
+        else str(getattr(settings, "gemini_model", "") or "")
+    )
+    return AIRoute(
+        provider="gemini",
+        api_key=getattr(settings, "gemini_api_key", None),
+        base_url=str(getattr(settings, "gemini_base_url", "") or ""),
+        model=resolved_model,
+        transport="gemini_generate_content",
+    )
+
+
+def _resolve_ai_route(
+    *,
+    lane: str = LANE_DEFAULT,
+    model: Optional[str] = None,
+) -> AIRoute:
+    profile = _route_profile()
+    normalized_lane = lane or LANE_DEFAULT
+    if normalized_lane == LANE_RESUME_PARSE:
+        return _resolve_openai_compatible_route(lane=LANE_RESUME_PARSE, model=model)
+    if profile == AI_ROUTE_PROFILE_QWEN:
+        return _resolve_openai_compatible_route(lane=normalized_lane, model=model)
+    if _has_gemini_provider():
+        return _resolve_gemini_route(model=model)
+    return _resolve_openai_compatible_route(lane=normalized_lane, model=model)
+
+
 def _should_use_qwen_thinking() -> bool:
-    return bool(getattr(settings, "ai_api_key", None)) and _is_qwen_model(
+    return _route_profile() == AI_ROUTE_PROFILE_QWEN and bool(
+        getattr(settings, "ai_api_key", None)
+    ) and _is_qwen_model(
         getattr(settings, "ai_model", None)
     )
 
@@ -368,15 +473,15 @@ def _iter_qwen_responses_summary_texts(item: Dict[str, Any]):
             yield text
 
 
-def _build_headers() -> Dict[str, str]:
-    api_key = settings.ai_api_key
-    if not api_key:
+def _build_headers(api_key: Optional[str] = None) -> Dict[str, str]:
+    resolved_api_key = api_key or settings.ai_api_key
+    if not resolved_api_key:
         raise HTTPException(
             status_code=HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI_API_KEY is not configured",
         )
     return {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {resolved_api_key}",
         "Content-Type": "application/json",
     }
 
@@ -399,6 +504,16 @@ def _build_gemini_stream_url(model: str) -> str:
     if not normalized.endswith("/v1beta") and not normalized.endswith("/v1"):
         base_url = f"{base_url}/v1beta"
     return f"{base_url}/models/{model}:streamGenerateContent?alt=sse"
+
+
+def _build_gemini_generate_url(route: AIRoute) -> str:
+    base_url = (route.base_url or "").rstrip("/")
+    if not base_url:
+        raise ValueError("Gemini 服务地址未配置，无法调用 AI 生成。")
+    normalized = base_url.lower()
+    if not normalized.endswith("/v1beta") and not normalized.endswith("/v1"):
+        base_url = f"{base_url}/v1beta"
+    return f"{base_url}/models/{route.model}:generateContent"
 
 
 def _safe_response_text(response: httpx.Response) -> str:
@@ -471,6 +586,8 @@ def _safe_int(value: Any) -> int:
 
 def _provider_from_base_url(base_url: str, model: Optional[str] = None) -> str:
     normalized = (base_url or "").lower()
+    if "aifast" in normalized or str(model or "").lower().startswith("aifast"):
+        return "aifast"
     if "dashscope" in normalized or "aliyun" in normalized or _is_qwen_model(model):
         return "dashscope"
     if "googleapis" in normalized or "generativelanguage" in normalized:
@@ -634,6 +751,10 @@ async def _iter_sse_json_payloads(response: httpx.Response):
                 logger.warning("[AI Stream] invalid Gemini SSE trailing payload: %s", payload[:500])
 
 
+def _supports_gemini_response_mime_type(model: Optional[str] = None) -> bool:
+    return not (model or "").strip().lower().startswith("gemini-3")
+
+
 def _build_gemini_generation_config(
     budget_tokens: Optional[int] = None,
     *,
@@ -645,8 +766,7 @@ def _build_gemini_generation_config(
             "includeThoughts": True,
         },
     }
-    normalized_model = (model or "").strip().lower()
-    if not normalized_model.startswith("gemini-3"):
+    if _supports_gemini_response_mime_type(model):
         config["responseMimeType"] = "application/json"
     if budget_tokens is None:
         return config
@@ -676,6 +796,413 @@ def _build_gemini_request_body(
             budget_tokens,
             model=model,
         ),
+    }
+
+
+def _convert_openai_content_part_to_gemini(part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(part, dict):
+        return None
+    if part.get("type") == "text" and isinstance(part.get("text"), str):
+        return {"text": part["text"]}
+    if "text" in part and isinstance(part.get("text"), str):
+        return {"text": part["text"]}
+
+    image_url = part.get("image_url")
+    if part.get("type") == "image_url" and isinstance(image_url, dict):
+        url = str(image_url.get("url") or "").strip()
+        match = re.match(r"^data:([^;,]+);base64,(.+)$", url, re.DOTALL)
+        if match:
+            return {
+                "inlineData": {
+                    "mimeType": match.group(1),
+                    "data": match.group(2),
+                }
+            }
+        if url:
+            return {"fileData": {"fileUri": url}}
+
+    inline_data = part.get("inlineData")
+    if isinstance(inline_data, dict):
+        mime_type = str(inline_data.get("mimeType") or "").strip()
+        data = str(inline_data.get("data") or "").strip()
+        if mime_type and data:
+            return {"inlineData": {"mimeType": mime_type, "data": data}}
+
+    return None
+
+
+def _convert_openai_content_to_gemini_parts(content: Any) -> List[Dict[str, Any]]:
+    if isinstance(content, str):
+        return [{"text": content}]
+    if isinstance(content, list):
+        parts = [
+            converted
+            for converted in (
+                _convert_openai_content_part_to_gemini(part)
+                for part in content
+                if isinstance(part, dict)
+            )
+            if converted is not None
+        ]
+        if parts:
+            return parts
+    return [{"text": str(content or "")}]
+
+
+def _convert_openai_content_to_non_empty_gemini_parts(content: Any) -> List[Dict[str, Any]]:
+    parts = _convert_openai_content_to_gemini_parts(content)
+    if len(parts) == 1 and parts[0].get("text") == "":
+        return []
+    return parts
+
+
+def _parse_gemini_function_args(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _parse_gemini_function_response(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        if not value.strip():
+            return {}
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {"result": value}
+        return parsed if isinstance(parsed, dict) else {"result": parsed}
+    if value is None:
+        return {}
+    return {"result": value}
+
+
+def _convert_openai_tool_calls_to_gemini_parts(message: Dict[str, Any]) -> List[Dict[str, Any]]:
+    parts = _convert_openai_content_to_non_empty_gemini_parts(message.get("content"))
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for tool_call in tool_calls:
+            function = tool_call.get("function") if isinstance(tool_call, dict) else None
+            if not isinstance(function, dict):
+                continue
+            name = str(function.get("name") or "").strip()
+            if not name:
+                continue
+            parts.append(
+                {
+                    "functionCall": {
+                        "name": name,
+                        "args": _parse_gemini_function_args(function.get("arguments")),
+                    }
+                }
+            )
+    if parts:
+        return parts
+    return _convert_openai_content_to_gemini_parts(message.get("content"))
+
+
+def _convert_openai_tool_response_to_gemini_parts(message: Dict[str, Any]) -> List[Dict[str, Any]]:
+    name = str(message.get("name") or "").strip()
+    if not name:
+        return _convert_openai_content_to_gemini_parts(message.get("content"))
+    return [
+        {
+            "functionResponse": {
+                "name": name,
+                "response": _parse_gemini_function_response(message.get("content")),
+            }
+        }
+    ]
+
+
+def _build_gemini_generate_body(
+    messages: List[Dict[str, Any]],
+    tools: Optional[List[Dict[str, Any]]] = None,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    system_parts: List[Dict[str, Any]] = []
+    contents: List[Dict[str, Any]] = []
+    for message in messages:
+        role = str(message.get("role") or "user")
+        content = message.get("content")
+        if role == "system":
+            system_parts.extend(_convert_openai_content_to_gemini_parts(content))
+            continue
+        if role == "tool":
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": _convert_openai_tool_response_to_gemini_parts(message),
+                }
+            )
+            continue
+        if role == "assistant":
+            contents.append(
+                {
+                    "role": "model",
+                    "parts": _convert_openai_tool_calls_to_gemini_parts(message),
+                }
+            )
+            continue
+        contents.append(
+            {
+                "role": "user",
+                "parts": _convert_openai_content_to_gemini_parts(content),
+            }
+        )
+
+    if not contents:
+        contents.append({"role": "user", "parts": [{"text": ""}]})
+
+    generation_config: Dict[str, Any] = {"temperature": 0.3}
+    if _supports_gemini_response_mime_type(model):
+        generation_config["responseMimeType"] = "application/json"
+    body: Dict[str, Any] = {
+        "contents": contents,
+        "generationConfig": generation_config,
+    }
+    if system_parts:
+        body["systemInstruction"] = {"parts": system_parts}
+    function_declarations = _build_gemini_function_declarations(tools or [])
+    if function_declarations:
+        body["tools"] = [{"functionDeclarations": function_declarations}]
+    return body
+
+
+def _build_gemini_function_declarations(
+    tools: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    declarations: List[Dict[str, Any]] = []
+    for tool in tools:
+        function = tool.get("function") if isinstance(tool, dict) else None
+        if not isinstance(function, dict):
+            continue
+        name = str(function.get("name") or "").strip()
+        if not name:
+            continue
+        declaration: Dict[str, Any] = {"name": name}
+        description = function.get("description")
+        if isinstance(description, str) and description.strip():
+            declaration["description"] = description
+        parameters = function.get("parameters")
+        if isinstance(parameters, dict):
+            declaration["parameters"] = parameters
+        declarations.append(declaration)
+    return declarations
+
+
+def _extract_gemini_content(response_data: Dict[str, Any]) -> str:
+    candidates = response_data.get("candidates") or []
+    if not candidates:
+        raise ValueError("Gemini response missing candidates")
+    parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
+    text_parts = [
+        part.get("text")
+        for part in parts
+        if isinstance(part, dict) and isinstance(part.get("text"), str)
+    ]
+    content = "".join(text_parts).strip()
+    if not content:
+        raise ValueError("Gemini response missing content")
+    return content
+
+
+def _extract_gemini_tool_calls(response_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    candidates = response_data.get("candidates") or []
+    if not candidates:
+        return []
+    parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
+    tool_calls: List[Dict[str, Any]] = []
+    for index, part in enumerate(parts):
+        function_call = part.get("functionCall") if isinstance(part, dict) else None
+        if not isinstance(function_call, dict):
+            continue
+        name = str(function_call.get("name") or "").strip()
+        if not name:
+            continue
+        args = function_call.get("args")
+        if not isinstance(args, dict):
+            args = {}
+        tool_calls.append(
+            {
+                "id": f"gemini-call-{index}",
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": json.dumps(args, ensure_ascii=False),
+                },
+            }
+        )
+    return tool_calls
+
+
+async def _call_gemini_generate_content(
+    messages: List[Dict[str, Any]],
+    *,
+    route: AIRoute,
+    json_mode: bool,
+    usage_callback: UsageCallback,
+    request_label: str,
+) -> Dict[str, Any]:
+    if not route.api_key:
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GEMINI_API_KEY is not configured",
+        )
+    url = _build_gemini_generate_url(route)
+    payload = _build_gemini_generate_body(messages, model=route.model)
+    try:
+        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "x-goog-api-key": route.api_key or "",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                _log_http_error(response)
+                await _emit_failed_usage(
+                    usage_callback,
+                    provider=route.provider,
+                    model=route.model,
+                    request_label=request_label,
+                    metadata={
+                        "transport": route.transport,
+                        "http_status": response.status_code,
+                    },
+                )
+                raise
+            data = response.json()
+            _log_http_success(response, route.model, len(messages))
+            await _emit_usage_from_response(
+                usage_callback,
+                data,
+                provider=route.provider,
+                model=route.model,
+                request_label=request_label,
+                metadata={"transport": route.transport},
+            )
+    except httpx.TimeoutException as exc:
+        logger.error(
+            "Gemini request timed out: url=%s model=%s messages=%s read_timeout=%ss",
+            url,
+            route.model,
+            len(messages),
+            settings.ai_timeout_seconds,
+        )
+        await _emit_failed_usage(
+            usage_callback,
+            provider=route.provider,
+            model=route.model,
+            request_label=request_label,
+            metadata={"transport": route.transport, "error": "timeout"},
+        )
+        raise HTTPException(
+            status_code=HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "AI analysis timed out. The request took too long to finish; "
+                "please try again later."
+            ),
+        ) from exc
+
+    content = _extract_gemini_content(data)
+    if json_mode:
+        return _parse_json_content(content)
+    return {"content": content}
+
+
+async def _post_gemini_chat_completion(
+    payload: Dict[str, Any],
+    *,
+    route: AIRoute,
+    usage_callback: UsageCallback,
+    request_label: str,
+) -> Dict[str, Any]:
+    if not route.api_key:
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GEMINI_API_KEY is not configured",
+        )
+    url = _build_gemini_generate_url(route)
+    request_body = _build_gemini_generate_body(
+        payload.get("messages") or [],
+        tools=payload.get("tools") or [],
+        model=route.model,
+    )
+    try:
+        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "x-goog-api-key": route.api_key,
+                    "Content-Type": "application/json",
+                },
+                json=request_body,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                _log_http_error(response)
+                await _emit_failed_usage(
+                    usage_callback,
+                    provider=route.provider,
+                    model=route.model,
+                    request_label=request_label,
+                    metadata={
+                        "transport": route.transport,
+                        "http_status": response.status_code,
+                    },
+                )
+                raise
+            data = response.json()
+            _log_http_success(response, route.model, len(payload.get("messages") or []))
+            await _emit_usage_from_response(
+                usage_callback,
+                data,
+                provider=route.provider,
+                model=route.model,
+                request_label=request_label,
+                metadata={"transport": route.transport},
+            )
+    except httpx.TimeoutException as exc:
+        await _emit_failed_usage(
+            usage_callback,
+            provider=route.provider,
+            model=route.model,
+            request_label=request_label,
+            metadata={"transport": route.transport, "error": "timeout"},
+        )
+        raise HTTPException(
+            status_code=HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "AI analysis timed out. The request took too long to finish; "
+                "please try again later."
+            ),
+        ) from exc
+
+    tool_calls = _extract_gemini_tool_calls(data)
+    if tool_calls:
+        return {"choices": [{"message": {"role": "assistant", "tool_calls": tool_calls}}]}
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": _extract_gemini_content(data),
+                }
+            }
+        ]
     }
 
 
@@ -771,6 +1298,7 @@ async def _stream_gemini_json_response_legacy(
             model=model,
             request_label=request_label,
             status="success" if final_usage else "usage_missing",
+            metadata={"transport": "gemini_stream_generate_content"},
         ),
     )
     parse_candidates: List[str] = [answer_text]
@@ -1094,11 +1622,13 @@ async def _stream_gemini_json_response(
     thought_callback: ThoughtCallback = None,
     usage_callback: UsageCallback = None,
 ) -> Dict[str, Any]:
+    stream_route = _resolve_ai_route(lane=LANE_THINKING)
+
     async def record_stream_failure(error: Exception) -> None:
         await _emit_failed_usage(
             usage_callback,
-            provider=_provider_from_base_url(settings.ai_base_url, settings.ai_model),
-            model=str(settings.ai_model or ""),
+            provider=stream_route.provider,
+            model=stream_route.model,
             request_label=request_label,
             metadata={
                 "transport": "thinking_stream",
@@ -1179,28 +1709,39 @@ async def _call_llm(
     *,
     usage_callback: UsageCallback = None,
     request_label: str = "chat_completion",
+    lane: str = LANE_DEFAULT,
 ) -> Dict[str, Any]:
-    resolved_model = model or settings.ai_model
+    route = _resolve_ai_route(lane=lane, model=model)
+    if _is_gemini_route(route):
+        return await _call_gemini_generate_content(
+            messages,
+            route=route,
+            json_mode=json_mode,
+            usage_callback=usage_callback,
+            request_label=request_label,
+        )
+
+    resolved_model = route.model
     payload = _prepare_chat_completion_payload({
         "model": resolved_model,
         "messages": messages,
         "temperature": 0.3,
     })
-    url = f"{settings.ai_base_url}/chat/completions"
+    url = f"{route.base_url.rstrip('/')}/chat/completions"
     try:
         async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
-            response = await client.post(url, headers=_build_headers(), json=payload)
+            response = await client.post(url, headers=_build_headers(route.api_key), json=payload)
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError:
                 _log_http_error(response)
                 await _emit_failed_usage(
                     usage_callback,
-                    provider=_provider_from_base_url(settings.ai_base_url, payload["model"]),
+                    provider=route.provider,
                     model=payload["model"],
                     request_label=request_label,
                     metadata={
-                        "transport": "chat_completion",
+                        "transport": route.transport,
                         "http_status": response.status_code,
                     },
                 )
@@ -1210,10 +1751,10 @@ async def _call_llm(
             await _emit_usage_from_response(
                 usage_callback,
                 data,
-                provider=_provider_from_base_url(settings.ai_base_url, payload["model"]),
+                provider=route.provider,
                 model=payload["model"],
                 request_label=request_label,
-                metadata={"transport": "chat_completion"},
+                metadata={"transport": route.transport},
             )
     except httpx.TimeoutException as exc:
         logger.error(
@@ -1225,10 +1766,10 @@ async def _call_llm(
         )
         await _emit_failed_usage(
             usage_callback,
-            provider=_provider_from_base_url(settings.ai_base_url, payload["model"]),
+            provider=route.provider,
             model=payload["model"],
             request_label=request_label,
-            metadata={"transport": "chat_completion", "error": "timeout"},
+            metadata={"transport": route.transport, "error": "timeout"},
         )
         raise HTTPException(
             status_code=HTTP_504_GATEWAY_TIMEOUT,
@@ -1248,22 +1789,36 @@ async def _post_chat_completion(
     *,
     usage_callback: UsageCallback = None,
     request_label: str = "chat_completion",
+    lane: str = LANE_TOOL_CALL,
 ) -> Dict[str, Any]:
+    route = _resolve_ai_route(
+        lane=lane,
+        model=str(payload.get("model") or "") or None,
+    )
+    if _is_gemini_route(route):
+        return await _post_gemini_chat_completion(
+            payload,
+            route=route,
+            usage_callback=usage_callback,
+            request_label=request_label,
+        )
+
     request_payload = _prepare_chat_completion_payload(payload)
-    url = f"{settings.ai_base_url}/chat/completions"
+    request_payload["model"] = route.model
+    url = f"{route.base_url.rstrip('/')}/chat/completions"
     async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
-        response = await client.post(url, headers=_build_headers(), json=request_payload)
+        response = await client.post(url, headers=_build_headers(route.api_key), json=request_payload)
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError:
             _log_http_error(response)
             await _emit_failed_usage(
                 usage_callback,
-                provider=_provider_from_base_url(settings.ai_base_url, request_payload.get("model")),
+                provider=route.provider,
                 model=str(request_payload.get("model") or settings.ai_model),
                 request_label=str(request_payload.get("request_label") or request_label),
                 metadata={
-                    "transport": "chat_completion",
+                    "transport": route.transport,
                     "http_status": response.status_code,
                 },
             )
@@ -1273,9 +1828,9 @@ async def _post_chat_completion(
         await _emit_usage_from_response(
             usage_callback,
             data,
-            provider=_provider_from_base_url(settings.ai_base_url, request_payload.get("model")),
+            provider=route.provider,
             model=str(request_payload.get("model") or settings.ai_model),
             request_label=str(request_payload.get("request_label") or request_label),
-            metadata={"transport": "chat_completion"},
+            metadata={"transport": route.transport},
         )
         return data

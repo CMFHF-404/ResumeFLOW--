@@ -1,11 +1,19 @@
-import type { AssistantDraftCard, AssistantMessage, AssistantSession, AssistantSessionDetail } from '../../services/aiService';
+import type {
+  AssistantDraftApplyNavigation,
+  AssistantDraftCard,
+  AssistantMessage,
+  AssistantSession,
+  AssistantSessionDetail,
+} from '../../services/aiService';
 import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
 
 export type AssistantDraftMessageItem = {
   message: AssistantMessage;
   card: AssistantDraftCard;
   isManualSaveMode: boolean;
+  navigation?: AssistantDraftApplyNavigation;
   onJumpToEditor?: () => void;
+  onViewAppliedDraft?: () => void;
 };
 
 export type AssistantDraftGroup = {

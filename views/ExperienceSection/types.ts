@@ -30,6 +30,11 @@ export type ExperienceSectionProps = {
   themeColor?: string;
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
   onCountChange?: (count: number | null) => void;
+  focusRequest?: {
+    requestId: number;
+    category?: ExperienceCategory;
+    targetId?: string;
+  } | null;
 };
 
 export type CardPolishMode = Exclude<PolishMode, 'assistant'>;

@@ -3,10 +3,16 @@ import { GraduationCap, Plus, ChevronDown } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EducationCard from '../components/EducationCard';
 import type { EducationManager } from '../hooks/useEducationManager';
+import type { AssistantDraftApplyNavigation } from '../services/aiService';
 
 type EducationSectionProps = {
     model: EducationManager;
     onCountChange?: (count: number | null) => void;
+    focusRequest?: {
+        requestId: number;
+        category?: AssistantDraftApplyNavigation['category'];
+        targetId?: string;
+    } | null;
 };
 
 const EducationSectionHeader: React.FC<{
@@ -98,12 +104,29 @@ const DeleteDialog: React.FC<{
     />
 );
 
-const EducationSection: React.FC<EducationSectionProps> = ({ model, onCountChange }) => {
+const EducationSection: React.FC<EducationSectionProps> = ({ model, onCountChange, focusRequest }) => {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
+    const lastFocusRequestIdRef = React.useRef<number | null>(null);
 
     React.useEffect(() => {
         onCountChange?.(model.isLoading ? null : model.educations.length);
     }, [model.educations.length, model.isLoading, onCountChange]);
+
+    React.useEffect(() => {
+        if (!focusRequest || focusRequest.category !== 'education' || !focusRequest.targetId || model.isLoading) {
+            return;
+        }
+        if (lastFocusRequestIdRef.current === focusRequest.requestId) {
+            return;
+        }
+        const targetExists = model.educations.some((item) => item.master.id === focusRequest.targetId);
+        if (!targetExists) {
+            return;
+        }
+        lastFocusRequestIdRef.current = focusRequest.requestId;
+        setIsCollapsed(false);
+        model.focusEduCard(focusRequest.targetId);
+    }, [focusRequest, model]);
 
     return (
         <section className="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-800">

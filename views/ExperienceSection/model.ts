@@ -141,6 +141,7 @@ export const useExperienceSectionModel = ({
   isAuthenticated,
   onRequireAuth,
   onLaunchAssistant,
+  focusRequest,
 }: ExperienceSectionProps): ExperienceSectionModel => {
   const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(
     category,
@@ -156,6 +157,7 @@ export const useExperienceSectionModel = ({
   const draftSaveRequestsRef = useRef<Map<string, Promise<ExperienceDraftRecord | null>>>(new Map());
   const draftSaveQueueRef = useRef<Map<string, Promise<ExperienceDraftRecord | null>>>(new Map());
   const latestSavedDraftsRef = useRef<Map<string, ExperienceDraftRecord>>(new Map());
+  const lastFocusRequestIdRef = useRef<number | null>(null);
   const invalidatedDraftSaveCardsRef = useRef(new Set<string>());
   const splitExperienceCacheRef = useRef<Map<string, Record<StarFieldKey, string>>>(new Map());
   const { ensureCardState } = useCardInitializer(experiences, store.setCardData, store.setOriginalCardData);
@@ -278,6 +280,37 @@ export const useExperienceSectionModel = ({
     await saveExperienceCard(cardId);
   }, [flushDraftSave, saveExperienceCard, store.cardData, titleRequired]);
   const sortedExperiences = useSortedExperiences(experiences);
+
+  useEffect(() => {
+    if (!focusRequest || !focusRequest.targetId || focusRequest.category !== category) {
+      return;
+    }
+    if (isLoading || lastFocusRequestIdRef.current === focusRequest.requestId) {
+      return;
+    }
+    const targetExists = experiences.some((item) => item.master.id === focusRequest.targetId);
+    if (!targetExists) {
+      return;
+    }
+    lastFocusRequestIdRef.current = focusRequest.requestId;
+    ensureCardState(focusRequest.targetId);
+    expansion.setExpandedCards((prev) => {
+      const next = new Set(prev);
+      next.add(focusRequest.targetId as string);
+      return next;
+    });
+    scrollToCard(focusRequest.targetId, 100);
+    highlightCard(focusRequest.targetId, 350);
+  }, [
+    category,
+    ensureCardState,
+    expansion,
+    experiences,
+    focusRequest,
+    highlightCard,
+    isLoading,
+    scrollToCard,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) {

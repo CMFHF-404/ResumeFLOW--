@@ -118,6 +118,7 @@ const AssistantDraftGroupView: React.FC<DraftGroupViewProps> = ({
           isManualSaveMode={item.isManualSaveMode}
           showManualSaveHint={manualSaveMessageIds.has(item.message.id)}
           onJumpToEditor={item.onJumpToEditor}
+          onViewAppliedDraft={item.onViewAppliedDraft}
         />
       </div>
     </div>
