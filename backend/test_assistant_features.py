@@ -112,7 +112,7 @@ async def _collect_streaming_response_lines(response) -> list[dict]:
 
 
 class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
-    async def _run_stream_with_payload(self, payload):
+    async def _run_stream_with_payload(self, payload, *, thinking_side_effect=None):
         assistant_session = SimpleNamespace(
             id=uuid.uuid4(),
             mode="general",
@@ -128,12 +128,17 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
             "title": "AI 助理",
             "suggestedFollowups": [],
         })
-        thinking_turn = AsyncMock(return_value={
-            "assistantText": "深度回复",
-            "draftCard": None,
-            "title": "AI 助理",
-            "suggestedFollowups": [],
-        })
+        if thinking_side_effect:
+            thinking_turn = AsyncMock(side_effect=thinking_side_effect)
+        else:
+            thinking_turn = AsyncMock(return_value={
+                "assistantText": "深度回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            })
+        persist_turn = AsyncMock()
+        self.last_persist_assistant_turn = persist_turn
 
         with patch.object(
             assistant_router,
@@ -175,7 +180,7 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             assistant_router,
             "persist_assistant_turn",
-            AsyncMock(),
+            persist_turn,
         ):
             response = await assistant_router.stream_assistant_session_turn(
                 uuid.uuid4(),
@@ -211,6 +216,59 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
         thinking_turn.assert_awaited_once()
         self.assertEqual(events[-1]["type"], "final")
         self.assertEqual(events[-1]["result"]["assistantText"], "深度回复")
+
+    async def test_stream_persists_visible_thinking_summary(self) -> None:
+        async def thinking_side_effect(**kwargs):
+            await kwargs["thought_callback"]({"type": "thought", "summary": "正在分析上下文"})
+            await kwargs["thought_callback"]({"type": "thought", "summary": "匹配经历证据"})
+            return {
+                "assistantText": "深度回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            }
+
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=True,
+        )
+
+        await self._run_stream_with_payload(
+            payload,
+            thinking_side_effect=thinking_side_effect,
+        )
+
+        self.assertEqual(
+            self.last_persist_assistant_turn.await_args.kwargs["assistant_thinking"],
+            "正在分析上下文\n匹配经历证据",
+        )
+
+    async def test_stream_discards_thinking_before_reset(self) -> None:
+        async def thinking_side_effect(**kwargs):
+            await kwargs["thought_callback"]({"type": "thought", "summary": "旧通道摘要"})
+            await kwargs["thought_callback"]({"type": "thought_reset"})
+            await kwargs["thought_callback"]({"type": "thought", "summary": "切换后摘要"})
+            return {
+                "assistantText": "深度回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            }
+
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=True,
+        )
+
+        await self._run_stream_with_payload(
+            payload,
+            thinking_side_effect=thinking_side_effect,
+        )
+
+        self.assertEqual(
+            self.last_persist_assistant_turn.await_args.kwargs["assistant_thinking"],
+            "切换后摘要",
+        )
 
 
 class AssistantDraftLinkPreservationTests(unittest.TestCase):

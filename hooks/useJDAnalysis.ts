@@ -24,6 +24,8 @@ import {
   diffJDItemSignatures,
   sortExperienceItemsForMatch,
 } from "../utils/resumeHelpers";
+import { extractThoughtHeadline } from "../utils/aiThought";
+import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../views/ResumeEditor/constants";
 import type {
   JDAnalysisContext,
   JDAnalysisItemSignatures,
@@ -683,6 +685,7 @@ export const useJDAnalysis = ({
       const controller = new AbortController();
       abortControllerRef.current = controller;
       setThinkingText("");
+      let hasThoughtTitle = false;
       const setIsAnalyzingForRun = (value: boolean) => {
         if (activeAnalysisRunIdRef.current !== runId) {
           return;
@@ -696,7 +699,7 @@ export const useJDAnalysis = ({
           setThinkingText("");
         }
       };
-      return runJDAnalysisExecution({
+      const outcome = await runJDAnalysisExecution({
         mode: options?.mode,
         diff: options?.diff,
         resumeId,
@@ -719,15 +722,32 @@ export const useJDAnalysis = ({
           if (activeAnalysisRunIdRef.current !== runId) {
             return;
           }
+          if (event.type === "thought_reset") {
+            hasThoughtTitle = false;
+            setThinkingText("");
+            options?.onEvent?.(event);
+            return;
+          }
           if (event.type === "thought") {
-            if (event.summary) {
-              setThinkingText((current) => appendJDThinkingText(current, event.summary));
+            const title = extractThoughtHeadline(event.summary) || event.summary;
+            if (title) {
+              hasThoughtTitle = true;
+              setThinkingText((current) => appendJDThinkingText(current, title));
+            }
+            options?.onEvent?.(event);
+            return;
+          }
+          if (event.type === "progress" && !hasThoughtTitle) {
+            const progressTitle = JD_ANALYSIS_PROGRESS_NODE_TITLES[event.node];
+            if (progressTitle) {
+              setThinkingText(progressTitle);
             }
           }
           options?.onEvent?.(event);
         },
         signal: controller.signal,
       });
+      return outcome;
     },
     [
       analysisContext,

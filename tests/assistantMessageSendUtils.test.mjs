@@ -146,3 +146,50 @@ test('omits assistant text optional fields when they are empty', async () => {
 
   assert.deepEqual(message.content_json, { text: '普通回复' });
 });
+
+test('builds assistant text messages with persisted thinking summaries', async () => {
+  const { buildAssistantTextMessage } = await importAssistantMessageSendUtils();
+
+  const message = buildAssistantTextMessage(
+    '可以这样优化。',
+    null,
+    [],
+    '2026-06-06T00:00:00.000Z',
+    0.31,
+    '  正在分析上下文\n匹配经历证据  ',
+  );
+
+  assert.deepEqual(message.content_json, {
+    text: '可以这样优化。',
+    thinking: '正在分析上下文\n匹配经历证据',
+  });
+});
+
+test('assistant thought stream reset clears active and persisted thinking', async () => {
+  const { reduceAssistantThoughtStreamState } = await importAssistantMessageSendUtils();
+
+  const withFirstThought = reduceAssistantThoughtStreamState(
+    { activeThought: '', streamedThoughtText: '' },
+    { type: 'thought', summary: '旧通道摘要' },
+    true,
+  );
+  const afterReset = reduceAssistantThoughtStreamState(
+    withFirstThought,
+    { type: 'thought_reset' },
+    true,
+  );
+  const afterFallbackThought = reduceAssistantThoughtStreamState(
+    afterReset,
+    { type: 'thought', summary: '切换后摘要' },
+    true,
+  );
+
+  assert.deepEqual(afterReset, {
+    activeThought: '',
+    streamedThoughtText: '',
+  });
+  assert.deepEqual(afterFallbackThought, {
+    activeThought: '切换后摘要',
+    streamedThoughtText: '切换后摘要',
+  });
+});

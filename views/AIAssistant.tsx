@@ -508,6 +508,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     }
                     const isUser = message.role === 'user';
                     const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
+                    const thinking = typeof message.content_json?.thinking === 'string' ? message.content_json.thinking : '';
                     const attachments = readMessageAttachmentPreviews(message);
                     const selectedExperiencePreviews = readMessageSelectedExperiences(message);
                     const selectedResumePreview = readMessageSelectedResume(message);
@@ -516,6 +517,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                         key={message.id}
                         isUser={isUser}
                         content={text}
+                        thinking={!isUser ? thinking : undefined}
                         attachments={attachments}
                         selectedExperiences={selectedExperiencePreviews}
                         selectedResume={selectedResumePreview}
