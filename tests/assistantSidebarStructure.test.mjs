@@ -25,6 +25,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
 
   assert.match(assistant, /surface\?: 'full' \| 'sidebar'/);
   assert.match(assistant, /liveSelectedResume\?: AssistantSelectedResume \| null/);
+  assert.match(assistant, /onOpenAnalysisDetails\?: \(\) => void/);
   assert.match(assistant, /const isSidebarSurface = surface === 'sidebar'/);
   assert.match(assistant, /normalizeSelectedResume\(liveSelectedResume\)/);
   assert.match(assistant, /!isSidebarSurface \|\| !isAuthenticated \|\| selectedSessionId/);
@@ -40,6 +41,10 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.doesNotMatch(assistant, /shrink-0 border-b border-slate-200\/90 bg-white\/95 px-4 py-3 backdrop-blur/);
   assert.match(assistant, /pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1/);
   assert.match(assistant, /pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400\/50 dark:text-slate-400 dark:hover:text-white/);
+  assert.match(assistant, /onOpenAnalysisDetails \? \(/);
+  assert.match(assistant, /onClick=\{onOpenAnalysisDetails\}/);
+  assert.match(assistant, /aria-label="查看分析详情"/);
+  assert.match(assistant, /<FileSearch className="h-4 w-4" \/>/);
   assert.doesNotMatch(assistant, /bg-slate-100 text-slate-600 transition hover:bg-slate-200/);
   assert.match(assistant, /surface=\{isSidebarSurface \? 'sidebar' : 'mobile'\}/);
   assert.match(assistant, /hideSelectedResumeCard=\{isSidebarSurface\}/);

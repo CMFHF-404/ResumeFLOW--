@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogto } from '@logto/react';
 import {
   Bot,
+  FileSearch,
   Maximize2,
   PanelLeft,
   X,
@@ -51,6 +52,10 @@ import {
   attachDraftJumpHandlers,
 } from './AIAssistant/draftJumpUtils';
 import { useAssistantComposerResize } from './AIAssistant/useAssistantComposerResize';
+import {
+  buildSelectedResumeWithModuleSelection,
+  type AssistantResumeModuleSelection,
+} from './AIAssistant/resumeSelectionUtils';
 import type {
   AssistantOpenSessionRequest,
   AssistantLaunchRequest,
@@ -65,6 +70,7 @@ type AIAssistantProps = {
   onConsumeOpenSessionRequest?: (requestId?: string) => void;
   onClose?: () => void;
   onExpandToFullPage?: (sessionId?: string | null) => void;
+  onOpenAnalysisDetails?: () => void;
   onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
   onJumpToExperienceBank?: (category?: AssistantDraftApplyNavigation['category'], targetId?: string) => void;
   draftInput?: string;
@@ -72,6 +78,7 @@ type AIAssistantProps = {
 };
 
 const SIDEBAR_ACTION_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 dark:text-slate-400 dark:hover:text-white';
+const ASSISTANT_EMPTY_GREETING = '嗨，我在这里。把零散经历、目标 JD 或想法丢给我，我们一起整理成能投递的表达。';
 
 const AIAssistant: React.FC<AIAssistantProps> = ({
   surface = 'full',
@@ -82,6 +89,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   onConsumeOpenSessionRequest,
   onClose,
   onExpandToFullPage,
+  onOpenAnalysisDetails,
   onJumpToResumeEditor,
   onJumpToExperienceBank,
   draftInput = '',
@@ -99,6 +107,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
   const [manualSaveMessageIds, setManualSaveMessageIds] = useState<Set<string>>(new Set());
   const [selectedResume, setSelectedResume] = useState<AssistantSelectedResume | null>(null);
+  const [selectedResumeModuleIds, setSelectedResumeModuleIds] = useState<string[]>([]);
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [isDesktopHistoryCollapsed, setIsDesktopHistoryCollapsed] = useState(false);
@@ -121,13 +130,29 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   } = useAssistantComposerAttachments({ onError: error });
 
   const lastMirroredDraftInputRef = useRef(draftInput);
+  const selectedResumeIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const currentSelectedResumeId = selectedResume?.resumeId ?? null;
+    if (selectedResumeIdRef.current === currentSelectedResumeId) {
+      return;
+    }
+    selectedResumeIdRef.current = currentSelectedResumeId;
+    setSelectedResumeModuleIds([]);
+  }, [selectedResume?.resumeId]);
 
   const resumeModules = useMemo(() => {
     if (!selectedResume?.snapshot) {
       return [];
     }
     const snap = selectedResume.snapshot;
-    const modules: Array<{ id: string; label: string; displayLabel: string; textToInsert: string }> = [];
+    const modules: Array<{
+      id: string;
+      label: string;
+      displayLabel: string;
+      kind: AssistantResumeModuleSelection['kind'];
+      contextId?: string;
+    }> = [];
 
     // 教育经历
     if (Array.isArray(snap.educations)) {
@@ -136,7 +161,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           id: `edu-${edu.id || idx}`,
           label: `教育经历: ${edu.school}${edu.major ? `·${edu.major}` : ''}`,
           displayLabel: edu.school || '教育经历',
-          textToInsert: `优化我的教育经历中在 ${edu.school} 学习 ${edu.major || ''} 的内容：`,
+          kind: 'education',
+          contextId: edu.id,
         });
       });
     }
@@ -148,7 +174,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           id: `exp-${exp.id || idx}`,
           label: `经历: ${exp.org}${exp.title ? `·${exp.title}` : ''}`,
           displayLabel: exp.org || exp.title || '经历',
-          textToInsert: `优化我在 ${exp.org} 担任 ${exp.title || ''} 的经历：`,
+          kind: 'experience',
+          contextId: exp.id,
         });
       });
     }
@@ -160,7 +187,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           id: `cert-${cert.id || idx}`,
           label: `证书: ${cert.name}`,
           displayLabel: cert.name || '证书资质',
-          textToInsert: `优化我的证书资质：${cert.name}`,
+          kind: 'certification',
+          contextId: cert.id,
         });
       });
     }
@@ -171,12 +199,31 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         id: 'skills-all',
         label: '掌握技能',
         displayLabel: '掌握技能',
-        textToInsert: `优化我的技能模块：${snap.skills.map((s) => s.name).join('、')}`,
+        kind: 'skills',
       });
     }
 
     return modules;
   }, [selectedResume]);
+
+  const selectedResumeModulesForTurn = useMemo(() => {
+    if (selectedResumeModuleIds.length === 0) {
+      return [];
+    }
+    const selectedIdSet = new Set(selectedResumeModuleIds);
+    return resumeModules
+      .filter((item) => selectedIdSet.has(item.id));
+  }, [resumeModules, selectedResumeModuleIds]);
+
+  const selectedResumeForTurn = useMemo(() => {
+    if (selectedResumeModulesForTurn.length === 0) {
+      return selectedResume;
+    }
+    return buildSelectedResumeWithModuleSelection(
+      selectedResume,
+      selectedResumeModulesForTurn,
+    );
+  }, [selectedResume, selectedResumeModulesForTurn]);
 
   const clearSelectedExperiences = useCallback(() => {
     setSelectedExperiences([]);
@@ -184,6 +231,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const clearSelectedResume = useCallback(() => {
     setSelectedResume(null);
+    setSelectedResumeModuleIds([]);
   }, []);
 
   const {
@@ -233,6 +281,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const latestSuggestedFollowups = useMemo(() => {
     return deriveLatestSuggestedFollowups(messages);
   }, [messages]);
+  const shouldShowEmptyAssistantGreeting = !isLoadingDetail && messages.length === 0 && !activeThought;
   const isDeepThinkingEnabled = selectedSessionId
     ? Boolean(deepThinkingBySessionId[selectedSessionId])
     : draftDeepThinkingEnabled;
@@ -418,7 +467,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const handleSubmit = useCallback(async () => {
     const nextInput = inputValue.trim();
-    if (!nextInput && composerAttachments.length === 0 && selectedExperiences.length === 0 && !selectedResume) {
+    if (!nextInput && composerAttachments.length === 0 && selectedExperiences.length === 0 && !selectedResumeForTurn) {
       return;
     }
     const enableThinking = isDeepThinkingEnabled;
@@ -429,7 +478,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       const created = await handleCreateSession(draftLaunchRequest?.context, {
         seedInput: false,
         preserveAttachment: composerAttachments.length > 0,
-        selectedResumeDraft: selectedResume,
+        selectedResumeDraft: selectedResumeForTurn,
         callbackOnly: draftLaunchRequest?.callbackOnly,
       });
       if (draftLaunchRequest?.applyDraftHandler) {
@@ -457,11 +506,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         enableThinking,
         attachments: composerAttachments,
         selectedExperiences,
-        selectedResume,
+        selectedResume: selectedResumeForTurn,
       },
       activeMode,
     );
-  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, isDeepThinkingEnabled, selectedExperiences, selectedResume, selectedSession?.mode, selectedSessionId, sendMessage]);
+  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, isDeepThinkingEnabled, selectedExperiences, selectedResumeForTurn, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleSelectSkillPreset = useCallback((skillId: AssistantSkillId, prompt: string) => {
     setActiveComposerSkillId(skillId);
@@ -613,6 +662,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {isSidebarSurface ? (
               <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1">
+                  {onOpenAnalysisDetails ? (
+                    <button
+                      type="button"
+                      onClick={onOpenAnalysisDetails}
+                      className={SIDEBAR_ACTION_BUTTON_CLASS}
+                      title="查看分析详情"
+                      aria-label="查看分析详情"
+                    >
+                      <FileSearch className="h-4 w-4" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => onExpandToFullPage?.(selectedSessionId)}
@@ -662,6 +722,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 ? 'flex w-full min-w-0 flex-col pb-4 pt-1'
                 : 'mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4'
               }>
+                {shouldShowEmptyAssistantGreeting ? (
+                  <div className="flex min-h-[260px] flex-col items-center justify-center px-5 text-center">
+                    <p className="text-base font-semibold text-slate-700 dark:text-slate-100">
+                      {ASSISTANT_EMPTY_GREETING}
+                    </p>
+                  </div>
+                ) : null}
                 {messages.map((message) => {
                   if (message.message_type === 'draft_card') {
                     return null;
@@ -753,6 +820,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onSubmit={() => void handleSubmit()}
                   isSending={isSending}
                   isDeepThinkingEnabled={isDeepThinkingEnabled}
+                  shouldExpandDeepThinkingButton={!isSidebarSurface}
                   onDeepThinkingChange={handleDeepThinkingChange}
                   placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
                   plusActions={[
@@ -762,6 +830,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   resumeModules={resumeModules}
                   onAddAttachments={(files) => appendComposerAttachments(files, 'drop')}
                   hasContextItems={composerAttachments.length > 0 || Boolean(selectedResume)}
+                  selectedResumeModuleIds={selectedResumeModuleIds}
+                  onSelectedResumeModuleIdsChange={setSelectedResumeModuleIds}
                   activeSkillId={activeComposerSkillId}
                   onSelectSkillPreset={handleSelectSkillPreset}
                 />

@@ -13,7 +13,8 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(editor, /factorySidebarProps=\{factorySidebarProps\}/);
   assert.match(editor, /layoutAdjustProps=\{layoutAdjustProps\}/);
   assert.match(editor, /previewProps=\{editorPreviewProps\}/);
-  assert.match(editor, /isAssistantSidebarOpen=\{isAssistantSidebarOpen\}/);
+  assert.match(editor, /const isRightSidebarOpen = isAssistantSidebarOpen \|\| isJDAnalysisDetailsSidebarOpen/);
+  assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /surface="sidebar"/);
   assert.doesNotMatch(editor, /handleOpenDesktopTemplateTab/);
   assert.doesNotMatch(editor, /handleOpenDesktopLayoutTab/);
