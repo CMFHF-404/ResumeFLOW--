@@ -112,6 +112,42 @@ test('builds optimistic user messages with attachments and selected context', as
   assert.deepEqual(message.content_json.selected_resume, selectedResume);
 });
 
+test('builds optimistic user messages with resume experience selection metadata', async () => {
+  const {
+    buildOptimisticAssistantUserMessage,
+    prepareAssistantSendPayload,
+  } = await importAssistantMessageSendUtils();
+
+  const selectedResume = {
+    resumeId: 'resume-1',
+    resumeName: 'AI 产品实习简历',
+    selection: { mode: 'subset', experienceIds: ['exp-2'] },
+    snapshot: {
+      experiences: [
+        { id: 'exp-2', title: 'RPG 项目', org: '个人项目', star: { s: '做了产品化拆解', t: '', a: '', r: '' } },
+      ],
+      educations: [],
+      certifications: [],
+      skills: [{ id: 'skill-1', name: 'Prompt 设计', category: 'AI' }],
+    },
+  };
+  const prepared = prepareAssistantSendPayload({
+    userMessage: '',
+    selectedResume,
+  });
+  const message = buildOptimisticAssistantUserMessage(prepared, '2026-06-06T00:00:00.000Z', 0.64);
+
+  assert.equal(prepared.effectiveMessage, '请结合我选择的简历和对应 JD，给出针对性的简历修改建议，并可按需生成模拟面试题。');
+  assert.deepEqual(message.content_json.selected_resume.selection, {
+    mode: 'subset',
+    experienceIds: ['exp-2'],
+  });
+  assert.deepEqual(
+    message.content_json.selected_resume.snapshot.experiences.map((item) => item.id),
+    ['exp-2'],
+  );
+});
+
 test('builds assistant text messages with optional skill and followups', async () => {
   const { buildAssistantTextMessage } = await importAssistantMessageSendUtils();
 

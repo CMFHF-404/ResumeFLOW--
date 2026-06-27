@@ -44,7 +44,7 @@ const MatchScoreFilter: React.FC<MatchScoreFilterProps> = ({ value, onChange, di
                     setIsOpen(!isOpen);
                 }}
                 disabled={disabled}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors border ${
+                className={`inline-flex whitespace-nowrap items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors border ${
                     disabled
                         ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
                         : isOpen || value > 0
