@@ -26,3 +26,8 @@ export type AssistantLaunchRequest = {
   applyDraftHandler?: AssistantApplyDraftHandler;
   callbackOnly?: boolean;
 };
+
+export type AssistantOpenSessionRequest = {
+  requestId?: string;
+  sessionId: string;
+};

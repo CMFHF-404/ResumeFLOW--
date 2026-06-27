@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogto } from '@logto/react';
 import {
   Bot,
+  Maximize2,
   PanelLeft,
+  X,
 } from 'lucide-react';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
@@ -50,12 +52,18 @@ import {
 } from './AIAssistant/draftJumpUtils';
 import { useAssistantComposerResize } from './AIAssistant/useAssistantComposerResize';
 import type {
+  AssistantOpenSessionRequest,
   AssistantLaunchRequest,
 } from './AIAssistant/types';
 
 type AIAssistantProps = {
+  surface?: 'full' | 'sidebar';
   pendingLaunchRequest?: AssistantLaunchRequest | null;
+  pendingOpenSessionRequest?: AssistantOpenSessionRequest | null;
   onConsumeLaunchRequest?: (requestId?: string) => void;
+  onConsumeOpenSessionRequest?: (requestId?: string) => void;
+  onClose?: () => void;
+  onExpandToFullPage?: (sessionId?: string | null) => void;
   onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
   onJumpToExperienceBank?: (category?: AssistantDraftApplyNavigation['category'], targetId?: string) => void;
   draftInput?: string;
@@ -63,13 +71,19 @@ type AIAssistantProps = {
 };
 
 const AIAssistant: React.FC<AIAssistantProps> = ({
+  surface = 'full',
   pendingLaunchRequest,
+  pendingOpenSessionRequest,
   onConsumeLaunchRequest,
+  onConsumeOpenSessionRequest,
+  onClose,
+  onExpandToFullPage,
   onJumpToResumeEditor,
   onJumpToExperienceBank,
   draftInput = '',
   onDraftInputChange,
 }) => {
+  const isSidebarSurface = surface === 'sidebar';
   const { isAuthenticated } = useLogto();
   const { toasts, success, error, loading, updateToast, closeToast } = useToast();
   const [inputValue, setInputValue] = useState(draftInput);
@@ -297,6 +311,40 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     error,
   });
 
+  useEffect(() => {
+    if (!pendingOpenSessionRequest || !isAuthenticated) {
+      return;
+    }
+    let cancelled = false;
+    const { sessionId, requestId } = pendingOpenSessionRequest;
+    suppressAutoSelectSessionRef.current = true;
+    draftLaunchRequestRef.current = null;
+    setActiveComposerSkillId(null);
+    setLastAssistantSkillId(null);
+    setActiveThought('');
+    setSelectedResume(null);
+    setSelectedExperiences([]);
+    clearComposerAttachments();
+    setSelectedSessionId(sessionId);
+    void loadSessionDetail(sessionId).finally(() => {
+      if (!cancelled) {
+        onConsumeOpenSessionRequest?.(requestId);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    clearComposerAttachments,
+    draftLaunchRequestRef,
+    isAuthenticated,
+    loadSessionDetail,
+    onConsumeOpenSessionRequest,
+    pendingOpenSessionRequest,
+    setSelectedSessionId,
+    suppressAutoSelectSessionRef,
+  ]);
+
   const handleSubmit = useCallback(async () => {
     const nextInput = inputValue.trim();
     if (!nextInput && composerAttachments.length === 0 && selectedExperiences.length === 0 && !selectedResume) {
@@ -408,7 +456,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   });
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div className={isSidebarSurface
+      ? 'flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-white dark:bg-slate-950'
+      : 'flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950'
+    }>
       <ToastContainer toasts={toasts} onClose={closeToast} />
       <ConfirmDialog
         isOpen={deleteConfirmId !== null}
@@ -459,21 +510,53 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         </div>
       ) : (
         <>
-          <AssistantHistoryPanel
-            sessions={sessions}
-            selectedSessionId={selectedSessionId}
-            isDesktopHistoryCollapsed={isDesktopHistoryCollapsed}
-            setIsDesktopHistoryCollapsed={setIsDesktopHistoryCollapsed}
-            isMobileHistoryOpen={isMobileHistoryOpen}
-            setIsMobileHistoryOpen={setIsMobileHistoryOpen}
-            onNewChat={() => void handleNewChat('general')}
-            onSelectDesktopSession={handleSelectSession}
-            onSelectMobileSession={handleSelectSession}
-            onRenameSession={(event, session) => void handleRenameSession(event, session)}
-            onDeleteSession={(event, sessionId) => void handleDeleteSession(event, sessionId)}
-          />
+          {!isSidebarSurface ? (
+            <AssistantHistoryPanel
+              sessions={sessions}
+              selectedSessionId={selectedSessionId}
+              isDesktopHistoryCollapsed={isDesktopHistoryCollapsed}
+              setIsDesktopHistoryCollapsed={setIsDesktopHistoryCollapsed}
+              isMobileHistoryOpen={isMobileHistoryOpen}
+              setIsMobileHistoryOpen={setIsMobileHistoryOpen}
+              onNewChat={() => void handleNewChat('general')}
+              onSelectDesktopSession={handleSelectSession}
+              onSelectMobileSession={handleSelectSession}
+              onRenameSession={(event, session) => void handleRenameSession(event, session)}
+              onDeleteSession={(event, sessionId) => void handleDeleteSession(event, sessionId)}
+            />
+          ) : null}
 
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            {isSidebarSurface ? (
+              <div className="shrink-0 border-b border-slate-200/90 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {selectedSession ? selectedSession.title : 'AI 简历助手'}
+                    </div>
+                    <div className="mt-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                      简历工厂侧栏
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onExpandToFullPage?.(selectedSessionId)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    title="展开到 AI 助手"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    title="关闭 AI 侧栏"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 md:hidden">
               <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
                 <button
@@ -490,9 +573,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 <div className="h-10 w-10" aria-hidden="true" />
               </div>
             </div>
+            )}
             <div
               ref={messageViewportRef}
-              className="min-w-0 flex-1 overflow-y-auto px-3 pt-4 sm:px-4 md:px-7 md:pt-6"
+              className={isSidebarSurface
+                ? 'min-w-0 flex-1 overflow-y-auto px-3 pt-4'
+                : 'min-w-0 flex-1 overflow-y-auto px-3 pt-4 sm:px-4 md:px-7 md:pt-6'
+              }
               style={{ paddingBottom: `${composerReservedHeight}px` }}
             >
               {shouldShowSkillPresetPanel ? (
@@ -501,7 +588,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onSelectPreset={handleSelectSkillPreset}
                 />
               ) : (
-                <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4">
+                <div className={isSidebarSurface
+                  ? 'flex w-full min-w-0 flex-col pb-4 pt-1'
+                  : 'mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4'
+                }>
                   {messages.map((message) => {
                     if (message.message_type === 'draft_card') {
                       return null;
@@ -550,9 +640,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
             <div
               ref={composerContainerRef}
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-4 md:px-7 md:pb-6 md:pt-5"
+              className={isSidebarSurface
+                ? 'pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-3 pt-3'
+                : 'pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-4 md:px-7 md:pb-6 md:pt-5'
+              }
             >
-              <div className="pointer-events-auto relative z-10 mx-auto w-full max-w-3xl">
+              <div className={isSidebarSurface
+                ? 'pointer-events-auto relative z-10 w-full'
+                : 'pointer-events-auto relative z-10 mx-auto w-full max-w-3xl'
+              }>
                 <input
                   ref={attachmentInputRef}
                   type="file"
@@ -562,6 +658,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onChange={handleAttachmentSelect}
                 />
                 <AssistantMobileDraftTray
+                  surface={isSidebarSurface ? 'sidebar' : 'mobile'}
                   draftGroups={draftGroups}
                   draftCardCount={draftCardCount}
                   isMobileDraftTrayOpen={isMobileDraftTrayOpen}
@@ -614,19 +711,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               </div>
             </div>
           </main>
-          <AssistantDesktopDraftPanel
-            draftGroups={draftGroups}
-            draftCardCount={draftCardCount}
-            isDraftPanelOpen={isDraftPanelOpen}
-            setIsDraftPanelOpen={setIsDraftPanelOpen}
-            draftExpandedByGroupId={draftExpandedByGroupId}
-            setDraftExpandedByGroupId={setDraftExpandedByGroupId}
-            getDraftVersionState={getDraftVersionState}
-            appliedMessageIds={appliedMessageIds}
-            manualSaveMessageIds={manualSaveMessageIds}
-            applyingMessageIds={applyingMessageIds}
-            onApplyDraft={(item) => void handleApplyDraft(item.message.id, item.card)}
-          />
+          {!isSidebarSurface ? (
+            <AssistantDesktopDraftPanel
+              draftGroups={draftGroups}
+              draftCardCount={draftCardCount}
+              isDraftPanelOpen={isDraftPanelOpen}
+              setIsDraftPanelOpen={setIsDraftPanelOpen}
+              draftExpandedByGroupId={draftExpandedByGroupId}
+              setDraftExpandedByGroupId={setDraftExpandedByGroupId}
+              getDraftVersionState={getDraftVersionState}
+              appliedMessageIds={appliedMessageIds}
+              manualSaveMessageIds={manualSaveMessageIds}
+              applyingMessageIds={applyingMessageIds}
+              onApplyDraft={(item) => void handleApplyDraft(item.message.id, item.card)}
+            />
+          ) : null}
         </>
       )}
     </div>

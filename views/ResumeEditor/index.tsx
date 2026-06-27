@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
@@ -79,6 +79,7 @@ import {
     resolveDefaultItemSpacingEm,
     resolveDefaultSectionSpacingKey,
     type LayoutSnapshot,
+    type SmartPageLayout,
 } from './layoutUtils';
 import {
     buildLayoutSnapshot,
@@ -101,6 +102,8 @@ import ResumeEditorDesktopWorkspace from './components/ResumeEditorDesktopWorksp
 import ResumeEditorMeasurePreview from './components/ResumeEditorMeasurePreview';
 import ResumeEditorMobileDrawer from './components/ResumeEditorMobileDrawer';
 import TemplateSelectorModal from './components/TemplateSelectorModal';
+import AIAssistant from '../AIAssistant';
+import type { ResumeFactorySidebarProps, ResumeFactoryTab } from './components/ResumeFactorySidebar';
 import buildExperiencePolishToolbars from './components/ExperiencePolishToolbars';
 import type { AssistantLaunchRequest } from '../AIAssistant/types';
 import { useMobileEditorDrawer } from './hooks/useMobileEditorDrawer';
@@ -150,6 +153,7 @@ type ResumeEditorProps = {
     authUserKey?: string | null;
     onResumesUpdate?: (resumes: DashboardResume[]) => void;
     onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
+    onOpenAssistantSession?: (sessionId: string) => void;
     onOpenAgentPluginConfig?: () => void;
     mobileDrawerOpenRequest?: number;
     onMobileDrawerOpenRequestConsumed?: () => void;
@@ -178,6 +182,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     authUserKey = null,
     onResumesUpdate,
     onLaunchAssistant,
+    onOpenAssistantSession,
     onOpenAgentPluginConfig,
     mobileDrawerOpenRequest = 0,
     onMobileDrawerOpenRequestConsumed,
@@ -281,6 +286,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         closeToast,
     } = useToast();
     const lastFocusExperienceRequestIdRef = useRef<number | null>(null);
+    const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
+    const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
+    const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
+    const assistantSidebarLaunchRequestIdRef = useRef(0);
     const {
         templatePresetMap,
         setTemplatePresetMap,
@@ -485,28 +494,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     useEffect(() => {
         setIsLayoutAdjustToolbarOpen(false);
     }, [resumeId]);
-    const {
-        handleSelectTemplate,
-        handleSaveTemplatePreset,
-    } = useTemplatePresetActions({
-        isTemplatePresetMapReady,
-        templatePresetMap,
-        resumeTemplateId,
-        themeColorPresetId,
-        experienceListMarkerStyle,
-        skillTagSeparator,
-        sectionOrder,
-        setResumeTemplateId,
-        setThemeColorPresetId,
-        setExperienceListMarkerStyle,
-        setSkillTagSeparator,
-        setSectionOrder,
-        setIsTemplateSelectorOpen,
-        setTemplatePresetMap,
-        showToastInfo,
-        showToastSuccess,
-        showToastError,
-    });
     usePersistedBossGreetingSync({
         resumeId,
         persistedConfigBossGreeting: resumeDetail?.resume?.config?.bossGreeting,
@@ -958,6 +945,34 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastSuccess,
         showToastError,
     });
+    const applyTemplateLayoutDefaults = useCallback((layoutDefaults: SmartPageLayout) => {
+        commitLayoutSnapshot(buildLayoutSnapshot(layoutDefaults, false), { incrementVersion: true });
+        applyVisibleLayout(layoutDefaults);
+        setIsSmartPageApplied(false);
+    }, [applyVisibleLayout, commitLayoutSnapshot, setIsSmartPageApplied]);
+    const {
+        handleSelectTemplate,
+        handleSaveTemplatePreset,
+    } = useTemplatePresetActions({
+        isTemplatePresetMapReady,
+        templatePresetMap,
+        resumeTemplateId,
+        themeColorPresetId,
+        experienceListMarkerStyle,
+        skillTagSeparator,
+        sectionOrder,
+        setResumeTemplateId,
+        setThemeColorPresetId,
+        setExperienceListMarkerStyle,
+        setSkillTagSeparator,
+        setSectionOrder,
+        setIsTemplateSelectorOpen,
+        setTemplatePresetMap,
+        onApplyTemplateLayoutDefaults: applyTemplateLayoutDefaults,
+        showToastInfo,
+        showToastSuccess,
+        showToastError,
+    });
     const resetEditorTransientState = useResumeEditorTransientReset({
         handleCancelDelete,
         setOriginalProfile,
@@ -1071,6 +1086,57 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setExperiencePolishPreview,
         handleApplyResumeAssistantDraft,
     });
+    const handleOpenResumeAssistantSidebar = useCallback(() => {
+        if (!resumeId) {
+            showToastInfo('请先选择或创建一份简历');
+            return;
+        }
+        assistantSidebarLaunchRequestIdRef.current += 1;
+        setAssistantSidebarLaunchRequest({
+            requestId: `editor-sidebar-launch-${assistantSidebarLaunchRequestIdRef.current}`,
+            context: {
+                mode: 'general',
+                entrySource: 'resume_editor',
+                title: `${resumeName || UNTITLED_RESUME_TITLE} · AI 简历助手`,
+                contextJson: {
+                    resumeId,
+                },
+            },
+            prefillResume: {
+                resumeId,
+                resumeName: resumeName || UNTITLED_RESUME_TITLE,
+                snapshot: selectedResumeSnapshot,
+                ...(jdPolishContext.trim() ? { jdContext: jdPolishContext } : {}),
+            },
+            applyDraftHandler: handleApplyResumeAssistantDraft,
+        });
+        setIsAssistantSidebarOpen(true);
+    }, [
+        handleApplyResumeAssistantDraft,
+        jdPolishContext,
+        resumeId,
+        resumeName,
+        selectedResumeSnapshot,
+        showToastInfo,
+    ]);
+    const handleConsumeAssistantSidebarLaunchRequest = useCallback((requestId?: string) => {
+        setAssistantSidebarLaunchRequest((current) => {
+            if (!current) {
+                return current;
+            }
+            if (requestId && current.requestId !== requestId) {
+                return current;
+            }
+            return null;
+        });
+    }, []);
+    const handleExpandAssistantSidebar = useCallback((sessionId?: string | null) => {
+        if (sessionId && onOpenAssistantSession) {
+            onOpenAssistantSession(sessionId);
+            return;
+        }
+        handleLaunchResumeAssistant();
+    }, [handleLaunchResumeAssistant, onOpenAssistantSession]);
     const editingItem = experienceItems.find((item) => item.id === experience.editingExpId);
     const {
         editingSuggestionToolbar,
@@ -1620,6 +1686,98 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             toolbar: editingSuggestionToolbar,
         },
     };
+    const currentLayoutDefaults = useMemo<SmartPageLayout>(() => ({
+        topPaddingPx,
+        sectionSpacingKey,
+        itemSpacingEm,
+        lineHeight,
+        fontSize,
+    }), [fontSize, itemSpacingEm, lineHeight, sectionSpacingKey, topPaddingPx]);
+    const handleSaveCurrentTemplateDefault = useCallback(async () => {
+        await handleSaveTemplatePreset({
+            templateId: resumeTemplateId,
+            sectionOrder,
+            themeColorPresetId,
+            experienceListMarkerStyle,
+            skillTagSeparator,
+            layoutDefaults: currentLayoutDefaults,
+        });
+    }, [
+        currentLayoutDefaults,
+        experienceListMarkerStyle,
+        handleSaveTemplatePreset,
+        resumeTemplateId,
+        sectionOrder,
+        skillTagSeparator,
+        themeColorPresetId,
+    ]);
+    const handleRestoreTemplateDefault = useCallback(() => {
+        const templateLayoutDefaults = templatePresetMap[resumeTemplateId]?.layoutDefaults;
+        if (templateLayoutDefaults) {
+            applyTemplateLayoutDefaults(templateLayoutDefaults);
+            showToastInfo('已恢复当前模板默认布局');
+            return;
+        }
+        restoreDefault();
+    }, [
+        applyTemplateLayoutDefaults,
+        restoreDefault,
+        resumeTemplateId,
+        showToastInfo,
+        templatePresetMap,
+    ]);
+    const handleOpenDesktopTemplateTab = useCallback(() => {
+        setFactorySidebarTab('templates');
+    }, []);
+    const handleOpenDesktopLayoutTab = useCallback(() => {
+        setFactorySidebarTab('layout');
+        setIsLayoutAdjustToolbarOpen(false);
+        showToastInfo('进入页面布局');
+    }, [setIsLayoutAdjustToolbarOpen, showToastInfo]);
+    const handleCustomizeTemplateFromSidebar = useCallback((templateId: ResumeFactorySidebarProps['selectedTemplateId']) => {
+        handleSelectTemplate(templateId);
+        setFactorySidebarTab('layout');
+    }, [handleSelectTemplate]);
+    const factorySidebarProps = useMemo<ResumeFactorySidebarProps>(() => ({
+        activeTab: factorySidebarTab,
+        onTabChange: setFactorySidebarTab,
+        editorSidebarProps: commonEditorSidebarProps,
+        layoutAdjustProps,
+        selectedTemplateId: resumeTemplateId,
+        templatePresetMap,
+        isTemplatePresetMapReady,
+        onSelectTemplate: handleSelectTemplate,
+        onCustomizeTemplate: handleCustomizeTemplateFromSidebar,
+        sectionOrder,
+        onSectionOrderChange: setSectionOrder,
+        density,
+        onDensityChange: setDensity,
+        experienceListMarkerStyle,
+        onExperienceListMarkerStyleChange: setExperienceListMarkerStyle,
+        skillTagSeparator,
+        onSkillTagSeparatorChange: setSkillTagSeparator,
+        onSaveCurrentTemplateDefault: handleSaveCurrentTemplateDefault,
+        onRestoreDefault: handleRestoreTemplateDefault,
+    }), [
+        commonEditorSidebarProps,
+        density,
+        experienceListMarkerStyle,
+        factorySidebarTab,
+        handleCustomizeTemplateFromSidebar,
+        handleRestoreTemplateDefault,
+        handleSaveCurrentTemplateDefault,
+        handleSelectTemplate,
+        isTemplatePresetMapReady,
+        layoutAdjustProps,
+        resumeTemplateId,
+        sectionOrder,
+        setDensity,
+        setExperienceListMarkerStyle,
+        setSectionOrder,
+        setSkillTagSeparator,
+        skillTagSeparator,
+        templatePresetMap,
+    ]);
     return (
         <div
             ref={mobileEditorScrollContainerRef}
@@ -1634,10 +1792,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onToggleTheme={toggleTheme}
                     isLayoutModified={isLayoutModified}
                     isSmartPageApplied={isSmartPageApplied}
-                    isLayoutAdjustToolbarOpen={isLayoutAdjustToolbarOpen}
-                    onToggleLayoutAdjustToolbar={handleToggleLayoutAdjustToolbar}
+                    isLayoutAdjustToolbarOpen={factorySidebarTab === 'layout' || isLayoutAdjustToolbarOpen}
+                    onToggleLayoutAdjustToolbar={handleOpenDesktopLayoutTab}
                     onAdjustToSinglePage={adjustToSinglePage}
-                    onRestoreDefault={restoreDefault}
+                    onRestoreDefault={handleRestoreTemplateDefault}
                     canCreateResume={canCreateResume}
                     isCreatingResume={isCreatingResume}
                     onCreateResume={handleCreateResume}
@@ -1646,8 +1804,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
                     isPreviewOverflowing={isPreviewOverflowing}
-                    onOpenTemplateSelector={handleOpenTemplateSelector}
-                    onLaunchAssistant={handleLaunchResumeAssistant}
+                    onOpenTemplateSelector={handleOpenDesktopTemplateTab}
+                    onLaunchAssistant={handleOpenResumeAssistantSidebar}
                     canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
                 />
             </div>
@@ -1681,7 +1839,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isLayoutAdjustToolbarOpen={isLayoutAdjustToolbarOpen}
                     onToggleLayoutAdjustToolbar={handleToggleLayoutAdjustToolbar}
                     onAdjustToSinglePage={adjustToSinglePage}
-                    onRestoreDefault={restoreDefault}
+                    onRestoreDefault={handleRestoreTemplateDefault}
                     bossGreeting={bossGreeting}
                     isBossGreetingVisible={isBossGreetingVisible}
                     isBossGreetingOutdated={isBossGreetingOutdated}
@@ -1704,9 +1862,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 />
             </div>
             <ResumeEditorDesktopWorkspace
-                sidebarProps={commonEditorSidebarProps}
+                factorySidebarProps={factorySidebarProps}
                 layoutAdjustProps={layoutAdjustProps}
                 previewProps={editorPreviewProps}
+                isAssistantSidebarOpen={isAssistantSidebarOpen}
+                assistantSidebar={isAssistantSidebarOpen ? (
+                    <AIAssistant
+                        surface="sidebar"
+                        pendingLaunchRequest={assistantSidebarLaunchRequest}
+                        onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
+                        onClose={() => setIsAssistantSidebarOpen(false)}
+                        onExpandToFullPage={handleExpandAssistantSidebar}
+                    />
+                ) : null}
                 quotaSummary={quotaSummary}
                 onOpenTokenQuota={onOpenTokenQuota}
             />

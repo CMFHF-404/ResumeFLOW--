@@ -1,32 +1,48 @@
 import React from 'react';
-import { SIDEBAR_WIDTH_CLASS } from '../constants';
-import EditorSidebar, { type EditorSidebarProps } from './EditorSidebar';
+import ResumeFactorySidebar, { type ResumeFactorySidebarProps } from './ResumeFactorySidebar';
 import ResumeEditorLayoutAdjustPanel from './ResumeEditorLayoutAdjustPanel';
 import ResumeEditorPreviewStage from './ResumeEditorPreviewStage';
 import type { ResumePreviewProps } from './ResumePreview';
 import type { TokenQuotaSummary } from '../../../services/billingService';
 
 type ResumeEditorDesktopWorkspaceProps = {
-    sidebarProps: Omit<EditorSidebarProps, 'layoutMode' | 'showJDPanel'>;
+    factorySidebarProps: ResumeFactorySidebarProps;
     layoutAdjustProps: React.ComponentProps<typeof ResumeEditorLayoutAdjustPanel>;
     previewProps: ResumePreviewProps;
+    assistantSidebar?: React.ReactNode;
+    isAssistantSidebarOpen?: boolean;
     quotaSummary?: TokenQuotaSummary | null;
     onOpenTokenQuota?: () => void;
 };
 
 const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> = ({
-    sidebarProps,
+    factorySidebarProps,
     layoutAdjustProps,
     previewProps,
+    assistantSidebar,
+    isAssistantSidebarOpen = false,
 }) => (
     <div className="flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
-        <div className={`hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden ${SIDEBAR_WIDTH_CLASS}`}>
-            <EditorSidebar {...sidebarProps} />
+        <div className="hidden md:flex md:h-full md:min-h-0 md:w-[410px] md:shrink-0 md:overflow-hidden xl:w-[440px]">
+            <ResumeFactorySidebar {...factorySidebarProps} />
         </div>
         <ResumeEditorPreviewStage
             layoutAdjustProps={layoutAdjustProps}
             previewProps={previewProps}
         />
+        <div
+            className={[
+                'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
+                'border-border-light dark:border-border-dark transition-all duration-300 ease-in-out',
+                isAssistantSidebarOpen
+                    ? 'w-[390px] opacity-100 md:border-l 2xl:w-[420px]'
+                    : 'w-0 opacity-0 md:border-l-0 pointer-events-none'
+            ].join(' ')}
+        >
+            <div className="h-full w-[390px] shrink-0 2xl:w-[420px]">
+                {assistantSidebar}
+            </div>
+        </div>
     </div>
 );
 

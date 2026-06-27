@@ -113,7 +113,7 @@ const DesktopSelectField: React.FC<{ control: ControlDescriptor }> = ({ control 
         <select
             value={String(control.value)}
             onChange={(event) => control.onChange(Number(event.target.value))}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
         >
             {control.options.map((option) => (
                 <option key={`${control.key}-${option.value}`} value={option.value}>
@@ -199,7 +199,7 @@ const ThemeColorDesktopField: React.FC<{
     const activeColor = options.find((item) => item.id === value) ?? options[0];
 
     return (
-        <div className="relative">
+        <div className="relative w-full">
             <label className="flex min-w-0 flex-col gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
                     主题颜色
@@ -207,20 +207,22 @@ const ThemeColorDesktopField: React.FC<{
                 <button
                     type="button"
                     onClick={() => setIsOpen((open) => !open)}
-                    className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 >
-                    <Palette className="h-4 w-4 text-gray-500" />
-                    <span
-                        className="inline-flex h-4 w-4 rounded-full border border-black/10"
-                        style={{ backgroundColor: activeColor?.accentColor }}
-                    />
-                    <span>{activeColor?.name ?? '主题色'}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Palette className="h-4 w-4 shrink-0 text-gray-500" />
+                        <span
+                            className="inline-flex h-4 w-4 shrink-0 rounded-full border border-black/10"
+                            style={{ backgroundColor: activeColor?.accentColor }}
+                        />
+                        <span className="truncate">{activeColor?.name ?? '主题色'}</span>
+                    </div>
                 </button>
             </label>
             {isOpen ? (
                 <div className="absolute left-0 top-[calc(100%+10px)] z-20 w-[280px] rounded-2xl border border-gray-200 bg-white p-3 shadow-xl dark:border-gray-700 dark:bg-gray-900">
                     <div className="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">选择主题色</div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-wrap gap-2">
                         {options.map((color) => (
                             <ThemeSwatch
                                 key={color.id}
@@ -355,14 +357,18 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
                         <p className="text-xs text-gray-500 dark:text-gray-400">调整后会立即同步到简历预览</p>
                     </div>
                 </div>
-                <div className="grid grid-cols-6 gap-3">
-                    <ThemeColorDesktopField
-                        value={themeColorPresetId}
-                        options={themeColorOptions}
-                        onChange={onThemeColorChange}
-                    />
+                <div className="flex flex-wrap gap-3">
+                    <div className="flex-1 min-w-[125px] max-w-[200px]">
+                        <ThemeColorDesktopField
+                            value={themeColorPresetId}
+                            options={themeColorOptions}
+                            onChange={onThemeColorChange}
+                        />
+                    </div>
                     {controls.map((control) => (
-                        <DesktopSelectField key={control.key} control={control} />
+                        <div key={control.key} className="flex-1 min-w-[110px] max-w-[180px]">
+                            <DesktopSelectField control={control} />
+                        </div>
                     ))}
                 </div>
             </div>

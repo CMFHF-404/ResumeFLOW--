@@ -7,7 +7,7 @@ import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import TokenQuotaModal from './components/TokenQuotaModal';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
-import type { AssistantLaunchRequest } from './views/AIAssistant/types';
+import type { AssistantLaunchRequest, AssistantOpenSessionRequest } from './views/AIAssistant/types';
 import Callback from './views/Callback';
 import GuestResumeEditorPreview from './views/GuestResumeEditorPreview';
 import { ViewState, Resume } from './types';
@@ -98,6 +98,7 @@ const App: React.FC = () => {
   const [isTokenQuotaOpen, setIsTokenQuotaOpen] = useState(false);
   const [quotaSummary, setQuotaSummary] = useState<TokenQuotaSummary | null>(null);
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
+  const [assistantOpenSessionRequest, setAssistantOpenSessionRequest] = useState<AssistantOpenSessionRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
   const [editorMobileDrawerOpenRequest, setEditorMobileDrawerOpenRequest] = useState(0);
   const [experienceBankFocusRequest, setExperienceBankFocusRequest] = useState<ExperienceFocusRequest | null>(null);
@@ -107,6 +108,7 @@ const App: React.FC = () => {
   const authVisitSourceRef = useRef<'post_login' | 'session_restore'>('session_restore');
   const authVisitAwaitingResetRef = useRef(false);
   const assistantLaunchRequestIdRef = useRef(0);
+  const assistantOpenSessionRequestIdRef = useRef(0);
   const focusRequestIdRef = useRef(0);
 
   const handleRequireAuth = useCallback(async () => {
@@ -135,6 +137,7 @@ const App: React.FC = () => {
     setIsTokenQuotaOpen(false);
     setQuotaSummary(null);
     setAssistantLaunchRequest(null);
+    setAssistantOpenSessionRequest(null);
     setAssistantDraftInput('');
     setEditorMobileDrawerOpenRequest(0);
     setExperienceBankFocusRequest(null);
@@ -172,12 +175,37 @@ const App: React.FC = () => {
       ...request,
       requestId: `launch-${nextRequestId}`,
     });
+    setAssistantOpenSessionRequest(null);
     setCurrentView(ViewState.AI_ASSISTANT);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.AI_ASSISTANT);
   }, []);
 
   const handleConsumeAssistantLaunchRequest = useCallback((requestId?: string) => {
     setAssistantLaunchRequest((current) => {
+      if (!current) {
+        return current;
+      }
+      if (requestId && current.requestId !== requestId) {
+        return current;
+      }
+      return null;
+    });
+  }, []);
+
+  const handleOpenAssistantSession = useCallback((sessionId: string) => {
+    const nextRequestId = assistantOpenSessionRequestIdRef.current + 1;
+    assistantOpenSessionRequestIdRef.current = nextRequestId;
+    setAssistantOpenSessionRequest({
+      requestId: `open-${nextRequestId}`,
+      sessionId,
+    });
+    setAssistantLaunchRequest(null);
+    setCurrentView(ViewState.AI_ASSISTANT);
+    localStorage.setItem(VIEW_STORAGE_KEY, ViewState.AI_ASSISTANT);
+  }, []);
+
+  const handleConsumeAssistantOpenSessionRequest = useCallback((requestId?: string) => {
+    setAssistantOpenSessionRequest((current) => {
       if (!current) {
         return current;
       }
@@ -369,6 +397,7 @@ const App: React.FC = () => {
             authUserKey={authUserKey}
             onResumesUpdate={handleResumesUpdate}
             onLaunchAssistant={handleLaunchAssistant}
+            onOpenAssistantSession={handleOpenAssistantSession}
             onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
@@ -383,7 +412,9 @@ const App: React.FC = () => {
         return (
           <AIAssistant
             pendingLaunchRequest={assistantLaunchRequest}
+            pendingOpenSessionRequest={assistantOpenSessionRequest}
             onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
+            onConsumeOpenSessionRequest={handleConsumeAssistantOpenSessionRequest}
             onJumpToResumeEditor={handleJumpToResumeEditor}
             onJumpToExperienceBank={handleJumpToExperienceBank}
             draftInput={assistantDraftInput}
