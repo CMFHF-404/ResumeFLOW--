@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import {
   Check,
-  ChevronDown,
-  ChevronUp,
   GripVertical,
   LayoutTemplate,
   PenLine,
   Save,
   SlidersHorizontal,
+  Wand2,
 } from 'lucide-react';
 import {
   RESUME_TEMPLATE_DEFINITIONS,
@@ -53,14 +52,13 @@ export type ResumeFactorySidebarProps = {
   onCustomizeTemplate: (templateId: ResumeTemplateId) => void;
   sectionOrder: string[];
   onSectionOrderChange: (order: string[]) => void;
-  density: 'compact' | 'standard' | 'spacious';
-  onDensityChange: (density: 'compact' | 'standard' | 'spacious') => void;
   experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
   onExperienceListMarkerStyleChange: (value: ResumeExperienceListMarkerStyle) => void;
   skillTagSeparator: string;
   onSkillTagSeparatorChange: (value: string) => void;
   onSaveCurrentTemplateDefault: () => Promise<void>;
   onRestoreDefault: () => void;
+  onAdjustToSinglePage: () => void;
 };
 
 const FACTORY_TABS: Array<{
@@ -82,15 +80,6 @@ const SECTION_LABELS: Record<string, string> = {
   skills: '技能清单',
 };
 
-const DENSITY_OPTIONS: Array<{
-  value: 'compact' | 'standard' | 'spacious';
-  label: string;
-}> = [
-  { value: 'compact', label: '紧凑' },
-  { value: 'standard', label: '标准' },
-  { value: 'spacious', label: '舒展' },
-];
-
 const MARKER_OPTIONS: Array<{
   value: ResumeExperienceListMarkerStyle;
   label: string;
@@ -109,7 +98,7 @@ const SliderField: React.FC<{
   unit?: string;
   onChange: (value: number) => void;
 }> = ({ label, value, min, max, step, unit = '', onChange }) => (
-  <label className="block rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900">
+  <label className="block">
     <div className="mb-2 flex items-center justify-between gap-3">
       <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{label}</span>
       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-300">
@@ -219,14 +208,13 @@ const LayoutPanel: React.FC<Omit<
   selectedTemplateId,
   sectionOrder,
   onSectionOrderChange,
-  density,
-  onDensityChange,
   experienceListMarkerStyle,
   onExperienceListMarkerStyleChange,
   skillTagSeparator,
   onSkillTagSeparatorChange,
   onSaveCurrentTemplateDefault,
   onRestoreDefault,
+  onAdjustToSinglePage,
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const selectedTemplate = resolveResumeTemplate(selectedTemplateId);
@@ -281,121 +269,116 @@ const LayoutPanel: React.FC<Omit<
   return (
     <div className="space-y-4 p-4">
       <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <div className="text-sm font-semibold text-gray-900 dark:text-white">
-          {selectedTemplate.name}模板默认
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => void saveDefault()}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:cursor-wait disabled:opacity-60"
-          >
-            <Save className="h-3.5 w-3.5" />
-            {isSaving ? '保存中' : '设为默认'}
-          </button>
-          <button
-            type="button"
-            onClick={onRestoreDefault}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-          >
-            恢复默认
-          </button>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <div className="mb-3 text-xs font-semibold text-gray-500 dark:text-gray-400">主题颜色</div>
-        <div className="grid grid-cols-4 gap-2">
-          {RESUME_THEME_COLOR_PRESETS.map((color) => {
-            const isActive = color.id === layoutAdjustProps.themeColorPresetId;
-            return (
-              <button
-                key={color.id}
-                type="button"
-                onClick={() => layoutAdjustProps.onThemeColorChange(color.id as ResumeThemeColorPresetId)}
-                className={[
-                  'flex h-10 items-center justify-center rounded-lg border transition',
-                  isActive
-                    ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
-                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300',
-                ].join(' ')}
-                title={color.name}
-              >
-                <span className="sr-only">{color.name}</span>
-                <span
-                  className="h-4 w-4 rounded-full border border-black/10"
-                  style={{ backgroundColor: color.accentColor }}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="grid gap-3">
-        <SliderField
-          label="字号"
-          value={layoutAdjustProps.fontSize}
-          min={FONT_SIZE_MIN}
-          max={FONT_SIZE_MAX}
-          step={FONT_SIZE_STEP}
-          unit="px"
-          onChange={layoutAdjustProps.onFontSizeChange}
-        />
-        <SliderField
-          label="行高"
-          value={layoutAdjustProps.lineHeight}
-          min={LINE_HEIGHT_MIN}
-          max={LINE_HEIGHT_MAX}
-          step={LINE_HEIGHT_STEP}
-          onChange={layoutAdjustProps.onLineHeightChange}
-        />
-        <SliderField
-          label="页边距"
-          value={layoutAdjustProps.topPaddingPx}
-          min={TOP_PADDING_MIN_PX}
-          max={TOP_PADDING_SLIDER_MAX}
-          step={SMART_PAGE_TOP_PADDING_STEP_PX}
-          unit="px"
-          onChange={layoutAdjustProps.onTopPaddingChange}
-        />
-        <SliderField
-          label="模块间距"
-          value={layoutAdjustProps.sectionSpacingKey}
-          min={2}
-          max={12}
-          step={1}
-          onChange={(value) => layoutAdjustProps.onSectionSpacingChange(value)}
-        />
-        <SliderField
-          label="条目间距"
-          value={layoutAdjustProps.itemSpacingEm}
-          min={SMART_PAGE_ITEM_SPACING_MIN}
-          max={MAX_ITEM_SPACING_EM}
-          step={SMART_PAGE_ITEM_SPACING_STEP}
-          onChange={layoutAdjustProps.onItemSpacingChange}
-        />
-      </section>
-
-      <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <div className="mb-3 text-xs font-semibold text-gray-500 dark:text-gray-400">密度</div>
-        <div className="grid grid-cols-3 gap-2">
-          {DENSITY_OPTIONS.map((option) => (
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-white">
+            {selectedTemplate.name}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <button
-              key={option.value}
               type="button"
-              onClick={() => onDensityChange(option.value)}
-              className={[
-                'rounded-lg border px-2 py-2 text-xs font-semibold transition',
-                density === option.value
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800',
-              ].join(' ')}
+              onClick={() => void saveDefault()}
+              disabled={isSaving}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 py-2 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:cursor-wait disabled:opacity-60"
             >
-              {option.label}
+              <Save className="h-3.5 w-3.5" />
+              {isSaving ? '保存中' : '设为默认'}
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={onRestoreDefault}
+              className="rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              恢复默认
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-gray-900 dark:text-white">排版参数</div>
+          <button
+            type="button"
+            onClick={onAdjustToSinglePage}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-dark"
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            智能一页
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <div className="mb-3 text-xs font-semibold text-gray-500 dark:text-gray-400">主题颜色</div>
+            <div className="grid grid-cols-4 gap-2">
+              {RESUME_THEME_COLOR_PRESETS.map((color) => {
+                const isActive = color.id === layoutAdjustProps.themeColorPresetId;
+                return (
+                  <button
+                    key={color.id}
+                    type="button"
+                    onClick={() => layoutAdjustProps.onThemeColorChange(color.id as ResumeThemeColorPresetId)}
+                    className={[
+                      'flex h-10 items-center justify-center rounded-lg border transition',
+                      isActive
+                        ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300',
+                    ].join(' ')}
+                    title={color.name}
+                  >
+                    <span className="sr-only">{color.name}</span>
+                    <span
+                      className="h-4 w-4 rounded-full border border-black/10"
+                      style={{ backgroundColor: color.accentColor }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <SliderField
+              label="字号"
+              value={layoutAdjustProps.fontSize}
+              min={FONT_SIZE_MIN}
+              max={FONT_SIZE_MAX}
+              step={FONT_SIZE_STEP}
+              unit="px"
+              onChange={layoutAdjustProps.onFontSizeChange}
+            />
+            <SliderField
+              label="行高"
+              value={layoutAdjustProps.lineHeight}
+              min={LINE_HEIGHT_MIN}
+              max={LINE_HEIGHT_MAX}
+              step={LINE_HEIGHT_STEP}
+              onChange={layoutAdjustProps.onLineHeightChange}
+            />
+            <SliderField
+              label="页边距"
+              value={layoutAdjustProps.topPaddingPx}
+              min={TOP_PADDING_MIN_PX}
+              max={TOP_PADDING_SLIDER_MAX}
+              step={SMART_PAGE_TOP_PADDING_STEP_PX}
+              unit="px"
+              onChange={layoutAdjustProps.onTopPaddingChange}
+            />
+            <SliderField
+              label="模块间距"
+              value={layoutAdjustProps.sectionSpacingKey}
+              min={2}
+              max={12}
+              step={1}
+              onChange={(value) => layoutAdjustProps.onSectionSpacingChange(value)}
+            />
+            <SliderField
+              label="条目间距"
+              value={layoutAdjustProps.itemSpacingEm}
+              min={SMART_PAGE_ITEM_SPACING_MIN}
+              max={MAX_ITEM_SPACING_EM}
+              step={SMART_PAGE_ITEM_SPACING_STEP}
+              onChange={layoutAdjustProps.onItemSpacingChange}
+            />
+          </div>
         </div>
       </section>
 
