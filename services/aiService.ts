@@ -304,12 +304,18 @@ export interface AssistantSelectedExperience {
     };
 }
 
+export interface AssistantSelectedResumeSelection {
+    mode: 'all' | 'subset';
+    experienceIds: string[];
+}
+
 export interface AssistantSelectedResume {
     resumeId: string;
     masterId?: string;
     resumeName: string;
     snapshot: ResumeAISnapshot;
     jdContext?: string;
+    selection?: AssistantSelectedResumeSelection;
 }
 
 export interface AssistantSuggestedFollowup {

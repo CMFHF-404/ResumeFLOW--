@@ -12,6 +12,7 @@ MAX_SELECTED_RESUME_EXPERIENCES = 40
 MAX_SELECTED_RESUME_EDUCATIONS = 20
 MAX_SELECTED_RESUME_CERTIFICATIONS = 30
 MAX_SELECTED_RESUME_SKILLS = 60
+VALID_SELECTED_RESUME_SELECTION_MODES = {"all", "subset"}
 
 
 def _clip_optional_text(value: Any, limit: int) -> str | None:
@@ -239,6 +240,36 @@ def _normalize_selected_resume_snapshot(snapshot: Any) -> Dict[str, Any]:
     }
 
 
+def _normalize_selected_resume_selection(selection: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(selection, dict):
+        return None
+    mode = selection.get("mode")
+    if not isinstance(mode, str) or mode not in VALID_SELECTED_RESUME_SELECTION_MODES:
+        return None
+    raw_experience_ids = selection.get("experienceIds")
+    if raw_experience_ids is None:
+        raw_experience_ids = selection.get("experience_ids")
+    if not isinstance(raw_experience_ids, list):
+        return None
+
+    experience_ids: List[str] = []
+    seen_ids = set()
+    for raw_id in raw_experience_ids:
+        experience_id = _clip_optional_text(raw_id, MAX_SELECTED_RESUME_ID_CHARS)
+        if experience_id and experience_id not in seen_ids:
+            seen_ids.add(experience_id)
+            experience_ids.append(experience_id)
+        if len(experience_ids) >= MAX_SELECTED_RESUME_EXPERIENCES:
+            break
+
+    if not experience_ids and mode != "all":
+        return None
+    return {
+        "mode": mode,
+        "experienceIds": experience_ids,
+    }
+
+
 def _normalize_selected_resume(item: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(item, dict):
         return None
@@ -270,4 +301,7 @@ def _normalize_selected_resume(item: Any) -> Optional[Dict[str, Any]]:
     )
     if jd_context:
         normalized["jd_context"] = jd_context
+    selection = _normalize_selected_resume_selection(item.get("selection"))
+    if selection:
+        normalized["selection"] = selection
     return normalized

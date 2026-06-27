@@ -1050,6 +1050,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         && !isFloatingExperiencePolishRunning
         && !floatingPolishSession
     );
+    const assistantSidebarSelectedResume = useMemo(() => {
+        if (!resumeId) {
+            return null;
+        }
+        return {
+            resumeId,
+            resumeName: resumeName || UNTITLED_RESUME_TITLE,
+            snapshot: selectedResumeSnapshot,
+            ...(jdPolishContext.trim() ? { jdContext: jdPolishContext } : {}),
+        };
+    }, [jdPolishContext, resumeId, resumeName, selectedResumeSnapshot]);
     const handleApplyResumeAssistantDraft = useResumeAssistantDraftApply({
         resumeId,
         educationSourceMap,
@@ -1102,21 +1113,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     resumeId,
                 },
             },
-            prefillResume: {
-                resumeId,
-                resumeName: resumeName || UNTITLED_RESUME_TITLE,
-                snapshot: selectedResumeSnapshot,
-                ...(jdPolishContext.trim() ? { jdContext: jdPolishContext } : {}),
-            },
+            prefillResume: assistantSidebarSelectedResume ?? undefined,
             applyDraftHandler: handleApplyResumeAssistantDraft,
         });
         setIsAssistantSidebarOpen(true);
     }, [
+        assistantSidebarSelectedResume,
         handleApplyResumeAssistantDraft,
-        jdPolishContext,
         resumeId,
         resumeName,
-        selectedResumeSnapshot,
         showToastInfo,
     ]);
     const handleConsumeAssistantSidebarLaunchRequest = useCallback((requestId?: string) => {
@@ -1857,6 +1862,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     <AIAssistant
                         surface="sidebar"
                         pendingLaunchRequest={assistantSidebarLaunchRequest}
+                        liveSelectedResume={assistantSidebarSelectedResume}
                         onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
                         onClose={() => setIsAssistantSidebarOpen(false)}
                         onExpandToFullPage={handleExpandAssistantSidebar}

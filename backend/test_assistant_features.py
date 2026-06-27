@@ -767,12 +767,14 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("useAssistantResourcePickers({", assistant_source)
-        self.assertIn("openExperiencePicker", resource_picker_source)
-        self.assertIn("experienceService.listAll('work')", resource_picker_source)
+        self.assertNotIn("openExperiencePicker", resource_picker_source)
+        self.assertNotIn("experienceService.listAll('work')", resource_picker_source)
         self.assertIn("resumeService.list()", resource_picker_source)
         self.assertIn("buildSelectedResumeFromResources", resource_picker_source)
         self.assertIn("draftLaunchRequestRef.current = {", resource_picker_source)
         self.assertIn("prefillResume: nextSelectedResume", resource_picker_source)
+        self.assertNotIn("key: 'pick-experience'", assistant_source)
+        self.assertNotIn("label: '选择经历'", assistant_source)
         self.assertNotIn("const openExperiencePicker = useCallback", assistant_source)
         self.assertNotIn("const openResumePicker = useCallback", assistant_source)
         self.assertNotIn("const handleConfirmSelectedResume = useCallback", assistant_source)
@@ -1659,6 +1661,10 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                     "resumeId": "resume-1",
                     "resumeName": "AI产品经理简历",
                     "jdContext": "J" * 5000,
+                    "selection": {
+                        "mode": "subset",
+                        "experienceIds": ["exp-1", "bad-id" * 80, ""],
+                    },
                 "snapshot": {
                     "experiences": [
                         {
@@ -1695,6 +1701,10 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                 "resume_id": "resume-1",
                 "resume_name": "AI产品经理简历",
                 "jd_context": "J" * 4000 + "...",
+                "selection": {
+                    "mode": "subset",
+                    "experienceIds": ["exp-1", ("bad-id" * 80)[:120] + "..."],
+                },
                 "snapshot": {
                     "experiences": [
                         {
@@ -1860,6 +1870,7 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                     "certifications": [],
                     "skills": [],
                 },
+                "selection": {"mode": "subset", "experienceIds": ["exp-1"]},
                 "jdContext": "关注 AI 产品设计与需求拆解",
             },
             history=[
@@ -1871,6 +1882,7 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                         "selected_resume": {
                             "resume_id": "resume-old",
                             "resume_name": "旧简历",
+                            "selection": {"mode": "subset", "experienceIds": ["old-exp"]},
                             "snapshot": {"experiences": [], "educations": [], "certifications": [], "skills": []},
                         },
                     },
@@ -1880,6 +1892,10 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(payload["selected_resume"]["resume_id"], "resume-1")
         self.assertEqual(payload["selected_resume"]["resume_name"], "产品经理简历")
+        self.assertEqual(
+            payload["selected_resume"]["selection"],
+            {"mode": "subset", "experienceIds": ["exp-1"]},
+        )
         self.assertLessEqual(
             len(payload["selected_resume"]["snapshot"]["experiences"][0]["star"]["s"]),
             503,
@@ -1891,6 +1907,10 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             payload["history"][0]["content_json"]["selected_resume"]["resume_id"],
             "resume-old",
+        )
+        self.assertEqual(
+            payload["history"][0]["content_json"]["selected_resume"]["selection"],
+            {"mode": "subset", "experienceIds": ["old-exp"]},
         )
 
 
@@ -2591,6 +2611,7 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
                     "certifications": [],
                     "skills": [{"id": "skill-1", "name": "需求分析", "category": "产品"}],
                 },
+                "selection": {"mode": "subset", "experienceIds": ["exp-1"]},
             },
             assistant_text="好的",
             draft_card=None,
@@ -2602,6 +2623,10 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 "resume_id": "resume-1",
                 "resume_name": "AI产品经理简历",
                 "jd_context": "J" * 4000 + "...",
+                "selection": {
+                    "mode": "subset",
+                    "experienceIds": ["exp-1"],
+                },
                 "snapshot": {
                     "experiences": [
                         {

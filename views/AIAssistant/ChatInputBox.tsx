@@ -4,24 +4,14 @@ import {
   Mic,
   ArrowUp,
   BrainCircuit,
-  Paperclip,
-  X,
-  Briefcase,
   ChevronUp,
-  FileText,
-  Image as ImageIcon,
-  FolderKanban,
-  GraduationCap,
+  Sparkles,
+  PenLine,
+  HeartPulse,
+  ChevronDown,
 } from 'lucide-react';
-import type { AssistantSelectedExperience, AssistantSelectedResume } from '../../services/aiService';
-
-export type ChatInputAttachmentPreview = {
-  id: string;
-  name: string;
-  type?: string;
-  sizeLabel?: string;
-  previewUrl?: string | null;
-};
+import type { AssistantSkillId } from '../../services/aiService';
+import { ASSISTANT_SKILL_PRESETS } from './AssistantSkillPresetPanel';
 
 export type ChatInputBoxProps = {
   value: string;
@@ -32,20 +22,12 @@ export type ChatInputBoxProps = {
   onDeepThinkingChange?: (enabled: boolean) => void;
   placeholder?: string;
   plusActions?: { key: string; label: string; onClick?: () => void }[];
-  attachments?: ChatInputAttachmentPreview[];
-  onRemoveAttachment?: (attachmentId: string) => void;
   onAddAttachments?: (files: File[]) => void;
-  selectedExperiences?: AssistantSelectedExperience[];
-  onRemoveSelectedExperience?: (masterId: string) => void;
-  selectedResume?: AssistantSelectedResume | null;
-  onRemoveSelectedResume?: () => void;
+  hasContextItems?: boolean;
+  resumeModules?: { id: string; label: string; displayLabel: string; textToInsert: string }[];
+  activeSkillId?: AssistantSkillId | null;
+  onSelectSkillPreset?: (skillId: AssistantSkillId, prompt: string) => void;
 };
-
-const EXPERIENCE_ICON = {
-  work: Briefcase,
-  project: FolderKanban,
-  education: GraduationCap,
-} as const;
 
 const hasFilesInDataTransfer = (dataTransfer: DataTransfer | null | undefined) => {
   if (!dataTransfer) {
@@ -53,6 +35,34 @@ const hasFilesInDataTransfer = (dataTransfer: DataTransfer | null | undefined) =
   }
   return Array.from(dataTransfer.types).includes('Files');
 };
+
+const QUICK_SKILL_BUTTONS: {
+  label: string;
+  presetId: AssistantSkillId;
+  Icon: React.ComponentType<{ className?: string }>;
+  iconClassName: string;
+}[] = [
+  {
+    label: 'STAR 引导助手',
+    presetId: 'star_guidance',
+    Icon: Sparkles,
+    iconClassName: 'text-emerald-500',
+  },
+  {
+    label: '智能补全',
+    presetId: 'experience_completion',
+    Icon: PenLine,
+    iconClassName: 'text-violet-500',
+  },
+  {
+    label: '模拟面试',
+    presetId: 'mock_interview',
+    Icon: HeartPulse,
+    iconClassName: 'text-red-500',
+  },
+];
+
+const SKILL_PRESET_BY_ID = new Map(ASSISTANT_SKILL_PRESETS.map((preset) => [preset.id, preset]));
 
 export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   value,
@@ -63,19 +73,26 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onDeepThinkingChange,
   placeholder = '有问题，尽管问',
   plusActions = [],
-  attachments = [],
-  onRemoveAttachment,
   onAddAttachments,
-  selectedExperiences = [],
-  onRemoveSelectedExperience,
-  selectedResume,
-  onRemoveSelectedResume,
+  hasContextItems = false,
+  resumeModules = [],
+  activeSkillId = null,
+  onSelectSkillPreset,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusMenuRef = useRef<HTMLDivElement>(null);
+  const moduleMenuRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+  const [isModuleMenuOpen, setIsModuleMenuOpen] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [selectedResumeModuleIds, setSelectedResumeModuleIds] = useState<string[]>([]);
+  const selectedResumeModules = selectedResumeModuleIds
+    .map((id) => resumeModules.find((item) => item.id === id))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const selectedModuleCount = selectedResumeModules.length;
+  const selectedModuleSummary = selectedResumeModules[selectedModuleCount - 1]?.displayLabel ?? '简历各模块';
+  const selectedModuleTitle = selectedResumeModules.map((item) => item.displayLabel).join('、') || '简历各模块';
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -102,10 +119,36 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
     return () => window.removeEventListener('mousedown', handlePointerDown);
   }, [isPlusMenuOpen]);
 
+  useEffect(() => {
+    setSelectedResumeModuleIds((current) => current.filter((id) => resumeModules.some((item) => item.id === id)));
+  }, [resumeModules]);
+
+  useEffect(() => {
+    if (value.trim()) {
+      return;
+    }
+    setSelectedResumeModuleIds([]);
+  }, [value]);
+
+  useEffect(() => {
+    if (!isModuleMenuOpen) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!moduleMenuRef.current?.contains(event.target as Node)) {
+        setIsModuleMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => window.removeEventListener('mousedown', handlePointerDown);
+  }, [isModuleMenuOpen]);
+
+  const canSubmit = Boolean(value.trim() || hasContextItems) && !isSending;
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isSending && (value.trim() || attachments.length > 0 || selectedExperiences.length > 0 || selectedResume)) {
+      if (canSubmit) {
         onSubmit();
       }
     }
@@ -174,10 +217,40 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
     }
   };
 
-  const hasAssets = attachments.length > 0 || Boolean(selectedResume) || selectedExperiences.length > 0;
-
   return (
     <div className="mx-auto w-full max-w-3xl">
+      {/* 快捷推荐动作小丸子 */}
+      <div className="mb-2.5 flex flex-wrap items-center justify-start gap-2 px-1">
+        {QUICK_SKILL_BUTTONS.map(({ label, presetId, Icon, iconClassName }) => {
+          const preset = SKILL_PRESET_BY_ID.get(presetId);
+          const isActive = activeSkillId === presetId;
+          return (
+            <button
+              key={presetId}
+              type="button"
+              onClick={() => {
+                if (preset) {
+                  onSelectSkillPreset?.(preset.id, preset.prompt);
+                  if (!onSelectSkillPreset) {
+                    onChange(preset.prompt);
+                  }
+                }
+                textareaRef.current?.focus();
+              }}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-xs transition ${
+                isActive
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                  : 'border-slate-200 bg-white/95 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-300 dark:hover:border-slate-700'
+              }`}
+              title={preset?.title}
+            >
+              <Icon className={`h-3 w-3 ${iconClassName}`} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div
         className={`relative flex flex-col overflow-visible rounded-[24px] border border-white/55 bg-white/48 shadow-[0_24px_70px_-30px_rgba(15,23,42,0.35)] backdrop-blur-2xl transition-all focus-within:bg-white/62 focus-within:shadow-[0_28px_90px_-34px_rgba(15,23,42,0.42)] dark:border-slate-700/80 dark:bg-slate-950/82 dark:shadow-[0_28px_90px_-34px_rgba(2,6,23,0.88)] dark:focus-within:bg-slate-950/92 sm:rounded-[32px] ${
           isDragActive
@@ -194,122 +267,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
             <div className="flex h-full items-center justify-center px-6 text-center">
               <div className="rounded-2xl bg-white/90 px-4 py-3 shadow-sm dark:bg-slate-900/95 dark:shadow-[0_16px_40px_-20px_rgba(2,6,23,0.9)]">
                 <div className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">松手即可上传附件</div>
-                <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-200/80">支持图片、PDF 和 DOCX，并会以横向卡片排列</div>
+                <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-200/80">支持图片、PDF 和 DOCX，并会显示在底部上下文卡片里</div>
               </div>
-            </div>
-          </div>
-        ) : null}
-
-        {hasAssets ? (
-          <div className="px-4 pt-4 sm:px-5 sm:pt-5">
-            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-              {attachments.map((attachment) => (
-                <div
-                  key={attachment.id}
-                  className="flex h-[88px] w-[220px] shrink-0 gap-3 rounded-2xl border border-slate-200 bg-slate-50/85 px-3 py-3 dark:border-slate-700 dark:bg-slate-900/90 sm:w-[232px]"
-                >
-                  {attachment.previewUrl ? (
-                    <img
-                      src={attachment.previewUrl}
-                      alt={attachment.name}
-                      className="h-12 w-12 shrink-0 rounded-2xl object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
-                      {attachment.type?.startsWith('image/') ? (
-                        <ImageIcon className="h-4 w-4" />
-                      ) : (
-                        <Paperclip className="h-4 w-4" />
-                      )}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-                      附件
-                    </div>
-                    <div className="mt-1 truncate text-sm font-medium leading-5 text-slate-700 dark:text-slate-100">
-                      {attachment.name}
-                    </div>
-                    <div className="mt-1 truncate text-xs text-slate-400 dark:text-slate-500">
-                      {[attachment.type, attachment.sizeLabel].filter(Boolean).join(' · ') || '已选择附件'}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveAttachment?.(attachment.id)}
-                    className="self-start rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    title="移除附件"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-
-              {selectedResume ? (
-                <div className="flex h-[88px] w-[220px] shrink-0 gap-3 rounded-2xl border border-sky-200 bg-sky-50/85 px-3 py-3 dark:border-sky-500/30 dark:bg-sky-950/35 sm:w-[232px]">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 ring-1 ring-sky-100 dark:bg-slate-800 dark:text-sky-300 dark:ring-sky-500/20">
-                    <FileText className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-sky-500 dark:text-sky-300">
-                      简历
-                    </div>
-                    <div className="mt-1 truncate text-sm font-medium leading-5 text-slate-700 dark:text-slate-100">
-                      {selectedResume.resumeName || '未命名简历'}
-                    </div>
-                    <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-                      {selectedResume.jdContext?.trim() ? '已关联 JD' : '未关联 JD'}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onRemoveSelectedResume}
-                    className="self-start rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    title="移除简历"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : null}
-
-              {selectedExperiences.map((item) => {
-                const ExperienceIcon = EXPERIENCE_ICON[item.category] ?? Briefcase;
-                const experienceLabel = item.category === 'project'
-                  ? '项目'
-                  : item.category === 'education'
-                    ? '教育'
-                    : '经历';
-
-                return (
-                  <div
-                    key={item.masterId}
-                    className="flex h-[88px] w-[220px] shrink-0 gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-3 dark:border-emerald-500/30 dark:bg-emerald-950/35 sm:w-[232px]"
-                  >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 ring-1 ring-emerald-100 dark:bg-slate-800 dark:text-emerald-300 dark:ring-emerald-500/20">
-                      <ExperienceIcon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-300">
-                        {experienceLabel}
-                      </div>
-                      <div className="mt-1 truncate text-sm font-medium leading-5 text-slate-700 dark:text-slate-100">
-                        {item.org || '未填写组织'} / {item.title || '未填写角色'}
-                      </div>
-                      <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-                        {item.summary || '已选中经历内容'}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveSelectedExperience?.(item.masterId)}
-                      className="self-start rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                      title="移除经历"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
             </div>
           </div>
         ) : null}
@@ -354,6 +313,57 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                 </div>
               ) : null}
             </div>
+
+            {resumeModules && resumeModules.length > 0 ? (
+              <div ref={moduleMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsModuleMenuOpen((current) => !current)}
+                  title={selectedModuleTitle}
+                  className={`inline-flex max-w-[168px] items-center gap-1 rounded-xl border px-2.5 py-1.5 text-[11px] font-bold transition ${
+                    selectedModuleCount > 0
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100/60 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none dark:hover:bg-emerald-500/20'
+                      : 'border-slate-200/80 bg-slate-50/80 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{selectedModuleSummary}</span>
+                  {selectedModuleCount > 1 ? (
+                    <span className="shrink-0 rounded-full bg-white/75 px-1 text-[10px] leading-4 text-emerald-700 dark:bg-slate-950/40 dark:text-emerald-200">
+                      +{selectedModuleCount - 1}
+                    </span>
+                  ) : null}
+                  <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${isModuleMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isModuleMenuOpen ? (
+                  <div className="absolute bottom-12 left-0 z-30 min-w-[220px] max-h-[220px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_16px_32px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_48px_-20px_rgba(2,6,23,0.95)]">
+                    {resumeModules.map((mod) => {
+                      const isSelected = selectedResumeModuleIds.includes(mod.id);
+                      return (
+                        <button
+                          key={mod.id}
+                          type="button"
+                          onClick={() => {
+                            setIsModuleMenuOpen(false);
+                            setSelectedResumeModuleIds((current) => (
+                              current.includes(mod.id) ? current : [...current, mod.id]
+                            ));
+                            onChange(value + (value.trim() ? '\n' : '') + mod.textToInsert);
+                            textareaRef.current?.focus();
+                          }}
+                          className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                            isSelected
+                              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-100 hover:bg-emerald-600 dark:bg-emerald-500 dark:text-white dark:shadow-none dark:hover:bg-emerald-500'
+                              : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/80'
+                          }`}
+                        >
+                          <span className="truncate">{mod.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pr-1">
@@ -382,9 +392,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
             <button
               type="button"
               onClick={onSubmit}
-              disabled={isSending || (!value.trim() && attachments.length === 0 && selectedExperiences.length === 0 && !selectedResume)}
+              disabled={!canSubmit}
               className={`flex h-9 w-9 items-center justify-center rounded-full text-white transition disabled:cursor-not-allowed ${
-                (value.trim() || attachments.length > 0 || selectedExperiences.length > 0 || selectedResume) && !isSending
+                canSubmit
                   ? 'bg-slate-900 shadow-md hover:bg-slate-800'
                   : 'bg-slate-200 text-slate-400'
               }`}

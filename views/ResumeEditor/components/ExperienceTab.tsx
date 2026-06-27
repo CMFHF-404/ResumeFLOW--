@@ -541,11 +541,12 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     return (
         <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
             <div className="relative z-20 px-1">
-                <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-gray-400 flex items-center gap-2">
-                        <CheckCircle2 className="w-3 h-3" /> 当前可选添加经历项
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                    <p className="flex min-w-0 items-center gap-2 text-xs text-gray-400">
+                        <CheckCircle2 className="h-3 w-3 shrink-0" />
+                        <span className="truncate">勾选以加入简历</span>
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5">
                         <MatchScoreFilter
                             value={matchScoreFilter}
                             onChange={onMatchScoreFilterChange}
@@ -557,7 +558,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                                     type="button"
                                     onClick={handleBatchPolishClick}
                                     disabled={!canBatchPolish || isBatchPolishing || hasBlockingPolishState}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-violet-500 bg-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-400 dark:bg-violet-500 dark:hover:bg-violet-400"
+                                    className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-md border border-violet-500 bg-violet-600 px-2 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-400 dark:bg-violet-500 dark:hover:bg-violet-400"
                                     title={
                                         hasBlockingPolishState
                                             ? '请先确认或撤销当前润色结果'
@@ -573,7 +574,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                                     type="button"
                                     onClick={handleAutoAssembleClick}
                                     disabled={isAutoAssembling || hasBlockingPolishState}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                                     title={hasBlockingPolishState ? '请先确认或撤销当前润色结果' : '一键组装当前简历'}
                                 >
                                     <Wand2 className={`w-3 h-3 ${isAutoAssembling ? 'animate-spin' : ''}`} />

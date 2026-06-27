@@ -9,7 +9,7 @@ import {
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { MAX_ASSISTANT_SELECTED_EXPERIENCES, type AssistantDraftApplyNavigation, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSkillId } from '../services/aiService';
+import { type AssistantDraftApplyNavigation, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSkillId } from '../services/aiService';
 import { formatRelativeTime } from '../utils/timeUtils';
 import {
   readPendingAssistantManualSaveDrafts,
@@ -17,8 +17,7 @@ import {
 
 import { AssistantDesktopDraftPanel, AssistantMobileDraftTray } from './AIAssistant/AssistantDraftPanel';
 import { AssistantHistoryPanel } from './AIAssistant/AssistantHistoryPanel';
-import { AssistantSkillPresetPanel } from './AIAssistant/AssistantSkillPresetPanel';
-import ExperiencePicker from './AIAssistant/ExperiencePicker';
+import { AssistantContextRail } from './AIAssistant/AssistantContextRail';
 import ResumePicker from './AIAssistant/ResumePicker';
 import { MessageItem, ActiveThoughtBlock } from './AIAssistant/MessageItem';
 import { ChatInputBox } from './AIAssistant/ChatInputBox';
@@ -35,6 +34,7 @@ import { useAssistantMessageSending } from './AIAssistant/useAssistantMessageSen
 import { useAssistantResourcePickers } from './AIAssistant/useAssistantResourcePickers';
 import { useAssistantSessionController } from './AIAssistant/useAssistantSessionController';
 import {
+  normalizeSelectedResume,
   readMessageSelectedExperiences,
   readMessageSelectedResume,
 } from './AIAssistant/selectionUtils';
@@ -60,6 +60,7 @@ type AIAssistantProps = {
   surface?: 'full' | 'sidebar';
   pendingLaunchRequest?: AssistantLaunchRequest | null;
   pendingOpenSessionRequest?: AssistantOpenSessionRequest | null;
+  liveSelectedResume?: AssistantSelectedResume | null;
   onConsumeLaunchRequest?: (requestId?: string) => void;
   onConsumeOpenSessionRequest?: (requestId?: string) => void;
   onClose?: () => void;
@@ -70,10 +71,13 @@ type AIAssistantProps = {
   onDraftInputChange?: (value: string) => void;
 };
 
+const SIDEBAR_ACTION_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 dark:text-slate-400 dark:hover:text-white';
+
 const AIAssistant: React.FC<AIAssistantProps> = ({
   surface = 'full',
   pendingLaunchRequest,
   pendingOpenSessionRequest,
+  liveSelectedResume = null,
   onConsumeLaunchRequest,
   onConsumeOpenSessionRequest,
   onClose,
@@ -118,6 +122,62 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
   const lastMirroredDraftInputRef = useRef(draftInput);
 
+  const resumeModules = useMemo(() => {
+    if (!selectedResume?.snapshot) {
+      return [];
+    }
+    const snap = selectedResume.snapshot;
+    const modules: Array<{ id: string; label: string; displayLabel: string; textToInsert: string }> = [];
+
+    // 教育经历
+    if (Array.isArray(snap.educations)) {
+      snap.educations.forEach((edu, idx) => {
+        modules.push({
+          id: `edu-${edu.id || idx}`,
+          label: `教育经历: ${edu.school}${edu.major ? `·${edu.major}` : ''}`,
+          displayLabel: edu.school || '教育经历',
+          textToInsert: `优化我的教育经历中在 ${edu.school} 学习 ${edu.major || ''} 的内容：`,
+        });
+      });
+    }
+
+    // 经历（工作与项目）
+    if (Array.isArray(snap.experiences)) {
+      snap.experiences.forEach((exp, idx) => {
+        modules.push({
+          id: `exp-${exp.id || idx}`,
+          label: `经历: ${exp.org}${exp.title ? `·${exp.title}` : ''}`,
+          displayLabel: exp.org || exp.title || '经历',
+          textToInsert: `优化我在 ${exp.org} 担任 ${exp.title || ''} 的经历：`,
+        });
+      });
+    }
+
+    // 证书资质
+    if (Array.isArray(snap.certifications)) {
+      snap.certifications.forEach((cert, idx) => {
+        modules.push({
+          id: `cert-${cert.id || idx}`,
+          label: `证书: ${cert.name}`,
+          displayLabel: cert.name || '证书资质',
+          textToInsert: `优化我的证书资质：${cert.name}`,
+        });
+      });
+    }
+
+    // 掌握技能
+    if (Array.isArray(snap.skills) && snap.skills.length > 0) {
+      modules.push({
+        id: 'skills-all',
+        label: '掌握技能',
+        displayLabel: '掌握技能',
+        textToInsert: `优化我的技能模块：${snap.skills.map((s) => s.name).join('、')}`,
+      });
+    }
+
+    return modules;
+  }, [selectedResume]);
+
   const clearSelectedExperiences = useCallback(() => {
     setSelectedExperiences([]);
   }, []);
@@ -134,7 +194,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setMessages,
     appliedMessageIds,
     setAppliedMessageIds,
-    isLoadingSessions,
     isLoadingDetail,
     loadSessionDetail,
     selectedSessionIdRef,
@@ -217,17 +276,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   } = useAssistantDraftPanelState(draftGroups, selectedSessionId);
 
   const {
-    pickerExperiences,
-    isExperiencePickerOpen,
-    setIsExperiencePickerOpen,
-    isLoadingPickerExperiences,
-    openExperiencePicker,
     pickerResumes,
     isResumePickerOpen,
     setIsResumePickerOpen,
     isLoadingPickerResumes,
+    isLoadingPickerResumeDetail,
     isApplyingPickerResume,
     openResumePicker,
+    loadPickerResumeDetail,
     handleConfirmSelectedResume,
   } = useAssistantResourcePickers({
     selectedSessionIdRef,
@@ -290,11 +346,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     loadSessionDetail,
     error,
   });
-  const shouldShowSkillPresetPanel = !isLoadingSessions
-    && !isLoadingDetail
-    && messages.length === 0
-    && !activeThought
-    && !isSending;
 
   useAssistantLaunchBootstrap({
     pendingLaunchRequest,
@@ -310,6 +361,26 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     resetForDraftLaunch,
     error,
   });
+
+  useEffect(() => {
+    if (!isSidebarSurface || !isAuthenticated || selectedSessionId) {
+      return;
+    }
+    const normalizedLiveSelectedResume = normalizeSelectedResume(liveSelectedResume);
+    setSelectedResume(normalizedLiveSelectedResume);
+    if (draftLaunchRequestRef.current) {
+      draftLaunchRequestRef.current = {
+        ...draftLaunchRequestRef.current,
+        prefillResume: normalizedLiveSelectedResume ?? undefined,
+      };
+    }
+  }, [
+    draftLaunchRequestRef,
+    isAuthenticated,
+    isSidebarSurface,
+    liveSelectedResume,
+    selectedSessionId,
+  ]);
 
   useEffect(() => {
     if (!pendingOpenSessionRequest || !isAuthenticated) {
@@ -402,6 +473,28 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setInputValue(prompt);
   }, []);
 
+  const handleRemoveSelectedResume = useCallback(() => {
+    if (!selectedSessionIdRef.current) {
+      const draftLaunchRequest = draftLaunchRequestRef.current;
+      if (draftLaunchRequest) {
+        draftLaunchRequestRef.current = {
+          ...draftLaunchRequest,
+          prefillResume: null,
+        };
+      } else {
+        suppressAutoSelectSessionRef.current = false;
+      }
+    }
+    persistDraftSelectedResume(selectedSessionIdRef.current, null);
+    clearSelectedResume();
+  }, [
+    clearSelectedResume,
+    draftLaunchRequestRef,
+    persistDraftSelectedResume,
+    selectedSessionIdRef,
+    suppressAutoSelectSessionRef,
+  ]);
+
   const { handleApplyDraft } = useAssistantDraftApplyActions({
     selectedSession,
     applyingMessageIds,
@@ -470,26 +563,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         onCancel={() => setDeleteConfirmId(null)}
         isConfirming={isDeletingSession}
       />
-      <ExperiencePicker
-        isOpen={isExperiencePickerOpen}
-        items={pickerExperiences}
-        selectedIds={selectedExperiences.map((item) => item.masterId)}
-        isLoading={isLoadingPickerExperiences}
-        onClose={() => setIsExperiencePickerOpen(false)}
-        onConfirm={(masterIds) => {
-          const cappedMasterIds = masterIds.slice(0, MAX_ASSISTANT_SELECTED_EXPERIENCES);
-          setSelectedExperiences(pickerExperiences.filter((item) => cappedMasterIds.includes(item.masterId)));
-          setIsExperiencePickerOpen(false);
-        }}
-      />
       <ResumePicker
         isOpen={isResumePickerOpen}
         items={pickerResumes}
         selectedId={selectedResume?.resumeId ?? null}
+        selectedResume={selectedResume}
         isLoading={isLoadingPickerResumes}
+        isLoadingDetail={isLoadingPickerResumeDetail}
         isApplying={isApplyingPickerResume}
         onClose={() => setIsResumePickerOpen(false)}
-        onConfirm={(resumeId) => void handleConfirmSelectedResume(resumeId)}
+        onLoadDetail={loadPickerResumeDetail}
+        onConfirm={(resumeId, experienceIds) => void handleConfirmSelectedResume(resumeId, experienceIds)}
       />
       {!isAuthenticated ? (
         <div className="flex flex-1 items-center justify-center p-6">
@@ -528,33 +612,25 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {isSidebarSurface ? (
-              <div className="shrink-0 border-b border-slate-200/90 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {selectedSession ? selectedSession.title : 'AI 简历助手'}
-                    </div>
-                    <div className="mt-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                      简历工厂侧栏
-                    </div>
-                  </div>
+              <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => onExpandToFullPage?.(selectedSessionId)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    className={SIDEBAR_ACTION_BUTTON_CLASS}
                     title="展开到 AI 助手"
+                    aria-label="展开到 AI 助手"
                   >
                     <Maximize2 className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={onClose}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    className={SIDEBAR_ACTION_BUTTON_CLASS}
                     title="关闭 AI 侧栏"
+                    aria-label="关闭 AI 侧栏"
                   >
                     <X className="h-4 w-4" />
                   </button>
-                </div>
               </div>
             ) : (
             <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 md:hidden">
@@ -582,60 +658,53 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               }
               style={{ paddingBottom: `${composerReservedHeight}px` }}
             >
-              {shouldShowSkillPresetPanel ? (
-                <AssistantSkillPresetPanel
-                  activeSkillId={activeComposerSkillId}
-                  onSelectPreset={handleSelectSkillPreset}
-                />
-              ) : (
-                <div className={isSidebarSurface
-                  ? 'flex w-full min-w-0 flex-col pb-4 pt-1'
-                  : 'mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4'
-                }>
-                  {messages.map((message) => {
-                    if (message.message_type === 'draft_card') {
-                      return null;
-                    }
-                    const isUser = message.role === 'user';
-                    const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
-                    const thinking = typeof message.content_json?.thinking === 'string' ? message.content_json.thinking : '';
-                    const attachments = readMessageAttachmentPreviews(message);
-                    const selectedExperiencePreviews = readMessageSelectedExperiences(message);
-                    const selectedResumePreview = readMessageSelectedResume(message);
-                    return (
-                      <MessageItem
-                        key={message.id}
-                        isUser={isUser}
-                        content={text}
-                        thinking={!isUser ? thinking : undefined}
-                        attachments={attachments}
-                        selectedExperiences={selectedExperiencePreviews}
-                        selectedResume={selectedResumePreview}
-                      />
-                    );
-                  })}
-                  {isLoadingDetail ? (
-                    <div className="py-4 text-center text-sm text-slate-400 dark:text-slate-500">正在加载会话...</div>
-                  ) : null}
-                  {activeThought ? (
-                     <ActiveThoughtBlock thought={activeThought} />
-                  ) : null}
-                  {!activeThought && latestSuggestedFollowups.length > 0 ? (
-                    <div className="mb-6 flex flex-wrap justify-center gap-2">
-                      {latestSuggestedFollowups.map((item) => (
-                        <button
-                          key={`${item.skillId}-${item.label}`}
-                          type="button"
-                          onClick={() => handleSelectSkillFollowup(item.skillId, item.prompt)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              )}
+              <div className={isSidebarSurface
+                ? 'flex w-full min-w-0 flex-col pb-4 pt-1'
+                : 'mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4'
+              }>
+                {messages.map((message) => {
+                  if (message.message_type === 'draft_card') {
+                    return null;
+                  }
+                  const isUser = message.role === 'user';
+                  const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
+                  const thinking = typeof message.content_json?.thinking === 'string' ? message.content_json.thinking : '';
+                  const attachments = readMessageAttachmentPreviews(message);
+                  const selectedExperiencePreviews = readMessageSelectedExperiences(message);
+                  const selectedResumePreview = readMessageSelectedResume(message);
+                  return (
+                    <MessageItem
+                      key={message.id}
+                      isUser={isUser}
+                      content={text}
+                      thinking={!isUser ? thinking : undefined}
+                      attachments={attachments}
+                      selectedExperiences={selectedExperiencePreviews}
+                      selectedResume={selectedResumePreview}
+                    />
+                  );
+                })}
+                {isLoadingDetail ? (
+                  <div className="py-4 text-center text-sm text-slate-400 dark:text-slate-500">正在加载会话...</div>
+                ) : null}
+                {activeThought ? (
+                   <ActiveThoughtBlock thought={activeThought} />
+                ) : null}
+                {!activeThought && latestSuggestedFollowups.length > 0 ? (
+                  <div className="mb-6 flex flex-wrap justify-center gap-2">
+                    {latestSuggestedFollowups.map((item) => (
+                      <button
+                        key={`${item.skillId}-${item.label}`}
+                        type="button"
+                        onClick={() => handleSelectSkillFollowup(item.skillId, item.prompt)}
+                        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div
@@ -671,6 +740,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   applyingMessageIds={applyingMessageIds}
                   onApplyDraft={(item) => void handleApplyDraft(item.message.id, item.card)}
                 />
+                <AssistantContextRail
+                  attachments={composerAttachments}
+                  selectedResume={selectedResume}
+                  hideSelectedResumeCard={isSidebarSurface}
+                  onRemoveAttachment={removeComposerAttachment}
+                  onRemoveSelectedResume={handleRemoveSelectedResume}
+                />
                 <ChatInputBox
                   value={inputValue}
                   onChange={setInputValue}
@@ -681,32 +757,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
                   plusActions={[
                     { key: 'pick-resume', label: '选择简历', onClick: () => void openResumePicker() },
-                    { key: 'pick-experience', label: '选择经历', onClick: () => void openExperiencePicker() },
                     { key: 'upload-attachment', label: '上传附件', onClick: openAttachmentPicker },
                   ]}
-                  attachments={composerAttachments}
+                  resumeModules={resumeModules}
                   onAddAttachments={(files) => appendComposerAttachments(files, 'drop')}
-                  onRemoveAttachment={removeComposerAttachment}
-                  selectedResume={selectedResume}
-                  onRemoveSelectedResume={() => {
-                    if (!selectedSessionIdRef.current) {
-                      const draftLaunchRequest = draftLaunchRequestRef.current;
-                      if (draftLaunchRequest) {
-                        draftLaunchRequestRef.current = {
-                          ...draftLaunchRequest,
-                          prefillResume: null,
-                        };
-                      } else {
-                        suppressAutoSelectSessionRef.current = false;
-                      }
-                    }
-                    persistDraftSelectedResume(selectedSessionIdRef.current, null);
-                    clearSelectedResume();
-                  }}
-                  selectedExperiences={selectedExperiences}
-                  onRemoveSelectedExperience={(masterId) => {
-                    setSelectedExperiences((current) => current.filter((item) => item.masterId !== masterId));
-                  }}
+                  hasContextItems={composerAttachments.length > 0 || Boolean(selectedResume)}
+                  activeSkillId={activeComposerSkillId}
+                  onSelectSkillPreset={handleSelectSkillPreset}
                 />
               </div>
             </div>

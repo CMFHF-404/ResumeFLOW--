@@ -15,6 +15,7 @@ const SELECTED_EXPERIENCE_STAR_LIMIT = 500;
 const SELECTED_RESUME_TEXT_LIMIT = 300;
 const SELECTED_RESUME_NAME_LIMIT = 160;
 const SELECTED_RESUME_JD_LIMIT = 4000;
+const SELECTED_RESUME_SELECTION_ID_LIMIT = 120;
 const ASSISTANT_SKILL_IDS = new Set<AssistantSkillId>(['star_guidance', 'experience_completion', 'mock_interview']);
 const EXPERIENCE_CATEGORY_SET = new Set<AssistantSelectedExperience['category']>([
   'work',
@@ -284,6 +285,29 @@ const normalizeSelectedResumeSnapshot = (value: unknown): AssistantSelectedResum
   };
 };
 
+const normalizeSelectedResumeSelection = (value: unknown): AssistantSelectedResume['selection'] | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  const mode = candidate.mode === 'subset' ? 'subset' : candidate.mode === 'all' ? 'all' : null;
+  const rawIds = Array.isArray(candidate.experienceIds)
+    ? candidate.experienceIds
+    : Array.isArray(candidate.experience_ids)
+      ? candidate.experience_ids
+      : [];
+  const experienceIds = Array.from(new Set(rawIds
+    .map((item) => normalizeSelectedResumeText(item, SELECTED_RESUME_SELECTION_ID_LIMIT))
+    .filter(Boolean)));
+  if (!mode || (mode === 'subset' && experienceIds.length === 0)) {
+    return undefined;
+  }
+  return {
+    mode,
+    experienceIds,
+  };
+};
+
 export const normalizeSelectedResume = (value: unknown): AssistantSelectedResume | null => {
   if (!value || typeof value !== 'object') {
     return null;
@@ -306,6 +330,10 @@ export const normalizeSelectedResume = (value: unknown): AssistantSelectedResume
   const jdContext = normalizeSelectedResumeText(candidate.jdContext ?? candidate.jd_context, SELECTED_RESUME_JD_LIMIT);
   if (jdContext) {
     normalized.jdContext = jdContext;
+  }
+  const selection = normalizeSelectedResumeSelection(candidate.selection);
+  if (selection) {
+    normalized.selection = selection;
   }
   return normalized;
 };
