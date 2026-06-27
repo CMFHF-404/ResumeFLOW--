@@ -327,6 +327,7 @@ type JDAnalysisPanelProps = {
     isOutdated?: boolean;
     thinkingText?: string;
     onStopAnalyze?: () => void;
+    onOpenDetailsSidebar?: () => void;
 };
 
 type JDAnalysisDetailsModalProps = {
@@ -337,6 +338,167 @@ type JDAnalysisDetailsModalProps = {
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
     onClose: () => void;
+};
+
+const useJDStrategyCopyState = (onOpenAgentPluginConfig?: () => void) => {
+    const [strategyCopyStatus, setStrategyCopyStatus] = useState<StrategyCopyStatus>('idle');
+    const [manualStrategyCopyText, setManualStrategyCopyText] = useState('');
+    const copyStatusResetTimerRef = useRef<number | null>(null);
+    const copyRequestVersionRef = useRef(0);
+
+    const clearCopyStatusResetTimer = useCallback(() => {
+        if (copyStatusResetTimerRef.current !== null) {
+            window.clearTimeout(copyStatusResetTimerRef.current);
+            copyStatusResetTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => clearCopyStatusResetTimer, [clearCopyStatusResetTimer]);
+
+    const resetStrategyCopyState = useCallback(() => {
+        copyRequestVersionRef.current += 1;
+        clearCopyStatusResetTimer();
+        setStrategyCopyStatus('idle');
+        setManualStrategyCopyText('');
+    }, [clearCopyStatusResetTimer]);
+
+    const handleCopyStrategyText = useCallback(async (text: string, mode: 'queries' | 'agent') => {
+        if (!text.trim()) {
+            return;
+        }
+        const requestVersion = copyRequestVersionRef.current + 1;
+        copyRequestVersionRef.current = requestVersion;
+        clearCopyStatusResetTimer();
+        let shouldAutoResetStatus = false;
+        try {
+            await copyTextToClipboard(text);
+            if (copyRequestVersionRef.current !== requestVersion) {
+                return;
+            }
+            setStrategyCopyStatus('copied');
+            setManualStrategyCopyText('');
+            shouldAutoResetStatus = true;
+        } catch (error) {
+            if (copyRequestVersionRef.current !== requestVersion) {
+                return;
+            }
+            console.error('[JDAnalysisPanel] 复制同投策略失败:', error);
+            setStrategyCopyStatus('error');
+            setManualStrategyCopyText(text);
+        }
+        if (mode === 'agent') {
+            onOpenAgentPluginConfig?.();
+        }
+        if (shouldAutoResetStatus) {
+            copyStatusResetTimerRef.current = window.setTimeout(() => {
+                setStrategyCopyStatus('idle');
+                copyStatusResetTimerRef.current = null;
+            }, 2200);
+        }
+    }, [clearCopyStatusResetTimer, onOpenAgentPluginConfig]);
+
+    return {
+        strategyCopyStatus,
+        manualStrategyCopyText,
+        handleCopyStrategyText,
+        resetStrategyCopyState,
+    };
+};
+
+type JDAnalysisDetailsContentProps = {
+    analysisResult: JDAnalysisResult;
+    jdText: string;
+    copyStatus: StrategyCopyStatus;
+    manualCopyText: string;
+    onCopyText: (text: string, mode: 'queries' | 'agent') => void;
+};
+
+const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
+    analysisResult,
+    jdText,
+    copyStatus,
+    manualCopyText,
+    onCopyText,
+}) => (
+    <div className="space-y-4">
+        <JDInterpretationCard analysisResult={analysisResult} />
+        <CapabilityEvidenceCard analysisResult={analysisResult} />
+        <SameTypeJobStrategyCard
+            interpretation={analysisResult.jdInterpretation}
+            analysisResult={analysisResult}
+            jdText={jdText}
+            copyStatus={copyStatus}
+            manualCopyText={manualCopyText}
+            onCopyText={onCopyText}
+        />
+    </div>
+);
+
+type JDAnalysisDetailsSidebarProps = {
+    analysisResult: JDAnalysisResult | null;
+    jdText: string;
+    onClose: () => void;
+    onOpenAgentPluginConfig?: () => void;
+};
+
+export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> = ({
+    analysisResult,
+    jdText,
+    onClose,
+    onOpenAgentPluginConfig,
+}) => {
+    const {
+        strategyCopyStatus,
+        manualStrategyCopyText,
+        handleCopyStrategyText,
+        resetStrategyCopyState,
+    } = useJDStrategyCopyState(onOpenAgentPluginConfig);
+
+    const handleClose = useCallback(() => {
+        resetStrategyCopyState();
+        onClose();
+    }, [onClose, resetStrategyCopyState]);
+
+    if (!analysisResult) {
+        return null;
+    }
+
+    return (
+        <section
+            className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-slate-950"
+            aria-labelledby="jd-analysis-details-sidebar-title"
+        >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+                <div className="min-w-0">
+                    <h3 id="jd-analysis-details-sidebar-title" className="truncate text-sm font-bold text-gray-950 dark:text-white">
+                        JD 分析详情
+                    </h3>
+                    <p className="mt-1 truncate text-[11.5px] text-gray-500 dark:text-gray-400">
+                        {getText(analysisResult.jdInterpretation?.normalizedTitle)
+                            || getText(analysisResult.jobTitle)
+                            || '岗位画像与同投策略'}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={handleClose}
+                    aria-label="关闭 JD 分析详情"
+                    className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                <JDAnalysisDetailsContent
+                    analysisResult={analysisResult}
+                    jdText={jdText}
+                    copyStatus={strategyCopyStatus}
+                    manualCopyText={manualStrategyCopyText}
+                    onCopyText={handleCopyStrategyText}
+                />
+            </div>
+        </section>
+    );
 };
 
 const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
@@ -385,18 +547,13 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                     </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-                    <div className="space-y-4">
-                        <JDInterpretationCard analysisResult={analysisResult} />
-                        <CapabilityEvidenceCard analysisResult={analysisResult} />
-                        <SameTypeJobStrategyCard
-                            interpretation={analysisResult.jdInterpretation}
-                            analysisResult={analysisResult}
-                            jdText={jdText}
-                            copyStatus={copyStatus}
-                            manualCopyText={manualCopyText}
-                            onCopyText={onCopyText}
-                        />
-                    </div>
+                    <JDAnalysisDetailsContent
+                        analysisResult={analysisResult}
+                        jdText={jdText}
+                        copyStatus={copyStatus}
+                        manualCopyText={manualCopyText}
+                        onCopyText={onCopyText}
+                    />
                 </div>
             </div>
         </div>
@@ -633,6 +790,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     isOutdated = false,
     thinkingText,
     onStopAnalyze,
+    onOpenDetailsSidebar,
 }) => {
     const jdAnalysisMotion = useJDAnalysisMotion(isAnalyzing);
     const collapsedProfileTags = useMemo(
@@ -648,65 +806,28 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
         getText(analysisResult?.jdInterpretation?.seniority),
         sameTypeJobCount > 0 ? `同投方向 ${sameTypeJobCount} 个` : '',
     ].filter(Boolean).join(' · ');
-    const [strategyCopyStatus, setStrategyCopyStatus] = useState<StrategyCopyStatus>('idle');
-    const [manualStrategyCopyText, setManualStrategyCopyText] = useState('');
+    const {
+        strategyCopyStatus,
+        manualStrategyCopyText,
+        handleCopyStrategyText,
+        resetStrategyCopyState,
+    } = useJDStrategyCopyState(onOpenAgentPluginConfig);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const [isAttachmentDragOver, setIsAttachmentDragOver] = useState(false);
     const attachmentSelectionVersionRef = useRef(0);
-    const copyStatusResetTimerRef = useRef<number | null>(null);
-    const copyRequestVersionRef = useRef(0);
 
-    const clearCopyStatusResetTimer = useCallback(() => {
-        if (copyStatusResetTimerRef.current !== null) {
-            window.clearTimeout(copyStatusResetTimerRef.current);
-            copyStatusResetTimerRef.current = null;
-        }
-    }, []);
-
-    useEffect(() => clearCopyStatusResetTimer, [clearCopyStatusResetTimer]);
-
-    const handleCopyStrategyText = useCallback(async (text: string, mode: 'queries' | 'agent') => {
-        if (!text.trim()) {
+    const handleOpenDetails = useCallback(() => {
+        if (onOpenDetailsSidebar) {
+            onOpenDetailsSidebar();
             return;
         }
-        const requestVersion = copyRequestVersionRef.current + 1;
-        copyRequestVersionRef.current = requestVersion;
-        clearCopyStatusResetTimer();
-        let shouldAutoResetStatus = false;
-        try {
-            await copyTextToClipboard(text);
-            if (copyRequestVersionRef.current !== requestVersion) {
-                return;
-            }
-            setStrategyCopyStatus('copied');
-            setManualStrategyCopyText('');
-            shouldAutoResetStatus = true;
-        } catch (error) {
-            if (copyRequestVersionRef.current !== requestVersion) {
-                return;
-            }
-            console.error('[JDAnalysisPanel] 复制同投策略失败:', error);
-            setStrategyCopyStatus('error');
-            setManualStrategyCopyText(text);
-        }
-        if (mode === 'agent') {
-            onOpenAgentPluginConfig?.();
-        }
-        if (shouldAutoResetStatus) {
-            copyStatusResetTimerRef.current = window.setTimeout(() => {
-                setStrategyCopyStatus('idle');
-                copyStatusResetTimerRef.current = null;
-            }, 2200);
-        }
-    }, [clearCopyStatusResetTimer, onOpenAgentPluginConfig]);
+        setIsDetailsModalOpen(true);
+    }, [onOpenDetailsSidebar]);
 
     const handleCloseDetailsModal = useCallback(() => {
-        copyRequestVersionRef.current += 1;
-        clearCopyStatusResetTimer();
         setIsDetailsModalOpen(false);
-        setStrategyCopyStatus('idle');
-        setManualStrategyCopyText('');
-    }, [clearCopyStatusResetTimer]);
+        resetStrategyCopyState();
+    }, [resetStrategyCopyState]);
 
     const handleAttachmentSelect = useCallback(async (file: File) => {
         const requestVersion = attachmentSelectionVersionRef.current + 1;
@@ -857,7 +978,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 {analysisResult ? (
                                     <button
                                         type="button"
-                                        onClick={() => setIsDetailsModalOpen(true)}
+                                        onClick={handleOpenDetails}
                                         className="shrink-0 rounded-md border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-800/70 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
                                     >
                                         查看分析详情
@@ -972,7 +1093,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         />
                                         <button
                                             type="button"
-                                            onClick={() => setIsDetailsModalOpen(true)}
+                                            onClick={handleOpenDetails}
                                             className="rounded-md border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-800/70 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
                                         >
                                             查看分析详情

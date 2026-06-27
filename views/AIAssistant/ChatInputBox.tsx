@@ -19,12 +19,21 @@ export type ChatInputBoxProps = {
   onSubmit: () => void;
   isSending: boolean;
   isDeepThinkingEnabled?: boolean;
+  shouldExpandDeepThinkingButton?: boolean;
   onDeepThinkingChange?: (enabled: boolean) => void;
   placeholder?: string;
   plusActions?: { key: string; label: string; onClick?: () => void }[];
   onAddAttachments?: (files: File[]) => void;
   hasContextItems?: boolean;
-  resumeModules?: { id: string; label: string; displayLabel: string; textToInsert: string }[];
+  resumeModules?: {
+    id: string;
+    label: string;
+    displayLabel: string;
+    kind: 'experience' | 'education' | 'certification' | 'skills';
+    contextId?: string;
+  }[];
+  selectedResumeModuleIds?: string[];
+  onSelectedResumeModuleIdsChange?: (ids: string[]) => void;
   activeSkillId?: AssistantSkillId | null;
   onSelectSkillPreset?: (skillId: AssistantSkillId, prompt: string) => void;
 };
@@ -70,12 +79,15 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onSubmit,
   isSending,
   isDeepThinkingEnabled = false,
+  shouldExpandDeepThinkingButton = true,
   onDeepThinkingChange,
   placeholder = '有问题，尽管问',
   plusActions = [],
   onAddAttachments,
   hasContextItems = false,
   resumeModules = [],
+  selectedResumeModuleIds = [],
+  onSelectedResumeModuleIdsChange,
   activeSkillId = null,
   onSelectSkillPreset,
 }) => {
@@ -86,7 +98,6 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isModuleMenuOpen, setIsModuleMenuOpen] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
-  const [selectedResumeModuleIds, setSelectedResumeModuleIds] = useState<string[]>([]);
   const selectedResumeModules = selectedResumeModuleIds
     .map((id) => resumeModules.find((item) => item.id === id))
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -120,15 +131,12 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   }, [isPlusMenuOpen]);
 
   useEffect(() => {
-    setSelectedResumeModuleIds((current) => current.filter((id) => resumeModules.some((item) => item.id === id)));
-  }, [resumeModules]);
-
-  useEffect(() => {
-    if (value.trim()) {
+    const filteredIds = selectedResumeModuleIds.filter((id) => resumeModules.some((item) => item.id === id));
+    if (filteredIds.length === selectedResumeModuleIds.length) {
       return;
     }
-    setSelectedResumeModuleIds([]);
-  }, [value]);
+    onSelectedResumeModuleIdsChange?.(filteredIds);
+  }, [onSelectedResumeModuleIdsChange, resumeModules, selectedResumeModuleIds]);
 
   useEffect(() => {
     if (!isModuleMenuOpen) {
@@ -144,6 +152,16 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   }, [isModuleMenuOpen]);
 
   const canSubmit = Boolean(value.trim() || hasContextItems) && !isSending;
+  const shouldShowDeepThinkingLabel = isDeepThinkingEnabled && shouldExpandDeepThinkingButton;
+
+  const handleResumeModuleToggle = (mod: NonNullable<ChatInputBoxProps['resumeModules']>[number]) => {
+    const nextIds = selectedResumeModuleIds.includes(mod.id)
+      ? selectedResumeModuleIds.filter((id) => id !== mod.id)
+      : [...selectedResumeModuleIds, mod.id];
+    setIsModuleMenuOpen(false);
+    onSelectedResumeModuleIdsChange?.(nextIds);
+    textareaRef.current?.focus();
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -342,14 +360,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                         <button
                           key={mod.id}
                           type="button"
-                          onClick={() => {
-                            setIsModuleMenuOpen(false);
-                            setSelectedResumeModuleIds((current) => (
-                              current.includes(mod.id) ? current : [...current, mod.id]
-                            ));
-                            onChange(value + (value.trim() ? '\n' : '') + mod.textToInsert);
-                            textareaRef.current?.focus();
-                          }}
+                          onClick={() => handleResumeModuleToggle(mod)}
                           className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
                             isSelected
                               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-100 hover:bg-emerald-600 dark:bg-emerald-500 dark:text-white dark:shadow-none dark:hover:bg-emerald-500'
@@ -373,14 +384,32 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
               disabled={isSending}
               aria-pressed={isDeepThinkingEnabled}
               aria-label="深度思考"
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-55 ${
+              style={{
+                width: shouldShowDeepThinkingLabel ? 112 : 36,
+                paddingLeft: shouldShowDeepThinkingLabel ? 12 : 0,
+                paddingRight: shouldShowDeepThinkingLabel ? 12 : 0,
+              }}
+              className={`inline-flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-full border transition-[width,padding,background-color,border-color,color,box-shadow] duration-200 ease-out motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-55 ${
+                shouldShowDeepThinkingLabel ? 'gap-1.5' : 'gap-0'
+              } ${
                 isDeepThinkingEnabled
                   ? 'border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none'
                   : 'border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200'
               }`}
               title="深度思考"
             >
-              <BrainCircuit className="h-5 w-5" />
+              <BrainCircuit className={`h-5 w-5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none ${isDeepThinkingEnabled ? 'scale-105' : 'scale-100'}`} />
+              <span
+                aria-hidden={!shouldShowDeepThinkingLabel}
+                style={{
+                  width: shouldShowDeepThinkingLabel ? 64 : 0,
+                  opacity: shouldShowDeepThinkingLabel ? 1 : 0,
+                  transform: shouldShowDeepThinkingLabel ? 'translateX(0)' : 'translateX(-4px)',
+                }}
+                className="inline-block overflow-hidden whitespace-nowrap text-xs font-semibold transition-[width,opacity,transform] duration-200 ease-out motion-reduce:transition-none"
+              >
+                深度思考
+              </span>
             </button>
             <button
               type="button"

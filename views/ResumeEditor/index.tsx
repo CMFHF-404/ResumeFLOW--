@@ -102,6 +102,7 @@ import ResumeEditorDesktopWorkspace from './components/ResumeEditorDesktopWorksp
 import ResumeEditorMeasurePreview from './components/ResumeEditorMeasurePreview';
 import ResumeEditorMobileDrawer from './components/ResumeEditorMobileDrawer';
 import TemplateSelectorModal from './components/TemplateSelectorModal';
+import { JDAnalysisDetailsSidebar } from './components/JDAnalysisPanel';
 import AIAssistant from '../AIAssistant';
 import type { ResumeFactorySidebarProps, ResumeFactoryTab } from './components/ResumeFactorySidebar';
 import buildExperiencePolishToolbars from './components/ExperiencePolishToolbars';
@@ -288,6 +289,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const lastFocusExperienceRequestIdRef = useRef<number | null>(null);
     const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
     const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
+    const [isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen] = useState(false);
     const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
     const assistantSidebarLaunchRequestIdRef = useRef(0);
     const {
@@ -1116,6 +1118,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             prefillResume: assistantSidebarSelectedResume ?? undefined,
             applyDraftHandler: handleApplyResumeAssistantDraft,
         });
+        setIsJDAnalysisDetailsSidebarOpen(false);
         setIsAssistantSidebarOpen(true);
     }, [
         assistantSidebarSelectedResume,
@@ -1124,6 +1127,21 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resumeName,
         showToastInfo,
     ]);
+    const handleOpenJDAnalysisDetailsSidebar = useCallback(() => {
+        if (!analysisResult) {
+            return;
+        }
+        setIsJDAnalysisDetailsSidebarOpen(true);
+        setIsAssistantSidebarOpen(false);
+    }, [analysisResult]);
+    const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
+        setIsJDAnalysisDetailsSidebarOpen(false);
+    }, []);
+    useEffect(() => {
+        if (!analysisResult) {
+            setIsJDAnalysisDetailsSidebarOpen(false);
+        }
+    }, [analysisResult]);
     const handleConsumeAssistantSidebarLaunchRequest = useCallback((requestId?: string) => {
         setAssistantSidebarLaunchRequest((current) => {
             if (!current) {
@@ -1609,6 +1627,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isOutdated,
             thinkingText,
             onStopAnalyze: handleStopAnalysisWithToast,
+            onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar,
         },
         profileTabProps: {
             profile,
@@ -1773,6 +1792,25 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         skillTagSeparator,
         templatePresetMap,
     ]);
+    const isRightSidebarOpen = isAssistantSidebarOpen || isJDAnalysisDetailsSidebarOpen;
+    const rightSidebarContent = isJDAnalysisDetailsSidebarOpen ? (
+        <JDAnalysisDetailsSidebar
+            analysisResult={analysisResult}
+            jdText={jdText}
+            onClose={handleCloseJDAnalysisDetailsSidebar}
+            onOpenAgentPluginConfig={onOpenAgentPluginConfig}
+        />
+    ) : isAssistantSidebarOpen ? (
+        <AIAssistant
+            surface="sidebar"
+            pendingLaunchRequest={assistantSidebarLaunchRequest}
+            liveSelectedResume={assistantSidebarSelectedResume}
+            onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
+            onClose={() => setIsAssistantSidebarOpen(false)}
+            onExpandToFullPage={handleExpandAssistantSidebar}
+            onOpenAnalysisDetails={analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
+        />
+    ) : null;
     return (
         <div
             ref={mobileEditorScrollContainerRef}
@@ -1857,17 +1895,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 factorySidebarProps={factorySidebarProps}
                 layoutAdjustProps={layoutAdjustProps}
                 previewProps={editorPreviewProps}
-                isAssistantSidebarOpen={isAssistantSidebarOpen}
-                assistantSidebar={isAssistantSidebarOpen ? (
-                    <AIAssistant
-                        surface="sidebar"
-                        pendingLaunchRequest={assistantSidebarLaunchRequest}
-                        liveSelectedResume={assistantSidebarSelectedResume}
-                        onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
-                        onClose={() => setIsAssistantSidebarOpen(false)}
-                        onExpandToFullPage={handleExpandAssistantSidebar}
-                    />
-                ) : null}
+                isAssistantSidebarOpen={isRightSidebarOpen}
+                assistantSidebar={rightSidebarContent}
                 quotaSummary={quotaSummary}
                 onOpenTokenQuota={onOpenTokenQuota}
             />

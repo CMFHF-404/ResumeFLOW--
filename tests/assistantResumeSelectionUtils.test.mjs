@@ -63,3 +63,34 @@ test('rejects empty resume experience selection when the resume has experiences'
 
   assert.equal(buildSelectedResumeWithExperienceSelection(buildResume(), []), null);
 });
+
+test('filters selected resume snapshots by non-experience modules', async () => {
+  const { buildSelectedResumeWithModuleSelection } = await importSelectionUtils();
+
+  const selected = buildSelectedResumeWithModuleSelection(buildResume(), [
+    { id: 'edu-1', kind: 'education', contextId: 'edu-1' },
+    { id: 'skills-all', kind: 'skills' },
+  ]);
+
+  assert.deepEqual(selected.snapshot.experiences, []);
+  assert.deepEqual(selected.snapshot.educations.map((item) => item.id), ['edu-1']);
+  assert.deepEqual(selected.snapshot.certifications, []);
+  assert.deepEqual(selected.snapshot.skills.map((item) => item.id), ['skill-1']);
+  assert.equal(selected.selection, undefined);
+});
+
+test('filters selected resume snapshots by mixed module selections', async () => {
+  const { buildSelectedResumeWithModuleSelection } = await importSelectionUtils();
+
+  const selected = buildSelectedResumeWithModuleSelection(buildResume(), [
+    { id: 'exp-2', kind: 'experience', contextId: 'exp-2' },
+    { id: 'cert-1', kind: 'certification', contextId: 'cert-1' },
+  ]);
+
+  assert.equal(selected.selection.mode, 'subset');
+  assert.deepEqual(selected.selection.experienceIds, ['exp-2']);
+  assert.deepEqual(selected.snapshot.experiences.map((item) => item.id), ['exp-2']);
+  assert.deepEqual(selected.snapshot.educations, []);
+  assert.deepEqual(selected.snapshot.certifications.map((item) => item.id), ['cert-1']);
+  assert.deepEqual(selected.snapshot.skills, []);
+});
