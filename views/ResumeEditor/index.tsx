@@ -1726,14 +1726,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastInfo,
         templatePresetMap,
     ]);
-    const handleOpenDesktopTemplateTab = useCallback(() => {
-        setFactorySidebarTab('templates');
-    }, []);
-    const handleOpenDesktopLayoutTab = useCallback(() => {
-        setFactorySidebarTab('layout');
-        setIsLayoutAdjustToolbarOpen(false);
-        showToastInfo('进入页面布局');
-    }, [setIsLayoutAdjustToolbarOpen, showToastInfo]);
     const handleCustomizeTemplateFromSidebar = useCallback((templateId: ResumeFactorySidebarProps['selectedTemplateId']) => {
         handleSelectTemplate(templateId);
         setFactorySidebarTab('layout');
@@ -1750,17 +1742,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onCustomizeTemplate: handleCustomizeTemplateFromSidebar,
         sectionOrder,
         onSectionOrderChange: setSectionOrder,
-        density,
-        onDensityChange: setDensity,
         experienceListMarkerStyle,
         onExperienceListMarkerStyleChange: setExperienceListMarkerStyle,
         skillTagSeparator,
         onSkillTagSeparatorChange: setSkillTagSeparator,
         onSaveCurrentTemplateDefault: handleSaveCurrentTemplateDefault,
         onRestoreDefault: handleRestoreTemplateDefault,
+        onAdjustToSinglePage: adjustToSinglePage,
     }), [
+        adjustToSinglePage,
         commonEditorSidebarProps,
-        density,
         experienceListMarkerStyle,
         factorySidebarTab,
         handleCustomizeTemplateFromSidebar,
@@ -1771,7 +1762,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         layoutAdjustProps,
         resumeTemplateId,
         sectionOrder,
-        setDensity,
         setExperienceListMarkerStyle,
         setSectionOrder,
         setSkillTagSeparator,
@@ -1792,8 +1782,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onToggleTheme={toggleTheme}
                     isLayoutModified={isLayoutModified}
                     isSmartPageApplied={isSmartPageApplied}
-                    isLayoutAdjustToolbarOpen={factorySidebarTab === 'layout' || isLayoutAdjustToolbarOpen}
-                    onToggleLayoutAdjustToolbar={handleOpenDesktopLayoutTab}
                     onAdjustToSinglePage={adjustToSinglePage}
                     onRestoreDefault={handleRestoreTemplateDefault}
                     canCreateResume={canCreateResume}
@@ -1804,7 +1792,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
                     isPreviewOverflowing={isPreviewOverflowing}
-                    onOpenTemplateSelector={handleOpenDesktopTemplateTab}
                     onLaunchAssistant={handleOpenResumeAssistantSidebar}
                     canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
                 />

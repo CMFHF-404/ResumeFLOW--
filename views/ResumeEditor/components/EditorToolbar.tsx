@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, FileText, Plus, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Download, LayoutTemplate, Moon, Sun, Edit2, Check, Plus, Sparkles } from 'lucide-react';
 import UnAuthPrompt from '../../../components/UnAuthPrompt';
 
 type EditorToolbarProps = {
@@ -9,8 +9,6 @@ type EditorToolbarProps = {
     onToggleTheme: () => void;
     isLayoutModified: boolean;
     isSmartPageApplied: boolean;
-    isLayoutAdjustToolbarOpen: boolean;
-    onToggleLayoutAdjustToolbar: () => void;
     onAdjustToSinglePage: () => void;
     onRestoreDefault: () => void;
     canCreateResume: boolean;
@@ -21,7 +19,6 @@ type EditorToolbarProps = {
     onExportPdf: () => void;
     isExportingPdf: boolean;
     isPreviewOverflowing?: boolean;
-    onOpenTemplateSelector: () => void;
     onLaunchAssistant?: () => void;
     canLaunchAssistant?: boolean;
 };
@@ -55,8 +52,6 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     onToggleTheme,
     isLayoutModified,
     isSmartPageApplied,
-    isLayoutAdjustToolbarOpen,
-    onToggleLayoutAdjustToolbar,
     onAdjustToSinglePage,
     onRestoreDefault,
     canCreateResume,
@@ -67,7 +62,6 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     onExportPdf,
     isExportingPdf,
     isPreviewOverflowing = false,
-    onOpenTemplateSelector,
     onLaunchAssistant,
     canLaunchAssistant = false,
 }) => {
@@ -79,17 +73,6 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     const smartPageButtonClass = canRestoreDefault
         ? `${actionButtonBaseClass} font-medium border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700`
         : `${actionButtonBaseClass} font-semibold border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400`;
-    const settingsButtonClass = [
-        actionButtonBaseClass,
-        'rounded-r-none border-r-0',
-        isLayoutAdjustToolbarOpen
-            ? 'border-primary bg-primary/10 text-primary dark:border-primary/70 dark:bg-primary/15'
-            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800',
-    ].join(' ');
-    const smartPageButtonJoinedClass = [
-        smartPageButtonClass,
-        'rounded-l-none',
-    ].join(' ');
 
     const handleStartEdit = () => {
         setEditValue(resumeName);
@@ -198,14 +181,6 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                     <UnAuthPrompt />
                     <button
                         type="button"
-                        onClick={onOpenTemplateSelector}
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                        <LayoutTemplate className="h-3.5 w-3.5" />
-                        模板
-                    </button>
-                    <button
-                        type="button"
                         onClick={onLaunchAssistant}
                         disabled={!canLaunchAssistant}
                         className="ai-active-gradient flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -224,25 +199,14 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         <Plus className="w-4 h-4" />
                         {isCreatingResume ? '新增中...' : '新增简历'}
                     </button>
-                    <div className="inline-flex items-center">
-                        <button
-                            type="button"
-                            onClick={onToggleLayoutAdjustToolbar}
-                            className={settingsButtonClass}
-                            aria-label="打开手动调节工具栏"
-                            aria-pressed={isLayoutAdjustToolbarOpen}
-                            title="手动调节"
-                        >
-                            <SlidersHorizontal className="w-4 h-4" />
-                        </button>
-                        <button
-                            onClick={canRestoreDefault ? onRestoreDefault : onAdjustToSinglePage}
-                            className={smartPageButtonJoinedClass}
-                        >
-                            <LayoutTemplate className="w-4 h-4" />
-                            {canRestoreDefault ? '恢复默认' : '智能一页'}
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={canRestoreDefault ? onRestoreDefault : onAdjustToSinglePage}
+                        className={smartPageButtonClass}
+                    >
+                        <LayoutTemplate className="w-4 h-4" />
+                        {canRestoreDefault ? '恢复默认' : '智能一页'}
+                    </button>
                     {/* min-w 固定宽度：避免不同状态文字长度不同导致"智能一页"按钮位置抖动 */}
                     <div className="order-last flex w-full items-center gap-2 text-xs md:order-none md:w-auto">
                         <span className="text-gray-400 shrink-0">自动保存</span>
