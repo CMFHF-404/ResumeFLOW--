@@ -11,7 +11,7 @@ const ResumeEditorPreviewStage: React.FC<ResumeEditorPreviewStageProps> = ({
     layoutAdjustProps,
     previewProps,
 }) => (
-    <div className="flex flex-1 flex-col overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0">
+    <div className="flex flex-1 flex-col min-w-0 overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0">
         <ResumeEditorLayoutAdjustPanel {...layoutAdjustProps} />
         <ResumePreview {...previewProps} />
     </div>

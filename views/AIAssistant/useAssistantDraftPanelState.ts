@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 
 import type { AssistantDraftGroup } from './sessionUtils';
 
-export type DraftSurface = 'desktop' | 'mobile';
+export type DraftSurface = 'desktop' | 'mobile' | 'sidebar';
 
 export type DraftPanelVersionState = {
   versionByGroupId: Record<string, number>;
@@ -72,7 +72,7 @@ export const useAssistantDraftPanelState = (
   }, [draftGroups]);
 
   const getDraftVersionState = (surface: DraftSurface) => (
-    surface === 'mobile'
+    surface !== 'desktop'
       ? {
         versionByGroupId: mobileDraftVersionByGroupId,
         setVersionByGroupId: setMobileDraftVersionByGroupId,

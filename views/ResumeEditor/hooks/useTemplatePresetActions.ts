@@ -14,6 +14,7 @@ import {
     saveResumeTemplatePreset,
     type ResumeTemplatePresetMap,
 } from '../../resumeTemplateStorage';
+import type { SmartPageLayout } from '../layoutUtils';
 
 type TemplatePresetInput = {
     templateId: ResumeTemplateId;
@@ -21,6 +22,7 @@ type TemplatePresetInput = {
     themeColorPresetId: ResumeThemeColorPresetId;
     experienceListMarkerStyle: ResumeExperienceListMarkerStyle;
     skillTagSeparator: string;
+    layoutDefaults?: SmartPageLayout;
 };
 
 type UseTemplatePresetActionsParams = {
@@ -38,6 +40,7 @@ type UseTemplatePresetActionsParams = {
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
     setIsTemplateSelectorOpen: Dispatch<SetStateAction<boolean>>;
     setTemplatePresetMap: Dispatch<SetStateAction<ResumeTemplatePresetMap>>;
+    onApplyTemplateLayoutDefaults?: (layoutDefaults: SmartPageLayout) => void;
     showToastInfo: (message: string, duration?: number) => string;
     showToastSuccess: (message: string, duration?: number) => string;
     showToastError: (message: string, duration?: number) => string;
@@ -58,6 +61,7 @@ export const useTemplatePresetActions = ({
     setSectionOrder,
     setIsTemplateSelectorOpen,
     setTemplatePresetMap,
+    onApplyTemplateLayoutDefaults,
     showToastInfo,
     showToastSuccess,
     showToastError,
@@ -98,10 +102,14 @@ export const useTemplatePresetActions = ({
         if (shouldUpdateSectionOrder) {
             setSectionOrder([...preset.sectionOrder]);
         }
+        if (preset?.layoutDefaults) {
+            onApplyTemplateLayoutDefaults?.(preset.layoutDefaults);
+        }
         setIsTemplateSelectorOpen(false);
     }, [
         experienceListMarkerStyle,
         isTemplatePresetMapReady,
+        onApplyTemplateLayoutDefaults,
         resumeTemplateId,
         sectionOrder,
         setExperienceListMarkerStyle,

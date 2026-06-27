@@ -16,6 +16,7 @@ import {
   normalizeResumeSkillTagSeparator,
 } from '../utils/resumeCustomization';
 import { DEFAULT_SECTION_ORDER, RESUME_SECTION_IDS } from './ResumeEditor/constants';
+import type { SmartPageLayout } from './ResumeEditor/layoutUtils';
 
 const PREFERRED_RESUME_TEMPLATE_STORAGE_KEY = 'yuanzijianli.preferredResumeTemplate';
 const RESUME_TEMPLATE_PRESETS_STORAGE_KEY = 'yuanzijianli.resumeTemplatePresets';
@@ -30,6 +31,7 @@ type RawResumeTemplatePreset = {
   themeColorPresetId?: string;
   experienceListMarkerStyle?: string;
   skillTagSeparator?: string;
+  layoutDefaults?: Partial<SmartPageLayout> | null;
   updatedAt?: string;
 };
 
@@ -41,6 +43,7 @@ export type ResumeTemplatePreset = {
   themeColorPresetId: ResumeThemeColorPresetId;
   experienceListMarkerStyle: ReturnType<typeof normalizeResumeExperienceListMarkerStyle>;
   skillTagSeparator: string;
+  layoutDefaults?: SmartPageLayout;
   updatedAt: string;
 };
 
@@ -85,6 +88,29 @@ const normalizeResumeThemeColorPresetId = (
     : resolveDefaultResumeThemeColorPresetId(templateId)
 );
 
+const normalizeNumber = (value: unknown, fallback: number) => {
+  const nextValue = Number(value);
+  return Number.isFinite(nextValue) ? nextValue : fallback;
+};
+
+const normalizeLayoutDefaults = (
+  layoutDefaults?: Partial<SmartPageLayout> | null
+): SmartPageLayout | undefined => {
+  if (!layoutDefaults || typeof layoutDefaults !== 'object') {
+    return undefined;
+  }
+  const sectionSpacingValue = Number(layoutDefaults.sectionSpacingKey);
+  return {
+    topPaddingPx: normalizeNumber(layoutDefaults.topPaddingPx, 0),
+    sectionSpacingKey: ([2, 3, 4, 5, 6, 8, 10, 12].includes(sectionSpacingValue)
+      ? sectionSpacingValue
+      : 6) as SmartPageLayout['sectionSpacingKey'],
+    itemSpacingEm: normalizeNumber(layoutDefaults.itemSpacingEm, 1),
+    lineHeight: normalizeNumber(layoutDefaults.lineHeight, 1.6),
+    fontSize: normalizeNumber(layoutDefaults.fontSize, 16),
+  };
+};
+
 const normalizeResumeTemplatePreset = (
   templateId: string,
   preset?: RawResumeTemplatePreset | null
@@ -93,6 +119,7 @@ const normalizeResumeTemplatePreset = (
     return null;
   }
   const resolvedTemplateId = normalizeResumeTemplateId(templateId);
+  const normalizedLayoutDefaults = normalizeLayoutDefaults(preset?.layoutDefaults);
   return {
     templateId: resolvedTemplateId,
     sectionOrder: normalizeSectionOrder(preset?.sectionOrder),
@@ -104,6 +131,7 @@ const normalizeResumeTemplatePreset = (
       preset?.experienceListMarkerStyle
     ),
     skillTagSeparator: normalizeResumeSkillTagSeparator(preset?.skillTagSeparator),
+    ...(normalizedLayoutDefaults ? { layoutDefaults: normalizedLayoutDefaults } : {}),
     updatedAt: resolveUpdatedAt(preset?.updatedAt),
   };
 };
@@ -132,6 +160,7 @@ const serializeResumeTemplatePresetMap = (presetMap: ResumeTemplatePresetMap): R
       themeColorPresetId: preset.themeColorPresetId,
       experienceListMarkerStyle: preset.experienceListMarkerStyle,
       skillTagSeparator: preset.skillTagSeparator,
+      ...(preset.layoutDefaults ? { layoutDefaults: { ...preset.layoutDefaults } } : {}),
       updatedAt: preset.updatedAt,
     };
     return result;
@@ -299,19 +328,21 @@ export const saveResumeTemplatePreset = async (
   preset: Pick<
     ResumeTemplatePreset,
     'templateId' | 'sectionOrder' | 'themeColorPresetId' | 'experienceListMarkerStyle' | 'skillTagSeparator'
-  >
+  > & Partial<Pick<ResumeTemplatePreset, 'layoutDefaults'>>
 ): Promise<ResumeTemplatePreset> => {
+  const profile = await profileService.getProfile({ force: true });
+  const existingPreset = extractResumeTemplatePresetMapFromProfile(profile?.extra_json)[preset.templateId];
   const normalizedPreset = normalizeResumeTemplatePreset(preset.templateId, {
     sectionOrder: preset.sectionOrder,
     themeColorPresetId: preset.themeColorPresetId,
     experienceListMarkerStyle: preset.experienceListMarkerStyle,
     skillTagSeparator: preset.skillTagSeparator,
+    layoutDefaults: preset.layoutDefaults ?? existingPreset?.layoutDefaults,
     updatedAt: new Date().toISOString(),
   });
   if (!normalizedPreset) {
     throw new Error('无效的简历模板预设');
   }
-  const profile = await profileService.getProfile({ force: true });
   const nextExtraJson = {
     ...(profile?.extra_json || {}),
     [PROFILE_RESUME_TEMPLATE_PRESETS_KEY]: serializeResumeTemplatePresetMap(
@@ -339,6 +370,7 @@ export const buildPreferredResumeCreateConfig = (
       experienceListMarkerStyle:
         preset?.experienceListMarkerStyle ?? DEFAULT_RESUME_EXPERIENCE_LIST_MARKER_STYLE,
       skillTagSeparator: preset?.skillTagSeparator ?? DEFAULT_RESUME_SKILL_TAG_SEPARATOR,
+      ...(preset?.layoutDefaults ? { ...preset.layoutDefaults } : {}),
       ...(preset ? { sectionOrder: [...preset.sectionOrder] } : {}),
     },
   };

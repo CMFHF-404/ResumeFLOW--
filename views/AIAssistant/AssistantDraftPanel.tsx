@@ -38,6 +38,7 @@ type DraftPanelProps = {
 };
 
 type MobileDraftTrayProps = DraftPanelProps & {
+  surface?: 'mobile' | 'sidebar';
   isMobileDraftTrayOpen: boolean;
   setIsMobileDraftTrayOpen: Dispatch<SetStateAction<boolean>>;
 };
@@ -126,6 +127,7 @@ const AssistantDraftGroupView: React.FC<DraftGroupViewProps> = ({
 };
 
 export const AssistantMobileDraftTray: React.FC<MobileDraftTrayProps> = ({
+  surface = 'mobile',
   draftGroups,
   draftCardCount,
   isMobileDraftTrayOpen,
@@ -138,7 +140,7 @@ export const AssistantMobileDraftTray: React.FC<MobileDraftTrayProps> = ({
   }
 
   return (
-    <div className="mb-2 md:hidden">
+    <div className={surface === 'sidebar' ? 'mb-2' : 'mb-2 md:hidden'}>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.55)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
         <button
           type="button"
@@ -166,14 +168,14 @@ export const AssistantMobileDraftTray: React.FC<MobileDraftTrayProps> = ({
           }`}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="max-h-[44vh] space-y-3 overflow-y-auto border-t border-slate-100 px-3 pb-3 dark:border-slate-800">
+            <div className={`${surface === 'sidebar' ? 'max-h-[34vh]' : 'max-h-[44vh]'} space-y-3 overflow-y-auto border-t border-slate-100 px-3 pb-3 dark:border-slate-800`}>
               {draftGroups.map((group, index) => (
                 <AssistantDraftGroupView
                   key={group.id}
                   group={group}
                   index={index}
-                  surface="mobile"
-                  versionState={getDraftVersionState('mobile')}
+                  surface={surface}
+                  versionState={getDraftVersionState(surface)}
                   {...draftGroupProps}
                 />
               ))}
