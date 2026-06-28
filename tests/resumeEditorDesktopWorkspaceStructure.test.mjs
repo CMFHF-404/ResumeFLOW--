@@ -16,9 +16,11 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(editor, /const isRightSidebarOpen = isAssistantSidebarOpen \|\| isJDAnalysisDetailsSidebarOpen/);
   assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /surface="sidebar"/);
+  assert.match(editor, /onLaunchAssistant=\{handleToggleResumeAssistantSidebar\}/);
+  assert.match(editor, /isAssistantSidebarOpen=\{isAssistantSidebarOpen\}/);
   assert.doesNotMatch(editor, /handleOpenDesktopTemplateTab/);
   assert.doesNotMatch(editor, /handleOpenDesktopLayoutTab/);
-  assert.match(editor, /onLaunchAssistant=\{handleOpenResumeAssistantSidebar\}/);
+  assert.doesNotMatch(editor, /onLaunchAssistant=\{handleOpenResumeAssistantSidebar\}/);
   assert.doesNotMatch(editor, /SIDEBAR_WIDTH_CLASS/);
   assert.doesNotMatch(editor, /<EditorSidebar\s/);
 
@@ -32,6 +34,8 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(workspace, /<ResumeEditorPreviewStage/);
   assert.match(workspace, /layoutAdjustProps=\{layoutAdjustProps\}/);
   assert.match(workspace, /previewProps=\{previewProps\}/);
+  assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'md:w-\[430px\] xl:w-\[460px\]'/);
+  assert.match(workspace, /: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
   assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l 2xl:w-\[420px\]'/);
   assert.match(workspace, /: 'w-0 opacity-0 md:border-l-0 pointer-events-none'/);
   assert.match(workspace, /\{assistantSidebar\}/);
@@ -73,4 +77,29 @@ test('desktop layout sidebar groups layout parameters and removes density shortc
   for (const label of ['主题颜色', '字号', '行高', '页边距', '模块间距', '条目间距']) {
     assert.match(parameterSection, new RegExp(label));
   }
+});
+
+test('factory sidebar promotes experience edit mode to a full sidebar sliding layer', () => {
+  const factorySidebar = read('views/ResumeEditor/components/ResumeFactorySidebar.tsx');
+
+  assert.match(factorySidebar, /import React, \{ useEffect, useState \} from 'react'/);
+  assert.match(factorySidebar, /import ExperienceTab from '\.\/ExperienceTab'/);
+  assert.match(factorySidebar, /const SIDEBAR_SLIDE_DURATION_MS = 300/);
+  assert.match(factorySidebar, /const isExperienceEditingFullscreen = activeTab === 'edit'\s*&& editorSidebarProps\.sidebarTab === 'experience'\s*&& Boolean\(editorSidebarProps\.experienceTabProps\.experience\.editingExpId\);/);
+  assert.match(factorySidebar, /const \[shouldRenderExperienceEditLayer, setShouldRenderExperienceEditLayer\] = useState\(isExperienceEditingFullscreen\);/);
+  assert.match(factorySidebar, /const \[isExperienceEditLayerVisible, setIsExperienceEditLayerVisible\] = useState\(isExperienceEditingFullscreen\);/);
+  assert.match(factorySidebar, /window\.requestAnimationFrame\(\(\) => setIsExperienceEditLayerVisible\(true\)\)/);
+  assert.match(factorySidebar, /setIsExperienceEditLayerVisible\(false\);/);
+  assert.match(factorySidebar, /window\.setTimeout\(\(\) => setShouldRenderExperienceEditLayer\(false\), SIDEBAR_SLIDE_DURATION_MS\)/);
+  assert.match(factorySidebar, /aria-hidden=\{isExperienceEditingFullscreen\}/);
+  assert.match(factorySidebar, /inert=\{isExperienceEditingFullscreen \? true : undefined\}/);
+  assert.match(factorySidebar, /'-translate-x-full opacity-0 pointer-events-none'/);
+  assert.match(factorySidebar, /'translate-x-0 opacity-100'/);
+  assert.match(factorySidebar, /aria-hidden=\{!isExperienceEditingFullscreen\}/);
+  assert.match(factorySidebar, /inert=\{!isExperienceEditingFullscreen \? true : undefined\}/);
+  assert.match(factorySidebar, /'translate-x-full opacity-0 pointer-events-none'/);
+  assert.match(factorySidebar, /import EditorSidebar, \{ EditingSuggestionNav, type EditorSidebarProps \} from '\.\/EditorSidebar'/);
+  assert.match(factorySidebar, /<EditingSuggestionNav \{\.\.\.editorSidebarProps\.editingSuggestion\} \/>/);
+  assert.match(factorySidebar, /<ExperienceTab\s*\n\s*\{\.\.\.editorSidebarProps\.experienceTabProps\}\s*\n\s*layoutMode="inline"\s*\n\s*scrollContainerRef=\{fullscreenEditScrollRef\}/);
+  assert.match(factorySidebar, /<EditorSidebar \{\.\.\.editorSidebarProps\} \/>/);
 });

@@ -1099,7 +1099,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setExperiencePolishPreview,
         handleApplyResumeAssistantDraft,
     });
-    const handleOpenResumeAssistantSidebar = useCallback(() => {
+    const handleToggleResumeAssistantSidebar = useCallback(() => {
+        if (isAssistantSidebarOpen) {
+            setAssistantSidebarLaunchRequest(null);
+            setIsAssistantSidebarOpen(false);
+            return;
+        }
         if (!resumeId) {
             showToastInfo('请先选择或创建一份简历');
             return;
@@ -1123,6 +1128,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [
         assistantSidebarSelectedResume,
         handleApplyResumeAssistantDraft,
+        isAssistantSidebarOpen,
         resumeId,
         resumeName,
         showToastInfo,
@@ -1798,6 +1804,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             analysisResult={analysisResult}
             jdText={jdText}
             onClose={handleCloseJDAnalysisDetailsSidebar}
+            onOpenAssistantSidebar={handleToggleResumeAssistantSidebar}
             onOpenAgentPluginConfig={onOpenAgentPluginConfig}
         />
     ) : isAssistantSidebarOpen ? (
@@ -1835,8 +1842,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
                     isPreviewOverflowing={isPreviewOverflowing}
-                    onLaunchAssistant={handleOpenResumeAssistantSidebar}
+                    onLaunchAssistant={handleToggleResumeAssistantSidebar}
                     canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
+                    isAssistantSidebarOpen={isAssistantSidebarOpen}
                 />
             </div>
             <div className="md:hidden">

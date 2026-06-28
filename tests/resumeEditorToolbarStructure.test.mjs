@@ -19,5 +19,14 @@ test('desktop editor toolbar keeps primary actions without template or manual la
   assert.doesNotMatch(toolbar, /SlidersHorizontal/);
   assert.doesNotMatch(actionCluster, /aria-label="打开手动调节工具栏"/);
   assert.match(actionCluster, /onLaunchAssistant/);
+  assert.match(toolbar, /isAssistantSidebarOpen\?: boolean/);
+  assert.match(toolbar, /isAssistantSidebarOpen = false/);
+  assert.match(toolbar, /const isAssistantButtonDisabled = !canLaunchAssistant && !isAssistantSidebarOpen;/);
+  assert.match(toolbar, /const assistantButtonTitle = isAssistantSidebarOpen\s*\?\s*'关闭 AI 侧栏'\s*:\s*canLaunchAssistant\s*\?\s*'带着当前简历打开 AI 助理'\s*:\s*'当前简历加载中';/);
+  assert.match(actionCluster, /aria-pressed=\{isAssistantSidebarOpen\}/);
+  assert.match(actionCluster, /disabled=\{isAssistantButtonDisabled\}/);
+  assert.match(actionCluster, /title=\{assistantButtonTitle\}/);
+  assert.match(actionCluster, /isAssistantSidebarOpen\s*\?\s*'border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100\/70 hover:bg-emerald-100 dark:border-emerald-500\/30 dark:bg-emerald-500\/15 dark:text-emerald-200 dark:shadow-none'/);
+  assert.match(actionCluster, /:\s*'ai-active-gradient text-white hover:opacity-90'/);
   assert.match(actionCluster, /onAdjustToSinglePage/);
 });

@@ -281,7 +281,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const latestSuggestedFollowups = useMemo(() => {
     return deriveLatestSuggestedFollowups(messages);
   }, [messages]);
-  const shouldShowEmptyAssistantGreeting = !isLoadingDetail && messages.length === 0 && !activeThought;
+  const assistantSidebarTitle = selectedSession?.title?.trim() || 'AI助手';
+  const shouldShowEmptyAssistantGreeting = !isSidebarSurface && !isLoadingDetail && messages.length === 0 && !activeThought;
   const isDeepThinkingEnabled = selectedSessionId
     ? Boolean(deepThinkingBySessionId[selectedSessionId])
     : draftDeepThinkingEnabled;
@@ -661,37 +662,44 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {isSidebarSurface ? (
-              <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1">
-                  {onOpenAnalysisDetails ? (
+              <div className="shrink-0 border-b border-slate-200/90 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={assistantSidebarTitle}>
+                    {assistantSidebarTitle}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {onOpenAnalysisDetails ? (
+                      <button
+                        type="button"
+                        onClick={onOpenAnalysisDetails}
+                        className={SIDEBAR_ACTION_BUTTON_CLASS}
+                        title="查看分析详情"
+                        aria-label="查看分析详情"
+                      >
+                        <FileSearch className="h-4 w-4" />
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={onOpenAnalysisDetails}
+                      onClick={() => onExpandToFullPage?.(selectedSessionId)}
                       className={SIDEBAR_ACTION_BUTTON_CLASS}
-                      title="查看分析详情"
-                      aria-label="查看分析详情"
+                      title="展开到 AI 助手"
+                      aria-label="展开到 AI 助手"
                     >
-                      <FileSearch className="h-4 w-4" />
+                      <Maximize2 className="h-4 w-4" />
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => onExpandToFullPage?.(selectedSessionId)}
-                    className={SIDEBAR_ACTION_BUTTON_CLASS}
-                    title="展开到 AI 助手"
-                    aria-label="展开到 AI 助手"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className={SIDEBAR_ACTION_BUTTON_CLASS}
-                    title="关闭 AI 侧栏"
-                    aria-label="关闭 AI 侧栏"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className={SIDEBAR_ACTION_BUTTON_CLASS}
+                      title="关闭 AI 侧栏"
+                      aria-label="关闭 AI 侧栏"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
               </div>
+            </div>
             ) : (
             <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 md:hidden">
               <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">

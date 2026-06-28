@@ -21,6 +21,7 @@ type EditorToolbarProps = {
     isPreviewOverflowing?: boolean;
     onLaunchAssistant?: () => void;
     canLaunchAssistant?: boolean;
+    isAssistantSidebarOpen?: boolean;
 };
 
 const buildSaveStatusText = (state: EditorToolbarProps['saveState'], lastSavedAt: string | null) => {
@@ -64,6 +65,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     isPreviewOverflowing = false,
     onLaunchAssistant,
     canLaunchAssistant = false,
+    isAssistantSidebarOpen = false,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(resumeName);
@@ -116,6 +118,12 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     const exportButtonTitle = isPreviewOverflowing
         ? '当前预览已超出单页 A4，导出时将自动分页'
         : (isExportingPdf ? '导出中...' : '导出 PDF');
+    const isAssistantButtonDisabled = !canLaunchAssistant && !isAssistantSidebarOpen;
+    const assistantButtonTitle = isAssistantSidebarOpen
+        ? '关闭 AI 侧栏'
+        : canLaunchAssistant
+            ? '带着当前简历打开 AI 助理'
+            : '当前简历加载中';
 
     return (
         <header className="bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:px-6">
@@ -182,9 +190,14 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                     <button
                         type="button"
                         onClick={onLaunchAssistant}
-                        disabled={!canLaunchAssistant}
-                        className="ai-active-gradient flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                        title={canLaunchAssistant ? '带着当前简历打开 AI 助理' : '当前简历加载中'}
+                        disabled={isAssistantButtonDisabled}
+                        aria-pressed={isAssistantSidebarOpen}
+                        className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isAssistantSidebarOpen
+                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100/70 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none'
+                                : 'ai-active-gradient text-white hover:opacity-90'
+                        }`}
+                        title={assistantButtonTitle}
                     >
                         <Sparkles className="w-4 h-4" />
                         AI
