@@ -11,9 +11,13 @@ test('GlobalSidebar exposes token quota ring and quota menu entry', () => {
   assert.match(sidebar, /quotaSummary/);
   assert.match(sidebar, /onOpenTokenQuota/);
   assert.match(sidebar, /TokenQuotaSummary/);
+  assert.match(sidebar, /isUnlimitedQuota/);
+  assert.match(sidebar, /unlimited_expires_at/);
   assert.match(sidebar, /额度/);
   assert.match(sidebar, /strokeDasharray/);
   assert.match(sidebar, /剩余/);
+  assert.match(sidebar, /text-amber-300/);
+  assert.match(sidebar, /TOKEN_RING_CIRCUMFERENCE/);
 
   assert.match(app, /TokenQuotaModal/);
   assert.match(app, /isTokenQuotaOpen/);
@@ -29,6 +33,10 @@ test('TokenQuotaModal renders summary, charts, usage detail, and redemption acti
   assert.match(modal, /usageByEntrypoint/);
   assert.match(modal, /redeemCode/);
   assert.match(modal, /svg/);
+  assert.match(modal, /isUnlimitedQuota/);
+  assert.match(modal, /unlimited_expires_at/);
+  assert.match(modal, /∞/);
+  assert.match(modal, /金色/);
   assert.match(modal, /用量明细/);
   assert.match(modal, /兑换卡密/);
   assert.match(modal, /购买额度/);
@@ -51,6 +59,9 @@ test('billingService uses the backend billing API surface and refreshes after re
   assert.match(service, /\/api\/billing\/usage/);
   assert.match(service, /\/api\/billing\/redemptions/);
   assert.match(service, /redeemCode/);
+  assert.match(service, /is_unlimited: boolean/);
+  assert.match(service, /unlimited_expires_at\?: string \| null/);
+  assert.match(service, /unlimited_plan_name\?: string \| null/);
   assert.doesNotMatch(service, /\/api\/billing\/purchases\/options/);
   assert.doesNotMatch(service, /\/api\/billing\/purchases/);
   assert.doesNotMatch(service, /createPlaceholderPurchase/);
@@ -64,6 +75,8 @@ test('ProfileTab shows read-only token usage and opens the shared quota modal', 
 
   assert.match(profileTab, /quotaSummary/);
   assert.match(profileTab, /onOpenTokenQuota/);
+  assert.match(profileTab, /is_unlimited/);
+  assert.match(profileTab, /无限额度/);
   assert.match(profileTab, /剩余额度/);
   assert.match(profileTab, /当前用量/);
   assert.match(profileTab, /查看额度/);

@@ -53,6 +53,13 @@ const formatTokenAmount = (value?: number | null) => {
     return safeValue.toLocaleString();
 };
 
+const formatDateTime = (value?: string | null) => {
+    if (!value) return '--';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--';
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
 const ProfileTab: React.FC<ProfileTabProps> = ({
     profile,
     setProfile,
@@ -199,10 +206,21 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="rounded-md bg-white/75 p-2 dark:bg-gray-950/30">
-                            <div className="text-gray-500 dark:text-gray-400">剩余额度</div>
-                            <div className="mt-1 font-bold text-gray-900 dark:text-white">
-                                {formatTokenAmount(quotaSummary?.remaining_tokens)}
+                            <div className="text-gray-500 dark:text-gray-400">
+                                {quotaSummary?.is_unlimited ? '无限额度' : '剩余额度'}
                             </div>
+                            <div className={`mt-1 font-bold ${
+                                quotaSummary?.is_unlimited
+                                    ? 'text-amber-600 dark:text-amber-300'
+                                    : 'text-gray-900 dark:text-white'
+                            }`}>
+                                {quotaSummary?.is_unlimited ? '∞' : formatTokenAmount(quotaSummary?.remaining_tokens)}
+                            </div>
+                            {quotaSummary?.is_unlimited ? (
+                                <div className="mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-200">
+                                    到期 {formatDateTime(quotaSummary.unlimited_expires_at)}
+                                </div>
+                            ) : null}
                         </div>
                         <div className="rounded-md bg-white/75 p-2 dark:bg-gray-950/30">
                             <div className="text-gray-500 dark:text-gray-400">当前用量</div>

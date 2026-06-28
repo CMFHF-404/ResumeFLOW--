@@ -229,12 +229,18 @@ CREATE TABLE IF NOT EXISTS ai_token_wallets (
     token_limit INTEGER NOT NULL DEFAULT 0,
     remaining_tokens INTEGER NOT NULL DEFAULT 0,
     used_tokens INTEGER NOT NULL DEFAULT 0,
+    unlimited_tokens_expires_at TIMESTAMPTZ,
+    unlimited_tokens_plan_name TEXT,
     last_purchase_id UUID,
     last_purchase_tokens INTEGER NOT NULL DEFAULT 0,
     last_purchase_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE ai_token_wallets
+    ADD COLUMN IF NOT EXISTS unlimited_tokens_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS unlimited_tokens_plan_name TEXT;
 
 CREATE TABLE IF NOT EXISTS ai_token_usage_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -271,12 +277,20 @@ CREATE TABLE IF NOT EXISTS ai_token_purchase_events (
 CREATE TABLE IF NOT EXISTS redemption_packages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    token_amount INTEGER NOT NULL,
+    token_amount INTEGER NOT NULL DEFAULT 0,
+    benefit_type TEXT NOT NULL DEFAULT 'tokens',
+    unlimited_duration_days INTEGER,
+    unlimited_duration_hours INTEGER,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     notes TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE redemption_packages
+    ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'tokens',
+    ADD COLUMN IF NOT EXISTS unlimited_duration_days INTEGER,
+    ADD COLUMN IF NOT EXISTS unlimited_duration_hours INTEGER;
 
 CREATE TABLE IF NOT EXISTS redemption_batches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -284,7 +298,10 @@ CREATE TABLE IF NOT EXISTS redemption_batches (
     name TEXT NOT NULL,
     channel TEXT NOT NULL DEFAULT '',
     package_name TEXT NOT NULL,
-    token_amount INTEGER NOT NULL,
+    token_amount INTEGER NOT NULL DEFAULT 0,
+    benefit_type TEXT NOT NULL DEFAULT 'tokens',
+    unlimited_duration_days INTEGER,
+    unlimited_duration_hours INTEGER,
     code_count INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
     created_by_user_id TEXT NOT NULL,
@@ -293,6 +310,11 @@ CREATE TABLE IF NOT EXISTS redemption_batches (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE redemption_batches
+    ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'tokens',
+    ADD COLUMN IF NOT EXISTS unlimited_duration_days INTEGER,
+    ADD COLUMN IF NOT EXISTS unlimited_duration_hours INTEGER;
+
 CREATE TABLE IF NOT EXISTS redemption_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     batch_id UUID REFERENCES redemption_batches(id) ON DELETE SET NULL,
@@ -300,8 +322,11 @@ CREATE TABLE IF NOT EXISTS redemption_codes (
     code_hash TEXT NOT NULL UNIQUE,
     code_ciphertext TEXT NOT NULL,
     code_prefix TEXT NOT NULL DEFAULT '',
-    token_amount INTEGER NOT NULL,
+    token_amount INTEGER NOT NULL DEFAULT 0,
     package_name TEXT NOT NULL,
+    benefit_type TEXT NOT NULL DEFAULT 'tokens',
+    unlimited_duration_days INTEGER,
+    unlimited_duration_hours INTEGER,
     status TEXT NOT NULL DEFAULT 'unused',
     redeemed_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     redeemed_at TIMESTAMPTZ,
@@ -310,6 +335,11 @@ CREATE TABLE IF NOT EXISTS redemption_codes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE redemption_codes
+    ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'tokens',
+    ADD COLUMN IF NOT EXISTS unlimited_duration_days INTEGER,
+    ADD COLUMN IF NOT EXISTS unlimited_duration_hours INTEGER;
 
 CREATE TABLE IF NOT EXISTS export_render_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

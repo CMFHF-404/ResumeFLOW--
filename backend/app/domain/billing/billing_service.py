@@ -4,6 +4,7 @@ import inspect
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, Iterable, Optional
 
 from fastapi import HTTPException
@@ -13,7 +14,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...database import AsyncSessionFactory
 from ...models import AITokenPurchaseEvent, AITokenUsageEvent, AITokenWallet
-from ...utils.time_utils import utc_now
+from ...utils.time_utils import utc_now_aware as utc_now
 from .schemas import (
     TokenPurchaseEventRead,
     TokenPurchaseOption,
@@ -89,6 +90,23 @@ def _remaining_percent(wallet: AITokenWallet) -> float:
     return round(max(wallet.remaining_tokens, 0) / wallet.token_limit * 100, 2)
 
 
+def _normalize_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _is_unlimited_active(wallet: AITokenWallet, now: datetime | None = None) -> bool:
+    expires_at = _normalize_utc(wallet.unlimited_tokens_expires_at)
+    if expires_at is None:
+        return False
+    current_time = _normalize_utc(now or utc_now())
+    assert current_time is not None
+    return expires_at > current_time
+
+
 def _can_query_billing_tables(session: Any) -> bool:
     return callable(getattr(session, "execute", None))
 
@@ -104,12 +122,16 @@ def _unmetered_summary(user_id: str) -> TokenQuotaSummary:
 
 
 def _to_summary(wallet: AITokenWallet) -> TokenQuotaSummary:
+    is_unlimited = _is_unlimited_active(wallet)
     return TokenQuotaSummary(
         user_id=wallet.user_id,
         token_limit=max(int(wallet.token_limit or 0), 0),
         remaining_tokens=max(int(wallet.remaining_tokens or 0), 0),
         used_tokens=max(int(wallet.used_tokens or 0), 0),
         remaining_percent=_remaining_percent(wallet),
+        is_unlimited=is_unlimited,
+        unlimited_expires_at=wallet.unlimited_tokens_expires_at if is_unlimited else None,
+        unlimited_plan_name=(wallet.unlimited_tokens_plan_name or "") if is_unlimited else None,
         last_purchase_tokens=max(int(wallet.last_purchase_tokens or 0), 0),
         last_purchase_at=wallet.last_purchase_at,
         updated_at=wallet.updated_at,
@@ -204,6 +226,8 @@ async def ensure_quota_available(session: AsyncSession, user_id: str) -> TokenQu
         return _unmetered_summary(user_id)
     wallet = await _get_wallet(session, user_id, create=True)
     assert wallet is not None
+    if _is_unlimited_active(wallet):
+        return _to_summary(wallet)
     if int(wallet.remaining_tokens or 0) <= 0:
         raise HTTPException(
             status_code=402,
@@ -298,6 +322,16 @@ async def record_usage_event(
     completion_tokens = max(int(completion_tokens or 0), 0)
     total_tokens = max(int(total_tokens or prompt_tokens + completion_tokens or 0), 0)
     now = utc_now()
+    is_unlimited = _is_unlimited_active(wallet, now)
+    event_metadata = dict(metadata or {})
+    if is_unlimited:
+        event_metadata.setdefault("billing_mode", "unlimited_time")
+        event_metadata.setdefault("unlimited_plan_name", wallet.unlimited_tokens_plan_name or "")
+        if wallet.unlimited_tokens_expires_at:
+            event_metadata.setdefault(
+                "unlimited_expires_at",
+                wallet.unlimited_tokens_expires_at.isoformat(),
+            )
 
     event = AITokenUsageEvent(
         user_id=user_id,
@@ -309,16 +343,16 @@ async def record_usage_event(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
-        metadata_json=metadata or {},
+        metadata_json=event_metadata,
         created_at=now,
     )
     session.add(event)
 
-    if event.status == "success" and total_tokens > 0:
+    if event.status == "success" and total_tokens > 0 and not is_unlimited:
         wallet.remaining_tokens = max(int(wallet.remaining_tokens or 0) - total_tokens, 0)
         wallet.used_tokens = max(int(wallet.used_tokens or 0), 0) + total_tokens
         wallet.updated_at = now
-    elif event.status != "success":
+    elif event.status != "success" or is_unlimited:
         wallet.updated_at = now
 
     await _maybe_flush(session)
