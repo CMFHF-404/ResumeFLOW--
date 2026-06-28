@@ -55,6 +55,21 @@ class RedemptionRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("current_admin=Depends(require_admin)", source)
         self.assertIn('prefix="/api/admin/redemption"', source)
 
+    def test_redemption_schemas_expose_unlimited_package_fields(self) -> None:
+        from app.domain.billing import redemption_schemas
+
+        package = redemption_schemas.RedemptionPackageCreate(
+            name="月费无限套餐",
+            benefit_type="unlimited_time",
+            token_amount=0,
+            unlimited_duration_days=30,
+            unlimited_duration_hours=2,
+        )
+
+        self.assertEqual(package.benefit_type, "unlimited_time")
+        self.assertEqual(package.unlimited_duration_days, 30)
+        self.assertEqual(package.unlimited_duration_hours, 2)
+
     def test_user_billing_router_no_longer_exposes_placeholder_purchase_routes(self) -> None:
         paths = {route.path for route in billing_router.router.routes}
 

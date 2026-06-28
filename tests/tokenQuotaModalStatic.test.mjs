@@ -11,6 +11,34 @@ test('token quota modal guards zero quota progress', () => {
   assert.match(modal, /const usedPercent = limit > 0\s+\? Math\.max\(0, Math\.min\(\(used \/ limit\) \* 100, 100\)\)\s+: 0;/);
 });
 
+test('token quota modal renders unlimited monthly plan state in gold', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+
+  assert.match(modal, /const isUnlimitedQuota = Boolean\(summary\?\.is_unlimited\);/);
+  assert.match(modal, /formatDateTime\(summary\?\.unlimited_expires_at\)/);
+  assert.match(modal, /∞/);
+  assert.match(modal, /bg-gradient-to-r from-amber-500 to-yellow-300/);
+  assert.match(modal, /无限额度/);
+  assert.match(modal, /到期时间/);
+});
+
+test('token quota modal reports unlimited redemption without saying zero tokens', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+
+  assert.match(modal, /result\.summary\.is_unlimited/);
+  assert.match(modal, /result\.summary\.unlimited_expires_at/);
+  assert.match(modal, /无限额度有效至/);
+});
+
+test('token quota modal prioritizes token redemption message over existing unlimited state', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+
+  assert.match(
+    modal,
+    /if \(result\.tokens > 0\) \{[\s\S]*已兑换 \$\{formatTokens\(result\.tokens\)\} Tokens[\s\S]*\} else if \(result\.summary\.is_unlimited\) \{/,
+  );
+});
+
 test('usage trend chart fills its card height and reserves space for date labels', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 

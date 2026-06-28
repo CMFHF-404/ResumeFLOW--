@@ -46,42 +46,61 @@ const QuotaDashboard: React.FC<{
   const remaining = Math.max(Number(summary?.remaining_tokens ?? 0), 0);
   const used = Math.max(Number(summary?.used_tokens ?? 0), 0);
   const limit = Math.max(Number(summary?.token_limit ?? 0), 0);
+  const isUnlimitedQuota = Boolean(summary?.is_unlimited);
+  const unlimitedExpiryText = formatDateTime(summary?.unlimited_expires_at);
 
   // 消耗比例
   const usedPercent = limit > 0
     ? Math.max(0, Math.min((used / limit) * 100, 100))
     : 0;
+  const progressPercent = isUnlimitedQuota ? 100 : usedPercent;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
+    <div className={`rounded-xl border p-4 ${
+      isUnlimitedQuota
+        ? 'border-amber-200 bg-amber-50/60 dark:border-amber-500/20 dark:bg-amber-500/10'
+        : 'border-gray-200 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/50'
+    }`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {/* 剩余可用额度展示 */}
         <div className="flex-1">
-          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-            剩余可用额度
+          <span className={`text-[11px] font-semibold uppercase tracking-wider ${
+            isUnlimitedQuota ? 'text-amber-600 dark:text-amber-300' : 'text-gray-400 dark:text-gray-500'
+          }`}>
+            {isUnlimitedQuota ? '无限额度' : '剩余可用额度'}
           </span>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-3xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400">
-              {formatTokens(remaining)}
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className={isUnlimitedQuota
+              ? 'text-5xl font-black tracking-tight text-amber-600 dark:text-amber-300 leading-none'
+              : `text-3xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400`
+            }>
+              {isUnlimitedQuota ? '∞' : formatTokens(remaining)}
             </span>
-            <span className="text-xs text-gray-400 font-medium">Tokens</span>
+            {!isUnlimitedQuota && (
+              <span className="text-xs text-gray-400 font-medium">Tokens</span>
+            )}
           </div>
         </div>
 
         {/* 已用进度条 */}
         <div className="flex-[1.2] space-y-1.5 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0 dark:border-gray-800">
           <div className="flex items-center justify-between text-xs font-semibold">
-            <span className="text-gray-600 dark:text-gray-300">
-              已用 {formatTokens(used)}
+            <span className={isUnlimitedQuota ? 'text-amber-700 dark:text-amber-200' : 'text-gray-600 dark:text-gray-300'}>
+              {isUnlimitedQuota ? '本期 AI 服务不扣 Token' : `已用 ${formatTokens(used)}`}
             </span>
             <span className="text-gray-400">
-              上限 {formatTokens(limit)} ({usedPercent.toFixed(0)}%)
+              {isUnlimitedQuota ? '无限可用' : `上限 ${formatTokens(limit)} (${usedPercent.toFixed(0)}%)`}
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-800">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500 ease-out"
-              style={{ width: `${usedPercent}%` }}
+              // 金色无限进度条
+              className={`h-full rounded-full ${
+                isUnlimitedQuota
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+              } transition-all duration-500 ease-out`}
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
@@ -90,7 +109,12 @@ const QuotaDashboard: React.FC<{
       {/* 底部融合的最近入账与购买额度 */}
       <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2.5 text-[11px] text-gray-400 dark:border-gray-800">
         <div className="flex flex-wrap items-center gap-x-4">
-          {summary?.last_purchase_tokens ? (
+          {isUnlimitedQuota ? (
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              到期时间: <strong className="font-semibold text-amber-700 dark:text-amber-200">{unlimitedExpiryText}</strong>
+            </span>
+          ) : summary?.last_purchase_tokens ? (
             <>
               <span className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -231,7 +255,7 @@ const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usage
           {labels.map((lbl, idx) => (
             <span
               key={idx}
-              className="absolute -translate-x-1/2"
+              className="absolute -translate-x-1/2 whitespace-nowrap"
               style={{ left: lbl.x, transform: lbl.x === '0%' ? 'none' : lbl.x === '100%' ? 'translateX(-100%)' : 'translateX(-50%)' }}
             >
               {lbl.text}
@@ -590,7 +614,13 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
       const result = await billingService.redeemCode(code);
       onSummaryChange(result.summary);
       setRedemptionCode('');
-      setRedemptionMessage(`已兑换 ${formatTokens(result.tokens)} Tokens，来自 ${result.package_name}`);
+      if (result.tokens > 0) {
+        setRedemptionMessage(`已兑换 ${formatTokens(result.tokens)} Tokens，来自 ${result.package_name}`);
+      } else if (result.summary.is_unlimited) {
+        setRedemptionMessage(`无限额度有效至 ${formatDateTime(result.summary.unlimited_expires_at)}，来自 ${result.package_name}`);
+      } else {
+        setRedemptionMessage(`已兑换 ${formatTokens(result.tokens)} Tokens，来自 ${result.package_name}`);
+      }
       void refresh();
     } catch (redeemError) {
       console.error(redeemError);

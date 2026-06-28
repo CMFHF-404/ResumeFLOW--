@@ -33,6 +33,13 @@ const formatTokenAmount = (value?: number | null) => {
   return safeValue.toLocaleString();
 };
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
 const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   currentView,
   setView,
@@ -55,10 +62,15 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   const desktopAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
   const displayName = resolveDisplayName(profile?.full_name, DEFAULT_PROFILE_NAME);
   const avatarInitial = resolveAvatarInitial(profile?.full_name, DEFAULT_AVATAR_PLACEHOLDER);
-  const quotaPercent = Math.max(0, Math.min(quotaSummary?.remaining_percent ?? 0, 100));
+  const isUnlimitedQuota = Boolean(quotaSummary?.is_unlimited);
+  const quotaPercent = isUnlimitedQuota ? 100 : Math.max(0, Math.min(quotaSummary?.remaining_percent ?? 0, 100));
   const quotaDash = Math.round((quotaPercent / 100) * TOKEN_RING_CIRCUMFERENCE);
+  const quotaRingClass = isUnlimitedQuota ? 'text-amber-300' : 'text-emerald-400';
+  const quotaTooltipTextClass = isUnlimitedQuota ? 'text-amber-200' : 'text-emerald-200';
   const quotaTitle = quotaSummary
-    ? `剩余 ${formatTokenAmount(quotaSummary.remaining_tokens)} / ${formatTokenAmount(quotaSummary.token_limit)}，当前用量 ${formatTokenAmount(quotaSummary.used_tokens)}`
+    ? isUnlimitedQuota
+      ? `无限额度，到期 ${formatDateTime(quotaSummary.unlimited_expires_at)}`
+      : `剩余 ${formatTokenAmount(quotaSummary.remaining_tokens)} / ${formatTokenAmount(quotaSummary.token_limit)}，当前用量 ${formatTokenAmount(quotaSummary.used_tokens)}`
     : '剩余额度未加载';
 
   const getButtonClass = (view: ViewState) => {
@@ -313,7 +325,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                   stroke="currentColor"
                   strokeWidth="3"
                   strokeLinecap="round"
-                  className="text-emerald-400 transition-all"
+                  className={`${quotaRingClass} transition-all`}
                   strokeDasharray={`${quotaDash} ${TOKEN_RING_CIRCUMFERENCE}`}
                 />
               </svg>
@@ -370,14 +382,14 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
                 stroke="currentColor"
                 strokeWidth="3"
                 strokeLinecap="round"
-                className="text-emerald-400 transition-all"
+                className={`${quotaRingClass} transition-all`}
                 strokeDasharray={`${quotaDash} ${TOKEN_RING_CIRCUMFERENCE}`}
               />
             </svg>
             {avatarInitial}
             <div className="nav-tooltip hidden md:block">
               <div>{displayName}</div>
-              <div className="mt-1 text-[10px] font-medium text-emerald-200">{quotaTitle}</div>
+              <div className={`mt-1 text-[10px] font-medium ${quotaTooltipTextClass}`}>{quotaTitle}</div>
             </div>
           </button>
           {isAvatarMenuOpen ? renderAvatarMenu('desktop') : null}

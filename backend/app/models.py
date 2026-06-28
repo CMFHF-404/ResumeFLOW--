@@ -230,11 +230,25 @@ class AITokenWallet(SQLModel, table=True):
     token_limit: int = Field(default=0, nullable=False)
     remaining_tokens: int = Field(default=0, nullable=False)
     used_tokens: int = Field(default=0, nullable=False)
+    unlimited_tokens_expires_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    unlimited_tokens_plan_name: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     last_purchase_id: Optional[uuid.UUID] = Field(default=None, index=True)
     last_purchase_tokens: int = Field(default=0, nullable=False)
-    last_purchase_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    last_purchase_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class AITokenUsageEvent(SQLModel, table=True):
@@ -251,7 +265,10 @@ class AITokenUsageEvent(SQLModel, table=True):
     completion_tokens: int = Field(default=0, nullable=False)
     total_tokens: int = Field(default=0, nullable=False)
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class AITokenPurchaseEvent(SQLModel, table=True):
@@ -270,7 +287,10 @@ class AITokenPurchaseEvent(SQLModel, table=True):
     source: str = Field(default="placeholder_purchase", sa_column=Column(Text, nullable=False))
     source_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class RedemptionPackage(SQLModel, table=True):
@@ -278,11 +298,20 @@ class RedemptionPackage(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str = Field(sa_column=Column(Text, nullable=False))
-    token_amount: int = Field(nullable=False)
+    token_amount: int = Field(default=0, nullable=False)
+    benefit_type: str = Field(default="tokens", sa_column=Column(Text, nullable=False))
+    unlimited_duration_days: Optional[int] = Field(default=None)
+    unlimited_duration_hours: Optional[int] = Field(default=None)
     is_active: bool = Field(default=True, nullable=False)
     notes: str = Field(default="", sa_column=Column(Text, nullable=False))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class RedemptionBatch(SQLModel, table=True):
@@ -293,13 +322,25 @@ class RedemptionBatch(SQLModel, table=True):
     name: str = Field(sa_column=Column(Text, nullable=False))
     channel: str = Field(default="", sa_column=Column(Text, nullable=False))
     package_name: str = Field(sa_column=Column(Text, nullable=False))
-    token_amount: int = Field(nullable=False)
+    token_amount: int = Field(default=0, nullable=False)
+    benefit_type: str = Field(default="tokens", sa_column=Column(Text, nullable=False))
+    unlimited_duration_days: Optional[int] = Field(default=None)
+    unlimited_duration_hours: Optional[int] = Field(default=None)
     code_count: int = Field(nullable=False)
     status: str = Field(default="active", sa_column=Column(Text, nullable=False))
     created_by_user_id: str = Field(sa_column=Column(Text, nullable=False))
-    exported_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    exported_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class RedemptionCode(SQLModel, table=True):
@@ -311,15 +352,30 @@ class RedemptionCode(SQLModel, table=True):
     code_hash: str = Field(sa_column=Column(Text, nullable=False, unique=True))
     code_ciphertext: str = Field(sa_column=Column(Text, nullable=False))
     code_prefix: str = Field(default="", sa_column=Column(Text, nullable=False, index=True))
-    token_amount: int = Field(nullable=False)
+    token_amount: int = Field(default=0, nullable=False)
     package_name: str = Field(sa_column=Column(Text, nullable=False))
+    benefit_type: str = Field(default="tokens", sa_column=Column(Text, nullable=False))
+    unlimited_duration_days: Optional[int] = Field(default=None)
+    unlimited_duration_hours: Optional[int] = Field(default=None)
     status: str = Field(default="unused", sa_column=Column(Text, nullable=False, index=True))
     redeemed_by_user_id: Optional[str] = Field(default=None, foreign_key="users.id", index=True)
-    redeemed_at: Optional[datetime] = None
+    redeemed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     revoked_by_user_id: Optional[str] = Field(default=None, foreign_key="users.id", index=True)
-    revoked_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    revoked_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class ExportRenderSnapshot(SQLModel, table=True):

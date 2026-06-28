@@ -19,7 +19,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     package_create = subparsers.add_parser("package-create", help="Create a token package.")
     package_create.add_argument("--name", required=True)
-    package_create.add_argument("--tokens", required=True, type=int)
+    package_create.add_argument("--tokens", type=int)
+    package_create.add_argument("--benefit-type", choices=["tokens", "unlimited_time"], default="tokens")
+    package_create.add_argument("--unlimited-days", type=int)
+    package_create.add_argument("--unlimited-hours", type=int)
     package_create.add_argument("--notes", default="")
     package_create.add_argument("--inactive", action="store_true")
 
@@ -27,6 +30,9 @@ def _build_parser() -> argparse.ArgumentParser:
     package_update.add_argument("package_id")
     package_update.add_argument("--name")
     package_update.add_argument("--tokens", type=int)
+    package_update.add_argument("--benefit-type", choices=["tokens", "unlimited_time"])
+    package_update.add_argument("--unlimited-days", type=int)
+    package_update.add_argument("--unlimited-hours", type=int)
     package_update.add_argument("--notes")
     package_update.add_argument("--active", choices=["true", "false"])
 
@@ -62,12 +68,20 @@ async def _run(args: argparse.Namespace) -> None:
                 session,
                 RedemptionPackageCreate(
                     name=args.name,
-                    token_amount=args.tokens,
+                    token_amount=args.tokens or 0,
+                    benefit_type=args.benefit_type,
+                    unlimited_duration_days=args.unlimited_days,
+                    unlimited_duration_hours=args.unlimited_hours,
                     is_active=not args.inactive,
                     notes=args.notes,
                 ),
             )
-            print(f"created package {result.id} {result.name} tokens={result.token_amount}")
+            print(
+                f"created package {result.id} {result.name} "
+                f"benefit={result.benefit_type} tokens={result.token_amount} "
+                f"unlimited_days={result.unlimited_duration_days} "
+                f"unlimited_hours={result.unlimited_duration_hours}"
+            )
             return
 
         if args.command == "package-update":
@@ -78,17 +92,30 @@ async def _run(args: argparse.Namespace) -> None:
                 RedemptionPackageUpdate(
                     name=args.name,
                     token_amount=args.tokens,
+                    benefit_type=args.benefit_type,
+                    unlimited_duration_days=args.unlimited_days,
+                    unlimited_duration_hours=args.unlimited_hours,
                     is_active=active,
                     notes=args.notes,
                 ),
             )
-            print(f"updated package {result.id} {result.name} tokens={result.token_amount} active={result.is_active}")
+            print(
+                f"updated package {result.id} {result.name} "
+                f"benefit={result.benefit_type} tokens={result.token_amount} "
+                f"unlimited_days={result.unlimited_duration_days} "
+                f"unlimited_hours={result.unlimited_duration_hours} active={result.is_active}"
+            )
             return
 
         if args.command == "package-list":
             packages = await redemption_service.list_packages(session)
             for package in packages:
-                print(f"{package.id}\t{package.name}\t{package.token_amount}\tactive={package.is_active}")
+                print(
+                    f"{package.id}\t{package.name}\t{package.benefit_type}\t"
+                    f"tokens={package.token_amount}\tunlimited_days={package.unlimited_duration_days}\t"
+                    f"unlimited_hours={package.unlimited_duration_hours}\t"
+                    f"active={package.is_active}"
+                )
             return
 
         if args.command == "batch-generate":

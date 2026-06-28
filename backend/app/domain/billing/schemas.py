@@ -21,6 +21,9 @@ class TokenQuotaSummary(BaseModel):
     remaining_tokens: int
     used_tokens: int
     remaining_percent: float
+    is_unlimited: bool = False
+    unlimited_expires_at: datetime | None = None
+    unlimited_plan_name: str | None = None
     last_purchase_tokens: int = 0
     last_purchase_at: datetime | None = None
     updated_at: datetime | None = None

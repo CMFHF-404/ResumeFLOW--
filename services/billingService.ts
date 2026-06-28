@@ -6,6 +6,9 @@ export interface TokenQuotaSummary {
   remaining_tokens: number;
   used_tokens: number;
   remaining_percent: number;
+  is_unlimited: boolean;
+  unlimited_expires_at?: string | null;
+  unlimited_plan_name?: string | null;
   last_purchase_tokens?: number;
   last_purchase_at?: string | null;
   updated_at?: string | null;

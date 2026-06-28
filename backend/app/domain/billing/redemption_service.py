@@ -7,6 +7,7 @@ import hmac
 import io
 import os
 import secrets
+from datetime import timedelta
 from typing import Any, Iterable
 import uuid
 
@@ -24,7 +25,7 @@ from ...models import (
     RedemptionCode,
     RedemptionPackage,
 )
-from ...utils.time_utils import utc_now
+from ...utils.time_utils import utc_now_aware as utc_now
 from . import billing_service
 from .redemption_schemas import (
     RedemptionBatchCreate,
@@ -47,6 +48,9 @@ STATUS_UNUSED = "unused"
 STATUS_REDEEMED = "redeemed"
 STATUS_REVOKED = "revoked"
 SOURCE_REDEMPTION_CODE = "redemption_code"
+BENEFIT_TOKENS = "tokens"
+BENEFIT_UNLIMITED_TIME = "unlimited_time"
+SUPPORTED_BENEFIT_TYPES = {BENEFIT_TOKENS, BENEFIT_UNLIMITED_TIME}
 
 
 def normalize_redemption_code(code: str) -> str:
@@ -159,11 +163,76 @@ def _validate_token_amount(token_amount: int | None) -> None:
         )
 
 
+def _normalize_positive_duration_value(value: int | None, field_name: str) -> int:
+    normalized = int(value or 0)
+    if value is not None and normalized <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": f"invalid_{field_name}", "message": "无限套餐时长必须大于 0。"},
+        )
+    return normalized
+
+
+def _validate_unlimited_duration(
+    unlimited_duration_days: int | None,
+    unlimited_duration_hours: int | None = None,
+) -> tuple[int | None, int | None]:
+    duration_days = _normalize_positive_duration_value(unlimited_duration_days, "unlimited_duration_days")
+    duration_hours = _normalize_positive_duration_value(unlimited_duration_hours, "unlimited_duration_hours")
+    if duration_days <= 0 and duration_hours <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_unlimited_duration", "message": "无限套餐时长必须大于 0。"},
+        )
+    return duration_days or None, duration_hours or None
+
+
+def _unlimited_duration_delta(
+    unlimited_duration_days: int | None,
+    unlimited_duration_hours: int | None = None,
+) -> timedelta:
+    duration_days, duration_hours = _validate_unlimited_duration(
+        unlimited_duration_days,
+        unlimited_duration_hours,
+    )
+    return timedelta(days=duration_days or 0, hours=duration_hours or 0)
+
+
+def _validate_benefit_type(benefit_type: str | None) -> str:
+    normalized = (benefit_type or BENEFIT_TOKENS).strip()
+    if normalized not in SUPPORTED_BENEFIT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_redemption_benefit_type", "message": "卡密权益类型无效。"},
+        )
+    return normalized
+
+
+def _normalize_package_benefit(
+    benefit_type: str | None,
+    token_amount: int | None,
+    unlimited_duration_days: int | None,
+    unlimited_duration_hours: int | None = None,
+) -> tuple[str, int, int | None, int | None]:
+    normalized_benefit = _validate_benefit_type(benefit_type)
+    if normalized_benefit == BENEFIT_TOKENS:
+        _validate_token_amount(token_amount)
+        return normalized_benefit, int(token_amount or 0), None, None
+    duration_days, duration_hours = _validate_unlimited_duration(
+        unlimited_duration_days,
+        unlimited_duration_hours,
+    )
+    return normalized_benefit, 0, duration_days, duration_hours
+
+
 def _to_package_read(record: RedemptionPackage) -> RedemptionPackageRead:
     return RedemptionPackageRead(
         id=str(record.id),
         name=record.name,
         token_amount=record.token_amount,
+        benefit_type=record.benefit_type or BENEFIT_TOKENS,
+        unlimited_duration_days=record.unlimited_duration_days,
+        unlimited_duration_hours=record.unlimited_duration_hours,
         is_active=record.is_active,
         notes=record.notes or "",
         created_at=record.created_at,
@@ -179,6 +248,9 @@ def _to_batch_read(record: RedemptionBatch) -> RedemptionBatchRead:
         channel=record.channel or "",
         package_name=record.package_name,
         token_amount=record.token_amount,
+        benefit_type=record.benefit_type or BENEFIT_TOKENS,
+        unlimited_duration_days=record.unlimited_duration_days,
+        unlimited_duration_hours=record.unlimited_duration_hours,
         code_count=record.code_count,
         status=record.status,
         created_by_user_id=record.created_by_user_id,
@@ -196,6 +268,9 @@ def _to_code_read(record: RedemptionCode) -> RedemptionCodeRead:
         code_prefix=record.code_prefix,
         token_amount=record.token_amount,
         package_name=record.package_name,
+        benefit_type=record.benefit_type or BENEFIT_TOKENS,
+        unlimited_duration_days=record.unlimited_duration_days,
+        unlimited_duration_hours=record.unlimited_duration_hours,
         status=record.status,
         redeemed_by_user_id=record.redeemed_by_user_id,
         redeemed_at=record.redeemed_at,
@@ -215,11 +290,19 @@ async def create_package(
     session: AsyncSession,
     payload: RedemptionPackageCreate,
 ) -> RedemptionPackageRead:
-    _validate_token_amount(payload.token_amount)
+    benefit_type, token_amount, unlimited_duration_days, unlimited_duration_hours = _normalize_package_benefit(
+        payload.benefit_type,
+        payload.token_amount,
+        payload.unlimited_duration_days,
+        payload.unlimited_duration_hours,
+    )
     now = utc_now()
     record = RedemptionPackage(
         name=payload.name.strip(),
-        token_amount=int(payload.token_amount),
+        token_amount=token_amount,
+        benefit_type=benefit_type,
+        unlimited_duration_days=unlimited_duration_days,
+        unlimited_duration_hours=unlimited_duration_hours,
         is_active=payload.is_active,
         notes=(payload.notes or "").strip(),
         created_at=now,
@@ -248,12 +331,37 @@ async def update_package(
     package_id: str,
     payload: RedemptionPackageUpdate,
 ) -> RedemptionPackageRead:
-    _validate_token_amount(payload.token_amount)
+    if (payload.benefit_type or BENEFIT_TOKENS) == BENEFIT_TOKENS and payload.token_amount is not None:
+        _validate_token_amount(payload.token_amount)
+    if payload.benefit_type == BENEFIT_UNLIMITED_TIME and (
+        payload.unlimited_duration_days is not None or payload.unlimited_duration_hours is not None
+    ):
+        _validate_unlimited_duration(payload.unlimited_duration_days, payload.unlimited_duration_hours)
     record = await _get_package(session, package_id)
+    benefit_type = _validate_benefit_type(payload.benefit_type or record.benefit_type)
+    token_amount = payload.token_amount if payload.token_amount is not None else record.token_amount
+    duration_fields_updated = (
+        payload.unlimited_duration_days is not None
+        or payload.unlimited_duration_hours is not None
+    )
+    if benefit_type == BENEFIT_UNLIMITED_TIME and duration_fields_updated:
+        unlimited_duration_days = payload.unlimited_duration_days
+        unlimited_duration_hours = payload.unlimited_duration_hours
+    else:
+        unlimited_duration_days = record.unlimited_duration_days
+        unlimited_duration_hours = record.unlimited_duration_hours
+    benefit_type, token_amount, unlimited_duration_days, unlimited_duration_hours = _normalize_package_benefit(
+        benefit_type,
+        token_amount,
+        unlimited_duration_days,
+        unlimited_duration_hours,
+    )
     if payload.name is not None:
         record.name = payload.name.strip()
-    if payload.token_amount is not None:
-        record.token_amount = int(payload.token_amount)
+    record.token_amount = token_amount
+    record.benefit_type = benefit_type
+    record.unlimited_duration_days = unlimited_duration_days
+    record.unlimited_duration_hours = unlimited_duration_hours
     if payload.is_active is not None:
         record.is_active = payload.is_active
     if payload.notes is not None:
@@ -290,6 +398,9 @@ async def create_redemption_batch(
         channel=(payload.channel or "").strip(),
         package_name=package.name,
         token_amount=package.token_amount,
+        benefit_type=package.benefit_type or BENEFIT_TOKENS,
+        unlimited_duration_days=package.unlimited_duration_days,
+        unlimited_duration_hours=package.unlimited_duration_hours,
         code_count=count,
         created_by_user_id=created_by,
         created_at=now,
@@ -316,6 +427,9 @@ async def create_redemption_batch(
                 code_prefix=_code_prefix(plaintext),
                 token_amount=package.token_amount,
                 package_name=package.name,
+                benefit_type=package.benefit_type or BENEFIT_TOKENS,
+                unlimited_duration_days=package.unlimited_duration_days,
+                unlimited_duration_hours=package.unlimited_duration_hours,
                 status=STATUS_UNUSED,
                 created_at=now,
                 updated_at=now,
@@ -362,16 +476,32 @@ async def redeem_code(
             status_code=409,
             detail={"code": "redemption_code_unavailable", "message": "卡密已使用或已报废。"},
         )
-    _validate_token_amount(record.token_amount)
+    benefit_type = _validate_benefit_type(record.benefit_type)
+    if benefit_type == BENEFIT_TOKENS:
+        _validate_token_amount(record.token_amount)
+    else:
+        _validate_unlimited_duration(record.unlimited_duration_days, record.unlimited_duration_hours)
 
     wallet = await billing_service._get_wallet(session, user_id, create=True, for_update=True)  # noqa: SLF001
     assert wallet is not None
     now = utc_now()
     before_remaining = max(int(wallet.remaining_tokens or 0), 0)
     before_limit = max(int(wallet.token_limit or 0), 0)
-    token_amount = int(record.token_amount)
+    token_amount = int(record.token_amount) if benefit_type == BENEFIT_TOKENS else 0
     after_remaining = before_remaining + token_amount
     after_limit = before_limit + token_amount
+    previous_unlimited_expires_at = wallet.unlimited_tokens_expires_at
+    next_unlimited_expires_at = previous_unlimited_expires_at
+    if benefit_type == BENEFIT_UNLIMITED_TIME:
+        extension_base = (
+            previous_unlimited_expires_at
+            if billing_service._is_unlimited_active(wallet, now)  # noqa: SLF001
+            else now
+        )
+        next_unlimited_expires_at = extension_base + _unlimited_duration_delta(
+            record.unlimited_duration_days,
+            record.unlimited_duration_hours,
+        )
 
     purchase = AITokenPurchaseEvent(
         user_id=user_id,
@@ -388,6 +518,15 @@ async def redeem_code(
         metadata_json={
             "batch_id": str(record.batch_id) if record.batch_id else None,
             "package_id": str(record.package_id) if record.package_id else None,
+            "benefit_type": benefit_type,
+            "unlimited_duration_days": record.unlimited_duration_days,
+            "unlimited_duration_hours": record.unlimited_duration_hours,
+            "previous_unlimited_expires_at": previous_unlimited_expires_at.isoformat()
+            if previous_unlimited_expires_at
+            else None,
+            "next_unlimited_expires_at": next_unlimited_expires_at.isoformat()
+            if next_unlimited_expires_at
+            else None,
         },
         created_at=now,
     )
@@ -395,6 +534,9 @@ async def redeem_code(
 
     wallet.token_limit = after_limit
     wallet.remaining_tokens = after_remaining
+    if benefit_type == BENEFIT_UNLIMITED_TIME:
+        wallet.unlimited_tokens_expires_at = next_unlimited_expires_at
+        wallet.unlimited_tokens_plan_name = record.package_name
     wallet.last_purchase_id = purchase.id
     wallet.last_purchase_tokens = token_amount
     wallet.last_purchase_at = now
@@ -496,7 +638,21 @@ async def export_batch_csv(session: AsyncSession, batch_id: str) -> str:
     codes = await _list_codes_for_batch(session, batch.id)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "code", "status", "package_name", "tokens", "batch", "channel", "redeemed_by", "redeemed_at", "revoked_at"])
+    writer.writerow([
+        "id",
+        "code",
+        "status",
+        "package_name",
+        "benefit_type",
+        "tokens",
+        "unlimited_duration_days",
+        "unlimited_duration_hours",
+        "batch",
+        "channel",
+        "redeemed_by",
+        "redeemed_at",
+        "revoked_at",
+    ])
     for record in codes:
         writer.writerow(
             [
@@ -504,7 +660,10 @@ async def export_batch_csv(session: AsyncSession, batch_id: str) -> str:
                 decrypt_redemption_code(record.code_ciphertext),
                 record.status,
                 record.package_name,
+                record.benefit_type or BENEFIT_TOKENS,
                 record.token_amount,
+                record.unlimited_duration_days or "",
+                record.unlimited_duration_hours or "",
                 batch.name,
                 batch.channel,
                 record.redeemed_by_user_id or "",
@@ -548,7 +707,10 @@ def decrypted_export_rows(batch: RedemptionBatch, codes: Iterable[RedemptionCode
             "code": decrypt_redemption_code(record.code_ciphertext),
             "status": record.status,
             "package_name": record.package_name,
+            "benefit_type": record.benefit_type or BENEFIT_TOKENS,
             "tokens": record.token_amount,
+            "unlimited_duration_days": record.unlimited_duration_days,
+            "unlimited_duration_hours": record.unlimited_duration_hours,
             "batch": batch.name,
             "channel": batch.channel,
         }

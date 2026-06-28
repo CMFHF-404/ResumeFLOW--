@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import timedelta
 from unittest.mock import patch
 
 
@@ -81,6 +82,16 @@ class _FakeSessionFactory:
         return _FakeSessionContext(self.session)
 
 
+class BillingTimestampMappingTests(unittest.TestCase):
+    def test_billing_models_bind_timestamptz_columns_as_timezone_aware(self) -> None:
+        self.assertTrue(AITokenWallet.__table__.c.unlimited_tokens_expires_at.type.timezone)
+        self.assertTrue(AITokenWallet.__table__.c.last_purchase_at.type.timezone)
+        self.assertTrue(AITokenWallet.__table__.c.created_at.type.timezone)
+        self.assertTrue(AITokenWallet.__table__.c.updated_at.type.timezone)
+        self.assertTrue(AITokenUsageEvent.__table__.c.created_at.type.timezone)
+        self.assertTrue(AITokenPurchaseEvent.__table__.c.created_at.type.timezone)
+
+
 class BillingPurchaseTests(unittest.IsolatedAsyncioTestCase):
     def test_purchase_options_define_three_placeholder_packages(self) -> None:
         options = billing_service.get_purchase_options()
@@ -145,6 +156,23 @@ class BillingQuotaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 402)
         self.assertEqual(raised.exception.detail["code"], "ai_token_quota_exhausted")
 
+    async def test_unlimited_active_balance_allows_ai_calls_with_zero_remaining_tokens(self) -> None:
+        now = billing_service.utc_now()
+        wallet = AITokenWallet(
+            user_id="user-1",
+            token_limit=100,
+            remaining_tokens=0,
+            used_tokens=100,
+            unlimited_tokens_expires_at=now + timedelta(days=7),
+            unlimited_tokens_plan_name="月费无限套餐",
+        )
+        session = _FakeSession([wallet])
+
+        summary = await billing_service.ensure_quota_available(session, "user-1")
+
+        self.assertTrue(summary.is_unlimited)
+        self.assertEqual(summary.unlimited_plan_name, "月费无限套餐")
+
     async def test_usage_event_deducts_real_total_tokens(self) -> None:
         wallet = AITokenWallet(user_id="user-1", token_limit=1000, remaining_tokens=800, used_tokens=200)
         session = _FakeSession([wallet])
@@ -170,6 +198,69 @@ class BillingQuotaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(usage_events), 1)
         self.assertEqual(usage_events[0].total_tokens, 150)
         self.assertEqual(usage_events[0].status, "success")
+
+    async def test_usage_event_records_but_does_not_deduct_during_unlimited_plan(self) -> None:
+        now = billing_service.utc_now()
+        wallet = AITokenWallet(
+            user_id="user-1",
+            token_limit=1000,
+            remaining_tokens=25,
+            used_tokens=975,
+            unlimited_tokens_expires_at=now + timedelta(days=7),
+            unlimited_tokens_plan_name="月费无限套餐",
+        )
+        session = _FakeSession([wallet])
+
+        summary = await billing_service.record_usage_event(
+            session,
+            user_id="user-1",
+            entrypoint="jd_analysis",
+            request_label="jd_text_analysis",
+            provider="dashscope",
+            model="qwen3.7-plus",
+            status="success",
+            prompt_tokens=120,
+            completion_tokens=30,
+            total_tokens=150,
+            metadata={"route": "/api/analyze-jd/stream"},
+        )
+
+        self.assertEqual(wallet.remaining_tokens, 25)
+        self.assertEqual(wallet.used_tokens, 975)
+        self.assertTrue(summary.is_unlimited)
+        usage_events = [item for item in session.added if isinstance(item, AITokenUsageEvent)]
+        self.assertEqual(len(usage_events), 1)
+        self.assertEqual(usage_events[0].total_tokens, 150)
+        self.assertEqual(usage_events[0].metadata_json["billing_mode"], "unlimited_time")
+
+    async def test_expired_unlimited_plan_deducts_tokens_normally(self) -> None:
+        now = billing_service.utc_now()
+        wallet = AITokenWallet(
+            user_id="user-1",
+            token_limit=1000,
+            remaining_tokens=800,
+            used_tokens=200,
+            unlimited_tokens_expires_at=now - timedelta(days=1),
+            unlimited_tokens_plan_name="月费无限套餐",
+        )
+        session = _FakeSession([wallet])
+
+        summary = await billing_service.record_usage_event(
+            session,
+            user_id="user-1",
+            entrypoint="jd_analysis",
+            request_label="jd_text_analysis",
+            provider="dashscope",
+            model="qwen3.7-plus",
+            status="success",
+            prompt_tokens=120,
+            completion_tokens=30,
+            total_tokens=150,
+        )
+
+        self.assertEqual(wallet.remaining_tokens, 650)
+        self.assertEqual(wallet.used_tokens, 350)
+        self.assertFalse(summary.is_unlimited)
 
     async def test_usage_event_locks_wallet_row_before_deducting(self) -> None:
         wallet = AITokenWallet(user_id="user-1", token_limit=1000, remaining_tokens=800, used_tokens=200)
@@ -232,6 +323,8 @@ class BillingSchemaTests(unittest.TestCase):
         self.assertEqual(AITokenWallet.__tablename__, "ai_token_wallets")
         self.assertEqual(AITokenUsageEvent.__tablename__, "ai_token_usage_events")
         self.assertEqual(AITokenPurchaseEvent.__tablename__, "ai_token_purchase_events")
+        self.assertTrue(hasattr(AITokenWallet, "unlimited_tokens_expires_at"))
+        self.assertTrue(hasattr(AITokenWallet, "unlimited_tokens_plan_name"))
 
     def test_database_startup_ensures_billing_tables(self) -> None:
         with open("app/database.py", "r", encoding="utf-8") as handle:
@@ -247,6 +340,8 @@ class BillingSchemaTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_token_wallets", schema_source)
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_token_usage_events", schema_source)
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_token_purchase_events", schema_source)
+        self.assertIn("unlimited_tokens_expires_at TIMESTAMPTZ", schema_source)
+        self.assertIn("unlimited_tokens_plan_name TEXT", schema_source)
 
 
 if __name__ == "__main__":
