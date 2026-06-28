@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Check,
   GripVertical,
@@ -34,7 +34,8 @@ import {
   formatOptionNumberLabel,
 } from '../layoutUtils';
 import type { ResumeTemplatePresetMap } from '../../resumeTemplateStorage';
-import EditorSidebar, { type EditorSidebarProps } from './EditorSidebar';
+import EditorSidebar, { EditingSuggestionNav, type EditorSidebarProps } from './EditorSidebar';
+import ExperienceTab from './ExperienceTab';
 import type { ResumeEditorLayoutAdjustPanelProps } from './ResumeEditorLayoutAdjustPanel';
 import { TemplateThumbnail } from './TemplateSelectorModal';
 
@@ -88,6 +89,9 @@ const MARKER_OPTIONS: Array<{
   { value: 'ordered', label: '序号' },
   { value: 'none', label: '无符号' },
 ];
+
+const SIDEBAR_SLIDE_DURATION_MS = 300;
+const SIDEBAR_SLIDE_EASING_CLASS = 'ease-[cubic-bezier(0.25,1,0.5,1)]';
 
 const SliderField: React.FC<{
   label: string;
@@ -462,66 +466,131 @@ const ResumeFactorySidebar: React.FC<ResumeFactorySidebarProps> = ({
   onTabChange,
   editorSidebarProps,
   ...rest
-}) => (
-  <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-border-light bg-gray-50/80 dark:border-border-dark dark:bg-surface-dark">
-    <div className="shrink-0 border-b border-border-light bg-white px-3 py-3 dark:border-border-dark dark:bg-surface-dark">
-      <div className="relative grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900">
+}) => {
+  const fullscreenEditScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const isExperienceEditingFullscreen = activeTab === 'edit'
+    && editorSidebarProps.sidebarTab === 'experience'
+    && Boolean(editorSidebarProps.experienceTabProps.experience.editingExpId);
+  const [shouldRenderExperienceEditLayer, setShouldRenderExperienceEditLayer] = useState(isExperienceEditingFullscreen);
+  const [isExperienceEditLayerVisible, setIsExperienceEditLayerVisible] = useState(isExperienceEditingFullscreen);
+
+  useEffect(() => {
+    if (isExperienceEditingFullscreen) {
+      setShouldRenderExperienceEditLayer(true);
+      const frameId = window.requestAnimationFrame(() => setIsExperienceEditLayerVisible(true));
+      return () => window.cancelAnimationFrame(frameId);
+    }
+    setIsExperienceEditLayerVisible(false);
+    if (!shouldRenderExperienceEditLayer) {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => setShouldRenderExperienceEditLayer(false), SIDEBAR_SLIDE_DURATION_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [isExperienceEditingFullscreen, shouldRenderExperienceEditLayer]);
+
+  return (
+    <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-border-light bg-gray-50/80 dark:border-border-dark dark:bg-surface-dark">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <div
-          className="absolute bottom-1 top-1 rounded-lg bg-white shadow-xs transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] dark:bg-gray-800"
-          style={{
-            width: 'calc(33.333% - 4px)',
-            left: '4px',
-            transform: activeTab === 'templates'
-              ? 'translate3d(0, 0, 0)'
-              : activeTab === 'edit'
-                ? 'translate3d(calc(100% + 4px), 0, 0)'
-                : 'translate3d(calc(200% + 8px), 0, 0)',
-          }}
-        />
-        {FACTORY_TABS.map(({ key, label, Icon }) => {
-          const isActive = activeTab === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onTabChange(key)}
-              className={[
-                'relative z-10 inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-colors duration-200',
-                isActive
-                  ? 'text-gray-900 dark:text-white'
-                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100',
-              ].join(' ')}
+          aria-hidden={isExperienceEditingFullscreen}
+          inert={isExperienceEditingFullscreen ? true : undefined}
+          className={[
+            'absolute inset-0 flex min-h-0 flex-col transition-[transform,opacity] duration-300 motion-reduce:transition-none',
+            SIDEBAR_SLIDE_EASING_CLASS,
+            isExperienceEditLayerVisible
+              ? '-translate-x-full opacity-0 pointer-events-none'
+              : 'translate-x-0 opacity-100',
+          ].join(' ')}
+        >
+          <div className="shrink-0 border-b border-border-light bg-white px-3 py-3 dark:border-border-dark dark:bg-surface-dark">
+            <div className="relative grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900">
+              <div
+                className={`absolute bottom-1 top-1 rounded-lg bg-white shadow-xs transition-transform duration-300 motion-reduce:transition-none dark:bg-gray-800 ${SIDEBAR_SLIDE_EASING_CLASS}`}
+                style={{
+                  width: 'calc(33.333% - 4px)',
+                  left: '4px',
+                  transform: activeTab === 'templates'
+                    ? 'translate3d(0, 0, 0)'
+                    : activeTab === 'edit'
+                      ? 'translate3d(calc(100% + 4px), 0, 0)'
+                      : 'translate3d(calc(200% + 8px), 0, 0)',
+                }}
+              />
+              {FACTORY_TABS.map(({ key, label, Icon }) => {
+                const isActive = activeTab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onTabChange(key)}
+                    className={[
+                      'relative z-10 inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-colors duration-200',
+                      isActive
+                        ? 'text-gray-900 dark:text-white'
+                        : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100',
+                    ].join(' ')}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden relative">
+            <div
+              className={`flex h-full w-[300%] transition-transform duration-300 motion-reduce:transition-none ${SIDEBAR_SLIDE_EASING_CLASS}`}
+              style={{
+                transform: activeTab === 'templates'
+                  ? 'translate3d(0, 0, 0)'
+                  : activeTab === 'edit'
+                    ? 'translate3d(-33.3333%, 0, 0)'
+                    : 'translate3d(-66.6666%, 0, 0)',
+              }}
             >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })}
+              <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
+                <TemplateSelectionPanel {...rest} />
+              </div>
+              <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
+                <EditorSidebar {...editorSidebarProps} />
+              </div>
+              <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
+                <LayoutPanel {...rest} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {shouldRenderExperienceEditLayer ? (
+          <div
+            aria-hidden={!isExperienceEditingFullscreen}
+            inert={!isExperienceEditingFullscreen ? true : undefined}
+            className={[
+              'absolute inset-0 flex min-h-0 flex-col bg-gray-50/80 transition-[transform,opacity] duration-300 motion-reduce:transition-none dark:bg-surface-dark',
+              SIDEBAR_SLIDE_EASING_CLASS,
+              isExperienceEditLayerVisible
+                ? 'translate-x-0 opacity-100'
+                : 'translate-x-full opacity-0 pointer-events-none',
+            ].join(' ')}
+          >
+            <div className="shrink-0">
+              <EditingSuggestionNav {...editorSidebarProps.editingSuggestion} />
+            </div>
+            <div
+              ref={fullscreenEditScrollRef}
+              className="flex-1 space-y-4 overflow-y-auto bg-gray-50/30 p-4 dark:bg-black/20 md:p-5"
+            >
+              <ExperienceTab
+                {...editorSidebarProps.experienceTabProps}
+                layoutMode="inline"
+                scrollContainerRef={fullscreenEditScrollRef}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
-    </div>
-    <div className="min-h-0 flex-1 overflow-hidden relative">
-      <div
-        className="flex h-full w-[300%] transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]"
-        style={{
-          transform: activeTab === 'templates'
-            ? 'translate3d(0, 0, 0)'
-            : activeTab === 'edit'
-              ? 'translate3d(-33.3333%, 0, 0)'
-              : 'translate3d(-66.6666%, 0, 0)',
-        }}
-      >
-        <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
-          <TemplateSelectionPanel {...rest} />
-        </div>
-        <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
-          <EditorSidebar {...editorSidebarProps} />
-        </div>
-        <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
-          <LayoutPanel {...rest} />
-        </div>
-      </div>
-    </div>
-  </aside>
-);
+    </aside>
+  );
+};
 
 export default ResumeFactorySidebar;

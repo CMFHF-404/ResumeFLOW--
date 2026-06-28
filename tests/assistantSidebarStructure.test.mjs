@@ -38,8 +38,11 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(assistant, /<Maximize2/);
   assert.doesNotMatch(assistant, /你的AI求职助手/);
   assert.doesNotMatch(assistant, /<Bot className="h-5 w-5" \/>/);
-  assert.doesNotMatch(assistant, /shrink-0 border-b border-slate-200\/90 bg-white\/95 px-4 py-3 backdrop-blur/);
-  assert.match(assistant, /pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1/);
+  assert.match(assistant, /const assistantSidebarTitle = selectedSession\?\.title\?\.trim\(\) \|\| 'AI助手';/);
+  assert.match(assistant, /shrink-0 border-b border-slate-200\/90 bg-white\/95 px-4 py-3 backdrop-blur/);
+  assert.match(assistant, /title=\{assistantSidebarTitle\}/);
+  assert.match(assistant, /\{assistantSidebarTitle\}/);
+  assert.doesNotMatch(assistant, /pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1/);
   assert.match(assistant, /pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400\/50 dark:text-slate-400 dark:hover:text-white/);
   assert.match(assistant, /onOpenAnalysisDetails \? \(/);
   assert.match(assistant, /onClick=\{onOpenAnalysisDetails\}/);

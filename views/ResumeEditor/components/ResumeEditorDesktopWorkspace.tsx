@@ -23,7 +23,15 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
     isAssistantSidebarOpen = false,
 }) => (
     <div className="flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
-        <div className="hidden md:flex md:h-full md:min-h-0 md:w-[430px] md:shrink-0 md:overflow-hidden xl:w-[460px]">
+        <div
+            className={[
+                'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
+                'transition-[width] duration-300 ease-in-out',
+                isAssistantSidebarOpen
+                    ? 'md:w-[430px] xl:w-[460px]'
+                    : 'md:w-[562.5px] xl:w-[607.5px]',
+            ].join(' ')}
+        >
             <ResumeFactorySidebar {...factorySidebarProps} />
         </div>
         <ResumeEditorPreviewStage

@@ -41,7 +41,7 @@ const resolveExperienceSuggestion = (
     return '暂无润色建议';
 };
 
-const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
+export const EditingSuggestionNav: React.FC<EditingSuggestionProps> = ({
     editingItem,
     staleExperienceIds,
     toolbar,

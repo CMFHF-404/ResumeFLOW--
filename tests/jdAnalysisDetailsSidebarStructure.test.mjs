@@ -16,6 +16,12 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(panel, /onClick=\{handleOpenDetails\}/);
   assert.doesNotMatch(panel, /onClick=\{\(\) => setIsDetailsModalOpen\(true\)\}/);
   assert.match(panel, /aria-labelledby="jd-analysis-details-sidebar-title"/);
+  assert.match(panel, /onOpenAssistantSidebar\?: \(\) => void/);
+  assert.match(panel, /const handleOpenAssistantSidebar = useCallback\(\(\) => \{/);
+  assert.match(panel, /resetStrategyCopyState\(\);[\s\S]*onOpenAssistantSidebar\?\.\(\);/);
+  assert.match(panel, /onOpenAssistantSidebar \? \(/);
+  assert.match(panel, /aria-label="返回 AI 助手"/);
+  assert.match(panel, /<Sparkles className="h-4 w-4" \/>/);
 
   assert.match(editor, /import \{ JDAnalysisDetailsSidebar \} from '\.\/components\/JDAnalysisPanel'/);
   assert.match(editor, /const \[isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen\] = useState\(false\)/);
@@ -27,9 +33,23 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(editor, /const isRightSidebarOpen = isAssistantSidebarOpen \|\| isJDAnalysisDetailsSidebarOpen/);
   assert.match(editor, /const rightSidebarContent = isJDAnalysisDetailsSidebarOpen/);
   assert.match(editor, /<JDAnalysisDetailsSidebar/);
+  assert.match(editor, /onOpenAssistantSidebar=\{handleToggleResumeAssistantSidebar\}/);
   assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /assistantSidebar=\{rightSidebarContent\}/);
 
   assert.match(workspace, /assistantSidebar\?: React\.ReactNode/);
   assert.match(workspace, /isAssistantSidebarOpen\?: boolean/);
+});
+
+test('JD analysis panel uses supported Tailwind CDN utilities', () => {
+  const panel = read('views/ResumeEditor/components/JDAnalysisPanel.tsx');
+  const unsupportedUtilityClasses = [
+    'text-red-650',
+    'from-amber-450',
+  ];
+
+  for (const utilityClass of unsupportedUtilityClasses) {
+    const pattern = new RegExp(`\\b${utilityClass}\\b`);
+    assert.doesNotMatch(panel, pattern, `${utilityClass} should not be used in JDAnalysisPanel`);
+  }
 });

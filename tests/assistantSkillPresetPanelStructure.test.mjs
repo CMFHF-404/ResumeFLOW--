@@ -56,7 +56,7 @@ test('AIAssistant binds composer quick buttons to assistant skill presets', () =
   assert.match(assistant, /selectedResumeModuleIds=\{selectedResumeModuleIds\}/);
   assert.match(assistant, /onSelectedResumeModuleIdsChange=\{setSelectedResumeModuleIds\}/);
   assert.match(assistant, /ASSISTANT_EMPTY_GREETING = '嗨，我在这里。把零散经历、目标 JD 或想法丢给我，我们一起整理成能投递的表达。'/);
-  assert.match(assistant, /const shouldShowEmptyAssistantGreeting = !isLoadingDetail && messages\.length === 0 && !activeThought;/);
+  assert.match(assistant, /const shouldShowEmptyAssistantGreeting = !isSidebarSurface && !isLoadingDetail && messages\.length === 0 && !activeThought;/);
   assert.match(assistant, /shouldShowEmptyAssistantGreeting \? \(/);
   assert.match(assistant, /<p className="text-base font-semibold text-slate-700 dark:text-slate-100">\s*\{ASSISTANT_EMPTY_GREETING\}\s*<\/p>/);
   assert.doesNotMatch(assistant, /ExperiencePicker/);

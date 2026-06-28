@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+    AlertTriangle,
+    Award,
     Check,
     ChevronDown,
     ChevronUp,
+    Compass,
     Copy,
     MessageSquare,
     RefreshCw,
     Search,
+    Sparkles,
     Target,
     Wand2,
     X,
@@ -42,12 +46,12 @@ const Pill: React.FC<{ children: React.ReactNode; tone?: 'emerald' | 'slate' | '
     tone = 'slate',
 }) => {
     const toneClass = tone === 'emerald'
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-200'
+        ? 'border-emerald-100/80 bg-emerald-50/80 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300 shadow-[0_1px_2px_rgba(16,185,129,0.05)]'
         : tone === 'amber'
-            ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200'
-            : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900/70 dark:text-gray-300';
+            ? 'border-amber-100/80 bg-amber-50/80 text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-300 shadow-[0_1px_2px_rgba(245,158,11,0.05)]'
+            : 'border-gray-200/80 bg-gray-50/60 text-gray-600 dark:border-gray-800/60 dark:bg-gray-900/40 dark:text-gray-400 shadow-[0_1px_2px_rgba(0,0,0,0.02)]';
     return (
-        <span className={`inline-flex max-w-full items-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight ${toneClass}`}>
+        <span className={`inline-flex max-w-full items-center rounded-lg border px-2 py-1 text-[11px] font-medium leading-tight backdrop-blur-[1px] transition-all duration-200 hover:scale-[1.03] hover:shadow-sm select-none cursor-default ${toneClass}`}>
             {children}
         </span>
     );
@@ -82,17 +86,20 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
     const hasStrategy = recommendedTitles.length > 0 || searchQueries.length > 0 || avoidTitles.length > 0;
 
     return (
-        <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20">
-            <div className="mb-2 flex items-center justify-between gap-3">
-                <h4 className="text-[12px] font-bold text-indigo-900 dark:text-indigo-100">
-                    可同时投递的岗位方向
-                </h4>
-                <div className="flex shrink-0 items-center gap-1">
+        <div className="rounded-xl border border-indigo-100/50 bg-gradient-to-br from-indigo-50/50 via-violet-50/15 to-transparent p-4 shadow-[0_8px_30px_rgba(99,102,241,0.03)] dark:border-indigo-900/30 dark:from-indigo-950/20 dark:via-violet-950/5 dark:to-transparent">
+            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5 text-indigo-900 dark:text-indigo-100">
+                    <Compass className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <h4 className="text-[12px] font-bold">
+                        可同时投递的岗位方向
+                    </h4>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
                     <button
                         type="button"
                         onClick={() => onCopyText(queryText, 'queries')}
                         disabled={!queryText}
-                        className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[10.5px] font-semibold text-indigo-700 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-200 dark:hover:bg-indigo-950/40"
+                        className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[10.5px] font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50/70 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-200 dark:hover:bg-indigo-950/30"
                     >
                         <Copy className="h-3 w-3" />
                         复制搜索词
@@ -101,7 +108,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                         type="button"
                         onClick={() => onCopyText(buildAgentSearchPrompt(analysisResult, jdText), 'agent')}
                         disabled={!hasStrategy}
-                        className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-[10.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10.5px] font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <Search className="h-3 w-3" />
                         让 Agent 搜同类岗位
@@ -109,7 +116,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 </div>
             </div>
             {copyStatus !== 'idle' ? (
-                <p className={`mb-2 inline-flex items-center gap-1 text-[10.5px] font-medium ${copyStatus === 'copied' ? 'text-indigo-700 dark:text-indigo-200' : 'text-red-600 dark:text-red-300'}`}>
+                <p className={`mb-3 inline-flex items-center gap-1 text-[10.5px] font-medium ${copyStatus === 'copied' ? 'text-indigo-700 dark:text-indigo-200' : 'text-red-600 dark:text-red-400'}`}>
                     {copyStatus === 'copied' ? <Check className="h-3 w-3" /> : null}
                     {copyStatus === 'copied' ? '已复制，可交给 Agent 或岗位网站搜索框使用' : '复制失败，请从下方手动复制'}
                 </p>
@@ -118,14 +125,14 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 <textarea
                     readOnly
                     value={manualCopyText}
-                    className="mb-3 h-28 w-full resize-none rounded-md border border-red-200 bg-white/90 p-2 text-[11px] leading-relaxed text-gray-800 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100 dark:border-red-900/60 dark:bg-gray-950 dark:text-gray-100 dark:focus:ring-red-950/40"
+                    className="mb-3 h-28 w-full resize-none rounded-lg border border-red-200 bg-white/90 p-2.5 text-[11px] leading-relaxed text-gray-800 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100 dark:border-red-900/60 dark:bg-gray-950 dark:text-gray-100 dark:focus:ring-red-950/40"
                     aria-label="手动复制同类岗位搜索内容"
                     onFocus={(event) => event.currentTarget.select()}
                 />
             ) : null}
-            <div className="space-y-3">
+            <div className="space-y-3.5">
                 <div className="space-y-1.5">
-                    <p className="text-[10.5px] font-semibold uppercase text-indigo-500 dark:text-indigo-300">
+                    <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                         强推荐同投
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -145,19 +152,19 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 </div>
                 {searchQueries.length > 0 ? (
                     <div className="space-y-1.5">
-                        <p className="text-[10.5px] font-semibold uppercase text-indigo-500 dark:text-indigo-300">
+                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                             搜索词
                         </p>
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                             {searchQueries.slice(0, 4).map((item) => (
                                 <div
                                     key={`${item.label}-${item.query}`}
-                                    className="rounded-md border border-indigo-100 bg-white/80 px-2 py-1.5 text-[11px] leading-relaxed text-indigo-900 dark:border-indigo-900/60 dark:bg-gray-900/70 dark:text-indigo-100"
+                                    className="group rounded-r-lg border-l-2 border-indigo-500 bg-white/60 p-2.5 text-[11px] leading-relaxed text-indigo-950 shadow-[0_1px_2px_rgba(99,102,241,0.02)] transition-all duration-200 hover:bg-white dark:border-indigo-900/30 dark:bg-gray-900/50 dark:text-indigo-100 dark:hover:bg-gray-900"
                                 >
                                     <span className="font-semibold">{item.label}：</span>
                                     <span>{item.query}</span>
                                     {item.excludeKeywords?.length ? (
-                                        <span className="text-indigo-700/70 dark:text-indigo-300/70">
+                                        <span className="text-indigo-700/70 dark:text-indigo-300/75">
                                             {' '}排除：{item.excludeKeywords.join('、')}
                                         </span>
                                     ) : null}
@@ -168,7 +175,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 ) : null}
                 {avoidTitles.length > 0 ? (
                     <div className="space-y-1.5">
-                        <p className="text-[10.5px] font-semibold uppercase text-amber-600 dark:text-amber-300">
+                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                             不建议混投
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -220,19 +227,24 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
     const missingKeywords = getArray(analysisResult.missingKeywords);
 
     return (
-        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-800/30 dark:bg-emerald-900/10">
-            <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="rounded-xl border border-emerald-100/50 bg-gradient-to-br from-emerald-50/50 via-teal-50/15 to-transparent p-4 shadow-[0_8px_30px_rgba(16,185,129,0.03)] dark:border-emerald-900/30 dark:from-emerald-950/20 dark:via-teal-950/5 dark:to-transparent">
+            <div className="mb-3.5 flex items-center justify-between gap-3">
                 <MatchBadge
                     score={analysisResult.matchPercentage ?? 0}
                     trend={analysisResult.matchTrend}
+                    variant="solid"
+                    className="border border-emerald-200/40 shadow-sm transition-all duration-300 hover:scale-105"
                 />
-                <span className="text-[11.5px] font-semibold text-emerald-700 dark:text-emerald-300">
-                    JD 解读
-                </span>
+                <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                    <Target className="h-3.5 w-3.5" />
+                    <span className="text-[12px] font-bold tracking-wide uppercase">
+                        JD 解读
+                    </span>
+                </div>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4">
                 <div className="space-y-1.5">
-                    <p className="text-[10.5px] font-semibold uppercase text-emerald-600/80 dark:text-emerald-300/80">
+                    <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                         岗位画像
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -245,29 +257,36 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                         )}
                     </div>
                 </div>
-                <div className="space-y-1">
-                    <p className="text-[10.5px] font-semibold uppercase text-emerald-600/80 dark:text-emerald-300/80">
+                <div className="space-y-1.5">
+                    <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                         JD 真实诉求
                     </p>
-                    <p className="text-[11.5px] leading-relaxed text-emerald-900 dark:text-emerald-200">
+                    <div className="relative rounded-r-lg border-l-2 border-emerald-500/60 bg-emerald-50/20 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-900/90 dark:bg-emerald-950/10 dark:text-emerald-200/90">
                         {getText(interpretation?.roleIntent) || analysisResult.summary || '暂无解读，重新分析后会补齐岗位真实诉求。'}
-                    </p>
+                    </div>
                 </div>
                 {(coreResponsibilities.length > 0 || mustHave.length > 0) ? (
-                    <div className="space-y-1.5">
-                        <p className="text-[10.5px] font-semibold uppercase text-emerald-600/80 dark:text-emerald-300/80">
+                    <div className="space-y-2">
+                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                             核心要求
                         </p>
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                             {[...coreResponsibilities.slice(0, 3), ...mustHave.slice(0, 3)]
                                 .slice(0, 5)
                                 .map((item) => (
                                     <div
                                         key={`${item.label}-${item.evidence}`}
-                                        className="rounded-md border border-emerald-100 bg-white/80 px-2 py-1.5 text-[11px] leading-relaxed text-emerald-900 dark:border-emerald-900/50 dark:bg-gray-900/60 dark:text-emerald-100"
+                                        className="group flex flex-col rounded-lg border border-emerald-100/50 bg-white/60 p-2.5 text-[11.5px] leading-relaxed text-emerald-950 shadow-[0_1px_2px_rgba(16,185,129,0.02)] transition-all duration-200 hover:bg-white dark:border-emerald-900/30 dark:bg-gray-900/50 dark:text-emerald-100 dark:hover:bg-gray-900"
                                     >
-                                        <span className="font-semibold">{item.label}</span>
-                                        {item.evidence ? <span className="text-emerald-700/80 dark:text-emerald-300/80">：{item.evidence}</span> : null}
+                                        <div className="flex items-start gap-1.5 font-semibold text-emerald-900 dark:text-emerald-100">
+                                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                            <span>{item.label}</span>
+                                        </div>
+                                        {item.evidence ? (
+                                            <p className="mt-1 border-l border-emerald-100/80 pl-3 text-[11px] leading-relaxed text-emerald-700/80 dark:border-emerald-800/40 dark:text-emerald-300/80">
+                                                {item.evidence}
+                                            </p>
+                                        ) : null}
                                     </div>
                                 ))}
                         </div>
@@ -275,7 +294,7 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                 ) : null}
                 {hardFilters.length > 0 ? (
                     <div className="space-y-1.5">
-                        <p className="text-[10.5px] font-semibold uppercase text-amber-600 dark:text-amber-300">
+                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                             硬门槛
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -289,12 +308,23 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                 ) : null}
                 {missingKeywords.length > 0 ? (
                     <details className="group">
-                        <summary className="cursor-pointer text-[11px] font-medium text-emerald-700/80 transition hover:text-emerald-800 dark:text-emerald-300/80 dark:hover:text-emerald-200">
-                            查看底层关键词缺口
+                        <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold text-emerald-700/80 transition hover:text-emerald-800 dark:text-emerald-300/80 dark:hover:text-emerald-200 [&::-webkit-details-marker]:hidden">
+                            <span>查看底层关键词缺口</span>
+                            <ChevronDown className="h-3 w-3 transition-transform duration-200 group-open:rotate-180" />
                         </summary>
-                        <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/70 dark:text-emerald-300/70">
-                            {missingKeywords.join('、')}
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5 rounded-lg border border-dashed border-emerald-100/80 bg-emerald-50/20 p-2.5 dark:border-emerald-900/40 dark:bg-emerald-950/5">
+                            {missingKeywords.map((kw) => {
+                                const kwStr = String(kw);
+                                return (
+                                    <span
+                                        key={kwStr}
+                                        className="inline-flex items-center rounded bg-rose-50/50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 dark:bg-rose-950/25 dark:text-rose-400"
+                                    >
+                                        {kwStr}
+                                    </span>
+                                );
+                            })}
+                        </div>
                     </details>
                 ) : null}
             </div>
@@ -438,6 +468,7 @@ type JDAnalysisDetailsSidebarProps = {
     analysisResult: JDAnalysisResult | null;
     jdText: string;
     onClose: () => void;
+    onOpenAssistantSidebar?: () => void;
     onOpenAgentPluginConfig?: () => void;
 };
 
@@ -445,6 +476,7 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
     analysisResult,
     jdText,
     onClose,
+    onOpenAssistantSidebar,
     onOpenAgentPluginConfig,
 }) => {
     const {
@@ -458,6 +490,11 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
         resetStrategyCopyState();
         onClose();
     }, [onClose, resetStrategyCopyState]);
+
+    const handleOpenAssistantSidebar = useCallback(() => {
+        resetStrategyCopyState();
+        onOpenAssistantSidebar?.();
+    }, [onOpenAssistantSidebar, resetStrategyCopyState]);
 
     if (!analysisResult) {
         return null;
@@ -479,14 +516,27 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                             || '岗位画像与同投策略'}
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={handleClose}
-                    aria-label="关闭 JD 分析详情"
-                    className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-                >
-                    <X className="h-4 w-4" />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                    {onOpenAssistantSidebar ? (
+                        <button
+                            type="button"
+                            onClick={handleOpenAssistantSidebar}
+                            aria-label="返回 AI 助手"
+                            title="返回 AI 助手"
+                            className="rounded-lg p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200"
+                        >
+                            <Sparkles className="h-4 w-4" />
+                        </button>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        aria-label="关闭 JD 分析详情"
+                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 <JDAnalysisDetailsContent
@@ -599,44 +649,68 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
     const followUpQuestions = getCapabilityFollowUpQuestions(capabilities);
     const weakCapabilities = capabilities.filter((item) => item.resumeEvidenceLevel <= 2 || item.risk !== 'none');
 
+    const dotColor = analysis.scoreConfidence === 'high' ? 'bg-emerald-500' : analysis.scoreConfidence === 'low' ? 'bg-rose-500' : 'bg-amber-500';
+    const textColor = analysis.scoreConfidence === 'high' ? 'text-emerald-700 dark:text-emerald-400' : analysis.scoreConfidence === 'low' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400';
+
     return (
-        <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
-            <div className="mb-2 flex items-center justify-between gap-3">
-                <div>
-                    <h4 className="text-[12px] font-bold text-amber-900 dark:text-amber-100">
-                        能力证据诊断
-                    </h4>
-                    <p className="mt-0.5 text-[10.5px] text-amber-700/80 dark:text-amber-300/80">
-                        证据完整度 {completeness}% · 评分置信度 {SCORE_CONFIDENCE_LABELS[analysis.scoreConfidence] ?? '中'}
-                    </p>
+        <div className="rounded-xl border border-amber-100/50 bg-gradient-to-br from-amber-50/50 via-orange-50/15 to-transparent p-4 shadow-[0_8px_30px_rgba(245,158,11,0.03)] dark:border-amber-900/30 dark:from-amber-950/20 dark:via-orange-950/5 dark:to-transparent">
+            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
+                        <Award className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <h4 className="text-[12px] font-bold">
+                            能力证据诊断
+                        </h4>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-[10.5px]">
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-amber-700/80 dark:text-amber-300/80">完整度 {completeness}%</span>
+                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-amber-100/70 dark:bg-amber-950/50">
+                                <div
+                                    className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500"
+                                    style={{ width: `${completeness}%` }}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-amber-700/80 dark:text-amber-300/80">置信度</span>
+                            <span className={`inline-flex items-center gap-1 rounded bg-white/85 px-1.5 py-0.5 text-[10px] font-bold shadow-[0_1px_2px_rgba(0,0,0,0.02)] dark:bg-gray-900/70 ${textColor}`}>
+                                <span className={`h-1 w-1 rounded-full ${dotColor} animate-pulse`} />
+                                {SCORE_CONFIDENCE_LABELS[analysis.scoreConfidence] ?? '中'}
+                            </span>
+                        </div>
+                    </div>
                 </div>
                 <Pill tone={completeness >= 75 ? 'emerald' : 'amber'}>
                     {analysis.roleFamily || '岗位能力画像'}
                 </Pill>
             </div>
             {warningText.length > 0 ? (
-                <p className="mb-2 text-[11.5px] leading-relaxed text-amber-900 dark:text-amber-100">
+                <p className="mb-3 text-[11.5px] leading-relaxed text-amber-900 dark:text-amber-100">
                     {warningText.slice(0, compact ? 1 : 2).join('；')}
                 </p>
             ) : null}
             {!compact && capabilities.length > 0 ? (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                     {capabilities.slice(0, 5).map((item) => (
                         <div
                             key={item.id || item.name}
-                            className="rounded-md border border-amber-100 bg-white/80 px-2 py-1.5 text-[11px] leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-gray-900/70 dark:text-amber-100"
+                            className="group flex flex-col rounded-lg border border-amber-100/50 bg-white/60 p-2.5 text-[11.5px] leading-relaxed text-amber-950 shadow-[0_1px_2px_rgba(245,158,11,0.02)] transition-all duration-200 hover:bg-white dark:border-amber-900/30 dark:bg-gray-900/50 dark:text-amber-100 dark:hover:bg-gray-900"
                         >
                             <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-semibold">{item.name}</span>
+                                <span className="font-semibold text-amber-950 dark:text-amber-50">{item.name}</span>
                                 <Pill tone={getCapabilityRiskTone(item.risk)}>
                                     {EVIDENCE_LEVEL_LABELS[item.resumeEvidenceLevel] ?? '待判断'}
                                 </Pill>
                                 {item.risk !== 'none' ? (
-                                    <Pill tone="amber">{RISK_LABELS[item.risk] ?? item.risk}</Pill>
+                                    <span className="inline-flex items-center gap-0.5 rounded-md border border-amber-100 bg-amber-50/50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400">
+                                        <AlertTriangle className="h-2.5 w-2.5 text-amber-500" />
+                                        {RISK_LABELS[item.risk] ?? item.risk}
+                                    </span>
                                 ) : null}
                             </div>
                             {item.resumeEvidenceSummary ? (
-                                <p className="mt-1 text-amber-800/80 dark:text-amber-200/80">
+                                <p className="mt-1.5 border-t border-dashed border-amber-100/60 pt-1.5 text-[11px] leading-relaxed text-amber-800/80 dark:border-amber-900/20 dark:text-amber-200/80">
                                     {item.resumeEvidenceSummary}
                                 </p>
                             ) : null}
@@ -644,17 +718,25 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
                     ))}
                 </div>
             ) : null}
-            {weakCapabilities.length > 0 || followUpQuestions.length > 0 ? (
-                <div className="mt-2 space-y-1">
+            {(weakCapabilities.length > 0 || followUpQuestions.length > 0) ? (
+                <div className="mt-3.5 space-y-2 rounded-lg border border-dashed border-amber-200/50 bg-amber-50/20 p-2.5 dark:border-amber-900/40 dark:bg-amber-950/10">
                     {weakCapabilities.length > 0 ? (
-                        <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
-                            弱证据：{weakCapabilities.slice(0, 5).map((item) => item.name).join('、')}
-                        </p>
+                        <div className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                            <span>
+                                <strong className="font-semibold text-amber-950 dark:text-amber-100">弱证据：</strong>
+                                {weakCapabilities.slice(0, 5).map((item) => item.name).join('、')}
+                            </span>
+                        </div>
                     ) : null}
                     {followUpQuestions.length > 0 ? (
-                        <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
-                            建议补充：{followUpQuestions.slice(0, compact ? 1 : 3).join('；')}
-                        </p>
+                        <div className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                            <span>
+                                <strong className="font-semibold text-amber-950 dark:text-amber-100">建议补充：</strong>
+                                {followUpQuestions.slice(0, compact ? 1 : 3).join('；')}
+                            </span>
+                        </div>
                     ) : null}
                 </div>
             ) : null}
