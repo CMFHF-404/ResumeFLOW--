@@ -177,6 +177,7 @@ async def polish_experience(
     mode: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
+    has_jd_text = bool(jd_text and jd_text.strip())
     prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
     content_payload = {**content}
     if jd_text:
@@ -190,7 +191,7 @@ async def polish_experience(
         {"role": "user", "content": json.dumps(content_payload, ensure_ascii=False)},
     ]
     result = await _call_llm(messages, json_mode=True)
-    return _normalize_polish_result(result, mode)
+    return _normalize_polish_result(result, mode, has_jd_text=has_jd_text)
 
 
 def _normalize_split_experience_result(result: Dict[str, Any]) -> Dict[str, str]:
@@ -320,6 +321,7 @@ async def polish_experience_with_thoughts(
     if not _has_thinking_stream_provider():
         return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
 
+    has_jd_text = bool(jd_text and jd_text.strip())
     prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
     content_payload = {**content}
     if jd_text:
@@ -339,7 +341,7 @@ async def polish_experience_with_thoughts(
             budget_tokens=settings.ai_thinking_budget_polish,
             thought_callback=thought_callback,
         )
-        return _normalize_polish_result(result, mode)
+        return _normalize_polish_result(result, mode, has_jd_text=has_jd_text)
     except Exception:
         logger.warning(
             "[AI Stream] thought streaming failed for star_polish, falling back to standard polish.",

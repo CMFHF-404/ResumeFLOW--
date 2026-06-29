@@ -478,6 +478,21 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("default: '结构化 STAR 并转为专业书面语。'", toolbar_source)
         self.assertIn("highlight: '保留原文，仅调整重点内容的强调。'", toolbar_source)
 
+    def test_ai_polish_toolbar_jd_default_copy_mentions_four_char_action_opening(self) -> None:
+        toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("default: '四字行动开头，结合 JD 重组表达。'", toolbar_source)
+
+    def test_ai_polish_toolbar_result_preview_body_is_mobile_only(self) -> None:
+        toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
+        preview_start = toolbar_source.index("if (isPreviewing)")
+        preview_end = toolbar_source.index("  return (\n    <div", preview_start)
+        preview_block = toolbar_source[preview_start:preview_end]
+
+        self.assertIn('className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:hidden"', preview_block)
+        self.assertIn("md:max-h-none", preview_block)
+        self.assertNotIn("md:h-full md:min-h-0 md:max-h-full", preview_block)
+
     def test_experience_bank_polish_toolbar_hides_match_highlight_mode(self) -> None:
         source = (REPO_ROOT / "views" / "ExperienceCard.tsx").read_text(encoding="utf-8")
 

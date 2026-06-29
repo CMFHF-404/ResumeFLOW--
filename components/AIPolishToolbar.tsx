@@ -51,7 +51,7 @@ const MODE_LABELS: Record<ToolbarMode, string> = {
 };
 
 const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
-  default: '结合 JD，改写成更接近简历成稿的表达。',
+  default: '四字行动开头，结合 JD 重组表达。',
   highlight: '保守轻改，只加粗最匹配 JD 的证据。',
   smart_complete: '先判断证据是否足够，必要时在卡片内追问补充事实。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
@@ -132,16 +132,16 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   if (isPreviewing) {
     return (
         <div
-          className={`flex ${hasPreviewContent ? 'min-h-[240px] max-h-[min(68vh,34rem)]' : ''} flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] ${hasPreviewContent ? 'md:h-full md:min-h-0 md:max-h-full' : ''} ${className ?? ''}`}
+          className={`flex ${hasPreviewContent ? 'min-h-[240px] max-h-[min(68vh,34rem)] md:min-h-0 md:max-h-none' : ''} flex-col overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.98))] ${className ?? ''}`}
         >
-          <div className={`${hasPreviewContent ? 'border-b border-emerald-200/80' : ''} px-4 py-3`}>
+          <div className={`${hasPreviewContent ? 'border-b border-emerald-200/80 md:border-b-0' : ''} px-4 py-3`}>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">{previewHeading}</div>
             <div className="mt-1 text-sm leading-6 text-emerald-900">
               {previewMessage}
             </div>
           </div>
         {hasPreviewContent ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:hidden">
             <div className="flex min-h-full items-center justify-center">
               <div className="w-full max-w-[560px]">
                 {previewContent}
@@ -149,7 +149,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             </div>
           </div>
         ) : null}
-        <div className={`shrink-0 bg-white/92 px-4 py-3 backdrop-blur ${hasPreviewContent ? 'border-t border-emerald-200/80' : ''}`}>
+        <div className={`shrink-0 bg-white/92 px-4 py-3 backdrop-blur ${hasPreviewContent ? 'border-t border-emerald-200/80 md:border-t-0' : ''}`}>
           <div className={`flex flex-col gap-3 md:flex-row md:items-center ${hasPreviewContent ? 'md:justify-end' : 'md:justify-end'}`}>
             <div className="flex items-center gap-3">
             <button
