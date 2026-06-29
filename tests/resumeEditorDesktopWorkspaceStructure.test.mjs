@@ -55,6 +55,23 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(factorySidebar, /label: '页面布局'/);
   assert.match(factorySidebar, /<TemplateSelectionPanel \{\.\.\.rest\} \/>/);
   assert.match(factorySidebar, /<LayoutPanel \{\.\.\.rest\} \/>/);
+
+  const templateSelectionPanel = factorySidebar.match(
+    /const TemplateSelectionPanel[\s\S]*?const LayoutPanel/
+  )?.[0] ?? '';
+  const templatePreviewBlock = templateSelectionPanel.match(
+    /<div className="relative h-40 overflow-hidden rounded-lg">[\s\S]*?<\/div>\s*<\/button>/
+  )?.[0] ?? '';
+  assert.match(templatePreviewBlock, /isSelected \? \(/);
+  assert.match(templatePreviewBlock, /className="absolute bottom-2 right-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-sm"/);
+  assert.match(templatePreviewBlock, /aria-hidden="true"/);
+  assert.match(templatePreviewBlock, /<Check className="h-3\.5 w-3\.5" \/>/);
+
+  const templateTitleRowBlock = templateSelectionPanel.match(
+    /<div className="mt-2[\s\S]*?<button\s*type="button"\s*onClick=\{\(\) => onCustomizeTemplate/
+  )?.[0] ?? '';
+  assert.doesNotMatch(templateTitleRowBlock, /isSelected \? \(/);
+  assert.doesNotMatch(templateTitleRowBlock, /<Check className="h-3\.5 w-3\.5" \/>/);
 });
 
 test('desktop layout sidebar groups layout parameters and removes density shortcuts', () => {

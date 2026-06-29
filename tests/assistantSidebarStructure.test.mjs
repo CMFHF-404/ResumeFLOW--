@@ -9,6 +9,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   const conversationViewport = read('views/AIAssistant/AssistantConversationViewport.tsx');
   const sidebarHeader = read('views/AIAssistant/AssistantSidebarHeader.tsx');
   const sidebarDropdown = read('views/AIAssistant/AssistantSidebarHistoryDropdown.tsx');
+  const chatInput = read('views/AIAssistant/ChatInputBox.tsx');
   const types = read('views/AIAssistant/types.ts');
   const draftPanel = read('views/AIAssistant/AssistantDraftPanel.tsx');
   const draftState = read('views/AIAssistant/useAssistantDraftPanelState.ts');
@@ -63,6 +64,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(assistant, /<AssistantSidebarHeader/);
   assert.match(assistant, /title=\{assistantSidebarTitle\}/);
   assert.match(assistant, /isHistoryOpen=\{isSidebarHistoryOpen\}/);
+  assert.match(assistant, /onNewChat=\{handleSidebarNewChat\}/);
   assert.match(assistant, /onToggleHistory=\{\(\) => setIsSidebarHistoryOpen\(\(current\) => !current\)\}/);
   assert.match(assistant, /onExpandToFullPage=\{\(\) => onExpandToFullPage\?\.\(selectedSessionId\)\}/);
   assert.match(assistant, /onOpenAnalysisDetails=\{onOpenAnalysisDetails\}/);
@@ -70,15 +72,32 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.doesNotMatch(assistant, /const SIDEBAR_ANALYSIS_BUTTON_CLASS/);
   assert.doesNotMatch(assistant, /<FileSearch className="h-4 w-4" \/>/);
   assert.match(sidebarHeader, /export const AssistantSidebarHeader: React\.FC<AssistantSidebarHeaderProps>/);
+  assert.match(sidebarHeader, /MessageSquarePlus/);
+  assert.match(sidebarHeader, /onNewChat\?: \(\) => void/);
   assert.match(sidebarHeader, /shrink-0 border-b border-slate-200\/90 bg-white\/95 px-4 py-3 backdrop-blur/);
   assert.match(sidebarHeader, /title=\{title\}/);
   assert.match(sidebarHeader, /pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400\/50 dark:text-slate-400 dark:hover:text-white/);
-  assert.match(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_CLASS = '[^']*bg-emerald-500[^']*text-white[^']*hover:bg-emerald-600/);
-  assert.match(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_STYLE: React\.CSSProperties = \{[\s\S]*backgroundColor: '#10b981'[\s\S]*color: '#fff'/);
+  const newChatButtonIndex = sidebarHeader.indexOf('onClick={onNewChat}');
+  const analysisButtonIndex = sidebarHeader.indexOf('onClick={onOpenAnalysisDetails}');
+  const historyButtonIndex = sidebarHeader.indexOf('onClick={onToggleHistory}');
+  assert.ok(newChatButtonIndex >= 0, 'new chat button should be rendered');
+  assert.ok(analysisButtonIndex >= 0, 'analysis details button should be rendered');
+  assert.ok(historyButtonIndex >= 0, 'history button should be rendered');
+  const newChatButtonBlock = sidebarHeader.slice(newChatButtonIndex, sidebarHeader.indexOf('</button>', newChatButtonIndex));
+  assert.match(sidebarHeader, /onNewChat \? \(/);
+  assert.match(sidebarHeader, /onClick=\{onNewChat\}/);
+  assert.match(newChatButtonBlock, /className=\{SIDEBAR_ACTION_BUTTON_CLASS\}/);
+  assert.match(sidebarHeader, /title="新建对话"/);
+  assert.match(sidebarHeader, /aria-label="新建对话"/);
+  assert.match(sidebarHeader, /<MessageSquarePlus className="h-4 w-4" \/>/);
+  assert.doesNotMatch(newChatButtonBlock, /SIDEBAR_ANALYSIS_BUTTON_CLASS/);
+  assert.match(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_CLASS = '[^']*text-emerald-600[^']*hover:text-emerald-700/);
+  assert.doesNotMatch(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_CLASS = '[^']*\bbg-emerald-/);
+  assert.doesNotMatch(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_STYLE/);
   assert.match(sidebarHeader, /onOpenAnalysisDetails \? \(/);
   assert.match(sidebarHeader, /onClick=\{onOpenAnalysisDetails\}/);
   assert.match(sidebarHeader, /className=\{SIDEBAR_ANALYSIS_BUTTON_CLASS\}[\s\S]*aria-label="查看分析详情"/);
-  assert.match(sidebarHeader, /style=\{SIDEBAR_ANALYSIS_BUTTON_STYLE\}[\s\S]*aria-label="查看分析详情"/);
+  assert.doesNotMatch(sidebarHeader, /style=\{SIDEBAR_ANALYSIS_BUTTON_STYLE\}/);
   assert.match(sidebarHeader, /aria-label="查看分析详情"/);
   assert.match(sidebarHeader, /aria-controls="assistant-sidebar-history-panel"/);
   assert.match(sidebarHeader, /aria-expanded=\{isHistoryOpen\}/);
@@ -86,6 +105,14 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(sidebarHeader, /<History className="h-4 w-4" \/>/);
   assert.match(sidebarHeader, /<FileSearch className="h-4 w-4" \/>/);
   assert.match(sidebarHeader, /<Maximize2 className="h-4 w-4" \/>/);
+  assert.ok(
+    analysisButtonIndex < historyButtonIndex,
+    'analysis details button should appear before history button in the sidebar header'
+  );
+  assert.ok(
+    historyButtonIndex < newChatButtonIndex,
+    'new chat button should appear to the right of history in the sidebar header'
+  );
   assert.doesNotMatch(assistant, /bg-slate-100 text-slate-600 transition hover:bg-slate-200/);
   assert.match(assistant, /const \[isSidebarHistoryOpen, setIsSidebarHistoryOpen\] = useState\(false\)/);
   assert.match(assistant, /const handleSidebarNewChat = useCallback/);
@@ -94,6 +121,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(assistant, /setIsSidebarHistoryOpen\(false\);[\s\S]*handleSelectSession\(sessionId\)/);
   assert.match(assistant, /import \{ AssistantSidebarHistoryDropdown \} from '\.\/AIAssistant\/AssistantSidebarHistoryDropdown'/);
   assert.match(assistant, /onSelectSession=\{handleSidebarSelectSession\}/);
+  assert.doesNotMatch(assistant, /<AssistantSidebarHistoryDropdown[\s\S]*onNewChat=\{handleSidebarNewChat\}/);
   assert.doesNotMatch(assistant, /sessions\.map\(\(session\) =>/);
   assert.match(sidebarDropdown, /export const AssistantSidebarHistoryDropdown: React\.FC<AssistantSidebarHistoryDropdownProps>/);
   assert.match(sidebarDropdown, /id="assistant-sidebar-history-panel"/);
@@ -101,6 +129,12 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(sidebarDropdown, /origin-top transition-all duration-200 ease-out/);
   assert.match(sidebarDropdown, /isOpen\s*\?\s*'pointer-events-auto translate-y-0 opacity-100/);
   assert.match(sidebarDropdown, /:\s*'pointer-events-none -translate-y-3 opacity-0/);
+  assert.doesNotMatch(sidebarDropdown, /MessageSquarePlus/);
+  assert.doesNotMatch(sidebarDropdown, /onNewChat/);
+  assert.doesNotMatch(sidebarDropdown, /对话记录<\/div>/);
+  assert.doesNotMatch(sidebarDropdown, /AI 助手<\/div>/);
+  assert.doesNotMatch(sidebarDropdown, />\s*新建\s*</);
+  assert.doesNotMatch(sidebarDropdown, /border-b border-slate-200 px-3 py-3/);
   assert.match(sidebarDropdown, /sessions\.map\(\(session\) =>/);
   assert.match(sidebarDropdown, /const hasPendingDraft = isPendingLatestPreview\(session\)/);
   assert.match(sidebarDropdown, /formatRelativeTime\(session\.updated_at\)/);
@@ -109,10 +143,20 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(assistant, /hideSelectedResumeCard=\{isSidebarSurface\}/);
   assert.doesNotMatch(assistant, /onSelectResumeExperiences/);
   assert.match(assistant, /hasContextItems=\{composerAttachments\.length > 0 \|\| Boolean\(selectedResume\)\}/);
+  assert.match(assistant, /surface=\{isSidebarSurface \? 'sidebar' : 'full'\}/);
   assert.doesNotMatch(assistant, /selectedExperiences=\{selectedExperiences\}/);
   assert.doesNotMatch(assistant, /key: 'pick-experience'/);
   assert.doesNotMatch(assistant, /label: '选择经历'/);
   assert.match(assistant, /!isSidebarSurface \? \(\s*<AssistantDesktopDraftPanel/);
+  assert.match(chatInput, /surface\?: 'full' \| 'sidebar'/);
+  assert.match(chatInput, /surface = 'full'/);
+  assert.match(chatInput, /const isSidebarSurface = surface === 'sidebar';/);
+  assert.match(chatInput, /const textareaMaxHeight = isSidebarSurface \? 112 : 160;/);
+  assert.match(chatInput, /Math\.min\(fullHeight, textareaMaxHeight\)/);
+  assert.match(chatInput, /fullHeight > textareaMaxHeight \? 'auto' : 'hidden'/);
+  assert.match(chatInput, /min-h-\[40px\] max-h-\[112px\][^']*sm:min-h-\[44px\]/);
+  assert.match(chatInput, /min-h-\[56px\] max-h-\[160px\][^']*sm:min-h-\[60px\]/);
+  assert.match(chatInput, /className=\{textareaClassName\}/);
 
   assert.match(draftPanel, /surface\?: 'mobile' \| 'sidebar'/);
   assert.match(draftPanel, /surface === 'sidebar' \? 'mb-2' : 'mb-2 md:hidden'/);

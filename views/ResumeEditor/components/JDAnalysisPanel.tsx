@@ -10,7 +10,6 @@ import {
     MessageSquare,
     RefreshCw,
     Search,
-    Sparkles,
     Target,
     Wand2,
     X,
@@ -468,7 +467,6 @@ type JDAnalysisDetailsSidebarProps = {
     analysisResult: JDAnalysisResult | null;
     jdText: string;
     onClose: () => void;
-    onOpenAssistantSidebar?: () => void;
     onOpenAgentPluginConfig?: () => void;
 };
 
@@ -476,7 +474,6 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
     analysisResult,
     jdText,
     onClose,
-    onOpenAssistantSidebar,
     onOpenAgentPluginConfig,
 }) => {
     const {
@@ -490,11 +487,6 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
         resetStrategyCopyState();
         onClose();
     }, [onClose, resetStrategyCopyState]);
-
-    const handleOpenAssistantSidebar = useCallback(() => {
-        resetStrategyCopyState();
-        onOpenAssistantSidebar?.();
-    }, [onOpenAssistantSidebar, resetStrategyCopyState]);
 
     if (!analysisResult) {
         return null;
@@ -517,17 +509,6 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                     </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                    {onOpenAssistantSidebar ? (
-                        <button
-                            type="button"
-                            onClick={handleOpenAssistantSidebar}
-                            aria-label="返回 AI 助手"
-                            title="返回 AI 助手"
-                            className="rounded-lg p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200"
-                        >
-                            <Sparkles className="h-4 w-4" />
-                        </button>
-                    ) : null}
                     <button
                         type="button"
                         onClick={handleClose}

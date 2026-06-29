@@ -1,7 +1,6 @@
 import React, { type MouseEvent } from 'react';
 import {
   Edit2,
-  MessageSquarePlus,
   Trash2,
 } from 'lucide-react';
 import { type AssistantSession } from '../../services/aiService';
@@ -13,7 +12,6 @@ type AssistantSidebarHistoryDropdownProps = {
   selectedSessionId: string | null;
   isOpen: boolean;
   onClose: () => void;
-  onNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
   onRenameSession: (event: MouseEvent, session: AssistantSession) => void;
   onDeleteSession: (event: MouseEvent, sessionId: string) => void;
@@ -24,7 +22,6 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
   selectedSessionId,
   isOpen,
   onClose,
-  onNewChat,
   onSelectSession,
   onRenameSession,
   onDeleteSession,
@@ -51,20 +48,6 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
       }`}
     >
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_20px_60px_-32px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_70px_-34px_rgba(2,6,23,0.95)]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3 dark:border-slate-800">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300">对话记录</div>
-            <div className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">AI 助手</div>
-          </div>
-          <button
-            type="button"
-            onClick={onNewChat}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-semibold text-white transition hover:bg-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:hover:bg-emerald-400"
-          >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            新建
-          </button>
-        </div>
         <div className="max-h-72 overflow-y-auto p-2">
           {sessions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-200 px-3 py-5 text-center text-xs leading-5 text-slate-500 dark:border-slate-800 dark:text-slate-400">
