@@ -21,7 +21,7 @@ test('ResumeEditor delegates editor preview shell to ResumeEditorPreviewStage', 
 
   assert.match(stage, /import ResumePreview, \{ type ResumePreviewProps \} from '\.\/ResumePreview'/);
   assert.match(stage, /previewProps: ResumePreviewProps/);
-  assert.match(stage, /flex flex-1 flex-col overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0/);
+  assert.match(stage, /flex flex-1 flex-col min-w-0 overflow-visible pb-20 md:min-h-0 md:overflow-hidden md:pb-0/);
   assert.match(stage, /<ResumeEditorLayoutAdjustPanel \{\.\.\.layoutAdjustProps\} \/>/);
   assert.match(stage, /<ResumePreview \{\.\.\.previewProps\} \/>/);
 });

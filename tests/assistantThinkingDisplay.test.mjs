@@ -6,17 +6,23 @@ const readSource = (path) => readFileSync(path, 'utf8');
 
 test('assistant messages render persisted thinking summaries from content_json', () => {
   const assistantSource = readSource('views/AIAssistant.tsx');
+  const conversationViewportSource = readSource('views/AIAssistant/AssistantConversationViewport.tsx');
   const messageItemSource = readSource('views/AIAssistant/MessageItem.tsx');
 
   assert.match(
     assistantSource,
-    /content_json\?\.thinking/,
-    'AIAssistant should read persisted thinking summaries from message content',
+    /AssistantConversationViewport/,
+    'AIAssistant should delegate message rendering to AssistantConversationViewport',
   );
   assert.match(
-    assistantSource,
+    conversationViewportSource,
+    /content_json\?\.thinking/,
+    'AssistantConversationViewport should read persisted thinking summaries from message content',
+  );
+  assert.match(
+    conversationViewportSource,
     /thinking=\{!isUser \? thinking : undefined\}/,
-    'AIAssistant should pass assistant thinking summaries to MessageItem',
+    'AssistantConversationViewport should pass assistant thinking summaries to MessageItem',
   );
   assert.match(
     messageItemSource,

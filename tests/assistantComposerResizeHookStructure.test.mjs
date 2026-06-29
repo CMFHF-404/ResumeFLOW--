@@ -6,17 +6,22 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 
 test('AIAssistant delegates composer resize tracking to a focused hook', () => {
   const assistant = read('views/AIAssistant.tsx');
+  const conversationViewport = read('views/AIAssistant/AssistantConversationViewport.tsx');
   const hook = read('views/AIAssistant/useAssistantComposerResize.ts');
 
   assert.match(assistant, /from '\.\/AIAssistant\/useAssistantComposerResize'/);
+  assert.match(assistant, /from '\.\/AIAssistant\/AssistantConversationViewport'/);
   assert.match(assistant, /useAssistantComposerResize\(\)/);
-  assert.match(assistant, /ref=\{messageViewportRef\}/);
+  assert.match(assistant, /messageViewportRef=\{messageViewportRef\}/);
   assert.match(assistant, /ref=\{composerContainerRef\}/);
-  assert.match(assistant, /paddingBottom: `\$\{composerReservedHeight\}px`/);
+  assert.match(assistant, /composerReservedHeight=\{composerReservedHeight\}/);
   assert.match(assistant, /scrollToBottom\(\)/);
   assert.doesNotMatch(assistant, /computeComposerReservedHeight/);
   assert.doesNotMatch(assistant, /ResizeObserver/);
   assert.doesNotMatch(assistant, /composerHeightRef/);
+
+  assert.match(conversationViewport, /ref=\{messageViewportRef\}/);
+  assert.match(conversationViewport, /paddingBottom: `\$\{composerReservedHeight\}px`/);
 
   assert.match(hook, /computeComposerReservedHeight/);
   assert.match(hook, /const \[composerReservedHeight, setComposerReservedHeight\] = useState\(160\)/);
