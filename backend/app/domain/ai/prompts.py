@@ -296,9 +296,13 @@ STAR_RESUME_READY_REWRITE = (
     "and impact wording across S/T/A/R instead of only changing isolated phrases. Preserve all facts, chronology, "
     "responsibility scope, metrics, tools, and hyperlinks; do not invent, exaggerate, upgrade ownership, or add unsupported keywords. "
     "Use JD language only when the original content proves it. Prefer JD-aligned deliverables and skills first, then quantified "
-    "outcomes/scope, then concrete ownership/actions, then collaboration or methods. Add Markdown bold to the strongest evidence, "
-    "with no more than 5 distinct bold phrases across the whole output. S/T/R must be one sentence each, and A must be concise "
-    "action points separated by newlines without numbering. If evidence is thin, rewrite conservatively and expose only supported value. "
+    "outcomes/scope, then concrete ownership/actions, then collaboration or methods. S/T/R must be one sentence each. "
+    "For A, output concise action lines separated by newlines without numbering or bullet prefixes. "
+    "Each A action line must begin with one fact-supported four-Chinese-character core action label in Markdown bold, "
+    "followed by a Chinese or English colon, for example '**用户洞察**：'. These opening A labels are required but do not count "
+    "toward the additional bold limit. You may merge or split action lines when it improves JD fit and resume clarity, "
+    "but preserve every fact, chronology, responsibility scope, metric, tool, and hyperlink. Add Markdown bold to the strongest evidence, "
+    "with up to 3 additional bold phrases across the whole output besides the opening A labels. If evidence is thin, rewrite conservatively and expose only supported value. "
     "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
@@ -391,9 +395,11 @@ POLISH_MODE_INSTRUCTIONS = {
     "default": (
         "In default mode, produce a polished resume-ready rewrite, not only highlight existing text. "
         "You may rewrite sentences and reorganize clauses when doing so improves clarity, role fit, and impact while preserving exact facts, scope, responsibility level, and meaning. "
+        "For A, begin each action line with a fact-supported four-Chinese-character core action label in Markdown bold, then a colon. "
+        "You may merge or split action lines to better fit JD requirements while keeping all original facts and links. "
         "Add Markdown bold to the strongest JD-aligned evidence after rewriting, and proactively remove stale or low-value bold markers. "
         "Do not turn broad concepts into unsupported specialist claims, and do not add keywords unless the original text already supports them. "
-        "Prefer JD-aligned deliverables and skills first, then quantified outcomes/scope, then core actions or ownership signals. Obey the highlight caps strictly, with no more than 5 highlights in total."
+        "Prefer JD-aligned deliverables and skills first, then quantified outcomes/scope, then core actions or ownership signals. Obey the highlight caps strictly, with up to 3 additional bold phrases besides the opening A labels."
     ),
     "shorten": (
         "Compress wording aggressively while preserving all key facts. "

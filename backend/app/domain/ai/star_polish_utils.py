@@ -13,6 +13,9 @@ from .prompts import (
 )
 
 MAX_SMART_COMPLETE_FOLLOW_UP_QUESTIONS = 3
+DEFAULT_JD_EXTRA_BOLD_LIMIT = 3
+MARKDOWN_BOLD_PATTERN = re.compile(r"(\*\*|＊＊)([^\r\n]+?)(\1)")
+FOUR_CJK_CHARS_PATTERN = re.compile(r"^[\u4e00-\u9fff]{4}$")
 
 
 def _resolve_star_prompt(
@@ -92,8 +95,50 @@ def _normalize_smart_complete_polish_result(result: Dict[str, Any]) -> Dict[str,
     }
 
 
-def _normalize_polish_result(result: Dict[str, Any], mode: Optional[str] = None) -> Dict[str, Any]:
+def _is_action_opening_label(value: str, match: re.Match[str]) -> bool:
+    line_start = value.rfind("\n", 0, match.start()) + 1
+    if value[line_start:match.start()].strip():
+        return False
+    if not FOUR_CJK_CHARS_PATTERN.fullmatch(match.group(2).strip()):
+        return False
+    return bool(re.match(r"\s*[:：]", value[match.end():]))
+
+
+def _limit_default_jd_extra_bold(result: Dict[str, Any]) -> Dict[str, Any]:
+    remaining_extra_bold = DEFAULT_JD_EXTRA_BOLD_LIMIT
+    normalized = dict(result)
+
+    for key in ("s", "t", "a", "r"):
+        value = normalized.get(key)
+        if not isinstance(value, str) or not value:
+            continue
+
+        parts: List[str] = []
+        cursor = 0
+        for match in MARKDOWN_BOLD_PATTERN.finditer(value):
+            parts.append(value[cursor:match.start()])
+            is_exempt_action_label = key == "a" and _is_action_opening_label(value, match)
+            if is_exempt_action_label or remaining_extra_bold > 0:
+                parts.append(match.group(0))
+                if not is_exempt_action_label:
+                    remaining_extra_bold -= 1
+            else:
+                parts.append(match.group(2))
+            cursor = match.end()
+        parts.append(value[cursor:])
+        normalized[key] = "".join(parts)
+
+    return normalized
+
+
+def _normalize_polish_result(
+    result: Dict[str, Any],
+    mode: Optional[str] = None,
+    has_jd_text: bool = False,
+) -> Dict[str, Any]:
     normalized_mode = (mode or "default").strip().lower()
     if normalized_mode in {"smart_complete", "smart_completion"}:
         return _normalize_smart_complete_polish_result(result)
+    if normalized_mode == "default" and has_jd_text:
+        return _limit_default_jd_extra_bold(result)
     return result

@@ -1750,8 +1750,49 @@ class AiServicePolishPromptTests(unittest.TestCase):
 
         self.assertIn("Rewrite the provided STAR content into resume-ready statements", prompt)
         self.assertIn("stronger than light highlighting", prompt)
-        self.assertIn("no more than 5", prompt)
+        self.assertIn("Each A action line must begin with one fact-supported four-Chinese-character core action label", prompt)
+        self.assertIn("You may merge or split action lines", prompt)
+        self.assertIn("up to 3 additional bold phrases", prompt)
         self.assertNotIn("ask_before_rewrite", prompt)
+
+    def test_default_jd_polish_result_exempts_action_labels_and_limits_extra_bold(self) -> None:
+        result = ai_service._normalize_polish_result(
+            {
+                "s": "**产品定位**明确方向并**用户访谈**验证需求。",
+                "t": "围绕**指标拆解**制定目标。",
+                "a": "**用户洞察**：拆解**业务痛点**并输出方案\n**需求拆解**：梳理**PRD文档**和**验收口径**",
+                "r": "推动**转化提升**并沉淀**复盘机制**。",
+            },
+            mode="default",
+            has_jd_text=True,
+        )
+
+        self.assertEqual(result["s"], "**产品定位**明确方向并**用户访谈**验证需求。")
+        self.assertEqual(result["t"], "围绕**指标拆解**制定目标。")
+        self.assertEqual(
+            result["a"],
+            "**用户洞察**：拆解业务痛点并输出方案\n**需求拆解**：梳理PRD文档和验收口径",
+        )
+        self.assertEqual(result["r"], "推动转化提升并沉淀复盘机制。")
+
+    def test_default_polish_result_without_jd_does_not_limit_bold(self) -> None:
+        source = {
+            "s": "**产品定位**明确方向并**用户访谈**验证需求。",
+            "a": "**用户洞察**：拆解**业务痛点**并输出方案\n**需求拆解**：梳理**PRD文档**",
+        }
+
+        result = ai_service._normalize_polish_result(source, mode="default", has_jd_text=False)
+
+        self.assertEqual(result, source)
+
+    def test_non_default_polish_result_keeps_existing_bold_contract(self) -> None:
+        source = {
+            "a": "**用户洞察**：拆解**业务痛点**并输出方案\n**需求拆解**：梳理**PRD文档**",
+        }
+
+        result = ai_service._normalize_polish_result(source, mode="highlight", has_jd_text=True)
+
+        self.assertEqual(result, source)
 
     def test_smart_complete_mode_can_ask_for_evidence_before_rewrite(self) -> None:
         prompt = ai_service._build_polish_prompt(None, mode="smart_complete", jd_text="产品经理 JD")
