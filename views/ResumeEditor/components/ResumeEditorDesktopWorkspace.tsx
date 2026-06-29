@@ -41,11 +41,12 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
             previewProps={previewProps}
         />
         <div
+            data-rf-assistant-sidebar
             className={[
                 'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
                 'border-border-light dark:border-border-dark transition-all duration-300 ease-in-out',
                 isAssistantSidebarOpen
-                    ? 'absolute inset-y-0 right-0 z-30 opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
+                    ? 'w-[390px] opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
                     : 'w-0 opacity-0 md:border-l-0 pointer-events-none'
             ].join(' ')}
             style={{

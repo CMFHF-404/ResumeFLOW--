@@ -104,6 +104,19 @@ export const applyExplicitOrder = <T,>(
     return next;
 };
 
+const resolvePersistedSelection = (
+    ids: string[] | undefined,
+    validIds: Set<string>,
+    resolveSelectionSet: SelectionResolver
+) => {
+    const selection = resolveSelectionSet(ids);
+    const normalized = new Set([...selection].filter((id) => validIds.has(id)));
+    if (Array.isArray(ids) && ids.length === 0) {
+        return normalized;
+    }
+    return normalized.size ? normalized : new Set(validIds);
+};
+
 export const createApplyResumeConfig = (
     setProfile: ResumeDataApplierOptions['setProfile'],
     setPersonalSummary: ResumeDataApplierOptions['setPersonalSummary'],
@@ -222,10 +235,12 @@ export const createApplyCertificationState = (
         const ordered = applyExplicitOrder(views, (item) => item.id, config.layout?.orders?.certificationIds);
         setCertifications(ordered);
         setCertificationSourceMap(new Map(items.map((item) => [item.id, item])));
-        const selection = resolveSelectionSet(config.selection?.certificationIds);
         const validIds = new Set(views.map((item) => item.id));
-        const normalized = new Set([...selection].filter((id) => validIds.has(id)));
-        setSelectedCertIds(normalized.size ? normalized : new Set(validIds));
+        setSelectedCertIds(resolvePersistedSelection(
+            config.selection?.certificationIds,
+            validIds,
+            resolveSelectionSet
+        ));
     };
 };
 
@@ -243,10 +258,12 @@ export const createApplySkillState = (
             config.layout?.orders?.skillGroupNames
         );
         setSkillGroups(ordered);
-        const selection = resolveSelectionSet(config.selection?.skillIds);
         const validIds = new Set(items.map((skill) => skill.id));
-        const normalized = new Set([...selection].filter((id) => validIds.has(id)));
-        setSelectedSkillIds(normalized.size ? normalized : new Set(validIds));
+        setSelectedSkillIds(resolvePersistedSelection(
+            config.selection?.skillIds,
+            validIds,
+            resolveSelectionSet
+        ));
     };
 };
 

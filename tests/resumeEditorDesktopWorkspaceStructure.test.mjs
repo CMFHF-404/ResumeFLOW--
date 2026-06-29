@@ -37,7 +37,9 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'md:w-\[430px\] xl:w-\[460px\]'/);
   assert.match(workspace, /: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
   assert.match(workspace, /const ASSISTANT_SIDEBAR_WIDTH = '390px'/);
-  assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'absolute inset-y-0 right-0 z-30 opacity-100 md:border-l shadow-\[/);
+  assert.match(workspace, /data-rf-assistant-sidebar/);
+  assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l shadow-\[/);
+  assert.doesNotMatch(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'absolute inset-y-0 right-0 z-30 opacity-100/);
   assert.match(workspace, /style=\{\{\s*width: isAssistantSidebarOpen \? ASSISTANT_SIDEBAR_WIDTH : 0,\s*opacity: isAssistantSidebarOpen \? 1 : 0,\s*flexShrink: 0,\s*\}\}/);
   assert.doesNotMatch(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l 2xl:w-\[420px\]'/);
   assert.match(workspace, /: 'w-0 opacity-0 md:border-l-0 pointer-events-none'/);

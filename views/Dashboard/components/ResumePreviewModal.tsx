@@ -154,8 +154,15 @@ const applyExplicitOrder = <T,>(
     return next;
 };
 
-const resolveFallbackSelection = (ids: Array<string | number> | undefined, fallbackIds: string[]) => {
+const resolveFallbackSelection = (
+    ids: Array<string | number> | undefined,
+    fallbackIds: string[],
+    preserveExplicitEmpty = false
+) => {
     const selection = resolveSelectionSet(ids);
+    if (preserveExplicitEmpty && Array.isArray(ids) && ids.length === 0) {
+        return selection;
+    }
     return selection.size > 0 ? selection : new Set(fallbackIds);
 };
 
@@ -237,14 +244,16 @@ const buildPreviewState = (
     const orderedCerts = applyExplicitOrder(certificationViews, (item) => item.id, orders?.certificationIds);
     const selectedCertIds = resolveFallbackSelection(
         config.selection?.certificationIds,
-        orderedCerts.map((item) => item.id)
+        orderedCerts.map((item) => item.id),
+        true
     );
 
     const skillGroups = buildSkillGroups(skills);
     const orderedSkillGroups = applyExplicitOrder(skillGroups, (group) => group.name, orders?.skillGroupNames);
     const selectedSkillIds = resolveFallbackSelection(
         config.selection?.skillIds,
-        skills.map((skill) => skill.id)
+        skills.map((skill) => skill.id),
+        true
     );
 
     return {
