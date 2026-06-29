@@ -61,3 +61,23 @@ test('Dashboard shows custom filter inputs only after custom presets are selecte
   assert.match(dashboard, /matchFilter\.preset === 'custom' && \(/);
   assert.doesNotMatch(dashboard, /data-dashboard-filter-toolbar="advanced"/);
 });
+
+test('Dashboard preview preserves explicit empty certification and skill selections', () => {
+  const modal = read('views/Dashboard/components/ResumePreviewModal.tsx');
+  const match = modal.match(/const resolveFallbackSelection = \([\s\S]*?\n\};/);
+  assert.ok(match, 'resolveFallbackSelection should stay available for preview selection hydration');
+  assert.match(modal, /config\.selection\?\.certificationIds,[\s\S]*?orderedCerts\.map\(\(item\) => item\.id\),\s*true/);
+  assert.match(modal, /config\.selection\?\.skillIds,[\s\S]*?skills\.map\(\(skill\) => skill\.id\),\s*true/);
+
+  const resolveSelectionSet = (ids) => new Set((ids || []).map((value) => String(value)).filter(Boolean));
+  const functionSource = match[0]
+    .replace('ids: Array<string | number> | undefined', 'ids')
+    .replace('fallbackIds: string[]', 'fallbackIds');
+  const resolveFallbackSelection = Function(
+    'resolveSelectionSet',
+    `${functionSource.replace('const resolveFallbackSelection =', 'return')}`
+  )(resolveSelectionSet);
+
+  assert.deepEqual([...resolveFallbackSelection([], ['cert-1', 'cert-2'], true)], []);
+  assert.deepEqual([...resolveFallbackSelection(undefined, ['skill-1', 'skill-2'])], ['skill-1', 'skill-2']);
+});

@@ -206,7 +206,35 @@ test('certification applier sorts by date, preserves source map, and defaults se
   assert.deepEqual(ids(selected.calls[0]), ['cert-new', 'cert-old']);
 });
 
-test('skill applier defaults selection to all valid ids when config selection is empty', async () => {
+test('certification applier preserves explicit empty selection when every certification is deselected', async () => {
+  const { createApplyCertificationState } = await importUseResumeDataAppliers();
+  const certifications = captureSetter();
+  const sourceMap = captureSetter();
+  const selected = captureSetter();
+  const items = [
+    { id: 'cert-1', name: 'AWS', date: '2024-03' },
+    { id: 'cert-2', name: 'PMP', date: '2023-08' },
+  ];
+  const applyCertificationState = createApplyCertificationState(
+    certifications.setter,
+    sourceMap.setter,
+    selected.setter,
+    (item) => ({
+      id: item.id,
+      name: item.name,
+      date: item.date,
+    }),
+    (value) => new Set(value ?? [])
+  );
+
+  applyCertificationState(items, {
+    selection: { certificationIds: [] },
+  });
+
+  assert.deepEqual(ids(selected.calls[0]), []);
+});
+
+test('skill applier defaults selection to all valid ids when config selection is missing', async () => {
   const { createApplySkillState } = await importUseResumeDataAppliers();
   const skillGroups = captureSetter();
   const selected = captureSetter();
@@ -228,9 +256,36 @@ test('skill applier defaults selection to all valid ids when config selection is
 
   applySkillState(skills, {
     layout: { orders: { skillGroupNames: ['Frontend'] } },
-    selection: { skillIds: [] },
+    selection: {},
   });
 
   assert.deepEqual(skillGroups.calls[0].map((group) => group.name), ['Frontend', 'Backend']);
   assert.deepEqual(ids(selected.calls[0]), ['skill-1', 'skill-2']);
+});
+
+test('skill applier preserves explicit empty selection when every skill is deselected', async () => {
+  const { createApplySkillState } = await importUseResumeDataAppliers();
+  const skillGroups = captureSetter();
+  const selected = captureSetter();
+  const skills = [
+    { id: 'skill-1', name: 'TypeScript', category: 'Frontend' },
+    { id: 'skill-2', name: 'FastAPI', category: 'Backend' },
+  ];
+  const buildSkillGroups = (items) => [
+    { id: 'group-backend', name: 'Backend', skills: items.filter((item) => item.category === 'Backend') },
+    { id: 'group-frontend', name: 'Frontend', skills: items.filter((item) => item.category === 'Frontend') },
+  ];
+  const resolveSelectionSet = (value) => new Set(value ?? []);
+  const applySkillState = createApplySkillState(
+    skillGroups.setter,
+    selected.setter,
+    buildSkillGroups,
+    resolveSelectionSet
+  );
+
+  applySkillState(skills, {
+    selection: { skillIds: [] },
+  });
+
+  assert.deepEqual(ids(selected.calls[0]), []);
 });
