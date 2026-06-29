@@ -20,6 +20,7 @@ export type ChatInputBoxProps = {
   isSending: boolean;
   isDeepThinkingEnabled?: boolean;
   shouldExpandDeepThinkingButton?: boolean;
+  surface?: 'full' | 'sidebar';
   onDeepThinkingChange?: (enabled: boolean) => void;
   placeholder?: string;
   plusActions?: { key: string; label: string; onClick?: () => void }[];
@@ -80,6 +81,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   isSending,
   isDeepThinkingEnabled = false,
   shouldExpandDeepThinkingButton = true,
+  surface = 'full',
   onDeepThinkingChange,
   placeholder = '有问题，尽管问',
   plusActions = [],
@@ -104,6 +106,14 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   const selectedModuleCount = selectedResumeModules.length;
   const selectedModuleSummary = selectedResumeModules[selectedModuleCount - 1]?.displayLabel ?? '简历各模块';
   const selectedModuleTitle = selectedResumeModules.map((item) => item.displayLabel).join('、') || '简历各模块';
+  const isSidebarSurface = surface === 'sidebar';
+  const textareaMaxHeight = isSidebarSurface ? 112 : 160;
+  const textareaClassName = isSidebarSurface
+    ? 'min-h-[40px] max-h-[112px] w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-2.5 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[44px] sm:px-5 sm:py-3'
+    : 'min-h-[56px] max-h-[160px] w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-4 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[60px] sm:px-6 sm:py-5';
+  const composerControlsClassName = isSidebarSurface
+    ? 'flex items-center justify-between px-2 py-1.5 sm:px-3 sm:py-2'
+    : 'flex items-center justify-between px-2 py-2 sm:px-3 sm:py-3';
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -112,10 +122,10 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
     }
     textarea.style.height = '0px';
     const fullHeight = textarea.scrollHeight;
-    const nextHeight = Math.min(fullHeight, 160);
+    const nextHeight = Math.min(fullHeight, textareaMaxHeight);
     textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY = fullHeight > 160 ? 'auto' : 'hidden';
-  }, [value]);
+    textarea.style.overflowY = fullHeight > textareaMaxHeight ? 'auto' : 'hidden';
+  }, [value, textareaMaxHeight]);
 
   useEffect(() => {
     if (!isPlusMenuOpen) {
@@ -299,10 +309,10 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           onPaste={handlePaste}
           placeholder={placeholder}
           rows={1}
-          className="min-h-[56px] max-h-[160px] w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-4 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[60px] sm:px-6 sm:py-5"
+          className={textareaClassName}
         />
 
-        <div className="flex items-center justify-between px-2 py-2 sm:px-3 sm:py-3">
+        <div className={composerControlsClassName}>
           <div className="flex min-w-0 items-center gap-2 pl-1 sm:pl-2">
             <div ref={plusMenuRef} className="relative shrink-0">
               <button

@@ -1138,7 +1138,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         setIsJDAnalysisDetailsSidebarOpen(true);
-        setIsAssistantSidebarOpen(false);
     }, [analysisResult]);
     const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
         setIsJDAnalysisDetailsSidebarOpen(false);
@@ -1799,24 +1798,46 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         templatePresetMap,
     ]);
     const isRightSidebarOpen = isAssistantSidebarOpen || isJDAnalysisDetailsSidebarOpen;
-    const rightSidebarContent = isJDAnalysisDetailsSidebarOpen ? (
-        <JDAnalysisDetailsSidebar
-            analysisResult={analysisResult}
-            jdText={jdText}
-            onClose={handleCloseJDAnalysisDetailsSidebar}
-            onOpenAssistantSidebar={handleToggleResumeAssistantSidebar}
-            onOpenAgentPluginConfig={onOpenAgentPluginConfig}
-        />
-    ) : isAssistantSidebarOpen ? (
-        <AIAssistant
-            surface="sidebar"
-            pendingLaunchRequest={assistantSidebarLaunchRequest}
-            liveSelectedResume={assistantSidebarSelectedResume}
-            onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
-            onClose={() => setIsAssistantSidebarOpen(false)}
-            onExpandToFullPage={handleExpandAssistantSidebar}
-            onOpenAnalysisDetails={analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
-        />
+    const rightSidebarContent = isRightSidebarOpen ? (
+        <div className="relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950">
+            <div
+                aria-hidden={isJDAnalysisDetailsSidebarOpen}
+                inert={isJDAnalysisDetailsSidebarOpen ? true : undefined}
+                className={[
+                    'absolute inset-0 transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    isJDAnalysisDetailsSidebarOpen ? '-translate-y-4' : 'translate-y-0',
+                ].join(' ')}
+            >
+                {isAssistantSidebarOpen ? (
+                    <AIAssistant
+                        surface="sidebar"
+                        pendingLaunchRequest={assistantSidebarLaunchRequest}
+                        liveSelectedResume={assistantSidebarSelectedResume}
+                        onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
+                        onClose={() => setIsAssistantSidebarOpen(false)}
+                        onExpandToFullPage={handleExpandAssistantSidebar}
+                        onOpenAnalysisDetails={analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
+                    />
+                ) : null}
+            </div>
+            <div
+                aria-hidden={!isJDAnalysisDetailsSidebarOpen}
+                inert={!isJDAnalysisDetailsSidebarOpen ? true : undefined}
+                className={[
+                    'absolute inset-0 z-10 will-change-transform transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    isJDAnalysisDetailsSidebarOpen ? 'translate-y-0' : 'translate-y-full pointer-events-none',
+                ].join(' ')}
+            >
+                {analysisResult ? (
+                    <JDAnalysisDetailsSidebar
+                        analysisResult={analysisResult}
+                        jdText={jdText}
+                        onClose={handleCloseJDAnalysisDetailsSidebar}
+                        onOpenAgentPluginConfig={onOpenAgentPluginConfig}
+                    />
+                ) : null}
+            </div>
+        </div>
     ) : null;
     return (
         <div

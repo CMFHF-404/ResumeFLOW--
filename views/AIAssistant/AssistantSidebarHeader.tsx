@@ -3,12 +3,14 @@ import {
   FileSearch,
   History,
   Maximize2,
+  MessageSquarePlus,
   X,
 } from 'lucide-react';
 
 type AssistantSidebarHeaderProps = {
   title: string;
   isHistoryOpen: boolean;
+  onNewChat?: () => void;
   onToggleHistory: () => void;
   onExpandToFullPage?: () => void;
   onOpenAnalysisDetails?: () => void;
@@ -16,15 +18,12 @@ type AssistantSidebarHeaderProps = {
 };
 
 const SIDEBAR_ACTION_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 dark:text-slate-400 dark:hover:text-white';
-const SIDEBAR_ANALYSIS_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm shadow-emerald-500/25 transition hover:bg-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400';
-const SIDEBAR_ANALYSIS_BUTTON_STYLE: React.CSSProperties = {
-  backgroundColor: '#10b981',
-  color: '#fff',
-};
+const SIDEBAR_ANALYSIS_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 dark:text-emerald-300 dark:hover:text-emerald-200';
 
 export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
   title,
   isHistoryOpen,
+  onNewChat,
   onToggleHistory,
   onExpandToFullPage,
   onOpenAnalysisDetails,
@@ -36,6 +35,17 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
         {title}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {onOpenAnalysisDetails ? (
+          <button
+            type="button"
+            onClick={onOpenAnalysisDetails}
+            className={SIDEBAR_ANALYSIS_BUTTON_CLASS}
+            title="查看分析详情"
+            aria-label="查看分析详情"
+          >
+            <FileSearch className="h-4 w-4" />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onToggleHistory}
@@ -50,16 +60,15 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
         >
           <History className="h-4 w-4" />
         </button>
-        {onOpenAnalysisDetails ? (
+        {onNewChat ? (
           <button
             type="button"
-            onClick={onOpenAnalysisDetails}
-            className={SIDEBAR_ANALYSIS_BUTTON_CLASS}
-            style={SIDEBAR_ANALYSIS_BUTTON_STYLE}
-            title="查看分析详情"
-            aria-label="查看分析详情"
+            onClick={onNewChat}
+            className={SIDEBAR_ACTION_BUTTON_CLASS}
+            title="新建对话"
+            aria-label="新建对话"
           >
-            <FileSearch className="h-4 w-4" />
+            <MessageSquarePlus className="h-4 w-4" />
           </button>
         ) : null}
         <button

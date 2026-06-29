@@ -669,6 +669,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 <AssistantSidebarHeader
                   title={assistantSidebarTitle}
                   isHistoryOpen={isSidebarHistoryOpen}
+                  onNewChat={handleSidebarNewChat}
                   onToggleHistory={() => setIsSidebarHistoryOpen((current) => !current)}
                   onExpandToFullPage={() => onExpandToFullPage?.(selectedSessionId)}
                   onOpenAnalysisDetails={onOpenAnalysisDetails}
@@ -679,7 +680,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   selectedSessionId={selectedSessionId}
                   isOpen={isSidebarHistoryOpen}
                   onClose={() => setIsSidebarHistoryOpen(false)}
-                  onNewChat={handleSidebarNewChat}
                   onSelectSession={handleSidebarSelectSession}
                   onRenameSession={handleRenameSession}
                   onDeleteSession={handleDeleteSession}
@@ -762,6 +762,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   isSending={isSending}
                   isDeepThinkingEnabled={isDeepThinkingEnabled}
                   shouldExpandDeepThinkingButton={!isSidebarSurface}
+                  surface={isSidebarSurface ? 'sidebar' : 'full'}
                   onDeepThinkingChange={handleDeepThinkingChange}
                   placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
                   plusActions={[

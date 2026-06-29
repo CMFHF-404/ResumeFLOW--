@@ -16,24 +16,45 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(panel, /onClick=\{handleOpenDetails\}/);
   assert.doesNotMatch(panel, /onClick=\{\(\) => setIsDetailsModalOpen\(true\)\}/);
   assert.match(panel, /aria-labelledby="jd-analysis-details-sidebar-title"/);
-  assert.match(panel, /onOpenAssistantSidebar\?: \(\) => void/);
-  assert.match(panel, /const handleOpenAssistantSidebar = useCallback\(\(\) => \{/);
-  assert.match(panel, /resetStrategyCopyState\(\);[\s\S]*onOpenAssistantSidebar\?\.\(\);/);
-  assert.match(panel, /onOpenAssistantSidebar \? \(/);
-  assert.match(panel, /aria-label="返回 AI 助手"/);
-  assert.match(panel, /<Sparkles className="h-4 w-4" \/>/);
+  assert.doesNotMatch(panel, /onOpenAssistantSidebar/);
+  assert.doesNotMatch(panel, /aria-label="返回 AI 助手"/);
+  assert.doesNotMatch(panel, /<Sparkles className="h-4 w-4" \/>/);
+  const detailsSidebarHeader = panel.match(
+    /aria-labelledby="jd-analysis-details-sidebar-title"[\s\S]*?<div className="min-h-0 flex-1 overflow-y-auto/
+  )?.[0] ?? '';
+  assert.match(detailsSidebarHeader, /aria-label="关闭 JD 分析详情"/);
+  assert.match(detailsSidebarHeader, /onClick=\{handleClose\}/);
+  assert.doesNotMatch(detailsSidebarHeader, /onClick=\{handleOpenAssistantSidebar\}/);
 
   assert.match(editor, /import \{ JDAnalysisDetailsSidebar \} from '\.\/components\/JDAnalysisPanel'/);
   assert.match(editor, /const \[isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen\] = useState\(false\)/);
   assert.match(editor, /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{/);
   assert.match(editor, /setIsJDAnalysisDetailsSidebarOpen\(true\)/);
-  assert.match(editor, /setIsAssistantSidebarOpen\(false\)/);
+  const openDetailsHandler = editor.match(
+    /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[analysisResult\]\);/
+  )?.[0] ?? '';
+  assert.doesNotMatch(openDetailsHandler, /setIsAssistantSidebarOpen\(false\)/);
+  assert.doesNotMatch(editor, /handleReturnToAssistantSidebar/);
+  const closeDetailsHandler = editor.match(
+    /const handleCloseJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/
+  )?.[0] ?? '';
+  assert.match(closeDetailsHandler, /setIsJDAnalysisDetailsSidebarOpen\(false\)/);
+  assert.doesNotMatch(closeDetailsHandler, /handleToggleResumeAssistantSidebar/);
+  assert.doesNotMatch(closeDetailsHandler, /handleReturnToAssistantSidebar/);
   assert.match(editor, /onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar/);
   assert.match(editor, /onOpenAnalysisDetails=\{analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
   assert.match(editor, /const isRightSidebarOpen = isAssistantSidebarOpen \|\| isJDAnalysisDetailsSidebarOpen/);
-  assert.match(editor, /const rightSidebarContent = isJDAnalysisDetailsSidebarOpen/);
+  assert.match(editor, /const rightSidebarContent = isRightSidebarOpen \? \(/);
+  assert.match(editor, /relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950/);
+  assert.match(editor, /aria-hidden=\{isJDAnalysisDetailsSidebarOpen\}/);
+  assert.match(editor, /inert=\{isJDAnalysisDetailsSidebarOpen \? true : undefined\}/);
+  assert.match(editor, /isJDAnalysisDetailsSidebarOpen\s*\?\s*'-translate-y-4'[\s\S]*:\s*'translate-y-0'/);
+  assert.match(editor, /aria-hidden=\{!isJDAnalysisDetailsSidebarOpen\}/);
+  assert.match(editor, /inert=\{!isJDAnalysisDetailsSidebarOpen \? true : undefined\}/);
+  assert.match(editor, /isJDAnalysisDetailsSidebarOpen\s*\?\s*'translate-y-0'[\s\S]*:\s*'translate-y-full pointer-events-none'/);
   assert.match(editor, /<JDAnalysisDetailsSidebar/);
-  assert.match(editor, /onOpenAssistantSidebar=\{handleToggleResumeAssistantSidebar\}/);
+  assert.match(editor, /onClose=\{handleCloseJDAnalysisDetailsSidebar\}/);
+  assert.doesNotMatch(editor, /onOpenAssistantSidebar=\{handleReturnToAssistantSidebar\}/);
   assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /assistantSidebar=\{rightSidebarContent\}/);
 

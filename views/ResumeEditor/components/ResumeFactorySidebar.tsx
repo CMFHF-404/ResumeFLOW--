@@ -174,19 +174,22 @@ const TemplateSelectionPanel: React.FC<Pick<
                     已自定义
                   </span>
                 ) : null}
+                {isSelected ? (
+                  <span
+                    className="absolute bottom-2 right-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-sm"
+                    aria-hidden="true"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </span>
+                ) : null}
               </div>
             </button>
-            <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
+            <div className="mt-2 min-w-0">
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-gray-900 dark:text-white">
                   {template.name}
                 </div>
               </div>
-              {isSelected ? (
-                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white">
-                  <Check className="h-3.5 w-3.5" />
-                </span>
-              ) : null}
             </div>
             <button
               type="button"
