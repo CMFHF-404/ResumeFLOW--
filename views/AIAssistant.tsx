@@ -2,29 +2,26 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogto } from '@logto/react';
 import {
   Bot,
-  FileSearch,
-  Maximize2,
   PanelLeft,
-  X,
 } from 'lucide-react';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import { ToastContainer, useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { type AssistantDraftApplyNavigation, type AssistantMode, type AssistantSelectedExperience, type AssistantSelectedResume, type AssistantSkillId } from '../services/aiService';
-import { formatRelativeTime } from '../utils/timeUtils';
 import {
   readPendingAssistantManualSaveDrafts,
 } from './assistantManualSaveStorage';
 
 import { AssistantDesktopDraftPanel, AssistantMobileDraftTray } from './AIAssistant/AssistantDraftPanel';
+import { AssistantConversationViewport } from './AIAssistant/AssistantConversationViewport';
 import { AssistantHistoryPanel } from './AIAssistant/AssistantHistoryPanel';
+import { AssistantSidebarHeader } from './AIAssistant/AssistantSidebarHeader';
+import { AssistantSidebarHistoryDropdown } from './AIAssistant/AssistantSidebarHistoryDropdown';
 import { AssistantContextRail } from './AIAssistant/AssistantContextRail';
 import ResumePicker from './AIAssistant/ResumePicker';
-import { MessageItem, ActiveThoughtBlock } from './AIAssistant/MessageItem';
 import { ChatInputBox } from './AIAssistant/ChatInputBox';
 import {
   ASSISTANT_ATTACHMENT_ACCEPT_ATTR,
-  readMessageAttachmentPreviews,
 } from './AIAssistant/attachmentUtils';
 import { useAssistantComposerAttachments } from './AIAssistant/useAssistantComposerAttachments';
 import { useAssistantDraftApplyActions } from './AIAssistant/useAssistantDraftApplyActions';
@@ -36,8 +33,6 @@ import { useAssistantResourcePickers } from './AIAssistant/useAssistantResourceP
 import { useAssistantSessionController } from './AIAssistant/useAssistantSessionController';
 import {
   normalizeSelectedResume,
-  readMessageSelectedExperiences,
-  readMessageSelectedResume,
 } from './AIAssistant/selectionUtils';
 import {
   deriveDraftMessageItems,
@@ -45,7 +40,6 @@ import {
 } from './AIAssistant/messageDerivationUtils';
 import {
   groupDraftItems,
-  isPendingLatestPreview,
   type AssistantDraftMessageItem,
 } from './AIAssistant/sessionUtils';
 import {
@@ -77,9 +71,6 @@ type AIAssistantProps = {
   onDraftInputChange?: (value: string) => void;
 };
 
-const SIDEBAR_ACTION_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 dark:text-slate-400 dark:hover:text-white';
-const ASSISTANT_EMPTY_GREETING = '嗨，我在这里。把零散经历、目标 JD 或想法丢给我，我们一起整理成能投递的表达。';
-
 const AIAssistant: React.FC<AIAssistantProps> = ({
   surface = 'full',
   pendingLaunchRequest,
@@ -110,6 +101,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [selectedResumeModuleIds, setSelectedResumeModuleIds] = useState<string[]>([]);
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
+  const [isSidebarHistoryOpen, setIsSidebarHistoryOpen] = useState(false);
   const [isDesktopHistoryCollapsed, setIsDesktopHistoryCollapsed] = useState(false);
   const {
     messageViewportRef,
@@ -347,6 +339,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   useEffect(() => {
     if (!isAuthenticated) {
       setIsMobileHistoryOpen(false);
+      setIsSidebarHistoryOpen(false);
     }
   }, [isAuthenticated]);
 
@@ -598,6 +591,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     success,
   });
 
+  const handleSidebarNewChat = useCallback(() => {
+    setIsSidebarHistoryOpen(false);
+    void handleNewChat('general');
+  }, [handleNewChat]);
+
+  const handleSidebarSelectSession = useCallback((sessionId: string) => {
+    setIsSidebarHistoryOpen(false);
+    handleSelectSession(sessionId);
+  }, [handleSelectSession]);
+
   return (
     <div className={isSidebarSurface
       ? 'flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-white dark:bg-slate-950'
@@ -662,44 +665,26 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {isSidebarSurface ? (
-              <div className="shrink-0 border-b border-slate-200/90 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-                <div className="flex min-w-0 items-center justify-between gap-3">
-                  <div className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={assistantSidebarTitle}>
-                    {assistantSidebarTitle}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {onOpenAnalysisDetails ? (
-                      <button
-                        type="button"
-                        onClick={onOpenAnalysisDetails}
-                        className={SIDEBAR_ACTION_BUTTON_CLASS}
-                        title="查看分析详情"
-                        aria-label="查看分析详情"
-                      >
-                        <FileSearch className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => onExpandToFullPage?.(selectedSessionId)}
-                      className={SIDEBAR_ACTION_BUTTON_CLASS}
-                      title="展开到 AI 助手"
-                      aria-label="展开到 AI 助手"
-                    >
-                      <Maximize2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className={SIDEBAR_ACTION_BUTTON_CLASS}
-                      title="关闭 AI 侧栏"
-                      aria-label="关闭 AI 侧栏"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-              </div>
-            </div>
+              <>
+                <AssistantSidebarHeader
+                  title={assistantSidebarTitle}
+                  isHistoryOpen={isSidebarHistoryOpen}
+                  onToggleHistory={() => setIsSidebarHistoryOpen((current) => !current)}
+                  onExpandToFullPage={() => onExpandToFullPage?.(selectedSessionId)}
+                  onOpenAnalysisDetails={onOpenAnalysisDetails}
+                  onClose={onClose}
+                />
+                <AssistantSidebarHistoryDropdown
+                  sessions={sessions}
+                  selectedSessionId={selectedSessionId}
+                  isOpen={isSidebarHistoryOpen}
+                  onClose={() => setIsSidebarHistoryOpen(false)}
+                  onNewChat={handleSidebarNewChat}
+                  onSelectSession={handleSidebarSelectSession}
+                  onRenameSession={handleRenameSession}
+                  onDeleteSession={handleDeleteSession}
+                />
+              </>
             ) : (
             <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 md:hidden">
               <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
@@ -718,69 +703,17 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               </div>
             </div>
             )}
-            <div
-              ref={messageViewportRef}
-              className={isSidebarSurface
-                ? 'min-w-0 flex-1 overflow-y-auto px-3 pt-4'
-                : 'min-w-0 flex-1 overflow-y-auto px-3 pt-4 sm:px-4 md:px-7 md:pt-6'
-              }
-              style={{ paddingBottom: `${composerReservedHeight}px` }}
-            >
-              <div className={isSidebarSurface
-                ? 'flex w-full min-w-0 flex-col pb-4 pt-1'
-                : 'mx-auto flex w-full max-w-3xl min-w-0 flex-col pb-4 pt-2 md:pt-4'
-              }>
-                {shouldShowEmptyAssistantGreeting ? (
-                  <div className="flex min-h-[260px] flex-col items-center justify-center px-5 text-center">
-                    <p className="text-base font-semibold text-slate-700 dark:text-slate-100">
-                      {ASSISTANT_EMPTY_GREETING}
-                    </p>
-                  </div>
-                ) : null}
-                {messages.map((message) => {
-                  if (message.message_type === 'draft_card') {
-                    return null;
-                  }
-                  const isUser = message.role === 'user';
-                  const text = typeof message.content_json?.text === 'string' ? message.content_json.text : '';
-                  const thinking = typeof message.content_json?.thinking === 'string' ? message.content_json.thinking : '';
-                  const attachments = readMessageAttachmentPreviews(message);
-                  const selectedExperiencePreviews = readMessageSelectedExperiences(message);
-                  const selectedResumePreview = readMessageSelectedResume(message);
-                  return (
-                    <MessageItem
-                      key={message.id}
-                      isUser={isUser}
-                      content={text}
-                      thinking={!isUser ? thinking : undefined}
-                      attachments={attachments}
-                      selectedExperiences={selectedExperiencePreviews}
-                      selectedResume={selectedResumePreview}
-                    />
-                  );
-                })}
-                {isLoadingDetail ? (
-                  <div className="py-4 text-center text-sm text-slate-400 dark:text-slate-500">正在加载会话...</div>
-                ) : null}
-                {activeThought ? (
-                   <ActiveThoughtBlock thought={activeThought} />
-                ) : null}
-                {!activeThought && latestSuggestedFollowups.length > 0 ? (
-                  <div className="mb-6 flex flex-wrap justify-center gap-2">
-                    {latestSuggestedFollowups.map((item) => (
-                      <button
-                        key={`${item.skillId}-${item.label}`}
-                        type="button"
-                        onClick={() => handleSelectSkillFollowup(item.skillId, item.prompt)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            <AssistantConversationViewport
+              messageViewportRef={messageViewportRef}
+              messages={messages}
+              isSidebarSurface={isSidebarSurface}
+              composerReservedHeight={composerReservedHeight}
+              shouldShowEmptyAssistantGreeting={shouldShowEmptyAssistantGreeting}
+              isLoadingDetail={isLoadingDetail}
+              activeThought={activeThought}
+              latestSuggestedFollowups={latestSuggestedFollowups}
+              onSelectSkillFollowup={handleSelectSkillFollowup}
+            />
 
             <div
               ref={composerContainerRef}

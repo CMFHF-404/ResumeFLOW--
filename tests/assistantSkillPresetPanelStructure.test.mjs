@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 
 test('AIAssistant binds composer quick buttons to assistant skill presets', () => {
   const assistant = read('views/AIAssistant.tsx');
+  const conversationViewport = read('views/AIAssistant/AssistantConversationViewport.tsx');
   const contextRail = read('views/AIAssistant/AssistantContextRail.tsx');
   const presetPanel = read('views/AIAssistant/AssistantSkillPresetPanel.tsx');
   const chatInput = read('views/AIAssistant/ChatInputBox.tsx');
@@ -55,10 +56,11 @@ test('AIAssistant binds composer quick buttons to assistant skill presets', () =
   assert.match(assistant, /selectedResume: selectedResumeForTurn/);
   assert.match(assistant, /selectedResumeModuleIds=\{selectedResumeModuleIds\}/);
   assert.match(assistant, /onSelectedResumeModuleIdsChange=\{setSelectedResumeModuleIds\}/);
-  assert.match(assistant, /ASSISTANT_EMPTY_GREETING = '嗨，我在这里。把零散经历、目标 JD 或想法丢给我，我们一起整理成能投递的表达。'/);
   assert.match(assistant, /const shouldShowEmptyAssistantGreeting = !isSidebarSurface && !isLoadingDetail && messages\.length === 0 && !activeThought;/);
-  assert.match(assistant, /shouldShowEmptyAssistantGreeting \? \(/);
-  assert.match(assistant, /<p className="text-base font-semibold text-slate-700 dark:text-slate-100">\s*\{ASSISTANT_EMPTY_GREETING\}\s*<\/p>/);
+  assert.match(assistant, /shouldShowEmptyAssistantGreeting=\{shouldShowEmptyAssistantGreeting\}/);
+  assert.match(conversationViewport, /ASSISTANT_EMPTY_GREETING = '嗨，我在这里。把零散经历、目标 JD 或想法丢给我，我们一起整理成能投递的表达。'/);
+  assert.match(conversationViewport, /shouldShowEmptyAssistantGreeting \? \(/);
+  assert.match(conversationViewport, /<p className="text-base font-semibold text-slate-700 dark:text-slate-100">\s*\{ASSISTANT_EMPTY_GREETING\}\s*<\/p>/);
   assert.doesNotMatch(assistant, /ExperiencePicker/);
   assert.doesNotMatch(assistant, /key: 'pick-experience'/);
   assert.doesNotMatch(assistant, /label: '选择经历'/);
