@@ -872,7 +872,14 @@ async def persist_assistant_turn(
     suggested_followups: list[dict] | None = None,
     title: str | None = None,
 ) -> list[AIAssistantMessage]:
-    user_content_json = {"text": display_message if display_message is not None else user_message}
+    visible_user_text = (
+        display_message
+        if isinstance(display_message, str) and display_message.strip()
+        else user_message
+    )
+    user_content_json = {
+        "text": visible_user_text,
+    }
     if user_skill_id:
         user_content_json["skill_id"] = user_skill_id
     normalized_attachments = [

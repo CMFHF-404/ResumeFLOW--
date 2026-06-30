@@ -901,9 +901,13 @@ async def stream_assistant_session_turn(
                         result = await run_assistant_turn_with_thoughts(
                             **turn_kwargs,
                             thought_callback=emit,
+                            assistant_text_callback=emit,
                         )
                     else:
-                        result = await run_assistant_turn(**turn_kwargs)
+                        result = await run_assistant_turn(
+                            **turn_kwargs,
+                            assistant_text_callback=emit,
+                        )
                     await persist_assistant_turn(
                         session,
                         assistant_session,

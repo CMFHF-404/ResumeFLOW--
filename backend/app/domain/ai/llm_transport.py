@@ -24,6 +24,7 @@ GEMINI_POOL_TIMEOUT_SECONDS = 10.0
 QWEN_THOUGHT_SUMMARY_MAX_LENGTH = 80
 QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH = 32
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
+AssistantTextCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 UsageCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AI_ROUTE_PROFILE_HYBRID = "hybrid_gemini_aifast"
 AI_ROUTE_PROFILE_GEMINI = "gemini_primary"
@@ -577,6 +578,144 @@ async def _emit_thought(
         await result
 
 
+async def _emit_assistant_text(
+    assistant_text_callback: AssistantTextCallback,
+    payload: Dict[str, Any],
+) -> None:
+    if not assistant_text_callback:
+        return
+    result = assistant_text_callback(payload)
+    if inspect.isawaitable(result):
+        await result
+
+
+def _decode_json_string_prefix(
+    text: str,
+    start: int,
+) -> tuple[str, bool, int]:
+    if start >= len(text) or text[start] != '"':
+        return "", False, start
+    index = start + 1
+    last_safe_index = index
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            if char == "u":
+                unicode_end = index + 5
+                if unicode_end > len(text):
+                    break
+                if not all(
+                    item in "0123456789abcdefABCDEF"
+                    for item in text[index + 1 : unicode_end]
+                ):
+                    break
+                index = unicode_end
+            else:
+                index += 1
+            escaped = False
+            last_safe_index = index
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if char == '"':
+            try:
+                return json.loads(text[start : index + 1]), True, index + 1
+            except json.JSONDecodeError:
+                return "", False, start
+        if ord(char) < 0x20:
+            break
+        index += 1
+        last_safe_index = index
+
+    if last_safe_index <= start + 1:
+        return "", False, last_safe_index
+    try:
+        decoded = json.loads(f"{text[start:last_safe_index]}\"")
+    except json.JSONDecodeError:
+        return "", False, last_safe_index
+    if decoded and 0xD800 <= ord(decoded[-1]) <= 0xDBFF:
+        decoded = decoded[:-1]
+    return decoded, False, last_safe_index
+
+
+def _find_json_field_value_start(text: str, field_name: str) -> int | None:
+    index = 0
+    while index < len(text):
+        if text[index] != '"':
+            index += 1
+            continue
+        value, closed, end_index = _decode_json_string_prefix(text, index)
+        if not closed:
+            return None
+        index = end_index
+        if value != field_name:
+            continue
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index >= len(text) or text[index] != ":":
+            continue
+        index += 1
+        while index < len(text) and text[index].isspace():
+            index += 1
+        return index
+    return None
+
+
+def _extract_assistant_text_prefix(text: str) -> str | None:
+    value_start = _find_json_field_value_start(text, "assistantText")
+    if value_start is None or value_start >= len(text) or text[value_start] != '"':
+        return None
+    value, _, _ = _decode_json_string_prefix(text, value_start)
+    return value
+
+
+class _AssistantTextDeltaTracker:
+    def __init__(self, callback: AssistantTextCallback = None):
+        self._callback = callback
+        self._buffer = ""
+        self._last_text = ""
+        self._started = False
+
+    def _events_for_chunk(self, raw_chunk: str) -> list[Dict[str, Any]]:
+        if not raw_chunk:
+            return []
+        self._buffer = f"{self._buffer}{raw_chunk}"
+        text = _extract_assistant_text_prefix(self._buffer)
+        if text is None:
+            return []
+
+        events: list[Dict[str, Any]] = []
+        if not self._started:
+            self._started = True
+            events.append({"type": "assistant_text_reset"})
+
+        if text.startswith(self._last_text):
+            delta = text[len(self._last_text) :]
+        else:
+            events.append({"type": "assistant_text_reset"})
+            delta = text
+        if delta:
+            events.append({"type": "assistant_delta", "delta": delta})
+        self._last_text = text
+        return events
+
+    def update(self, raw_chunk: str) -> list[Dict[str, Any]]:
+        events = self._events_for_chunk(raw_chunk)
+        if self._callback:
+            for event in events:
+                result = self._callback(event)
+                if inspect.isawaitable(result):
+                    raise RuntimeError("Use emit_update for async assistant text callbacks.")
+        return events
+
+    async def emit_update(self, raw_chunk: str) -> None:
+        for event in self._events_for_chunk(raw_chunk):
+            await _emit_assistant_text(self._callback, event)
+
+
 def _safe_int(value: Any) -> int:
     try:
         return max(int(value or 0), 0)
@@ -759,19 +898,22 @@ def _build_gemini_generation_config(
     budget_tokens: Optional[int] = None,
     *,
     model: Optional[str] = None,
+    include_thoughts: bool = True,
 ) -> Dict[str, Any]:
     config: Dict[str, Any] = {
         "temperature": 0.2,
-        "thinkingConfig": {
-            "includeThoughts": True,
-        },
     }
+    if include_thoughts:
+        config["thinkingConfig"] = {
+            "includeThoughts": True,
+        }
     if _supports_gemini_response_mime_type(model):
         config["responseMimeType"] = "application/json"
     if budget_tokens is None:
         return config
 
-    config["thinkingConfig"]["thinkingBudget"] = int(budget_tokens)
+    thinking_config = config.setdefault("thinkingConfig", {})
+    thinking_config["thinkingBudget"] = int(budget_tokens)
     return config
 
 
@@ -781,6 +923,7 @@ def _build_gemini_request_body(
     user_parts: List[Dict[str, Any]],
     budget_tokens: Optional[int] = None,
     model: Optional[str] = None,
+    include_thoughts: bool = True,
 ) -> Dict[str, Any]:
     return {
         "systemInstruction": {
@@ -795,6 +938,7 @@ def _build_gemini_request_body(
         "generationConfig": _build_gemini_generation_config(
             budget_tokens,
             model=model,
+            include_thoughts=include_thoughts,
         ),
     }
 
@@ -1214,6 +1358,8 @@ async def _stream_gemini_json_response_legacy(
     request_label: str,
     budget_tokens: Optional[int] = None,
     thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
+    enable_thinking: bool = True,
     usage_callback: UsageCallback = None,
 ) -> Dict[str, Any]:
     model = settings.gemini_model
@@ -1222,10 +1368,12 @@ async def _stream_gemini_json_response_legacy(
         user_parts=user_parts,
         budget_tokens=budget_tokens,
         model=model,
+        include_thoughts=enable_thinking,
     )
     url = _build_gemini_stream_url(model)
     answer_parts: List[str] = []
     answer_snapshots: List[str] = []
+    assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
     final_usage: Dict[str, Any] | None = None
 
     try:
@@ -1269,6 +1417,7 @@ async def _stream_gemini_json_response_legacy(
                             continue
                         answer_parts.append(text)
                         event_answer_parts.append(text)
+                        await assistant_text_tracker.emit_update(text)
                     if event_answer_parts:
                         answer_snapshots.append("".join(event_answer_parts))
     except httpx.HTTPStatusError as exc:
@@ -1319,6 +1468,8 @@ async def _stream_qwen_responses_json_response(
     error_message: str,
     request_label: str,
     thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
+    enable_thinking: bool = True,
     usage_callback: UsageCallback = None,
 ) -> Dict[str, Any]:
     model = settings.ai_model
@@ -1330,11 +1481,12 @@ async def _stream_qwen_responses_json_response(
         ),
         "temperature": 0.2,
         "stream": True,
-        "enable_thinking": True,
+        "enable_thinking": enable_thinking,
     }
 
     answer_parts: List[str] = []
     answer_snapshots: List[str] = []
+    assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
     thought_buffer = ""
     last_thought_summary = ""
     url = _build_qwen_responses_url()
@@ -1400,6 +1552,7 @@ async def _stream_qwen_responses_json_response(
                         if isinstance(delta, str) and delta:
                             answer_parts.append(delta)
                             answer_snapshots.append(delta)
+                            await assistant_text_tracker.emit_update(delta)
                         continue
 
                     if event_type == "response.output_item.done":
@@ -1416,6 +1569,7 @@ async def _stream_qwen_responses_json_response(
                             if message_text:
                                 answer_parts.append(message_text)
                                 answer_snapshots.append(message_text)
+                                await assistant_text_tracker.emit_update(message_text)
                             continue
 
                     if event_type == "response.completed":
@@ -1441,6 +1595,7 @@ async def _stream_qwen_responses_json_response(
                                 if message_text:
                                     answer_parts.append(message_text)
                                     answer_snapshots.append(message_text)
+                                    await assistant_text_tracker.emit_update(message_text)
                         continue
 
                 await flush_summary_buffer()
@@ -1493,6 +1648,8 @@ async def _stream_qwen_json_response(
     request_label: str,
     budget_tokens: Optional[int] = None,
     thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
+    enable_thinking: bool = True,
     usage_callback: UsageCallback = None,
 ) -> Dict[str, Any]:
     model = settings.ai_model
@@ -1505,14 +1662,15 @@ async def _stream_qwen_json_response(
         "temperature": 0.2,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "enable_thinking": True,
+        "enable_thinking": enable_thinking,
     }
-    if budget_tokens is not None:
+    if enable_thinking and budget_tokens is not None:
         payload["thinking_budget"] = int(budget_tokens)
 
     url = f"{settings.ai_base_url.rstrip('/')}/chat/completions"
     answer_parts: List[str] = []
     answer_snapshots: List[str] = []
+    assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
     thought_buffer = ""
     last_thought_summary = ""
     final_usage: Dict[str, Any] | None = None
@@ -1564,6 +1722,7 @@ async def _stream_qwen_json_response(
                     if isinstance(content, str) and content:
                         answer_parts.append(content)
                         answer_snapshots.append(content)
+                        await assistant_text_tracker.emit_update(content)
                 if thought_buffer.strip():
                     thought_summary = _normalize_thought_summary(thought_buffer)
                     if thought_summary and thought_summary != last_thought_summary:
@@ -1620,6 +1779,8 @@ async def _stream_gemini_json_response(
     request_label: str,
     budget_tokens: Optional[int] = None,
     thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
+    enable_thinking: bool = True,
     usage_callback: UsageCallback = None,
 ) -> Dict[str, Any]:
     stream_route = _resolve_ai_route(lane=LANE_THINKING)
@@ -1636,7 +1797,7 @@ async def _stream_gemini_json_response(
             },
         )
 
-    if _should_use_qwen_thinking():
+    if _should_use_qwen_thinking() and enable_thinking:
         try:
             return await _stream_qwen_responses_json_response(
                 system_prompt=system_prompt,
@@ -1644,6 +1805,8 @@ async def _stream_gemini_json_response(
                 error_message=error_message,
                 request_label=request_label,
                 thought_callback=thought_callback,
+                assistant_text_callback=assistant_text_callback,
+                enable_thinking=enable_thinking,
                 usage_callback=usage_callback,
             )
         except Exception:
@@ -1661,6 +1824,8 @@ async def _stream_gemini_json_response(
                     request_label=request_label,
                     budget_tokens=budget_tokens,
                     thought_callback=thought_callback,
+                    assistant_text_callback=assistant_text_callback,
+                    enable_thinking=enable_thinking,
                     usage_callback=usage_callback,
                 )
             except Exception as qwen_chat_error:
@@ -1679,11 +1844,36 @@ async def _stream_gemini_json_response(
                             request_label=request_label,
                             budget_tokens=budget_tokens,
                             thought_callback=thought_callback,
+                            assistant_text_callback=assistant_text_callback,
+                            enable_thinking=enable_thinking,
                             usage_callback=usage_callback,
                         )
                     except Exception as gemini_error:
                         await record_stream_failure(gemini_error)
                         raise
+                await record_stream_failure(qwen_chat_error)
+                raise
+
+    if _should_use_qwen_thinking():
+        try:
+            return await _stream_qwen_json_response(
+                system_prompt=system_prompt,
+                user_parts=user_parts,
+                error_message=error_message,
+                request_label=request_label,
+                budget_tokens=budget_tokens,
+                thought_callback=thought_callback,
+                assistant_text_callback=assistant_text_callback,
+                enable_thinking=False,
+                usage_callback=usage_callback,
+            )
+        except Exception as qwen_chat_error:
+            logger.warning(
+                "[AI Stream] Qwen Chat Completions text streaming failed for %s.",
+                request_label,
+                exc_info=True,
+            )
+            if not getattr(settings, "gemini_api_key", None):
                 await record_stream_failure(qwen_chat_error)
                 raise
 
@@ -1695,6 +1885,8 @@ async def _stream_gemini_json_response(
             request_label=request_label,
             budget_tokens=budget_tokens,
             thought_callback=thought_callback,
+            assistant_text_callback=assistant_text_callback,
+            enable_thinking=enable_thinking,
             usage_callback=usage_callback,
         )
     except Exception as gemini_error:

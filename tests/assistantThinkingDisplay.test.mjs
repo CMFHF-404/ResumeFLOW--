@@ -55,3 +55,38 @@ test('assistant stream stores thinking state outside React state updaters', () =
     'Assistant stream must not mutate persisted thinking text inside a React state updater',
   );
 });
+
+test('assistant text stream state is advanced outside React state updaters', () => {
+  const sendingSource = readSource('views/AIAssistant/useAssistantMessageSending.ts');
+
+  assert.match(
+    sendingSource,
+    /reduceAssistantTextStreamEvent/,
+    'Assistant text stream should calculate the next stream state before updating React messages',
+  );
+  assert.doesNotMatch(
+    sendingSource,
+    /setMessages\(\(prev\) => \{[\s\S]*assistantTextStreamState(?:Ref)?(?:\.current)?\s*=/,
+    'Assistant text stream state must not be mutated inside a React state updater',
+  );
+});
+
+test('newly created assistant sessions skip the first selection reset while sending', () => {
+  const controllerSource = readSource('views/AIAssistant/useAssistantSessionController.ts');
+
+  assert.match(
+    controllerSource,
+    /skipNextSelectionResetSessionIdsRef/,
+    'controller should track created sessions whose first selection effect must not clear optimistic messages',
+  );
+  assert.match(
+    controllerSource,
+    /skipNextSelectionResetSessionIdsRef\.current\.add\(created\.id\)/,
+    'created selected sessions should be marked before setSelectedSessionId runs',
+  );
+  assert.match(
+    controllerSource,
+    /skipNextSelectionResetSessionIdsRef\.current\.delete\(selectedSessionId\)[\s\S]*return;/,
+    'the first selected-session effect for a created session should skip the message reset and detail load',
+  );
+});

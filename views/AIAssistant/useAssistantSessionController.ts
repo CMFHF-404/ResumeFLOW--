@@ -60,6 +60,7 @@ export const useAssistantSessionController = ({
   const sessionMutationCounterRef = useRef(0);
   const messageMutationSeqRef = useRef(0);
   const suppressAutoSelectSessionRef = useRef(false);
+  const skipNextSelectionResetSessionIdsRef = useRef<Set<string>>(new Set());
 
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
@@ -187,6 +188,12 @@ export const useAssistantSessionController = ({
       setLastAssistantSkillId(null);
       return;
     }
+    if (skipNextSelectionResetSessionIdsRef.current.delete(selectedSessionId)) {
+      preserveComposerAttachmentOnNextSelectionRef.current = false;
+      setActiveThought('');
+      setLastAssistantSkillId(null);
+      return;
+    }
     const preserveComposerAttachment = preserveComposerAttachmentOnNextSelectionRef.current;
     preserveComposerAttachmentOnNextSelectionRef.current = false;
     if (!preserveComposerAttachment) {
@@ -243,6 +250,7 @@ export const useAssistantSessionController = ({
     setSelectedResume(options?.selectedResumeDraft ?? null);
     clearSelectedExperiences();
     selectedSessionIdRef.current = created.id;
+    skipNextSelectionResetSessionIdsRef.current.add(created.id);
     setSelectedSessionId(created.id);
     markMessagesMutated();
     setMessages([]);

@@ -20,6 +20,7 @@ export type AssistantSendPayload = {
 export type PreparedAssistantSendPayload = {
   trimmedMessage: string;
   effectiveMessage: string;
+  displayMessage: string;
   skillId: AssistantSkillId | null;
   enableThinking: boolean;
   attachments: AssistantComposerAttachment[];
@@ -70,6 +71,9 @@ export const reduceAssistantThoughtStreamState = (
       streamedThoughtText: '',
     };
   }
+  if (!enableThinking) {
+    return state;
+  }
   if (event.type !== 'thought' && event.type !== 'progress') {
     return state;
   }
@@ -77,7 +81,7 @@ export const reduceAssistantThoughtStreamState = (
   const headline = resolveAssistantStreamThought(event);
   return {
     activeThought: appendAssistantThoughtText(state.activeThought, headline),
-    streamedThoughtText: enableThinking && event.type === 'thought'
+    streamedThoughtText: event.type === 'thought'
       ? appendAssistantThoughtText(state.streamedThoughtText, headline)
       : state.streamedThoughtText,
   };
@@ -104,6 +108,7 @@ export const prepareAssistantSendPayload = (payload: AssistantSendPayload): Prep
   return {
     trimmedMessage,
     effectiveMessage,
+    displayMessage: trimmedMessage || effectiveMessage,
     skillId,
     enableThinking,
     attachments,
@@ -118,7 +123,7 @@ export const buildOptimisticAssistantUserMessage = (
   randomValue: number,
 ): AssistantMessage => {
   const {
-    trimmedMessage,
+    displayMessage,
     skillId,
     attachments,
     selectedExperienceItems,
@@ -129,7 +134,7 @@ export const buildOptimisticAssistantUserMessage = (
     role: 'user',
     message_type: 'user_text',
     content_json: {
-      text: trimmedMessage,
+      text: displayMessage,
       ...(attachments.length > 0 ? {
         attachment: {
           id: attachments[0].id,
@@ -179,3 +184,134 @@ export const buildAssistantTextMessage = (
   },
   created_at: now,
 });
+
+export type AssistantTextStreamState = {
+  temporaryMessageId: string | null;
+  streamedText: string;
+};
+
+const getAssistantDeltaText = (event: AssistantStreamEvent) => {
+  if (event.type !== 'assistant_delta') {
+    return '';
+  }
+  if (typeof event.delta === 'string') {
+    return event.delta;
+  }
+  if (typeof event.text === 'string') {
+    return event.text;
+  }
+  return '';
+};
+
+export type AssistantTextStreamTransition = {
+  state: AssistantTextStreamState;
+  temporaryMessage: AssistantMessage | null;
+  removeTemporaryMessageId: string | null;
+  mutated: boolean;
+};
+
+export const reduceAssistantTextStreamEvent = (
+  state: AssistantTextStreamState,
+  event: AssistantStreamEvent,
+  options: {
+    skillId: AssistantSkillId | null;
+    now: string;
+    randomValue: number;
+  },
+): AssistantTextStreamTransition => {
+  if (event.type === 'assistant_text_reset') {
+    return {
+      state: { temporaryMessageId: null, streamedText: '' },
+      temporaryMessage: null,
+      removeTemporaryMessageId: state.temporaryMessageId,
+      mutated: Boolean(state.temporaryMessageId || state.streamedText),
+    };
+  }
+
+  const delta = getAssistantDeltaText(event);
+  if (!delta) {
+    return {
+      state,
+      temporaryMessage: null,
+      removeTemporaryMessageId: null,
+      mutated: false,
+    };
+  }
+
+  const nextText = `${state.streamedText}${delta}`;
+  const temporaryMessageId = state.temporaryMessageId
+    ?? `local-assistant-stream-${options.now}-${options.randomValue}`;
+  const nextMessage = buildAssistantTextMessage(
+    nextText,
+    options.skillId,
+    null,
+    options.now,
+    options.randomValue,
+  );
+
+  return {
+    state: {
+      temporaryMessageId,
+      streamedText: nextText,
+    },
+    temporaryMessage: {
+      ...nextMessage,
+      id: temporaryMessageId,
+    },
+    removeTemporaryMessageId: null,
+    mutated: true,
+  };
+};
+
+export const applyAssistantTextStreamTransition = (
+  messages: AssistantMessage[],
+  transition: AssistantTextStreamTransition,
+): AssistantMessage[] => {
+  if (transition.removeTemporaryMessageId) {
+    return messages.filter((message) => message.id !== transition.removeTemporaryMessageId);
+  }
+  if (!transition.temporaryMessage) {
+    return messages;
+  }
+  const existingIndex = messages.findIndex((message) => message.id === transition.temporaryMessage?.id);
+  if (existingIndex === -1) {
+    return [...messages, transition.temporaryMessage];
+  }
+  return messages.map((message, index) => (index === existingIndex ? transition.temporaryMessage! : message));
+};
+
+export const applyAssistantTextStreamEvent = (
+  messages: AssistantMessage[],
+  state: AssistantTextStreamState,
+  event: AssistantStreamEvent,
+  options: {
+    skillId: AssistantSkillId | null;
+    now: string;
+    randomValue: number;
+  },
+): { messages: AssistantMessage[]; state: AssistantTextStreamState; mutated: boolean } => {
+  const transition = reduceAssistantTextStreamEvent(state, event, options);
+  return {
+    messages: applyAssistantTextStreamTransition(messages, transition),
+    state: transition.state,
+    mutated: transition.mutated,
+  };
+};
+
+export const replaceAssistantTextStreamMessage = (
+  messages: AssistantMessage[],
+  state: AssistantTextStreamState,
+  finalMessage: AssistantMessage | null,
+): { messages: AssistantMessage[]; state: AssistantTextStreamState; mutated: boolean } => {
+  const withoutTemporaryMessage = state.temporaryMessageId
+    ? messages.filter((message) => message.id !== state.temporaryMessageId)
+    : messages;
+  const nextMessages = finalMessage
+    ? [...withoutTemporaryMessage, finalMessage]
+    : withoutTemporaryMessage;
+  return {
+    messages: nextMessages,
+    state: { temporaryMessageId: null, streamedText: '' },
+    mutated: nextMessages !== messages || Boolean(state.temporaryMessageId),
+  };
+};

@@ -12,11 +12,15 @@ import {
 } from '../../services/aiService';
 import type { AssistantComposerAttachment } from './attachmentUtils';
 import {
+  applyAssistantTextStreamTransition,
   buildAssistantTextMessage,
   buildOptimisticAssistantUserMessage,
   prepareAssistantSendPayload,
+  reduceAssistantTextStreamEvent,
   reduceAssistantThoughtStreamState,
+  replaceAssistantTextStreamMessage,
   type AssistantSendPayload,
+  type AssistantTextStreamState,
 } from './messageSendUtils';
 
 const ASSISTANT_SEND_ERROR_FALLBACK = 'AI 助理回复失败，请稍后重试';
@@ -82,6 +86,7 @@ export const useAssistantMessageSending = ({
     const {
       trimmedMessage,
       effectiveMessage,
+      displayMessage,
       skillId,
       enableThinking,
       attachments,
@@ -99,6 +104,10 @@ export const useAssistantMessageSending = ({
       activeThought: '',
       streamedThoughtText: '',
     };
+    let assistantTextStreamState: AssistantTextStreamState = {
+      temporaryMessageId: null,
+      streamedText: '',
+    };
     setSendingCount((count) => count + 1);
     if (selectedSessionIdRef.current === sessionId) {
       setActiveThought('');
@@ -115,7 +124,7 @@ export const useAssistantMessageSending = ({
         sessionId,
         {
           userMessage: effectiveMessage,
-          displayMessage: trimmedMessage,
+          displayMessage,
           mode,
           skillId,
           enableThinking,
@@ -127,15 +136,31 @@ export const useAssistantMessageSending = ({
           if (selectedSessionIdRef.current !== sessionId) {
             return;
           }
-          if (event.type !== 'thought' && event.type !== 'progress' && event.type !== 'thought_reset') {
+          if (event.type === 'assistant_delta' || event.type === 'assistant_text_reset') {
+            const transition = reduceAssistantTextStreamEvent(
+              assistantTextStreamState,
+              event,
+              {
+                skillId,
+                now: new Date().toISOString(),
+                randomValue: Math.random(),
+              },
+            );
+            assistantTextStreamState = transition.state;
+            if (transition.mutated) {
+              markMessagesMutated();
+              setMessages((prev) => applyAssistantTextStreamTransition(prev, transition));
+            }
             return;
           }
-          thoughtStreamState = reduceAssistantThoughtStreamState(
-            thoughtStreamState,
-            event,
-            enableThinking,
-          );
-          setActiveThought(thoughtStreamState.activeThought);
+          if (event.type === 'thought' || event.type === 'progress' || event.type === 'thought_reset') {
+            thoughtStreamState = reduceAssistantThoughtStreamState(
+              thoughtStreamState,
+              event,
+              enableThinking,
+            );
+            setActiveThought(thoughtStreamState.activeThought);
+          }
         },
       );
       if (options?.shouldAbort?.()) {
@@ -143,17 +168,27 @@ export const useAssistantMessageSending = ({
       }
       persistSessionSnapshot(sessionId, result.title, result.draftCard ?? null);
       if (selectedSessionIdRef.current === sessionId) {
-        if (result.assistantText.trim()) {
-          markMessagesMutated();
-          setMessages((prev) => [...prev, buildAssistantTextMessage(
+        const finalAssistantMessage = result.assistantText.trim()
+          ? buildAssistantTextMessage(
             result.assistantText,
             skillId,
             result.suggestedFollowups,
             new Date().toISOString(),
             Math.random(),
             thoughtStreamState.streamedThoughtText,
-          )]);
-        }
+          )
+          : null;
+        const streamStateBeforeFinal = assistantTextStreamState;
+        assistantTextStreamState = {
+          temporaryMessageId: null,
+          streamedText: '',
+        };
+        markMessagesMutated();
+        setMessages((prev) => replaceAssistantTextStreamMessage(
+          prev,
+          streamStateBeforeFinal,
+          finalAssistantMessage,
+        ).messages);
         setActiveThought('');
         setLastAssistantSkillId(skillId);
         clearComposerAttachmentsIfMatches(attachments);
@@ -166,9 +201,17 @@ export const useAssistantMessageSending = ({
     } catch (sendError) {
       console.error('[AIAssistant] Failed to send message:', sendError);
       if (selectedSessionIdRef.current === sessionId) {
+        const temporaryMessageId = assistantTextStreamState.temporaryMessageId;
+        assistantTextStreamState = {
+          temporaryMessageId: null,
+          streamedText: '',
+        };
         setActiveThought('');
         markMessagesMutated();
-        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessageId));
+        setMessages((prev) => prev.filter((message) => (
+          message.id !== optimisticMessageId
+          && message.id !== temporaryMessageId
+        )));
         setInputValue((current) => (current.trim() ? current : trimmedMessage));
         restoreComposerAttachmentsIfEmpty(attachments);
         setSelectedExperiences((current) => (current.length > 0 ? current : selectedExperienceItems));
