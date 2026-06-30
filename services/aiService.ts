@@ -367,6 +367,16 @@ type AssistantFinalEvent = {
     result: AssistantTurnResult;
 };
 
+type AssistantDeltaEvent = {
+    type: 'assistant_delta';
+    delta?: string;
+    text?: string;
+};
+
+type AssistantTextResetEvent = {
+    type: 'assistant_text_reset';
+};
+
 type AssistantErrorEvent = {
     type: 'error';
     message?: string;
@@ -376,6 +386,8 @@ export type AssistantStreamEvent =
     | AssistantProgressEvent
     | AIThoughtEvent
     | AIThoughtResetEvent
+    | AssistantDeltaEvent
+    | AssistantTextResetEvent
     | AssistantFinalEvent
     | AssistantErrorEvent;
 

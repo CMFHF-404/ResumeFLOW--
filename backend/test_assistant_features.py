@@ -19,7 +19,7 @@ _set_required_env_defaults()
 from fastapi import HTTPException  # noqa: E402
 
 from app.models import ExperienceCategory, ExperienceVersion, MasterExperience, Skill, UserSkill  # noqa: E402
-from app.domain.ai import ai_service  # noqa: E402
+from app.domain.ai import ai_service, llm_transport  # noqa: E402
 from app.domain.assistant import assistant_router, assistant_service  # noqa: E402
 
 
@@ -112,7 +112,13 @@ async def _collect_streaming_response_lines(response) -> list[dict]:
 
 
 class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
-    async def _run_stream_with_payload(self, payload, *, thinking_side_effect=None):
+    async def _run_stream_with_payload(
+        self,
+        payload,
+        *,
+        standard_side_effect=None,
+        thinking_side_effect=None,
+    ):
         assistant_session = SimpleNamespace(
             id=uuid.uuid4(),
             mode="general",
@@ -122,12 +128,15 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
         )
         session = object()
         current_user = SimpleNamespace(id="user-1")
-        standard_turn = AsyncMock(return_value={
-            "assistantText": "标准回复",
-            "draftCard": None,
-            "title": "AI 助理",
-            "suggestedFollowups": [],
-        })
+        if standard_side_effect:
+            standard_turn = AsyncMock(side_effect=standard_side_effect)
+        else:
+            standard_turn = AsyncMock(return_value={
+                "assistantText": "标准回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            })
         if thinking_side_effect:
             thinking_turn = AsyncMock(side_effect=thinking_side_effect)
         else:
@@ -204,6 +213,41 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[-1]["type"], "final")
         self.assertEqual(events[-1]["result"]["assistantText"], "标准回复")
 
+    async def test_standard_stream_emits_assistant_text_delta_before_final(self) -> None:
+        async def standard_side_effect(**kwargs):
+            await kwargs["assistant_text_callback"]({"type": "assistant_text_reset"})
+            await kwargs["assistant_text_callback"]({"type": "assistant_delta", "delta": "标"})
+            await kwargs["assistant_text_callback"]({"type": "assistant_delta", "delta": "准回复"})
+            return {
+                "assistantText": "标准回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            }
+
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=False,
+        )
+
+        standard_turn, thinking_turn, events = await self._run_stream_with_payload(
+            payload,
+            standard_side_effect=standard_side_effect,
+        )
+
+        standard_turn.assert_awaited_once()
+        thinking_turn.assert_not_awaited()
+        event_types = [event["type"] for event in events]
+        self.assertLess(event_types.index("assistant_delta"), event_types.index("final"))
+        self.assertEqual(
+            [event for event in events if event["type"] in {"assistant_text_reset", "assistant_delta"}],
+            [
+                {"type": "assistant_text_reset"},
+                {"type": "assistant_delta", "delta": "标"},
+                {"type": "assistant_delta", "delta": "准回复"},
+            ],
+        )
+
     async def test_stream_uses_thinking_turn_when_enabled(self) -> None:
         payload = assistant_router.AssistantSessionStreamRequest(
             user_message="优化这段经历",
@@ -216,6 +260,48 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
         thinking_turn.assert_awaited_once()
         self.assertEqual(events[-1]["type"], "final")
         self.assertEqual(events[-1]["result"]["assistantText"], "深度回复")
+
+    async def test_stream_emits_assistant_text_delta_before_final(self) -> None:
+        async def thinking_side_effect(**kwargs):
+            await kwargs["assistant_text_callback"]({"type": "assistant_text_reset"})
+            await kwargs["assistant_text_callback"]({"type": "assistant_delta", "delta": "深"})
+            await kwargs["assistant_text_callback"]({"type": "assistant_delta", "delta": "度回复"})
+            return {
+                "assistantText": "深度回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [{"label": "继续", "prompt": "继续优化"}],
+            }
+
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=True,
+        )
+
+        _, _, events = await self._run_stream_with_payload(
+            payload,
+            thinking_side_effect=thinking_side_effect,
+        )
+
+        event_types = [event["type"] for event in events]
+        self.assertLess(event_types.index("assistant_delta"), event_types.index("final"))
+        self.assertEqual(
+            [event for event in events if event["type"] in {"assistant_text_reset", "assistant_delta"}],
+            [
+                {"type": "assistant_text_reset"},
+                {"type": "assistant_delta", "delta": "深"},
+                {"type": "assistant_delta", "delta": "度回复"},
+            ],
+        )
+        self.assertEqual(events[-1]["result"]["assistantText"], "深度回复")
+        self.assertEqual(
+            self.last_persist_assistant_turn.await_args.kwargs["assistant_text"],
+            "深度回复",
+        )
+        self.assertEqual(
+            self.last_persist_assistant_turn.await_args.kwargs["suggested_followups"],
+            [{"label": "继续", "prompt": "继续优化"}],
+        )
 
     async def test_stream_persists_visible_thinking_summary(self) -> None:
         async def thinking_side_effect(**kwargs):
@@ -268,6 +354,62 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             self.last_persist_assistant_turn.await_args.kwargs["assistant_thinking"],
             "切换后摘要",
+        )
+
+    async def test_stream_preserves_thought_reset_event(self) -> None:
+        async def thinking_side_effect(**kwargs):
+            await kwargs["thought_callback"]({"type": "thought", "summary": "旧通道摘要"})
+            await kwargs["thought_callback"]({"type": "thought_reset"})
+            await kwargs["thought_callback"]({"type": "thought", "summary": "切换后摘要"})
+            return {
+                "assistantText": "深度回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            }
+
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=True,
+        )
+
+        _, _, events = await self._run_stream_with_payload(
+            payload,
+            thinking_side_effect=thinking_side_effect,
+        )
+
+        self.assertIn({"type": "thought_reset"}, events)
+
+
+class AssistantStreamingJsonDeltaTests(unittest.TestCase):
+    def test_gemini_text_stream_config_can_disable_thinking_budget(self) -> None:
+        config = llm_transport._build_gemini_generation_config(  # type: ignore[attr-defined]
+            budget_tokens=0,
+            include_thoughts=False,
+        )
+
+        self.assertEqual(config["temperature"], 0.2)
+        self.assertEqual(config["thinkingConfig"], {"thinkingBudget": 0})
+        self.assertNotIn("includeThoughts", config["thinkingConfig"])
+
+    def test_assistant_text_delta_tracker_decodes_partial_escaped_json_only(self) -> None:
+        emitted: list[dict] = []
+        tracker = llm_transport._AssistantTextDeltaTracker(emitted.append)  # type: ignore[attr-defined]
+
+        tracker.update('{"assistantText":"你好\\n')
+        tracker.update('世界\\u0021","draftCard":{"summary":"不要泄露"},"suggestedFollowups":[]}')
+
+        self.assertEqual(
+            emitted,
+            [
+                {"type": "assistant_text_reset"},
+                {"type": "assistant_delta", "delta": "你好\n"},
+                {"type": "assistant_delta", "delta": "世界!"},
+            ],
+        )
+        self.assertNotIn(
+            "draftCard",
+            "".join(event.get("delta", "") for event in emitted),
         )
 
 
@@ -2566,6 +2708,25 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         )
+
+    async def test_persist_assistant_turn_falls_back_to_user_message_when_display_message_blank(self) -> None:
+        session = _FakeAsyncSession([])
+        assistant_session = SimpleNamespace(
+            id=uuid.uuid4(),
+            latest_preview={},
+            updated_at=None,
+        )
+
+        created = await assistant_service.persist_assistant_turn(
+            session,
+            assistant_session,
+            user_message="请模拟面试",
+            display_message="",
+            assistant_text="好的",
+            draft_card=None,
+        )
+
+        self.assertEqual(created[0].content_json["text"], "请模拟面试")
 
     async def test_persist_assistant_turn_caps_selected_experiences_count(self) -> None:
         session = _FakeAsyncSession([])

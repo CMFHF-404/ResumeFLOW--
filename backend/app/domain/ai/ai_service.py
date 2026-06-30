@@ -135,6 +135,7 @@ settings = load_settings()
 logger = logging.getLogger(__name__)
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
+AssistantTextCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AttachmentHydrator = Optional[Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]]
 SPLIT_EXPERIENCE_TEXT_CACHE_VERSION = "split-experience-text-v1"
 SPLIT_EXPERIENCE_TEXT_CACHE_MAX_ENTRIES = 128
@@ -364,6 +365,7 @@ async def run_assistant_turn(
     history: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
     source_stars: Optional[List[Dict[str, Any]]] = None,
+    assistant_text_callback: AssistantTextCallback = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
     resolved_attachments = _resolve_relevant_attachments(history, attachments, user_message=user_message)
@@ -386,7 +388,8 @@ async def run_assistant_turn(
         {"role": "system", "content": _get_assistant_prompt(mode, skill_id=skill_id)},
         _build_assistant_user_message(payload, resolved_attachments),
     ]
-    if _normalize_assistant_skill_id(skill_id):
+    normalized_skill_id = _normalize_assistant_skill_id(skill_id)
+    if normalized_skill_id:
         result = await _call_llm_with_tools(
             messages,
             tools=_build_assistant_context_tools(),
@@ -394,7 +397,26 @@ async def run_assistant_turn(
             json_mode=True,
         )
     else:
-        result = await _call_llm(messages, json_mode=True)
+        if assistant_text_callback and _has_thinking_stream_provider():
+            try:
+                result = await _stream_gemini_json_response(
+                    system_prompt=_get_assistant_prompt(mode, skill_id=skill_id),
+                    user_parts=_build_assistant_user_parts(payload, resolved_attachments),
+                    error_message="AI 助理整理失败，请稍后重试。",
+                    request_label=f"assistant_{mode}",
+                    budget_tokens=0,
+                    assistant_text_callback=assistant_text_callback,
+                    enable_thinking=False,
+                )
+            except Exception:
+                logger.warning(
+                    "[AI Stream] assistant text streaming failed for assistant_%s, falling back to standard assistant turn.",
+                    mode,
+                    exc_info=True,
+                )
+                result = await _call_llm(messages, json_mode=True)
+        else:
+            result = await _call_llm(messages, json_mode=True)
     normalized = _normalize_assistant_result(result, skill_id=skill_id)
     return preserve_assistant_result_star_links(normalized, source_stars)
 
@@ -414,6 +436,7 @@ async def run_assistant_turn_with_thoughts(
     attachments: Optional[List[Dict[str, Any]]] = None,
     source_stars: Optional[List[Dict[str, Any]]] = None,
     thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
     attachment_hydrator: AttachmentHydrator = None,
 ) -> Dict[str, Any]:
     if not _has_thinking_stream_provider():
@@ -467,6 +490,7 @@ async def run_assistant_turn_with_thoughts(
             request_label=f"assistant_{mode}",
             budget_tokens=settings.ai_thinking_budget_polish,
             thought_callback=thought_callback,
+            assistant_text_callback=assistant_text_callback,
         )
     except Exception:
         logger.warning(
