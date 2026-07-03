@@ -10,7 +10,7 @@ import {
   HeartPulse,
   ChevronDown,
 } from 'lucide-react';
-import type { AssistantSkillId } from '../../services/aiService';
+import type { AssistantSkillId, AssistantSuggestedFollowup } from '../../services/aiService';
 import { ASSISTANT_SKILL_PRESETS } from './AssistantSkillPresetPanel';
 
 export type ChatInputBoxProps = {
@@ -37,6 +37,8 @@ export type ChatInputBoxProps = {
   onSelectedResumeModuleIdsChange?: (ids: string[]) => void;
   activeSkillId?: AssistantSkillId | null;
   onSelectSkillPreset?: (skillId: AssistantSkillId, prompt: string) => void;
+  suggestedFollowups?: AssistantSuggestedFollowup[];
+  onSelectSuggestedFollowup?: (skillId: AssistantSkillId, prompt: string) => void;
 };
 
 const hasFilesInDataTransfer = (dataTransfer: DataTransfer | null | undefined) => {
@@ -92,6 +94,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onSelectedResumeModuleIdsChange,
   activeSkillId = null,
   onSelectSkillPreset,
+  suggestedFollowups = [],
+  onSelectSuggestedFollowup,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusMenuRef = useRef<HTMLDivElement>(null);
@@ -114,6 +118,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   const composerControlsClassName = isSidebarSurface
     ? 'flex items-center justify-between px-2 py-1.5 sm:px-3 sm:py-2'
     : 'flex items-center justify-between px-2 py-2 sm:px-3 sm:py-3';
+  const hasSuggestedFollowups = suggestedFollowups.length > 0;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -248,14 +253,30 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   return (
     <div className="mx-auto w-full max-w-3xl">
       {/* 快捷推荐动作小丸子 */}
-      <div className="mb-2.5 flex flex-wrap items-center justify-start gap-2 px-1">
-        {QUICK_SKILL_BUTTONS.map(({ label, presetId, Icon, iconClassName }) => {
+      <div
+        className="mb-2.5 flex flex-nowrap overflow-x-auto items-center justify-start gap-2 px-1 pb-1"
+      >
+        {hasSuggestedFollowups ? suggestedFollowups.map((item) => (
+          <button
+            key={`${item.skillId}-${item.label}`}
+            type="button"
+            onClick={() => {
+              onSelectSuggestedFollowup?.(item.skillId, item.prompt);
+              textareaRef.current?.focus();
+            }}
+            className="inline-flex shrink-0 items-center rounded-full border border-emerald-100 bg-emerald-50/90 px-3.5 py-1.5 text-left text-xs font-semibold leading-5 text-emerald-800 shadow-xs transition hover:border-emerald-200 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-500/12 dark:text-emerald-100 dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/18"
+            title={item.prompt}
+          >
+            <span className="whitespace-nowrap">{item.label}</span>
+          </button>
+        )) : QUICK_SKILL_BUTTONS.map(({ label, presetId, Icon, iconClassName }) => {
           const preset = SKILL_PRESET_BY_ID.get(presetId);
           const isActive = activeSkillId === presetId;
           return (
             <button
               key={presetId}
               type="button"
+              aria-pressed={isActive}
               onClick={() => {
                 if (preset) {
                   onSelectSkillPreset?.(preset.id, preset.prompt);

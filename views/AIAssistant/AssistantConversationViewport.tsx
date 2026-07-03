@@ -1,8 +1,6 @@
 import React from 'react';
 import {
   type AssistantMessage,
-  type AssistantSkillId,
-  type AssistantSuggestedFollowup,
 } from '../../services/aiService';
 import {
   readMessageAttachmentPreviews,
@@ -21,8 +19,7 @@ type AssistantConversationViewportProps = {
   shouldShowEmptyAssistantGreeting: boolean;
   isLoadingDetail: boolean;
   activeThought: string;
-  latestSuggestedFollowups: AssistantSuggestedFollowup[];
-  onSelectSkillFollowup: (skillId: AssistantSkillId, prompt: string) => void;
+  isSending: boolean;
 };
 
 const ASSISTANT_EMPTY_GREETING = '嗨，我在这里。把零散经历、目标 JD 或想法丢给我，我们一起整理成能投递的表达。';
@@ -35,8 +32,7 @@ export const AssistantConversationViewport: React.FC<AssistantConversationViewpo
   shouldShowEmptyAssistantGreeting,
   isLoadingDetail,
   activeThought,
-  latestSuggestedFollowups,
-  onSelectSkillFollowup,
+  isSending,
 }) => (
   <div
     ref={messageViewportRef}
@@ -85,18 +81,12 @@ export const AssistantConversationViewport: React.FC<AssistantConversationViewpo
       {activeThought ? (
         <ActiveThoughtBlock thought={activeThought} />
       ) : null}
-      {!activeThought && latestSuggestedFollowups.length > 0 ? (
-        <div className="mb-6 flex flex-wrap justify-center gap-2">
-          {latestSuggestedFollowups.map((item) => (
-            <button
-              key={`${item.skillId}-${item.label}`}
-              type="button"
-              onClick={() => onSelectSkillFollowup(item.skillId, item.prompt)}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
-            >
-              {item.label}
-            </button>
-          ))}
+      {isSending && !activeThought ? (
+        <div className="mb-6 flex justify-start">
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 text-xs font-medium text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+            <span>正在生成回复...</span>
+          </div>
         </div>
       ) : null}
     </div>

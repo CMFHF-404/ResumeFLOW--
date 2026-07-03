@@ -5,11 +5,32 @@ import { devLog } from './devLogger';
 import { readAuthUserKeyFromToken } from './apiClientAuth';
 
 let authTokenRequestInFlight: Promise<string | null> | null = null;
+const AUTH_TOKEN_REQUEST_TIMEOUT_MS = 10_000;
+const AUTH_TOKEN_REQUEST_TIMEOUT_MESSAGE = '获取登录状态超时，请刷新页面或重新登录后重试。';
+
+const withAuthTokenRequestTimeout = async <T,>(
+    promise: Promise<T>,
+): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(AUTH_TOKEN_REQUEST_TIMEOUT_MESSAGE));
+        }, AUTH_TOKEN_REQUEST_TIMEOUT_MS);
+    });
+
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+        }
+    }
+};
 
 const resolveAuthTokenFromActiveSession = async (): Promise<string | null> => {
     const inFlightRequest = authTokenRequestInFlight;
     if (inFlightRequest) {
-        return inFlightRequest;
+        return withAuthTokenRequestTimeout(inFlightRequest);
     }
 
     const requestPromise = (async () => {
@@ -20,7 +41,7 @@ const resolveAuthTokenFromActiveSession = async (): Promise<string | null> => {
     authTokenRequestInFlight = requestPromise;
 
     try {
-        return await requestPromise;
+        return await withAuthTokenRequestTimeout(requestPromise);
     } finally {
         if (authTokenRequestInFlight === requestPromise) {
             authTokenRequestInFlight = null;

@@ -507,9 +507,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, isDeepThinkingEnabled, selectedExperiences, selectedResumeForTurn, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleSelectSkillPreset = useCallback((skillId: AssistantSkillId, prompt: string) => {
+    if (activeComposerSkillId === skillId) {
+      setActiveComposerSkillId(null);
+      setInputValue((current) => current === prompt ? '' : current);
+      return;
+    }
     setActiveComposerSkillId(skillId);
     setInputValue(prompt);
-  }, []);
+  }, [activeComposerSkillId]);
 
   const handleSelectSkillFollowup = useCallback((skillId: AssistantSkillId, prompt: string) => {
     setActiveComposerSkillId(skillId);
@@ -711,8 +716,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               shouldShowEmptyAssistantGreeting={shouldShowEmptyAssistantGreeting}
               isLoadingDetail={isLoadingDetail}
               activeThought={activeThought}
-              latestSuggestedFollowups={latestSuggestedFollowups}
-              onSelectSkillFollowup={handleSelectSkillFollowup}
+              isSending={isSending}
             />
 
             <div
@@ -764,7 +768,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   shouldExpandDeepThinkingButton={!isSidebarSurface}
                   surface={isSidebarSurface ? 'sidebar' : 'full'}
                   onDeepThinkingChange={handleDeepThinkingChange}
-                  placeholder={selectedSession ? '继续描述细节或调整内容...' : '例如：我想整理一段校园运营经历，但现在内容很乱。'}
+                  placeholder="随心输入"
                   plusActions={[
                     { key: 'pick-resume', label: '选择简历', onClick: () => void openResumePicker() },
                     { key: 'upload-attachment', label: '上传附件', onClick: openAttachmentPicker },
@@ -776,6 +780,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onSelectedResumeModuleIdsChange={setSelectedResumeModuleIds}
                   activeSkillId={activeComposerSkillId}
                   onSelectSkillPreset={handleSelectSkillPreset}
+                  suggestedFollowups={latestSuggestedFollowups}
+                  onSelectSuggestedFollowup={handleSelectSkillFollowup}
                 />
               </div>
             </div>
