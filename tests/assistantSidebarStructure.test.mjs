@@ -15,6 +15,11 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   const draftState = read('views/AIAssistant/useAssistantDraftPanelState.ts');
   const app = read('App.tsx');
   const editor = read('views/ResumeEditor/index.tsx');
+  const conversationBlockStart = assistant.indexOf('<AssistantConversationViewport');
+  const conversationBlock = assistant.slice(
+    conversationBlockStart,
+    assistant.indexOf('/>', conversationBlockStart) + 2,
+  );
 
   assert.match(types, /export type AssistantOpenSessionRequest/);
   assert.match(app, /assistantOpenSessionRequest/);
@@ -44,7 +49,8 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(assistant, /messageViewportRef=\{messageViewportRef\}/);
   assert.match(assistant, /composerReservedHeight=\{composerReservedHeight\}/);
   assert.match(assistant, /shouldShowEmptyAssistantGreeting=\{shouldShowEmptyAssistantGreeting\}/);
-  assert.match(assistant, /onSelectSkillFollowup=\{handleSelectSkillFollowup\}/);
+  assert.match(assistant, /isSending=\{isSending\}/);
+  assert.doesNotMatch(conversationBlock, /onSelectSkillFollowup=\{handleSelectSkillFollowup\}/);
   assert.doesNotMatch(assistant, /messages\.map\(\(message\) =>/);
   assert.doesNotMatch(assistant, /readMessageAttachmentPreviews\(message\)/);
   assert.match(conversationViewport, /export const AssistantConversationViewport: React\.FC<AssistantConversationViewportProps>/);
@@ -56,7 +62,9 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(conversationViewport, /readMessageSelectedExperiences\(message\)/);
   assert.match(conversationViewport, /readMessageSelectedResume\(message\)/);
   assert.match(conversationViewport, /<ActiveThoughtBlock thought=\{activeThought\} \/>/);
-  assert.match(conversationViewport, /onClick=\{\(\) => onSelectSkillFollowup\(item\.skillId, item\.prompt\)\}/);
+  assert.match(conversationViewport, /isSending: boolean/);
+  assert.match(conversationViewport, /正在生成回复\.\.\./);
+  assert.doesNotMatch(conversationViewport, /latestSuggestedFollowups\.map/);
   assert.doesNotMatch(assistant, /你的AI求职助手/);
   assert.doesNotMatch(assistant, /<Bot className="h-5 w-5" \/>/);
   assert.match(assistant, /const assistantSidebarTitle = selectedSession\?\.title\?\.trim\(\) \|\| 'AI助手';/);
@@ -144,6 +152,9 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.doesNotMatch(assistant, /onSelectResumeExperiences/);
   assert.match(assistant, /hasContextItems=\{composerAttachments\.length > 0 \|\| Boolean\(selectedResume\)\}/);
   assert.match(assistant, /surface=\{isSidebarSurface \? 'sidebar' : 'full'\}/);
+  assert.match(assistant, /suggestedFollowups=\{latestSuggestedFollowups\}/);
+  assert.match(assistant, /onSelectSuggestedFollowup=\{handleSelectSkillFollowup\}/);
+  assert.match(assistant, /placeholder="随心输入"/);
   assert.doesNotMatch(assistant, /selectedExperiences=\{selectedExperiences\}/);
   assert.doesNotMatch(assistant, /key: 'pick-experience'/);
   assert.doesNotMatch(assistant, /label: '选择经历'/);
