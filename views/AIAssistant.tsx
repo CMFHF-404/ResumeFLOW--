@@ -597,9 +597,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   });
 
   const handleSidebarNewChat = useCallback(() => {
+    const normalizedLiveSelectedResume = normalizeSelectedResume(liveSelectedResume);
     setIsSidebarHistoryOpen(false);
-    void handleNewChat('general');
-  }, [handleNewChat]);
+    void handleNewChat('general', {
+      selectedResumeDraft: normalizedLiveSelectedResume,
+    });
+  }, [handleNewChat, liveSelectedResume]);
 
   const handleSidebarSelectSession = useCallback((sessionId: string) => {
     setIsSidebarHistoryOpen(false);

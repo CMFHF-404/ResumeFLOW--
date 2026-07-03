@@ -116,8 +116,6 @@ export const useAssistantMessageSending = ({
       setMessages((prev) => [...prev, optimisticUserMessage]);
       setInputValue((prev) => (prev.trim() === trimmedMessage ? '' : prev));
       setSelectedExperiences([]);
-      persistDraftSelectedResume(sessionId, null);
-      setSelectedResume(null);
     }
     try {
       const result = await aiService.sendAssistantMessage(
@@ -194,8 +192,6 @@ export const useAssistantMessageSending = ({
         clearComposerAttachmentsIfMatches(attachments);
         setSelectedExperiences([]);
         setActiveComposerSkillId(null);
-        persistDraftSelectedResume(sessionId, null);
-        setSelectedResume(null);
         void loadSessionDetail(sessionId);
       }
     } catch (sendError) {

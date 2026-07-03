@@ -7,6 +7,7 @@ import { mergeAssistantSessions, sortSessionsByUpdatedAt } from './sessionUtils'
 
 type CreateSession = (
   context?: AssistantEntryContext,
+  options?: { selectedResumeDraft?: AssistantSelectedResume | null },
 ) => Promise<AssistantSession>;
 
 type UseAssistantHistoryActionsParams = {
@@ -63,13 +64,19 @@ export const useAssistantHistoryActions = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
-  const handleNewChat = useCallback(async (mode: AssistantMode = 'general') => {
+  const handleNewChat = useCallback(async (
+    mode: AssistantMode = 'general',
+    options?: { selectedResumeDraft?: AssistantSelectedResume | null },
+  ) => {
     try {
       draftLaunchRequestRef.current = null;
       suppressAutoSelectSessionRef.current = false;
       setActiveComposerSkillId(null);
       setLastAssistantSkillId(null);
-      const session = await handleCreateSession({ mode, entrySource: 'direct' });
+      const session = await handleCreateSession(
+        { mode, entrySource: 'direct' },
+        { selectedResumeDraft: options?.selectedResumeDraft ?? null },
+      );
       setSelectedSessionId(session.id);
       setIsMobileHistoryOpen(false);
     } catch (createError) {
