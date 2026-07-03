@@ -151,7 +151,8 @@ test('AIAssistant binds composer quick buttons to assistant skill presets', () =
   assert.match(chatInput, /onSelectedResumeModuleIdsChange\?\.\(nextIds\)/);
   assert.match(chatInput, /onClick=\{\(\) => handleResumeModuleToggle\(mod\)\}/);
   assert.match(chatInput, /const isSelected = selectedResumeModuleIds\.includes\(mod\.id\)/);
-  assert.match(chatInput, /isSelected\s*\?\s*'bg-emerald-600 text-white shadow-sm shadow-emerald-100 hover:bg-emerald-600 dark:bg-emerald-500 dark:text-white dark:shadow-none dark:hover:bg-emerald-500'/);
+  assert.match(chatInput, /isSelected\s*\?\s*'bg-emerald-50 text-emerald-800 shadow-xs hover:bg-emerald-100\/80 dark:bg-emerald-500\/15 dark:text-emerald-100 dark:hover:bg-emerald-500\/25'/);
+  assert.match(chatInput, /<Check className="h-3\.5 w-3\.5 shrink-0 text-emerald-600 dark:text-emerald-400" \/>/);
   assert.match(presetPanel, /ASSISTANT_SKILL_PRESETS/);
   assert.match(presetPanel, /aria-label="AI 助手技能"/);
   assert.match(presetPanel, /activeSkillId === id/);

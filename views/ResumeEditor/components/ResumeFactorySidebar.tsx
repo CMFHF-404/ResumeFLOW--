@@ -510,7 +510,7 @@ const ResumeFactorySidebar: React.FC<ResumeFactorySidebarProps> = ({
               <div
                 className={`absolute bottom-1 top-1 rounded-lg bg-white shadow-xs transition-transform duration-300 motion-reduce:transition-none dark:bg-gray-800 ${SIDEBAR_SLIDE_EASING_CLASS}`}
                 style={{
-                  width: 'calc(33.333% - 4px)',
+                  width: 'calc((100% - 16px) / 3)',
                   left: '4px',
                   transform: activeTab === 'templates'
                     ? 'translate3d(0, 0, 0)'

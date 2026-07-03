@@ -9,6 +9,7 @@ import {
   PenLine,
   HeartPulse,
   ChevronDown,
+  Check,
 } from 'lucide-react';
 import type { AssistantSkillId, AssistantSuggestedFollowup } from '../../services/aiService';
 import { ASSISTANT_SKILL_PRESETS } from './AssistantSkillPresetPanel';
@@ -384,7 +385,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                   <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${isModuleMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isModuleMenuOpen ? (
-                  <div className="absolute bottom-12 left-0 z-30 min-w-[220px] max-h-[220px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_16px_32px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_48px_-20px_rgba(2,6,23,0.95)]">
+                  <div className="absolute bottom-12 left-0 z-30 flex flex-col gap-1 min-w-[220px] max-h-[220px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_16px_32px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_20px_48px_-20px_rgba(2,6,23,0.95)]">
                     {resumeModules.map((mod) => {
                       const isSelected = selectedResumeModuleIds.includes(mod.id);
                       return (
@@ -392,13 +393,16 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                           key={mod.id}
                           type="button"
                           onClick={() => handleResumeModuleToggle(mod)}
-                          className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
                             isSelected
-                              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-100 hover:bg-emerald-600 dark:bg-emerald-500 dark:text-white dark:shadow-none dark:hover:bg-emerald-500'
+                              ? 'bg-emerald-50 text-emerald-800 shadow-xs hover:bg-emerald-100/80 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25'
                               : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/80'
                           }`}
                         >
-                          <span className="truncate">{mod.label}</span>
+                          <span className="truncate flex-1 pr-2">{mod.label}</span>
+                          {isSelected ? (
+                            <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          ) : null}
                         </button>
                       );
                     })}
