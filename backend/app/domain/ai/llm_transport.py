@@ -17,6 +17,7 @@ settings = load_settings()
 logger = logging.getLogger(__name__)
 
 MAX_ERROR_BODY_LOG_LENGTH = 2000
+GEMINI_HIDDEN_THOUGHT_STATUS_SUMMARY = "深度思考已启用，但当前模型通道未返回可展示的思考摘要"
 AI_CONNECT_TIMEOUT_SECONDS = 10.0
 AI_POOL_TIMEOUT_SECONDS = 10.0
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
@@ -1375,6 +1376,8 @@ async def _stream_gemini_json_response_legacy(
     answer_snapshots: List[str] = []
     assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
     final_usage: Dict[str, Any] | None = None
+    emitted_thought_text = False
+    saw_hidden_thought_signature = False
 
     try:
         async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
@@ -1406,10 +1409,13 @@ async def _stream_gemini_json_response_legacy(
                     parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
                     event_answer_parts: List[str] = []
                     for part in parts:
+                        if "thoughtSignature" in part and part.get("thought") is not True:
+                            saw_hidden_thought_signature = True
                         text = part.get("text")
                         if not isinstance(text, str) or not text:
                             continue
                         if part.get("thought") is True:
+                            emitted_thought_text = True
                             await _emit_thought(
                                 thought_callback,
                                 {"type": "thought", "summary": text},
@@ -1439,6 +1445,15 @@ async def _stream_gemini_json_response_legacy(
     answer_text = "".join(answer_parts).strip()
     if not answer_text:
         raise ValueError("备用思考通道未返回可解析的结构化结果。")
+    if enable_thinking and saw_hidden_thought_signature and not emitted_thought_text:
+        await _emit_thought(
+            thought_callback,
+            {
+                "type": "thought_status",
+                "status": "hidden",
+                "summary": GEMINI_HIDDEN_THOUGHT_STATUS_SUMMARY,
+            },
+        )
     await _emit_usage_payload(
         usage_callback,
         _build_usage_payload(

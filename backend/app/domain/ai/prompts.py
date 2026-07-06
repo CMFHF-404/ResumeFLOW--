@@ -306,6 +306,26 @@ STAR_RESUME_READY_REWRITE = (
     "Use the same language as the input. Return JSON only with keys: 's', 't', 'a', 'r'."
 )
 
+STAR_CAMPUS_RECRUITMENT_REWRITE = (
+    "你是一名资深 HR 和校招生简历优化顾问。The user input is a JSON object that may include "
+    "fields like company, role, s, t, a, and r. If jd_text is provided, align wording with the target role "
+    "only when the source facts support that fit. 请帮助优化应届生求职简历，所有描述必须真实、朴素、可信，"
+    "符合应届生/实习生/校园项目的能力边界。不要把经历包装得过度夸张，不要无依据使用“主导”“牵头”"
+    "“独立负责大型项目”“显著提升”“行业领先”等不符合应届生身份的表达，除非原经历明确能支撑。"
+    "避免明显的 AI 味，不要使用过于宏大、空泛、模板化的词汇。不要凭空编造百分比、增长率、转化率、GMV、用户量等数据；"
+    "如果原文没有明确数据，只能基于已提供信息做合理表达，不能替用户虚构，必要时用事实性表达保留缺口。"
+    "请把每段经历改成 HR 喜欢看的格式：背景/任务 + 我具体做了什么 + 使用了什么方法或工具 + 产生了什么结果。"
+    "语言要简洁、有重点，突出执行力、学习能力、沟通协作能力和岗位匹配度。每一条经历都要经得起面试官追问，"
+    "避免写出无法解释清楚的内容。请优先使用动词开头，比如“整理”“协助”“参与”“分析”“优化”“跟进”“完成”“支持”等。"
+    "S/T/R must be one sentence each when possible. For A, output concise action lines separated by newlines without numbering. "
+    "A 字段每个动作行必须以纯文本四字核心动作标签开头，后接中文冒号，例如“用户调研：”。"
+    "输入中已有的 Markdown 或 HTML 加粗标记视为上一轮润色留下的展示痕迹，先移除旧加粗，再重新选择重点。"
+    "可以使用 Markdown (**text**) 加粗 1-4 个最能体现岗位匹配或结果的重点证据短语，优先加粗 JD 相关技能、工具、产出或真实结果；"
+    "不要加粗整句，A 字段开头四字标签不得加粗。Do not use Markdown or HTML emphasis for the opening four-character A labels. Preserve all existing facts, chronology, "
+    "responsibility scope, tools, metrics, and hyperlinks. Use the same language as the input. Return JSON only with keys: "
+    "'s', 't', 'a', 'r'."
+)
+
 STAR_SMART_COMPLETE_REWRITE = (
     "You are a Resume Evidence Coach and Resume Writer. The user input is a JSON object that may include fields like "
     "company, role, s, t, a, and r. If jd_text is provided, first diagnose whether the source text contains enough "

@@ -6,11 +6,13 @@ import {
   type AssistantDraftCard,
   type AssistantEntryContext,
   type AssistantMessage,
+  type AssistantSelectedExperience,
   type AssistantSelectedResume,
   type AssistantSession,
   type AssistantSkillId,
 } from '../../services/aiService';
 import { normalizeAssistantDraftCard } from '../../utils/assistantDraft';
+import type { AssistantSelectedResumeContextRestore } from './useAssistantSelectedResumeContext';
 import { useAssistantSessionLoading } from './useAssistantSessionLoading';
 import {
   mergeAssistantSessions,
@@ -27,6 +29,9 @@ type UseAssistantSessionControllerParams = {
   setActiveThought: Dispatch<SetStateAction<string>>;
   setLastAssistantSkillId: Dispatch<SetStateAction<AssistantSkillId | null>>;
   setSelectedResume: Dispatch<SetStateAction<AssistantSelectedResume | null>>;
+  restoreSelectedResumeContext: (context: AssistantSelectedResumeContextRestore) => void;
+  setSelectedExperiences: Dispatch<SetStateAction<AssistantSelectedExperience[]>>;
+  liveSelectedResume: AssistantSelectedResume | null;
   scrollToBottom: () => void;
   error: (message: string, duration?: number) => void;
 };
@@ -40,6 +45,9 @@ export const useAssistantSessionController = ({
   setActiveThought,
   setLastAssistantSkillId,
   setSelectedResume,
+  restoreSelectedResumeContext,
+  setSelectedExperiences,
+  liveSelectedResume,
   scrollToBottom,
   error,
 }: UseAssistantSessionControllerParams) => {
@@ -61,6 +69,7 @@ export const useAssistantSessionController = ({
   const messageMutationSeqRef = useRef(0);
   const suppressAutoSelectSessionRef = useRef(false);
   const skipNextSelectionResetSessionIdsRef = useRef<Set<string>>(new Set());
+  const liveSelectedResumeRef = useRef<AssistantSelectedResume | null>(liveSelectedResume);
 
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
@@ -150,10 +159,18 @@ export const useAssistantSessionController = ({
     setSelectedSessionId,
     setMessages,
     setAppliedMessageIds,
+    restoreSelectedResumeContext,
+    setSelectedExperiences,
+    liveSelectedResumeRef,
+    persistDraftSelectedResume,
     clearSelectedResume,
     scrollToBottom,
     error,
   });
+
+  useEffect(() => {
+    liveSelectedResumeRef.current = liveSelectedResume;
+  }, [liveSelectedResume]);
 
   useEffect(() => {
     void loadSessions();

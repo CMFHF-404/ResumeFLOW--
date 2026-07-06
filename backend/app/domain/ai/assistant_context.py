@@ -13,6 +13,11 @@ MAX_SELECTED_RESUME_EDUCATIONS = 20
 MAX_SELECTED_RESUME_CERTIFICATIONS = 30
 MAX_SELECTED_RESUME_SKILLS = 60
 VALID_SELECTED_RESUME_SELECTION_MODES = {"all", "subset"}
+VALID_SELECTED_RESUME_CONTEXT_SOURCES = {
+    "implicit_current_resume",
+    "explicit_resume_picker",
+    "history_replay",
+}
 
 
 def _clip_optional_text(value: Any, limit: int) -> str | None:
@@ -262,12 +267,36 @@ def _normalize_selected_resume_selection(selection: Any) -> Optional[Dict[str, A
         if len(experience_ids) >= MAX_SELECTED_RESUME_EXPERIENCES:
             break
 
-    if not experience_ids and mode != "all":
+    raw_module_ids = selection.get("moduleIds")
+    if raw_module_ids is None:
+        raw_module_ids = selection.get("module_ids")
+    if not isinstance(raw_module_ids, list):
+        raw_module_ids = []
+
+    module_ids: List[str] = []
+    seen_module_ids = set()
+    for raw_id in raw_module_ids:
+        module_id = _clip_optional_text(raw_id, MAX_SELECTED_RESUME_ID_CHARS)
+        if module_id and module_id not in seen_module_ids:
+            seen_module_ids.add(module_id)
+            module_ids.append(module_id)
+        if len(module_ids) >= (
+            MAX_SELECTED_RESUME_EXPERIENCES
+            + MAX_SELECTED_RESUME_EDUCATIONS
+            + MAX_SELECTED_RESUME_CERTIFICATIONS
+            + 1
+        ):
+            break
+
+    if not experience_ids and not module_ids and mode != "all":
         return None
-    return {
+    normalized = {
         "mode": mode,
         "experienceIds": experience_ids,
     }
+    if module_ids:
+        normalized["moduleIds"] = module_ids
+    return normalized
 
 
 def _normalize_selected_resume(item: Any) -> Optional[Dict[str, Any]]:
@@ -301,6 +330,9 @@ def _normalize_selected_resume(item: Any) -> Optional[Dict[str, Any]]:
     )
     if jd_context:
         normalized["jd_context"] = jd_context
+    context_source = item.get("context_source") or item.get("contextSource")
+    if isinstance(context_source, str) and context_source in VALID_SELECTED_RESUME_CONTEXT_SOURCES:
+        normalized["context_source"] = context_source
     selection = _normalize_selected_resume_selection(item.get("selection"))
     if selection:
         normalized["selection"] = selection

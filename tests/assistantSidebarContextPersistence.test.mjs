@@ -44,11 +44,14 @@ test('sidebar new chat starts with the current editor-selected resume context', 
     /\n\s*\}, \[handleNewChat/,
   );
 
-  assert.match(sidebarNewChatBlock, /normalizeSelectedResume\(liveSelectedResume\)/);
-  assert.match(sidebarNewChatBlock, /selectedResumeDraft: normalizedLiveSelectedResume/);
+  assert.match(assistant, /const implicitLiveSelectedResume = useMemo/);
+  assert.match(assistant, /normalizeSelectedResume\(liveSelectedResume\)/);
+  assert.match(assistant, /const markImplicitCurrentResume = /);
+  assert.match(assistant, /contextSource: 'implicit_current_resume'/);
+  assert.match(sidebarNewChatBlock, /selectedResumeDraft: implicitLiveSelectedResume/);
   assert.match(
     sidebarNewChatBlock,
-    /void handleNewChat\('general', \{\s*selectedResumeDraft: normalizedLiveSelectedResume,\s*\}\)/,
+    /void handleNewChat\('general', \{\s*selectedResumeDraft: implicitLiveSelectedResume,\s*\}\)/,
   );
   assert.match(historyHook, /selectedResumeDraft\?: AssistantSelectedResume \| null/);
   assert.match(historyHook, /selectedResumeDraft: options\?\.selectedResumeDraft \?\? null/);

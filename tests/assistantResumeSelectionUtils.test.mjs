@@ -36,16 +36,45 @@ test('defaults resume experience selection to all resume experiences', async () 
   assert.deepEqual(buildDefaultResumeExperienceSelection(buildResume()), ['exp-1', 'exp-2']);
 });
 
-test('builds selected resume snapshots with a filtered experience subset', async () => {
+test('keeps the full selected resume snapshot in picker state while recording the experience subset', async () => {
   const { buildSelectedResumeWithExperienceSelection } = await importSelectionUtils();
 
   const selected = buildSelectedResumeWithExperienceSelection(buildResume(), ['exp-2', 'missing']);
 
   assert.equal(selected.selection.mode, 'subset');
   assert.deepEqual(selected.selection.experienceIds, ['exp-2']);
-  assert.deepEqual(selected.snapshot.experiences.map((item) => item.id), ['exp-2']);
+  assert.deepEqual(selected.snapshot.experiences.map((item) => item.id), ['exp-1', 'exp-2']);
   assert.deepEqual(selected.snapshot.educations.map((item) => item.id), ['edu-1']);
   assert.deepEqual(selected.snapshot.skills.map((item) => item.id), ['skill-1']);
+});
+
+test('builds a focused turn payload from an explicit experience subset', async () => {
+  const {
+    buildSelectedResumeForTurn,
+    buildSelectedResumeWithExperienceSelection,
+  } = await importSelectionUtils();
+
+  const stateResume = buildSelectedResumeWithExperienceSelection(buildResume(), ['exp-2']);
+  const payloadResume = buildSelectedResumeForTurn(stateResume, []);
+
+  assert.equal(payloadResume.selection.mode, 'subset');
+  assert.deepEqual(payloadResume.selection.experienceIds, ['exp-2']);
+  assert.deepEqual(payloadResume.snapshot.experiences.map((item) => item.id), ['exp-2']);
+  assert.deepEqual(payloadResume.snapshot.educations, []);
+  assert.deepEqual(payloadResume.snapshot.certifications, []);
+  assert.deepEqual(payloadResume.snapshot.skills, []);
+  assert.equal(payloadResume.jdContext, '产品实习 JD');
+});
+
+test('keeps the full resume payload when no explicit selection was made', async () => {
+  const { buildSelectedResumeForTurn } = await importSelectionUtils();
+
+  const payloadResume = buildSelectedResumeForTurn(buildResume(), []);
+
+  assert.equal(payloadResume.selection, undefined);
+  assert.deepEqual(payloadResume.snapshot.experiences.map((item) => item.id), ['exp-1', 'exp-2']);
+  assert.deepEqual(payloadResume.snapshot.educations.map((item) => item.id), ['edu-1']);
+  assert.deepEqual(payloadResume.snapshot.skills.map((item) => item.id), ['skill-1']);
 });
 
 test('keeps all mode when every resume experience remains selected', async () => {
@@ -76,7 +105,11 @@ test('filters selected resume snapshots by non-experience modules', async () => 
   assert.deepEqual(selected.snapshot.educations.map((item) => item.id), ['edu-1']);
   assert.deepEqual(selected.snapshot.certifications, []);
   assert.deepEqual(selected.snapshot.skills.map((item) => item.id), ['skill-1']);
-  assert.equal(selected.selection, undefined);
+  assert.deepEqual(selected.selection, {
+    mode: 'subset',
+    experienceIds: [],
+    moduleIds: ['edu-1', 'skills-all'],
+  });
 });
 
 test('filters selected resume snapshots by mixed module selections', async () => {
@@ -89,8 +122,27 @@ test('filters selected resume snapshots by mixed module selections', async () =>
 
   assert.equal(selected.selection.mode, 'subset');
   assert.deepEqual(selected.selection.experienceIds, ['exp-2']);
+  assert.deepEqual(selected.selection.moduleIds, ['exp-2', 'cert-1']);
   assert.deepEqual(selected.snapshot.experiences.map((item) => item.id), ['exp-2']);
   assert.deepEqual(selected.snapshot.educations, []);
   assert.deepEqual(selected.snapshot.certifications.map((item) => item.id), ['cert-1']);
   assert.deepEqual(selected.snapshot.skills, []);
+});
+
+test('keeps subset mode when all experiences and only selected non-experience modules are included', async () => {
+  const { buildSelectedResumeWithModuleSelection } = await importSelectionUtils();
+
+  const selected = buildSelectedResumeWithModuleSelection(buildResume(), [
+    { id: 'exp-1', kind: 'experience', contextId: 'exp-1' },
+    { id: 'exp-2', kind: 'experience', contextId: 'exp-2' },
+    { id: 'skills-all', kind: 'skills' },
+  ]);
+
+  assert.equal(selected.selection.mode, 'subset');
+  assert.deepEqual(selected.selection.experienceIds, ['exp-1', 'exp-2']);
+  assert.deepEqual(selected.selection.moduleIds, ['exp-1', 'exp-2', 'skills-all']);
+  assert.deepEqual(selected.snapshot.experiences.map((item) => item.id), ['exp-1', 'exp-2']);
+  assert.deepEqual(selected.snapshot.educations, []);
+  assert.deepEqual(selected.snapshot.certifications, []);
+  assert.deepEqual(selected.snapshot.skills.map((item) => item.id), ['skill-1']);
 });

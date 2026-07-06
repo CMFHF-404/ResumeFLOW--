@@ -147,6 +147,7 @@ const QuotaDashboard: React.FC<{
 // 2. 消耗趋势折线图 (贝塞尔曲线 + 渐变填充 + 刻度)
 // ==========================================
 const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usageByDay }) => {
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
   const width = 500;
   const height = 130;
   const padding = 15;
@@ -237,9 +238,28 @@ const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usage
             {usageByDay.map((item, index) => {
               const cx = usageByDay.length === 1 ? width / 2 : (index / (usageByDay.length - 1)) * (width - padding * 2) + padding;
               const cy = chartBottom - (item.total_tokens / axisMax) * chartHeight;
+              const isHovered = hoveredIndex === index;
               return (
                 <g key={index} className="group/dot">
-                  <circle cx={cx} cy={cy} r="3" fill="currentColor" className="text-emerald-500 dark:text-emerald-400 transition hover:scale-150" />
+                  {/* 透明 Hover 感应区 */}
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r="12"
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                  />
+                  {/* 渲染的点 */}
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={isHovered ? 5.5 : 3.2}
+                    fill="currentColor"
+                    className="text-emerald-500 dark:text-emerald-400 transition-all duration-200 ease-out pointer-events-none"
+                    style={{ transformOrigin: `${cx}px ${cy}px` }}
+                  />
                   <title>{`${item.key}: ${item.total_tokens.toLocaleString()} Tokens`}</title>
                 </g>
               );
@@ -249,6 +269,32 @@ const UsageLineChart: React.FC<{ usageByDay: TokenUsageAggregate[] }> = ({ usage
           <text x={width / 2} y={height / 2} textAnchor="middle" className="fill-gray-400 text-xs">暂无消耗趋势数据</text>
         )}
       </svg>
+
+      {/* 绝对定位自定义 Tooltip */}
+      {hoveredIndex !== null && usageByDay[hoveredIndex] && (() => {
+        const item = usageByDay[hoveredIndex];
+        const cx = usageByDay.length === 1 ? width / 2 : (hoveredIndex / (usageByDay.length - 1)) * (width - padding * 2) + padding;
+        const cy = chartBottom - (item.total_tokens / axisMax) * chartHeight;
+
+        const leftPct = `${(cx / width) * 100}%`;
+        const topPct = `${(cy / height) * 100}%`;
+
+        return (
+          <div
+            className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-full pb-2 transition-all duration-150 ease-out"
+            style={{ left: leftPct, top: topPct }}
+          >
+            <div className="rounded-lg border border-gray-100 bg-white/95 px-2.5 py-1.5 text-[10px] font-bold text-gray-800 shadow-xl backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95 dark:text-gray-200 whitespace-nowrap">
+              <div className="text-[9px] font-semibold text-gray-400 dark:text-gray-500">{item.key}</div>
+              <div className="mt-0.5 font-extrabold text-emerald-600 dark:text-emerald-400">
+                {item.total_tokens.toLocaleString()} <span className="text-[9px] font-normal text-gray-400">Tokens</span>
+              </div>
+            </div>
+            {/* 三角形 */}
+            <div className="absolute left-1/2 bottom-1 h-1.5 w-1.5 -translate-x-1/2 rotate-45 border-r border-b border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900" />
+          </div>
+        );
+      })()}
 
       {labels.length > 0 && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 text-[10px] font-semibold text-gray-400">

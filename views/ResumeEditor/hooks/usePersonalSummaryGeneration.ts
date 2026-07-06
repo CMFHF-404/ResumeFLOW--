@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ToastConfig } from '../../../components/Toast';
 import { aiService, type PersonalSummaryStreamEvent } from '../../../services/aiService';
-import { extractThoughtHeadline } from '../../../utils/aiThought';
+import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 import { normalizeAiRichText, stripRichTextToText } from '../../../utils/richText';
 import { hasMeaningfulPersonalSummary, type buildPersonalSummaryContext } from '../personalSummaryUtils';
 
@@ -117,9 +117,6 @@ export const usePersonalSummaryGeneration = ({
                     jdText: jdPolishContext,
                 },
                 (event: PersonalSummaryStreamEvent) => {
-                    if (event.type !== 'thought') {
-                        return;
-                    }
                     if (
                         !isResumeRequestCurrent()
                         || !isRequestCurrent()
@@ -127,12 +124,12 @@ export const usePersonalSummaryGeneration = ({
                     ) {
                         return;
                     }
-                    const title = extractThoughtHeadline(event.summary);
-                    if (!title) {
+                    const resolution = resolveThoughtDisplayEvent(event);
+                    if (resolution?.kind !== 'model_thought') {
                         return;
                     }
                     updateToast(toastId, {
-                        message: title,
+                        message: resolution.text,
                         type: 'ai_thinking',
                         duration: 0,
                     });

@@ -1,6 +1,7 @@
 import type { AssistantSelectedResume } from '../../services/aiService';
 
 export type AssistantResumeModuleSelection = {
+  id?: string;
   kind: 'experience' | 'education' | 'certification' | 'skills';
   contextId?: string;
 };
@@ -16,6 +17,12 @@ const uniqueModuleContextIds = (
 ) => Array.from(new Set(modules
   .filter((item) => item.kind === kind && item.contextId)
   .map((item) => item.contextId as string)));
+
+const uniqueModuleIds = (
+  modules: AssistantResumeModuleSelection[],
+) => Array.from(new Set(modules
+  .map((item) => item.id || item.contextId || item.kind)
+  .filter(Boolean)));
 
 export const buildDefaultResumeExperienceSelection = (
   resume: AssistantSelectedResume | null | undefined,
@@ -36,15 +43,10 @@ export const buildSelectedResumeWithExperienceSelection = (
   const isAllSelected = normalizedSelectedIds.length === sourceExperienceIds.length;
   return {
     ...resume,
+    contextSource: 'explicit_resume_picker',
     selection: {
       mode: isAllSelected ? 'all' : 'subset',
       experienceIds: normalizedSelectedIds,
-    },
-    snapshot: {
-      ...resume.snapshot,
-      experiences: isAllSelected
-        ? resume.snapshot.experiences
-        : resume.snapshot.experiences.filter((item) => normalizedSelectedIds.includes(item.id)),
     },
   };
 };
@@ -60,6 +62,9 @@ export const buildSelectedResumeWithModuleSelection = (
     return resume;
   }
   const sourceExperienceIds = buildDefaultResumeExperienceSelection(resume);
+  const sourceEducationIds = resume.snapshot.educations.map((item) => item.id).filter(Boolean);
+  const sourceCertificationIds = resume.snapshot.certifications.map((item) => item.id).filter(Boolean);
+  const hasSourceSkills = resume.snapshot.skills.length > 0;
   const selectedExperienceIds = uniqueInSourceOrder(
     sourceExperienceIds,
     uniqueModuleContextIds(selectedModules, 'experience'),
@@ -67,6 +72,7 @@ export const buildSelectedResumeWithModuleSelection = (
   const selectedEducationIds = uniqueModuleContextIds(selectedModules, 'education');
   const selectedCertificationIds = uniqueModuleContextIds(selectedModules, 'certification');
   const shouldIncludeSkills = selectedModules.some((item) => item.kind === 'skills');
+  const selectedModuleIds = uniqueModuleIds(selectedModules);
   const nextSnapshot = {
     ...resume.snapshot,
     experiences: selectedExperienceIds.length > 0
@@ -89,16 +95,55 @@ export const buildSelectedResumeWithModuleSelection = (
   if (!hasSelectedContent) {
     return null;
   }
-  const isAllExperiencesSelected = sourceExperienceIds.length > 0
-    && selectedExperienceIds.length === sourceExperienceIds.length;
+  const isAllResumeModulesSelected = (
+    selectedExperienceIds.length === sourceExperienceIds.length
+    && selectedEducationIds.length === sourceEducationIds.length
+    && selectedCertificationIds.length === sourceCertificationIds.length
+    && shouldIncludeSkills === hasSourceSkills
+  );
   return {
     ...resume,
-    ...(selectedExperienceIds.length > 0 ? {
-      selection: {
-        mode: isAllExperiencesSelected ? 'all' : 'subset',
-        experienceIds: selectedExperienceIds,
-      },
-    } : { selection: undefined }),
+    selection: {
+      mode: isAllResumeModulesSelected ? 'all' : 'subset',
+      experienceIds: selectedExperienceIds,
+      ...(selectedModuleIds.length ? { moduleIds: selectedModuleIds } : {}),
+    },
     snapshot: nextSnapshot,
   };
+};
+
+export const buildSelectedResumeForTurn = (
+  resume: AssistantSelectedResume | null | undefined,
+  selectedModules: AssistantResumeModuleSelection[],
+): AssistantSelectedResume | null => {
+  if (!resume) {
+    return null;
+  }
+  if (selectedModules.length > 0) {
+    return buildSelectedResumeWithModuleSelection(resume, selectedModules);
+  }
+  if (resume.selection?.mode === 'subset') {
+    const selectedExperienceIds = uniqueInSourceOrder(
+      buildDefaultResumeExperienceSelection(resume),
+      resume.selection.experienceIds,
+    );
+    if (selectedExperienceIds.length === 0) {
+      return null;
+    }
+    return {
+      ...resume,
+      selection: {
+        ...resume.selection,
+        experienceIds: selectedExperienceIds,
+      },
+      snapshot: {
+        ...resume.snapshot,
+        experiences: resume.snapshot.experiences.filter((item) => selectedExperienceIds.includes(item.id)),
+        educations: [],
+        certifications: [],
+        skills: [],
+      },
+    };
+  }
+  return resume;
 };

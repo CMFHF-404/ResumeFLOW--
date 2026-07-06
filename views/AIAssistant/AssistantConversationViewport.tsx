@@ -72,6 +72,7 @@ export const AssistantConversationViewport: React.FC<AssistantConversationViewpo
             attachments={attachments}
             selectedExperiences={selectedExperiencePreviews}
             selectedResume={selectedResumePreview}
+            hideSelectedResumeCard={isSidebarSurface}
           />
         );
       })}

@@ -6,7 +6,7 @@ import {
     trackAiPolishResult,
     trackAiPolishStart,
 } from '../../../utils/analyticsTracker';
-import { extractThoughtHeadline } from '../../../utils/aiThought';
+import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 import { buildExperienceEditDraft } from '../helpers';
 import {
     buildExperiencePolishPayloadContent,
@@ -145,10 +145,9 @@ export const useFloatingExperiencePolishActions = ({
                 }),
                 entrySource: 'resume_editor',
             }, (event) => {
-                if (event.type === 'thought') {
-                    if (event.summary) {
-                        setFloatingThinkingText(event.summary);
-                    }
+                const resolution = resolveThoughtDisplayEvent(event);
+                if (resolution?.kind === 'model_thought') {
+                    setFloatingThinkingText(resolution.text);
                 }
             }, floatingAbortControllerRef.current?.signal);
 

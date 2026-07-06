@@ -49,6 +49,11 @@ test('assistant stream stores thinking state outside React state updaters', () =
     /thoughtStreamState = reduceAssistantThoughtStreamState\(\s*thoughtStreamState,\s*event,\s*enableThinking,\s*\);[\s\S]*setActiveThought\(thoughtStreamState\.activeThought\);/,
     'Assistant stream should update the local state before touching React state',
   );
+  assert.match(
+    readSource('views/AIAssistant/streamUtils.ts'),
+    /resolveThoughtDisplayEvent/,
+    'Assistant stream should use the shared thought display resolver',
+  );
   assert.doesNotMatch(
     sendingSource,
     /setActiveThought\(\(current\) =>[\s\S]*streamedThoughtText\s*=/,

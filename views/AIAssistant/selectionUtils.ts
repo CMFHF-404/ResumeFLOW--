@@ -16,6 +16,11 @@ const SELECTED_RESUME_TEXT_LIMIT = 300;
 const SELECTED_RESUME_NAME_LIMIT = 160;
 const SELECTED_RESUME_JD_LIMIT = 4000;
 const SELECTED_RESUME_SELECTION_ID_LIMIT = 120;
+const SELECTED_RESUME_CONTEXT_SOURCES = new Set<AssistantSelectedResume['contextSource']>([
+  'implicit_current_resume',
+  'explicit_resume_picker',
+  'history_replay',
+]);
 const ASSISTANT_SKILL_IDS = new Set<AssistantSkillId>(['star_guidance', 'experience_completion', 'mock_interview']);
 const EXPERIENCE_CATEGORY_SET = new Set<AssistantSelectedExperience['category']>([
   'work',
@@ -299,12 +304,21 @@ const normalizeSelectedResumeSelection = (value: unknown): AssistantSelectedResu
   const experienceIds = Array.from(new Set(rawIds
     .map((item) => normalizeSelectedResumeText(item, SELECTED_RESUME_SELECTION_ID_LIMIT))
     .filter(Boolean)));
-  if (!mode || (mode === 'subset' && experienceIds.length === 0)) {
+  const rawModuleIds = Array.isArray(candidate.moduleIds)
+    ? candidate.moduleIds
+    : Array.isArray(candidate.module_ids)
+      ? candidate.module_ids
+      : [];
+  const moduleIds = Array.from(new Set(rawModuleIds
+    .map((item) => normalizeSelectedResumeText(item, SELECTED_RESUME_SELECTION_ID_LIMIT))
+    .filter(Boolean)));
+  if (!mode || (mode === 'subset' && experienceIds.length === 0 && moduleIds.length === 0)) {
     return undefined;
   }
   return {
     mode,
     experienceIds,
+    ...(moduleIds.length ? { moduleIds } : {}),
   };
 };
 
@@ -330,6 +344,10 @@ export const normalizeSelectedResume = (value: unknown): AssistantSelectedResume
   const jdContext = normalizeSelectedResumeText(candidate.jdContext ?? candidate.jd_context, SELECTED_RESUME_JD_LIMIT);
   if (jdContext) {
     normalized.jdContext = jdContext;
+  }
+  const contextSource = candidate.contextSource ?? candidate.context_source;
+  if (typeof contextSource === 'string' && SELECTED_RESUME_CONTEXT_SOURCES.has(contextSource as AssistantSelectedResume['contextSource'])) {
+    normalized.contextSource = contextSource as AssistantSelectedResume['contextSource'];
   }
   const selection = normalizeSelectedResumeSelection(candidate.selection);
   if (selection) {

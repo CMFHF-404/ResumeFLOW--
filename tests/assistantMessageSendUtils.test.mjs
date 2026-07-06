@@ -321,6 +321,31 @@ test('assistant thought stream reset clears active and persisted thinking', asyn
   });
 });
 
+test('assistant thought status displays fallback without persisting it as model thinking', async () => {
+  const { reduceAssistantThoughtStreamState } = await importAssistantMessageSendUtils();
+
+  const withFirstThought = reduceAssistantThoughtStreamState(
+    { activeThought: '', streamedThoughtText: '' },
+    { type: 'thought', summary: '旧通道摘要' },
+    true,
+  );
+  const afterReset = reduceAssistantThoughtStreamState(
+    withFirstThought,
+    { type: 'thought_reset' },
+    true,
+  );
+  const afterFallbackStatus = reduceAssistantThoughtStreamState(
+    afterReset,
+    { type: 'thought_status', status: 'fallback', summary: '实时思考流不可用，正在切换为标准生成' },
+    true,
+  );
+
+  assert.deepEqual(afterFallbackStatus, {
+    activeThought: '实时思考流不可用，正在切换为标准生成',
+    streamedThoughtText: '',
+  });
+});
+
 test('standard assistant progress does not show an active thinking block', async () => {
   const { reduceAssistantThoughtStreamState } = await importAssistantMessageSendUtils();
 

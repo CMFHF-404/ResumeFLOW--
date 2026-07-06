@@ -30,6 +30,7 @@ import { useAssistantHistoryActions } from './AIAssistant/useAssistantHistoryAct
 import { useAssistantLaunchBootstrap } from './AIAssistant/useAssistantLaunchBootstrap';
 import { useAssistantMessageSending } from './AIAssistant/useAssistantMessageSending';
 import { useAssistantResourcePickers } from './AIAssistant/useAssistantResourcePickers';
+import { useAssistantSelectedResumeContext } from './AIAssistant/useAssistantSelectedResumeContext';
 import { useAssistantSessionController } from './AIAssistant/useAssistantSessionController';
 import {
   normalizeSelectedResume,
@@ -46,10 +47,6 @@ import {
   attachDraftJumpHandlers,
 } from './AIAssistant/draftJumpUtils';
 import { useAssistantComposerResize } from './AIAssistant/useAssistantComposerResize';
-import {
-  buildSelectedResumeWithModuleSelection,
-  type AssistantResumeModuleSelection,
-} from './AIAssistant/resumeSelectionUtils';
 import type {
   AssistantOpenSessionRequest,
   AssistantLaunchRequest,
@@ -71,6 +68,12 @@ type AIAssistantProps = {
   onDraftInputChange?: (value: string) => void;
 };
 
+const markImplicitCurrentResume = (
+  resume: AssistantSelectedResume | null,
+): AssistantSelectedResume | null => (
+  resume ? { ...resume, contextSource: 'implicit_current_resume' } : null
+);
+
 const AIAssistant: React.FC<AIAssistantProps> = ({
   surface = 'full',
   pendingLaunchRequest,
@@ -89,6 +92,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const isSidebarSurface = surface === 'sidebar';
   const { isAuthenticated } = useLogto();
   const { toasts, success, error, loading, updateToast, closeToast } = useToast();
+  const implicitLiveSelectedResume = useMemo(
+    () => markImplicitCurrentResume(normalizeSelectedResume(liveSelectedResume)),
+    [liveSelectedResume],
+  );
   const [inputValue, setInputValue] = useState(draftInput);
   const [activeComposerSkillId, setActiveComposerSkillId] = useState<AssistantSkillId | null>(null);
   const [lastAssistantSkillId, setLastAssistantSkillId] = useState<AssistantSkillId | null>(null);
@@ -97,8 +104,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [deepThinkingBySessionId, setDeepThinkingBySessionId] = useState<Record<string, boolean>>({});
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
   const [manualSaveMessageIds, setManualSaveMessageIds] = useState<Set<string>>(new Set());
-  const [selectedResume, setSelectedResume] = useState<AssistantSelectedResume | null>(null);
-  const [selectedResumeModuleIds, setSelectedResumeModuleIds] = useState<string[]>([]);
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [isSidebarHistoryOpen, setIsSidebarHistoryOpen] = useState(false);
@@ -122,108 +127,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   } = useAssistantComposerAttachments({ onError: error });
 
   const lastMirroredDraftInputRef = useRef(draftInput);
-  const selectedResumeIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const currentSelectedResumeId = selectedResume?.resumeId ?? null;
-    if (selectedResumeIdRef.current === currentSelectedResumeId) {
-      return;
-    }
-    selectedResumeIdRef.current = currentSelectedResumeId;
-    setSelectedResumeModuleIds([]);
-  }, [selectedResume?.resumeId]);
-
-  const resumeModules = useMemo(() => {
-    if (!selectedResume?.snapshot) {
-      return [];
-    }
-    const snap = selectedResume.snapshot;
-    const modules: Array<{
-      id: string;
-      label: string;
-      displayLabel: string;
-      kind: AssistantResumeModuleSelection['kind'];
-      contextId?: string;
-    }> = [];
-
-    // 教育经历
-    if (Array.isArray(snap.educations)) {
-      snap.educations.forEach((edu, idx) => {
-        modules.push({
-          id: `edu-${edu.id || idx}`,
-          label: `教育经历: ${edu.school}${edu.major ? `·${edu.major}` : ''}`,
-          displayLabel: edu.school || '教育经历',
-          kind: 'education',
-          contextId: edu.id,
-        });
-      });
-    }
-
-    // 经历（工作与项目）
-    if (Array.isArray(snap.experiences)) {
-      snap.experiences.forEach((exp, idx) => {
-        modules.push({
-          id: `exp-${exp.id || idx}`,
-          label: `经历: ${exp.org}${exp.title ? `·${exp.title}` : ''}`,
-          displayLabel: exp.org || exp.title || '经历',
-          kind: 'experience',
-          contextId: exp.id,
-        });
-      });
-    }
-
-    // 证书资质
-    if (Array.isArray(snap.certifications)) {
-      snap.certifications.forEach((cert, idx) => {
-        modules.push({
-          id: `cert-${cert.id || idx}`,
-          label: `证书: ${cert.name}`,
-          displayLabel: cert.name || '证书资质',
-          kind: 'certification',
-          contextId: cert.id,
-        });
-      });
-    }
-
-    // 掌握技能
-    if (Array.isArray(snap.skills) && snap.skills.length > 0) {
-      modules.push({
-        id: 'skills-all',
-        label: '掌握技能',
-        displayLabel: '掌握技能',
-        kind: 'skills',
-      });
-    }
-
-    return modules;
-  }, [selectedResume]);
-
-  const selectedResumeModulesForTurn = useMemo(() => {
-    if (selectedResumeModuleIds.length === 0) {
-      return [];
-    }
-    const selectedIdSet = new Set(selectedResumeModuleIds);
-    return resumeModules
-      .filter((item) => selectedIdSet.has(item.id));
-  }, [resumeModules, selectedResumeModuleIds]);
-
-  const selectedResumeForTurn = useMemo(() => {
-    if (selectedResumeModulesForTurn.length === 0) {
-      return selectedResume;
-    }
-    return buildSelectedResumeWithModuleSelection(
-      selectedResume,
-      selectedResumeModulesForTurn,
-    );
-  }, [selectedResume, selectedResumeModulesForTurn]);
+  const {
+    selectedResume,
+    setSelectedResume,
+    selectedResumeModuleIds,
+    setSelectedResumeModuleIds,
+    resumeModules,
+    selectedResumeForTurn,
+    clearSelectedResume,
+    restoreSelectedResumeContext,
+  } = useAssistantSelectedResumeContext();
 
   const clearSelectedExperiences = useCallback(() => {
     setSelectedExperiences([]);
-  }, []);
-
-  const clearSelectedResume = useCallback(() => {
-    setSelectedResume(null);
-    setSelectedResumeModuleIds([]);
   }, []);
 
   const {
@@ -266,6 +182,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setActiveThought,
     setLastAssistantSkillId,
     setSelectedResume,
+    restoreSelectedResumeContext,
+    setSelectedExperiences,
+    liveSelectedResume: implicitLiveSelectedResume,
     scrollToBottom,
     error,
   });
@@ -409,19 +328,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!isSidebarSurface || !isAuthenticated || selectedSessionId) {
       return;
     }
-    const normalizedLiveSelectedResume = normalizeSelectedResume(liveSelectedResume);
-    setSelectedResume(normalizedLiveSelectedResume);
+    setSelectedResume(implicitLiveSelectedResume);
     if (draftLaunchRequestRef.current) {
       draftLaunchRequestRef.current = {
         ...draftLaunchRequestRef.current,
-        prefillResume: normalizedLiveSelectedResume ?? undefined,
+        prefillResume: implicitLiveSelectedResume ?? undefined,
       };
     }
   }, [
     draftLaunchRequestRef,
     isAuthenticated,
     isSidebarSurface,
-    liveSelectedResume,
+    implicitLiveSelectedResume,
     selectedSessionId,
   ]);
 
@@ -597,12 +515,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   });
 
   const handleSidebarNewChat = useCallback(() => {
-    const normalizedLiveSelectedResume = normalizeSelectedResume(liveSelectedResume);
     setIsSidebarHistoryOpen(false);
     void handleNewChat('general', {
-      selectedResumeDraft: normalizedLiveSelectedResume,
+      selectedResumeDraft: implicitLiveSelectedResume,
     });
-  }, [handleNewChat, liveSelectedResume]);
+  }, [handleNewChat, implicitLiveSelectedResume]);
 
   const handleSidebarSelectSession = useCallback((sessionId: string) => {
     setIsSidebarHistoryOpen(false);

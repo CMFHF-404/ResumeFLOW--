@@ -24,7 +24,7 @@ import {
   diffJDItemSignatures,
   sortExperienceItemsForMatch,
 } from "../utils/resumeHelpers";
-import { extractThoughtHeadline } from "../utils/aiThought";
+import { resolveThoughtDisplayEvent } from "../utils/aiThought";
 import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../views/ResumeEditor/constants";
 import type {
   JDAnalysisContext,
@@ -722,26 +722,24 @@ export const useJDAnalysis = ({
           if (activeAnalysisRunIdRef.current !== runId) {
             return;
           }
-          if (event.type === "thought_reset") {
+          const resolution = resolveThoughtDisplayEvent(event, {
+            includeProgress: true,
+            progressTitleByNode: JD_ANALYSIS_PROGRESS_NODE_TITLES,
+          });
+          if (resolution && resolution.kind === "reset") {
             hasThoughtTitle = false;
             setThinkingText("");
             options?.onEvent?.(event);
             return;
           }
-          if (event.type === "thought") {
-            const title = extractThoughtHeadline(event.summary) || event.summary;
-            if (title) {
-              hasThoughtTitle = true;
-              setThinkingText((current) => appendJDThinkingText(current, title));
-            }
+          if (resolution && resolution.kind === "model_thought") {
+            hasThoughtTitle = true;
+            setThinkingText((current) => appendJDThinkingText(current, resolution.text));
             options?.onEvent?.(event);
             return;
           }
-          if (event.type === "progress" && !hasThoughtTitle) {
-            const progressTitle = JD_ANALYSIS_PROGRESS_NODE_TITLES[event.node];
-            if (progressTitle) {
-              setThinkingText(progressTitle);
-            }
+          if (resolution && resolution.kind === "status" && !hasThoughtTitle) {
+            setThinkingText(resolution.text);
           }
           options?.onEvent?.(event);
         },

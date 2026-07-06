@@ -17,6 +17,7 @@ import {
     buildSmartCompletionPromptState,
     type SmartCompletionPromptState,
 } from '../smartCompletionUtils';
+import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
 type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
@@ -126,10 +127,9 @@ export const useEditingExperiencePolishActions = ({
                 }),
                 entrySource: 'resume_editor',
             }, (event) => {
-                if (event.type === 'thought') {
-                    if (event.summary) {
-                        setEditingThinkingText(event.summary);
-                    }
+                const resolution = resolveThoughtDisplayEvent(event);
+                if (resolution?.kind === 'model_thought') {
+                    setEditingThinkingText(resolution.text);
                 }
             }, editingAbortControllerRef.current?.signal);
 
