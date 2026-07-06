@@ -104,6 +104,7 @@ from .star_polish_utils import (
     _build_polish_prompt,
     _normalize_polish_result,
     _normalize_smart_complete_polish_result,
+    _prepare_polish_content_payload,
     _resolve_star_prompt,
 )
 from .llm_transport import (
@@ -180,7 +181,7 @@ async def polish_experience(
 ) -> Dict[str, Any]:
     has_jd_text = bool(jd_text and jd_text.strip())
     prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
-    content_payload = {**content}
+    content_payload = _prepare_polish_content_payload(content, mode)
     if jd_text:
         content_payload["jd_text"] = jd_text
     if mode:
@@ -324,7 +325,7 @@ async def polish_experience_with_thoughts(
 
     has_jd_text = bool(jd_text and jd_text.strip())
     prompt = _build_polish_prompt(target_field, mode, jd_text, custom_prompt)
-    content_payload = {**content}
+    content_payload = _prepare_polish_content_payload(content, mode)
     if jd_text:
         content_payload["jd_text"] = jd_text
     if mode:
@@ -442,7 +443,7 @@ async def run_assistant_turn_with_thoughts(
     if not _has_thinking_stream_provider():
         await _emit_thought(
             thought_callback,
-            {"type": "thought", "summary": "正在整理上下文并生成回复"},
+            {"type": "thought_status", "summary": "正在整理上下文并生成回复"},
         )
         return await run_assistant_turn(
             mode=mode,
@@ -480,7 +481,7 @@ async def run_assistant_turn_with_thoughts(
     )
     await _emit_thought(
         thought_callback,
-        {"type": "thought", "summary": "正在分析上下文并组织回复"},
+        {"type": "thought_status", "summary": "正在分析上下文并组织回复"},
     )
     try:
         result = await _stream_gemini_json_response(
@@ -492,15 +493,29 @@ async def run_assistant_turn_with_thoughts(
             thought_callback=thought_callback,
             assistant_text_callback=assistant_text_callback,
         )
-    except Exception:
+    except Exception as exc:
         logger.warning(
-            "[AI Stream] thought streaming failed for assistant_%s, falling back to standard assistant turn.",
+            (
+                "[AI Stream] thought streaming failed for assistant_%s; "
+                "route_profile=%s model=%s error_type=%s, falling back to standard assistant turn."
+            ),
             mode,
+            getattr(settings, "ai_route_profile", ""),
+            getattr(settings, "gemini_model", None) or getattr(settings, "ai_model", ""),
+            type(exc).__name__,
             exc_info=True,
         )
         await _emit_thought(
             thought_callback,
-            {"type": "thought", "summary": "实时思考流不可用，正在切换为标准生成"},
+            {"type": "thought_reset"},
+        )
+        await _emit_thought(
+            thought_callback,
+            {
+                "type": "thought_status",
+                "status": "fallback",
+                "summary": "实时思考流不可用，正在切换为标准生成",
+            },
         )
         return await run_assistant_turn(
             mode=mode,

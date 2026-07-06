@@ -165,7 +165,7 @@ test('JD analysis aborted outcome does not show the no-change toast', () => {
     abortIndex < noChangeIndex,
     'aborted JD analysis should return before the no-change toast fallback'
   );
-  assert.match(body, /if \(result\.status === 'aborted'\) \{\s*return null;\s*\}/);
+  assert.match(body, /if \(result\.status === 'aborted'\) \{\s*closeToast\(toastId\);\s*return null;\s*\}/);
 });
 
 test('JD analysis stop motion mirrors the analysis launch motion', () => {

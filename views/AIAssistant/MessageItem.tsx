@@ -28,6 +28,7 @@ export type MessageItemProps = {
   attachments?: MessageAttachmentPreview[];
   selectedExperiences?: AssistantSelectedExperience[];
   selectedResume?: AssistantSelectedResume | null;
+  hideSelectedResumeCard?: boolean;
 };
 
 const EXPERIENCE_ICON = {
@@ -61,8 +62,12 @@ const AttachmentRail: React.FC<{
   attachments: MessageAttachmentPreview[];
   selectedExperiences: AssistantSelectedExperience[];
   selectedResume: AssistantSelectedResume | null;
-}> = ({ attachments, selectedExperiences, selectedResume }) => {
-  if (attachments.length === 0 && selectedExperiences.length === 0 && !selectedResume) {
+  hideSelectedResumeCard?: boolean;
+}> = ({ attachments, selectedExperiences, selectedResume, hideSelectedResumeCard = false }) => {
+  const shouldShowSelectedResume = Boolean(selectedResume)
+    && !(hideSelectedResumeCard && selectedResume?.contextSource === 'implicit_current_resume');
+
+  if (attachments.length === 0 && selectedExperiences.length === 0 && !shouldShowSelectedResume) {
     return null;
   }
 
@@ -94,7 +99,7 @@ const AttachmentRail: React.FC<{
         </div>
       ))}
 
-      {selectedResume ? (
+      {selectedResume && shouldShowSelectedResume ? (
         <div className="flex h-[80px] w-[204px] shrink-0 gap-3 rounded-2xl border border-sky-200 bg-sky-50/75 px-3 py-3 dark:border-sky-500/30 dark:bg-sky-950/35">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 dark:bg-slate-800 dark:text-sky-300">
             <FileText className="h-4 w-4" />
@@ -154,6 +159,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   attachments = [],
   selectedExperiences = [],
   selectedResume = null,
+  hideSelectedResumeCard = false,
 }) => {
   if (isUser) {
     return (
@@ -163,6 +169,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             attachments={attachments}
             selectedExperiences={selectedExperiences}
             selectedResume={selectedResume}
+            hideSelectedResumeCard={hideSelectedResumeCard}
           />
           {content ? (
             <div className="whitespace-pre-wrap break-words text-[13px] leading-6 sm:text-sm sm:leading-7">

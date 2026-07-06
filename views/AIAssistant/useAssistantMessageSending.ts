@@ -151,7 +151,7 @@ export const useAssistantMessageSending = ({
             }
             return;
           }
-          if (event.type === 'thought' || event.type === 'progress' || event.type === 'thought_reset') {
+          if (event.type === 'thought' || event.type === 'progress' || event.type === 'thought_reset' || event.type === 'thought_status') {
             thoughtStreamState = reduceAssistantThoughtStreamState(
               thoughtStreamState,
               event,

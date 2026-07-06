@@ -16,6 +16,19 @@ const importAssistantSessionUtils = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+const importAssistantSessionContextUtils = async () => {
+  const result = await build({
+    entryPoints: ['views/AIAssistant/sessionContextUtils.ts'],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const source = result.outputFiles[0].text;
+  const encoded = Buffer.from(source).toString('base64');
+  return import(`data:text/javascript;base64,${encoded}`);
+};
+
 const buildSession = (id, updatedAt, title = `Session ${id}`) => ({
   id,
   user_id: 'user-1',
@@ -159,4 +172,69 @@ test('matches legacy education previews against normalized experience draft card
   };
 
   assert.equal(isSameDraftCard(preview, card), true);
+});
+
+test('hydrates sidebar context from latest historical selected resume without losing full live snapshot', async () => {
+  const { deriveSelectedAssistantContextFromMessages } = await importAssistantSessionContextUtils();
+
+  const liveResume = {
+    resumeId: 'resume-1',
+    resumeName: 'AI 产品实习简历',
+    contextSource: 'implicit_current_resume',
+    jdContext: '当前 JD',
+    snapshot: {
+      experiences: [
+        { id: 'exp-1', title: '产品助理', org: 'A 公司', star: { s: 's1' } },
+        { id: 'exp-2', title: 'RPG 项目', org: '个人项目', star: { s: 's2' } },
+      ],
+      educations: [{ id: 'edu-1', school: '浙江农林大学', major: '地理信息科学', degree: '本科' }],
+      certifications: [],
+      skills: [{ id: 'skill-1', name: 'Axure', category: '产品工具' }],
+    },
+  };
+  const messages = [
+    {
+      id: 'older-user',
+      role: 'user',
+      message_type: 'user_text',
+      content_json: { text: '旧消息' },
+      created_at: '2026-06-03T00:00:00.000Z',
+    },
+    {
+      id: 'latest-user',
+      role: 'user',
+      message_type: 'user_text',
+      content_json: {
+        text: '继续优化',
+        selected_resume: {
+          resume_id: 'resume-1',
+          resume_name: 'AI 产品实习简历',
+          context_source: 'implicit_current_resume',
+          selection: { mode: 'subset', experienceIds: ['exp-2'] },
+          snapshot: {
+            experiences: [{ id: 'exp-2', title: 'RPG 项目', org: '个人项目', star: { s: 's2' } }],
+            educations: [],
+            certifications: [],
+            skills: [],
+          },
+        },
+        selected_experiences: [{
+          masterId: 'master-1',
+          category: 'project',
+          org: '个人项目',
+          title: 'RPG 项目',
+          isCurrent: false,
+        }],
+      },
+      created_at: '2026-06-03T00:01:00.000Z',
+    },
+  ];
+
+  const hydrated = deriveSelectedAssistantContextFromMessages(messages, liveResume);
+
+  assert.equal(hydrated.selectedResume.contextSource, 'implicit_current_resume');
+  assert.deepEqual(hydrated.selectedResume.selection, { mode: 'subset', experienceIds: ['exp-2'] });
+  assert.deepEqual(hydrated.selectedResume.snapshot.experiences.map((item) => item.id), ['exp-1', 'exp-2']);
+  assert.deepEqual(hydrated.selectedResumeModuleIds, ['exp-exp-2']);
+  assert.deepEqual(hydrated.selectedExperiences.map((item) => item.masterId), ['master-1']);
 });

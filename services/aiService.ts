@@ -192,7 +192,7 @@ export interface GeneratePersonalSummaryResponse {
     summary: string;
 }
 
-export type PolishMode = 'default' | 'highlight' | 'smart_complete' | 'shorten' | 'expand' | 'custom' | 'assistant';
+export type PolishMode = 'default' | 'campus_recruitment' | 'highlight' | 'smart_complete' | 'shorten' | 'expand' | 'custom' | 'assistant';
 
 export type AssistantMode = 'general' | 'experience' | 'certification' | 'skill';
 export type AssistantSkillId = 'star_guidance' | 'experience_completion' | 'mock_interview';
@@ -307,6 +307,7 @@ export interface AssistantSelectedExperience {
 export interface AssistantSelectedResumeSelection {
     mode: 'all' | 'subset';
     experienceIds: string[];
+    moduleIds?: string[];
 }
 
 export interface AssistantSelectedResume {
@@ -315,6 +316,7 @@ export interface AssistantSelectedResume {
     resumeName: string;
     snapshot: ResumeAISnapshot;
     jdContext?: string;
+    contextSource?: 'implicit_current_resume' | 'explicit_resume_picker' | 'history_replay';
     selection?: AssistantSelectedResumeSelection;
 }
 
@@ -386,6 +388,7 @@ export type AssistantStreamEvent =
     | AssistantProgressEvent
     | AIThoughtEvent
     | AIThoughtResetEvent
+    | AIThoughtStatusEvent
     | AssistantDeltaEvent
     | AssistantTextResetEvent
     | AssistantFinalEvent
@@ -405,6 +408,12 @@ export type AIThoughtEvent = {
 
 export type AIThoughtResetEvent = {
     type: 'thought_reset';
+};
+
+export type AIThoughtStatusEvent = {
+    type: 'thought_status';
+    status?: 'fallback' | 'hidden';
+    summary: string;
 };
 
 export type AnalyzeProgressEvent = {

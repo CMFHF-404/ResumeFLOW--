@@ -5,6 +5,7 @@ import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeData } from '../../hooks/useResumeData';
 import { experienceService } from '../../services/experienceService';
+import type { AssistantSelectedResume } from '../../services/aiService';
 import type { TokenQuotaSummary } from '../../services/billingService';
 import type {
     CertificationView,
@@ -168,11 +169,13 @@ type ResumeEditorProps = {
 
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
+    'campus_recruitment',
     'highlight',
     'custom',
 ];
 const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
+    'campus_recruitment',
     'highlight',
     'custom',
 ];
@@ -1052,7 +1055,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         && !isFloatingExperiencePolishRunning
         && !floatingPolishSession
     );
-    const assistantSidebarSelectedResume = useMemo(() => {
+    const assistantSidebarSelectedResume = useMemo<AssistantSelectedResume | null>(() => {
         if (!resumeId) {
             return null;
         }
@@ -1060,6 +1063,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             resumeId,
             resumeName: resumeName || UNTITLED_RESUME_TITLE,
             snapshot: selectedResumeSnapshot,
+            contextSource: 'implicit_current_resume',
             ...(jdPolishContext.trim() ? { jdContext: jdPolishContext } : {}),
         };
     }, [jdPolishContext, resumeId, resumeName, selectedResumeSnapshot]);

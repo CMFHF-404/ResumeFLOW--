@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { aiService, type PolishExperienceResponse } from '../../services/aiService';
 import type { PolishPreviewState } from '../../types/resume';
-import { extractThoughtHeadline } from '../../utils/aiThought';
+import { resolveThoughtDisplayEvent } from '../../utils/aiThought';
 import {
   trackAiPolishResult,
   trackAiPolishStart,
@@ -260,14 +260,14 @@ export const usePolishActions = ({
           customPrompt: mode === 'custom' ? customPrompt : undefined,
           entrySource: 'experience_bank',
         }, (event) => {
-          if (!toastId || event.type !== 'thought') {
+          if (!toastId) {
             return;
           }
-          const title = extractThoughtHeadline(event.summary);
-          if (!title) {
+          const resolution = resolveThoughtDisplayEvent(event);
+          if (resolution?.kind !== 'model_thought') {
             return;
           }
-          toast.updateToast(toastId, { message: title, type: 'ai_thinking', duration: 0 });
+          toast.updateToast(toastId, { message: resolution.text, type: 'ai_thinking', duration: 0 });
         });
         const latestData = cardDataRef.current.get(cardId);
         if (!latestData) {

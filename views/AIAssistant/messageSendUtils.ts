@@ -6,7 +6,8 @@ import type {
   AssistantStreamEvent,
 } from '../../services/aiService';
 import type { AssistantComposerAttachment } from './attachmentUtils';
-import { resolveAssistantStreamThought } from './streamUtils';
+import { appendThoughtDisplayText } from '../../utils/aiThought';
+import { resolveAssistantStreamThoughtDisplay } from './streamUtils';
 
 export type AssistantSendPayload = {
   userMessage: string;
@@ -41,18 +42,10 @@ const normalizeAssistantThinkingText = (value: string) => value
   .join(ASSISTANT_THINKING_SEPARATOR);
 
 export const appendAssistantThoughtText = (current: string, rawHeadline: string) => {
-  const headline = normalizeAssistantThinkingText(rawHeadline);
-  if (!headline) {
-    return normalizeAssistantThinkingText(current);
-  }
-  const parts = normalizeAssistantThinkingText(current)
-    .split(ASSISTANT_THINKING_SEPARATOR)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (parts[parts.length - 1] !== headline) {
-    parts.push(headline);
-  }
-  return parts.join(ASSISTANT_THINKING_SEPARATOR);
+  return appendThoughtDisplayText(current, rawHeadline, {
+    separator: ASSISTANT_THINKING_SEPARATOR,
+    dedupeStrategy: 'last',
+  });
 };
 
 export type AssistantThoughtStreamState = {
@@ -74,15 +67,16 @@ export const reduceAssistantThoughtStreamState = (
   if (!enableThinking) {
     return state;
   }
-  if (event.type !== 'thought' && event.type !== 'progress') {
+  const resolution = resolveAssistantStreamThoughtDisplay(event);
+  if (resolution?.kind !== 'model_thought' && resolution?.kind !== 'status') {
     return state;
   }
 
-  const headline = resolveAssistantStreamThought(event);
+  const activeThought = appendAssistantThoughtText(state.activeThought, resolution.text);
   return {
-    activeThought: appendAssistantThoughtText(state.activeThought, headline),
-    streamedThoughtText: event.type === 'thought'
-      ? appendAssistantThoughtText(state.streamedThoughtText, headline)
+    activeThought,
+    streamedThoughtText: resolution.persist
+      ? appendAssistantThoughtText(state.streamedThoughtText, resolution.text)
       : state.streamedThoughtText,
   };
 };

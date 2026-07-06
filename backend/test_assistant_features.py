@@ -380,6 +380,45 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn({"type": "thought_reset"}, events)
 
+    async def test_stream_does_not_persist_thought_status_as_model_thinking(self) -> None:
+        async def thinking_side_effect(**kwargs):
+            await kwargs["thought_callback"]({"type": "thought", "summary": "旧通道摘要"})
+            await kwargs["thought_callback"]({"type": "thought_reset"})
+            await kwargs["thought_callback"]({
+                "type": "thought_status",
+                "status": "fallback",
+                "summary": "实时思考流不可用，正在切换为标准生成",
+            })
+            return {
+                "assistantText": "标准回复",
+                "draftCard": None,
+                "title": "AI 助理",
+                "suggestedFollowups": [],
+            }
+
+        payload = assistant_router.AssistantSessionStreamRequest(
+            user_message="优化这段经历",
+            enable_thinking=True,
+        )
+
+        _, _, events = await self._run_stream_with_payload(
+            payload,
+            thinking_side_effect=thinking_side_effect,
+        )
+
+        self.assertIn(
+            {
+                "type": "thought_status",
+                "status": "fallback",
+                "summary": "实时思考流不可用，正在切换为标准生成",
+            },
+            events,
+        )
+        self.assertEqual(
+            self.last_persist_assistant_turn.await_args.kwargs["assistant_thinking"],
+            "",
+        )
+
 
 class AssistantStreamingJsonDeltaTests(unittest.TestCase):
     def test_gemini_text_stream_config_can_disable_thinking_budget(self) -> None:
@@ -624,6 +663,14 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
 
         self.assertIn("default: '四字行动开头，结合 JD 重组表达。'", toolbar_source)
+
+    def test_resume_editor_exposes_campus_recruitment_polish_mode(self) -> None:
+        toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
+        editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("campus_recruitment: '校招润色'", toolbar_source)
+        self.assertIn("campus_recruitment: '校招口径 + 重点加粗，真实克制地重写经历。'", toolbar_source)
+        self.assertIn("'default',\n    'campus_recruitment',\n    'highlight',\n    'custom'", editor_source)
 
     def test_ai_polish_toolbar_result_preview_body_is_mobile_only(self) -> None:
         toolbar_source = (REPO_ROOT / "components" / "AIPolishToolbar.tsx").read_text(encoding="utf-8")
@@ -1818,9 +1865,11 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                     "resumeId": "resume-1",
                     "resumeName": "AI产品经理简历",
                     "jdContext": "J" * 5000,
+                    "contextSource": "implicit_current_resume",
                     "selection": {
                         "mode": "subset",
                         "experienceIds": ["exp-1", "bad-id" * 80, ""],
+                        "moduleIds": ["exp-exp-1", "edu-edu-1", "bad-module" * 80, ""],
                     },
                 "snapshot": {
                     "experiences": [
@@ -1858,9 +1907,11 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                 "resume_id": "resume-1",
                 "resume_name": "AI产品经理简历",
                 "jd_context": "J" * 4000 + "...",
+                "context_source": "implicit_current_resume",
                 "selection": {
                     "mode": "subset",
                     "experienceIds": ["exp-1", ("bad-id" * 80)[:120] + "..."],
+                    "moduleIds": ["exp-exp-1", "edu-edu-1", ("bad-module" * 80)[:120] + "..."],
                 },
                 "snapshot": {
                     "experiences": [
@@ -2027,7 +2078,8 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                     "certifications": [],
                     "skills": [],
                 },
-                "selection": {"mode": "subset", "experienceIds": ["exp-1"]},
+                "selection": {"mode": "subset", "experienceIds": ["exp-1"], "moduleIds": ["exp-exp-1"]},
+                "contextSource": "explicit_resume_picker",
                 "jdContext": "关注 AI 产品设计与需求拆解",
             },
             history=[
@@ -2039,7 +2091,8 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
                         "selected_resume": {
                             "resume_id": "resume-old",
                             "resume_name": "旧简历",
-                            "selection": {"mode": "subset", "experienceIds": ["old-exp"]},
+                            "selection": {"mode": "subset", "experienceIds": ["old-exp"], "moduleIds": ["old-module"]},
+                            "context_source": "history_replay",
                             "snapshot": {"experiences": [], "educations": [], "certifications": [], "skills": []},
                         },
                     },
@@ -2051,8 +2104,9 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["selected_resume"]["resume_name"], "产品经理简历")
         self.assertEqual(
             payload["selected_resume"]["selection"],
-            {"mode": "subset", "experienceIds": ["exp-1"]},
+            {"mode": "subset", "experienceIds": ["exp-1"], "moduleIds": ["exp-exp-1"]},
         )
+        self.assertEqual(payload["selected_resume"]["context_source"], "explicit_resume_picker")
         self.assertLessEqual(
             len(payload["selected_resume"]["snapshot"]["experiences"][0]["star"]["s"]),
             503,
@@ -2067,7 +2121,11 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             payload["history"][0]["content_json"]["selected_resume"]["selection"],
-            {"mode": "subset", "experienceIds": ["old-exp"]},
+            {"mode": "subset", "experienceIds": ["old-exp"], "moduleIds": ["old-module"]},
+        )
+        self.assertEqual(
+            payload["history"][0]["content_json"]["selected_resume"]["context_source"],
+            "history_replay",
         )
 
 
@@ -2777,6 +2835,7 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 "resumeId": "resume-1",
                 "resumeName": "AI产品经理简历",
                 "jdContext": "J" * 5000,
+                "contextSource": "explicit_resume_picker",
                 "snapshot": {
                     "experiences": [
                         {"id": "exp-1", "title": "产品经理", "org": "某公司", "star": {"a": "A" * 600}},
@@ -2787,7 +2846,7 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
                     "certifications": [],
                     "skills": [{"id": "skill-1", "name": "需求分析", "category": "产品"}],
                 },
-                "selection": {"mode": "subset", "experienceIds": ["exp-1"]},
+                "selection": {"mode": "subset", "experienceIds": ["exp-1"], "moduleIds": ["exp-exp-1"]},
             },
             assistant_text="好的",
             draft_card=None,
@@ -2799,9 +2858,11 @@ class AssistantPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 "resume_id": "resume-1",
                 "resume_name": "AI产品经理简历",
                 "jd_context": "J" * 4000 + "...",
+                "context_source": "explicit_resume_picker",
                 "selection": {
                     "mode": "subset",
                     "experienceIds": ["exp-1"],
+                    "moduleIds": ["exp-exp-1"],
                 },
                 "snapshot": {
                     "experiences": [

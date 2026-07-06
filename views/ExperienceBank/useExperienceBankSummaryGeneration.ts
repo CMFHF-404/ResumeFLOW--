@@ -4,7 +4,7 @@ import type { ToastConfig } from '../../components/Toast';
 import { aiService, type GeneratePersonalSummaryParams } from '../../services/aiService';
 import type { Profile } from '../../services/profileService';
 import type { ExperienceBankPdfRenderSnapshot } from '../../types/experienceBankExport';
-import { extractThoughtHeadline } from '../../utils/aiThought';
+import { resolveThoughtDisplayEvent } from '../../utils/aiThought';
 import { stripRichTextToText } from '../../utils/richText';
 
 type ToastFn = (message: string, duration?: number) => string;
@@ -122,13 +122,10 @@ export const useExperienceBankSummaryGeneration = ({
       const requestSignature = JSON.stringify(requestPayload);
 
       const response = await aiService.generatePersonalSummaryStream(requestPayload, (event) => {
-        if (toastId && event.type === 'thought' && isCurrentSummaryRequest()) {
-          const title = extractThoughtHeadline(event.summary);
-          if (!title) {
-            return;
-          }
+        const resolution = resolveThoughtDisplayEvent(event);
+        if (toastId && resolution?.kind === 'model_thought' && isCurrentSummaryRequest()) {
           updateToast(toastId, {
-            message: title,
+            message: resolution.text,
             type: 'ai_thinking',
             duration: 0,
           });

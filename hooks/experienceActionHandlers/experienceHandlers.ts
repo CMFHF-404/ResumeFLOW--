@@ -14,7 +14,7 @@ import {
 } from '../../services/resumeService';
 import type { ConfirmDialogState, DatePayloadFallback, ExperienceEditDraft, ResumeExperienceView, StarFieldKey, StarFields } from '../../types/resume';
 import { normalizeAiRichText } from '../../utils/richText';
-import { extractThoughtHeadline } from '../../utils/aiThought';
+import { resolveThoughtDisplayEvent } from '../../utils/aiThought';
 import {
     trackAiPolishApplied,
     trackAiPolishResult,
@@ -574,16 +574,13 @@ const runExperiencePolish = async (
             },
             jdText: trimmedJD,
         }, (event) => {
-            if (event.type !== 'thought') {
-                return;
-            }
-            const title = extractThoughtHeadline(event.summary);
-            if (!title) {
+            const resolution = resolveThoughtDisplayEvent(event);
+            if (resolution?.kind !== 'model_thought') {
                 return;
             }
             toast.updateToast(toastId, {
-                message: title,
-                type: 'loading',
+                message: resolution.text,
+                type: 'ai_thinking',
                 duration: 0,
             });
         });

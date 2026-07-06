@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from .assistant_turn_utils import _is_off_scope_smart_complete_question
 from .prompts import (
     POLISH_MODE_INSTRUCTIONS,
+    STAR_CAMPUS_RECRUITMENT_REWRITE,
     STAR_GENERAL_REWRITE_NO_JD,
     STAR_HIGHLIGHT,
     STAR_HIGHLIGHT_NO_JD,
@@ -14,8 +15,36 @@ from .prompts import (
 
 MAX_SMART_COMPLETE_FOLLOW_UP_QUESTIONS = 3
 DEFAULT_JD_EXTRA_BOLD_LIMIT = 3
+CAMPUS_RECRUITMENT_MODE = "campus_recruitment"
+STAR_FIELD_KEYS = ("s", "t", "a", "r")
 MARKDOWN_BOLD_PATTERN = re.compile(r"(\*\*|＊＊)([^\r\n]+?)(\1)")
+HTML_BOLD_TAG_PATTERN = re.compile(r"</?(?:strong|b)\b[^>]*>", re.IGNORECASE)
 FOUR_CJK_CHARS_PATTERN = re.compile(r"^[\u4e00-\u9fff]{4}$")
+CAMPUS_ACTION_LABEL_BOLD_PATTERN = re.compile(r"(^|\n)(\*\*|＊＊)([\u4e00-\u9fff]{4})(\2)(?=：)")
+
+
+def _is_campus_recruitment_mode(mode: Optional[str]) -> bool:
+    return (mode or "").strip().lower() == CAMPUS_RECRUITMENT_MODE
+
+
+def _strip_bold_markers(value: str) -> str:
+    without_markdown = MARKDOWN_BOLD_PATTERN.sub(lambda match: match.group(2), value)
+    return HTML_BOLD_TAG_PATTERN.sub("", without_markdown)
+
+
+def _prepare_polish_content_payload(
+    content: Dict[str, Any],
+    mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload = dict(content)
+    if not _is_campus_recruitment_mode(mode):
+        return payload
+
+    for key in STAR_FIELD_KEYS:
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            payload[key] = _strip_bold_markers(value)
+    return payload
 
 
 def _resolve_star_prompt(
@@ -24,6 +53,8 @@ def _resolve_star_prompt(
     has_jd_text: bool = False,
 ) -> str:
     normalized_mode = (mode or "default").strip().lower()
+    if _is_campus_recruitment_mode(mode):
+        return STAR_CAMPUS_RECRUITMENT_REWRITE
     if normalized_mode in {"smart_complete", "smart_completion"}:
         return STAR_SMART_COMPLETE_REWRITE
     if normalized_mode == "default":
@@ -131,6 +162,17 @@ def _limit_default_jd_extra_bold(result: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
+def _normalize_campus_recruitment_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(result)
+    value = normalized.get("a")
+    if isinstance(value, str) and value:
+        normalized["a"] = CAMPUS_ACTION_LABEL_BOLD_PATTERN.sub(
+            lambda match: f"{match.group(1)}{match.group(3)}",
+            value,
+        )
+    return normalized
+
+
 def _normalize_polish_result(
     result: Dict[str, Any],
     mode: Optional[str] = None,
@@ -139,6 +181,8 @@ def _normalize_polish_result(
     normalized_mode = (mode or "default").strip().lower()
     if normalized_mode in {"smart_complete", "smart_completion"}:
         return _normalize_smart_complete_polish_result(result)
+    if _is_campus_recruitment_mode(mode):
+        return _normalize_campus_recruitment_result(result)
     if normalized_mode == "default" and has_jd_text:
         return _limit_default_jd_extra_bold(result)
     return result

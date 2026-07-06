@@ -1,6 +1,16 @@
 import { useCallback, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 
-import { aiService, type AssistantMessage, type AssistantSession } from '../../services/aiService';
+import {
+  aiService,
+  type AssistantMessage,
+  type AssistantSelectedExperience,
+  type AssistantSelectedResume,
+  type AssistantSession,
+} from '../../services/aiService';
+import {
+  deriveSelectedAssistantContextFromMessages,
+  type AssistantHydratedSessionContext,
+} from './sessionContextUtils';
 import {
   assertAssistantSessionDetailResponse,
   assertAssistantSessionListResponse,
@@ -24,6 +34,10 @@ type UseAssistantSessionLoadingParams = {
   setSelectedSessionId: Dispatch<SetStateAction<string | null>>;
   setMessages: Dispatch<SetStateAction<AssistantMessage[]>>;
   setAppliedMessageIds: Dispatch<SetStateAction<Set<string>>>;
+  restoreSelectedResumeContext: (context: AssistantHydratedSessionContext) => void;
+  setSelectedExperiences: Dispatch<SetStateAction<AssistantSelectedExperience[]>>;
+  liveSelectedResumeRef: MutableRefObject<AssistantSelectedResume | null>;
+  persistDraftSelectedResume: (sessionId: string | null | undefined, resume: AssistantSelectedResume | null) => void;
   clearSelectedResume: () => void;
   scrollToBottom: () => void;
   error: (message: string, duration?: number) => void;
@@ -42,6 +56,10 @@ export const useAssistantSessionLoading = ({
   setSelectedSessionId,
   setMessages,
   setAppliedMessageIds,
+  restoreSelectedResumeContext,
+  setSelectedExperiences,
+  liveSelectedResumeRef,
+  persistDraftSelectedResume,
   clearSelectedResume,
   scrollToBottom,
   error,
@@ -112,8 +130,15 @@ export const useAssistantSessionLoading = ({
       if (messageMutationSeqRef.current > messageMutationAtStart) {
         return;
       }
+      const restoredContext = deriveSelectedAssistantContextFromMessages(
+        detail.messages,
+        liveSelectedResumeRef.current,
+      );
       setMessages(detail.messages);
       setAppliedMessageIds(new Set(detail.messages.filter(isDraftMessageApplied).map((message) => message.id)));
+      restoreSelectedResumeContext(restoredContext);
+      setSelectedExperiences(restoredContext.selectedExperiences);
+      persistDraftSelectedResume(sessionId, restoredContext.selectedResume);
       setSessionsState((prev) => {
         const localMutationSeq = sessionMutationSeqsRef.current.get(detail.session.id) ?? 0;
         const deletedSeq = deletedSessionSeqsRef.current.get(detail.session.id) ?? 0;
@@ -144,7 +169,11 @@ export const useAssistantSessionLoading = ({
     sessionMutationSeqsRef,
     setAppliedMessageIds,
     setMessages,
+    setSelectedExperiences,
+    restoreSelectedResumeContext,
     setSessionsState,
+    liveSelectedResumeRef,
+    persistDraftSelectedResume,
   ]);
 
   return {

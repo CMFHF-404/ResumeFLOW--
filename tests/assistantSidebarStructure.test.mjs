@@ -38,7 +38,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(assistant, /const isSidebarSurface = surface === 'sidebar'/);
   assert.match(assistant, /normalizeSelectedResume\(liveSelectedResume\)/);
   assert.match(assistant, /!isSidebarSurface \|\| !isAuthenticated \|\| selectedSessionId/);
-  assert.match(assistant, /prefillResume: normalizedLiveSelectedResume \?\? undefined/);
+  assert.match(assistant, /prefillResume: implicitLiveSelectedResume \?\? undefined/);
   assert.match(assistant, /pendingOpenSessionRequest/);
   assert.match(assistant, /suppressAutoSelectSessionRef\.current = true/);
   assert.match(assistant, /setSelectedSessionId\(sessionId\)/);

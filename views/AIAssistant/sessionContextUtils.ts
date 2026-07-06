@@ -1,4 +1,14 @@
-import type { AssistantMode, AssistantSession } from '../../services/aiService';
+import type {
+  AssistantMessage,
+  AssistantMode,
+  AssistantSelectedExperience,
+  AssistantSelectedResume,
+  AssistantSession,
+} from '../../services/aiService';
+import {
+  readMessageSelectedExperiences,
+  readMessageSelectedResume,
+} from './selectionUtils';
 
 export const ASSISTANT_MODE_HINTS: Record<AssistantMode, string> = {
   general: '同一条对话里自由整理经历、证书与技能',
@@ -35,4 +45,83 @@ export const isPersistedCallbackOnlySession = (session: AssistantSession | null)
   }
   return session.entry_source === 'resume_editor'
     && Boolean(readContextString(session.context_json ?? {}, 'masterId'));
+};
+
+export type AssistantHydratedSessionContext = {
+  selectedResume: AssistantSelectedResume | null;
+  selectedResumeModuleIds: string[];
+  selectedExperiences: AssistantSelectedExperience[];
+};
+
+export const deriveSelectedResumeModuleIds = (
+  selectedResume: AssistantSelectedResume | null,
+) => {
+  const selection = selectedResume?.selection;
+  if (!selection || selection.mode !== 'subset') {
+    return [];
+  }
+  if (selection.moduleIds?.length) {
+    return selection.moduleIds;
+  }
+  return selection.experienceIds.map((id) => `exp-${id}`);
+};
+
+const findLatestUserContextMessage = (messages: AssistantMessage[]) => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== 'user') {
+      continue;
+    }
+    if (message.content_json?.selected_resume || message.content_json?.selected_experiences) {
+      return message;
+    }
+  }
+  return null;
+};
+
+const mergeSelectedResumeWithLiveSnapshot = (
+  selectedResume: AssistantSelectedResume | null,
+  liveSelectedResume: AssistantSelectedResume | null | undefined,
+): AssistantSelectedResume | null => {
+  if (!selectedResume) {
+    return null;
+  }
+  if (!liveSelectedResume || liveSelectedResume.resumeId !== selectedResume.resumeId) {
+    return selectedResume.contextSource
+      ? selectedResume
+      : { ...selectedResume, contextSource: 'history_replay' };
+  }
+  return {
+    ...liveSelectedResume,
+    masterId: selectedResume.masterId ?? liveSelectedResume.masterId,
+    resumeName: selectedResume.resumeName || liveSelectedResume.resumeName,
+    jdContext: selectedResume.jdContext ?? liveSelectedResume.jdContext,
+    contextSource: selectedResume.contextSource ?? liveSelectedResume.contextSource ?? 'history_replay',
+    selection: selectedResume.selection,
+  };
+};
+
+export const deriveSelectedAssistantContextFromMessages = (
+  messages: AssistantMessage[],
+  liveSelectedResume?: AssistantSelectedResume | null,
+): AssistantHydratedSessionContext => {
+  const contextMessage = findLatestUserContextMessage(messages);
+  if (!contextMessage) {
+    return {
+      selectedResume: null,
+      selectedResumeModuleIds: [],
+      selectedExperiences: [],
+    };
+  }
+
+  const selectedResume = mergeSelectedResumeWithLiveSnapshot(
+    readMessageSelectedResume(contextMessage),
+    liveSelectedResume,
+  );
+
+  return {
+    selectedResume,
+    selectedResumeModuleIds: deriveSelectedResumeModuleIds(selectedResume),
+    selectedExperiences: readMessageSelectedExperiences(contextMessage),
+  };
 };

@@ -43,6 +43,7 @@ const DEFAULT_MODE_OPTIONS: ToolbarMode[] = ['default', 'highlight', 'custom'];
 
 const MODE_LABELS: Record<ToolbarMode, string> = {
   default: 'AI 润色',
+  campus_recruitment: '校招润色',
   highlight: '匹配高亮',
   smart_complete: '智能补全',
   shorten: '精简内容',
@@ -52,6 +53,7 @@ const MODE_LABELS: Record<ToolbarMode, string> = {
 
 const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
   default: '四字行动开头，结合 JD 重组表达。',
+  campus_recruitment: '校招口径 + 重点加粗，真实克制地重写经历。',
   highlight: '保守轻改，只加粗最匹配 JD 的证据。',
   smart_complete: '先判断证据是否足够，必要时在卡片内追问补充事实。',
   shorten: '保留关键信息，字数压缩 30% 以上。',
@@ -61,6 +63,7 @@ const MODE_DESCRIPTIONS_WITH_JD: Record<ToolbarMode, string> = {
 
 const MODE_DESCRIPTIONS_NO_JD: Record<ToolbarMode, string> = {
   default: '结构化 STAR 并转为专业书面语。',
+  campus_recruitment: '校招口径 + 重点加粗，避免过度包装。',
   highlight: '保留原文，仅调整重点内容的强调。',
   smart_complete: '诊断经历证据缺口，并给出可补充的问题。',
   shorten: '保留关键信息，字数压缩 30% 以上。',

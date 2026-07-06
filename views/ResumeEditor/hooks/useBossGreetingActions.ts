@@ -2,7 +2,7 @@ import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction 
 import type { ToastConfig } from '../../../components/Toast';
 import { aiService, type BossGreetingStreamEvent, type JDAnalysisResult } from '../../../services/aiService';
 import type { ResumeBossGreeting } from '../../../types/resume';
-import { extractThoughtHeadline } from '../../../utils/aiThought';
+import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 import {
     trackBossGreetingResult,
     trackBossGreetingStart,
@@ -191,18 +191,15 @@ export const useBossGreetingActions = ({
                     signature: requestedBossGreetingSignature,
                 },
                 (event: BossGreetingStreamEvent) => {
-                    if (event.type !== 'thought') {
-                        return;
-                    }
                     if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
                         return;
                     }
-                    const title = extractThoughtHeadline(event.summary);
-                    if (!title) {
+                    const resolution = resolveThoughtDisplayEvent(event);
+                    if (resolution?.kind !== 'model_thought') {
                         return;
                     }
                     updateToast(toastId, {
-                        message: title,
+                        message: resolution.text,
                         type: 'ai_thinking',
                         duration: 0,
                     });

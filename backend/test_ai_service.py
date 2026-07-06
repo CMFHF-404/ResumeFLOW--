@@ -673,6 +673,78 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
         )
 
+    async def test_gemini_stream_reports_status_when_thought_signature_has_no_text(self) -> None:
+        answer_event = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"text": json.dumps({"summary": "ok"}, ensure_ascii=False)}
+                        ]
+                    }
+                }
+            ],
+        }
+        hidden_thought_event = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"text": "", "thoughtSignature": "opaque-signature"}
+                        ]
+                    }
+                }
+            ],
+        }
+        response = _FakeStreamResponse(
+            [
+                f"data: {json.dumps(answer_event, ensure_ascii=False)}",
+                "",
+                f"data: {json.dumps(hidden_thought_event, ensure_ascii=False)}",
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-3-flash-preview",
+        )
+        thought_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._stream_gemini_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="hybrid_hidden_thought_signature",
+                    budget_tokens=1024,
+                    thought_callback=thought_callback,
+                )
+
+        self.assertEqual(result, {"summary": "ok"})
+        thought_callback.assert_awaited_once_with(
+            {
+                "type": "thought_status",
+                "status": "hidden",
+                "summary": "深度思考已启用，但当前模型通道未返回可展示的思考摘要",
+            }
+        )
+
     async def test_hybrid_tool_call_route_maps_gemini_function_call(self) -> None:
         response = _FakeJsonResponse(
             {
@@ -1755,6 +1827,57 @@ class AiServicePolishPromptTests(unittest.TestCase):
         self.assertIn("up to 3 additional bold phrases", prompt)
         self.assertNotIn("ask_before_rewrite", prompt)
 
+    def test_campus_recruitment_mode_uses_school_recruitment_prompt(self) -> None:
+        prompt = ai_service._build_polish_prompt(None, mode="campus_recruitment", jd_text="产品经理校招 JD")
+
+        self.assertIn("资深 HR 和校招生简历优化顾问", prompt)
+        self.assertIn("符合应届生/实习生/校园项目的能力边界", prompt)
+        self.assertIn("不要凭空编造百分比、增长率、转化率、GMV、用户量", prompt)
+        self.assertIn("A 字段每个动作行必须以纯文本四字核心动作标签开头，后接中文冒号", prompt)
+        self.assertIn("输入中已有的 Markdown 或 HTML 加粗标记视为上一轮润色留下的展示痕迹", prompt)
+        self.assertIn("先移除旧加粗，再重新选择重点", prompt)
+        self.assertIn("可以使用 Markdown (**text**) 加粗 1-4 个最能体现岗位匹配或结果的重点证据短语", prompt)
+        self.assertIn("不要加粗整句", prompt)
+        self.assertIn("A 字段开头四字标签不得加粗", prompt)
+        self.assertNotIn("in Markdown bold, then a colon", prompt)
+        self.assertNotIn("opening A labels", prompt)
+
+    def test_campus_recruitment_normalize_removes_bold_from_four_char_action_openers(self) -> None:
+        result = ai_service._normalize_polish_result(
+            {
+                "s": "**项目背景**围绕校招岗位准备作品集。",
+                "a": "**用户调研**：访谈同学并整理需求\n**需求梳理**：拆解功能优先级\n**超长标签词**：保持原样\n旁边**用户洞察**：不在句首",
+            },
+            mode="campus_recruitment",
+            has_jd_text=True,
+        )
+
+        self.assertEqual(result["s"], "**项目背景**围绕校招岗位准备作品集。")
+        self.assertEqual(
+            result["a"],
+            "用户调研：访谈同学并整理需求\n需求梳理：拆解功能优先级\n**超长标签词**：保持原样\n旁边**用户洞察**：不在句首",
+        )
+
+    def test_campus_recruitment_normalize_does_not_truncate_non_label_bold_highlights(self) -> None:
+        result = ai_service._normalize_polish_result(
+            {
+                "s": "围绕**校园招聘**岗位准备**产品作品集**。",
+                "t": "负责**需求分析**和**原型设计**。",
+                "a": "用户调研：访谈**目标用户**并整理**用户痛点**\n方案设计：输出**PRD文档**并跟进**开发协作**",
+                "r": "完成**项目上线**并沉淀**复盘材料**。",
+            },
+            mode="campus_recruitment",
+            has_jd_text=True,
+        )
+
+        self.assertEqual(result["s"], "围绕**校园招聘**岗位准备**产品作品集**。")
+        self.assertEqual(result["t"], "负责**需求分析**和**原型设计**。")
+        self.assertEqual(
+            result["a"],
+            "用户调研：访谈**目标用户**并整理**用户痛点**\n方案设计：输出**PRD文档**并跟进**开发协作**",
+        )
+        self.assertEqual(result["r"], "完成**项目上线**并沉淀**复盘材料**。")
+
     def test_default_jd_polish_result_exempts_action_labels_and_limits_extra_bold(self) -> None:
         result = ai_service._normalize_polish_result(
             {
@@ -1859,6 +1982,76 @@ class AiServicePolishPromptTests(unittest.TestCase):
         self.assertIn("Prefer targeted edits", prompt)
         self.assertIn("Highlight caps are strict", prompt)
         self.assertIn("Do not invent", prompt)
+
+
+class AiServicePolishRequestTests(unittest.IsolatedAsyncioTestCase):
+    async def test_campus_recruitment_polish_sends_clean_star_text_without_existing_bold(self) -> None:
+        call_mock = AsyncMock(
+            return_value={
+                "s": "围绕**校园招聘**岗位准备作品集。",
+                "t": "负责需求分析。",
+                "a": "用户调研：访谈**目标用户**",
+                "r": "完成项目上线。",
+            }
+        )
+
+        with patch.object(ai_service, "_call_llm", call_mock):
+            await ai_service.polish_experience(
+                {
+                    "company": "小挣攻城狮",
+                    "role": "产品助理",
+                    "s": "围绕**校园招聘**岗位准备**产品作品集**。",
+                    "t": "负责**需求分析**和**原型设计**。",
+                    "a": "**用户调研**：访谈**目标用户**并整理**用户痛点**",
+                    "r": "完成**项目上线**并沉淀**复盘材料**。",
+                },
+                jd_text="产品助理校招 JD",
+                mode="campus_recruitment",
+            )
+
+        messages = call_mock.await_args.args[0]
+        payload = json.loads(messages[1]["content"])
+        self.assertEqual(payload["s"], "围绕校园招聘岗位准备产品作品集。")
+        self.assertEqual(payload["t"], "负责需求分析和原型设计。")
+        self.assertEqual(payload["a"], "用户调研：访谈目标用户并整理用户痛点")
+        self.assertEqual(payload["r"], "完成项目上线并沉淀复盘材料。")
+
+    async def test_campus_recruitment_stream_polish_sends_clean_star_text_without_existing_bold(self) -> None:
+        stream_mock = AsyncMock(
+            return_value={
+                "s": "围绕**校园招聘**岗位准备作品集。",
+                "t": "负责需求分析。",
+                "a": "用户调研：访谈**目标用户**",
+                "r": "完成项目上线。",
+            }
+        )
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_model="qwen3.7-plus",
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_polish=1024,
+        )
+
+        with patch.object(ai_service, "settings", fake_settings):
+            with patch.object(ai_service, "_stream_gemini_json_response", stream_mock):
+                await ai_service.polish_experience_with_thoughts(
+                    {
+                        "company": "小挣攻城狮",
+                        "role": "产品助理",
+                        "s": "围绕**校园招聘**岗位准备**产品作品集**。",
+                        "t": "负责<strong>需求分析</strong>和<b>原型设计</b>。",
+                        "a": "＊＊用户调研＊＊：访谈<strong>目标用户</strong>并整理**用户痛点**",
+                        "r": "完成**项目上线**并沉淀<strong>复盘材料</strong>。",
+                    },
+                    jd_text="产品助理校招 JD",
+                    mode="campus_recruitment",
+                )
+
+        payload = json.loads(stream_mock.await_args.kwargs["user_parts"][0]["text"])
+        self.assertEqual(payload["s"], "围绕校园招聘岗位准备产品作品集。")
+        self.assertEqual(payload["t"], "负责需求分析和原型设计。")
+        self.assertEqual(payload["a"], "用户调研：访谈目标用户并整理用户痛点")
+        self.assertEqual(payload["r"], "完成项目上线并沉淀复盘材料。")
 
 
 class AiServiceAssistantSkillTests(unittest.TestCase):
@@ -2197,7 +2390,7 @@ class AiServiceAssistantNormalizationTests(unittest.TestCase):
 
 
 class AiServiceAssistantStreamingTests(unittest.IsolatedAsyncioTestCase):
-    async def test_run_assistant_turn_with_thoughts_emits_initial_thought_before_streaming(self) -> None:
+    async def test_run_assistant_turn_with_thoughts_emits_initial_status_before_streaming(self) -> None:
         long_action = "执行动作" * 160
         fake_settings = SimpleNamespace(
             gemini_api_key="gemini-key",
@@ -2238,10 +2431,63 @@ class AiServiceAssistantStreamingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["assistantText"], "已整理好。")
         thought_callback.assert_awaited_once_with(
-            {"type": "thought", "summary": "正在分析上下文并组织回复"}
+            {"type": "thought_status", "summary": "正在分析上下文并组织回复"}
         )
         stream_mock.assert_awaited_once()
         payload = json.loads(stream_mock.await_args.kwargs["user_parts"][-1]["text"])
         selected = payload["selected_experiences"][0]
         self.assertNotIn("full_text", selected)
         self.assertEqual(selected["star"]["a"], long_action)
+
+    async def test_run_assistant_turn_with_thoughts_resets_before_fallback_status(self) -> None:
+        fake_settings = SimpleNamespace(
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_polish=1024,
+        )
+
+        async def fail_after_partial_thought(**kwargs):
+            await kwargs["thought_callback"]({"type": "thought", "summary": "旧通道摘要"})
+            raise RuntimeError("stream unavailable")
+
+        stream_mock = AsyncMock(side_effect=fail_after_partial_thought)
+        standard_mock = AsyncMock(
+            return_value={
+                "assistantText": "标准回复",
+                "draftCard": None,
+                "title": "AI 助理",
+            }
+        )
+        thought_callback = AsyncMock()
+
+        with patch.object(ai_service, "settings", fake_settings):
+            with patch.object(ai_service, "_stream_gemini_json_response", stream_mock):
+                with patch.object(ai_service, "run_assistant_turn", standard_mock):
+                    result = await ai_service.run_assistant_turn_with_thoughts(
+                        mode="general",
+                        user_message="帮我补全经历",
+                        session_title="AI 助理",
+                        entry_source="direct",
+                        context_json={},
+                        bank_context=None,
+                        selected_experiences=None,
+                        selected_resume=None,
+                        history=[],
+                        attachments=None,
+                        thought_callback=thought_callback,
+                    )
+
+        self.assertEqual(result["assistantText"], "标准回复")
+        self.assertEqual(
+            [item.args[0] for item in thought_callback.await_args_list],
+            [
+                {"type": "thought_status", "summary": "正在分析上下文并组织回复"},
+                {"type": "thought", "summary": "旧通道摘要"},
+                {"type": "thought_reset"},
+                {
+                    "type": "thought_status",
+                    "status": "fallback",
+                    "summary": "实时思考流不可用，正在切换为标准生成",
+                },
+            ],
+        )
+        standard_mock.assert_awaited_once()
