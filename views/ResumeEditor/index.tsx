@@ -867,10 +867,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         applyResumeNameUpdate,
         canAutoNameResume,
         showToastError,
-        showToastLoading,
         showToastSuccess,
-        updateToast,
-        closeToast,
     });
     const handleStopAnalysisWithToast = useCallback(() => {
         handleStopAnalysis();
