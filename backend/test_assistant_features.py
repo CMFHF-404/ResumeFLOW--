@@ -763,9 +763,9 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         block = source[start:end]
 
         self.assertIn("if (isTempId(cardId))", block)
-        self.assertIn("toast.error('请先保存这段经历，再使用智能补全'", block)
-        self.assertIn("initialSkillId: 'experience_completion'", block)
-        self.assertIn("buildSmartCompleteAssistantPrompt", block)
+        self.assertIn("toast.error('请先保存这段经历，再使用 AI 助手'", block)
+        self.assertNotIn("initialSkillId: 'experience_completion'", block)
+        self.assertNotIn("buildSmartCompleteAssistantPrompt", block)
         self.assertIn("return;", block)
         self.assertIn("[category, onLaunchAssistant, toast]", block)
 

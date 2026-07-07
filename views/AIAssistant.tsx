@@ -64,6 +64,7 @@ type AIAssistantProps = {
   onOpenAnalysisDetails?: () => void;
   onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
   onJumpToExperienceBank?: (category?: AssistantDraftApplyNavigation['category'], targetId?: string) => void;
+  onAppliedDraftNavigation?: (navigation: AssistantDraftApplyNavigation | null | undefined) => void;
   draftInput?: string;
   onDraftInputChange?: (value: string) => void;
 };
@@ -86,6 +87,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   onOpenAnalysisDetails,
   onJumpToResumeEditor,
   onJumpToExperienceBank,
+  onAppliedDraftNavigation,
   draftInput = '',
   onDraftInputChange,
 }) => {
@@ -475,6 +477,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     setSessionsState,
     markMessagesMutated,
     markSessionMutated,
+    onAppliedDraftNavigation,
     success,
     error,
   });

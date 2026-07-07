@@ -66,6 +66,10 @@ const STAR_SECTIONS: Array<{
   ];
 
 const EXPERIENCE_BANK_POLISH_MODES: Array<Exclude<PolishMode, 'assistant'>> = ['default', 'custom'];
+const EXPERIENCE_BANK_POLISH_DIALOG_WIDTH = 480;
+const EXPERIENCE_BANK_POLISH_PREVIEW_DIALOG_WIDTH = 560;
+const EXPERIENCE_BANK_POLISH_MOBILE_DIALOG_WIDTH = 320;
+const EXPERIENCE_BANK_POLISH_MOBILE_PREVIEW_DIALOG_WIDTH = 360;
 const SIMPLE_PARSING_EDITOR_CLASS = 'simple-parsing-flow border-purple-300 bg-purple-50/40 shadow-[0_0_0_3px_rgba(168,85,247,0.18),0_0_30px_rgba(168,85,247,0.35)] dark:border-purple-500/60 dark:bg-purple-950/20';
 const STAR_MODE_LETTERS = [
   { letter: 'S', className: 'text-blue-600 dark:text-blue-400' },
@@ -468,8 +472,8 @@ const ExperienceCardFooter: React.FC<{
       const viewportHeight = window.innerHeight;
       const isMobileViewport = viewportWidth < 768;
       const preferredWidth = isMobileViewport
-        ? (isPolishPreviewing ? 360 : 320)
-        : (isPolishPreviewing ? 576 : 672);
+        ? (isPolishPreviewing ? EXPERIENCE_BANK_POLISH_MOBILE_PREVIEW_DIALOG_WIDTH : EXPERIENCE_BANK_POLISH_MOBILE_DIALOG_WIDTH)
+        : (isPolishPreviewing ? EXPERIENCE_BANK_POLISH_PREVIEW_DIALOG_WIDTH : EXPERIENCE_BANK_POLISH_DIALOG_WIDTH);
       const targetWidth = Math.min(viewportWidth - margin * 2, preferredWidth);
       const buttonRect = polishButtonRef.current.getBoundingClientRect();
       const gap = isMobileViewport ? 8 : 12;
@@ -625,6 +629,8 @@ const ExperienceCardFooter: React.FC<{
                     onUndo={onUndoPolishPreview}
                     onConfirm={onConfirmPolishPreview}
                     onOpenAssistant={onOpenAssistant}
+                    assistantButtonLabel="AI助手"
+                    compact
                     className="border-0 bg-transparent p-0 shadow-none"
                   />
                 </div>

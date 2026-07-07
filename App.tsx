@@ -386,6 +386,8 @@ const App: React.FC = () => {
             onProfileUpdate={handleProfileUpdate}
             shouldOpenResumeUpload={shouldOpenResumeUpload}
             onLaunchAssistant={handleLaunchAssistant}
+            onOpenAssistantSession={handleOpenAssistantSession}
+            onJumpToResumeEditor={handleJumpToResumeEditor}
             focusRequest={experienceBankFocusRequest}
           />
         );

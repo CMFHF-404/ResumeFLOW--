@@ -3,6 +3,7 @@ import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction 
 import {
   aiService,
   type AssistantDraftCard,
+  type AssistantDraftApplyNavigation,
   type AssistantMessage,
   type AssistantMessageApplyResponse,
   type AssistantSession,
@@ -42,6 +43,7 @@ type UseAssistantDraftApplyActionsParams = {
   setSessionsState: (updater: SetStateAction<AssistantSession[]>) => void;
   markMessagesMutated: () => number;
   markSessionMutated: (sessionId: string) => void;
+  onAppliedDraftNavigation?: (navigation: AssistantDraftApplyNavigation | null | undefined) => void;
   success: (message: string, duration?: number) => void;
   error: (message: string, duration?: number) => void;
 };
@@ -60,6 +62,7 @@ export const useAssistantDraftApplyActions = ({
   setSessionsState,
   markMessagesMutated,
   markSessionMutated,
+  onAppliedDraftNavigation,
   success,
   error,
 }: UseAssistantDraftApplyActionsParams) => {
@@ -207,6 +210,7 @@ export const useAssistantDraftApplyActions = ({
         if (updatedResponse.navigation?.targetView === 'experience_bank') {
           experienceService.clearListCache();
         }
+        onAppliedDraftNavigation?.(updatedResponse.navigation);
         markMessagesMutated();
         setMessages((prev) => prev.map((message) => (
           message.id === messageId
@@ -263,6 +267,7 @@ export const useAssistantDraftApplyActions = ({
     manualSaveMessageIds,
     markMessagesMutated,
     markSessionMutated,
+    onAppliedDraftNavigation,
     selectedSession,
     setAppliedMessageIds,
     setApplyingMessageIds,

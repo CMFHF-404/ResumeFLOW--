@@ -7,7 +7,6 @@ import {
   trackAiPolishStart,
   trackAiPolishUndone,
 } from '../../utils/analyticsTracker';
-import { buildSmartCompleteAssistantPrompt } from '../../utils/assistantSmartCompletePrompt';
 import { normalizeAiRichText } from '../../utils/richText';
 import type { ExperienceCardData, StarFieldKey } from '../ExperienceCard';
 import {
@@ -389,15 +388,16 @@ export const usePolishActions = ({
       return;
     }
     if (isTempId(cardId)) {
-      toast.error('请先保存这段经历，再使用智能补全', 3000);
+      toast.error('请先保存这段经历，再使用 AI 助手', 3000);
       return;
     }
     onLaunchAssistant({
       context: {
         mode: 'experience',
         entrySource: 'experience_bank',
-        title: `${current.org || '未命名经历'} · 智能补全`,
+        title: `${current.org || '未命名经历'} · AI 助手`,
         contextJson: {
+          origin: 'experience_bank_card_toolbar',
           masterId: cardId,
           category,
           org: current.org,
@@ -407,15 +407,6 @@ export const usePolishActions = ({
           star: current.star,
         },
       },
-      initialSkillId: 'experience_completion',
-      initialUserMessage: buildSmartCompleteAssistantPrompt({
-        org: current.org,
-        title: current.title,
-        startDate: current.start_date,
-        endDate: current.end_date,
-        isCurrent: !current.end_date,
-        star: current.star,
-      }),
     });
   }, [category, onLaunchAssistant, toast]);
 
