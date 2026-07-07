@@ -39,6 +39,16 @@ test('token quota modal prioritizes token redemption message over existing unlim
   );
 });
 
+test('token quota modal exposes monthly and pay-as-you-go product entries', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+
+  assert.match(modal, /包月/);
+  assert.match(modal, /https:\/\/item\.taobao\.com\/item\.htm\?ft=t&id=1065655992699/);
+  assert.match(modal, /按量付费/);
+  assert.match(modal, /https:\/\/item\.taobao\.com\/item\.htm\?ft=t&id=1063261946760/);
+  assert.doesNotMatch(modal, /立即赞赏获取卡密/);
+});
+
 test('usage trend chart fills its card height and reserves space for date labels', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, HeartHandshake, KeyRound, RefreshCw, TrendingUp, Wallet, X } from 'lucide-react';
+import { BarChart3, ExternalLink, HeartHandshake, KeyRound, RefreshCw, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   billingService,
   type TokenQuotaSummary,
@@ -12,8 +12,22 @@ type TokenQuotaModalProps = {
   onClose: () => void;
   summary: TokenQuotaSummary | null;
   onSummaryChange: (summary: TokenQuotaSummary) => void;
-  onOpenAppreciation?: () => void;
 };
+
+const TAOBAO_PRODUCT_LINKS = [
+  {
+    label: '包月套餐',
+    href: 'https://item.taobao.com/item.htm?ft=t&id=1065655992699',
+    className:
+      'border-amber-200 bg-amber-500 text-white shadow-sm hover:bg-amber-600 focus:ring-amber-200 dark:border-amber-400/30 dark:bg-amber-500 dark:hover:bg-amber-400',
+  },
+  {
+    label: '按量付费',
+    href: 'https://item.taobao.com/item.htm?ft=t&id=1063261946760',
+    className:
+      'border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 focus:ring-emerald-200 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20',
+  },
+] as const;
 
 // 格式化 Tokens 数量显示，如 1.1M, 48.3k
 const formatTokens = (value?: number | null): string => {
@@ -513,14 +527,12 @@ const RedemptionCard: React.FC<{
   redemptionMessage: string;
   onCodeChange: (value: string) => void;
   onRedeem: () => void;
-  onOpenAppreciation?: () => void;
 }> = ({
   code,
   isRedeeming,
   redemptionMessage,
   onCodeChange,
   onRedeem,
-  onOpenAppreciation,
 }) => {
   return (
     <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 p-4 shadow-sm dark:border-emerald-500/10 dark:from-emerald-950/10 dark:to-teal-950/5">
@@ -535,20 +547,23 @@ const RedemptionCard: React.FC<{
               <span>如何获取额度</span>
             </div>
             <p className="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-              本项目为开源软件。您可以赞赏作者以支持本项目的维护与算力支出。赞赏后系统将自动或由管理员手动发送卡密至您的邮箱。
+              选择适合的商品入口完成购买，付款后按商品说明获取卡密并在右侧兑换为 AI 服务额度。
             </p>
           </div>
-          {onOpenAppreciation && (
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={onOpenAppreciation}
-                className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-amber-600 active:scale-95 focus:outline-none"
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {TAOBAO_PRODUCT_LINKS.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-extrabold transition active:scale-95 focus:outline-none focus:ring-2 ${item.className}`}
               >
-                <span>立即赞赏获取卡密</span>
-              </button>
-            </div>
-          )}
+                <span>{item.label}</span>
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
+            ))}
+          </div>
         </div>
 
         {/* 右侧：卡密兑换 */}
@@ -610,7 +625,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   onClose,
   summary,
   onSummaryChange,
-  onOpenAppreciation,
 }) => {
   const [usageEvents, setUsageEvents] = React.useState<TokenUsageEvent[]>([]);
   const [usageByDay, setUsageByDay] = React.useState<TokenUsageAggregate[]>([]);
@@ -729,7 +743,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
                 redemptionMessage={redemptionMessage}
                 onCodeChange={setRedemptionCode}
                 onRedeem={handleRedeem}
-                onOpenAppreciation={onOpenAppreciation}
               />
             </div>
           )}

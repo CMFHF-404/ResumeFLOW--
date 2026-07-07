@@ -476,7 +476,6 @@ const App: React.FC = () => {
           onClose={handleCloseTokenQuota}
           summary={quotaSummary}
           onSummaryChange={setQuotaSummary}
-          onOpenAppreciation={() => handleOpenAppreciation()}
         />
       </div>
     </AuthGuard>
