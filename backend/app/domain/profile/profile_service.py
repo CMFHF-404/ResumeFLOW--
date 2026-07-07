@@ -5,8 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ...models import Profile, ProfileLink, User
+from ...models import Profile, ProfileLink
 from ...utils.time_utils import utc_now
+from ..account.user_onboarding_service import ensure_user_with_signup_bonus
 from .schemas import ProfileLinkPayload, ProfileUpdate
 
 
@@ -146,7 +147,4 @@ async def _create_profile(
 
 
 async def _ensure_user(session: AsyncSession, user_id: str) -> None:
-    result = await session.execute(select(User).where(User.id == user_id))
-    if result.scalars().first():
-        return
-    session.add(User(id=user_id))
+    await ensure_user_with_signup_bonus(session, user_id)

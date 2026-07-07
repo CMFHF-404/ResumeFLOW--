@@ -52,6 +52,12 @@ PURCHASE_OPTIONS: tuple[TokenPurchaseOption, ...] = (
     ),
 )
 
+SIGNUP_BONUS_TOKENS = 200_000
+SIGNUP_BONUS_SOURCE = "signup_bonus"
+SIGNUP_BONUS_OPTION_ID = "signup_bonus_200k"
+SIGNUP_BONUS_LABEL = "新用户注册赠送"
+SIGNUP_BONUS_STATUS = "signup_bonus_granted"
+
 
 @dataclass
 class BillingContext:
@@ -211,6 +217,42 @@ async def _get_wallet(
     session.add(wallet)
     await _maybe_flush(session)
     return wallet
+
+
+async def grant_signup_bonus(session: AsyncSession, user_id: str) -> TokenQuotaSummary:
+    wallet = await _get_wallet(session, user_id, create=True, for_update=True)
+    assert wallet is not None
+
+    now = utc_now()
+    before_remaining = max(int(wallet.remaining_tokens or 0), 0)
+    before_limit = max(int(wallet.token_limit or 0), 0)
+    after_remaining = before_remaining + SIGNUP_BONUS_TOKENS
+    after_limit = before_limit + SIGNUP_BONUS_TOKENS
+
+    purchase = AITokenPurchaseEvent(
+        user_id=user_id,
+        option_id=SIGNUP_BONUS_OPTION_ID,
+        label=SIGNUP_BONUS_LABEL,
+        tokens=SIGNUP_BONUS_TOKENS,
+        status=SIGNUP_BONUS_STATUS,
+        before_remaining_tokens=before_remaining,
+        after_remaining_tokens=after_remaining,
+        before_token_limit=before_limit,
+        after_token_limit=after_limit,
+        source=SIGNUP_BONUS_SOURCE,
+        created_at=now,
+    )
+    session.add(purchase)
+
+    wallet.token_limit = after_limit
+    wallet.remaining_tokens = after_remaining
+    wallet.last_purchase_id = purchase.id
+    wallet.last_purchase_tokens = SIGNUP_BONUS_TOKENS
+    wallet.last_purchase_at = now
+    wallet.updated_at = now
+
+    await _maybe_flush(session)
+    return _to_summary(wallet)
 
 
 async def get_summary(session: AsyncSession, user_id: str) -> TokenQuotaSummary:
