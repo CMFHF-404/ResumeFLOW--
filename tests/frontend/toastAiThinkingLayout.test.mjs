@@ -7,40 +7,32 @@ const source = readFileSync(
   'utf8'
 );
 
-test('AI thinking toast wraps long summaries instead of clipping them', () => {
+test('AI thinking toast requests are sanitized before rendering', () => {
   assert.match(
     source,
-    /items-start/,
-    'AI thinking toast should top-align wrapped text with the icon and close button'
+    /AI_THINKING_FALLBACK_MESSAGE\s*=\s*'正在处理\.\.\.'/,
+    'AI thinking toast requests should use a generic fallback message'
   );
   assert.match(
     source,
-    /max-w-\[min\(92vw,42rem\)\]/,
-    'AI thinking toast should have a responsive readable max width'
+    /type === 'ai_thinking'[\s\S]*type:\s*'loading'/,
+    'AI thinking toast requests should be downgraded to ordinary loading toasts'
   );
   assert.match(
     source,
-    /min-w-0/,
-    'AI thinking text should be allowed to shrink inside the flex row'
+    /updates\.type === 'ai_thinking'[\s\S]*message:\s*toast\.message/,
+    'AI thinking updates should keep the previous generic toast message'
   );
   assert.match(
     source,
-    /whitespace-normal/,
-    'AI thinking text should allow multiline wrapping'
+    /const safeMessage = type === 'ai_thinking' \? AI_THINKING_FALLBACK_MESSAGE : message;/,
+    'direct AI thinking toast props should not render provider thought text'
   );
   assert.match(
     source,
-    /break-words/,
-    'AI thinking text should break long provider fragments when needed'
+    /<span className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-5 font-medium">\{safeMessage\}<\/span>/,
+    'regular toast text should still wrap instead of overflowing narrow layouts'
   );
-  assert.match(
-    source,
-    /leading-5/,
-    'AI thinking text should keep wrapped lines readable'
-  );
-  assert.match(
-    source,
-    /<span className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-5 font-medium">/,
-    'regular toast text should also wrap instead of overflowing narrow layouts'
-  );
+  assert.doesNotMatch(source, /思考中：\{message\}/);
+  assert.doesNotMatch(source, /toast-ai-gradient/);
 });

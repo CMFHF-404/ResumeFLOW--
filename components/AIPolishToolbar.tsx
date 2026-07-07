@@ -153,13 +153,15 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           </div>
         ) : null}
         <div className={`shrink-0 bg-white/92 px-4 py-3 backdrop-blur ${hasPreviewContent ? 'border-t border-emerald-200/80 md:border-t-0' : ''}`}>
-          <div className={`flex flex-col gap-3 md:flex-row md:items-center ${hasPreviewContent ? 'md:justify-end' : 'md:justify-end'}`}>
-            <div className="flex items-center gap-3">
+          <div className={`flex ${compact ? 'flex-row items-center gap-2 w-full' : 'flex-col gap-3 md:flex-row md:items-center md:justify-end'}`}>
+            <div className={`flex items-center gap-3 ${compact ? 'w-full gap-2' : ''}`}>
             <button
               type="button"
               onClick={onUndo}
               disabled={isRunning}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 ${
+                compact ? '' : 'md:flex-none'
+              }`}
             >
               <RotateCcw className="h-4 w-4" />
               {resolvedUndoLabel}
@@ -168,7 +170,9 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
               type="button"
               onClick={onConfirm}
               disabled={isRunning}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none"
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 ${
+                compact ? '' : 'md:flex-none'
+              }`}
             >
               <Check className="h-4 w-4" />
               {isRunning ? '处理中...' : resolvedConfirmLabel}
@@ -183,13 +187,15 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   return (
     <div className={`max-h-[min(62vh,30rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm ${className ?? ''}`}>
       <div className={`flex ${compact ? 'flex-col gap-2' : 'flex-col gap-3'}`}>
-        <div className="flex flex-wrap gap-2">
+        <div className={`flex flex-wrap ${compact ? 'gap-1.5' : 'gap-2'}`}>
           {modeOptions.map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => onModeChange(option)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              className={`rounded-full font-semibold transition ${
+                compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+              } ${
                 activeMode === option
                   ? 'bg-slate-900 text-white'
                   : 'border border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-900'
@@ -202,7 +208,9 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             type="button"
             onClick={onOpenAssistant}
             disabled={disabledAssistant}
-            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 ${
+              compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs font-semibold'
+            }`}
           >
             <Bot className="h-3.5 w-3.5" />
             智能补全
@@ -217,8 +225,8 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           />
         ) : null}
         {activeMode === 'smart_complete' && smartCompletionPrompt ? (
-          <div className={`ai-polish-card-expand flex ${compact ? 'max-h-[18rem]' : 'max-h-[22rem]'} min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/80 p-3 md:max-h-none md:overflow-visible`}>
-            <div className={`${compact ? 'max-h-[10rem]' : 'max-h-[13rem]'} min-h-0 overflow-y-auto pr-2 md:max-h-none md:overflow-visible md:pr-0`}>
+          <div className={`ai-polish-card-expand flex ${compact ? 'max-h-[18rem]' : 'max-h-[22rem]'} min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/80 p-3 ${compact ? '' : 'md:max-h-none md:overflow-visible'}`}>
+            <div className={`${compact ? 'max-h-[10rem]' : 'max-h-[13rem]'} min-h-0 overflow-y-auto pr-2 ${compact ? '' : 'md:max-h-none md:overflow-visible md:pr-0'}`}>
               <div className="text-xs font-semibold text-amber-900">需要补充的信息</div>
               <p className="mt-1 text-xs leading-5 text-amber-800">{smartCompletionPrompt.diagnosis}</p>
               {smartCompletionPrompt.questions.length > 0 ? (
@@ -239,13 +247,17 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             />
           </div>
         ) : null}
-        <div className="flex items-center justify-between gap-3">
-          <p className="max-w-[16rem] text-xs leading-5 text-slate-500">{modeDescription}</p>
+        <div className={`flex ${compact ? 'flex-col items-stretch gap-2' : 'items-center justify-between gap-3'}`}>
+          <p className={`${compact ? 'text-[11px] text-slate-500 leading-normal' : 'max-w-[16rem] text-xs leading-5 text-slate-500'}`}>
+            {modeDescription}
+          </p>
           <button
             type="button"
             onClick={onRun}
             disabled={isRunning || (activeMode === 'custom' && !customPrompt.trim())}
-            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${
+              compact ? 'w-full justify-center py-2.5' : ''
+            }`}
           >
             <Sparkles className={`h-4 w-4 ${isRunning ? 'animate-pulse' : ''}`} />
             {isRunning ? resolvedRunningLabel : resolvedRunButtonLabel}

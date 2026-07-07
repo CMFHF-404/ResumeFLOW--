@@ -254,7 +254,7 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                         }}
                     />
                     <div
-                        className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:right-3 md:top-12 md:bottom-auto md:z-30 md:mt-0 md:block md:w-[560px] md:max-h-[48vh]"
+                        className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:right-3 md:top-12 md:bottom-auto md:z-30 md:mt-0 md:block md:w-[calc(100%-24px)] md:max-w-[560px] md:max-h-[48vh]"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur md:max-h-[48vh]">

@@ -39,16 +39,18 @@ test('JD analysis streams Gemini thoughts into the inline thinking area', () => 
   );
 });
 
-test('JD analysis toast consumes shared thought events without replacing the inline thinking area', () => {
+test('JD analysis keeps model thoughts in the inline thinking area instead of toast', () => {
   const toastSource = readSource('views/ResumeEditor/hooks/useJdAnalyzeWithToast.ts');
   const panelSource = readSource('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const editorSource = readSource('views/ResumeEditor/index.tsx');
 
-  assert.match(toastSource, /resolveThoughtDisplayEvent/);
-  assert.match(toastSource, /handleAnalyze\(\{\s*onEvent:/);
-  assert.match(toastSource, /resolution\.kind === 'model_thought'[\s\S]*type:\s*'ai_thinking'/);
-  assert.match(toastSource, /resolution\.kind === 'status'[\s\S]*type:\s*'loading'/);
-  assert.match(toastSource, /closeToast\(toastId\)/);
+  assert.match(toastSource, /const result = await handleAnalyze\(\);/);
+  assert.doesNotMatch(toastSource, /resolveThoughtDisplayEvent/);
+  assert.doesNotMatch(toastSource, /handleAnalyze\(\{\s*onEvent:/);
+  assert.doesNotMatch(toastSource, /type:\s*'ai_thinking'/);
+  assert.doesNotMatch(toastSource, /showToastLoading/);
+  assert.doesNotMatch(toastSource, /updateToast/);
+  assert.doesNotMatch(toastSource, /closeToast\(toastId\)/);
   assert.match(panelSource, /思考中：\{thinkingText \|\| '正在分析岗位要求\.\.\.'\}/);
   assert.doesNotMatch(panelSource, /JDThinkingTracePanel/);
   assert.doesNotMatch(editorSource, /thinkingNodes=\{thinkingNodes\}/);
