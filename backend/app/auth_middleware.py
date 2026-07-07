@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional
 
 import httpx
 from jose import JWTError, jwt
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -15,7 +14,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from .config import load_settings
 from .database import AsyncSessionFactory
-from .models import User
+from .domain.account.user_onboarding_service import ensure_user_with_signup_bonus
 
 AUTH_HEADER = "Authorization"
 BEARER_PREFIX = "Bearer "
@@ -129,10 +128,7 @@ async def _verify_token(token: str) -> Dict[str, Any]:
 async def _ensure_user_exists(user_id: str) -> None:
     async with AsyncSessionFactory() as session:
         # 使用数据库层幂等插入，避免并发请求引发唯一键冲突
-        stmt = pg_insert(User).values(id=user_id).on_conflict_do_nothing(
-            index_elements=[User.id]
-        )
-        await session.execute(stmt)
+        await ensure_user_with_signup_bonus(session, user_id)
         await session.commit()
 
 

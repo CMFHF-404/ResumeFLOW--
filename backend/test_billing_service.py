@@ -144,6 +144,62 @@ class BillingPurchaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(session.statements)
         self.assertIsNotNone(getattr(session.statements[0], "_for_update_arg", None))
 
+    async def test_signup_bonus_initializes_new_wallet_and_purchase_event(self) -> None:
+        now = billing_service.utc_now()
+        session = _FakeSession([None])
+
+        with patch.object(billing_service, "utc_now", return_value=now):
+            summary = await billing_service.grant_signup_bonus(session, "user-new")
+
+        wallets = [item for item in session.added if isinstance(item, AITokenWallet)]
+        purchases = [item for item in session.added if isinstance(item, AITokenPurchaseEvent)]
+        self.assertEqual(len(wallets), 1)
+        self.assertEqual(len(purchases), 1)
+        wallet = wallets[0]
+        purchase = purchases[0]
+        self.assertEqual(wallet.token_limit, 200_000)
+        self.assertEqual(wallet.remaining_tokens, 200_000)
+        self.assertEqual(wallet.used_tokens, 0)
+        self.assertEqual(wallet.last_purchase_id, purchase.id)
+        self.assertEqual(wallet.last_purchase_tokens, 200_000)
+        self.assertEqual(wallet.last_purchase_at, now)
+        self.assertEqual(summary.token_limit, 200_000)
+        self.assertEqual(summary.remaining_tokens, 200_000)
+        self.assertEqual(summary.remaining_percent, 100)
+        self.assertEqual(purchase.option_id, "signup_bonus_200k")
+        self.assertEqual(purchase.label, "新用户注册赠送")
+        self.assertEqual(purchase.tokens, 200_000)
+        self.assertEqual(purchase.status, "signup_bonus_granted")
+        self.assertEqual(purchase.source, "signup_bonus")
+        self.assertEqual(purchase.before_remaining_tokens, 0)
+        self.assertEqual(purchase.after_remaining_tokens, 200_000)
+        self.assertEqual(purchase.before_token_limit, 0)
+        self.assertEqual(purchase.after_token_limit, 200_000)
+        self.assertEqual(session.commits, 0)
+
+    async def test_signup_bonus_stacks_on_existing_wallet_without_resetting_usage(self) -> None:
+        wallet = AITokenWallet(
+            user_id="user-1",
+            token_limit=1_000,
+            remaining_tokens=250,
+            used_tokens=750,
+        )
+        session = _FakeSession([wallet])
+
+        summary = await billing_service.grant_signup_bonus(session, "user-1")
+
+        self.assertEqual(wallet.token_limit, 201_000)
+        self.assertEqual(wallet.remaining_tokens, 200_250)
+        self.assertEqual(wallet.used_tokens, 750)
+        self.assertEqual(summary.token_limit, 201_000)
+        self.assertEqual(summary.remaining_tokens, 200_250)
+        purchases = [item for item in session.added if isinstance(item, AITokenPurchaseEvent)]
+        self.assertEqual(len(purchases), 1)
+        self.assertEqual(purchases[0].before_remaining_tokens, 250)
+        self.assertEqual(purchases[0].after_remaining_tokens, 200_250)
+        self.assertEqual(purchases[0].before_token_limit, 1_000)
+        self.assertEqual(purchases[0].after_token_limit, 201_000)
+
 
 class BillingQuotaTests(unittest.IsolatedAsyncioTestCase):
     async def test_zero_remaining_balance_rejects_ai_calls(self) -> None:
