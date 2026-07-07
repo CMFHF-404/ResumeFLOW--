@@ -33,6 +33,7 @@ export type AIPolishToolbarProps = {
   onUndo: () => void;
   onConfirm: () => void;
   onOpenAssistant: () => void;
+  assistantButtonLabel?: string;
   className?: string;
   compact?: boolean;
   thinkingText?: string;
@@ -94,6 +95,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
   onUndo,
   onConfirm,
   onOpenAssistant,
+  assistantButtonLabel = '智能补全',
   className,
   compact = false,
   thinkingText,
@@ -213,7 +215,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
             }`}
           >
             <Bot className="h-3.5 w-3.5" />
-            智能补全
+            {assistantButtonLabel}
           </button>
         </div>
         {activeMode === 'custom' ? (

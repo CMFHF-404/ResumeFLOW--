@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   UploadCloud,
   Download,
@@ -28,6 +28,7 @@ import EducationSection from './EducationSection';
 import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
+import AIAssistant from './AIAssistant';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
 import { useExperienceBankProfile } from './ExperienceBank/useExperienceBankProfile';
 import { buildExperienceBankSummaryPayload } from './ExperienceBank/summaryPayloadUtils';
@@ -42,6 +43,39 @@ import {
   loadExperienceBankValidationSnapshot,
 } from './ExperienceBank/exportSnapshotLoaders';
 import { useExperienceBankPdfExport } from './ExperienceBank/useExperienceBankPdfExport';
+
+type ExperienceBankFocusRequest = {
+  requestId: number;
+  category?: AssistantDraftApplyNavigation['category'];
+  targetId?: string;
+};
+
+const EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH = '390px';
+const EXPERIENCE_BANK_DESKTOP_ASSISTANT_MEDIA_QUERY = '(min-width: 768px)';
+
+const buildExperienceBankAssistantRequest = (): AssistantLaunchRequest => ({
+  context: {
+    mode: 'general',
+    entrySource: 'direct',
+    title: '经历库 · AI 助手',
+    contextJson: {
+      origin: 'experience_bank_header',
+    },
+  },
+});
+
+const buildEmptyStateAssistantRequest = (): AssistantLaunchRequest => ({
+  context: {
+    mode: 'general',
+    entrySource: 'experience_bank',
+    title: '经历库 · AI 从 0 到 1 写简历',
+    contextJson: {
+      origin: 'experience_bank_empty_state',
+    },
+  },
+  initialUserMessage: '我还没有现成简历，请作为简历教练一步步引导我从 0 到 1 梳理教育、项目、实习或工作经历，并最终帮我产出可录入经历库和继续编辑简历的内容。',
+});
+
 interface ExperienceBankProps {
   isAuthenticated: boolean;
   onRequireAuth: () => void | Promise<void>;
@@ -49,11 +83,9 @@ interface ExperienceBankProps {
   onProfileUpdate?: (data: Profile) => void;
   shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
-  focusRequest?: {
-    requestId: number;
-    category?: AssistantDraftApplyNavigation['category'];
-    targetId?: string;
-  } | null;
+  onOpenAssistantSession?: (sessionId: string) => void;
+  onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
+  focusRequest?: ExperienceBankFocusRequest | null;
 }
 
 const ExperienceBank: React.FC<ExperienceBankProps> = ({
@@ -63,9 +95,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   onProfileUpdate,
   shouldOpenResumeUpload = false,
   onLaunchAssistant,
+  onOpenAssistantSession,
+  onJumpToResumeEditor,
   focusRequest,
 }) => {
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
+  const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
+  const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
+  const [assistantFocusRequest, setAssistantFocusRequest] = useState<ExperienceBankFocusRequest | null>(null);
+  const assistantSidebarLaunchRequestIdRef = useRef(0);
+  const assistantFocusRequestIdRef = useRef(focusRequest?.requestId ?? 0);
 
   const handleSignIn = useCallback(async () => {
     await onRequireAuth();
@@ -81,23 +120,51 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     setIsResumeModalOpen(true);
   }, [handleSignIn, isAuthenticated]);
 
-  const launchEmptyStateAssistant = useCallback(() => {
-    if (!onLaunchAssistant) {
+  const handleLaunchExperienceBankAssistant = useCallback((request: AssistantLaunchRequest) => {
+    const shouldOpenSidebar = typeof window !== 'undefined'
+      && window.matchMedia(EXPERIENCE_BANK_DESKTOP_ASSISTANT_MEDIA_QUERY).matches;
+
+    if (!shouldOpenSidebar) {
+      onLaunchAssistant?.(request);
       return;
     }
 
-    onLaunchAssistant({
-      context: {
-        mode: 'general',
-        entrySource: 'experience_bank',
-        title: '经历库 · AI 从 0 到 1 写简历',
-        contextJson: {
-          origin: 'experience_bank_empty_state',
-        },
-      },
-      initialUserMessage: '我还没有现成简历，请作为简历教练一步步引导我从 0 到 1 梳理教育、项目、实习或工作经历，并最终帮我产出可录入经历库和继续编辑简历的内容。',
+    assistantSidebarLaunchRequestIdRef.current += 1;
+    setAssistantSidebarLaunchRequest({
+      ...request,
+      requestId: `experience-bank-sidebar-launch-${assistantSidebarLaunchRequestIdRef.current}`,
     });
+    setIsAssistantSidebarOpen(true);
   }, [onLaunchAssistant]);
+
+  const handleCloseAssistantSidebar = useCallback(() => {
+    setAssistantSidebarLaunchRequest(null);
+    setIsAssistantSidebarOpen(false);
+  }, []);
+
+  const handleLaunchHeaderAssistant = useCallback(() => {
+    if (isAssistantSidebarOpen) {
+      handleCloseAssistantSidebar();
+      return;
+    }
+    handleLaunchExperienceBankAssistant(buildExperienceBankAssistantRequest());
+  }, [handleCloseAssistantSidebar, handleLaunchExperienceBankAssistant, isAssistantSidebarOpen]);
+
+  const launchEmptyStateAssistant = useCallback(() => {
+    handleLaunchExperienceBankAssistant(buildEmptyStateAssistantRequest());
+  }, [handleLaunchExperienceBankAssistant]);
+
+  const handleConsumeAssistantSidebarLaunchRequest = useCallback((requestId?: string) => {
+    setAssistantSidebarLaunchRequest((current) => {
+      if (!current) {
+        return current;
+      }
+      if (requestId && current.requestId !== requestId) {
+        return current;
+      }
+      return null;
+    });
+  }, []);
 
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
@@ -130,6 +197,41 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
   const education = useEducationManager(toastApi, { isAuthenticated, onRequireAuth: handleSignIn });
   const { refreshEducation } = education;
+  const effectiveFocusRequest = assistantFocusRequest
+    && (!focusRequest || assistantFocusRequest.requestId >= focusRequest.requestId)
+    ? assistantFocusRequest
+    : focusRequest;
+
+  const handleAssistantJumpToExperienceBank = useCallback((
+    category?: AssistantDraftApplyNavigation['category'],
+    targetId?: string
+  ) => {
+    assistantFocusRequestIdRef.current = Math.max(
+      assistantFocusRequestIdRef.current,
+      focusRequest?.requestId ?? 0
+    ) + 1;
+    setAssistantFocusRequest({
+      requestId: assistantFocusRequestIdRef.current,
+      category,
+      targetId,
+    });
+  }, [focusRequest]);
+
+  const handleAssistantDraftAppliedNavigation = useCallback((
+    navigation: AssistantDraftApplyNavigation | null | undefined
+  ) => {
+    if (!navigation || navigation.targetView === 'experience_bank') {
+      handleAssistantJumpToExperienceBank(navigation?.category, navigation?.targetId);
+    }
+  }, [handleAssistantJumpToExperienceBank]);
+
+  const handleExpandAssistantSidebar = useCallback((sessionId?: string | null) => {
+    if (sessionId && onOpenAssistantSession) {
+      onOpenAssistantSession(sessionId);
+      return;
+    }
+    onLaunchAssistant?.(buildExperienceBankAssistantRequest());
+  }, [onLaunchAssistant, onOpenAssistantSession]);
 
   const {
     isLoadingProfile,
@@ -216,14 +318,14 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   }, [handleImportResumeClick, shouldOpenResumeUpload]);
 
   useEffect(() => {
-    if (!focusRequest) {
+    if (!effectiveFocusRequest) {
       return;
     }
     setExperienceRefreshSignal((prev) => prev + 1);
-    if (focusRequest.category === 'education') {
+    if (effectiveFocusRequest.category === 'education') {
       void refreshEducation();
     }
-  }, [focusRequest, refreshEducation]);
+  }, [effectiveFocusRequest, refreshEducation]);
 
   useEffect(() => {
     if (!isAuthenticated || !readPendingResumeUpload()) {
@@ -256,9 +358,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const isExperienceBankEmpty = workExperienceCount === 0
     && projectExperienceCount === 0
     && educationExperienceCount === 0;
+  const assistantHeaderButtonLabel = isAssistantSidebarOpen ? '关闭 AI 助手' : '打开 AI 助手';
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-900/50">
+    <div className="flex-1 flex h-full min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900/50">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="hidden bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:block md:px-8">
         <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-3 md:gap-4">
@@ -277,6 +381,16 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
           <UnAuthPrompt />
+          <button
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+            onClick={() => void handleLaunchHeaderAssistant()}
+            title={assistantHeaderButtonLabel}
+            aria-label={assistantHeaderButtonLabel}
+            type="button"
+          >
+            <Bot className="h-4 w-4" />
+            <span className="sr-only">{assistantHeaderButtonLabel}</span>
+          </button>
           <button
             className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-200 hover:bg-gray-100 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
             onClick={handleImportResumeClick}
@@ -626,9 +740,9 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             toast={toastApi}
             isAuthenticated={isAuthenticated}
             onRequireAuth={handleSignIn}
-            onLaunchAssistant={onLaunchAssistant}
+            onLaunchAssistant={handleLaunchExperienceBankAssistant}
             onCountChange={setWorkExperienceCount}
-            focusRequest={focusRequest?.category === 'work' ? focusRequest : null}
+            focusRequest={effectiveFocusRequest?.category === 'work' ? effectiveFocusRequest : null}
           />
 
           <ExperienceSection
@@ -654,15 +768,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             isAuthenticated={isAuthenticated}
             onRequireAuth={handleSignIn}
             themeColor="indigo"
-            onLaunchAssistant={onLaunchAssistant}
+            onLaunchAssistant={handleLaunchExperienceBankAssistant}
             onCountChange={setProjectExperienceCount}
-            focusRequest={focusRequest?.category === 'project' ? focusRequest : null}
+            focusRequest={effectiveFocusRequest?.category === 'project' ? effectiveFocusRequest : null}
           />
 
           <EducationSection
             model={education}
             onCountChange={setEducationExperienceCount}
-            focusRequest={focusRequest?.category === 'education' ? focusRequest : null}
+            focusRequest={effectiveFocusRequest?.category === 'education' ? effectiveFocusRequest : null}
           />
 
           <CertificationSection
@@ -705,6 +819,37 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
       />
 
       <ToastContainer toasts={toasts} onClose={closeToast} />
+      </div>
+      <div
+        data-experience-bank-assistant-sidebar
+        className={[
+          'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
+          'border-border-light dark:border-border-dark transition-all duration-300 ease-in-out',
+          isAssistantSidebarOpen
+            ? 'w-[390px] opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
+            : 'w-0 opacity-0 md:border-l-0 pointer-events-none',
+        ].join(' ')}
+        style={{
+          width: isAssistantSidebarOpen ? EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH : 0,
+          opacity: isAssistantSidebarOpen ? 1 : 0,
+          flexShrink: 0,
+        }}
+      >
+        <div className="h-full shrink-0" style={{ width: EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH }}>
+          {isAssistantSidebarOpen ? (
+            <AIAssistant
+              surface="sidebar"
+              pendingLaunchRequest={assistantSidebarLaunchRequest}
+              onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
+              onClose={handleCloseAssistantSidebar}
+              onExpandToFullPage={handleExpandAssistantSidebar}
+              onJumpToResumeEditor={onJumpToResumeEditor}
+              onJumpToExperienceBank={handleAssistantJumpToExperienceBank}
+              onAppliedDraftNavigation={handleAssistantDraftAppliedNavigation}
+            />
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 };
