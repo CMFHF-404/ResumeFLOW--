@@ -186,7 +186,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditSkill,
     resumeDisplayTitle: resumeDisplayTitleProp,
 }) => {
-    const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal';
+    const isDashboardThumbnailPreview = previewScope === 'dashboard-card' || previewScope === 'dashboard-row';
+    const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal' || isDashboardThumbnailPreview;
     const isDashboardModalPreview = previewScope === 'dashboard-modal';
     const isPrintPreview = previewScope === 'print';
     const previewScrollRef = React.useRef<HTMLElement | null>(null);
@@ -1610,20 +1611,25 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     return (
         <main
             ref={previewScrollRef}
-            className={`bg-gray-100 dark:bg-gray-900/50 overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8 ${
-                usePageScrollOnMobile || isDashboardModalPreview ? 'overflow-visible' : 'flex-1 overflow-y-auto'
-            }`}
+            className={isDashboardThumbnailPreview
+                ? 'relative flex h-full w-full justify-center overflow-hidden bg-transparent p-0'
+                : `bg-gray-100 dark:bg-gray-900/50 overflow-x-hidden relative flex justify-center p-3 scroll-smooth md:p-8 ${
+                    usePageScrollOnMobile || isDashboardModalPreview ? 'overflow-visible' : 'flex-1 overflow-y-auto'
+                }`
+            }
             style={{
                 touchAction: isDragging ? 'none' : 'pan-y',
-                overscrollBehaviorY: isDragging
+                overscrollBehaviorY: isDashboardThumbnailPreview
+                    ? 'contain'
+                    : isDragging
                     ? 'none'
                     : (usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'contain'),
-                WebkitOverflowScrolling: usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'touch',
+                WebkitOverflowScrolling: isDashboardThumbnailPreview || usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'touch',
             }}
         >
             <div
                 ref={isScaledEditorPreview ? previewViewportRef : null}
-                className="flex w-full justify-center"
+                className={isDashboardThumbnailPreview ? 'flex h-full w-full justify-center overflow-hidden' : 'flex w-full justify-center'}
             >
                 <div
                     className={isScaledEditorPreview ? 'relative shrink-0' : 'relative'}

@@ -23,8 +23,10 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../components/Toast';
 import RenameResumeDialog from './Dashboard/components/RenameResumeDialog';
 import ResumePreviewModal from './Dashboard/components/ResumePreviewModal';
+import DashboardResumeThumbnail from './Dashboard/components/DashboardResumeThumbnail';
 import UnAuthPrompt from '../components/UnAuthPrompt';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
+import { useDashboardResumePreviewCache } from './Dashboard/useDashboardResumePreviewCache';
 
 interface DashboardProps {
   setView: (view: ViewState, options?: { shouldOpenResumeUpload?: boolean }) => void;
@@ -135,6 +137,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     onResumesUpdate,
     showToastLoading,
     updateToast,
+  });
+  const resumePreviewCache = useDashboardResumePreviewCache({
+    isAuthenticated,
+    authUserKey,
   });
 
   useEffect(() => {
@@ -950,12 +956,12 @@ const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
           ) : effectiveViewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
               {visibleResumes.map(resume => (
                 <div
                   key={resume.id}
                   onClick={() => handleResumeCardClick(resume.id)}
-                  className={`group bg-white dark:bg-surface-dark rounded-2xl border overflow-hidden transition-all duration-300 flex flex-col relative cursor-pointer ${selectedResumeIdSet.has(resume.id)
+                  className={`group bg-white dark:bg-surface-dark rounded-xl border overflow-hidden transition-all duration-300 flex flex-col relative cursor-pointer ${selectedResumeIdSet.has(resume.id)
                     ? 'border-primary/60 shadow-xl shadow-primary/10 ring-2 ring-primary/20 dark:border-primary/50'
                     : 'border-gray-200 hover:shadow-xl hover:border-primary/30 dark:border-gray-700'
                     }`}
@@ -972,38 +978,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                       {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                     </button>
                   )}
-                  <div className="aspect-[210/297] bg-gray-100 dark:bg-gray-900 relative p-6 overflow-hidden border-b border-gray-100 dark:border-gray-800">
-                    <div className="w-full h-full bg-white dark:bg-gray-800 shadow-sm p-3 md:p-4 transform group-hover:scale-[1.02] transition-transform duration-500 origin-top opacity-90 flex flex-col gap-2">
-                      {/* Mini Resume Visuals */}
-                      <div className="h-3 w-1/3 bg-gray-200 dark:bg-gray-700 rounded-sm mb-2"></div>
-                      <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
-                      <div className="h-1.5 w-5/6 bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
-                      <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
-                      <div className="h-2 w-1/4 bg-gray-200 dark:bg-gray-700 rounded-sm mt-2 mb-1"></div>
-                      <div className="space-y-1">
-                        <div className="h-1 w-full bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
-                        <div className="h-1 w-11/12 bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
-                        <div className="h-1 w-full bg-gray-100 dark:bg-gray-700 rounded-sm"></div>
-                      </div>
-                    </div>
-                    {!isBatchEditMode && (
-                      <div className="absolute inset-0 bg-gray-900/5 dark:bg-gray-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                        <button
-                          className="pointer-events-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-white/90 dark:bg-gray-800/90 text-gray-900 dark:text-white rounded-full shadow-lg hover:shadow-xl transition-shadow"
-                          onClick={(e) => handlePreview(resume.id, e)}
-                        >
-                          <Eye className="w-4 h-4" />
-                          预览
-                        </button>
-                      </div>
-                    )}
+                  <div className="aspect-[210/297] bg-gray-100 dark:bg-gray-900 relative overflow-hidden border-b border-gray-100 dark:border-gray-800">
+                    <DashboardResumeThumbnail
+                      resume={resume}
+                      variant="grid"
+                      entry={resumePreviewCache.getPreviewEntry(resume)}
+                      isBatchEditMode={isBatchEditMode}
+                      onEnsurePreview={resumePreviewCache.ensurePreview}
+                      onPreview={(e) => handlePreview(resume.id, e)}
+                      className="absolute inset-0"
+                    />
                   </div>
-                  <div className="p-5 flex-1 flex flex-col">
+                  <div className="p-4 flex-1 flex flex-col">
                     <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2 text-lg">{resume.name}</h3>
+                      <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2 text-base">{resume.name}</h3>
                     </div>
                     {resume.matchRate > 0 && (
-                      <div className="mb-4">
+                      <div className="mb-3">
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 font-bold border border-emerald-200 dark:border-emerald-500/20">
                           匹配度: {resume.matchRate}%
                         </span>
@@ -1037,7 +1028,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   onClick={handleCreateResume}
                   disabled={isCreatingResume}
-                  className="group flex flex-col items-center justify-center h-full min-h-[400px] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:border-gray-200"
+                  className="group flex flex-col items-center justify-center h-full min-h-[360px] rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:border-gray-200"
                 >
                   <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 group-hover:text-primary group-hover:bg-white dark:group-hover:bg-gray-700 shadow-sm transition-colors mb-4">
                     <Plus className="w-8 h-8" />
@@ -1083,7 +1074,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                               </button>
                             )}
-                            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
+                            <div className="shrink-0 rounded-lg bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400">
                               <FileText className="w-5 h-5" />
                             </div>
                             <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight">{resume.name}</h3>

@@ -1,4 +1,5 @@
 import apiClient, { getAuthCacheKey } from './apiClient';
+import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
 
 export interface Resume {
     id: string;
@@ -125,6 +126,7 @@ export const resumeService = {
                 item.id === id ? response.data : item
             );
         }
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
@@ -145,6 +147,7 @@ export const resumeService = {
 
     async updateAssembly(id: string, data: any) {
         const response = await apiClient.patch<ResumeDetail>(`/resumes/${id}/assembly`, data);
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
