@@ -1,4 +1,5 @@
 import apiClient, { getAuthCacheKey } from './apiClient';
+import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
 
 export interface UserSkill {
     id: string;
@@ -108,17 +109,20 @@ export const skillsService = {
     async create(data: SkillCreatePayload) {
         const response = await apiClient.post<UserSkill>('/skills', data);
         clearSkillsCache();
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
     async update(id: string, data: SkillUpdatePayload) {
         const response = await apiClient.patch<UserSkill>(`/skills/${id}`, data);
         clearSkillsCache();
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
     async delete(id: string) {
         await apiClient.delete(`/skills/${id}`);
         clearSkillsCache();
+        bumpResumePreviewDataRevision();
     },
 };

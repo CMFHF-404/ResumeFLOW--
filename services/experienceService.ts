@@ -1,5 +1,6 @@
 import apiClient, { getAuthCacheKey } from './apiClient';
 import { trackFirstExperienceCreated } from '../utils/analyticsTracker';
+import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
 
 export type ExperienceCategory = 'work' | 'project' | 'education';
 
@@ -209,6 +210,7 @@ export const experienceService = {
     async create(data: ExperienceCreatePayload) {
         const response = await apiClient.post<ExperienceDetail>('/experiences', data);
         clearExperienceListCache();
+        bumpResumePreviewDataRevision();
         trackFirstExperienceCreated(data.category);
         return response.data;
     },
@@ -221,12 +223,14 @@ export const experienceService = {
     async update(id: string, data: ExperienceUpdatePayload) {
         const response = await apiClient.patch<ExperienceDetail>(`/experiences/${id}`, data);
         clearExperienceListCache();
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
     async delete(id: string) {
         const response = await apiClient.delete<ExperienceDetail>(`/experiences/${id}`);
         clearExperienceListCache();
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 

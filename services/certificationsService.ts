@@ -1,4 +1,5 @@
 import apiClient, { getAuthCacheKey } from './apiClient';
+import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
 
 export interface Certification {
     id: string;
@@ -121,6 +122,7 @@ export const certificationsService = {
     async create(data: CertificationCreatePayload) {
         const response = await apiClient.post<Certification>('/certifications', data);
         clearCertificationsCache();
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
@@ -132,11 +134,13 @@ export const certificationsService = {
     async update(id: string, data: CertificationUpdatePayload) {
         const response = await apiClient.patch<Certification>(`/certifications/${id}`, data);
         clearCertificationsCache();
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 
     async delete(id: string) {
         await apiClient.delete(`/certifications/${id}`);
         clearCertificationsCache();
+        bumpResumePreviewDataRevision();
     },
 };

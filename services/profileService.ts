@@ -1,4 +1,5 @@
 import apiClient, { getAuthCacheKey } from './apiClient';
+import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
 
 export interface Profile {
     user_id: string;
@@ -101,6 +102,7 @@ export const profileService = {
         const response = await apiClient.patch<Profile>('/profile', data);
         cacheRevision += 1;
         cachedProfile = response.data;
+        bumpResumePreviewDataRevision();
         return response.data;
     },
 

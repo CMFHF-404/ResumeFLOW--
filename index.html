@@ -220,6 +220,27 @@
             animation: slideIn 0.3s ease-out;
         }
 
+        @keyframes dashboardPreviewFadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .dashboard-preview-fade-in {
+            animation: dashboardPreviewFadeIn 220ms ease-out both;
+            will-change: opacity;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .dashboard-preview-fade-in {
+                animation: none;
+            }
+        }
+
         /* 卡片编辑态展开/收缩：上下边缘同时运动 */
         .card-edge-motion {
             transform-origin: center;
