@@ -28,6 +28,8 @@ import {
 } from '../../../constants/resumeTemplates';
 import { normalizeResumeSkillTagSeparator } from '../../../utils/resumeCustomization';
 import {
+    A4_PAGE_HEIGHT_MM,
+    A4_PAGE_WIDTH_MM,
     DESKTOP_EDITOR_MEDIA_QUERY,
     EDITOR_PREVIEW_MAX_A4_HEIGHT_RATIO,
     LIST_GAP_CLASS,
@@ -85,6 +87,8 @@ import EducationSection from './ResumePreview/sections/EducationSection';
 import CertificationSection from './ResumePreview/sections/CertificationSection';
 import SkillSection from './ResumePreview/sections/SkillSection';
 import HeaderBlock from './ResumePreview/sections/HeaderBlock';
+
+const CSS_PX_PER_MM = 96 / 25.4;
 
 export type ResumePreviewProps = {
     previewRef: React.RefObject<HTMLDivElement>;
@@ -186,7 +190,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditSkill,
     resumeDisplayTitle: resumeDisplayTitleProp,
 }) => {
-    const isDashboardThumbnailPreview = previewScope === 'dashboard-card' || previewScope === 'dashboard-row';
+    const isDashboardCardPreview = previewScope === 'dashboard-card';
+    const isDashboardThumbnailPreview = isDashboardCardPreview || previewScope === 'dashboard-row';
     const isScaledEditorPreview = previewScope === 'editor' || previewScope === 'dashboard-modal' || isDashboardThumbnailPreview;
     const isDashboardModalPreview = previewScope === 'dashboard-modal';
     const isPrintPreview = previewScope === 'print';
@@ -198,11 +203,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const [touchFeedback, setTouchFeedback] = React.useState<TouchFeedbackState>(null);
     const [touchDragPreview, setTouchDragPreview] = React.useState<TouchDragPreviewState | null>(null);
     const [activeMobileItemControlId, setActiveMobileItemControlId] = React.useState<string | null>(null);
-    const [isTouchOnlyInteractionEnvironment, setIsTouchOnlyInteractionEnvironment] = React.useState(
-        detectTouchOnlyInteractionEnvironment
+    const [isTouchOnlyInteractionEnvironment, setIsTouchOnlyInteractionEnvironment] = React.useState(() => (
+        previewScope === 'editor' && detectTouchOnlyInteractionEnvironment()
+    )
     );
-    const [isDesktopEditorViewport, setIsDesktopEditorViewport] = React.useState(
-        detectDesktopEditorViewport
+    const [isDesktopEditorViewport, setIsDesktopEditorViewport] = React.useState(() => (
+        previewScope === 'editor' ? detectDesktopEditorViewport() : true
+    )
     );
     const isReadOnly = Boolean(readOnly);
     const resumeDisplayTitle = React.useMemo(
@@ -790,7 +797,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [clearDesktopDragPreview, onDragEnd]);
 
     React.useEffect(() => {
-        if (typeof window === 'undefined') {
+        if (previewScope !== 'editor' || typeof window === 'undefined') {
             return undefined;
         }
 
@@ -827,10 +834,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 mediaQuery.removeListener(updateInteractionEnvironment);
             });
         };
-    }, []);
+    }, [previewScope]);
 
     React.useEffect(() => {
-        if (typeof document === 'undefined') {
+        if (isReadOnly || typeof document === 'undefined') {
             return undefined;
         }
 
@@ -907,7 +914,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             document.removeEventListener('touchend', handleTouchFinish);
             document.removeEventListener('touchcancel', handleTouchCancel);
         };
-    }, [finishTouchSession, updateTouchDragHover, updateTouchDragPreviewPosition]);
+    }, [finishTouchSession, isReadOnly, updateTouchDragHover, updateTouchDragPreviewPosition]);
 
     React.useEffect(() => {
         return () => {
@@ -984,8 +991,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             return;
         }
 
-        const intrinsicWidth = previewElement.offsetWidth;
-        const intrinsicHeight = previewElement.offsetHeight;
+        const intrinsicWidth = isDashboardCardPreview
+            ? A4_PAGE_WIDTH_MM * CSS_PX_PER_MM
+            : previewElement.offsetWidth;
+        const intrinsicHeight = isDashboardCardPreview
+            ? A4_PAGE_HEIGHT_MM * CSS_PX_PER_MM
+            : previewElement.offsetHeight;
         const availableWidth = viewport.clientWidth;
         if (!intrinsicWidth || !intrinsicHeight || !availableWidth) {
             return;
@@ -1021,7 +1032,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             }
             return nextMetrics;
         });
-    }, [isScaledEditorPreview, previewRef, previewScope]);
+    }, [isDashboardCardPreview, isScaledEditorPreview, previewRef, previewScope]);
 
     React.useLayoutEffect(() => {
         if (!isScaledEditorPreview) {
@@ -1045,13 +1056,13 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             syncScaledPreviewMetrics();
         });
 
-        if (previewScrollRef.current) {
+        if (!isDashboardCardPreview && previewScrollRef.current) {
             resizeObserver.observe(previewScrollRef.current);
         }
         if (previewViewportRef.current) {
             resizeObserver.observe(previewViewportRef.current);
         }
-        if (previewRef.current) {
+        if (!isDashboardCardPreview && previewRef.current) {
             resizeObserver.observe(previewRef.current);
         }
 
@@ -1061,7 +1072,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             resizeObserver.disconnect();
             window.removeEventListener('resize', handleResize);
         };
-    }, [isScaledEditorPreview, previewRef, syncScaledPreviewMetrics]);
+    }, [isDashboardCardPreview, isScaledEditorPreview, previewRef, syncScaledPreviewMetrics]);
 
     const scaledPreviewWrapperStyle = React.useMemo(() => {
         if (!isScaledEditorPreview) {

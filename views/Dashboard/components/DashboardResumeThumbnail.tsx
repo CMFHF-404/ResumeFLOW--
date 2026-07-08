@@ -4,14 +4,20 @@ import type { Resume } from '../../../types';
 import { resolveResumeDisplayTitle } from '../../../constants/resumeConstants';
 import ResumePreview from '../../ResumeEditor/components/ResumePreview';
 import { buildDashboardResumePreviewProps } from '../resumePreviewState';
-import type { DashboardResumePreviewEntry } from '../dashboardResumePreviewCache';
+import type {
+    DashboardResumePreviewEntry,
+    DashboardResumePreviewLoadPriority,
+} from '../dashboardResumePreviewCache';
 
 type DashboardResumeThumbnailProps = {
     resume: Resume;
     variant: 'grid';
     entry: DashboardResumePreviewEntry;
     isBatchEditMode: boolean;
-    onEnsurePreview: (resume: Resume) => void;
+    onEnsurePreview: (
+        resume: Resume,
+        options?: { priority?: DashboardResumePreviewLoadPriority }
+    ) => void;
     onPreview: (event: React.MouseEvent) => void;
     className?: string;
 };
@@ -44,6 +50,18 @@ const MiniResumeFallback: React.FC<{
     );
 };
 
+const isDashboardResumeThumbnailVisible = (item: IntersectionObserverEntry) => {
+    if (typeof window === 'undefined') {
+        return item.isIntersecting;
+    }
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    return item.boundingClientRect.bottom > 0
+        && item.boundingClientRect.right > 0
+        && item.boundingClientRect.top < viewportHeight
+        && item.boundingClientRect.left < viewportWidth;
+};
+
 const DashboardResumeThumbnail: React.FC<DashboardResumeThumbnailProps> = ({
     resume,
     entry,
@@ -64,21 +82,27 @@ const DashboardResumeThumbnail: React.FC<DashboardResumeThumbnailProps> = ({
         if (!node) {
             return undefined;
         }
-        if (entry.status === 'ready' || entry.status === 'loading') {
+        if (entry.status === 'ready' || entry.status === 'loading' || entry.status === 'queued') {
             return undefined;
         }
         if (typeof IntersectionObserver === 'undefined') {
-            onEnsurePreview(resume);
+            onEnsurePreview(resume, { priority: 'visible' });
             return undefined;
         }
         const observer = new IntersectionObserver((items) => {
-            if (items.some((item) => item.isIntersecting)) {
-                onEnsurePreview(resume);
+            for (const item of items) {
+                if (!item.isIntersecting) {
+                    continue;
+                }
+                onEnsurePreview(resume, {
+                    priority: isDashboardResumeThumbnailVisible(item) ? 'visible' : 'nearby',
+                });
                 observer.disconnect();
+                break;
             }
         }, {
             root: null,
-            rootMargin: '180px',
+            rootMargin: '160px 0px',
             threshold: 0.01,
         });
         observer.observe(node);
