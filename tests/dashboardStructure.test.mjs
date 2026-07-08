@@ -105,6 +105,8 @@ test('Dashboard renders real resume thumbnails through a shared preview cache', 
   assert.match(thumbnail, /ResumePreview/);
   assert.match(thumbnail, /dashboard-card/);
   assert.match(thumbnail, /dashboard-preview-fade-in/);
+  assert.match(thumbnail, /rootMargin:\s*'160px 0px'/);
+  assert.match(thumbnail, /isDashboardResumeThumbnailVisible\(item\)\s*\?\s*'visible'\s*:\s*'nearby'/);
   assert.match(thumbnail, /bg-white\/90/);
   assert.match(thumbnail, /backdrop-blur-md/);
   assert.doesNotMatch(thumbnail, /bg-white\/92/);
@@ -115,6 +117,15 @@ test('Dashboard renders real resume thumbnails through a shared preview cache', 
   assert.match(thumbnail, /isBatchEditMode/);
   assert.match(previewHook, /loadDashboardResumePreviewGlobalData/);
   assert.match(previewHook, /buildDashboardResumePreviewCacheKey/);
+  assert.match(previewHook, /MAX_DASHBOARD_PREVIEW_CONCURRENT_REQUESTS\s*=\s*2/);
+  assert.match(previewHook, /startTransition/);
+  assert.match(previewHook, /requestIdleCallback/);
+  assert.match(previewHook, /setTimeout/);
+  assert.match(previewHook, /priority\?:\s*DashboardResumePreviewLoadPriority/);
+  assert.match(previewHook, /previewQueueGenerationRef/);
+  assert.match(previewHook, /previewQueueGenerationRef\.current \+= 1/);
+  assert.match(previewHook, /isDashboardResumePreviewQueueGenerationCurrent/);
+  assert.match(previewHook, /\.finally\(\(\) => completePreviewQueueItem\(requestGeneration\)\)/);
 });
 
 test('Dashboard preview thumbnails define a loaded-state fade-in animation', () => {
@@ -123,6 +134,9 @@ test('Dashboard preview thumbnails define a loaded-state fade-in animation', () 
   assert.match(html, /@keyframes dashboardPreviewFadeIn/);
   assert.match(html, /\.dashboard-preview-fade-in/);
   assert.match(html, /animation:\s*dashboardPreviewFadeIn 220ms ease-out both/);
+  assert.match(html, /\.dashboard-resume-card/);
+  assert.match(html, /content-visibility:\s*auto/);
+  assert.match(html, /contain-intrinsic-size:\s*360px 520px/);
 });
 
 test('Dashboard preview cache clears failed shared data loads before retrying', () => {
@@ -155,7 +169,7 @@ test('Dashboard preview cache keys include the auth owner', () => {
   assert.match(previewHook, /buildDashboardResumePreviewCacheKey\([\s\S]*?authUserKey/);
   assert.match(previewHook, /resolveDashboardResumePreviewEntry\([\s\S]*?authUserKey/);
   assert.match(previewHook, /ensureDashboardResumePreviewSnapshotCacheOwner\(authUserKey\)/);
-  assert.match(previewHook, /\}, \[authUserKey, ensureGlobalData, entries, isAuthenticated, previewDataRevision\]\);/);
+  assert.doesNotMatch(previewHook, /\}, \[authUserKey, ensureGlobalData, entries, isAuthenticated, previewDataRevision\]\);/);
 });
 
 test('Dashboard preview source data mutations bump the shared preview revision', () => {

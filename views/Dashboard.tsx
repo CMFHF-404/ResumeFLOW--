@@ -961,7 +961,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div
                   key={resume.id}
                   onClick={() => handleResumeCardClick(resume.id)}
-                  className={`group bg-white dark:bg-surface-dark rounded-xl border overflow-hidden transition-all duration-300 flex flex-col relative cursor-pointer ${selectedResumeIdSet.has(resume.id)
+                  className={`dashboard-resume-card group bg-white dark:bg-surface-dark rounded-xl border overflow-hidden transition-all duration-300 flex flex-col relative cursor-pointer ${selectedResumeIdSet.has(resume.id)
                     ? 'border-primary/60 shadow-xl shadow-primary/10 ring-2 ring-primary/20 dark:border-primary/50'
                     : 'border-gray-200 hover:shadow-xl hover:border-primary/30 dark:border-gray-700'
                     }`}
