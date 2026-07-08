@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from .auth_middleware import AuthenticatedUser
+from .auth_types import AuthenticatedUser
 from .config import load_settings
 
 

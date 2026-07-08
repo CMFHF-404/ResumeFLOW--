@@ -15,7 +15,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 
 from ..database import get_session
 from ..dependencies import get_current_user
-from ..auth_middleware import AuthenticatedUser
+from ..auth_types import AuthenticatedUser
 from ..models import User
 
 

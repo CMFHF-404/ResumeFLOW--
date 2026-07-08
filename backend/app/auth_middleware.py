@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import time
 from typing import Any, Dict, Optional
 
@@ -12,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.status import HTTP_401_UNAUTHORIZED
 
+from .auth_types import AuthenticatedUser as _AuthenticatedUser
 from .config import load_settings
 from .database import AsyncSessionFactory
 from .domain.account.user_onboarding_service import ensure_user_with_signup_bonus
@@ -29,12 +29,6 @@ PUBLIC_GET_PATH_PREFIXES = (
 PUBLIC_PATH_PREFIXES = (
     "/agent/v1/",
 )
-
-
-@dataclass(frozen=True)
-class AuthenticatedUser:
-    id: str
-
 
 class AuthError(Exception):
     pass
@@ -160,6 +154,6 @@ class LogtoAuthMiddleware(BaseHTTPMiddleware):
             )
 
         await _ensure_user_exists(user_id)
-        request.state.user = AuthenticatedUser(id=user_id)
+        request.state.user = _AuthenticatedUser(id=user_id)
         request.state.claims = claims
         return await call_next(request)
