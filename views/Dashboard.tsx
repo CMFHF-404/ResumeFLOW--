@@ -47,6 +47,8 @@ const DELETE_CANCEL_LABEL = '取消';
 const VIEW_MODE_STORAGE_KEY = 'yuanzijianli.dashboardViewMode';
 const DEFAULT_WELCOME_NAME = '即刻开始';
 const MOBILE_LONG_PRESS_DURATION = 450;
+const BATCH_EDIT_MOTION_DURATION = 220;
+type BatchEditMotion = 'idle' | 'entering' | 'exiting';
 const DEFAULT_SORT_MODE: DashboardSortMode = 'created-desc';
 const DEFAULT_TIME_FILTER: DashboardTimeFilter = { preset: 'all', startDate: '', endDate: '' };
 const DEFAULT_MATCH_FILTER: DashboardMatchFilter = { preset: 'all', min: '', max: '' };
@@ -93,6 +95,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [isFilterToolbarOpen, setIsFilterToolbarOpen] = useState(false);
   const [isDeletingResume, setIsDeletingResume] = useState(false);
   const [isBatchEditMode, setIsBatchEditMode] = useState(false);
+  const [batchEditMotion, setBatchEditMotion] = useState<BatchEditMotion>('idle');
   const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [batchDeleteTargetIds, setBatchDeleteTargetIds] = useState<string[]>([]);
@@ -100,6 +103,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
+  const batchEditMotionTimerRef = useRef<number | null>(null);
   const {
     closeDropdown,
     dropdownPos,
@@ -190,6 +194,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     return deleteTargetId ? [deleteTargetId] : [];
   }, [batchDeleteTargetIds, deleteTargetId]);
   const isBatchDeleting = pendingDeleteIds.length > 1;
+  const batchEditCardMotionClass = isBatchEditMode ? 'dashboard-batch-card' : '';
+  const batchEditSelectionMotionClass = batchEditMotion === 'entering'
+    ? 'dashboard-batch-selection-enter'
+    : batchEditMotion === 'exiting'
+      ? 'dashboard-batch-selection-exit'
+      : '';
+  const batchEditToolbarMotionClass = batchEditMotion === 'entering'
+    ? 'dashboard-batch-toolbar-enter'
+    : batchEditMotion === 'exiting'
+      ? 'dashboard-batch-toolbar-exit'
+      : '';
 
   useEffect(() => {
     if (!isBatchEditMode || selectedResumeIds.length === 0) {
@@ -208,6 +223,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   }, []);
 
+  const clearBatchEditMotionTimer = useCallback(() => {
+    if (batchEditMotionTimerRef.current !== null) {
+      window.clearTimeout(batchEditMotionTimerRef.current);
+      batchEditMotionTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearBatchEditMotionTimer(), [clearBatchEditMotionTimer]);
+
   const openResume = (id: string) => {
     if (!isAuthenticated) {
       void handleSignIn();
@@ -222,17 +246,44 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const exitBatchEditMode = useCallback(() => {
+    if (!isBatchEditMode || batchEditMotion !== 'idle') {
+      return;
+    }
     clearLongPressTimer();
     longPressTriggeredRef.current = false;
-    setIsBatchEditMode(false);
-    setSelectedResumeIds([]);
-  }, [clearLongPressTimer]);
+    clearBatchEditMotionTimer();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setIsBatchEditMode(false);
+      setSelectedResumeIds([]);
+      setBatchEditMotion('idle');
+      return;
+    }
+    setBatchEditMotion('exiting');
+    batchEditMotionTimerRef.current = window.setTimeout(() => {
+      batchEditMotionTimerRef.current = null;
+      setIsBatchEditMode(false);
+      setSelectedResumeIds([]);
+      setBatchEditMotion('idle');
+    }, BATCH_EDIT_MOTION_DURATION);
+  }, [batchEditMotion, clearBatchEditMotionTimer, clearLongPressTimer, isBatchEditMode]);
 
   const enterBatchEditMode = useCallback((initialId?: string) => {
+    if (batchEditMotion !== 'idle') {
+      return;
+    }
     closeDropdown();
+    clearBatchEditMotionTimer();
     setIsBatchEditMode(true);
     setSelectedResumeIds(initialId ? [initialId] : []);
-  }, [closeDropdown]);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    setBatchEditMotion('entering');
+    batchEditMotionTimerRef.current = window.setTimeout(() => {
+      batchEditMotionTimerRef.current = null;
+      setBatchEditMotion('idle');
+    }, BATCH_EDIT_MOTION_DURATION);
+  }, [batchEditMotion, clearBatchEditMotionTimer, closeDropdown]);
 
   const toggleResumeSelection = useCallback((id: string) => {
     setSelectedResumeIds((prev) => (
@@ -248,22 +299,31 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     if (isBatchEditMode) {
+      if (batchEditMotion === 'exiting') {
+        return;
+      }
       toggleResumeSelection(id);
       return;
     }
     openResume(id);
-  }, [isBatchEditMode, toggleResumeSelection]);
+  }, [batchEditMotion, isBatchEditMode, toggleResumeSelection]);
 
   const handleSelectionIndicatorClick = useCallback((id: string, event: React.MouseEvent) => {
     event.stopPropagation();
+    if (batchEditMotion === 'exiting') {
+      return;
+    }
     toggleResumeSelection(id);
-  }, [toggleResumeSelection]);
+  }, [batchEditMotion, toggleResumeSelection]);
 
   const handleSelectAllToggle = useCallback(() => {
+    if (batchEditMotion === 'exiting') {
+      return;
+    }
     setSelectedResumeIds(() => (
       allVisibleSelected ? [] : visibleResumes.map((resume) => resume.id)
     ));
-  }, [allVisibleSelected, visibleResumes]);
+  }, [allVisibleSelected, batchEditMotion, visibleResumes]);
 
   const handleClearSearchFilters = useCallback(() => {
     setSearchQuery('');
@@ -273,6 +333,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, []);
 
   const handleBatchDeleteRequest = useCallback(() => {
+    if (batchEditMotion === 'exiting') {
+      return;
+    }
     if (!isAuthenticated) {
       void handleSignIn();
       return;
@@ -289,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     closeDropdown();
     setDeleteTargetId(null);
     setBatchDeleteTargetIds(selectedResumeIds);
-  }, [closeDropdown, handleSignIn, isAuthenticated, selectedResumeIds, showToastLoading, updateToast]);
+  }, [batchEditMotion, closeDropdown, handleSignIn, isAuthenticated, selectedResumeIds, showToastLoading, updateToast]);
 
   const handleDropdownClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -681,7 +744,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end md:gap-4">
+            <div className="dashboard-header-actions flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end md:gap-4">
               {resumes.length > 0 && (
                 <div
                   className="relative flex w-full items-center gap-2 md:w-[360px] lg:w-[440px]"
@@ -876,19 +939,25 @@ const Dashboard: React.FC<DashboardProps> = ({
                   {isBatchEditMode ? '退出批量编辑' : '批量编辑'}
                 </button>
               )}
-              <button
-                onClick={handleCreateResume}
-                disabled={isCreatingResume}
-                className={`hidden items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-base font-semibold transition-all shadow-lg shadow-primary/20 hover:shadow-primary/40 transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:shadow-primary/20 disabled:transform-none md:flex ${isBatchEditMode ? 'md:hidden' : ''}`}
+              <div
+                aria-hidden={isBatchEditMode}
+                className={`dashboard-create-resume-action hidden md:block ${isBatchEditMode ? 'dashboard-create-resume-action-hidden' : ''}`}
               >
-                <Plus className="w-5 h-5" />
-                {isCreatingResume ? '创建中...' : '创建新简历'}
-              </button>
+                <button
+                  onClick={handleCreateResume}
+                  disabled={isCreatingResume}
+                  tabIndex={isBatchEditMode ? -1 : undefined}
+                  className="flex items-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary-dark disabled:opacity-60"
+                >
+                  <Plus className="w-5 h-5" />
+                  {isCreatingResume ? '创建中...' : '创建新简历'}
+                </button>
+              </div>
             </div>
           </div>
 
           {isBatchEditMode && resumes.length > 0 && (
-            <div className="rounded-2xl border border-primary/15 bg-white/95 p-4 shadow-sm backdrop-blur dark:border-primary/20 dark:bg-surface-dark/95">
+            <div className={`dashboard-batch-toolbar rounded-2xl border border-primary/15 bg-white/95 p-4 shadow-sm backdrop-blur dark:border-primary/20 dark:bg-surface-dark/95 ${batchEditToolbarMotionClass}`}>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary dark:bg-primary/15">
@@ -961,14 +1030,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div
                   key={resume.id}
                   onClick={() => handleResumeCardClick(resume.id)}
-                  className={`dashboard-resume-card group bg-white dark:bg-surface-dark rounded-xl border overflow-hidden transition-all duration-300 flex flex-col relative cursor-pointer ${selectedResumeIdSet.has(resume.id)
+                  className={`dashboard-resume-card group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white transition-[border-color,box-shadow] duration-200 dark:bg-surface-dark ${batchEditCardMotionClass} ${selectedResumeIdSet.has(resume.id)
                     ? 'border-primary/60 shadow-xl shadow-primary/10 ring-2 ring-primary/20 dark:border-primary/50'
                     : 'border-gray-200 hover:shadow-xl hover:border-primary/30 dark:border-gray-700'
                     }`}
                 >
                   {isBatchEditMode && (
                     <button
-                      className={`absolute left-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-all ${selectedResumeIdSet.has(resume.id)
+                      aria-label={`${selectedResumeIdSet.has(resume.id) ? '取消选择' : '选择'} ${resume.name}`}
+                      className={`dashboard-batch-selection-control absolute left-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-all ${batchEditSelectionMotionClass} ${selectedResumeIdSet.has(resume.id)
                         ? 'border-primary bg-primary text-white'
                         : 'border-white/80 bg-white/90 text-gray-400 dark:border-gray-600 dark:bg-gray-800/90 dark:text-gray-500'
                         }`}
@@ -1054,7 +1124,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     {visibleResumes.map(resume => (
                       <tr
                         key={resume.id}
-                        className={`group transition-colors cursor-pointer ${selectedResumeIdSet.has(resume.id)
+                        className={`group cursor-pointer transition-colors ${batchEditCardMotionClass} ${selectedResumeIdSet.has(resume.id)
                           ? 'bg-primary/5 dark:bg-primary/10'
                           : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
                           }`}
@@ -1064,7 +1134,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                           <div className="flex items-center gap-4">
                             {isBatchEditMode && (
                               <button
-                                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${selectedResumeIdSet.has(resume.id)
+                                aria-label={`${selectedResumeIdSet.has(resume.id) ? '取消选择' : '选择'} ${resume.name}`}
+                                className={`dashboard-batch-selection-control flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${batchEditSelectionMotionClass} ${selectedResumeIdSet.has(resume.id)
                                   ? 'border-primary bg-primary text-white'
                                   : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
                                   }`}
@@ -1124,7 +1195,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {visibleResumes.map((resume) => (
                   <div
                     key={resume.id}
-                    className={`rounded-2xl border bg-white p-4 shadow-sm transition-colors dark:bg-surface-dark touch-manipulation select-none ${selectedResumeIdSet.has(resume.id)
+                    className={`dashboard-batch-card-mobile rounded-2xl border bg-white p-4 shadow-sm transition-colors dark:bg-surface-dark touch-manipulation select-none ${batchEditCardMotionClass} ${selectedResumeIdSet.has(resume.id)
                       ? 'border-primary/60 bg-primary/5 dark:border-primary/50 dark:bg-primary/10'
                       : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/40'
                       }`}
@@ -1161,7 +1232,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       {isBatchEditMode ? (
                         <button
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${selectedResumeIdSet.has(resume.id)
+                          aria-label={`${selectedResumeIdSet.has(resume.id) ? '取消选择' : '选择'} ${resume.name}`}
+                          className={`dashboard-batch-selection-control flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${batchEditSelectionMotionClass} ${selectedResumeIdSet.has(resume.id)
                             ? 'border-primary bg-primary text-white'
                             : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
                             }`}

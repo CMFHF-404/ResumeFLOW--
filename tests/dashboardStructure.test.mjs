@@ -46,6 +46,57 @@ test('Dashboard batch select all and empty results target filtered visible resum
   assert.match(dashboard, /没有找到匹配的简历/);
 });
 
+test('Dashboard batch editing animates lightweight controls without compositing every resume card', () => {
+  const dashboard = read('views/Dashboard.tsx');
+  const html = read('index.html');
+
+  assert.match(dashboard, /const \[batchEditMotion, setBatchEditMotion\]/);
+  assert.match(dashboard, /batchEditMotion === 'exiting'/);
+  assert.match(dashboard, /dashboard-batch-toolbar/);
+  assert.match(dashboard, /dashboard-batch-card/);
+  assert.match(dashboard, /dashboard-batch-selection-control/);
+  assert.match(dashboard, /dashboard-batch-card-mobile/);
+  assert.match(dashboard, /dashboard-header-actions/);
+  assert.match(dashboard, /dashboard-create-resume-action/);
+  assert.match(html, /@keyframes dashboardBatchToolbarEnter/);
+  assert.match(html, /@keyframes dashboardBatchSelectionEnter/);
+  assert.match(html, /\.dashboard-create-resume-action-hidden/);
+  assert.match(html, /max-width 180ms/);
+  assert.doesNotMatch(html, /@keyframes dashboardBatchCardEnter/);
+  assert.doesNotMatch(html, /\.dashboard-batch-card-enter/);
+  assert.doesNotMatch(html, /\.dashboard-batch-toolbar,\s*\.dashboard-batch-card/);
+  assert.doesNotMatch(html, /\.dashboard-batch-toolbar,\s*\.dashboard-batch-selection-control\s*\{\s*will-change/);
+  assert.match(html, /\.dashboard-batch-selection-enter,\s*\.dashboard-batch-selection-exit\s*\{\s*will-change: opacity, transform;/);
+  assert.match(html, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.dashboard-batch-toolbar[\s\S]*?animation: none/);
+});
+
+test('Dashboard exits batch editing immediately when reduced motion is preferred', () => {
+  const dashboard = read('views/Dashboard.tsx');
+  const exitBatchEditMode = dashboard.match(/const exitBatchEditMode = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[batchEditMotion, clearBatchEditMotionTimer, clearLongPressTimer, isBatchEditMode\]\);/);
+
+  assert.ok(exitBatchEditMode, 'batch edit exit handler should be present');
+  assert.match(exitBatchEditMode[0], /window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches/);
+  assert.match(exitBatchEditMode[0], /setIsBatchEditMode\(false\);[\s\S]*?setSelectedResumeIds\(\[\]\);[\s\S]*?setBatchEditMotion\('idle'\);[\s\S]*?return;/);
+});
+
+test('Dashboard enters batch editing without an inert animation state when reduced motion is preferred', () => {
+  const dashboard = read('views/Dashboard.tsx');
+  const enterBatchEditMode = dashboard.match(/const enterBatchEditMode = useCallback\(\(initialId\?: string\) => \{[\s\S]*?\n  \}, \[batchEditMotion, clearBatchEditMotionTimer, closeDropdown\]\);/);
+
+  assert.ok(enterBatchEditMode, 'batch edit enter handler should be present');
+  assert.match(enterBatchEditMode[0], /setIsBatchEditMode\(true\);[\s\S]*?setSelectedResumeIds\(initialId \? \[initialId\] : \[\]\);[\s\S]*?window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches[\s\S]*?return;[\s\S]*?setBatchEditMotion\('entering'\)/);
+});
+
+test('Dashboard desktop create action changes color without lifting or changing shadow on hover', () => {
+  const dashboard = read('views/Dashboard.tsx');
+  const createAction = dashboard.match(/dashboard-create-resume-action[\s\S]*?className="([^"]+)"/);
+
+  assert.ok(createAction, 'desktop create action should remain wrapped for batch-mode transitions');
+  assert.match(createAction[1], /hover:bg-primary-dark/);
+  assert.doesNotMatch(createAction[1], /hover:-translate/);
+  assert.doesNotMatch(createAction[1], /hover:shadow/);
+});
+
 test('Dashboard keeps search in the header and opens filters from a search-side button', () => {
   const dashboard = read('views/Dashboard.tsx');
 

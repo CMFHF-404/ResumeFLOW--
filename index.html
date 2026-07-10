@@ -240,9 +240,117 @@
             contain-intrinsic-size: 360px 520px;
         }
 
+        /* Dashboard 批量编辑：保留退出中的 DOM，令工具栏、卡片与选择框同步收束。 */
+        .dashboard-batch-toolbar,
+        .dashboard-batch-selection-enter,
+        .dashboard-batch-selection-exit {
+            will-change: opacity, transform;
+        }
+
+        .dashboard-batch-card {
+            outline: 1px solid rgba(15, 118, 110, 0.16);
+            outline-offset: -1px;
+            transition: outline-color 160ms ease-out;
+        }
+
+        .dashboard-create-resume-action {
+            max-width: 11.5rem;
+            min-width: 0;
+            overflow: hidden;
+            transform: translateX(0);
+            transition: max-width 180ms cubic-bezier(0.22, 1, 0.36, 1), margin-inline-start 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease-out, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .dashboard-create-resume-action-hidden {
+            max-width: 0;
+            margin-inline-start: -1rem;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(0.5rem);
+        }
+
+        .dashboard-batch-toolbar {
+            overflow: hidden;
+            transform-origin: top;
+        }
+
+        @keyframes dashboardBatchToolbarEnter {
+            from {
+                max-height: 0;
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+
+            to {
+                max-height: 12rem;
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes dashboardBatchToolbarExit {
+            from {
+                max-height: 12rem;
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+            to {
+                max-height: 0;
+                opacity: 0;
+                transform: translateY(-6px);
+            }
+        }
+
+        @keyframes dashboardBatchSelectionEnter {
+            from {
+                opacity: 0;
+                transform: scale(0.72);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes dashboardBatchSelectionExit {
+            from {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            to {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+        }
+
+        .dashboard-batch-toolbar-enter {
+            animation: dashboardBatchToolbarEnter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .dashboard-batch-toolbar-exit {
+            animation: dashboardBatchToolbarExit 180ms cubic-bezier(0.55, 0.06, 0.68, 0.19) both;
+        }
+
+        .dashboard-batch-selection-enter {
+            animation: dashboardBatchSelectionEnter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .dashboard-batch-selection-exit {
+            animation: dashboardBatchSelectionExit 150ms cubic-bezier(0.55, 0.06, 0.68, 0.19) both;
+        }
+
         @media (prefers-reduced-motion: reduce) {
-            .dashboard-preview-fade-in {
+            .dashboard-preview-fade-in,
+            .dashboard-batch-toolbar,
+            .dashboard-batch-selection-control {
                 animation: none;
+            }
+
+            .dashboard-create-resume-action {
+                transition: none;
             }
         }
 
