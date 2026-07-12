@@ -34,9 +34,8 @@ import {
 } from './JDAnalysisPanel/analysisUtils';
 import JDAttachmentUploader, {
     JDAttachmentPreview,
-    isAcceptedJDAttachmentFile,
-    prepareJDAttachmentFile,
 } from './JDAttachmentUploader';
+import { isAcceptedJDAttachmentFile } from '../../../utils/jdAttachment';
 import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
 const JD_PANEL_CONTENT_ID = 'jd-analysis-panel-content';
@@ -340,7 +339,8 @@ type JDAnalysisPanelProps = {
     onToggleCollapse: () => void;
     onJdTextChange: (value: string) => void;
     jdFile: File | null;
-    onFileChange: (file: File | null) => void;
+    onFileSelect: (file: File) => Promise<void>;
+    onFileClear: () => void;
     hasMissingAttachmentContext: boolean;
     bossGreeting: string;
     isBossGreetingVisible: boolean;
@@ -837,7 +837,8 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     onToggleCollapse,
     onJdTextChange,
     jdFile,
-    onFileChange,
+    onFileSelect,
+    onFileClear,
     hasMissingAttachmentContext,
     bossGreeting,
     isBossGreetingVisible,
@@ -877,7 +878,6 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     } = useJDStrategyCopyState(onOpenAgentPluginConfig);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const [isAttachmentDragOver, setIsAttachmentDragOver] = useState(false);
-    const attachmentSelectionVersionRef = useRef(0);
 
     const handleOpenDetails = useCallback(() => {
         if (onOpenDetailsSidebar) {
@@ -892,16 +892,6 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
         resetStrategyCopyState();
     }, [resetStrategyCopyState]);
 
-    const handleAttachmentSelect = useCallback(async (file: File) => {
-        const requestVersion = attachmentSelectionVersionRef.current + 1;
-        attachmentSelectionVersionRef.current = requestVersion;
-        const preparedFile = await prepareJDAttachmentFile(file);
-        if (attachmentSelectionVersionRef.current !== requestVersion || !preparedFile) {
-            return;
-        }
-        onFileChange(preparedFile);
-    }, [onFileChange]);
-
     const handleTextareaPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
         if (isAnalyzing) {
             return;
@@ -914,8 +904,8 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
             return;
         }
         event.preventDefault();
-        void handleAttachmentSelect(pastedFile);
-    }, [handleAttachmentSelect, isAnalyzing]);
+        void onFileSelect(pastedFile);
+    }, [isAnalyzing, onFileSelect]);
 
     const handleAttachmentDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
         if (isAnalyzing) {
@@ -946,8 +936,8 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
         if (!droppedFile || !isAcceptedJDAttachmentFile(droppedFile)) {
             return;
         }
-        void handleAttachmentSelect(droppedFile);
-    }, [handleAttachmentSelect, isAnalyzing]);
+        void onFileSelect(droppedFile);
+    }, [isAnalyzing, onFileSelect]);
 
     return (
         <>
@@ -1116,7 +1106,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 <div className={`absolute bottom-3 right-3 flex items-center gap-2 ${jdAnalysisMotion.idleControlsMotionClass}`}>
                                     <JDAttachmentUploader
                                         file={jdFile}
-                                        onFileChange={onFileChange}
+                                        onFileSelect={onFileSelect}
                                         disabled={isAnalyzing}
                                     />
                                     <button
@@ -1138,7 +1128,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                         {jdFile ? (
                             <JDAttachmentPreview
                                 file={jdFile}
-                                onClear={() => onFileChange(null)}
+                                onClear={onFileClear}
                                 disabled={isAnalyzing}
                             />
                         ) : (

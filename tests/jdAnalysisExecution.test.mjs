@@ -200,6 +200,35 @@ test('request aborts return aborted without logging as an analysis failure', asy
   assert.deepEqual(calls.updates, []);
 });
 
+test('stale resume execution aborts before applying a late provider result', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  let isCurrentResume = true;
+  const { calls, params } = buildDeps({
+    shouldContinue: () => isCurrentResume,
+    requestRunner: async () => {
+      calls.requestRuns += 1;
+      isCurrentResume = false;
+      return {
+        result: buildResult(),
+        currentFile: null,
+        attachmentSupplementalJdText: '',
+        extractedAttachmentText: '',
+        shouldPersistAttachmentAsText: false,
+      };
+    },
+  });
+
+  const outcome = await runJDAnalysisExecution(params);
+
+  assert.deepEqual(outcome, { status: 'aborted' });
+  assert.equal(calls.requestRuns, 1);
+  assert.deepEqual(calls.analyzing, [true, false]);
+  assert.deepEqual(calls.scores, []);
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.diffUpdates, []);
+  assert.deepEqual(calls.completes, []);
+});
+
 test('full execution applies result, persists state, and tracks analytics lifecycle', async () => {
   const { runJDAnalysisExecution } = await importJDAnalysisExecution();
   const finalResult = buildResult({

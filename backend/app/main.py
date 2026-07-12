@@ -31,15 +31,7 @@ from .routers import experience_versions, resumes
 
 from contextlib import asynccontextmanager
 from .database import (
-    ensure_agent_api_keys_table,
-    ensure_ai_assistant_tables,
-    ensure_ai_token_billing_tables,
-    ensure_experience_drafts_table,
-    ensure_experience_version_tags_column,
-    ensure_feedback_contact_type_column,
-    ensure_feedback_images_column,
-    ensure_export_render_snapshots_table,
-    ensure_redemption_code_tables,
+    ensure_runtime_schema,
     verify_db_connection,
 )
 from .domain.export.browser_pdf_service import close_browser
@@ -53,15 +45,7 @@ async def lifespan(app: FastAPI):
     print("Verifying database connection on startup...")
     try:
         await verify_db_connection()
-        await ensure_experience_version_tags_column()
-        await ensure_experience_drafts_table()
-        await ensure_export_render_snapshots_table()
-        await ensure_ai_assistant_tables()
-        await ensure_agent_api_keys_table()
-        await ensure_ai_token_billing_tables()
-        await ensure_redemption_code_tables()
-        await ensure_feedback_contact_type_column()
-        await ensure_feedback_images_column()
+        await ensure_runtime_schema()
     except Exception as e:
         # 如果连不上数据库，直接抛出异常阻止启动
         print(f"CRITICAL: Failed to connect to database. {e}")

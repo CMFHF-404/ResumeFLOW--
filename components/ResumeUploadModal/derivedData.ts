@@ -7,7 +7,7 @@ import type {
   ParsedPersonalInfoSelection,
   ParsedSkillGroup,
 } from '../../services/parserService';
-import { convertDateToISO } from '../../views/experienceUtils';
+import { convertDateToISO } from '../../utils/dateUtils';
 import {
   buildEmptySet,
   normalizeKey,

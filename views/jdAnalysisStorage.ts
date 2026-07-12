@@ -1,4 +1,5 @@
 import type { ResumeJDAnalysis } from '../types/resume';
+import { canonicalStringify } from '../utils/canonicalStringify';
 
 const JD_ANALYSIS_CACHE_PREFIX = 'yuanzijianli.jdAnalysisCache';
 
@@ -28,33 +29,6 @@ type RawJDAnalysisCacheRecord = {
 };
 
 const buildCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
-
-const canonicalStringify = (obj: unknown): string => {
-    const stringifyValue = (value: unknown): string | undefined => {
-        if (value === undefined) {
-            return undefined;
-        }
-        if (value === null || typeof value !== 'object') {
-            return JSON.stringify(value);
-        }
-        if (Array.isArray(value)) {
-            const items = value.map((item) => stringifyValue(item) ?? 'null');
-            return `[${items.join(',')}]`;
-        }
-        const record = value as Record<string, unknown>;
-        const keys = Object.keys(record).sort();
-        const entries: string[] = [];
-        keys.forEach((key) => {
-            const serialized = stringifyValue(record[key]);
-            if (serialized !== undefined) {
-                entries.push(`${JSON.stringify(key)}:${serialized}`);
-            }
-        });
-        return `{${entries.join(',')}}`;
-    };
-
-    return stringifyValue(obj) ?? 'null';
-};
 
 const arePersistedJDAnalysisEqual = (
     left: ResumeJDAnalysis | null,

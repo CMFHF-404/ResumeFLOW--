@@ -391,8 +391,8 @@ class BillingSchemaTests(unittest.TestCase):
             schema_source = handle.read()
 
         self.assertIn("async def ensure_ai_token_billing_tables", source)
-        self.assertRegex(source, r"ensure_dev_schema\(\)[\s\S]*await ensure_ai_token_billing_tables\(\)")
-        self.assertRegex(main_source, r"lifespan\([\s\S]*await ensure_ai_token_billing_tables\(\)")
+        self.assertRegex(source, r"ensure_runtime_schema\(\)[\s\S]*await ensure_ai_token_billing_tables\(\)")
+        self.assertRegex(main_source, r"lifespan\([\s\S]*await ensure_runtime_schema\(\)")
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_token_wallets", schema_source)
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_token_usage_events", schema_source)
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_token_purchase_events", schema_source)

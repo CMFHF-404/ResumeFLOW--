@@ -1,4 +1,4 @@
-import { parseYearMonthValue } from "../views/experienceUtils";
+import { parseYearMonthValue } from "./dateUtils";
 import {
   decodeRichTextEntitiesDeep,
   hasRichTextDecoration,

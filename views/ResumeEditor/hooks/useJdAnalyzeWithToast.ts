@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { AnalyzeStreamEvent, JDAnalysisResult } from '../../../services/aiService';
 import { resolveAutoResumeName } from '../autoNameUtils';
+import { createJDAnalyzeWorkflowCoordinator } from '../jdAnalyzeWorkflow';
 import {
     JD_ANALYSIS_TOAST_DURATION_MS,
     JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
@@ -9,6 +10,7 @@ import {
 
 type JDAnalyzeOutcome =
     | { status: 'success'; result: JDAnalysisResult }
+    | { status: 'empty' }
     | { status: 'no_change' }
     | { status: 'missing_attachment' }
     | { status: 'aborted' }
@@ -16,9 +18,8 @@ type JDAnalyzeOutcome =
 
 type UseJdAnalyzeWithToastParams = {
     handleAnalyze: (options?: { onEvent?: (event: AnalyzeStreamEvent) => void }) => Promise<JDAnalyzeOutcome>;
+    resumeId: string | null;
     isAnalyzing: boolean;
-    hasMissingAttachmentContext: boolean;
-    jdFile: File | null;
     jdText: string;
     resumeName: string;
     pendingPolishAutoAnalyzeSeq: number;
@@ -30,9 +31,8 @@ type UseJdAnalyzeWithToastParams = {
 
 export const useJdAnalyzeWithToast = ({
     handleAnalyze,
+    resumeId,
     isAnalyzing,
-    hasMissingAttachmentContext,
-    jdFile,
     jdText,
     resumeName,
     pendingPolishAutoAnalyzeSeq,
@@ -42,69 +42,117 @@ export const useJdAnalyzeWithToast = ({
     showToastSuccess,
 }: UseJdAnalyzeWithToastParams) => {
     const lastPolishAutoAnalyzeSeqRef = useRef(0);
+    const workflowCoordinator = useMemo(
+        () => createJDAnalyzeWorkflowCoordinator<JDAnalysisResult | null, string>(),
+        [resumeId]
+    );
+    const latestAutoNameContextRef = useRef({
+        applyResumeNameUpdate,
+        canAutoNameResume,
+        resumeId,
+        resumeName,
+    });
+    latestAutoNameContextRef.current = {
+        applyResumeNameUpdate,
+        canAutoNameResume,
+        resumeId,
+        resumeName,
+    };
 
-    const runJdAnalyzeWithToast = useCallback(async () => {
-        if (isAnalyzing) {
-            return null;
+    const applyLatestAutoName = useCallback(async (
+        result: JDAnalysisResult | null,
+        jdTextAtStart: string
+    ) => {
+        if (!result) {
+            return;
         }
-        if (!hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
-            showToastError(JD_ANALYSIS_TOAST_MESSAGES.empty, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
-            return null;
+        const context = latestAutoNameContextRef.current;
+        if (!context.canAutoNameResume(context.resumeName)) {
+            return;
         }
-        try {
-            const result = await handleAnalyze();
-            if (result.status === 'success') {
-                showToastSuccess(JD_ANALYSIS_TOAST_MESSAGES.success, JD_ANALYSIS_TOAST_DURATION_MS);
-                return result.result;
-            }
-            if (result.status === 'aborted') {
+        const autoName = resolveAutoResumeName(result, jdTextAtStart);
+        if (autoName) {
+            await context.applyResumeNameUpdate(autoName, { silent: true });
+        }
+    }, []);
+
+    const runJdAnalyzeWorkflow = useCallback((requestAutoName: boolean) => {
+        const workflowResumeId = resumeId;
+        return workflowCoordinator.run(async (isCurrent) => {
+            if (isAnalyzing) {
                 return null;
             }
-            const isError = result.status === 'error' || result.status === 'missing_attachment';
-            const message = result.status === 'missing_attachment'
-                ? JD_ANALYSIS_TOAST_MESSAGES.missingAttachment
-                : isError
-                    ? JD_ANALYSIS_TOAST_MESSAGES.error
-                    : JD_ANALYSIS_TOAST_MESSAGES.noChange;
-            const duration = isError
-                ? JD_ANALYSIS_TOAST_ERROR_DURATION_MS
-                : JD_ANALYSIS_TOAST_DURATION_MS;
-            if (isError) {
-                showToastError(message, duration);
-            } else {
-                showToastSuccess(message, duration);
+            try {
+                const result = await handleAnalyze();
+                if (
+                    !isCurrent()
+                    || latestAutoNameContextRef.current.resumeId !== workflowResumeId
+                ) {
+                    return null;
+                }
+                if (result.status === 'success') {
+                    showToastSuccess(JD_ANALYSIS_TOAST_MESSAGES.success, JD_ANALYSIS_TOAST_DURATION_MS);
+                    return result.result;
+                }
+                if (result.status === 'aborted') {
+                    return null;
+                }
+                const isError = result.status === 'error'
+                    || result.status === 'missing_attachment'
+                    || result.status === 'empty';
+                const message = result.status === 'empty'
+                    ? JD_ANALYSIS_TOAST_MESSAGES.empty
+                    : result.status === 'missing_attachment'
+                    ? JD_ANALYSIS_TOAST_MESSAGES.missingAttachment
+                    : isError
+                        ? JD_ANALYSIS_TOAST_MESSAGES.error
+                        : JD_ANALYSIS_TOAST_MESSAGES.noChange;
+                const duration = isError
+                    ? JD_ANALYSIS_TOAST_ERROR_DURATION_MS
+                    : JD_ANALYSIS_TOAST_DURATION_MS;
+                if (isError) {
+                    showToastError(message, duration);
+                } else {
+                    showToastSuccess(message, duration);
+                }
+                return null;
+            } catch (error) {
+                if (!isCurrent()) {
+                    return null;
+                }
+                console.error('[ResumeEditor] JD 分析失败:', error);
+                showToastError(JD_ANALYSIS_TOAST_MESSAGES.error, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
+                return null;
             }
-            return null;
-        } catch (error) {
-            console.error('[ResumeEditor] JD 分析失败:', error);
-            showToastError(JD_ANALYSIS_TOAST_MESSAGES.error, JD_ANALYSIS_TOAST_ERROR_DURATION_MS);
-            return null;
-        }
+        }, {
+            requestAutoName,
+            autoNameContext: jdText,
+            applyAutoName: applyLatestAutoName,
+        });
     }, [
+        applyLatestAutoName,
         handleAnalyze,
-        hasMissingAttachmentContext,
         isAnalyzing,
-        jdFile,
         jdText,
+        resumeId,
         showToastError,
         showToastSuccess,
+        workflowCoordinator,
     ]);
 
-    const handleAnalyzeWithAutoName = useCallback(async () => {
-        const result = await runJdAnalyzeWithToast();
-        if (!result) {
-            return null;
-        }
-        if (!canAutoNameResume(resumeName)) {
-            return result;
-        }
-        const autoName = resolveAutoResumeName(result, jdText);
-        if (!autoName) {
-            return result;
-        }
-        await applyResumeNameUpdate(autoName, { silent: true });
-        return result;
-    }, [applyResumeNameUpdate, canAutoNameResume, jdText, resumeName, runJdAnalyzeWithToast]);
+    const runJdAnalyzeWithToast = useCallback(
+        () => runJdAnalyzeWorkflow(false),
+        [runJdAnalyzeWorkflow]
+    );
+
+    const handleAnalyzeWithAutoName = useCallback(
+        () => runJdAnalyzeWorkflow(true),
+        [runJdAnalyzeWorkflow]
+    );
+
+    const invalidateJdAnalyzeWorkflow = useCallback(() => {
+        workflowCoordinator.invalidate();
+    }, [workflowCoordinator]);
 
     useEffect(() => {
         if (pendingPolishAutoAnalyzeSeq <= 0) {
@@ -120,5 +168,6 @@ export const useJdAnalyzeWithToast = ({
     return {
         handleAnalyzeWithAutoName,
         runJdAnalyzeWithToast,
+        invalidateJdAnalyzeWorkflow,
     };
 };

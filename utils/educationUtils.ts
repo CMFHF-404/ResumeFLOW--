@@ -1,5 +1,5 @@
 import type { ExperienceListItem } from '../services/experienceService';
-import { convertDateToISO } from '../views/experienceUtils';
+import { convertDateToISO } from './dateUtils';
 
 export const EDUCATION_DEFAULTS = {
     org: '新学校',

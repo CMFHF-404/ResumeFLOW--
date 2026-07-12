@@ -1,6 +1,10 @@
 import apiClient from './apiClient';
 import type { ExperienceCategory } from './experienceService';
-import type { ExperienceCardData } from '../views/ExperienceCard';
+import type {
+  ExperienceDraftCardData,
+  ExperienceDraftCardDataInput,
+} from '../types/experienceDraft';
+import { projectExperienceDraftCardData } from './experienceDraftSerialization';
 
 export type ExperienceDraftMode = 'simple' | 'expert';
 
@@ -9,7 +13,7 @@ export type ExperienceDraftPayload = {
   clientDraftKey: string;
   mode: ExperienceDraftMode;
   simpleText: string;
-  cardData: ExperienceCardData;
+  cardData: ExperienceDraftCardDataInput;
   targetMasterId?: string | null;
 };
 
@@ -19,7 +23,7 @@ export type ExperienceDraftRecord = {
   client_draft_key: string;
   mode: ExperienceDraftMode;
   simple_text: string;
-  card_data: ExperienceCardData;
+  card_data: Partial<ExperienceDraftCardData>;
   target_master_id?: string | null;
   updated_at: string;
 };
@@ -29,7 +33,7 @@ const toApiPayload = (payload: ExperienceDraftPayload) => ({
   client_draft_key: payload.clientDraftKey,
   mode: payload.mode,
   simple_text: payload.simpleText,
-  card_data: payload.cardData,
+  card_data: projectExperienceDraftCardData(payload.cardData),
   target_master_id: payload.targetMasterId ?? null,
 });
 

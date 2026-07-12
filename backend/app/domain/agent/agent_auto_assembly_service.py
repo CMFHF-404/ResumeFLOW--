@@ -4,7 +4,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .agent_option_helpers import _clamp_score
+from .agent_score_projection import _score_entry_id, _score_entry_score
 
 
 AUTO_ASSEMBLY_MAX_EXPERIENCES = 3
@@ -14,18 +14,6 @@ AUTO_ASSEMBLY_MATCH_THRESHOLD = 80
 def _resume_selection(config: Dict[str, Any]) -> Dict[str, Any]:
     selection = config.get("selection")
     return selection if isinstance(selection, dict) else {}
-
-
-def _score_entry_id(entry: Any) -> str:
-    if not isinstance(entry, dict):
-        return ""
-    return str(entry.get("id") or "").strip()
-
-
-def _score_entry_score(entry: Any) -> int:
-    if not isinstance(entry, dict):
-        return 0
-    return _clamp_score(entry.get("score"))
 
 
 def _positive_experience_ids_by_score(entries: Any) -> List[str]:

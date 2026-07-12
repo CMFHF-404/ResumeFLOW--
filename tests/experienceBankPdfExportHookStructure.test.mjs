@@ -10,7 +10,10 @@ test('ExperienceBank delegates PDF export orchestration to a focused hook', () =
 
   assert.match(page, /from '\.\/ExperienceBank\/useExperienceBankPdfExport'/);
   assert.match(page, /useExperienceBankPdfExport\(\{\s*buildCurrentProfileDraftSnapshot,\s*loading,\s*updateToast,/s);
-  assert.match(page, /onClick=\{handleExportAll\}/);
+  assert.match(page, /const handleExportAllClick = useCallback\(\(\) => \{/);
+  assert.match(page, /if \(!isAuthenticated\) \{\s*void handleSignIn\(\);\s*return;\s*\}/);
+  assert.match(page, /void handleExportAll\(\)/);
+  assert.match(page, /onClick=\{handleExportAllClick\}/);
   assert.match(page, /disabled=\{isExportingPdf \|\| isLoadingProfile\}/);
   assert.doesNotMatch(page, /from '\.\.\/services\/exportService'/);
   assert.doesNotMatch(page, /from '\.\.\/utils\/downloadUrlFile'/);

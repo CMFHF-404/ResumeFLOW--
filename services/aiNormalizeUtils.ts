@@ -1,10 +1,11 @@
-import type { JDCapabilityAnalysis, JDAnalysisResult, JDInterpretation } from './aiService';
+import type {
+    JDCapabilityAnalysis,
+    JDAnalysisResult,
+    JDInterpretation,
+    RawJDAnalysisResult,
+} from '../types/ai';
 
-export type RawJDAnalysisResult = JDAnalysisResult & {
-    extracted_jd_text?: unknown;
-    jd_interpretation?: unknown;
-    capability_analysis?: unknown;
-};
+export type { RawJDAnalysisResult } from '../types/ai';
 
 export const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
     const extractedJdText = typeof result.extractedJdText === 'string'

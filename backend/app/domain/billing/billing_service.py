@@ -15,6 +15,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ...database import AsyncSessionFactory
 from ...models import AITokenPurchaseEvent, AITokenUsageEvent, AITokenWallet
 from ...utils.time_utils import utc_now_aware as utc_now
+from ..ai.usage_bridge import configure_usage_sink
 from .schemas import (
     TokenPurchaseEventRead,
     TokenPurchaseOption,
@@ -514,3 +515,22 @@ async def record_current_usage(payload: Dict[str, Any]) -> None:
             metadata=metadata,
             commit=True,
         )
+
+
+async def _emit_usage_callback_bridge(
+    usage_callback: UsageCallback,
+    payload: Dict[str, Any],
+) -> None:
+    # Resolve through this module at call time so existing monkeypatches remain effective.
+    await emit_usage_callback(usage_callback, payload)
+
+
+async def _record_current_usage_bridge(payload: Dict[str, Any]) -> None:
+    # Resolve through this module at call time so existing monkeypatches remain effective.
+    await record_current_usage(payload)
+
+
+configure_usage_sink(
+    callback_emitter=_emit_usage_callback_bridge,
+    recorder=_record_current_usage_bridge,
+)

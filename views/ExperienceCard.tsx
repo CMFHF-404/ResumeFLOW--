@@ -7,6 +7,10 @@ import MonthPicker from '../components/MonthPicker';
 import RichTextEditor from '../components/RichTextEditor';
 import { parseYearMonthValue, resolveCardMotionClass } from './experienceUtils';
 import { stripRichTextToText } from '../utils/richText';
+import type {
+  ExperienceDraftCardData,
+  ExperienceDraftStarField,
+} from '../types/experienceDraft';
 
 const getThemeClasses = (color: string = 'primary') => {
   if (color === 'primary') {
@@ -23,14 +27,9 @@ const getThemeClasses = (color: string = 'primary') => {
   };
 };
 
-export type StarFieldKey = 's' | 't' | 'a' | 'r';
+export type StarFieldKey = ExperienceDraftStarField;
 
-export type ExperienceCardData = {
-  org: string;
-  title: string;
-  start_date: string;
-  end_date: string;
-  star: Record<StarFieldKey, string>;
+export type ExperienceCardData = ExperienceDraftCardData & {
   editMode: 'simple' | 'expert';
   simpleText: string;
   draftId?: string | null;

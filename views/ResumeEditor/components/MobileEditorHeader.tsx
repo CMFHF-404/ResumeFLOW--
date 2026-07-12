@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
     Check,
     ChevronDown,
@@ -25,9 +25,8 @@ import {
 } from './mobileHeaderUtils';
 import JDAttachmentUploader, {
     JDAttachmentPreview,
-    isAcceptedJDAttachmentFile,
-    prepareJDAttachmentFile,
 } from './JDAttachmentUploader';
+import { isAcceptedJDAttachmentFile } from '../../../utils/jdAttachment';
 import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
 export type MobileEditorHeaderProps = {
@@ -70,7 +69,8 @@ export type MobileEditorHeaderProps = {
     jdText: string;
     onJdTextChange: (value: string) => void;
     jdFile: File | null;
-    onFileChange: (file: File | null) => void;
+    onFileSelect: (file: File) => Promise<void>;
+    onFileClear: () => void;
     hasMissingAttachmentContext: boolean;
     isJDCollapsed: boolean;
     onJDCollapseChange: (collapsed: boolean) => void;
@@ -121,7 +121,8 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     jdText,
     onJdTextChange,
     jdFile,
-    onFileChange,
+    onFileSelect,
+    onFileClear,
     hasMissingAttachmentContext,
     isJDCollapsed,
     onJDCollapseChange,
@@ -171,18 +172,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         }
     }, [showJdInput, isAnalyzing, isGeneratingBossGreeting, isEditingJd]);
 
-    const attachmentSelectionVersionRef = useRef(0);
-
-    const handleAttachmentSelect = useCallback(async (file: File) => {
-        const requestVersion = attachmentSelectionVersionRef.current + 1;
-        attachmentSelectionVersionRef.current = requestVersion;
-        const preparedFile = await prepareJDAttachmentFile(file);
-        if (attachmentSelectionVersionRef.current !== requestVersion || !preparedFile) {
-            return;
-        }
-        onFileChange(preparedFile);
-    }, [onFileChange]);
-
     const handleTextareaPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
         if (isAnalyzing) {
             return;
@@ -195,8 +184,8 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
             return;
         }
         event.preventDefault();
-        void handleAttachmentSelect(pastedFile);
-    }, [handleAttachmentSelect, isAnalyzing]);
+        void onFileSelect(pastedFile);
+    }, [isAnalyzing, onFileSelect]);
 
     const hasSummary = Boolean(analysisResult?.summary?.trim());
     const summaryText = useMemo(() => {
@@ -457,7 +446,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                         <div className={`absolute bottom-3 right-3 flex items-center gap-2 ${jdAnalysisMotion.idleControlsMotionClass}`}>
                                             <JDAttachmentUploader
                                                 file={jdFile}
-                                                onFileChange={onFileChange}
+                                                onFileSelect={onFileSelect}
                                                 disabled={isAnalyzing}
                                             />
                                             <button
@@ -477,7 +466,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 {jdFile && (
                                     <JDAttachmentPreview
                                         file={jdFile}
-                                        onClear={() => onFileChange(null)}
+                                        onClear={onFileClear}
                                         disabled={isAnalyzing}
                                     />
                                 )}

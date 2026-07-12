@@ -23,9 +23,13 @@ from ...constants import MAX_LIMIT
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ..ai.ai_service import call_llm_json
 from ..ai.llm_transport import (
-    AI_ROUTE_PROFILE_QWEN,
     LANE_RESUME_PARSE,
     _stream_gemini_json_response as _stream_thinking_json_response,
+)
+from ..ai.streaming_policy import (
+    has_qwen_thinking_provider,
+    has_thinking_stream_provider,
+    resolve_thinking_model_name,
 )
 from .chunking import (
     _chunk_paragraphs,
@@ -293,23 +297,21 @@ def _prompt_signature() -> str:
 
 
 def _has_qwen_thinking_provider() -> bool:
-    ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
-    route_profile = str(getattr(settings, "ai_route_profile", "") or "").strip().lower()
-    return (
-        route_profile == AI_ROUTE_PROFILE_QWEN
-        and bool(getattr(settings, "ai_api_key", None))
-        and ai_model.startswith("qwen")
-    )
+    return has_qwen_thinking_provider(settings)
 
 
 def _has_thinking_stream_provider() -> bool:
-    return _has_qwen_thinking_provider() or bool(getattr(settings, "gemini_api_key", None))
+    return has_thinking_stream_provider(
+        settings,
+        qwen_available=_has_qwen_thinking_provider(),
+    )
 
 
 def _resolve_thinking_model_name() -> str:
-    if _has_qwen_thinking_provider():
-        return str(getattr(settings, "ai_model", "") or "")
-    return str(getattr(settings, "gemini_model", "") or getattr(settings, "ai_model", ""))
+    return resolve_thinking_model_name(
+        settings,
+        qwen_available=_has_qwen_thinking_provider(),
+    )
 
 
 def _resolve_standard_parse_model_name() -> str:

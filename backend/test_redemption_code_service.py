@@ -502,8 +502,8 @@ class RedemptionSchemaTests(unittest.TestCase):
             schema_source = handle.read()
 
         self.assertIn("async def ensure_redemption_code_tables", source)
-        self.assertRegex(source, r"ensure_dev_schema\(\)[\s\S]*await ensure_redemption_code_tables\(\)")
-        self.assertRegex(main_source, r"lifespan\([\s\S]*await ensure_redemption_code_tables\(\)")
+        self.assertRegex(source, r"ensure_runtime_schema\(\)[\s\S]*await ensure_redemption_code_tables\(\)")
+        self.assertRegex(main_source, r"lifespan\([\s\S]*await ensure_runtime_schema\(\)")
         self.assertIn("CREATE TABLE IF NOT EXISTS redemption_packages", schema_source)
         self.assertIn("CREATE TABLE IF NOT EXISTS redemption_batches", schema_source)
         self.assertIn("CREATE TABLE IF NOT EXISTS redemption_codes", schema_source)

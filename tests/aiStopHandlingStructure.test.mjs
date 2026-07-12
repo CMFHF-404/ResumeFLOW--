@@ -148,6 +148,7 @@ test('JD analysis stop action shows an aborted toast before restoring controls',
   const body = bodyOf(source, 'handleStopAnalysisWithToast');
 
   assert.match(body, /handleStopAnalysis\(\);/);
+  assert.match(body, /invalidateJdAnalyzeWorkflow\(\);/);
   assert.match(body, /showToastInfo\('分析中止',\s*2000\);/);
   assert.match(source, /onStopAnalyze: handleStopAnalysisWithToast/);
   assert.match(source, /onStopAnalyze=\{handleStopAnalysisWithToast\}/);
@@ -155,7 +156,7 @@ test('JD analysis stop action shows an aborted toast before restoring controls',
 
 test('JD analysis aborted outcome does not show the no-change toast', () => {
   const source = readSource('views/ResumeEditor/hooks/useJdAnalyzeWithToast.ts');
-  const body = bodyOf(source, 'runJdAnalyzeWithToast');
+  const body = bodyOf(source, 'runJdAnalyzeWorkflow');
   const abortIndex = body.indexOf("result.status === 'aborted'");
   const noChangeIndex = body.indexOf('JD_ANALYSIS_TOAST_MESSAGES.noChange');
 
@@ -221,6 +222,29 @@ test('JD analysis stop invalidates stale runs before they can clear a newer run'
   assert.match(runBody, /const setIsAnalyzingForRun = \(value: boolean\) => \{/);
   assert.match(runBody, /if \(activeAnalysisRunIdRef\.current !== runId\) \{/);
   assert.match(runBody, /setIsAnalyzing: setIsAnalyzingForRun/);
+});
+
+test('JD analysis invalidates active work when the selected resume changes', () => {
+  const source = readSource('hooks/useJDAnalysis.ts');
+
+  assert.match(source, /const activeResumeIdRef = useRef\(resumeId\);/);
+  assert.match(source, /previousResumeIdRef\.current === resumeId/);
+  assert.match(source, /activeAnalysisRunIdRef\.current = 0;/);
+  assert.match(source, /analyzeRequestRef\.current = null;/);
+  assert.match(source, /abortControllerRef\.current\.abort\(\);/);
+  assert.match(
+    source,
+    /shouldContinue: \(\) => \([\s\S]*activeResumeIdRef\.current === resumeId[\s\S]*\)/,
+  );
+});
+
+test('JD analysis stop releases both request and UI workflow locks', () => {
+  const analysisSource = readSource('hooks/useJDAnalysis.ts');
+  const stopBody = bodyOf(analysisSource, 'handleStopAnalysis');
+  const workflowSource = readSource('views/ResumeEditor/jdAnalyzeWorkflow.ts');
+
+  assert.match(stopBody, /analyzeRequestRef\.current = null;/);
+  assert.match(workflowSource, /invalidate\(\) \{[\s\S]*inFlight = null;/);
 });
 
 test('experience internal polish toolbar starts collapsed with mobile full-width comment', () => {

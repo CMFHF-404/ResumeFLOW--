@@ -7,7 +7,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from ...constants import DEFAULT_LIMIT, MAX_LIMIT
 from ...database import get_session
 from ...dependencies import get_current_user
-from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
+from ...models import ExperienceCategory
 from .experience_service import (
     NotFoundError,
     archive_experience,
@@ -21,41 +21,13 @@ from .schemas import (
     ExperienceDetail,
     ExperienceListItem,
     ExperienceUpdate,
-    ExperienceVersionRead,
-    MasterExperienceRead,
+)
+from .serializers import (
+    experience_version_to_read as _version_to_read,
+    master_experience_to_read as _master_to_read,
 )
 
 router = APIRouter(prefix="/experiences", tags=["experiences"])
-
-
-def _master_to_read(master: MasterExperience) -> MasterExperienceRead:
-    return MasterExperienceRead(
-        id=str(master.id),
-        category=master.category,
-        latest_version_id=str(master.latest_version_id) if master.latest_version_id else None,
-        is_archived=master.is_archived,
-        created_at=master.created_at,
-        updated_at=master.updated_at,
-    )
-
-
-def _version_to_read(version: ExperienceVersion) -> ExperienceVersionRead:
-    return ExperienceVersionRead(
-        id=str(version.id),
-        master_experience_id=str(version.master_experience_id),
-        version=version.version,
-        title=version.title,
-        org=version.org,
-        location=version.location,
-        start_date=version.start_date,
-        end_date=version.end_date,
-        is_current=version.is_current,
-        summary=version.summary,
-        highlights=version.highlights,
-        tags=version.tags,
-        star=version.star,
-        created_at=version.created_at,
-    )
 
 
 @router.get("", response_model=List[ExperienceListItem])

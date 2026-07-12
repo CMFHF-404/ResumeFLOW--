@@ -1351,6 +1351,7 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
     def test_ai_assistant_skill_group_drafts_merge_existing_tags(self) -> None:
         service_source = (REPO_ROOT / "services" / "aiService.ts").read_text(encoding="utf-8")
+        contract_source = (REPO_ROOT / "types" / "ai.ts").read_text(encoding="utf-8")
         session_source = (REPO_ROOT / "views" / "AIAssistant" / "sessionUtils.ts").read_text(encoding="utf-8")
         draft_card_source = (REPO_ROOT / "views" / "AIAssistant" / "AssistantDraftCardView.tsx").read_text(encoding="utf-8")
         editor_source = (REPO_ROOT / "views" / "ResumeEditor" / "index.tsx").read_text(encoding="utf-8")
@@ -1363,8 +1364,9 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         prompt_source = (REPO_ROOT / "backend" / "app" / "domain" / "ai" / "prompts.py").read_text(encoding="utf-8")
 
-        self.assertIn("targetUserSkillId?: string | null", service_source)
-        self.assertNotIn("proficiency?: number | null;", service_source)
+        self.assertIn("AssistantSkillDraftGroup", service_source)
+        self.assertIn("targetUserSkillId?: string | null", contract_source)
+        self.assertNotIn("proficiency?: number | null;", contract_source)
         self.assertIn("item.card.type === 'skill_group'", session_source)
         self.assertIn("skill_group:", session_source)
         self.assertIn("将合并更新技能组", draft_card_source)

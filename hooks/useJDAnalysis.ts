@@ -9,7 +9,7 @@ import {
 } from "react";
 import {
   aiService,
-  JDAnalysisResult,
+  type JDAnalysisResult,
 } from "../services/aiService";
 import { devLog } from "../services/devLogger";
 import {
@@ -25,6 +25,7 @@ import {
   sortExperienceItemsForMatch,
 } from "../utils/resumeHelpers";
 import { resolveThoughtDisplayEvent } from "../utils/aiThought";
+import { createJDAttachmentSelectionController } from "../utils/jdAttachment";
 import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../views/ResumeEditor/constants";
 import type {
   JDAnalysisContext,
@@ -100,7 +101,8 @@ type UseJDAnalysisResult = {
   setJdText: Dispatch<SetStateAction<string>>;
   /** 当前已选的 JD 附件（图像或 PDF/DOCX），null 表示文本输入模式 */
   jdFile: File | null;
-  setJdFile: Dispatch<SetStateAction<File | null>>;
+  selectJdFile: (file: File) => Promise<void>;
+  clearJdFile: () => void;
   analysisResult: JDAnalysisResult | null;
   isAnalyzing: boolean;
   isJDCollapsed: boolean;
@@ -153,6 +155,10 @@ export const useJDAnalysis = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const analysisRunIdRef = useRef(0);
   const activeAnalysisRunIdRef = useRef(0);
+  const activeResumeIdRef = useRef(resumeId);
+  const previousResumeIdRef = useRef(resumeId);
+  const analyzeRequestRef = useRef<Promise<JDAnalyzeOutcome> | null>(null);
+  activeResumeIdRef.current = resumeId;
   const [isJDCollapsed, setIsJDCollapsed] = useState(false);
   const [analysisContext, setAnalysisContext] =
     useState<JDAnalysisContext | null>(null);
@@ -164,6 +170,20 @@ export const useJDAnalysis = ({
   const certificationsRef = useRef(certifications);
   const skillGroupsRef = useRef(skillGroups);
   const jdTextRef = useRef(jdText);
+  const commitJdFile = useCallback((file: File | null) => {
+    jdFileRef.current = file;
+    setJdFile(file);
+  }, []);
+  const jdAttachmentSelection = useMemo(
+    () => createJDAttachmentSelectionController(commitJdFile),
+    [commitJdFile]
+  );
+  const {
+    selectFile: selectJdFile,
+    clearFile: clearJdFile,
+    invalidatePending: invalidatePendingJdFileSelection,
+    waitForPendingSelection: waitForPendingJdFileSelection,
+  } = jdAttachmentSelection;
   const {
     staleExperienceIds,
     resetStaleExperienceIds,
@@ -323,7 +343,7 @@ export const useJDAnalysis = ({
         setAttachmentExtractedText(null);
       }
       if (options?.resetJdFile) {
-        setJdFile(null);
+        clearJdFile();
         setRestoredAttachmentContext(null);
         setAttachmentExtractedText(null);
       }
@@ -338,6 +358,7 @@ export const useJDAnalysis = ({
       applyExperienceMatchTrends,
       applySkillMatchScores,
       applySkillMatchTrends,
+      clearJdFile,
       resetStaleExperienceIds,
       resumeId,
     ]
@@ -362,13 +383,30 @@ export const useJDAnalysis = ({
   ]);
 
   useEffect(() => {
+    if (previousResumeIdRef.current === resumeId) {
+      return;
+    }
+    previousResumeIdRef.current = resumeId;
+    invalidatePendingJdFileSelection();
+    activeAnalysisRunIdRef.current = 0;
+    analyzeRequestRef.current = null;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsAnalyzing(false);
+    setThinkingText("");
+  }, [invalidatePendingJdFileSelection, resumeId]);
+
+  useEffect(() => {
     return () => {
+      invalidatePendingJdFileSelection();
       activeAnalysisRunIdRef.current = 0;
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, []);
+  }, [invalidatePendingJdFileSelection]);
 
   useEffect(() => {
     if (!resumeId) {
@@ -656,14 +694,14 @@ export const useJDAnalysis = ({
 
   const promoteAttachmentToText = useCallback((nextJdText: string) => {
     jdTextRef.current = nextJdText;
-    jdFileRef.current = null;
     setJdText(nextJdText);
-    setJdFile(null);
+    clearJdFile();
     setRestoredAttachmentContext(null);
-  }, []);
+  }, [clearJdFile]);
 
   const handleStopAnalysis = useCallback(() => {
     activeAnalysisRunIdRef.current = 0;
+    analyzeRequestRef.current = null;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -744,6 +782,10 @@ export const useJDAnalysis = ({
           options?.onEvent?.(event);
         },
         signal: controller.signal,
+        shouldContinue: () => (
+          activeAnalysisRunIdRef.current === runId
+          && activeResumeIdRef.current === resumeId
+        ),
       });
       return outcome;
     },
@@ -762,36 +804,56 @@ export const useJDAnalysis = ({
     ]
   );
 
-  const handleAnalyze = useCallback(async (options?: HandleAnalyzeOptions): Promise<JDAnalyzeOutcome> => {
-    const snapshot = buildAnalyzeSnapshot();
-    const plan = resolveJDAnalyzePlan({
-      analysisResult,
-      analysisContext,
-      snapshotItemSignatures: snapshot.itemSignatures,
-      snapshotJdInputSignature: snapshot.jdInputSignature,
-      pendingDiff: pendingDiffRef.current,
-      needsReanalysis,
-      hasMissingAttachmentContext: Boolean(restoredAttachmentContext && !snapshot.jdFile),
-    });
+  const handleAnalyze = useCallback((options?: HandleAnalyzeOptions): Promise<JDAnalyzeOutcome> => {
+    if (analyzeRequestRef.current) {
+      return analyzeRequestRef.current;
+    }
+    const request = (async (): Promise<JDAnalyzeOutcome> => {
+      const hasPreparedSelection = await waitForPendingJdFileSelection();
+      if (!hasPreparedSelection) {
+        return { status: "aborted" };
+      }
+      const snapshot = buildAnalyzeSnapshot();
+      if (!restoredAttachmentContext && !snapshot.jdFile && !snapshot.jdText.trim()) {
+        return { status: "empty" };
+      }
+      const plan = resolveJDAnalyzePlan({
+        analysisResult,
+        analysisContext,
+        snapshotItemSignatures: snapshot.itemSignatures,
+        snapshotJdInputSignature: snapshot.jdInputSignature,
+        pendingDiff: pendingDiffRef.current,
+        needsReanalysis,
+        hasMissingAttachmentContext: Boolean(restoredAttachmentContext && !snapshot.jdFile),
+      });
 
-    if (plan.action === "skip") {
-      if (plan.shouldClearNeedsReanalysis) {
-        setNeedsReanalysis(false);
+      if (plan.action === "skip") {
+        if (plan.shouldClearNeedsReanalysis) {
+          setNeedsReanalysis(false);
+        }
+        if (plan.shouldClearPendingDiff) {
+          pendingDiffRef.current = buildEmptyDiff();
+        }
+        return { status: "no_change" };
       }
-      if (plan.shouldClearPendingDiff) {
-        pendingDiffRef.current = buildEmptyDiff();
+      if (plan.action === "missing_attachment") {
+        return { status: "missing_attachment" };
       }
-      return { status: "no_change" };
-    }
-    if (plan.action === "missing_attachment") {
-      return { status: "missing_attachment" };
-    }
-    return runAnalyze({
-      mode: plan.mode,
-      diff: plan.diff,
-      onProgress: options?.onProgress,
-      onEvent: options?.onEvent,
-    });
+      return runAnalyze({
+        mode: plan.mode,
+        diff: plan.diff,
+        onProgress: options?.onProgress,
+        onEvent: options?.onEvent,
+      });
+    })();
+    analyzeRequestRef.current = request;
+    const clearAnalyzeRequest = () => {
+      if (analyzeRequestRef.current === request) {
+        analyzeRequestRef.current = null;
+      }
+    };
+    void request.then(clearAnalyzeRequest, clearAnalyzeRequest);
+    return request;
   }, [
     analysisContext,
     analysisResult,
@@ -799,13 +861,15 @@ export const useJDAnalysis = ({
     needsReanalysis,
     restoredAttachmentContext,
     runAnalyze,
+    waitForPendingJdFileSelection,
   ]);
 
   return {
     jdText,
     setJdText,
     jdFile,
-    setJdFile,
+    selectJdFile,
+    clearJdFile,
     analysisResult,
     isAnalyzing,
     isJDCollapsed,

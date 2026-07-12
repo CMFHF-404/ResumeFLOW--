@@ -556,7 +556,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         jdText,
         setJdText,
         jdFile,
-        setJdFile,
+        selectJdFile,
+        clearJdFile,
         analysisResult,
         isAnalyzing,
         isJDCollapsed,
@@ -862,11 +863,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const {
         handleAnalyzeWithAutoName,
         runJdAnalyzeWithToast,
+        invalidateJdAnalyzeWorkflow,
     } = useJdAnalyzeWithToast({
         handleAnalyze,
+        resumeId,
         isAnalyzing,
-        hasMissingAttachmentContext,
-        jdFile,
         jdText,
         resumeName,
         pendingPolishAutoAnalyzeSeq,
@@ -876,9 +877,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastSuccess,
     });
     const handleStopAnalysisWithToast = useCallback(() => {
+        invalidateJdAnalyzeWorkflow();
         handleStopAnalysis();
         showToastInfo('分析中止', 2000);
-    }, [handleStopAnalysis, showToastInfo]);
+    }, [handleStopAnalysis, invalidateJdAnalyzeWorkflow, showToastInfo]);
     const {
         beginProfileEdit,
         cancelProfileEdit,
@@ -1623,7 +1625,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             onToggleCollapse: handleToggleJdCollapse,
             onJdTextChange: handleJdTextChange,
             jdFile,
-            onFileChange: setJdFile,
+            onFileSelect: selectJdFile,
+            onFileClear: clearJdFile,
             hasMissingAttachmentContext,
             bossGreeting,
             isBossGreetingVisible,
@@ -1917,7 +1920,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     jdText={jdText}
                     onJdTextChange={handleJdTextChange}
                     jdFile={jdFile}
-                    onFileChange={setJdFile}
+                    onFileSelect={selectJdFile}
+                    onFileClear={clearJdFile}
                     hasMissingAttachmentContext={hasMissingAttachmentContext}
                     isJDCollapsed={isJDCollapsed}
                     onJDCollapseChange={setIsJDCollapsed}
