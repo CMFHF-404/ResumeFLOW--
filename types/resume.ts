@@ -1,8 +1,8 @@
 import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { JDAnalysisItemSignatures, MatchTrend } from "./analysis";
+import type { AssistantDraftCard, JDAnalysisResult, PolishMode } from "./ai";
 import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/resumeTemplates';
 import type { ResumeDetail } from "../services/resumeService";
-import type { AssistantDraftCard, JDAnalysisResult, PolishMode } from "../services/aiService";
 
 export type StarFields = {
   s: string;

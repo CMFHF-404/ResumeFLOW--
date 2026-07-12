@@ -9,6 +9,7 @@ import {
   normalizeEducationStar,
   type ResumeAISnapshot,
 } from './resumeHelpers';
+import { canonicalStringify } from './canonicalStringify';
 
 const normalizeResumeConfig = (config: unknown): ResumeEditorConfig => {
   if (!config || typeof config !== 'object') {
@@ -83,33 +84,6 @@ const resolveSelectedIds = (value: unknown) => {
       .map((item) => String(item).trim())
       .filter(Boolean),
   );
-};
-
-const canonicalStringify = (value: unknown): string => {
-  const stringifyValue = (candidate: unknown): string | undefined => {
-    if (candidate === undefined) {
-      return undefined;
-    }
-    if (candidate === null || typeof candidate !== 'object') {
-      return JSON.stringify(candidate);
-    }
-    if (Array.isArray(candidate)) {
-      const items = candidate.map((item) => stringifyValue(item) ?? 'null');
-      return `[${items.join(',')}]`;
-    }
-    const record = candidate as Record<string, unknown>;
-    const keys = Object.keys(record).sort();
-    const entries: string[] = [];
-    keys.forEach((key) => {
-      const serialized = stringifyValue(record[key]);
-      if (serialized !== undefined) {
-        entries.push(`${JSON.stringify(key)}:${serialized}`);
-      }
-    });
-    return `{${entries.join(',')}}`;
-  };
-
-  return stringifyValue(value) ?? 'null';
 };
 
 const sortSnapshotEntriesById = <T extends { id: string }>(items: T[]) => (

@@ -108,12 +108,12 @@ from .star_polish_utils import (
     _resolve_star_prompt,
 )
 from .llm_transport import (
-    AI_ROUTE_PROFILE_QWEN,
     _build_gemini_generation_config,
     _call_llm,
     _emit_thought,
     _stream_gemini_json_response,
 )
+from .streaming_policy import has_thinking_stream_provider
 from .assistant_link_preservation import preserve_assistant_result_star_links
 from .jd_analysis_service import (
     analyze_jd,
@@ -146,14 +146,7 @@ _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT: Dict[str, asyncio.Task[Dict[str, str]]] = {}
 
 
 def _has_thinking_stream_provider() -> bool:
-    ai_model = str(getattr(settings, "ai_model", "") or "").strip().lower()
-    route_profile = str(getattr(settings, "ai_route_profile", "") or "").strip().lower()
-    has_qwen = (
-        route_profile == AI_ROUTE_PROFILE_QWEN
-        and bool(getattr(settings, "ai_api_key", None))
-        and ai_model.startswith("qwen")
-    )
-    return has_qwen or bool(getattr(settings, "gemini_api_key", None))
+    return has_thinking_stream_provider(settings)
 
 
 async def call_llm_json(

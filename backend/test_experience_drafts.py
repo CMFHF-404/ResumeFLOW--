@@ -192,5 +192,5 @@ class ExperienceDraftSchemaTests(unittest.TestCase):
 
         self.assertRegex(
             source,
-            r"async def ensure_dev_schema\(\)[\s\S]*await ensure_experience_version_tags_column\(\)[\s\S]*await ensure_experience_drafts_table\(\)",
+            r"async def ensure_runtime_schema\(\)[\s\S]*await ensure_experience_version_tags_column\(\)[\s\S]*await ensure_experience_drafts_table\(\)",
         )

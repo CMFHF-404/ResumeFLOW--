@@ -10,8 +10,17 @@ from fastapi import HTTPException
 from starlette.status import HTTP_503_SERVICE_UNAVAILABLE, HTTP_504_GATEWAY_TIMEOUT
 
 from ...config import load_settings
-from ..billing import billing_service
 from .response_normalizers import _parse_json_content, _parse_json_content_candidates
+from .sse_events import iter_sse_json_payloads
+from .streaming_policy import (
+    AI_ROUTE_PROFILE_GEMINI,
+    AI_ROUTE_PROFILE_HYBRID,
+    AI_ROUTE_PROFILE_QWEN,
+    has_qwen_thinking_provider,
+    is_qwen_model as _is_qwen_model,
+    resolve_route_profile,
+)
+from .usage_bridge import UsageCallback, emit_usage_payload
 
 settings = load_settings()
 logger = logging.getLogger(__name__)
@@ -26,10 +35,6 @@ QWEN_THOUGHT_SUMMARY_MAX_LENGTH = 80
 QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH = 32
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 AssistantTextCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
-UsageCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
-AI_ROUTE_PROFILE_HYBRID = "hybrid_gemini_aifast"
-AI_ROUTE_PROFILE_GEMINI = "gemini_primary"
-AI_ROUTE_PROFILE_QWEN = "qwen_primary"
 LANE_DEFAULT = "default"
 LANE_TOOL_CALL = "tool_call"
 LANE_THINKING = "thinking"
@@ -85,15 +90,8 @@ def _extract_content(response_data: Dict[str, Any]) -> str:
     return content
 
 
-def _is_qwen_model(model: Optional[str]) -> bool:
-    return (model or "").strip().lower().startswith("qwen")
-
-
 def _route_profile() -> str:
-    return str(
-        getattr(settings, "ai_route_profile", AI_ROUTE_PROFILE_HYBRID)
-        or AI_ROUTE_PROFILE_HYBRID
-    ).strip().lower()
+    return resolve_route_profile(settings)
 
 
 def _has_gemini_provider() -> bool:
@@ -176,10 +174,10 @@ def _resolve_ai_route(
 
 
 def _should_use_qwen_thinking() -> bool:
-    return _route_profile() == AI_ROUTE_PROFILE_QWEN and bool(
-        getattr(settings, "ai_api_key", None)
-    ) and _is_qwen_model(
-        getattr(settings, "ai_model", None)
+    return has_qwen_thinking_provider(
+        settings,
+        route_profile=_route_profile(),
+        qwen_model_available=_is_qwen_model(getattr(settings, "ai_model", None)),
     )
 
 
@@ -789,8 +787,7 @@ async def _emit_usage_payload(
     usage_callback: UsageCallback,
     payload: Dict[str, Any],
 ) -> None:
-    await billing_service.emit_usage_callback(usage_callback, payload)
-    await billing_service.record_current_usage(payload)
+    await emit_usage_payload(usage_callback, payload)
 
 
 async def _emit_usage_from_response(
@@ -852,43 +849,15 @@ async def _emit_failed_usage(
 
 
 async def _iter_sse_json_payloads(response: httpx.Response):
-    def build_payload(lines: List[str]) -> str:
-        data_lines: List[str] = []
-        for item in lines:
-            if not item.startswith("data:"):
-                continue
-            value = item[5:]
-            if value.startswith(" "):
-                value = value[1:]
-            data_lines.append(value)
-        return "\n".join(data_lines)
-
-    event_lines: List[str] = []
-    async for raw_line in response.aiter_lines():
-        line = raw_line.rstrip("\r")
-        if not line.strip():
-            if not event_lines:
-                continue
-            payload = build_payload(event_lines)
-            event_lines = []
-            if not payload:
-                continue
-            if payload == "[DONE]":
-                break
-            try:
-                yield json.loads(payload)
-            except json.JSONDecodeError:
-                logger.warning("[AI Stream] invalid SSE payload: %s", payload[:500])
-            continue
-        event_lines.append(line)
-
-    if event_lines:
-        payload = build_payload(event_lines)
-        if payload and payload != "[DONE]":
-            try:
-                yield json.loads(payload)
-            except json.JSONDecodeError:
-                logger.warning("[AI Stream] invalid Gemini SSE trailing payload: %s", payload[:500])
+    async for payload in iter_sse_json_payloads(
+        response,
+        logger=logger,
+        invalid_payload_message="[AI Stream] invalid SSE payload: %s",
+        invalid_trailing_payload_message=(
+            "[AI Stream] invalid Gemini SSE trailing payload: %s"
+        ),
+    ):
+        yield payload
 
 
 def _supports_gemini_response_mime_type(model: Optional[str] = None) -> bool:

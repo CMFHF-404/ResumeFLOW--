@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ...models import ExperienceCategory
@@ -20,3 +22,11 @@ def _date_to_str(value: Any) -> str:
     if hasattr(value, "strftime"):
         return value.strftime("%Y-%m")
     return str(value)
+
+
+def _hash_agent_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _now_aware() -> datetime:
+    return datetime.now(timezone.utc)

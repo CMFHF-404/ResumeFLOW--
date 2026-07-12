@@ -31,6 +31,7 @@ import {
 
 export type JDAnalyzeOutcome =
   | { status: "success"; result: JDAnalysisResult }
+  | { status: "empty" }
   | { status: "no_change" }
   | { status: "missing_attachment" }
   | { status: "aborted" }
@@ -76,6 +77,7 @@ export type JDAnalysisExecutionParams = {
   now?: () => number;
   logError?: (...args: unknown[]) => void;
   signal?: AbortSignal;
+  shouldContinue?: () => boolean;
 };
 
 const isAbortError = (error: unknown) => (
@@ -111,7 +113,11 @@ export const runJDAnalysisExecution = async ({
   now = Date.now,
   logError = console.error,
   signal,
+  shouldContinue = () => true,
 }: JDAnalysisExecutionParams): Promise<JDAnalyzeOutcome> => {
+  if (!shouldContinue()) {
+    return { status: "aborted" };
+  }
   if (mode === "partial" && !hasDiff(diff)) {
     return { status: "no_change" };
   }
@@ -138,6 +144,9 @@ export const runJDAnalysisExecution = async ({
       service,
       signal,
     });
+    if (!shouldContinue()) {
+      return { status: "aborted" };
+    }
     const latestSnapshot = buildAnalyzeSnapshot();
     const changedDuringAnalyze = recordPostAnalyzeDiff(
       startSnapshot.itemSignatures,

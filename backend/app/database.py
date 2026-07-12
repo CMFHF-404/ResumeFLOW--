@@ -648,9 +648,8 @@ async def ensure_feedback_contact_type_column() -> None:
         )
 
 
-async def ensure_dev_schema() -> None:
-    """开发环境下的结构自检与补齐。"""
-    await init_db()
+async def ensure_runtime_schema() -> None:
+    """补齐应用运行所需的数据库结构，供所有启动入口共用。"""
     await ensure_experience_version_tags_column()
     await ensure_experience_drafts_table()
     await ensure_export_render_snapshots_table()
@@ -660,3 +659,9 @@ async def ensure_dev_schema() -> None:
     await ensure_redemption_code_tables()
     await ensure_feedback_contact_type_column()
     await ensure_feedback_images_column()
+
+
+async def ensure_dev_schema() -> None:
+    """开发环境下初始化模型表，并补齐应用运行所需结构。"""
+    await init_db()
+    await ensure_runtime_schema()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ..export.schemas import ResumePdfRenderSnapshot
-from .agent_pdf_helpers import (
+from .agent_pdf_layout_service import (
     SMART_PAGE_ITEM_SPACING_DEFAULT,
     _apply_snapshot_layout,
     _expand_snapshot_layout_candidates,

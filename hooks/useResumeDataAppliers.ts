@@ -20,7 +20,7 @@ import type {
     ResumeExperienceView,
     SkillGroupView,
 } from '../types/resume';
-import { parseYearMonthValue } from '../views/experienceUtils';
+import { parseYearMonthValue } from '../utils/dateUtils';
 
 type ExperienceBuilder = (item: ExperienceListItem, resumeItem?: ResumeExperienceItem) => ResumeExperienceView;
 type EducationBuilder = (item: ExperienceListItem) => EducationView;

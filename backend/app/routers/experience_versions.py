@@ -4,7 +4,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 
 from ..database import get_session
 from ..dependencies import get_current_user
-from ..serializers import experience_version_to_read
+from ..domain.experience.serializers import experience_version_to_read
 from ..services import experience_service
 from ..schemas import ExperienceVersionRead
 

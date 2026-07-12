@@ -2,7 +2,7 @@ import React from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import MonthPicker from './MonthPicker';
 import type { EduCardData } from '../utils/educationUtils';
-import { resolveCardMotionClass } from '../views/experienceUtils';
+import { resolveCardMotionClass } from './cardMotion';
 
 type EducationCardProps = {
     eduId: string;

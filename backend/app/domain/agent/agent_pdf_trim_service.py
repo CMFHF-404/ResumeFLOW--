@@ -3,18 +3,18 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..export.schemas import ResumePdfRenderSnapshot, SkillGroupViewSnapshot
+from .agent_pdf_snapshot_projection import _snapshot_skill_ids
+from .agent_score_projection import _score_entry_id, _score_entry_score
 
 
 def _analysis_score_map(entries: Any) -> Dict[str, int]:
-    from . import agent_pdf_helpers
-
     if not isinstance(entries, list):
         return {}
     result: Dict[str, int] = {}
     for entry in entries:
-        item_id = agent_pdf_helpers._score_entry_id(entry)
+        item_id = _score_entry_id(entry)
         if item_id:
-            result[item_id] = agent_pdf_helpers._score_entry_score(entry)
+            result[item_id] = _score_entry_score(entry)
     return result
 
 
@@ -33,14 +33,12 @@ def _build_snapshot_trim_plan(
     snapshot: ResumePdfRenderSnapshot,
     analysis_result: Optional[Dict[str, Any]],
 ) -> List[Tuple[str, str]]:
-    from . import agent_pdf_helpers
-
     analysis = analysis_result if isinstance(analysis_result, dict) else {}
     plan: List[Tuple[str, str]] = []
     skill_score_map = _analysis_score_map(analysis.get("skillMatches"))
     cert_score_map = _analysis_score_map(analysis.get("certificationMatches"))
     experience_score_map = _analysis_score_map(analysis.get("experienceMatches"))
-    skill_ids = agent_pdf_helpers._snapshot_skill_ids(snapshot)
+    skill_ids = _snapshot_skill_ids(snapshot)
     cert_ids = [item.id for item in snapshot.sortedCertifications if item.id]
     experience_ids = _snapshot_experience_ids(snapshot)
 
