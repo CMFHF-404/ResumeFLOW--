@@ -271,6 +271,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         layoutOrders,
         bossGreetingSnapshot,
     } = useResumeEditorCoreState();
+    const previousLayoutDensityRef = useRef(density);
     const isCacheOwnerMatched = Boolean(
         cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
     );
@@ -314,6 +315,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [density]);
     useEffect(() => {
+        const hasDensityChanged = previousLayoutDensityRef.current !== density;
+        if (!hasDensityChanged) {
+            return;
+        }
+        previousLayoutDensityRef.current = density;
         if (smartPageAdjustingRef.current || isSmartPageApplied) {
             return;
         }
