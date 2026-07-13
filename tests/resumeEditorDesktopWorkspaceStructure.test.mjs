@@ -35,7 +35,7 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(workspace, /layoutAdjustProps=\{layoutAdjustProps\}/);
   assert.match(workspace, /previewProps=\{previewProps\}/);
   assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'md:w-\[430px\] xl:w-\[460px\]'/);
-  assert.match(workspace, /: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
+  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'\s*\n\s*\? 'md:w-\[384px\] xl:w-\[384px\]'\s*\n\s*: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
   assert.match(workspace, /const ASSISTANT_SIDEBAR_WIDTH = '390px'/);
   assert.match(workspace, /data-rf-assistant-sidebar/);
   assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l shadow-\[/);
@@ -59,19 +59,12 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   const templateSelectionPanel = factorySidebar.match(
     /const TemplateSelectionPanel[\s\S]*?const LayoutPanel/
   )?.[0] ?? '';
-  const templatePreviewBlock = templateSelectionPanel.match(
-    /<div className="relative h-40 overflow-hidden rounded-lg">[\s\S]*?<\/div>\s*<\/button>/
-  )?.[0] ?? '';
-  assert.match(templatePreviewBlock, /isSelected \? \(/);
-  assert.match(templatePreviewBlock, /className="absolute bottom-2 right-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-sm"/);
-  assert.match(templatePreviewBlock, /aria-hidden="true"/);
-  assert.match(templatePreviewBlock, /<Check className="h-3\.5 w-3\.5" \/>/);
-
-  const templateTitleRowBlock = templateSelectionPanel.match(
-    /<div className="mt-2[\s\S]*?<button\s*type="button"\s*onClick=\{\(\) => onCustomizeTemplate/
-  )?.[0] ?? '';
-  assert.doesNotMatch(templateTitleRowBlock, /isSelected \? \(/);
-  assert.doesNotMatch(templateTitleRowBlock, /<Check className="h-3\.5 w-3\.5" \/>/);
+  assert.match(templateSelectionPanel, /className="grid grid-cols-3 gap-x-2 gap-y-5"/);
+  assert.match(templateSelectionPanel, /aspect-\[112\/175\]/);
+  assert.match(templateSelectionPanel, /thumbnailSrc=\{template\.thumbnailSrc\}/);
+  assert.match(templateSelectionPanel, /aria-pressed=\{isSelected\}/);
+  assert.match(templateSelectionPanel, /isSelected \? \([\s\S]*?bottom-1\.5 right-1\.5[\s\S]*?aria-hidden="true"[\s\S]*?<Check className="h-3 w-3" \/>/);
+  assert.match(templateSelectionPanel, /group-hover:opacity-100/);
 });
 
 test('desktop layout sidebar groups layout parameters and removes density shortcuts', () => {

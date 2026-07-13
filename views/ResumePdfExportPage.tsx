@@ -11,6 +11,57 @@ const waitForNextFrame = () => new Promise<void>((resolve) => {
   window.requestAnimationFrame(() => resolve());
 });
 
+const CSS_BACKGROUND_URL_PATTERN = /url\((?:"([^"]+)"|'([^']+)'|([^)'"\s]+))\)/g;
+
+const waitForImageElement = async (image: HTMLImageElement) => {
+  if (!image.complete) {
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        image.removeEventListener('load', finish);
+        image.removeEventListener('error', finish);
+        resolve();
+      };
+      image.addEventListener('load', finish, { once: true });
+      image.addEventListener('error', finish, { once: true });
+      if (image.complete) {
+        finish();
+      }
+    });
+  }
+
+  if (typeof image.decode === 'function') {
+    await image.decode().catch(() => undefined);
+  }
+};
+
+const collectBackgroundImageUrls = (root: HTMLElement) => {
+  const urls = new Set<string>();
+  const elements = [root, ...root.querySelectorAll<HTMLElement>('*')];
+
+  elements.forEach((element) => {
+    const backgroundImage = window.getComputedStyle(element).backgroundImage;
+    for (const match of backgroundImage.matchAll(CSS_BACKGROUND_URL_PATTERN)) {
+      const url = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+      if (url) {
+        urls.add(url);
+      }
+    }
+  });
+
+  return [...urls];
+};
+
+const waitForExportAssets = async (root: HTMLElement) => {
+  const inlineImages = [...root.querySelectorAll<HTMLImageElement>('img')];
+  const backgroundImages = collectBackgroundImageUrls(root).map((url) => {
+    const image = new Image();
+    image.src = url;
+    return image;
+  });
+
+  await Promise.all([...inlineImages, ...backgroundImages].map(waitForImageElement));
+};
+
 const setExportReadyState = (isReady: boolean) => {
   if (typeof document === 'undefined') {
     return;
@@ -135,15 +186,16 @@ const ResumePdfExportPage: React.FC = () => {
       try {
         await waitForNextFrame();
         await waitForNextFrame();
-        if (document.fonts?.ready) {
-          await document.fonts.ready;
+        if (!previewRef.current || !previewContentRef.current) {
+          throw new Error('导出页面排版初始化失败。');
         }
+        await Promise.all([
+          document.fonts?.ready,
+          waitForExportAssets(previewRef.current),
+        ]);
         await waitForNextFrame();
         if (cancelled) {
           return;
-        }
-        if (!previewRef.current || !previewContentRef.current) {
-          throw new Error('导出页面排版初始化失败。');
         }
         document.title = `${snapshot.resumeName} PDF Export`;
         clearExportErrorState();

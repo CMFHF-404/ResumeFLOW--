@@ -13,6 +13,7 @@ import {
   resolveDefaultResumeThemeColorPresetId,
   resolveResumeThemeColor,
   resolveResumeTemplate,
+  supportsResumeTemplateThemeColorCustomization,
   type ResumeThemeColorPresetId,
   type ResumeTemplateId,
 } from '../../../constants/resumeTemplates';
@@ -78,12 +79,32 @@ const TOUCH_DRAG_CANCEL_DISTANCE_PX = 10;
 export const TemplateThumbnail: React.FC<{
   templateId: ResumeTemplateId;
   themeColorPresetId?: string;
-}> = ({ templateId, themeColorPresetId }) => {
+  thumbnailSrc?: string;
+  preferStaticThumbnail?: boolean;
+}> = ({ templateId, themeColorPresetId, thumbnailSrc, preferStaticThumbnail = true }) => {
+  const template = resolveResumeTemplate(templateId);
+  const resolvedThumbnailSrc = preferStaticThumbnail
+    ? (thumbnailSrc ?? template.thumbnailSrc)
+    : undefined;
+
+  if (resolvedThumbnailSrc) {
+    return (
+      <div className="h-full w-full overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+        <img
+          src={resolvedThumbnailSrc}
+          alt={`${template.name}简历模板预览`}
+          className="h-full w-full select-none object-cover object-top"
+          draggable={false}
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
   const resolvedPresetId = (themeColorPresetId && RESUME_THEME_COLOR_PRESETS.some((item) => item.id === themeColorPresetId))
     ? (themeColorPresetId as ResumeThemeColorPresetId)
     : resolveDefaultResumeThemeColorPresetId(templateId);
   const theme = resolveResumeThemeColor(templateId, resolvedPresetId);
-  const template = resolveResumeTemplate(templateId);
 
   if (template.layoutKind === 'classic') {
     const isModernAvatar = templateId === 'modern-slate-avatar';
@@ -636,10 +657,11 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
             <div className="flex-1 overflow-y-auto px-5 py-5">
               <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                  <div className="mb-3 h-40 overflow-hidden rounded-xl">
+                  <div className="mb-3 aspect-[794/1123] overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
                     <TemplateThumbnail
                       templateId={editingTemplate.id}
                       themeColorPresetId={editingThemeColorPresetId}
+                      preferStaticThumbnail={!supportsResumeTemplateThemeColorCustomization(editingTemplate.id)}
                     />
                   </div>
                   <div className="text-sm font-semibold text-gray-900 dark:text-white">{editingTemplate.name}</div>
@@ -647,38 +669,44 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                 </div>
 
                 <div className="space-y-6">
-                  <section>
-                    <div className="mb-3">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white">主题颜色</div>
-                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">选择该模板默认使用的高亮色风格。</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {RESUME_THEME_COLOR_PRESETS.map((color) => {
-                        const isActive = color.id === editingThemeColorPresetId;
-                        return (
-                          <button
-                            key={color.id}
-                            type="button"
-                            onClick={() => setEditingThemeColorPresetId(color.id)}
-                            className={`rounded-xl border px-3 py-3 text-left transition ${isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:hover:bg-gray-800/80'}`}
-                          >
-                            <div className="mb-2 flex items-center gap-2">
-                              <span
-                                className="h-4 w-4 rounded-full border border-black/5"
-                                style={{ backgroundColor: color.accentColor }}
-                              />
-                              <span className="text-sm font-semibold text-gray-900 dark:text-white">{color.name}</span>
-                            </div>
-                            <div className="flex gap-1">
-                              <span className="h-2 flex-1 rounded-full" style={{ backgroundColor: color.accentColor }} />
-                              <span className="h-2 flex-1 rounded-full" style={{ backgroundColor: color.accentBorder }} />
-                              <span className="h-2 flex-1 rounded-full border border-black/5" style={{ backgroundColor: color.accentSoftBg }} />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
+                  {supportsResumeTemplateThemeColorCustomization(editingTemplate.id) ? (
+                    <section>
+                      <div className="mb-3">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white">主题颜色</div>
+                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">选择该模板默认使用的高亮色风格。</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {RESUME_THEME_COLOR_PRESETS.map((color) => {
+                          const isActive = color.id === editingThemeColorPresetId;
+                          return (
+                            <button
+                              key={color.id}
+                              type="button"
+                              onClick={() => setEditingThemeColorPresetId(color.id)}
+                              className={`rounded-xl border px-3 py-3 text-left transition ${isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:hover:bg-gray-800/80'}`}
+                            >
+                              <div className="mb-2 flex items-center gap-2">
+                                <span
+                                  className="h-4 w-4 rounded-full border border-black/5"
+                                  style={{ backgroundColor: color.accentColor }}
+                                />
+                                <span className="text-sm font-semibold text-gray-900 dark:text-white">{color.name}</span>
+                              </div>
+                              <div className="flex gap-1">
+                                <span className="h-2 flex-1 rounded-full" style={{ backgroundColor: color.accentColor }} />
+                                <span className="h-2 flex-1 rounded-full" style={{ backgroundColor: color.accentBorder }} />
+                                <span className="h-2 flex-1 rounded-full border border-black/5" style={{ backgroundColor: color.accentSoftBg }} />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : (
+                    <section className="rounded-xl bg-gray-50 px-4 py-3 text-xs text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                      此模板使用固定配色，预览展示模板的实际颜色。
+                    </section>
+                  )}
 
                   <section>
                     <div className="grid gap-4 lg:grid-cols-2">
@@ -849,9 +877,10 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                       key={template.id}
                       className={`flex h-full flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900 ${isSelected ? 'ring-2 ring-primary' : ''}`}
                     >
-                      <div className="relative mb-3 h-44 overflow-hidden">
+                      <div className="relative mb-3 aspect-[794/1123] overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
                         <TemplateThumbnail
                           templateId={template.id}
+                          thumbnailSrc={template.thumbnailSrc}
                           themeColorPresetId={
                             isSelected
                               ? themeColorPresetId

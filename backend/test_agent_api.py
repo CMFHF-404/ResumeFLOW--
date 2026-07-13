@@ -1075,11 +1075,41 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
                 "modern-slate-avatar",
                 "photo-card",
                 "photo-sidebar",
+                "deephire-standard",
+                "deephire-blue",
+                "deephire-steady",
+                "deephire-simple",
+                "deephire-deep-blue",
+                "deephire-lucky-red",
+                "deephire-champion-blue",
+                "deephire-collector-red",
+                "deephire-minimal",
+                "deephire-blue-header",
+                "deephire-elegant",
+                "deephire-concise",
+                "deephire-table",
+                "deephire-ink",
+                "deephire-retro",
+                "deephire-business",
+                "deephire-fashion-black",
+                "deephire-youth-energy",
+                "deephire-artistic",
+                "deephire-soft-realm",
+                "deephire-forest",
+                "deephire-classic-elegance",
+                "deephire-magazine-editorial",
+                "deephire-forest-fresh",
+                "deephire-cyber-future",
+                "deephire-renaissance",
+                "deephire-watercolor",
+                "deephire-campus-youth",
             ],
         )
         self.assertEqual(result.templates[0].name, "现代深灰")
         self.assertFalse(result.templates[0].has_avatar)
         self.assertEqual(result.templates[0].default_theme_color_preset_id, "slate")
+        watercolor = next(item for item in result.templates if item.id == "deephire-watercolor")
+        self.assertEqual(watercolor.default_theme_color_preset_id, "blue")
 
     def test_polish_options_include_disabled_and_all_levels(self) -> None:
         result = agent_service.build_agent_polish_options()

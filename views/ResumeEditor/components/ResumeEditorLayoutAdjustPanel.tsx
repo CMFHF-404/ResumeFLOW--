@@ -28,6 +28,7 @@ import LayoutAdjustToolbar from './LayoutAdjustToolbar';
 
 export type ResumeEditorLayoutAdjustPanelProps = {
     isOpen: boolean;
+    isThemeColorCustomizationEnabled: boolean;
     lineHeight: number;
     fontSize: number;
     topPaddingPx: number;
@@ -44,6 +45,7 @@ export type ResumeEditorLayoutAdjustPanelProps = {
 
 const ResumeEditorLayoutAdjustPanel: React.FC<ResumeEditorLayoutAdjustPanelProps> = ({
     isOpen,
+    isThemeColorCustomizationEnabled,
     lineHeight,
     fontSize,
     topPaddingPx,
@@ -63,6 +65,7 @@ const ResumeEditorLayoutAdjustPanel: React.FC<ResumeEditorLayoutAdjustPanelProps
 
     return (
         <LayoutAdjustToolbar
+            isThemeColorCustomizationEnabled={isThemeColorCustomizationEnabled}
             lineHeight={lineHeight}
             fontSize={fontSize}
             topPaddingPx={topPaddingPx}

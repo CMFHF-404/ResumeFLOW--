@@ -3,6 +3,7 @@ import { Link2, Mail, MapPin, Phone } from 'lucide-react';
 import { HEADER_EXTRA_TOP_SPACING_CLASS } from '../../../constants';
 import type { ResumeTemplateDefinition } from '../../../../../constants/resumeTemplates';
 import type { ResumeEditorProfile } from '../../../../../types/resume';
+import DeepHireHeaderBlock from './DeepHireHeaderBlock';
 
 type HeaderBlockProps = {
     activeTemplate: ResumeTemplateDefinition;
@@ -39,6 +40,22 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
         ...headerStyle,
         borderBottomColor: 'var(--rf-accent-border)',
     } as React.CSSProperties;
+
+    if (activeTemplate.collection === 'deephire') {
+        return (
+            <DeepHireHeaderBlock
+                activeTemplate={activeTemplate}
+                profile={profile}
+                contactItems={contactItems}
+                resumeDisplayTitle={resumeDisplayTitle}
+                sectionSpacingClass={sectionSpacingClass}
+                headerStyle={commonHeaderStyle}
+                getSectionOverflowHighlightStyle={getSectionOverflowHighlightStyle}
+                renderOverflowMarker={renderOverflowMarker}
+                renderAvatarFrame={renderAvatarFrame}
+            />
+        );
+    }
 
     if (isOpenSourceClassicTemplate) {
         return (
