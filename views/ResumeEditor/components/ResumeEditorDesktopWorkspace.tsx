@@ -31,7 +31,9 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
                 'transition-[width] duration-300 ease-in-out',
                 isAssistantSidebarOpen
                     ? 'md:w-[430px] xl:w-[460px]'
-                    : 'md:w-[562.5px] xl:w-[607.5px]',
+                    : factorySidebarProps.activeTab === 'templates'
+                        ? 'md:w-[384px] xl:w-[384px]'
+                        : 'md:w-[562.5px] xl:w-[607.5px]',
             ].join(' ')}
         >
             <ResumeFactorySidebar {...factorySidebarProps} />

@@ -235,8 +235,8 @@ const EducationSection: React.FC<EducationSectionProps> = ({
                                     }
                                 >
                                     <div className="mb-0.5 flex justify-between items-baseline">
-                                        <h3 className="text-sm font-bold text-gray-900">{edu.school}</h3>
-                                        <span className="text-xs font-medium text-gray-900">{dateText}</span>
+                                        <h3 className="rf-template-item-title text-sm font-bold text-gray-900">{edu.school}</h3>
+                                        <span className="rf-template-date text-xs font-medium text-gray-900">{dateText}</span>
                                     </div>
                                     {variant === 'split' ? (
                                         <p className="text-xs text-gray-900">

@@ -14,6 +14,7 @@ type SliderConfig = {
 };
 
 type LayoutAdjustToolbarProps = {
+    isThemeColorCustomizationEnabled: boolean;
     lineHeight: number;
     fontSize: number;
     topPaddingPx: number;
@@ -267,6 +268,7 @@ const ThemeColorMobileField: React.FC<{
 );
 
 const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
+    isThemeColorCustomizationEnabled,
     lineHeight,
     fontSize,
     topPaddingPx,
@@ -342,9 +344,13 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
         value: normalizeControlValue(control.value, control.slider, control.options),
     }));
     const [activeMobileControlKey, setActiveMobileControlKey] = useState<'theme-color' | string>('theme-color');
+    const resolvedActiveMobileControlKey = !isThemeColorCustomizationEnabled
+        && activeMobileControlKey === 'theme-color'
+        ? controls[0]?.key
+        : activeMobileControlKey;
     const activeMobileControl = useMemo(
-        () => controls.find((control) => control.key === activeMobileControlKey) ?? controls[0],
-        [activeMobileControlKey, controls]
+        () => controls.find((control) => control.key === resolvedActiveMobileControlKey) ?? controls[0],
+        [controls, resolvedActiveMobileControlKey]
     );
     const activeThemeColor = themeColorOptions.find((item) => item.id === themeColorPresetId) ?? themeColorOptions[0];
 
@@ -358,13 +364,15 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                    <div className="flex-1 min-w-[125px] max-w-[200px]">
-                        <ThemeColorDesktopField
-                            value={themeColorPresetId}
-                            options={themeColorOptions}
-                            onChange={onThemeColorChange}
-                        />
-                    </div>
+                    {isThemeColorCustomizationEnabled ? (
+                        <div className="flex-1 min-w-[125px] max-w-[200px]">
+                            <ThemeColorDesktopField
+                                value={themeColorPresetId}
+                                options={themeColorOptions}
+                                onChange={onThemeColorChange}
+                            />
+                        </div>
+                    ) : null}
                     {controls.map((control) => (
                         <div key={control.key} className="flex-1 min-w-[110px] max-w-[180px]">
                             <DesktopSelectField control={control} />
@@ -379,27 +387,29 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
                 </div>
                 <div className="-mx-1 overflow-x-auto pb-1">
                     <div className="flex min-w-max gap-2 px-1">
-                        <button
-                            type="button"
-                            onClick={() => setActiveMobileControlKey('theme-color')}
-                            className={[
-                                'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors',
-                                activeMobileControlKey === 'theme-color'
-                                    ? 'border-primary bg-primary text-white shadow-sm'
-                                    : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300',
-                            ].join(' ')}
-                            aria-pressed={activeMobileControlKey === 'theme-color'}
-                        >
-                            <Palette className="h-3.5 w-3.5" />
-                            <span>主题颜色</span>
-                            <span
+                        {isThemeColorCustomizationEnabled ? (
+                            <button
+                                type="button"
+                                onClick={() => setActiveMobileControlKey('theme-color')}
                                 className={[
-                                    'inline-flex h-4 w-4 rounded-full border border-white/30',
-                                    activeMobileControlKey === 'theme-color' ? '' : 'border-black/10',
+                                    'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors',
+                                    activeMobileControlKey === 'theme-color'
+                                        ? 'border-primary bg-primary text-white shadow-sm'
+                                        : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300',
                                 ].join(' ')}
-                                style={{ backgroundColor: activeThemeColor?.accentColor }}
-                            />
-                        </button>
+                                aria-pressed={activeMobileControlKey === 'theme-color'}
+                            >
+                                <Palette className="h-3.5 w-3.5" />
+                                <span>主题颜色</span>
+                                <span
+                                    className={[
+                                        'inline-flex h-4 w-4 rounded-full border border-white/30',
+                                        activeMobileControlKey === 'theme-color' ? '' : 'border-black/10',
+                                    ].join(' ')}
+                                    style={{ backgroundColor: activeThemeColor?.accentColor }}
+                                />
+                            </button>
+                        ) : null}
                         {controls.map((control) => {
                             const isActive = control.key === activeMobileControl?.key;
                             return (
@@ -430,7 +440,7 @@ const LayoutAdjustToolbar: React.FC<LayoutAdjustToolbarProps> = ({
                         })}
                     </div>
                 </div>
-                {activeMobileControlKey === 'theme-color' ? (
+                {isThemeColorCustomizationEnabled && resolvedActiveMobileControlKey === 'theme-color' ? (
                     <ThemeColorMobileField
                         value={themeColorPresetId}
                         options={themeColorOptions}

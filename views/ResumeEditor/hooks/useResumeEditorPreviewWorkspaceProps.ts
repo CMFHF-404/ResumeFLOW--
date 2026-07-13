@@ -1,6 +1,7 @@
 import type { ResumeEditorLayoutAdjustPanelProps } from '../components/ResumeEditorLayoutAdjustPanel';
 import type { ResumeEditorMeasurePreviewProps } from '../components/ResumeEditorMeasurePreview';
 import type { ResumePreviewProps } from '../components/ResumePreview';
+import { supportsResumeTemplateThemeColorCustomization } from '../../../constants/resumeTemplates';
 
 export type SharedResumePreviewProps = Pick<
     ResumePreviewProps,
@@ -121,6 +122,9 @@ export const useResumeEditorPreviewWorkspaceProps = ({
 }: UseResumeEditorPreviewWorkspacePropsOptions) => {
     const layoutAdjustProps: ResumeEditorLayoutAdjustPanelProps = {
         isOpen: isLayoutAdjustToolbarOpen,
+        isThemeColorCustomizationEnabled: supportsResumeTemplateThemeColorCustomization(
+            sharedPreviewProps.templateId
+        ),
         lineHeight,
         fontSize,
         topPaddingPx,

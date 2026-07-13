@@ -1,5 +1,19 @@
 import React from 'react';
-import { User, Briefcase, Folder, GraduationCap, Wrench, BadgeCheck, List } from 'lucide-react';
+import {
+    User,
+    Briefcase,
+    Folder,
+    GraduationCap,
+    Wrench,
+    BadgeCheck,
+    ChevronRight,
+    Circle,
+    ContactRound,
+    Diamond,
+    List,
+    Square,
+    Target,
+} from 'lucide-react';
 import {
     FONT_SIZE_DEFAULT,
     PREVIEW_PADDING_MM,
@@ -81,6 +95,14 @@ import {
     resolveSectionHeadingTextClassName,
     resolveTemplateSectionSurfaceToneClass,
 } from './ResumePreview/templateStyles';
+import {
+    buildDeepHirePreviewStyleOverrides,
+    buildDeepHireSplitMainStyle,
+    buildDeepHireSplitSidebarStyle,
+    buildDeepHireTemplateCss,
+    resolveDeepHireSplitGridTemplateColumns,
+    usesLightDeepHireSidebar,
+} from './ResumePreview/deepHireTemplateStyles';
 import SummarySection from './ResumePreview/sections/SummarySection';
 import ExperienceSection from './ResumePreview/sections/ExperienceSection';
 import EducationSection from './ResumePreview/sections/EducationSection';
@@ -272,14 +294,25 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const isTimelineBlueTemplate = activeTemplate.id === 'timeline-blue';
     const isPhotoCardTemplate = activeTemplate.id === 'photo-card';
     const isPhotoSidebarTemplate = activeTemplate.id === 'photo-sidebar';
+    const deepHireTemplateCss = React.useMemo(
+        () => buildDeepHireTemplateCss(activeTemplate, previewScope),
+        [activeTemplate, previewScope]
+    );
     const resolvedSkillTagSeparator = React.useMemo(
         () => normalizeResumeSkillTagSeparator(skillTagSeparator),
         [skillTagSeparator]
     );
     const isSplitTemplate = activeTemplate.layoutKind === 'split';
+    const splitHeaderPlacement = activeTemplate.collection === 'deephire'
+        ? (activeTemplate.visualTokens?.headerPlacement ?? 'sidebar')
+        : 'sidebar';
     const splitColumnSectionIds = React.useMemo(
-        () => resolveSplitColumnSectionIds(visibleSectionOrder, isSplitTemplate),
-        [isSplitTemplate, visibleSectionOrder]
+        () => resolveSplitColumnSectionIds(
+            visibleSectionOrder,
+            isSplitTemplate,
+            activeTemplate.visualTokens?.sidebarSectionIds
+        ),
+        [activeTemplate.visualTokens?.sidebarSectionIds, isSplitTemplate, visibleSectionOrder]
     );
     const splitSidebarSectionIdSet = React.useMemo(
         () => new Set(splitColumnSectionIds.sidebar),
@@ -1086,7 +1119,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     }, [isScaledEditorPreview, scaledPreviewMetrics.heightPx, scaledPreviewMetrics.widthPx]);
 
     const previewStyle = React.useMemo(() => {
-        return buildPreviewPageStyle({
+        return {
+            ...buildPreviewPageStyle({
             lineHeight,
             fontSize,
             topPaddingPx,
@@ -1098,8 +1132,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             isSplitTemplate,
             isPhotoCardTemplate,
             scale: scaledPreviewMetrics.scale,
-        });
+            }),
+            ...buildDeepHirePreviewStyleOverrides(activeTemplate, topPaddingPx),
+        } as React.CSSProperties;
     }, [
+        activeTemplate,
         bulletSpacingValue,
         fontSize,
         isPrintPreview,
@@ -1121,25 +1158,46 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         [isReadOnly, isSplitTemplate]
     );
     const previewContentLayoutStyle = React.useMemo(
-        () => buildPreviewContentLayoutStyle(isSplitTemplate, topPaddingPx),
-        [isSplitTemplate, topPaddingPx]
+        () => {
+            const baseStyle = buildPreviewContentLayoutStyle(isSplitTemplate, topPaddingPx);
+            const gridTemplateColumns = resolveDeepHireSplitGridTemplateColumns(activeTemplate);
+            const deepHireGridStyle = splitHeaderPlacement === 'page'
+                ? { gridTemplateRows: 'auto 1fr' }
+                : undefined;
+            return gridTemplateColumns
+                ? { ...baseStyle, ...deepHireGridStyle, gridTemplateColumns }
+                : { ...baseStyle, ...deepHireGridStyle };
+        },
+        [activeTemplate, isSplitTemplate, splitHeaderPlacement, topPaddingPx]
     );
     const splitTemplateBackgroundStyle = React.useMemo(
-        () => buildSplitTemplateBackgroundStyle(isSplitTemplate, isPrintPreview),
-        [isPrintPreview, isSplitTemplate]
+        () => {
+            const baseStyle = buildSplitTemplateBackgroundStyle(isSplitTemplate, isPrintPreview);
+            const gridTemplateColumns = resolveDeepHireSplitGridTemplateColumns(activeTemplate);
+            return gridTemplateColumns
+                ? { ...baseStyle, gridTemplateColumns }
+                : baseStyle;
+        },
+        [activeTemplate, isPrintPreview, isSplitTemplate]
     );
     const splitSidebarColumnStyle = React.useMemo(
-        () => ({
-            backgroundColor: isPhotoSidebarTemplate ? '#111827' : 'var(--rf-accent-soft-bg)',
-            borderRight: isPhotoSidebarTemplate ? 'none' : '1px solid var(--rf-accent-border)',
-        } as React.CSSProperties),
-        [isPhotoSidebarTemplate]
+        () => activeTemplate.collection === 'deephire'
+            ? buildDeepHireSplitSidebarStyle(activeTemplate)
+            : ({
+                backgroundColor: isPhotoSidebarTemplate ? '#111827' : 'var(--rf-accent-soft-bg)',
+                borderRight: isPhotoSidebarTemplate ? 'none' : '1px solid var(--rf-accent-border)',
+            } as React.CSSProperties),
+        [activeTemplate, isPhotoSidebarTemplate]
     );
     const splitMainColumnStyle = React.useMemo(
-        () => ({
-            backgroundColor: '#ffffff',
-        } as React.CSSProperties),
-        []
+        () => activeTemplate.collection === 'deephire'
+            ? buildDeepHireSplitMainStyle(activeTemplate)
+            : ({ backgroundColor: '#ffffff' } as React.CSSProperties),
+        [activeTemplate]
+    );
+    const useLightSplitSidebar = React.useMemo(
+        () => isPhotoSidebarTemplate || usesLightDeepHireSidebar(activeTemplate),
+        [activeTemplate, isPhotoSidebarTemplate]
     );
     const overflowHighlightStyle = React.useMemo(
         () => ({
@@ -1239,7 +1297,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             );
         }
         return (
-            <div className={`${className} items-center justify-center bg-gray-100 p-0.5 text-sm font-bold text-gray-700`}>
+            <div className={`${className} rf-template-avatar-placeholder items-center justify-center bg-gray-100 p-0.5 text-sm font-bold text-gray-700`}>
                 {profileInitials}
             </div>
         );
@@ -1261,16 +1319,40 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         const isAvatar = activeTemplate.layoutKind === 'avatar';
         const isClassic = activeTemplate.layoutKind === 'classic';
         const isModernAvatar = activeTemplate.id === 'modern-slate-avatar';
+        const isDeepHire = activeTemplate.collection === 'deephire';
+        const isWatercolor = activeTemplate.id === 'deephire-watercolor';
         const isOpenSourceClassic = isOpenSourceClassicTemplate;
         const isPhotoCard = isPhotoCardTemplate;
         const isTimelineBlue = isTimelineBlueTemplate;
         const isPhotoSidebarSection = isPhotoSidebarTemplate && splitSidebarSectionIdSet.has(sectionId);
         const SectionIconComponent = CLASSIC_SECTION_ICONS[sectionId] || List;
         const IconComponent = (isClassic || isModernAvatar || isTimelineBlue) ? SectionIconComponent : null;
+        const deepHireSectionTitles: Record<string, string> = {
+            summary: '个人优势',
+            skills: '掌握技能',
+            certifications: '资格证书',
+            education: '教育经历',
+        };
+        const headingTitle = isDeepHire ? (deepHireSectionTitles[sectionId] ?? title) : title;
+        const usesDiamondTrail = activeTemplate.id === 'deephire-champion-blue'
+            || activeTemplate.id === 'deephire-collector-red';
+        const usesCenteredDiamonds = activeTemplate.id === 'deephire-renaissance';
+        const usesChevronMarker = activeTemplate.id === 'deephire-cyber-future';
+        const usesSquareMarker = activeTemplate.id === 'deephire-magazine-editorial'
+            || activeTemplate.id === 'deephire-forest-fresh';
+        const usesCircleMarker = [
+            'deephire-simple',
+            'deephire-concise',
+            'deephire-ink',
+            'deephire-classic-elegance',
+            'deephire-soft-realm',
+            'deephire-campus-youth',
+        ].includes(activeTemplate.id);
         
         return (
             <h2
-                className={`${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar || isTimelineBlue ? 'flex items-center' : ''} ${isAccent && !isTimelineBlue ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent && !isTimelineBlue ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''} ${isTimelineBlue ? 'relative min-w-0 w-full gap-2 pr-1' : ''}`}
+                className={`rf-template-section-heading ${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar || isTimelineBlue || isDeepHire ? 'flex items-center' : ''} ${isAccent && !isTimelineBlue ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent && !isTimelineBlue ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''} ${isTimelineBlue ? 'relative min-w-0 w-full gap-2 pr-1' : ''}`}
+                data-rf-section-heading={sectionId}
                 style={{
                     ...(isAccentEmerald || !isAccent ? sectionTitleStyle : {}),
                     ...touchHandleStyle,
@@ -1299,7 +1381,46 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         : (event) => handleSectionTitleTouchStart(event, sectionId)
                 }
             >
-                {isTimelineBlue ? (
+                {isWatercolor ? (
+                    <>
+                        <Circle
+                            aria-hidden="true"
+                            className="rf-watercolor-heading-dot h-2 w-2 shrink-0"
+                            fill="currentColor"
+                        />
+                        <span>{headingTitle}</span>
+                    </>
+                ) : usesDiamondTrail ? (
+                    <>
+                        <span>{headingTitle}</span>
+                        <span className="rf-heading-diamond-trail ms-3 inline-flex items-center gap-1" aria-hidden="true">
+                            {[0, 1, 2, 3, 4].map((index) => (
+                                <Diamond key={index} className="h-2 w-2" fill="currentColor" />
+                            ))}
+                        </span>
+                    </>
+                ) : usesCenteredDiamonds ? (
+                    <>
+                        <Diamond className="rf-heading-marker h-2.5 w-2.5" aria-hidden="true" fill="currentColor" />
+                        <span>{headingTitle}</span>
+                        <Diamond className="rf-heading-marker h-2.5 w-2.5" aria-hidden="true" fill="currentColor" />
+                    </>
+                ) : usesChevronMarker ? (
+                    <>
+                        <ChevronRight className="rf-heading-marker h-4 w-4" aria-hidden="true" strokeWidth={3} />
+                        <span>{headingTitle}</span>
+                    </>
+                ) : usesSquareMarker ? (
+                    <>
+                        <Square className="rf-heading-marker h-2.5 w-2.5" aria-hidden="true" fill="currentColor" />
+                        <span>{headingTitle}</span>
+                    </>
+                ) : usesCircleMarker ? (
+                    <>
+                        <Circle className="rf-heading-marker h-2.5 w-2.5" aria-hidden="true" fill="currentColor" />
+                        <span>{headingTitle}</span>
+                    </>
+                ) : isTimelineBlue ? (
                     <>
                         {IconComponent ? (
                             <span
@@ -1310,7 +1431,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 <IconComponent className="h-2.5 w-2.5" style={{ color: 'var(--rf-accent-color)' }} />
                             </span>
                         ) : null}
-                        <span className="shrink-0">{title}</span>
+                        <span className="shrink-0">{headingTitle}</span>
                         <span
                             aria-hidden="true"
                             className="ms-3 h-px min-w-[1.25rem] flex-1 self-center rounded-full"
@@ -1325,13 +1446,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 style={{ color: isPhotoSidebarSection ? '#ffffff' : 'var(--rf-accent-color)' }}
                             />
                         )}
-                        <span>{title}</span>
+                        <span>{headingTitle}</span>
                     </>
                 )}
             </h2>
         );
     }, [
         activeTemplate.id,
+        activeTemplate.collection,
         activeTemplate.layoutKind,
         isOpenSourceClassicTemplate,
         isPhotoCardTemplate,
@@ -1584,6 +1706,36 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             renderAvatarFrame={renderAvatarFrame}
         />
     );
+    const renderSplitSidebarMeta = () => {
+        if (activeTemplate.id !== 'deephire-champion-blue') {
+            return null;
+        }
+
+        return (
+            <div className="rf-template-sidebar-meta mb-8 space-y-7 text-white">
+                <section>
+                    <h2 className="mb-3 flex items-center gap-2 text-[16px] font-bold">
+                        <ContactRound className="h-4 w-4" aria-hidden="true" />
+                        联系方式
+                    </h2>
+                    <div className="space-y-2 border-b border-white/15 pb-6 text-[10.5px] leading-relaxed text-white/80">
+                        {contactItems.map((item) => <p key={item} className="break-all">{item}</p>)}
+                    </div>
+                </section>
+                {resumeDisplayTitle ? (
+                    <section>
+                        <h2 className="mb-3 flex items-center gap-2 text-[16px] font-bold">
+                            <Target className="h-4 w-4" aria-hidden="true" />
+                            求职信息
+                        </h2>
+                        <p className="border-b border-white/15 pb-6 text-[10.5px] leading-relaxed text-white/80">
+                            {resumeDisplayTitle}
+                        </p>
+                    </section>
+                ) : null}
+            </div>
+        );
+    };
 
     const renderSectionById = (sectionId: string) => {
         if (sectionId === 'summary') {
@@ -1650,6 +1802,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                         ref={previewRef}
                         className="a4-preview text-gray-900 relative"
                         data-rf-preview-scope={previewScope}
+                        data-rf-template-id={activeTemplate.id}
+                        data-rf-template-style={activeTemplate.visualStyle}
                         style={previewStyle}
                     >
                 {shouldShowOverflowIndicators ? (
@@ -1662,7 +1816,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 {isSplitTemplate ? (
                     <div
                         aria-hidden="true"
-                        className="pointer-events-none absolute inset-x-0 top-0 grid grid-cols-[0.8fr_1.2fr] overflow-hidden rounded-[30px]"
+                        className="rf-template-split-background pointer-events-none absolute inset-x-0 top-0 grid grid-cols-[0.8fr_1.2fr] overflow-hidden rounded-[30px]"
                         style={splitTemplateBackgroundStyle}
                     >
                         <div style={splitSidebarColumnStyle} />
@@ -1672,7 +1826,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 {renderAccentTopDecoration()}
                 <div
                     ref={previewContentRef}
-                    className={previewContentLayoutClassName}
+                    className={`rf-template-content-layout ${previewContentLayoutClassName}`.trim()}
                     style={previewContentLayoutStyle}
                     onDragOver={
                         isReadOnly
@@ -1707,15 +1861,22 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 >
                     {isSplitTemplate ? (
                         <>
+                            {splitHeaderPlacement === 'page' ? (
+                                <div className="rf-template-split-page-header col-span-2 min-w-0">
+                                    {renderHeaderBlock()}
+                                </div>
+                            ) : null}
                             <div
-                                className={`flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6 ${isPhotoSidebarTemplate ? 'text-white [&_.text-gray-900]:!text-white [&_.text-gray-800]:!text-white/85 [&_.text-gray-700]:!text-white/75 [&_.text-gray-600]:!text-white/70 [&_.text-gray-500]:!text-white/60' : ''}`}
+                                className={`rf-template-sidebar flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6 ${useLightSplitSidebar ? 'text-white [&_.text-gray-950]:!text-white [&_.text-gray-900]:!text-white [&_.text-gray-800]:!text-white/85 [&_.text-gray-700]:!text-white/75 [&_.text-gray-600]:!text-white/70 [&_.text-gray-500]:!text-white/60' : ''}`}
                             >
-                                {renderHeaderBlock()}
+                                {splitHeaderPlacement === 'sidebar' ? renderHeaderBlock() : null}
+                                {renderSplitSidebarMeta()}
                                 {renderOrderedSections(splitColumnSectionIds.sidebar)}
                             </div>
                             <div
-                                className="flex min-h-0 min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
+                                className="rf-template-main flex min-h-0 min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
                             >
+                                {splitHeaderPlacement === 'main' ? renderHeaderBlock() : null}
                                 {renderOrderedSections(splitColumnSectionIds.main)}
                             </div>
                         </>
@@ -1774,7 +1935,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     </div>
                 </div>
             </div>
-            <style>{previewTypographyCss}</style>
+            <style>{`${previewTypographyCss}\n${deepHireTemplateCss}`}</style>
         </main>
     );
 };

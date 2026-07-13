@@ -142,12 +142,21 @@ export const isSplitSidebarEligibleSection = (sectionId: string) => (
 
 export const resolveSplitColumnSectionIds = (
     visibleSectionOrder: string[],
-    isSplitTemplate: boolean
+    isSplitTemplate: boolean,
+    configuredSidebarSectionIds?: readonly string[]
 ) => {
     if (!isSplitTemplate) {
         return {
             sidebar: [] as string[],
             main: visibleSectionOrder,
+        };
+    }
+
+    if (configuredSidebarSectionIds !== undefined) {
+        const configuredSidebarSet = new Set(configuredSidebarSectionIds);
+        return {
+            sidebar: visibleSectionOrder.filter((sectionId) => configuredSidebarSet.has(sectionId)),
+            main: visibleSectionOrder.filter((sectionId) => !configuredSidebarSet.has(sectionId)),
         };
     }
 

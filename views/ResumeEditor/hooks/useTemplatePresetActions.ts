@@ -6,6 +6,7 @@ import {
 } from '../../../utils/resumeCustomization';
 import {
     resolveDefaultResumeThemeColorPresetId,
+    supportsResumeTemplateThemeColorCustomization,
     type ResumeTemplateId,
     type ResumeThemeColorPresetId,
 } from '../../../constants/resumeTemplates';
@@ -77,7 +78,9 @@ export const useTemplatePresetActions = ({
             return;
         }
         const preset = templatePresetMap[templateId];
-        const nextThemeColorPresetId = preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId);
+        const nextThemeColorPresetId = supportsResumeTemplateThemeColorCustomization(templateId)
+            ? preset?.themeColorPresetId ?? resolveDefaultResumeThemeColorPresetId(templateId)
+            : resolveDefaultResumeThemeColorPresetId(templateId);
         const nextExperienceListMarkerStyle = normalizeResumeExperienceListMarkerStyle(
             preset?.experienceListMarkerStyle
         );
@@ -126,7 +129,13 @@ export const useTemplatePresetActions = ({
 
     const handleSaveTemplatePreset = useCallback(async (preset: TemplatePresetInput) => {
         try {
-            const savedPreset = await saveResumeTemplatePreset(preset);
+            const normalizedPreset = supportsResumeTemplateThemeColorCustomization(preset.templateId)
+                ? preset
+                : {
+                    ...preset,
+                    themeColorPresetId: resolveDefaultResumeThemeColorPresetId(preset.templateId),
+                };
+            const savedPreset = await saveResumeTemplatePreset(normalizedPreset);
             setTemplatePresetMap((prev) => ({
                 ...prev,
                 [savedPreset.templateId]: savedPreset,

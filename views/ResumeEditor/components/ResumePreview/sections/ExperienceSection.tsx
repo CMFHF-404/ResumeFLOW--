@@ -243,11 +243,11 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                                 >
                                     <div className="mb-1 flex items-start gap-3">
                                         <div className="min-w-0 flex-1">
-                                            <h3 className="text-sm font-bold leading-snug text-gray-900">
+                                            <h3 className="rf-template-item-title text-sm font-bold leading-snug text-gray-900">
                                                 {item.company}
                                             </h3>
                                         </div>
-                                        <span className="shrink-0 whitespace-nowrap pt-0.5 text-xs font-medium text-gray-900">
+                                        <span className="rf-template-date shrink-0 whitespace-nowrap pt-0.5 text-xs font-medium text-gray-900">
                                             {item.date}
                                         </span>
                                     </div>

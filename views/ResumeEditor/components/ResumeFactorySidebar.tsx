@@ -92,6 +92,18 @@ const MARKER_OPTIONS: Array<{
 
 const SIDEBAR_SLIDE_DURATION_MS = 300;
 const SIDEBAR_SLIDE_EASING_CLASS = 'ease-[cubic-bezier(0.25,1,0.5,1)]';
+const TEMPLATE_COLLECTIONS = [
+  {
+    key: 'deephire',
+    label: '精选模板',
+    templates: RESUME_TEMPLATE_DEFINITIONS.filter((template) => template.collection === 'deephire'),
+  },
+  {
+    key: 'native',
+    label: '经典模板',
+    templates: RESUME_TEMPLATE_DEFINITIONS.filter((template) => template.collection === 'native'),
+  },
+] as const;
 
 const SliderField: React.FC<{
   label: string;
@@ -138,72 +150,83 @@ const TemplateSelectionPanel: React.FC<Pick<
   onSelectTemplate,
   onCustomizeTemplate,
 }) => (
-  <div className="space-y-4 p-4">
-    <div className="grid grid-cols-2 gap-3">
-      {RESUME_TEMPLATE_DEFINITIONS.map((template) => {
-        const isSelected = template.id === selectedTemplateId;
-        const preset = templatePresetMap[template.id];
-        return (
-          <article
-            key={template.id}
-            className={[
-              'rounded-xl border bg-white p-2 shadow-sm transition dark:bg-gray-900',
-              isSelected
-                ? 'border-primary ring-2 ring-primary/20'
-                : 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600',
-            ].join(' ')}
-          >
-            <button
-              type="button"
-              onClick={() => onSelectTemplate(template.id)}
-              disabled={!isTemplatePresetMapReady}
-              className="block w-full disabled:cursor-wait disabled:opacity-60"
-              aria-label={`选择${template.name}模板`}
-            >
-              <div className="relative h-40 overflow-hidden rounded-lg">
-                <TemplateThumbnail
-                  templateId={template.id}
-                  themeColorPresetId={
-                    isSelected
-                      ? layoutAdjustProps.themeColorPresetId
-                      : preset?.themeColorPresetId
-                  }
-                />
-                {preset ? (
-                  <span className="absolute right-2 top-2 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm dark:bg-emerald-500">
-                    已自定义
-                  </span>
-                ) : null}
-                {isSelected ? (
-                  <span
-                    className="absolute bottom-2 right-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-sm"
-                    aria-hidden="true"
+  <div className="space-y-7 px-4 pb-6 pt-4">
+    {TEMPLATE_COLLECTIONS.map((collection) => (
+      <section key={collection.key}>
+        {collection.key === 'native' ? (
+          <div className="mb-3 flex items-center justify-between gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400">{collection.label}</h3>
+            <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500">{collection.templates.length} 套</span>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-3 gap-x-2 gap-y-5">
+          {collection.templates.map((template) => {
+            const isSelected = template.id === selectedTemplateId;
+            const preset = templatePresetMap[template.id];
+            return (
+              <article key={template.id} className="min-w-0">
+                <div className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => onSelectTemplate(template.id)}
+                    disabled={!isTemplatePresetMapReady}
+                    className="block w-full rounded-[9px] text-left outline-none transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+                    aria-label={`选择${template.name}模板`}
+                    aria-pressed={isSelected}
+                    title={template.name}
                   >
-                    <Check className="h-3.5 w-3.5" />
-                  </span>
-                ) : null}
-              </div>
-            </button>
-            <div className="mt-2 min-w-0">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    <div
+                      className={[
+                        'relative aspect-[112/175] overflow-hidden rounded-[9px] bg-gray-100 shadow-sm transition dark:bg-gray-800',
+                        isSelected
+                          ? 'ring-2 ring-primary ring-offset-2 dark:ring-offset-gray-950'
+                          : 'ring-1 ring-gray-200 hover:ring-gray-300 dark:ring-gray-700 dark:hover:ring-gray-600',
+                      ].join(' ')}
+                    >
+                      <TemplateThumbnail
+                        templateId={template.id}
+                        thumbnailSrc={template.thumbnailSrc}
+                        themeColorPresetId={
+                          isSelected
+                            ? layoutAdjustProps.themeColorPresetId
+                            : preset?.themeColorPresetId
+                        }
+                      />
+                      {isSelected ? (
+                        <span
+                          className="absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white shadow-sm"
+                          aria-hidden="true"
+                        >
+                          <Check className="h-3 w-3" />
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onCustomizeTemplate(template.id)}
+                    disabled={!isTemplatePresetMapReady}
+                    className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/80 bg-white/95 text-gray-600 opacity-0 shadow-sm backdrop-blur transition hover:bg-white focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-wait disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-200"
+                    aria-label={`自定义${template.name}模板`}
+                    title={`自定义${template.name}模板`}
+                  >
+                    <SlidersHorizontal className="h-3 w-3" />
+                  </button>
+                  {preset ? (
+                    <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-emerald-600 px-1 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm">
+                      已调
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2 truncate text-center text-xs font-medium text-[#526045] dark:text-gray-300">
                   {template.name}
                 </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onCustomizeTemplate(template.id)}
-              disabled={!isTemplatePresetMapReady}
-              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              自定义
-            </button>
-          </article>
-        );
-      })}
-    </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    ))}
   </div>
 );
 
@@ -314,34 +337,40 @@ const LayoutPanel: React.FC<Omit<
           </button>
         </div>
         <div className="space-y-4">
-          <div>
-            <div className="mb-3 text-xs font-semibold text-gray-500 dark:text-gray-400">主题颜色</div>
-            <div className="grid grid-cols-4 gap-2">
-              {RESUME_THEME_COLOR_PRESETS.map((color) => {
-                const isActive = color.id === layoutAdjustProps.themeColorPresetId;
-                return (
-                  <button
-                    key={color.id}
-                    type="button"
-                    onClick={() => layoutAdjustProps.onThemeColorChange(color.id as ResumeThemeColorPresetId)}
-                    className={[
-                      'flex h-10 items-center justify-center rounded-lg border transition',
-                      isActive
-                        ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300',
-                    ].join(' ')}
-                    title={color.name}
-                  >
-                    <span className="sr-only">{color.name}</span>
-                    <span
-                      className="h-4 w-4 rounded-full border border-black/10"
-                      style={{ backgroundColor: color.accentColor }}
-                    />
-                  </button>
-                );
-              })}
+          {layoutAdjustProps.isThemeColorCustomizationEnabled ? (
+            <div>
+              <div className="mb-3 text-xs font-semibold text-gray-500 dark:text-gray-400">主题颜色</div>
+              <div className="grid grid-cols-4 gap-2">
+                {RESUME_THEME_COLOR_PRESETS.map((color) => {
+                  const isActive = color.id === layoutAdjustProps.themeColorPresetId;
+                  return (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => layoutAdjustProps.onThemeColorChange(color.id as ResumeThemeColorPresetId)}
+                      className={[
+                        'flex h-10 items-center justify-center rounded-lg border transition',
+                        isActive
+                          ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+                          : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300',
+                      ].join(' ')}
+                      title={color.name}
+                    >
+                      <span className="sr-only">{color.name}</span>
+                      <span
+                        className="h-4 w-4 rounded-full border border-black/10"
+                        style={{ backgroundColor: color.accentColor }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+              此模板使用固定配色
+            </div>
+          )}
           <div className="space-y-4">
             <SliderField
               label="字号"
