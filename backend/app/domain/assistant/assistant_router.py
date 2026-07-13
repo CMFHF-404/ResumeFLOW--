@@ -1,5 +1,4 @@
 import asyncio
-import html
 import json
 import logging
 import re
@@ -177,20 +176,6 @@ def _parse_form_bool(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _normalize_full_experience_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    normalized = re.sub(r"(?i)<br\s*/?>", "\n", normalized)
-    normalized = re.sub(r"(?i)</p\s*>", "\n", normalized)
-    normalized = re.sub(r"<[^>]+>", " ", normalized)
-    normalized = html.unescape(normalized)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized or None
 
 
 def _build_full_star_snapshot(raw_star: Any) -> Dict[str, str]:
