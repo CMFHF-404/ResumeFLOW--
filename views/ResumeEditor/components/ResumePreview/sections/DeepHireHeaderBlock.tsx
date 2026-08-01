@@ -94,8 +94,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                         )}
                     </div>
                     {renderAvatarFrame(
-                        'rf-deephire-avatar rf-deephire-avatar--watercolor flex h-[78px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-white',
-                        'cover'
+                        'rf-deephire-avatar rf-deephire-avatar--watercolor flex h-[78px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-white'
                     )}
                 </div>
                 <img
@@ -110,36 +109,29 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
 
     if (activeTemplate.renderVariant === 'split-profile' || activeTemplate.renderVariant === 'editorial-split') {
         const useLightText = usesLightDeepHireSidebar(activeTemplate);
-        const isChampion = activeTemplate.id === 'deephire-champion-blue';
         const isYouthEnergy = activeTemplate.id === 'deephire-youth-energy';
 
-        if (isChampion || isYouthEnergy) {
+        if (isYouthEnergy) {
             return (
                 <div
                     id="basic-info"
                     data-rf-section-id="basic-info"
-                    className={`rf-deephire-header rf-deephire-header--split rf-deephire-header--${isChampion ? 'champion' : 'youth'} scroll-mt-8 ${sectionSpacingClass}`}
+                    className={`rf-deephire-header rf-deephire-header--split rf-deephire-header--youth scroll-mt-8 ${sectionSpacingClass}`}
                     style={{ ...commonStyle, marginBottom: headerStyle.marginBottom }}
                 >
                     {renderOverflowMarker('basic-info')}
                     <div className="rf-deephire-header-inner flex items-start justify-between gap-6">
                         <div className="rf-deephire-profile-copy min-w-0 flex-1">
-                            {isChampion ? (
-                                <p className="rf-deephire-kicker text-[52px] font-black leading-none tracking-tight text-gray-950">HELLO</p>
-                            ) : (
-                                <Quote className="rf-deephire-quote h-8 w-8 text-amber-400" fill="currentColor" aria-hidden="true" />
-                            )}
+                            <Quote className="rf-deephire-quote h-8 w-8 text-amber-400" fill="currentColor" aria-hidden="true" />
                             <h1 className="rf-deephire-name mt-2 text-[30px] font-bold leading-tight tracking-[0.06em] text-gray-950">
                                 {profile.name}
                             </h1>
-                            {!isChampion && resumeDisplayTitle ? (
+                            {resumeDisplayTitle ? (
                                 <p className="rf-deephire-title mt-1.5 text-[11px] font-semibold leading-snug text-gray-600">
                                     {resumeDisplayTitle}
                                 </p>
                             ) : null}
-                            {!isChampion
-                                ? renderContactList('mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] font-medium text-gray-600')
-                                : null}
+                            {renderContactList('mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] font-medium text-gray-600')}
                         </div>
                         <div className="rf-deephire-avatar-wrap relative shrink-0">
                             {isYouthEnergy ? (
@@ -151,8 +143,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                                 />
                             ) : null}
                             {renderAvatarFrame(
-                                `rf-deephire-avatar relative z-[1] flex shrink-0 items-center justify-center overflow-hidden bg-white shadow-sm ${isChampion ? 'h-[144px] w-[144px] rounded-lg' : 'h-[150px] w-[150px] rounded-full'}`,
-                                'cover'
+                                'rf-deephire-avatar relative z-[1] flex h-[150px] w-[150px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm'
                             )}
                         </div>
                     </div>
@@ -172,8 +163,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                     {renderAvatarFrame(
                         activeTemplate.renderVariant === 'editorial-split'
                             ? 'rf-deephire-avatar mb-4 flex h-24 w-20 items-center justify-center overflow-hidden rounded-full border-[3px] border-white bg-white shadow-sm'
-                            : 'rf-deephire-avatar mb-4 flex h-24 w-20 items-center justify-center overflow-hidden rounded-lg border border-white/80 bg-white shadow-sm',
-                        'cover'
+                            : 'rf-deephire-avatar mb-4 flex h-24 w-20 items-center justify-center overflow-hidden rounded-lg border border-white/80 bg-white shadow-sm'
                     )}
                     <h1 className={`rf-deephire-name text-[28px] font-bold leading-tight tracking-[0.08em] ${useLightText ? 'text-white' : 'text-gray-950'}`}>
                         {profile.name}
@@ -217,7 +207,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                     aria-hidden="true"
                 />
                 <div className="rf-deephire-header-inner relative -mt-12 flex flex-col items-center">
-                    {renderAvatarFrame('rf-deephire-avatar flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white shadow-md', 'cover')}
+                    {renderAvatarFrame('rf-deephire-avatar flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white shadow-md')}
                     <h1 className="rf-deephire-name mt-3 text-[31px] font-bold leading-none tracking-[0.1em] text-gray-950">
                         {profile.name}
                     </h1>
@@ -255,7 +245,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                         ) : null}
                         {renderContactList('mt-4 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] font-medium text-inherit opacity-80')}
                     </div>
-                    {renderAvatarFrame('rf-deephire-avatar flex h-24 w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 border-white/80 bg-white shadow-sm', 'cover')}
+                    {renderAvatarFrame('rf-deephire-avatar flex h-24 w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 border-white/80 bg-white shadow-sm')}
                 </div>
             </div>
         );
@@ -296,7 +286,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                     {isCampusYouth ? (
                         <Circle className="rf-campus-avatar-dot absolute" fill="currentColor" aria-hidden="true" />
                     ) : null}
-                    {renderAvatarFrame('rf-deephire-avatar relative z-[1] flex h-24 w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm', 'cover')}
+                    {renderAvatarFrame('rf-deephire-avatar relative z-[1] flex h-24 w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm')}
                 </div>
             </div>
         </div>

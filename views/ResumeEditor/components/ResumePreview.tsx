@@ -8,11 +8,9 @@ import {
     BadgeCheck,
     ChevronRight,
     Circle,
-    ContactRound,
     Diamond,
     List,
     Square,
-    Target,
 } from 'lucide-react';
 import {
     FONT_SIZE_DEFAULT,
@@ -101,6 +99,7 @@ import {
     buildDeepHireSplitSidebarStyle,
     buildDeepHireTemplateCss,
     resolveDeepHireSplitGridTemplateColumns,
+    usesDeepHireCertificationCards,
     usesLightDeepHireSidebar,
 } from './ResumePreview/deepHireTemplateStyles';
 import SummarySection from './ResumePreview/sections/SummarySection';
@@ -327,9 +326,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         [profile.avatarDataUrl]
     );
     const renderSkillGroupLine = React.useCallback((group: SkillGroupView) => (
-        <div className={`grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
-            <span className="font-bold text-gray-900">{group.name}:</span>
-            <span>{group.skills.map((skill) => skill.name).join(resolvedSkillTagSeparator)}</span>
+        <div className={`rf-template-skill-group-line grid grid-cols-[100px_1fr] ${LIST_GAP_CLASS}`}>
+            <span className="rf-template-skill-group-name font-bold text-gray-900">{group.name}:</span>
+            <span className="rf-template-skill-group-values">{group.skills.map((skill) => skill.name).join(resolvedSkillTagSeparator)}</span>
         </div>
     ), [resolvedSkillTagSeparator]);
     const [hasAvatarLoadError, setHasAvatarLoadError] = React.useState(false);
@@ -1334,8 +1333,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             education: '教育经历',
         };
         const headingTitle = isDeepHire ? (deepHireSectionTitles[sectionId] ?? title) : title;
-        const usesDiamondTrail = activeTemplate.id === 'deephire-champion-blue'
-            || activeTemplate.id === 'deephire-collector-red';
+        const usesDiamondTrail = activeTemplate.id === 'deephire-collector-red';
         const usesCenteredDiamonds = activeTemplate.id === 'deephire-renaissance';
         const usesChevronMarker = activeTemplate.id === 'deephire-cyber-future';
         const usesSquareMarker = activeTemplate.id === 'deephire-magazine-editorial'
@@ -1621,6 +1619,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 isReadOnly={isReadOnly}
                 showTouchDragHandles={showTouchDragHandles}
                 isTimelineBlueTemplate={isTimelineBlueTemplate}
+                showIssuerAndDate={!usesDeepHireCertificationCards(activeTemplate)}
                 draggedItemKey={draggedItemKey}
                 draggedSectionId={draggedSectionId}
                 includeOverflowState={includeOverflowState}
@@ -1706,37 +1705,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             renderAvatarFrame={renderAvatarFrame}
         />
     );
-    const renderSplitSidebarMeta = () => {
-        if (activeTemplate.id !== 'deephire-champion-blue') {
-            return null;
-        }
-
-        return (
-            <div className="rf-template-sidebar-meta mb-8 space-y-7 text-white">
-                <section>
-                    <h2 className="mb-3 flex items-center gap-2 text-[16px] font-bold">
-                        <ContactRound className="h-4 w-4" aria-hidden="true" />
-                        联系方式
-                    </h2>
-                    <div className="space-y-2 border-b border-white/15 pb-6 text-[10.5px] leading-relaxed text-white/80">
-                        {contactItems.map((item) => <p key={item} className="break-all">{item}</p>)}
-                    </div>
-                </section>
-                {resumeDisplayTitle ? (
-                    <section>
-                        <h2 className="mb-3 flex items-center gap-2 text-[16px] font-bold">
-                            <Target className="h-4 w-4" aria-hidden="true" />
-                            求职信息
-                        </h2>
-                        <p className="border-b border-white/15 pb-6 text-[10.5px] leading-relaxed text-white/80">
-                            {resumeDisplayTitle}
-                        </p>
-                    </section>
-                ) : null}
-            </div>
-        );
-    };
-
     const renderSectionById = (sectionId: string) => {
         if (sectionId === 'summary') {
             return renderSummarySection();
@@ -1870,7 +1838,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 className={`rf-template-sidebar flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6 ${useLightSplitSidebar ? 'text-white [&_.text-gray-950]:!text-white [&_.text-gray-900]:!text-white [&_.text-gray-800]:!text-white/85 [&_.text-gray-700]:!text-white/75 [&_.text-gray-600]:!text-white/70 [&_.text-gray-500]:!text-white/60' : ''}`}
                             >
                                 {splitHeaderPlacement === 'sidebar' ? renderHeaderBlock() : null}
-                                {renderSplitSidebarMeta()}
                                 {renderOrderedSections(splitColumnSectionIds.sidebar)}
                             </div>
                             <div

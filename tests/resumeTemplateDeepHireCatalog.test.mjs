@@ -15,7 +15,6 @@ const EXPECTED_DEEPHIRE_TEMPLATES = [
   ['deephire-simple', '简约'],
   ['deephire-deep-blue', '湛青'],
   ['deephire-lucky-red', '幸运红'],
-  ['deephire-champion-blue', '冠军蓝'],
   ['deephire-collector-red', '典藏红'],
   ['deephire-minimal', '极简'],
   ['deephire-blue-header', '蓝顶'],
@@ -42,7 +41,6 @@ const EXPECTED_DEEPHIRE_TEMPLATES = [
 const SOURCE_BACKED_DECORATIONS = [
   ['deephire-deep-blue', 'public/resume-templates/deephire/deephire-deep-blue-band.png'],
   ['deephire-lucky-red', 'public/resume-templates/deephire/deephire-lucky-dots.png'],
-  ['deephire-champion-blue', 'public/resume-templates/deephire/deephire-champion-honeycomb.png'],
   ['deephire-fashion-black', 'public/resume-templates/deephire/deephire-fashion-rings.png'],
   ['deephire-youth-energy', 'public/resume-templates/deephire/deephire-youth-accent.png'],
   ['deephire-soft-realm', 'public/resume-templates/deephire/deephire-soft-realm-arc.png'],
@@ -60,7 +58,6 @@ const DEEPHIRE_STRUCTURE_CONTRACT = {
   'deephire-simple': ['split', 'split-profile', 'timeline-dot', 'sidebar', 0.305],
   'deephire-deep-blue': ['avatar', 'curved-profile', 'plain-rule'],
   'deephire-lucky-red': ['avatar', 'top-banner-avatar', 'solid-band'],
-  'deephire-champion-blue': ['split', 'editorial-split', 'solid-band', 'main', 0.295],
   'deephire-collector-red': ['split', 'split-profile', 'timeline-dot', 'sidebar', 0.295],
   'deephire-minimal': ['avatar', 'avatar-right', 'plain-rule'],
   'deephire-blue-header': ['avatar', 'top-banner-avatar', 'plain-rule'],
@@ -123,14 +120,24 @@ const loadPreviewRenderUtils = async () => {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 };
 
-test('DeepHire catalog exposes the exact replicated template set and local assets', async () => {
-  const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
+test('DeepHire catalog exposes the exact supported template set and local assets', async () => {
+  const {
+    DEFAULT_RESUME_TEMPLATE_ID,
+    RESUME_TEMPLATE_DEFINITIONS,
+    normalizeResumeTemplateId,
+  } = await loadResumeTemplateCatalog();
   const deephireTemplates = RESUME_TEMPLATE_DEFINITIONS.filter(({ id }) => id.startsWith('deephire-'));
 
   assert.deepEqual(
     deephireTemplates.map(({ id, name }) => [id, name]),
     EXPECTED_DEEPHIRE_TEMPLATES,
     'the DeepHire catalog should stay complete, ordered, and free of renamed or extra entries',
+  );
+  assert.equal(deephireTemplates.length, 27);
+  assert.equal(
+    normalizeResumeTemplateId('deephire-champion-blue'),
+    DEFAULT_RESUME_TEMPLATE_ID,
+    'saved references to the retired champion template should fall back safely',
   );
 
   for (const template of deephireTemplates) {
@@ -197,7 +204,7 @@ test('agent template options mirror the frontend DeepHire contract', async () =>
   }
 });
 
-test('all 28 DeepHire templates own measured geometry instead of falling back to a generic skin', async () => {
+test('all 27 DeepHire templates own measured geometry instead of falling back to a generic skin', async () => {
   const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
   const deephireTemplates = RESUME_TEMPLATE_DEFINITIONS.filter(({ id }) => id.startsWith('deephire-'));
   const styleSource = read('views/ResumeEditor/components/ResumePreview/deepHireTemplateStyles.ts');
@@ -448,10 +455,12 @@ test('DeepHire preview preserves its measured top inset while applying page-marg
   const { buildDeepHirePreviewStyleOverrides } = await loadDeepHireTemplateStyles();
   const template = RESUME_TEMPLATE_DEFINITIONS.find(({ id }) => id === 'deephire-standard');
   const fullBleedTemplate = RESUME_TEMPLATE_DEFINITIONS.find(({ id }) => id === 'deephire-simple');
+  const insetBannerTemplate = RESUME_TEMPLATE_DEFINITIONS.find(({ id }) => id === 'deephire-steady');
   const defaultTopPaddingPx = Number((20 * (96 / 25.4)).toFixed(2));
 
   assert.ok(template, 'the standard DeepHire template should exist');
   assert.ok(fullBleedTemplate, 'the full-bleed DeepHire template should exist');
+  assert.ok(insetBannerTemplate, 'the steady DeepHire template should exist');
 
   const defaultStyle = buildDeepHirePreviewStyleOverrides(template, defaultTopPaddingPx);
   const compactStyle = buildDeepHirePreviewStyleOverrides(template, defaultTopPaddingPx - 10);
@@ -470,6 +479,15 @@ test('DeepHire preview preserves its measured top inset while applying page-marg
     buildDeepHirePreviewStyleOverrides(fullBleedTemplate, defaultTopPaddingPx + 10).paddingTop,
     '10px',
     'increasing the page margin should still adjust a full-bleed template',
+  );
+  assert.equal(
+    buildDeepHirePreviewStyleOverrides(insetBannerTemplate, defaultTopPaddingPx).paddingTop,
+    '28px',
+    'the steady banner should reserve breathing room above its profile content',
+  );
+  assert.equal(
+    buildDeepHirePreviewStyleOverrides(insetBannerTemplate, defaultTopPaddingPx)['--rf-template-top-padding'],
+    '28px',
   );
   assert.equal(
     compactStyle.paddingRight,
@@ -496,11 +514,103 @@ test('DeepHire full-bleed banners keep editor-controlled top padding', () => {
   );
 });
 
-test('champion metadata is rendered only in its dedicated sidebar block', () => {
-  const source = read('views/ResumeEditor/components/ResumePreview/sections/DeepHireHeaderBlock.tsx');
+test('DeepHire avatars avoid photo cropping and keep deliberately soft corners', async () => {
+  const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
+  const {
+    buildDeepHireTemplateCss,
+    resolveDeepHireAvatarBorderRadius,
+  } = await loadDeepHireTemplateStyles();
+  const deephireTemplates = RESUME_TEMPLATE_DEFINITIONS.filter(({ id }) => id.startsWith('deephire-'));
+  const headerSource = read('views/ResumeEditor/components/ResumePreview/sections/DeepHireHeaderBlock.tsx');
+  const previewSource = read('views/ResumeEditor/components/ResumePreview.tsx');
 
-  assert.match(source, /!isChampion && resumeDisplayTitle/);
-  assert.match(source, /!isChampion\s*\?\s*renderContactList\(/);
+  assert.doesNotMatch(
+    headerSource,
+    /,\s*'cover'\s*\)/,
+    'DeepHire header branches should use the contain default instead of cropping profile photos',
+  );
+  assert.match(
+    previewSource,
+    /imageObjectFit:\s*'contain'\s*\|\s*'cover'\s*=\s*'contain'/,
+    'the shared avatar renderer should keep contain as its default image fit',
+  );
+  assert.match(
+    previewSource,
+    /imageObjectFit\s*===\s*'cover'\s*\?\s*'object-cover'\s*:\s*'object-contain'/,
+    'the shared avatar renderer should map its contain default to object-contain',
+  );
+
+  for (const template of deephireTemplates) {
+    const radius = resolveDeepHireAvatarBorderRadius(template);
+    assert.equal(radius, '14px', `${template.id} should resolve to a soft, low-crop avatar silhouette`);
+    assert.match(
+      buildDeepHireTemplateCss(template, `avatar-qa-${template.id}`),
+      new RegExp(`\\.rf-deephire-avatar\\s*\\{\\s*border-radius:\\s*${radius.replaceAll('%', '\\%')}\\s*!important;`),
+      `${template.id} should apply its final avatar QA radius after template-specific styles`,
+    );
+  }
+
+  const deepBlue = deephireTemplates.find(({ id }) => id === 'deephire-deep-blue');
+  assert.ok(deepBlue, 'the deep-blue template should exist');
+  assert.match(
+    buildDeepHireTemplateCss(deepBlue, 'deep-blue-avatar-qa'),
+    /\.rf-deephire-avatar\s*\{\s*width:\s*76px\s*!important;\s*height:\s*110px\s*!important;/,
+    'the deep-blue frame should use a portrait ratio that avoids side gutters around ID photos',
+  );
+});
+
+test('DeepHire sidebar skills place the capability values on their own line', async () => {
+  const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
+  const { buildDeepHireTemplateCss } = await loadDeepHireTemplateStyles();
+  const collector = RESUME_TEMPLATE_DEFINITIONS.find(({ id }) => id === 'deephire-collector-red');
+
+  assert.ok(collector, 'the collector red split template should exist');
+  assert.match(read('views/ResumeEditor/components/ResumePreview.tsx'), /rf-template-skill-group-line/);
+  assert.match(
+    buildDeepHireTemplateCss(collector, 'sidebar-skills'),
+    /\.rf-template-sidebar \[data-rf-item-container="skills"\] \.rf-template-skill-group-line\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
+  );
+});
+
+test('card-style DeepHire certifications render the certificate name only', async () => {
+  const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
+  const { usesDeepHireCertificationCards } = await loadDeepHireTemplateStyles();
+  const cardTemplateIds = new Set([
+    'deephire-fashion-black',
+    'deephire-artistic',
+    'deephire-renaissance',
+    'deephire-watercolor',
+    'deephire-campus-youth',
+  ]);
+
+  for (const template of RESUME_TEMPLATE_DEFINITIONS) {
+    assert.equal(
+      usesDeepHireCertificationCards(template),
+      cardTemplateIds.has(template.id),
+      `${template.id} should keep the intended certificate metadata treatment`,
+    );
+  }
+
+  assert.match(
+    read('views/ResumeEditor/components/ResumePreview.tsx'),
+    /showIssuerAndDate=\{!usesDeepHireCertificationCards\(activeTemplate\)\}/,
+  );
+  const certificationSource = read('views/ResumeEditor/components/ResumePreview/sections/CertificationSection.tsx');
+  assert.match(certificationSource, /showIssuerAndDate\s*\?\s*\(/);
+  assert.match(certificationSource, /showIssuerAndDate && cert\.issuer/);
+});
+
+test('campus youth headings reuse the multicolor divider as a polished underline', async () => {
+  const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
+  const { buildDeepHireTemplateCss } = await loadDeepHireTemplateStyles();
+  const campus = RESUME_TEMPLATE_DEFINITIONS.find(({ id }) => id === 'deephire-campus-youth');
+
+  assert.ok(campus, 'the campus youth template should exist');
+  const css = buildDeepHireTemplateCss(campus, 'campus-title');
+  assert.match(css, /\.rf-template-section-heading::after\s*\{[^}]*border-radius:\s*999px;/s);
+  assert.match(css, /deephire-campus-divider\.png/);
+  assert.match(css, /background:\s*transparent\s*!important/);
+  assert.match(css, /height:\s*3px/);
 });
 
 test('cyber avatar placeholder keeps readable foreground and background colors', async () => {

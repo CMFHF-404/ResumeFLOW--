@@ -9,7 +9,10 @@ import httpx
 from fastapi import HTTPException
 from starlette.status import HTTP_503_SERVICE_UNAVAILABLE, HTTP_504_GATEWAY_TIMEOUT
 
-from ...config import load_settings
+from ...config import (
+    derive_qwen_responses_base_url as _derive_qwen_responses_base_url,
+    load_settings,
+)
 from .response_normalizers import _parse_json_content, _parse_json_content_candidates
 from .sse_events import iter_sse_json_payloads
 from .streaming_policy import (
@@ -412,19 +415,6 @@ def _build_qwen_responses_input_messages(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": content},
     ]
-
-
-def _derive_qwen_responses_base_url(ai_base_url: str) -> str:
-    normalized = (ai_base_url or "").rstrip("/")
-    responses_suffix = "/api/v2/apps/protocols/compatible-mode/v1"
-    if normalized.endswith(responses_suffix):
-        return normalized
-
-    chat_suffix = "/compatible-mode/v1"
-    if normalized.endswith(chat_suffix):
-        return f"{normalized[: -len(chat_suffix)]}{responses_suffix}"
-
-    return normalized
 
 
 def _build_qwen_responses_url() -> str:

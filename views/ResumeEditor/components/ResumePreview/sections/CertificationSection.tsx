@@ -23,6 +23,7 @@ type CertificationSectionProps = {
     isReadOnly: boolean;
     showTouchDragHandles: boolean;
     isTimelineBlueTemplate: boolean;
+    showIssuerAndDate: boolean;
     draggedItemKey: string | null;
     draggedSectionId: string | null;
     includeOverflowState: boolean;
@@ -63,6 +64,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
     isReadOnly,
     showTouchDragHandles,
     isTimelineBlueTemplate,
+    showIssuerAndDate,
     draggedItemKey,
     draggedSectionId,
     includeOverflowState,
@@ -235,20 +237,24 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                                     {variant === 'split' ? (
                                         <div className="space-y-1">
                                             <div className="rf-template-certification-name text-xs font-bold text-gray-900">{cert.name}</div>
-                                            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs text-gray-700">
-                                                <span>{cert.issuer ? `(${cert.issuer})` : ''}</span>
-                                                <span className="rf-template-date font-medium text-gray-900">{cert.date}</span>
-                                            </div>
+                                            {showIssuerAndDate ? (
+                                                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs text-gray-700">
+                                                    <span>{cert.issuer ? `(${cert.issuer})` : ''}</span>
+                                                    <span className="rf-template-date font-medium text-gray-900">{cert.date}</span>
+                                                </div>
+                                            ) : null}
                                         </div>
                                     ) : (
                                         <div className="flex justify-between items-baseline">
                                             <div>
                                                 <span className="rf-template-certification-name text-xs font-bold text-gray-900">{cert.name}</span>
-                                                {cert.issuer ? (
+                                                {showIssuerAndDate && cert.issuer ? (
                                                     <span className="text-xs text-gray-900 ml-2">({cert.issuer})</span>
                                                 ) : null}
                                             </div>
-                                            <span className="rf-template-date text-xs text-gray-900">{cert.date}</span>
+                                            {showIssuerAndDate ? (
+                                                <span className="rf-template-date text-xs text-gray-900">{cert.date}</span>
+                                            ) : null}
                                         </div>
                                     )}
                                 </div>

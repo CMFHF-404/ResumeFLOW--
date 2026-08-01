@@ -15,7 +15,6 @@ export type ResumeTemplateId =
   | 'deephire-simple'
   | 'deephire-deep-blue'
   | 'deephire-lucky-red'
-  | 'deephire-champion-blue'
   | 'deephire-collector-red'
   | 'deephire-minimal'
   | 'deephire-blue-header'
@@ -427,7 +426,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     sectionVariant: 'plain-rule',
     thumbnailSrc: '/resume-templates/deephire/deephire-steady.webp',
     visualTokens: {
-      pageInsets: { top: 0, right: 60, bottom: 44, left: 60 },
+      pageInsets: { top: 28, right: 60, bottom: 44, left: 60 },
       headerBackground: '#343b4e',
       headerForeground: '#ffffff',
     },
@@ -488,27 +487,6 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
       pageBackground: '#f8cad7',
       headerBackground: '#bd0045',
       headerForeground: '#ffffff',
-    },
-  },
-  {
-    id: 'deephire-champion-blue',
-    name: '冠军蓝',
-    description: '冠军蓝侧栏与大字号问候式页眉，适合创意岗位。',
-    hasAvatar: true,
-    layoutKind: 'split',
-    defaultThemeColorPresetId: 'royal',
-    collection: 'deephire',
-    visualStyle: 'deephire-champion-blue',
-    renderVariant: 'editorial-split',
-    sectionVariant: 'solid-band',
-    thumbnailSrc: '/resume-templates/deephire/deephire-champion-blue.webp',
-    visualTokens: {
-      pageInsets: { top: 0, right: 0, bottom: 0, left: 0 },
-      headerPlacement: 'main',
-      sidebarBackground: '#386bb7',
-      sidebarForeground: '#ffffff',
-      sidebarRatio: 0.295,
-      sidebarSectionIds: ['certifications', 'skills'],
     },
   },
   {

@@ -34,7 +34,7 @@ const ResumeEditorMobileDrawer: React.FC<ResumeEditorMobileDrawerProps> = ({
             </div>
         </div>
         {isOpen ? (
-            <div className={`fixed inset-0 z-[70] transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${isVisible ? 'bg-black/35 opacity-100 backdrop-blur-[1px]' : 'bg-black/0 opacity-0'}`}>
+            <div className={`fixed inset-0 z-[70] transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${isVisible ? 'bg-black/35 opacity-100' : 'bg-black/0 opacity-0'}`}>
                 <button
                     type="button"
                     aria-label="关闭经历库抽屉遮罩"
