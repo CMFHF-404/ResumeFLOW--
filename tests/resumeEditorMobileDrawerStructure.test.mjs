@@ -7,6 +7,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', () => {
   const editor = read('views/ResumeEditor/index.tsx');
   const drawer = read('views/ResumeEditor/components/ResumeEditorMobileDrawer.tsx');
+  const drawerHook = read('views/ResumeEditor/hooks/useMobileEditorDrawer.ts');
 
   assert.match(editor, /ResumeEditorMobileDrawer/);
   assert.match(editor, /isOpen=\{mobileEditorDrawer\.isOpen\}/);
@@ -14,6 +15,8 @@ test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', (
   assert.match(editor, /onOpen=\{mobileEditorDrawer\.open\}/);
   assert.match(editor, /onClose=\{mobileEditorDrawer\.close\}/);
   assert.match(editor, /sidebarProps=\{commonEditorSidebarProps\}/);
+  assert.match(editor, /data-rf-mobile-editor-scroll-root/);
+  assert.match(editor, /\[scrollbar-gutter:stable\]/);
   assert.doesNotMatch(editor, /关闭经历库抽屉遮罩/);
   assert.doesNotMatch(editor, /layoutMode="drawer"/);
 
@@ -24,8 +27,12 @@ test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', (
   assert.match(drawer, /aria-label="关闭经历库抽屉遮罩"/);
   assert.match(drawer, /经历库/);
   assert.match(drawer, /duration-\[320ms\]/);
-  assert.match(drawer, /isVisible \? 'bg-black\/35 opacity-100 backdrop-blur-\[1px\]' : 'bg-black\/0 opacity-0'/);
+  assert.match(drawer, /isVisible \? 'bg-black\/35 opacity-100' : 'bg-black\/0 opacity-0'/);
+  assert.doesNotMatch(drawer, /backdrop-blur-\[1px\]/);
   assert.match(drawer, /isVisible \? 'translate-y-0' : 'translate-y-full'/);
   assert.match(drawer, /layoutMode="drawer"/);
   assert.match(drawer, /showJDPanel=\{false\}/);
+
+  assert.match(drawerHook, /scrollContainer\.style\.overflow = 'hidden'/);
+  assert.doesNotMatch(drawerHook, /document\.body\.style\.overflow/);
 });

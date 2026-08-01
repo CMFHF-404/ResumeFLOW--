@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 import httpx
 from dotenv import load_dotenv
 
+from app.config import derive_qwen_responses_base_url
+
 load_dotenv()
 
 DEFAULT_ROUTE_PROFILE = "hybrid_gemini_aifast"
@@ -59,17 +61,6 @@ def route_profile() -> str:
     if normalized not in VALID_ROUTE_PROFILES:
         valid = ", ".join(sorted(VALID_ROUTE_PROFILES))
         raise RuntimeError(f"Invalid AI_ROUTE_PROFILE: {normalized}. Expected one of: {valid}")
-    return normalized
-
-
-def derive_qwen_responses_base_url(ai_base_url: str) -> str:
-    normalized = normalize_base_url(ai_base_url)
-    responses_suffix = "/api/v2/apps/protocols/compatible-mode/v1"
-    if normalized.endswith(responses_suffix):
-        return normalized
-    chat_suffix = "/compatible-mode/v1"
-    if normalized.endswith(chat_suffix):
-        return f"{normalized[: -len(chat_suffix)]}{responses_suffix}"
     return normalized
 
 

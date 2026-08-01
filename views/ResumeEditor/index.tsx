@@ -1852,7 +1852,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     return (
         <div
             ref={mobileEditorScrollContainerRef}
-            className="relative flex min-h-full flex-1 flex-col overflow-y-auto bg-background-light dark:bg-background-dark md:h-full md:overflow-hidden"
+            data-rf-mobile-editor-scroll-root
+            className="relative flex min-h-full flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] bg-background-light dark:bg-background-dark md:h-full md:overflow-hidden"
             aria-busy={isEditorBusy}
         >
             <div className="hidden md:block">

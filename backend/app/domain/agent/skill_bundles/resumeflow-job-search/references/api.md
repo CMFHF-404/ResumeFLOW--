@@ -146,13 +146,6 @@ Response body:
       "default_theme_color_preset_id": "crimson"
     },
     {
-      "id": "deephire-champion-blue",
-      "name": "冠军蓝",
-      "description": "冠军蓝侧栏与大字号问候式页眉，适合创意岗位。",
-      "has_avatar": true,
-      "default_theme_color_preset_id": "royal"
-    },
-    {
       "id": "deephire-collector-red",
       "name": "典藏红",
       "description": "红色顶轨与信息侧栏结合，经典而利落。",

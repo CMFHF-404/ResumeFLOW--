@@ -82,12 +82,8 @@ def _normalize_database_url(value: str) -> str:
     return value
 
 
-def _resolve_ai_responses_base_url(ai_base_url: str) -> str:
-    configured = os.getenv(ENV_AI_RESPONSES_BASE_URL)
-    if configured:
-        return configured.rstrip("/")
-
-    normalized = ai_base_url.rstrip("/")
+def derive_qwen_responses_base_url(ai_base_url: Optional[str]) -> str:
+    normalized = (ai_base_url or "").rstrip("/")
     responses_suffix = "/api/v2/apps/protocols/compatible-mode/v1"
     if normalized.endswith(responses_suffix):
         return normalized
@@ -97,6 +93,14 @@ def _resolve_ai_responses_base_url(ai_base_url: str) -> str:
         return f"{normalized[: -len(chat_suffix)]}{responses_suffix}"
 
     return normalized
+
+
+def _resolve_ai_responses_base_url(ai_base_url: str) -> str:
+    configured = os.getenv(ENV_AI_RESPONSES_BASE_URL)
+    if configured:
+        return configured.rstrip("/")
+
+    return derive_qwen_responses_base_url(ai_base_url)
 
 
 def _normalize_issuer(issuer: str) -> str:

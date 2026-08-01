@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import copy
 import hashlib
 import inspect
@@ -391,10 +390,6 @@ def _build_resume_messages(prompt: str, content: str) -> List[Dict[str, Any]]:
         {"role": "system", "content": prompt},
         {"role": "user", "content": content},
     ]
-
-
-def _encode_upload_data(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
 
 
 def _build_resume_attachment_messages(

@@ -1081,7 +1081,6 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
                 "deephire-simple",
                 "deephire-deep-blue",
                 "deephire-lucky-red",
-                "deephire-champion-blue",
                 "deephire-collector-red",
                 "deephire-minimal",
                 "deephire-blue-header",

@@ -33,6 +33,28 @@ const isDeepHireTemplate = (activeTemplate: ResumeTemplateDefinition) => (
     activeTemplate.collection === 'deephire'
 );
 
+const DEEPHIRE_CERTIFICATION_CARD_TEMPLATE_IDS = new Set<ResumeTemplateDefinition['id']>([
+    'deephire-fashion-black',
+    'deephire-artistic',
+    'deephire-renaissance',
+    'deephire-watercolor',
+    'deephire-campus-youth',
+]);
+
+export const resolveDeepHireAvatarBorderRadius = (
+    activeTemplate: ResumeTemplateDefinition
+) => {
+    if (!isDeepHireTemplate(activeTemplate)) {
+        return undefined;
+    }
+    return '14px';
+};
+
+export const usesDeepHireCertificationCards = (
+    activeTemplate: ResumeTemplateDefinition
+) => isDeepHireTemplate(activeTemplate)
+    && DEEPHIRE_CERTIFICATION_CARD_TEMPLATE_IDS.has(activeTemplate.id);
+
 const normalizeTopPaddingPx = (topPaddingPx: number) => (
     Number.isFinite(topPaddingPx)
         ? Math.max(0, topPaddingPx)
@@ -350,7 +372,7 @@ ${rootSelector} .rf-deephire-curved-band {
   background: url("/resume-templates/deephire/deephire-deep-blue-band.png") center top / 100% 126px no-repeat !important;
 }
 ${rootSelector} .rf-deephire-header-inner { margin-top: -62px !important; }
-${rootSelector} .rf-deephire-avatar { width: 110px !important; height: 110px !important; }
+${rootSelector} .rf-deephire-avatar { width: 76px !important; height: 110px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 32px !important; margin-top: 18px !important; }
 ${trailingRuleCss}`;
         case 'deephire-lucky-red':
@@ -402,35 +424,6 @@ ${rootSelector} .rf-template-section-heading {
   padding: 7px 18px !important;
   margin-bottom: 16px;
 }`;
-        case 'deephire-champion-blue':
-            return `
-${fullBleedSplitCss}
-${rootSelector} .rf-template-sidebar {
-  padding: 56px 38px 36px !important;
-  background-image: url("/resume-templates/deephire/deephire-champion-honeycomb.png") !important;
-  background-position: left bottom !important;
-  background-repeat: no-repeat !important;
-  background-size: 100% auto !important;
-}
-${rootSelector} .rf-template-main { padding: 40px 42px 36px !important; }
-${rootSelector} .rf-deephire-header--champion { margin-bottom: 38px; }
-${rootSelector} .rf-deephire-kicker { font-size: 67px !important; }
-${rootSelector} .rf-deephire-name { font-size: 27px !important; }
-${rootSelector} .rf-deephire-avatar { width: 146px !important; height: 146px !important; border-radius: 10px !important; }
-${rootSelector} .rf-deephire-header--champion .rf-deephire-contact-list { display: none; }
-${rootSelector} .rf-template-section-heading {
-  border: 0 !important;
-  border-bottom: 1px solid #e3e6eb !important;
-  background: transparent !important;
-  color: #111111 !important;
-  font-size: 17px !important;
-  letter-spacing: 0 !important;
-  padding: 0 0 9px !important;
-  margin-bottom: 13px;
-}
-${rootSelector} .rf-template-sidebar .rf-template-section-heading { color: #ffffff !important; border-bottom-color: rgba(255,255,255,.2) !important; }
-${rootSelector} .rf-template-sidebar .rf-heading-diamond-trail { display: none; }
-${rootSelector} .rf-heading-diamond-trail { color: #4f80c9; }`;
         case 'deephire-collector-red':
             return `
 ${fullBleedSplitCss}
@@ -872,7 +865,30 @@ ${rootSelector} .rf-deephire-header {
 ${rootSelector} .rf-deephire-name { font-size: 38px !important; }
 ${rootSelector} .rf-deephire-avatar { width: 80px !important; height: 80px !important; border: 3px solid #5e8cff !important; border-radius: 12px !important; }
 ${rootSelector} .rf-campus-avatar-dot { z-index: 2; right: -16px; top: -14px; width: 16px; height: 16px; color: #85e7bb; }
-${rootSelector} .rf-template-section-heading { width: fit-content !important; gap: 9px !important; border: 0 !important; border-radius: 0 !important; background: rgba(111,145,255,.14) !important; color: #27364e !important; font-size: 18px !important; letter-spacing: 0 !important; padding: 2px 12px 2px 0 !important; margin-bottom: 22px; }
+${rootSelector} .rf-template-section-heading {
+  position: relative;
+  width: fit-content !important;
+  gap: 9px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #27364e !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  letter-spacing: .02em !important;
+  padding: 0 2px 7px 0 !important;
+  margin-bottom: 20px;
+}
+${rootSelector} .rf-template-section-heading::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: url("/resume-templates/deephire/deephire-campus-divider.png") center / 100% 3px no-repeat;
+}
 ${rootSelector} .rf-heading-marker { color: #6590ff; }
 ${rootSelector} [data-rf-section-id="certifications"] [data-rf-item-surface] { display: inline-block; width: auto; border: 2px solid #6590ff !important; border-radius: 12px !important; padding: 7px 12px !important; }
 ${rootSelector} [data-rf-section-id="education"] [data-rf-item-id] { border-bottom: 1px solid #eceff5; padding-bottom: 22px; margin-bottom: 22px; }
@@ -975,12 +991,23 @@ ${rootSelector} .rf-template-sidebar {
 ${rootSelector} .rf-template-main {
   background-color: var(--rf-template-main-bg);
   color: var(--rf-template-page-fg);
+}
+${rootSelector} .rf-template-sidebar [data-rf-item-container="skills"] .rf-template-skill-group-line {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 5px;
 }`;
+
+    const avatarBorderRadius = resolveDeepHireAvatarBorderRadius(activeTemplate);
+    const avatarQualityCss = avatarBorderRadius ? `
+${rootSelector} .rf-deephire-avatar {
+  border-radius: ${avatarBorderRadius} !important;
+}` : '';
 
     return [
         baseCss,
         buildSectionVariantCss(rootSelector, activeTemplate.sectionVariant),
         buildTemplateSpecificCss(activeTemplate, rootSelector),
+        avatarQualityCss,
     ].filter(Boolean).join('\n');
 };
 

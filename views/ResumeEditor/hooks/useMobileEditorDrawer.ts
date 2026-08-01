@@ -67,14 +67,11 @@ export const useMobileEditorDrawer = ({
             return;
         }
         const scrollContainer = scrollContainerRef.current;
-        const { overflow } = document.body.style;
-        document.body.style.overflow = 'hidden';
         const previousContainerOverflow = scrollContainer?.style.overflow ?? '';
         if (scrollContainer) {
             scrollContainer.style.overflow = 'hidden';
         }
         return () => {
-            document.body.style.overflow = overflow;
             if (scrollContainer) {
                 scrollContainer.style.overflow = previousContainerOverflow;
             }

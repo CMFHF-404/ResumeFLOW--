@@ -319,6 +319,37 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
         )
 
+    def test_qwen_responses_base_url_derivation_is_shared(self) -> None:
+        import verify_ai
+
+        self.assertIs(
+            llm_transport._derive_qwen_responses_base_url,
+            config_module.derive_qwen_responses_base_url,
+        )
+        self.assertIs(
+            verify_ai.derive_qwen_responses_base_url,
+            config_module.derive_qwen_responses_base_url,
+        )
+        cases = (
+            (
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+                "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ),
+            (
+                "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1/",
+                "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ),
+            ("https://proxy.example.com/v1/", "https://proxy.example.com/v1"),
+            ("", ""),
+            (None, ""),
+        )
+        for ai_base_url, expected in cases:
+            with self.subTest(ai_base_url=ai_base_url):
+                self.assertEqual(
+                    config_module.derive_qwen_responses_base_url(ai_base_url),
+                    expected,
+                )
+
     def test_verify_ai_derives_qwen_responses_route_from_ai_base_url(self) -> None:
         import verify_ai
 
@@ -339,6 +370,24 @@ class GeminiThinkingConfigTests(unittest.TestCase):
             route.base_url,
             "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
         )
+
+    def test_verify_ai_prefers_explicit_qwen_responses_base_url(self) -> None:
+        import verify_ai
+
+        with patch.dict(
+            os.environ,
+            {
+                "AI_ROUTE_PROFILE": "qwen_primary",
+                "AI_API_KEY": "dashscope-key",
+                "AI_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "AI_RESPONSES_BASE_URL": "https://responses.example.com/custom/",
+                "AI_MODEL": "qwen3.7-plus",
+            },
+            clear=True,
+        ):
+            route = verify_ai.resolve_route("thinking")
+
+        self.assertEqual(route.base_url, "https://responses.example.com/custom")
 
     def test_load_settings_reads_fast_model_env(self) -> None:
         with patch.dict(
@@ -489,6 +538,19 @@ class VerifyAiGeminiProbeTests(unittest.IsolatedAsyncioTestCase):
 
 
 class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
+    def test_responses_url_falls_back_for_legacy_settings_without_explicit_base(
+        self,
+    ) -> None:
+        legacy_settings = SimpleNamespace(
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/"
+        )
+
+        with patch.object(llm_transport, "settings", legacy_settings):
+            self.assertEqual(
+                llm_transport._build_qwen_responses_url(),
+                "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1/responses",
+            )
+
     async def test_hybrid_standard_json_requests_use_gemini_generate_content(self) -> None:
         response = _FakeJsonResponse(
             {
