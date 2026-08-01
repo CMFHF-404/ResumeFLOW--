@@ -1,20 +1,20 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Upload, Trash2, ZoomIn, ZoomOut, Check, Camera } from 'lucide-react';
 
-// ─── 裁剪区域常量（2:3 比例）──────────────────────────────────────────────────
+// ─── 裁剪区域常量（1:1 头像比例）──────────────────────────────────────────────
 // 视口尺寸（裁剪交互区域）
 const VIEW_WIDTH = 300;
-const VIEW_HEIGHT = 400;
+const VIEW_HEIGHT = 340;
 
 // 裁剪框尺寸（居中放置，四周留 padding）
-const CROP_FRAME_WIDTH = 200;
-const CROP_FRAME_HEIGHT = 300;
-const CROP_FRAME_X = (VIEW_WIDTH - CROP_FRAME_WIDTH) / 2;   // 50
+const CROP_FRAME_WIDTH = 240;
+const CROP_FRAME_HEIGHT = 240;
+const CROP_FRAME_X = (VIEW_WIDTH - CROP_FRAME_WIDTH) / 2;   // 30
 const CROP_FRAME_Y = (VIEW_HEIGHT - CROP_FRAME_HEIGHT) / 2; // 50
 
-// 输出尺寸（2:3 高质量）
-const OUTPUT_WIDTH = 400;
-const OUTPUT_HEIGHT = 600;
+// 输出尺寸（1:1 高质量）
+const OUTPUT_WIDTH = 512;
+const OUTPUT_HEIGHT = 512;
 const MODAL_HORIZONTAL_PADDING = 32; // fixed inset from the outer modal wrapper (`p-4`)
 const CROP_SURFACE_HORIZONTAL_MARGIN = 24; // `mx-3` around the crop surface
 
@@ -117,7 +117,7 @@ const CropOverlay: React.FC = () => (
       color: 'rgba(255,255,255,0.6)',
       fontFamily: 'sans-serif',
     }}>
-      2 : 3
+      1 : 1
     </div>
   </div>
 );
@@ -233,7 +233,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">裁剪职业照片</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">裁剪头像 · 1:1</h3>
           <button
             onClick={onCancel}
             className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -348,8 +348,8 @@ interface ProfileAvatarZoneProps {
 }
 
 const AVATAR_SIZES = {
-  sm: { width: 64, height: 96 },
-  md: { width: 96, height: 144 },
+  sm: { width: 64, height: 64 },
+  md: { width: 96, height: 96 },
 };
 
 /**
@@ -373,7 +373,7 @@ export const ProfileAvatarZone: React.FC<ProfileAvatarZoneProps> = ({
         style={containerStyle}
         className={`relative rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 ${isClickable ? 'cursor-pointer' : ''}`}
         onClick={isClickable ? onUploadClick : undefined}
-        title={isClickable ? '点击更换照片' : undefined}
+        title={isClickable ? '点击更换头像（1:1）' : undefined}
       >
         <img src={avatarDataUrl} alt="个人照片" className="w-full h-full object-cover" />
         {isClickable && (
@@ -395,13 +395,13 @@ export const ProfileAvatarZone: React.FC<ProfileAvatarZoneProps> = ({
           : 'border-gray-200 dark:border-gray-700'
         }`}
       onClick={isClickable ? onUploadClick : undefined}
-      title={isClickable ? '点击上传个人图像' : undefined}
+      title={isClickable ? '点击上传 1:1 头像' : undefined}
     >
       {isClickable ? (
         <>
           <Upload style={{ width: size === 'sm' ? 14 : 18, height: size === 'sm' ? 14 : 18 }} className="text-primary/50" />
           <span style={{ fontSize: size === 'sm' ? 9 : 10 }} className="text-primary/50 text-center leading-tight px-1">
-            点击上传<br />个人图像
+            点击上传<br />1:1 头像
           </span>
         </>
       ) : (

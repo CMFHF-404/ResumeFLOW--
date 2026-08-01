@@ -47,7 +47,7 @@ export const resolveDeepHireAvatarBorderRadius = (
     if (!isDeepHireTemplate(activeTemplate)) {
         return undefined;
     }
-    return '14px';
+    return activeTemplate.id === 'deephire-deep-blue' ? '50%' : '14px';
 };
 
 export const usesDeepHireCertificationCards = (
@@ -372,7 +372,7 @@ ${rootSelector} .rf-deephire-curved-band {
   background: url("/resume-templates/deephire/deephire-deep-blue-band.png") center top / 100% 126px no-repeat !important;
 }
 ${rootSelector} .rf-deephire-header-inner { margin-top: -62px !important; }
-${rootSelector} .rf-deephire-avatar { width: 76px !important; height: 110px !important; }
+${rootSelector} .rf-deephire-avatar { width: 84px !important; height: 84px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 32px !important; margin-top: 18px !important; }
 ${trailingRuleCss}`;
         case 'deephire-lucky-red':

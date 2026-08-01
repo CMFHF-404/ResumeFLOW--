@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy import delete
@@ -13,6 +14,16 @@ from .schemas import ProfileLinkPayload, ProfileUpdate
 
 class NotFoundError(Exception):
     pass
+
+
+class ProfileUpdateConflictError(Exception):
+    pass
+
+
+def _normalize_timestamp(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 async def get_current_profile(
@@ -39,7 +50,15 @@ async def update_profile(
     user_id: str,
     payload: ProfileUpdate,
 ) -> Profile:
-    profile = await get_current_profile(session, user_id)
+    expected_updated_at = payload.expected_updated_at
+    if expected_updated_at is None:
+        profile = await get_current_profile(session, user_id)
+    else:
+        profile = await _fetch_profile_for_update(session, user_id)
+        if profile is None:
+            raise ProfileUpdateConflictError("Profile no longer exists")
+        elif _normalize_timestamp(profile.updated_at) != _normalize_timestamp(expected_updated_at):
+            raise ProfileUpdateConflictError("Profile changed since it was loaded")
     update_data = payload.model_dump(exclude_unset=True)
     links_payload = payload.links
     if links_payload is not None and (
@@ -47,6 +66,7 @@ async def update_profile(
     ):
         update_data["social_links"] = _build_social_links_from_payload(links_payload)
     update_data.pop("links", None)
+    update_data.pop("expected_updated_at", None)
     for json_field in ("social_links", "extra_json"):
         if json_field in update_data and update_data[json_field] is None:
             update_data[json_field] = {}
@@ -63,6 +83,16 @@ async def update_profile(
 
 async def _fetch_profile(session: AsyncSession, user_id: str) -> Optional[Profile]:
     result = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    return result.scalars().first()
+
+
+async def _fetch_profile_for_update(
+    session: AsyncSession,
+    user_id: str,
+) -> Optional[Profile]:
+    result = await session.execute(
+        select(Profile).where(Profile.user_id == user_id).with_for_update()
+    )
     return result.scalars().first()
 
 

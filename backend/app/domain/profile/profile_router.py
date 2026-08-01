@@ -1,12 +1,16 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...database import get_session
 from ...dependencies import get_current_user
 from ...models import Profile
-from .profile_service import get_current_profile, update_profile
+from .profile_service import (
+    ProfileUpdateConflictError,
+    get_current_profile,
+    update_profile,
+)
 from .schemas import ProfileLinkPayload, ProfileRead, ProfileUpdate
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -85,5 +89,11 @@ async def patch_profile(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    profile = await update_profile(session, current_user.id, payload)
+    try:
+        profile = await update_profile(session, current_user.id, payload)
+    except ProfileUpdateConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
     return _profile_to_read(profile)

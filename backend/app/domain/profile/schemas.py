@@ -34,3 +34,4 @@ class ProfileUpdate(BaseModel):
     social_links: Optional[Dict[str, Any]] = None
     extra_json: Optional[Dict[str, Any]] = None
     links: Optional[List[ProfileLinkPayload]] = None
+    expected_updated_at: Optional[datetime] = None

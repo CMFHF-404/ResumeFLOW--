@@ -120,7 +120,7 @@ export type ResumeTemplateDefinition = {
   visualStyle: ResumeTemplateId;
   renderVariant: ResumeTemplateRenderVariant;
   sectionVariant: ResumeTemplateSectionVariant;
-  thumbnailSrc?: string;
+  thumbnailSrc: string;
   visualTokens?: ResumeTemplateVisualTokens;
 };
 
@@ -276,6 +276,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'modern-slate',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/modern-slate.webp',
   },
   {
     id: 'minimal-gray',
@@ -288,6 +289,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'minimal-gray',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/minimal-gray.webp',
   },
   {
     id: 'accent-emerald',
@@ -300,6 +302,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'accent-emerald',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/accent-emerald.webp',
   },
   {
     id: 'open-source-classic',
@@ -312,6 +315,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'open-source-classic',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/open-source-classic.webp',
   },
   {
     id: 'timeline-blue',
@@ -324,6 +328,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'timeline-blue',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/timeline-blue.webp',
   },
   {
     id: 'avatar-professional',
@@ -336,6 +341,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'avatar-professional',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/avatar-professional.webp',
   },
   {
     id: 'avatar-split',
@@ -348,6 +354,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'avatar-split',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/avatar-split.webp',
   },
   {
     id: 'modern-slate-avatar',
@@ -360,6 +367,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'modern-slate-avatar',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/modern-slate-avatar.webp',
   },
   {
     id: 'photo-card',
@@ -372,6 +380,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'photo-card',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/photo-card.webp',
   },
   {
     id: 'photo-sidebar',
@@ -384,6 +393,7 @@ export const RESUME_TEMPLATE_DEFINITIONS: ResumeTemplateDefinition[] = [
     visualStyle: 'photo-sidebar',
     renderVariant: 'native',
     sectionVariant: 'native',
+    thumbnailSrc: '/resume-templates/native/photo-sidebar.webp',
   },
   {
     id: 'deephire-standard',
@@ -917,6 +927,16 @@ export const resolveDefaultResumeThemeColorPresetId = (
 ): ResumeThemeColorPresetId => (
   (templateId ? LEGACY_TEMPLATE_DEFAULT_THEME_COLOR_MAP[templateId] : undefined)
   ?? resolveResumeTemplate(templateId).defaultThemeColorPresetId
+);
+
+export const shouldUseStaticResumeTemplateThumbnail = (
+  templateId?: ResumeTemplateId | string | null,
+  themeColorPresetId?: ResumeThemeColorPresetId | string | null,
+  preferStaticThumbnail = true,
+): boolean => preferStaticThumbnail && (
+  !supportsResumeTemplateThemeColorCustomization(templateId)
+  || !themeColorPresetId
+  || themeColorPresetId === resolveDefaultResumeThemeColorPresetId(templateId)
 );
 
 export const resolveResumeThemeColor = (

@@ -40,10 +40,18 @@ const importApiClientWithPendingToken = async () => {
           }));
           buildContext.onLoad({ filter: /^axios-stub$/, namespace: 'stub' }, () => ({
             contents: `
-              const interceptor = { use() {} };
               export default {
                 create() {
-                  return { interceptors: { request: interceptor, response: interceptor } };
+                  return {
+                    interceptors: {
+                      request: {
+                        use(handler) {
+                          globalThis.__apiClientRequestInterceptor = handler;
+                        }
+                      },
+                      response: { use() {} }
+                    }
+                  };
                 }
               };
             `,
@@ -53,6 +61,9 @@ const importApiClientWithPendingToken = async () => {
             contents: `
               export const requestAuthToken = () => {
                 globalThis.__authTokenRequestCount = (globalThis.__authTokenRequestCount || 0) + 1;
+                if (globalThis.__activeAuthToken !== undefined) {
+                  return Promise.resolve(globalThis.__activeAuthToken);
+                }
                 return new Promise(() => {});
               };
             `,
@@ -67,7 +78,11 @@ const importApiClientWithPendingToken = async () => {
             loader: 'js',
           }));
           buildContext.onLoad({ filter: /^api-client-auth-stub$/, namespace: 'stub' }, () => ({
-            contents: 'export const readAuthUserKeyFromToken = () => null;',
+            contents: `
+              export const readAuthUserKeyFromToken = (token) => (
+                token === 'token-a' ? 'user-a' : token === 'token-b' ? 'user-b' : null
+              );
+            `,
             loader: 'js',
           }));
         },
@@ -105,5 +120,46 @@ test('auth token requests time out and clear the in-flight request', async () =>
     globalThis.setTimeout = realSetTimeout;
     globalThis.clearTimeout = realClearTimeout;
     delete globalThis.__authTokenRequestCount;
+  }
+});
+
+test('auth-bound requests reject a token from a different account', async () => {
+  globalThis.__activeAuthToken = 'token-b';
+  try {
+    await importApiClientWithPendingToken();
+    const requestInterceptor = globalThis.__apiClientRequestInterceptor;
+    assert.equal(typeof requestInterceptor, 'function');
+
+    const headers = {
+      values: new Map(),
+      delete(name) {
+        this.values.delete(name);
+      },
+      set(name, value) {
+        this.values.set(name, value);
+      },
+    };
+    await assert.rejects(
+      () => requestInterceptor({
+        data: null,
+        headers,
+        method: 'patch',
+        expectedAuthCacheKey: 'user-a',
+      }),
+      /Authentication context changed before request dispatch/,
+    );
+
+    const matchingConfig = {
+      data: null,
+      headers,
+      method: 'patch',
+      expectedAuthCacheKey: 'user-b',
+    };
+    const acceptedConfig = await requestInterceptor(matchingConfig);
+    assert.equal(acceptedConfig, matchingConfig);
+    assert.equal(headers.values.get('Authorization'), 'Bearer token-b');
+  } finally {
+    delete globalThis.__activeAuthToken;
+    delete globalThis.__apiClientRequestInterceptor;
   }
 });

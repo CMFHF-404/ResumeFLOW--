@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "templates:previews": "node tools/generate-resume-template-previews.mjs"
   },
   "dependencies": {
     "@logto/react": "^4.0.11",
@@ -23,6 +24,8 @@
   "devDependencies": {
     "@types/node": "^22.19.15",
     "@vitejs/plugin-react": "^5.0.0",
+    "playwright": "^1.62.1",
+    "sharp": "^0.35.3",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
