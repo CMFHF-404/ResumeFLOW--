@@ -32,7 +32,7 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
                 isAssistantSidebarOpen
                     ? 'md:w-[430px] xl:w-[460px]'
                     : factorySidebarProps.activeTab === 'templates'
-                        ? 'md:w-[384px] xl:w-[384px]'
+                        ? 'md:w-[384px] lg:w-[562.5px] xl:w-[607.5px]'
                         : 'md:w-[562.5px] xl:w-[607.5px]',
             ].join(' ')}
         >

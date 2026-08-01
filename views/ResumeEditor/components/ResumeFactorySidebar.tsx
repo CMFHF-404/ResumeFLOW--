@@ -159,7 +159,10 @@ const TemplateSelectionPanel: React.FC<Pick<
             <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500">{collection.templates.length} 套</span>
           </div>
         ) : null}
-        <div className="grid grid-cols-3 gap-x-2 gap-y-5">
+        <div
+          className="grid gap-x-3 gap-y-5"
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
+        >
           {collection.templates.map((template) => {
             const isSelected = template.id === selectedTemplateId;
             const preset = templatePresetMap[template.id];
@@ -177,7 +180,7 @@ const TemplateSelectionPanel: React.FC<Pick<
                   >
                     <div
                       className={[
-                        'relative aspect-[112/175] overflow-hidden rounded-[9px] bg-gray-100 shadow-sm transition dark:bg-gray-800',
+                        'relative aspect-[794/1123] overflow-hidden rounded-[9px] bg-gray-100 shadow-sm transition dark:bg-gray-800',
                         isSelected
                           ? 'ring-2 ring-primary ring-offset-2 dark:ring-offset-gray-950'
                           : 'ring-1 ring-gray-200 hover:ring-gray-300 dark:ring-gray-700 dark:hover:ring-gray-600',

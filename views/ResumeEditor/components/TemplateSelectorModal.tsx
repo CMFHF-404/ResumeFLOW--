@@ -13,6 +13,7 @@ import {
   resolveDefaultResumeThemeColorPresetId,
   resolveResumeThemeColor,
   resolveResumeTemplate,
+  shouldUseStaticResumeTemplateThumbnail,
   supportsResumeTemplateThemeColorCustomization,
   type ResumeThemeColorPresetId,
   type ResumeTemplateId,
@@ -75,6 +76,11 @@ const TEMPLATE_SECTION_META: Record<string, { label: string; hint: string }> = {
 
 const MOBILE_LONG_PRESS_DURATION_MS = 260;
 const TOUCH_DRAG_CANCEL_DISTANCE_PX = 10;
+const TEMPLATE_THUMBNAIL_REVISION = '20260801-3';
+
+const withTemplateThumbnailRevision = (source: string) => (
+  `${source}${source.includes('?') ? '&' : '?'}v=${TEMPLATE_THUMBNAIL_REVISION}`
+);
 
 export const TemplateThumbnail: React.FC<{
   templateId: ResumeTemplateId;
@@ -83,7 +89,12 @@ export const TemplateThumbnail: React.FC<{
   preferStaticThumbnail?: boolean;
 }> = ({ templateId, themeColorPresetId, thumbnailSrc, preferStaticThumbnail = true }) => {
   const template = resolveResumeTemplate(templateId);
-  const resolvedThumbnailSrc = preferStaticThumbnail
+  const canUseStaticThumbnail = shouldUseStaticResumeTemplateThumbnail(
+    templateId,
+    themeColorPresetId,
+    preferStaticThumbnail,
+  );
+  const resolvedThumbnailSrc = canUseStaticThumbnail
     ? (thumbnailSrc ?? template.thumbnailSrc)
     : undefined;
 
@@ -91,7 +102,7 @@ export const TemplateThumbnail: React.FC<{
     return (
       <div className="h-full w-full overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
         <img
-          src={resolvedThumbnailSrc}
+          src={withTemplateThumbnailRevision(resolvedThumbnailSrc)}
           alt={`${template.name}简历模板预览`}
           className="h-full w-full select-none object-cover object-top"
           draggable={false}

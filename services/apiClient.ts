@@ -4,6 +4,12 @@ import { dispatchLoginRequired } from './authRedirect';
 import { devLog } from './devLogger';
 import { readAuthUserKeyFromToken } from './apiClientAuth';
 
+declare module 'axios' {
+    interface AxiosRequestConfig<D = any> {
+        expectedAuthCacheKey?: string;
+    }
+}
+
 let authTokenRequestInFlight: Promise<string | null> | null = null;
 const AUTH_TOKEN_REQUEST_TIMEOUT_MS = 10_000;
 const AUTH_TOKEN_REQUEST_TIMEOUT_MESSAGE = '获取登录状态超时，请刷新页面或重新登录后重试。';
@@ -104,6 +110,14 @@ apiClient.interceptors.request.use(
 
         const token = await resolveAuthToken();
         devLog(`[API Client] ID token found: ${!!token}`);
+
+        const activeAuthCacheKey = readAuthUserKeyFromToken(token) ?? token ?? 'anonymous';
+        if (
+            config.expectedAuthCacheKey
+            && config.expectedAuthCacheKey !== activeAuthCacheKey
+        ) {
+            return Promise.reject(new Error('Authentication context changed before request dispatch'));
+        }
 
         const shouldRequireLogin = isWriteMethod(config.method);
 

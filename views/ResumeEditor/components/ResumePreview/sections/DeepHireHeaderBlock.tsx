@@ -207,7 +207,10 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                     aria-hidden="true"
                 />
                 <div className="rf-deephire-header-inner relative -mt-12 flex flex-col items-center">
-                    {renderAvatarFrame('rf-deephire-avatar flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white shadow-md')}
+                    {renderAvatarFrame(
+                        'rf-deephire-avatar flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white shadow-md',
+                        'cover'
+                    )}
                     <h1 className="rf-deephire-name mt-3 text-[31px] font-bold leading-none tracking-[0.1em] text-gray-950">
                         {profile.name}
                     </h1>

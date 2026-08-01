@@ -35,7 +35,7 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(workspace, /layoutAdjustProps=\{layoutAdjustProps\}/);
   assert.match(workspace, /previewProps=\{previewProps\}/);
   assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'md:w-\[430px\] xl:w-\[460px\]'/);
-  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'\s*\n\s*\? 'md:w-\[384px\] xl:w-\[384px\]'\s*\n\s*: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
+  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'\s*\n\s*\? 'md:w-\[384px\] lg:w-\[562\.5px\] xl:w-\[607\.5px\]'\s*\n\s*: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
   assert.match(workspace, /const ASSISTANT_SIDEBAR_WIDTH = '390px'/);
   assert.match(workspace, /data-rf-assistant-sidebar/);
   assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l shadow-\[/);
@@ -59,8 +59,9 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   const templateSelectionPanel = factorySidebar.match(
     /const TemplateSelectionPanel[\s\S]*?const LayoutPanel/
   )?.[0] ?? '';
-  assert.match(templateSelectionPanel, /className="grid grid-cols-3 gap-x-2 gap-y-5"/);
-  assert.match(templateSelectionPanel, /aspect-\[112\/175\]/);
+  assert.match(templateSelectionPanel, /className="grid gap-x-3 gap-y-5"/);
+  assert.match(templateSelectionPanel, /gridTemplateColumns: 'repeat\(auto-fit, minmax\(160px, 1fr\)\)'/);
+  assert.match(templateSelectionPanel, /aspect-\[794\/1123\]/);
   assert.match(templateSelectionPanel, /thumbnailSrc=\{template\.thumbnailSrc\}/);
   assert.match(templateSelectionPanel, /aria-pressed=\{isSelected\}/);
   assert.match(templateSelectionPanel, /isSelected \? \([\s\S]*?bottom-1\.5 right-1\.5[\s\S]*?aria-hidden="true"[\s\S]*?<Check className="h-3 w-3" \/>/);

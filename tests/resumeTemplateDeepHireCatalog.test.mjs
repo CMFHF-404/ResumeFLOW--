@@ -514,7 +514,7 @@ test('DeepHire full-bleed banners keep editor-controlled top padding', () => {
   );
 });
 
-test('DeepHire avatars avoid photo cropping and keep deliberately soft corners', async () => {
+test('DeepHire avatars preserve photos by default and apply the benchmark crop to deep blue', async () => {
   const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
   const {
     buildDeepHireTemplateCss,
@@ -524,10 +524,15 @@ test('DeepHire avatars avoid photo cropping and keep deliberately soft corners',
   const headerSource = read('views/ResumeEditor/components/ResumePreview/sections/DeepHireHeaderBlock.tsx');
   const previewSource = read('views/ResumeEditor/components/ResumePreview.tsx');
 
-  assert.doesNotMatch(
+  assert.equal(
+    (headerSource.match(/,\s*'cover'\s*\)/g) ?? []).length,
+    1,
+    'only the deep-blue curved profile should crop inward',
+  );
+  assert.match(
     headerSource,
-    /,\s*'cover'\s*\)/,
-    'DeepHire header branches should use the contain default instead of cropping profile photos',
+    /activeTemplate\.renderVariant === 'curved-profile'[\s\S]*?renderAvatarFrame\([\s\S]*?'cover'\s*\)/,
+    'the deep-blue curved profile should use the cover crop',
   );
   assert.match(
     previewSource,
@@ -542,7 +547,8 @@ test('DeepHire avatars avoid photo cropping and keep deliberately soft corners',
 
   for (const template of deephireTemplates) {
     const radius = resolveDeepHireAvatarBorderRadius(template);
-    assert.equal(radius, '14px', `${template.id} should resolve to a soft, low-crop avatar silhouette`);
+    const expectedRadius = template.id === 'deephire-deep-blue' ? '50%' : '14px';
+    assert.equal(radius, expectedRadius, `${template.id} should resolve to its intended avatar silhouette`);
     assert.match(
       buildDeepHireTemplateCss(template, `avatar-qa-${template.id}`),
       new RegExp(`\\.rf-deephire-avatar\\s*\\{\\s*border-radius:\\s*${radius.replaceAll('%', '\\%')}\\s*!important;`),
@@ -554,8 +560,8 @@ test('DeepHire avatars avoid photo cropping and keep deliberately soft corners',
   assert.ok(deepBlue, 'the deep-blue template should exist');
   assert.match(
     buildDeepHireTemplateCss(deepBlue, 'deep-blue-avatar-qa'),
-    /\.rf-deephire-avatar\s*\{\s*width:\s*76px\s*!important;\s*height:\s*110px\s*!important;/,
-    'the deep-blue frame should use a portrait ratio that avoids side gutters around ID photos',
+    /\.rf-deephire-avatar\s*\{\s*width:\s*84px\s*!important;\s*height:\s*84px\s*!important;/,
+    'the deep-blue frame should use the benchmark circular ratio',
   );
 });
 
