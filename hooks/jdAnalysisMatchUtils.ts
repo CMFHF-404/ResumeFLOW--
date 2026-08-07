@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
 import type { JDAnalysisResult } from "../services/aiService";
 import type {
   JDAnalysisContext,
@@ -281,57 +280,4 @@ export const stripTrendsByDiff = (result: JDAnalysisResult, diff: JDItemDiff) =>
     skillMatches: nextSkillMatches,
   };
 };
-
-export const applyScoreMapUpdate = (
-  setMap: Dispatch<SetStateAction<Map<string, number>>>,
-  scores: Map<string, number>,
-  options?: MatchApplyOptions
-) => {
-  const mode = options?.mode ?? "full";
-  const targetIds = options?.targetIds;
-  if (mode === "partial") {
-    if (!targetIds || targetIds.size === 0) {
-      return;
-    }
-    setMap((prev) => {
-      const next = new Map(prev);
-      targetIds.forEach((id) => {
-        if (scores.has(id)) {
-          next.set(id, scores.get(id)!);
-        } else {
-          next.delete(id);
-        }
-      });
-      return next;
-    });
-    return;
-  }
-  setMap(new Map(scores));
-};
-
-export const applyTrendMapUpdate = (
-  setMap: Dispatch<SetStateAction<Map<string, MatchTrend>>>,
-  trends: Map<string, MatchTrend>,
-  options?: MatchApplyOptions
-) => {
-  const mode = options?.mode ?? "full";
-  const targetIds = options?.targetIds;
-  if (mode === "partial") {
-    if (!targetIds || targetIds.size === 0) {
-      return;
-    }
-    setMap((prev) => {
-      const next = new Map(prev);
-      targetIds.forEach((id) => {
-        if (trends.has(id)) {
-          next.set(id, trends.get(id)!);
-        } else {
-          next.delete(id);
-        }
-      });
-      return next;
-    });
-    return;
-  }
-  setMap(new Map(trends));
-};
+// React state setters consume the pure map updater functions from jdAnalysisMatchUpdateUtils.

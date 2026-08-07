@@ -13,6 +13,7 @@
   - Start with `npm run dev`
   - Build with `npm run build`
   - Preview with `npm run preview`
+  - Regenerate resume-template thumbnails with `npm run templates:previews`; this writes the generated WebP assets under `public/resume-templates/`.
   - Copy settings from `.env.example` when local env vars are needed.
   - The frontend uses Logto ID tokens for backend auth; do not configure `VITE_LOGTO_RESOURCE`.
   - For Logto account management, set `VITE_LOGTO_ACCOUNT_CENTER_URL` to the hosted Logto Account Center URL and add `http://localhost:5173` to the Logto "Post Sign-out Redirect URI" list for local logout.
@@ -43,7 +44,7 @@
 - AI thinking and JD-analysis UI checks commonly use `node --test tests/aiStopHandlingStructure.test.mjs tests/jdAnalysisThinkingText.test.mjs tests/jdAnalysisToastThinking.test.mjs`; assistant thinking persistence commonly uses `node --test tests/assistantMessageSendUtils.test.mjs tests/assistantThinkingDisplay.test.mjs`.
 - Assistant sidebar and selected-resume context checks commonly use `node --test tests/assistantSidebarStructure.test.mjs tests/assistantSkillPresetPanelStructure.test.mjs tests/assistantResumeSelectionUtils.test.mjs tests/assistantContextRailRender.test.mjs tests/assistantSidebarContextPersistence.test.mjs`.
 - Resume factory desktop sidebar checks commonly use `node --test tests/resumeEditorDesktopWorkspaceStructure.test.mjs tests/resumeEditorToolbarStructure.test.mjs tests/jdAnalysisDetailsSidebarStructure.test.mjs`.
-- DeepHire template catalog, assets, and preview changes commonly use `node --test tests/resumeTemplateDeepHireCatalog.test.mjs tests/resumeEditorDesktopWorkspaceStructure.test.mjs`.
+- Resume-template catalog, thumbnail assets, and preview changes commonly use `node --test tests/resumeTemplateDeepHireCatalog.test.mjs tests/resumeTemplatePreviewAssets.test.mjs tests/resumeEditorDesktopWorkspaceStructure.test.mjs`.
 - DeepHire changes that affect Agent template options also use `python -m unittest test_agent_api` from `backend/`.
 - Rich text editor clipboard/caret checks commonly use `node --test tests/richTextEditorCaret.test.mjs`; API auth timeout checks commonly use `node --test tests/apiClientAuthTimeout.test.mjs`.
 - Billing and quota UI checks commonly use `node --test tests/billing-ui-structure.test.mjs tests/tokenQuotaModalStatic.test.mjs`.
@@ -56,6 +57,7 @@
 - Agent and AI backend checks commonly use `python -m unittest test_agent_api` and `python -m unittest test_ai_service` from `backend/`.
 - Backend startup imports and auth import-boundary changes commonly use `python -m unittest test_auth_import_boundaries test_startup_imports` from `backend/`.
 - Account and experience draft backend checks commonly use `python -m unittest test_account_verification_cooldown` and `python -m unittest test_experience_drafts` from `backend/`.
+- Profile updates with optimistic-concurrency handling commonly use `python -m unittest test_profile_update_concurrency` from `backend/`.
 - Billing and redemption backend checks commonly use `python -m unittest test_billing_service test_redemption_code_service test_redemption_router` from `backend/`.
 
 ## Guardrails

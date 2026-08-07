@@ -97,6 +97,26 @@ test('applies partial score map updates and deletes missing target scores', asyn
   ]);
 });
 
+test('applies partial trend map updates and deletes missing target trends', async () => {
+  const { applyTrendMapUpdateValue } = await importJDAnalysisMatchUpdateUtils();
+  const prev = new Map([
+    ['a', 'down'],
+    ['b', 'same'],
+    ['c', 'up'],
+  ]);
+  const trends = new Map([['a', 'up']]);
+
+  const next = applyTrendMapUpdateValue(prev, trends, {
+    mode: 'partial',
+    targetIds: new Set(['a', 'b']),
+  });
+
+  assert.deepEqual([...next.entries()].sort(), [
+    ['a', 'up'],
+    ['c', 'up'],
+  ]);
+});
+
 test('builds skill score map with zero defaults for missing full-mode skills', async () => {
   const { buildSkillScoreUpdateMap } = await importJDAnalysisMatchUpdateUtils();
   const scoreMap = buildSkillScoreUpdateMap(
