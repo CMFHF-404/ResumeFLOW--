@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.status import (
     HTTP_401_UNAUTHORIZED,
+    HTTP_409_CONFLICT,
     HTTP_502_BAD_GATEWAY,
     HTTP_503_SERVICE_UNAVAILABLE,
     HTTP_504_GATEWAY_TIMEOUT,
@@ -19,6 +20,7 @@ from ...auth_middleware import BEARER_PREFIX
 from ..billing import billing_service
 from ..export.browser_pdf_service import BrowserPdfRenderError, BrowserPdfRenderTimeoutError
 from .agent_service import (
+    AgentBankChangedError,
     AgentAuthenticatedUser,
     AgentJobAnalysisBuild,
     build_agent_polish_options,
@@ -200,26 +202,41 @@ async def generate_agent_job_resume(
     ):
         await billing_service.ensure_current_quota()
         analysis_build = await build_agent_job_analysis_detail_or_raise(session, agent_user.id, payload)
-    analysis = analysis_build.response
-    try:
-        resume_pdf: AgentResumePdf = await build_agent_resume_pdf(
-            request,
-            session,
-            agent_user.id,
-            payload,
-            analysis,
-            analysis_result=analysis_build.raw_result,
+        analysis = analysis_build.response
+        try:
+            resume_pdf: AgentResumePdf = await build_agent_resume_pdf(
+                request,
+                session,
+                agent_user.id,
+                payload,
+                analysis,
+                analysis_result=analysis_build.raw_result,
+            )
+        except BrowserPdfRenderTimeoutError as exc:
+            logger.warning("Agent resume PDF render timed out.", exc_info=True)
+            raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+        except BrowserPdfRenderError as exc:
+            logger.warning("Agent resume PDF render failed.", exc_info=True)
+            raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        except AgentBankChangedError as exc:
+            logger.info("Agent resume bank changed during generation.")
+            raise HTTPException(status_code=HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except ValueError as exc:
+            logger.warning("Agent generated resume evaluation was invalid.", exc_info=True)
+            raise HTTPException(
+                status_code=HTTP_502_BAD_GATEWAY,
+                detail="AI analysis returned invalid JSON. Please retry.",
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.warning("Agent final resume analysis request failed.", exc_info=True)
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI analysis service is temporarily unavailable. Please retry later.",
+            ) from exc
+        metadata = await build_agent_job_metadata(payload, analysis)
+        return AgentJobGenerateResponse(
+            **analysis.model_dump(),
+            resume_pdf=resume_pdf,
+            job_link_url=str(payload.job_url),
+            job_metadata=metadata,
         )
-    except BrowserPdfRenderTimeoutError as exc:
-        logger.warning("Agent resume PDF render timed out.", exc_info=True)
-        raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
-    except BrowserPdfRenderError as exc:
-        logger.warning("Agent resume PDF render failed.", exc_info=True)
-        raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    metadata = await build_agent_job_metadata(payload, analysis)
-    return AgentJobGenerateResponse(
-        **analysis.model_dump(),
-        resume_pdf=resume_pdf,
-        job_link_url=str(payload.job_url),
-        job_metadata=metadata,
-    )

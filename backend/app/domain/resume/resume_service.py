@@ -1,5 +1,6 @@
 import json
 from copy import deepcopy
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple, Optional
 
 from sqlalchemy import desc, text
@@ -23,6 +24,157 @@ from .resume_schema import (
 
 class NotFoundError(Exception):
     pass
+
+
+class ConcurrencyConflictError(Exception):
+    pass
+
+
+def _normalize_timestamp(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _target_role_signature(target_role: Optional[str]) -> str:
+    return json.dumps(
+        {"targetRole": str(target_role or "").strip()},
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _invalidate_resume_analysis_for_target_role(
+    config: Any,
+    target_role: Optional[str],
+    *,
+    previous_target_role: Optional[str] = None,
+) -> Any:
+    if not isinstance(config, dict):
+        return config
+    analysis = config.get("jdAnalysis")
+    if not isinstance(analysis, dict):
+        return config
+    expected_signature = _target_role_signature(target_role)
+    if analysis.get("targetRoleSignature") != expected_signature:
+        return _mark_resume_analysis_outdated(config)
+
+    if _target_role_signature(previous_target_role) == expected_signature:
+        return config
+    return _mark_resume_analysis_outdated(config)
+
+
+def _mark_resume_analysis_outdated(config: Any) -> Any:
+    if not isinstance(config, dict):
+        return config
+    analysis = config.get("jdAnalysis")
+    if not isinstance(analysis, dict):
+        return config
+    if (
+        analysis.get("isOutdated") is True
+        and analysis.get("evaluationIsOutdated") is True
+    ):
+        return config
+    next_config = deepcopy(config)
+    next_config["jdAnalysis"]["isOutdated"] = True
+    next_config["jdAnalysis"]["evaluationIsOutdated"] = True
+    return next_config
+
+
+def _value_with_presence(mapping: Any, key: str) -> Dict[str, Any]:
+    if not isinstance(mapping, dict):
+        return {"present": False, "value": None}
+    return {
+        "present": key in mapping,
+        "value": deepcopy(mapping.get(key)),
+    }
+
+
+def _selection_value_with_presence(mapping: Any, key: str) -> Dict[str, Any]:
+    projected = _value_with_presence(mapping, key)
+    value = projected["value"]
+    if isinstance(value, list):
+        projected["value"] = sorted({str(item) for item in value if str(item)})
+    return projected
+
+
+def _resume_evaluation_config_projection(config: Any) -> Dict[str, Any]:
+    """Return only config fields that change the evaluated resume snapshot."""
+    if not isinstance(config, dict):
+        return {}
+
+    profile_sync_mode = config.get("profileSyncMode")
+    layout = config.get("layout")
+    is_summary_visible = not (
+        isinstance(layout, dict)
+        and layout.get("isSummaryVisible") is False
+    )
+    profile = config.get("profile")
+    profile_projection = None
+    if profile_sync_mode != "global" and isinstance(profile, dict):
+        profile_projection = {
+            key: deepcopy(profile.get(key))
+            for key in (
+                "name",
+                "email",
+                "phone",
+                "location",
+                "linkedin",
+                *(("summary",) if is_summary_visible else ()),
+            )
+        }
+
+    selection = config.get("selection")
+    selection_projection = {
+        key: _selection_value_with_presence(selection, key)
+        for key in (
+            "experienceIds",
+            "educationIds",
+            "certificationIds",
+            "skillIds",
+        )
+    }
+    layout_projection = {
+        key: _value_with_presence(layout, key)
+        for key in ("sectionOrder", "isSummaryVisible", "orders")
+    }
+    return {
+        "profileSyncMode": _value_with_presence(config, "profileSyncMode"),
+        "profile": profile_projection,
+        "personalSummary": (
+            _value_with_presence(config, "personalSummary")
+            if is_summary_visible
+            else {"present": False, "value": None}
+        ),
+        "selection": selection_projection,
+        "layout": layout_projection,
+    }
+
+
+def _invalidate_resume_analysis_for_config_change(
+    previous_config: Any,
+    next_config: Any,
+) -> Any:
+    previous_analysis = (
+        previous_config.get("jdAnalysis")
+        if isinstance(previous_config, dict)
+        else None
+    )
+    next_analysis = (
+        next_config.get("jdAnalysis")
+        if isinstance(next_config, dict)
+        else None
+    )
+    if not isinstance(previous_analysis, dict) or not isinstance(next_analysis, dict):
+        return next_config
+    if (
+        _resume_evaluation_config_projection(previous_config)
+        == _resume_evaluation_config_projection(next_config)
+    ):
+        return next_config
+
+    return _mark_resume_analysis_outdated(next_config)
 
 
 OP_REQUIREMENTS = {
@@ -67,13 +219,48 @@ async def create_resume(
 async def update_resume(
     session: AsyncSession, user_id: str, resume_id: str, payload: ResumeUpdate
 ) -> Resume:
-    resume = await _get_resume(session, user_id, resume_id)
+    if (
+        payload.expected_updated_at is None
+        and (
+            payload.title is not None
+            or payload.config is not None
+            or payload.target_role is not None
+        )
+    ):
+        raise ConcurrencyConflictError(
+            "expected_updated_at is required when changing resume content."
+        )
+    resume = await _get_resume(session, user_id, resume_id, for_update=True)
+    if (
+        payload.expected_updated_at is not None
+        and _normalize_timestamp(resume.updated_at)
+        != _normalize_timestamp(payload.expected_updated_at)
+    ):
+        raise ConcurrencyConflictError(
+            "Resume changed since it was loaded. Reload before saving again."
+        )
+    previous_config = deepcopy(resume.config)
+    previous_target_role = resume.target_role
+    target_role_changed = (
+        payload.target_role is not None
+        and resume.target_role != payload.target_role
+    )
     if payload.title is not None:
         resume.title = payload.title
     if payload.target_role is not None:
         resume.target_role = payload.target_role
     if payload.config is not None:
         resume.config = payload.config
+        resume.config = _invalidate_resume_analysis_for_config_change(
+            previous_config,
+            resume.config,
+        )
+    if target_role_changed:
+        resume.config = _invalidate_resume_analysis_for_target_role(
+            resume.config,
+            resume.target_role,
+            previous_target_role=previous_target_role,
+        )
     resume.updated_at = utc_now()
     session.add(resume)
     await session.commit()
@@ -87,8 +274,20 @@ async def persist_resume_boss_greeting(
     resume_id: str,
     greeting: str,
     signature: Optional[str] = None,
+    expected_updated_at: Optional[datetime] = None,
 ) -> Resume:
-    resume = await _get_resume(session, user_id, resume_id)
+    if expected_updated_at is None:
+        raise ConcurrencyConflictError(
+            "expected_updated_at is required when persisting a boss greeting."
+        )
+    resume = await _get_resume(session, user_id, resume_id, for_update=True)
+    if (
+        _normalize_timestamp(resume.updated_at)
+        != _normalize_timestamp(expected_updated_at)
+    ):
+        raise ConcurrencyConflictError(
+            "Resume changed while the boss greeting was generated. Regenerate it."
+        )
     boss_greeting_payload: Dict[str, Any] = {
         "greeting": greeting,
     }
@@ -184,7 +383,18 @@ async def update_assembly(
     resume_id: str,
     payload: ResumeAssemblyPatch,
 ) -> Resume:
-    resume = await _get_resume(session, user_id, resume_id)
+    if payload.expected_updated_at is None:
+        raise ConcurrencyConflictError(
+            "expected_updated_at is required when changing resume assembly."
+        )
+    resume = await _get_resume(session, user_id, resume_id, for_update=True)
+    if (
+        _normalize_timestamp(resume.updated_at)
+        != _normalize_timestamp(payload.expected_updated_at)
+    ):
+        raise ConcurrencyConflictError(
+            "Resume changed since it was loaded. Reload before saving again."
+        )
     ops = _validate_ops(payload.operations)
     handlers = {
         "add": _handle_add,
@@ -196,6 +406,8 @@ async def update_assembly(
     for op in ops:
         handler = handlers[op["op"]]
         await handler(session, user_id, resume, op)
+    if ops:
+        resume.config = _mark_resume_analysis_outdated(resume.config)
     resume.updated_at = utc_now()
     session.add(resume)
     await session.commit()
@@ -288,11 +500,19 @@ def _validate_ops(operations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 async def _get_resume(
-    session: AsyncSession, user_id: str, resume_id: str
+    session: AsyncSession,
+    user_id: str,
+    resume_id: str,
+    *,
+    for_update: bool = False,
 ) -> Resume:
-    result = await session.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    statement = select(Resume).where(
+        Resume.id == resume_id,
+        Resume.user_id == user_id,
     )
+    if for_update:
+        statement = statement.with_for_update()
+    result = await session.execute(statement)
     resume = result.scalars().first()
     if not resume:
         raise NotFoundError("Resume not found")

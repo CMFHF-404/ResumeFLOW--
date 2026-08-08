@@ -1,4 +1,8 @@
 import type { ResumeJDAnalysis } from '../types/resume';
+import {
+    normalizeJDAnalysisResult,
+    type RawJDAnalysisResult,
+} from '../services/aiNormalizeUtils';
 import { canonicalStringify } from '../utils/canonicalStringify';
 
 const JD_ANALYSIS_CACHE_PREFIX = 'yuanzijianli.jdAnalysisCache';
@@ -13,12 +17,18 @@ type LegacyJDAnalysisRecord = Partial<ResumeJDAnalysis> & {
     jdText?: unknown;
     jdInputSignature?: unknown;
     experienceSignature?: unknown;
+    analysisSignatureVersion?: unknown;
+    evaluationSignature?: unknown;
+    evaluationSignatureVersion?: unknown;
+    targetRoleSignature?: unknown;
     result?: unknown;
     itemSignatures?: unknown;
     experienceText?: unknown;
     inputMode?: unknown;
     attachmentName?: unknown;
     attachmentExtractedText?: unknown;
+    isOutdated?: unknown;
+    evaluationIsOutdated?: unknown;
     updatedAt?: unknown;
 };
 
@@ -86,7 +96,23 @@ export const normalizeJDAnalysisPersistence = (value: unknown): ResumeJDAnalysis
         jdText: record.jdText,
         jdInputSignature: typeof record.jdInputSignature === 'string' ? record.jdInputSignature : '',
         experienceSignature: record.experienceSignature,
-        result: record.result as ResumeJDAnalysis['result'],
+        analysisSignatureVersion:
+            record.analysisSignatureVersion === 'agent_final_snapshot_v1'
+                ? record.analysisSignatureVersion
+                : undefined,
+        evaluationSignature:
+            typeof record.evaluationSignature === 'string'
+                ? record.evaluationSignature
+                : undefined,
+        evaluationSignatureVersion:
+            record.evaluationSignatureVersion === 'agent_final_snapshot_v1'
+                ? record.evaluationSignatureVersion
+                : undefined,
+        targetRoleSignature:
+            typeof record.targetRoleSignature === 'string'
+                ? record.targetRoleSignature
+                : undefined,
+        result: normalizeJDAnalysisResult(record.result as RawJDAnalysisResult),
         itemSignatures,
         experienceText: typeof record.experienceText === 'string' ? record.experienceText : undefined,
         inputMode: record.inputMode === 'attachment' ? 'attachment' : 'text',
@@ -94,6 +120,11 @@ export const normalizeJDAnalysisPersistence = (value: unknown): ResumeJDAnalysis
         attachmentExtractedText:
             typeof record.attachmentExtractedText === 'string'
                 ? record.attachmentExtractedText
+                : undefined,
+        isOutdated: typeof record.isOutdated === 'boolean' ? record.isOutdated : undefined,
+        evaluationIsOutdated:
+            typeof record.evaluationIsOutdated === 'boolean'
+                ? record.evaluationIsOutdated
                 : undefined,
         updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : '',
     };

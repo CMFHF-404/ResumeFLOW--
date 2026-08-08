@@ -230,7 +230,7 @@ export const buildAgentSearchPrompt = (
         `标准标题：${getText(interpretation?.normalizedTitle) || getText(analysisResult.jobTitle) || '未识别'}`,
         `职级判断：${getText(interpretation?.seniority) || '不明确'}`,
         `业务属性：${getText(interpretation?.businessDomain) || '未识别'}`,
-        `真实诉求：${getText(interpretation?.roleIntent) || getText(analysisResult.summary) || '未生成'}`,
+        `真实诉求：${getText(interpretation?.roleIntent) || '未生成'}`,
         '',
         '强推荐同投：',
         ...(recommendedTitles.length

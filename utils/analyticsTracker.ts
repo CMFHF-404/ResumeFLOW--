@@ -69,7 +69,8 @@ type AIAssistantDraftAppliedPayload = {
 
 type JDAnalysisPayload = {
   resumeId?: string | null;
-  matchScore?: number | null;
+  jdMatchScore?: number | null;
+  resumeQualityScore?: number | null;
   durationMs?: number;
 };
 
@@ -272,12 +273,18 @@ export const trackJDAnalysisStart = ({ resumeId }: JDAnalysisPayload) => {
 
 export const trackJDAnalysisComplete = ({
   resumeId,
-  matchScore,
+  jdMatchScore,
+  resumeQualityScore,
   durationMs,
 }: JDAnalysisPayload, authUserKey?: string | null) => {
   trackEvent(ANALYTICS_EVENTS.JD_ANALYSIS_COMPLETE, {
     ...(resumeId ? { [ANALYTICS_PROPERTIES.RESUME_ID]: resumeId } : {}),
-    ...(typeof matchScore === 'number' ? { [ANALYTICS_PROPERTIES.MATCH_SCORE]: matchScore } : {}),
+    ...(typeof jdMatchScore === 'number'
+      ? { [ANALYTICS_PROPERTIES.MATCH_SCORE]: jdMatchScore }
+      : {}),
+    ...(typeof resumeQualityScore === 'number'
+      ? { [ANALYTICS_PROPERTIES.RESUME_QUALITY_SCORE]: resumeQualityScore }
+      : {}),
     ...(typeof durationMs === 'number' ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs } : {}),
   });
   incrementAnalyticsCounter(authUserKey, 'aiAnalysisCount');

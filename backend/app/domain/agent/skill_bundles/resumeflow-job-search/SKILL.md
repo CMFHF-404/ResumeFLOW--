@@ -11,13 +11,13 @@ Use this skill to coordinate a user-approved job search that turns job descripti
 
 ## Workflow
 
-1. Confirm preferences before searching: city, role direction, salary range, seniority, education or experience threshold, industry preference, minimum match score, remote/on-site preference, and whether internship, contractor, outsourcing, or staffing roles are acceptable.
+1. Confirm preferences before searching: city, role direction, salary range, seniority, education or experience threshold, industry preference, minimum JD match score, remote/on-site preference, and whether internship, contractor, outsourcing, or staffing roles are acceptable.
 2. Before the first job search in each session, read `references/api.md`, call ResumeFLOW to 获取模板选项和润色选项, then ask the user to choose a resume `template_id`, whether output polish is enabled, and the polish level. Explain the polish levels briefly. If the user does not choose a template, use `modern-slate`; if the user cannot answer the polish question, record the assumption and use enabled `标准`.
 3. Search job boards with those preferences first. Respect site access limits, login requirements, robots/terms, and privacy boundaries; ask the user before submitting applications or sending personal data.
 4. For each candidate job, capture at minimum `job_title`, `company_name`, full `jd_text`, canonical `job_url`, and optional `source`.
-5. Batch jobs through ResumeFLOW analysis first. Prefer `/agent/v1/jobs/analyze` for screening many JDs, then call `/agent/v1/jobs/generate` only for jobs that meet the user's threshold and hard filters.
-6. Present a shortlist before application actions. Include match score, recommendation, strengths, gaps, missing keywords, source URL, selected template, polish setting, and the planned local folder path.
-7. For each approved high-match job, create one local folder named `match-company-role`, using the numeric match score first. Save a direct hyperlink to the original recruiting page, JD text or attachment, and the generated ResumeFLOW PDF in that folder.
+5. Batch jobs through ResumeFLOW analysis first. Prefer `/agent/v1/jobs/analyze` with the default `include_resume_evaluation=false` for screening many JDs, then call `/agent/v1/jobs/generate` only for jobs that meet the user's threshold and hard filters. Set `include_resume_evaluation=true` only when the user explicitly asks for the deep six-dimension report.
+6. Present a shortlist before application actions. Include JD match score, resume quality score, recommendation, strengths, gaps, missing keywords, source URL, selected template, polish setting, and the planned local folder path.
+7. For each approved high-JD-match job, create one local folder named `jd-match-company-role`, using the JD match score first. Save a direct hyperlink to the original recruiting page, JD text or attachment, and the generated ResumeFLOW PDF in that folder.
 
 ## ResumeFLOW Rules
 
@@ -29,21 +29,21 @@ Use this skill to coordinate a user-approved job search that turns job descripti
 - Do not fabricate companies, projects, education, certificates, awards, or experience. ResumeFLOW should only rewrite and select from the user's existing server-side resume data.
 - Keep generated resumes tied to the source JD. Do not reuse a generated PDF for unrelated jobs.
 - Treat `/agent/v1/jobs/generate` as both a PDF generator and an account archive action: it saves the tailored resume and source JD under the user's ResumeFLOW account.
-- If the user does not set a threshold, default to analyzing all collected jobs and generating only for scores of 80 or above.
+- `match_percentage` remains the backward-compatible v1 JD fit score. `jd_match_percentage` is the same score under an explicit name and must drive thresholds, filtering, recommendation, and folder naming. `resume_quality_percentage` is the independent six-dimension resume quality score and may be null when no explicit deep report is available. If the user does not set a threshold, default to analyzing all collected jobs and generating only when the JD match score is 80 or above.
 
 ## Local Archive
 
 Create one folder per generated job:
 
 ```text
-<match_percentage>-<company_name>-<job_title>/
+<jd_match_percentage>-<company_name>-<job_title>/
   job-link.md
   jd.txt
   resume.pdf
   metadata.json
 ```
 
-Write `job-link.md` as a Markdown hyperlink to the original `job_url`, for example `[Open job posting](https://example.com/jobs/123)`. Do not save the recruiting page HTML unless the user explicitly asks for a page snapshot. Sanitize folder and file names for the local OS. Put the original `job_url`, `source`, match score, API recommendation, generation time, and ResumeFLOW PDF URL in `metadata.json`.
+Write `job-link.md` as a Markdown hyperlink to the original `job_url`, for example `[Open job posting](https://example.com/jobs/123)`. Do not save the recruiting page HTML unless the user explicitly asks for a page snapshot. Sanitize folder and file names for the local OS. Put the original `job_url`, `source`, both scores, score version, API recommendation, generation time, and ResumeFLOW PDF URL in `metadata.json`.
 
 ## Output To User
 
@@ -51,6 +51,6 @@ Report concise batches:
 
 - Jobs searched and sites covered
 - Jobs skipped by hard filters
-- Jobs analyzed with match score and recommendation
+- Jobs analyzed with JD match score, resume quality score, and recommendation
 - Jobs generated with local folder paths
 - Any blockers, such as inaccessible pages, missing JD text, failed API calls, or jobs needing user confirmation

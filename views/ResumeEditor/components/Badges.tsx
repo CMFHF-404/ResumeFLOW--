@@ -53,6 +53,18 @@ export const MatchBadge: React.FC<MatchBadgeProps & { children?: React.ReactNode
     );
 };
 
+export const ResumeScoreBadge: React.FC<{
+    score: number;
+    className?: string;
+}> = ({ score, className = '' }) => (
+    <span
+        aria-label={`JD 匹配度 ${score}%`}
+        className={`inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11.5px] font-semibold text-emerald-700 dark:bg-emerald-900/35 dark:text-emerald-300 ${className}`.trim()}
+    >
+        匹配度 {score}%
+    </span>
+);
+
 export const StaleBadge: React.FC = () => (
     <span className="inline-flex items-center whitespace-nowrap text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
         待更新

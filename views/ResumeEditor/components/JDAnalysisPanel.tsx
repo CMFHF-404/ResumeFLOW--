@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import type { JDAnalysisResult, JDCoreCapability, JDInterpretation } from '../../../services/aiService';
 import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
-import { MatchBadge } from './Badges';
+import { ResumeScoreBadge } from './Badges';
+import { ResumeEvaluationReport } from './ResumeEvaluationReport/ResumeEvaluationReport';
 import {
     buildAgentSearchPrompt,
     buildProfileTags,
@@ -223,24 +224,31 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
     const mustHave = getArray<RequirementItem>(interpretation?.mustHave);
     const hardFilters = getArray<RequirementItem>(interpretation?.hardFilters);
     const missingKeywords = getArray(analysisResult.missingKeywords);
+    const jdMatch = typeof analysisResult.matchPercentage === 'number' && Number.isFinite(analysisResult.matchPercentage)
+        ? Math.max(0, Math.min(100, Math.round(analysisResult.matchPercentage)))
+        : null;
 
     return (
-        <div className="rounded-xl border border-emerald-100/50 bg-gradient-to-br from-emerald-50/50 via-teal-50/15 to-transparent p-4 shadow-[0_8px_30px_rgba(16,185,129,0.03)] dark:border-emerald-900/30 dark:from-emerald-950/20 dark:via-teal-950/5 dark:to-transparent">
-            <div className="mb-3.5 flex items-center justify-between gap-3">
-                <MatchBadge
-                    score={analysisResult.matchPercentage ?? 0}
-                    trend={analysisResult.matchTrend}
-                    variant="solid"
-                    className="border border-emerald-200/40 shadow-sm transition-all duration-300 hover:scale-105"
-                />
+        <div className="overflow-hidden rounded-xl border border-emerald-100/70 bg-gradient-to-br from-emerald-50/75 via-white to-teal-50/30 p-4 shadow-[0_10px_28px_rgba(16,185,129,0.045)] dark:border-emerald-900/35 dark:from-emerald-950/25 dark:via-slate-950 dark:to-teal-950/10">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <p className="text-[10.5px] font-bold tracking-[0.12em] text-emerald-700/75 dark:text-emerald-300/75">JD ANALYSIS REPORT</p>
+                    <h4 className="mt-1 text-[13px] font-bold text-slate-900 dark:text-white">JD 分析报告</h4>
+                </div>
+                {jdMatch === null ? (
+                    <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">待分析</span>
+                ) : (
+                    <div className="text-right" aria-label={`JD 匹配度 ${jdMatch}%`}>
+                        <strong className="text-3xl font-black tracking-tight text-emerald-700 dark:text-emerald-300">{jdMatch}</strong>
+                        <span className="ml-0.5 text-[13px] font-bold text-emerald-700 dark:text-emerald-300">%</span>
+                    </div>
+                )}
+            </div>
+            <div className="mt-4 space-y-4 border-t border-emerald-100/70 pt-3.5 dark:border-emerald-900/35">
                 <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
                     <Target className="h-3.5 w-3.5" />
-                    <span className="text-[12px] font-bold tracking-wide uppercase">
-                        JD 解读
-                    </span>
+                    <span className="text-[12px] font-bold tracking-wide uppercase">JD 解读</span>
                 </div>
-            </div>
-            <div className="space-y-4">
                 <div className="space-y-1.5">
                     <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
                         岗位画像
@@ -260,7 +268,7 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                         JD 真实诉求
                     </p>
                     <div className="relative rounded-r-lg border-l-2 border-emerald-500/60 bg-emerald-50/20 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-900/90 dark:bg-emerald-950/10 dark:text-emerald-200/90">
-                        {getText(interpretation?.roleIntent) || analysisResult.summary || '暂无解读，重新分析后会补齐岗位真实诉求。'}
+                        {getText(interpretation?.roleIntent) || '暂无解读，重新分析后会补齐岗位真实诉求。'}
                     </div>
                 </div>
                 {(coreResponsibilities.length > 0 || mustHave.length > 0) ? (
@@ -342,6 +350,7 @@ type JDAnalysisPanelProps = {
     onFileSelect: (file: File) => Promise<void>;
     onFileClear: () => void;
     hasMissingAttachmentContext: boolean;
+    hasJdContext: boolean;
     bossGreeting: string;
     isBossGreetingVisible: boolean;
     isBossGreetingOutdated: boolean;
@@ -354,6 +363,12 @@ type JDAnalysisPanelProps = {
     debugInfo?: any;
     showDebugInfo?: boolean;
     isOutdated?: boolean;
+    isEvaluationOutdated?: boolean;
+    isEvaluating?: boolean;
+    evaluationThinkingText?: string;
+    evaluationError?: string | null;
+    onGenerateEvaluation?: () => void;
+    onStopEvaluation?: () => void;
     thinkingText?: string;
     onStopAnalyze?: () => void;
     onOpenDetailsSidebar?: () => void;
@@ -363,6 +378,13 @@ type JDAnalysisDetailsModalProps = {
     isOpen: boolean;
     analysisResult: JDAnalysisResult | null;
     jdText: string;
+    isOutdated: boolean;
+    isEvaluationOutdated: boolean;
+    isEvaluating: boolean;
+    evaluationThinkingText?: string;
+    evaluationError?: string | null;
+    onGenerateEvaluation?: () => void;
+    onStopEvaluation?: () => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -437,6 +459,13 @@ const useJDStrategyCopyState = (onOpenAgentPluginConfig?: () => void) => {
 type JDAnalysisDetailsContentProps = {
     analysisResult: JDAnalysisResult;
     jdText: string;
+    isOutdated: boolean;
+    isEvaluationOutdated: boolean;
+    isEvaluating: boolean;
+    evaluationThinkingText?: string;
+    evaluationError?: string | null;
+    onGenerateEvaluation?: () => void;
+    onStopEvaluation?: () => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -445,27 +474,92 @@ type JDAnalysisDetailsContentProps = {
 const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     analysisResult,
     jdText,
+    isOutdated,
+    isEvaluationOutdated,
+    isEvaluating,
+    evaluationThinkingText,
+    evaluationError,
+    onGenerateEvaluation,
+    onStopEvaluation,
     copyStatus,
     manualCopyText,
     onCopyText,
-}) => (
-    <div className="space-y-4">
-        <JDInterpretationCard analysisResult={analysisResult} />
-        <CapabilityEvidenceCard analysisResult={analysisResult} />
-        <SameTypeJobStrategyCard
-            interpretation={analysisResult.jdInterpretation}
-            analysisResult={analysisResult}
-            jdText={jdText}
-            copyStatus={copyStatus}
-            manualCopyText={manualCopyText}
-            onCopyText={onCopyText}
-        />
-    </div>
-);
+}) => {
+    const evaluation = analysisResult.resumeEvaluation;
+    const isCurrentEvaluation = evaluation?.evaluationVersion === 'resume_flow_v1';
+    const shouldShowJdAnalysis = Boolean(jdText.trim())
+        && (!isCurrentEvaluation || evaluation.jdMatch !== null);
+    const [activeReport, setActiveReport] = useState<'jd' | 'resume'>(() => shouldShowJdAnalysis ? 'jd' : 'resume');
+    const selectedReport = shouldShowJdAnalysis ? activeReport : 'resume';
+    return (
+      <div>
+        <div className="mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="分析报告类型">
+            <button
+                type="button"
+                role="tab"
+                id="jd-report-tab"
+                aria-selected={selectedReport === 'jd'}
+                aria-controls="jd-report-panel"
+                disabled={!shouldShowJdAnalysis}
+                onClick={() => setActiveReport('jd')}
+                className={`rounded-lg px-3 py-2 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-45 ${selectedReport === 'jd' ? 'bg-white text-emerald-700 shadow-sm dark:bg-slate-800 dark:text-emerald-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}
+            >
+                JD 分析报告
+            </button>
+            <button
+                type="button"
+                role="tab"
+                id="resume-report-tab"
+                aria-selected={selectedReport === 'resume'}
+                aria-controls="resume-report-panel"
+                onClick={() => setActiveReport('resume')}
+                className={`rounded-lg px-3 py-2 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${selectedReport === 'resume' ? 'bg-white text-emerald-700 shadow-sm dark:bg-slate-800 dark:text-emerald-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}
+            >
+                简历诊断报告
+            </button>
+        </div>
+        {selectedReport === 'jd' ? (
+            <section id="jd-report-panel" role="tabpanel" aria-labelledby="jd-report-tab" className="space-y-3">
+                {isOutdated ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-relaxed text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">这是较早版本简历的历史 JD 分析，请重新分析后再据此判断。</div> : null}
+                <JDInterpretationCard analysisResult={analysisResult} />
+                <CapabilityEvidenceCard analysisResult={analysisResult} />
+                <SameTypeJobStrategyCard
+                    interpretation={analysisResult.jdInterpretation}
+                    analysisResult={analysisResult}
+                    jdText={jdText}
+                    copyStatus={copyStatus}
+                    manualCopyText={manualCopyText}
+                    onCopyText={onCopyText}
+                />
+            </section>
+        ) : (
+            <div id="resume-report-panel" role="tabpanel" aria-labelledby="resume-report-tab">
+                <ResumeEvaluationReport
+                    evaluation={evaluation}
+                    summary={analysisResult.summary}
+                    isOutdated={isEvaluationOutdated}
+                    isGenerating={isEvaluating}
+                    thinkingText={evaluationThinkingText}
+                    error={evaluationError}
+                    onGenerate={onGenerateEvaluation}
+                    onStop={onStopEvaluation}
+                />
+            </div>
+        )}
+      </div>
+    );
+};
 
 type JDAnalysisDetailsSidebarProps = {
     analysisResult: JDAnalysisResult | null;
     jdText: string;
+    isOutdated: boolean;
+    isEvaluationOutdated: boolean;
+    isEvaluating: boolean;
+    evaluationThinkingText?: string;
+    evaluationError?: string | null;
+    onGenerateEvaluation?: () => void;
+    onStopEvaluation?: () => void;
     onClose: () => void;
     onOpenAgentPluginConfig?: () => void;
 };
@@ -473,6 +567,13 @@ type JDAnalysisDetailsSidebarProps = {
 export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> = ({
     analysisResult,
     jdText,
+    isOutdated,
+    isEvaluationOutdated,
+    isEvaluating,
+    evaluationThinkingText,
+    evaluationError,
+    onGenerateEvaluation,
+    onStopEvaluation,
     onClose,
     onOpenAgentPluginConfig,
 }) => {
@@ -500,19 +601,19 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
                 <div className="min-w-0">
                     <h3 id="jd-analysis-details-sidebar-title" className="truncate text-sm font-bold text-gray-950 dark:text-white">
-                        JD 分析详情
+                        分析报告
                     </h3>
                     <p className="mt-1 truncate text-[11.5px] text-gray-500 dark:text-gray-400">
                         {getText(analysisResult.jdInterpretation?.normalizedTitle)
                             || getText(analysisResult.jobTitle)
-                            || '岗位画像与同投策略'}
+                            || 'JD 匹配与简历诊断'}
                     </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                     <button
                         type="button"
                         onClick={handleClose}
-                        aria-label="关闭 JD 分析详情"
+                        aria-label="关闭分析报告"
                         className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
                     >
                         <X className="h-4 w-4" />
@@ -523,6 +624,13 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                 <JDAnalysisDetailsContent
                     analysisResult={analysisResult}
                     jdText={jdText}
+                    isOutdated={isOutdated}
+                    isEvaluationOutdated={isEvaluationOutdated}
+                    isEvaluating={isEvaluating}
+                    evaluationThinkingText={evaluationThinkingText}
+                    evaluationError={evaluationError}
+                    onGenerateEvaluation={onGenerateEvaluation}
+                    onStopEvaluation={onStopEvaluation}
                     copyStatus={strategyCopyStatus}
                     manualCopyText={manualStrategyCopyText}
                     onCopyText={handleCopyStrategyText}
@@ -536,6 +644,13 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
     isOpen,
     analysisResult,
     jdText,
+    isOutdated,
+    isEvaluationOutdated,
+    isEvaluating,
+    evaluationThinkingText,
+    evaluationError,
+    onGenerateEvaluation,
+    onStopEvaluation,
     copyStatus,
     manualCopyText,
     onCopyText,
@@ -560,18 +675,18 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                 <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-800">
                     <div className="min-w-0">
                         <h3 id="jd-analysis-details-title" className="truncate text-base font-bold text-gray-950 dark:text-white">
-                            JD 分析详情
+                            分析报告
                         </h3>
                         <p className="mt-1 truncate text-[12px] text-gray-500 dark:text-gray-400">
                             {getText(analysisResult.jdInterpretation?.normalizedTitle)
                                 || getText(analysisResult.jobTitle)
-                                || '岗位画像与同投策略'}
+                                || 'JD 匹配与简历诊断'}
                         </p>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        aria-label="关闭 JD 分析详情"
+                        aria-label="关闭分析报告"
                         className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
                     >
                         <X className="h-4 w-4" />
@@ -581,6 +696,13 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                     <JDAnalysisDetailsContent
                         analysisResult={analysisResult}
                         jdText={jdText}
+                        isOutdated={isOutdated}
+                        isEvaluationOutdated={isEvaluationOutdated}
+                        isEvaluating={isEvaluating}
+                        evaluationThinkingText={evaluationThinkingText}
+                        evaluationError={evaluationError}
+                        onGenerateEvaluation={onGenerateEvaluation}
+                        onStopEvaluation={onStopEvaluation}
                         copyStatus={copyStatus}
                         manualCopyText={manualCopyText}
                         onCopyText={onCopyText}
@@ -727,6 +849,7 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
 
 type BossGreetingSectionProps = {
     analysisResult: JDAnalysisResult | null;
+    hasJdContext: boolean;
     bossGreeting: string;
     isBossGreetingVisible: boolean;
     isBossGreetingOutdated: boolean;
@@ -739,6 +862,7 @@ type BossGreetingSectionProps = {
 
 const BossGreetingSection: React.FC<BossGreetingSectionProps> = ({
     analysisResult,
+    hasJdContext,
     bossGreeting,
     isBossGreetingVisible,
     isBossGreetingOutdated,
@@ -748,14 +872,14 @@ const BossGreetingSection: React.FC<BossGreetingSectionProps> = ({
     onCopyBossGreeting,
     onCollapseBossGreeting,
 }) => {
-    const hasSummary = Boolean(analysisResult?.summary?.trim());
+    const canGenerateBossGreeting = hasJdContext && Boolean(analysisResult);
     const buttonLabel = isGeneratingBossGreeting
         ? '生成中...'
         : bossGreeting && isBossGreetingOutdated
             ? '重新生成 BOSS 招呼语'
             : '生成 BOSS 招呼语';
 
-    if (!hasSummary) {
+    if (!canGenerateBossGreeting) {
         return null;
     }
 
@@ -840,6 +964,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     onFileSelect,
     onFileClear,
     hasMissingAttachmentContext,
+    hasJdContext,
     bossGreeting,
     isBossGreetingVisible,
     isBossGreetingOutdated,
@@ -852,6 +977,11 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     debugInfo,
     showDebugInfo = false,
     isOutdated = false,
+    isEvaluationOutdated = true,
+    isEvaluating = false,
+    evaluationThinkingText,
+    evaluationError,
+    onGenerateEvaluation,
     thinkingText,
     onStopAnalyze,
     onOpenDetailsSidebar,
@@ -866,9 +996,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
         || getText(analysisResult?.jobTitle)
         || 'JD 解读待生成';
     const collapsedMeta = [
-        getText(analysisResult?.jdInterpretation?.roleFamily),
-        getText(analysisResult?.jdInterpretation?.seniority),
-        sameTypeJobCount > 0 ? `同投方向 ${sameTypeJobCount} 个` : '',
+            getText(analysisResult?.jdInterpretation?.roleFamily),
+            getText(analysisResult?.jdInterpretation?.seniority),
+            sameTypeJobCount > 0 ? `同投方向 ${sameTypeJobCount} 个` : '',
     ].filter(Boolean).join(' · ');
     const {
         strategyCopyStatus,
@@ -947,7 +1077,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
             <div className="mb-2 flex items-center justify-between px-4">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
                     <Target className="h-4 w-4 text-primary" />
-                    职位分析 (JD Analysis)
+                    JD 匹配与职位分析
                 </h3>
                 <button
                     onClick={onToggleCollapse}
@@ -983,19 +1113,15 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                         <div className={`space-y-2 ${jdAnalysisMotion.idleControlsMotionClass}`}>
                             <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-2">
-                                    {isOutdated ? (
-                                        <span className="inline-flex items-center whitespace-nowrap rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                                            待更新
-                                        </span>
-                                    ) : (
-                                        <MatchBadge
-                                            score={analysisResult?.matchPercentage ?? 0}
-                                            trend={analysisResult?.matchTrend}
-                                        />
-                                    )}
+                                    <ResumeScoreBadge
+                                        score={analysisResult?.matchPercentage ?? 0}
+                                    />
                                     <button
+                                        type="button"
                                         onClick={onAnalyze}
                                         disabled={isAnalyzing}
+                                        aria-label={isOutdated ? '重新进行 JD 匹配' : '刷新 JD 匹配'}
+                                        title={isOutdated ? '重新进行 JD 匹配' : '刷新 JD 匹配'}
                                         className="p-1 text-gray-400 hover:text-emerald-600"
                                     >
                                         <RefreshCw className={`h-3 w-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
@@ -1046,6 +1172,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     </p>
                                     <BossGreetingSection
                                         analysisResult={analysisResult}
+                                        hasJdContext={hasJdContext}
                                         bossGreeting={bossGreeting}
                                         isBossGreetingVisible={isBossGreetingVisible}
                                         isBossGreetingOutdated={isBossGreetingOutdated}
@@ -1111,11 +1238,11 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     />
                                     <button
                                         onClick={onAnalyze}
-                                        disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
+                                        disabled={isAnalyzing}
                                         className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
                                     >
                                         <Wand2 className="h-3 w-3" />
-                                        开始分析
+                                        开始评分
                                     </button>
                                 </div>
                             )}
@@ -1140,9 +1267,8 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             <div className="space-y-3">
                                 <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-800/30 dark:bg-emerald-900/10">
                                     <div className="mb-2 flex items-center justify-between gap-3">
-                                        <MatchBadge
+                                        <ResumeScoreBadge
                                             score={analysisResult.matchPercentage ?? 0}
-                                            trend={analysisResult.matchTrend}
                                         />
                                         <button
                                             type="button"
@@ -1159,6 +1285,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 </div>
                                 <BossGreetingSection
                                     analysisResult={analysisResult}
+                                    hasJdContext={hasJdContext}
                                     bossGreeting={bossGreeting}
                                     isBossGreetingVisible={isBossGreetingVisible}
                                     isBossGreetingOutdated={isBossGreetingOutdated}
@@ -1184,6 +1311,12 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                 isOpen={isDetailsModalOpen}
                 analysisResult={analysisResult}
                 jdText={jdText}
+                isOutdated={isOutdated}
+                isEvaluationOutdated={isEvaluationOutdated}
+                isEvaluating={isEvaluating}
+                evaluationThinkingText={evaluationThinkingText}
+                evaluationError={evaluationError}
+                onGenerateEvaluation={onGenerateEvaluation}
                 copyStatus={strategyCopyStatus}
                 manualCopyText={manualStrategyCopyText}
                 onCopyText={handleCopyStrategyText}

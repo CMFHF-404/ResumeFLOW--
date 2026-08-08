@@ -17,7 +17,6 @@ import {
     X,
 } from 'lucide-react';
 import type { JDAnalysisResult, JDCoreCapability } from '../../../services/aiService';
-import { StaleBadge } from './Badges';
 import {
     getMobileCapabilityFollowUpQuestion,
     SUMMARY_CLAMP_STYLE,
@@ -37,6 +36,7 @@ export type MobileEditorHeaderProps = {
     isOutdated: boolean;
     isAnalyzing: boolean;
     onAnalyze: () => void;
+    onOpenAnalysisDetails?: () => void;
     onExportPdf: () => void;
     isExportingPdf: boolean;
     isPreviewOverflowing?: boolean;
@@ -72,6 +72,7 @@ export type MobileEditorHeaderProps = {
     onFileSelect: (file: File) => Promise<void>;
     onFileClear: () => void;
     hasMissingAttachmentContext: boolean;
+    hasJdContext: boolean;
     isJDCollapsed: boolean;
     onJDCollapseChange: (collapsed: boolean) => void;
     onOpenTemplateSelector: () => void;
@@ -89,6 +90,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     isOutdated,
     isAnalyzing,
     onAnalyze,
+    onOpenAnalysisDetails,
     onExportPdf,
     isExportingPdf,
     isPreviewOverflowing = false,
@@ -124,6 +126,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onFileSelect,
     onFileClear,
     hasMissingAttachmentContext,
+    hasJdContext,
     isJDCollapsed,
     onJDCollapseChange,
     onOpenTemplateSelector,
@@ -187,13 +190,13 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
         void onFileSelect(pastedFile);
     }, [isAnalyzing, onFileSelect]);
 
-    const hasSummary = Boolean(analysisResult?.summary?.trim());
+    const canGenerateBossGreeting = hasJdContext && Boolean(analysisResult);
     const summaryText = useMemo(() => {
         const value = analysisResult?.summary?.trim();
         if (value) {
             return value;
         }
-        return '在底部抽屉补充 JD 后，这里会展示匹配评价与简历建议。';
+        return '开始评分后，这里会展示简历质量评价；补充 JD 后还会生成岗位分析。';
     }, [analysisResult?.summary]);
     const followUpQuestion = useMemo(
         () => getMobileCapabilityFollowUpQuestion(analysisResult),
@@ -350,12 +353,10 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             ) : (
                                 <div className="min-w-0 shrink-0">
                                     <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                                        匹配度
+                                        JD 匹配
                                     </div>
                                     <div className="flex min-h-[40px] items-end">
-                                        {isOutdated ? (
-                                            <StaleBadge />
-                                        ) : analysisResult ? (
+                                        {analysisResult ? (
                                             <div className="leading-none">
                                                 <div className="text-[31px] font-black tracking-tight text-emerald-600 dark:text-emerald-400">
                                                     {analysisResult.matchPercentage ?? 0}
@@ -370,6 +371,15 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                             </div>
                                         )}
                                     </div>
+                                    {analysisResult && onOpenAnalysisDetails ? (
+                                        <button
+                                            type="button"
+                                            onClick={onOpenAnalysisDetails}
+                                            className="mt-1 text-[10.5px] font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 dark:text-emerald-300"
+                                        >
+                                            查看报告
+                                        </button>
+                                    ) : null}
                                 </div>
                             )}
 
@@ -454,11 +464,11 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                                 onClick={() => {
                                                     onAnalyze();
                                                 }}
-                                                disabled={isAnalyzing || (!hasMissingAttachmentContext && !jdFile && !jdText.trim())}
+                                                disabled={isAnalyzing}
                                                 className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
                                             >
                                                 <Wand2 className="h-3 w-3" />
-                                                开始分析
+                                                开始评分
                                             </button>
                                         </div>
                                     )}
@@ -530,7 +540,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                                     建议补充：{followUpQuestion}
                                                 </p>
                                             ) : null}
-                                            {hasSummary ? (
+                                            {canGenerateBossGreeting ? (
                                                 <div className="space-y-2">
                                                     <button
                                                         type="button"
@@ -715,23 +725,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                     {isAnalysisCollapsed ? (
                         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 pb-1 pt-1.5">
                             <div className="min-w-0 justify-self-start px-1">
-                                {isOutdated ? (
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-[12px] font-semibold text-amber-500 dark:text-amber-300">
-                                            待更新
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={onAnalyze}
-                                            disabled={isAnalyzing}
-                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                                            aria-label="刷新 JD 分析"
-                                            title="刷新 JD 分析"
-                                        >
-                                            <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                        </button>
-                                    </div>
-                                ) : analysisResult ? (
+                                {analysisResult ? (
                                     <div className="leading-none text-emerald-600 dark:text-emerald-400">
                                         <span className="text-[24px] font-black tracking-tight">
                                             {analysisResult.matchPercentage ?? 0}
@@ -745,16 +739,27 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 )}
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={() => setIsAnalysisCollapsed(false)}
-                                aria-controls="mobile-analysis-card"
-                                aria-expanded={false}
-                                className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-gray-600 transition-colors hover:text-primary dark:text-gray-300 dark:hover:text-primary"
-                            >
-                                <ChevronDown className="h-3.5 w-3.5" />
-                                展开分析卡片
-                            </button>
+                            <div className="flex flex-col items-center gap-0.5 justify-self-center">
+                                {analysisResult && onOpenAnalysisDetails ? (
+                                    <button
+                                        type="button"
+                                        onClick={onOpenAnalysisDetails}
+                                        className="text-[10.5px] font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 dark:text-emerald-300"
+                                    >
+                                        查看报告
+                                    </button>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAnalysisCollapsed(false)}
+                                    aria-controls="mobile-analysis-card"
+                                    aria-expanded={false}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-gray-600 transition-colors hover:text-primary dark:text-gray-300 dark:hover:text-primary"
+                                >
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                    展开分析卡片
+                                </button>
+                            </div>
 
                             <button
                                 type="button"

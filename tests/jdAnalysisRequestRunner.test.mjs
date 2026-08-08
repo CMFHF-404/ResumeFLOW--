@@ -196,6 +196,7 @@ test('partial analysis sends previous result only when context and result are av
     certificationMatches: [{ id: 'cert-1', score: 40 }],
     skillMatches: [{ id: 'skill-1', score: 88 }],
   });
+  assert.equal('resumeEvaluation' in calls[0].prevResult, false);
   assert.equal(output.shouldUsePrev, true);
   assert.equal(output.prevExperienceText, 'previous-experience-text');
 });

@@ -39,17 +39,22 @@ export const resolveJDAnalyzePlan = ({
   analysisContext,
   snapshotItemSignatures,
   snapshotJdInputSignature,
+  snapshotTargetRoleSignature,
   pendingDiff,
   needsReanalysis,
   hasMissingAttachmentContext,
+  hasJdContext,
 }: {
   analysisResult: JDAnalysisResult | null;
   analysisContext: JDAnalysisContext | null;
   snapshotItemSignatures: JDAnalysisItemSignatures;
   snapshotJdInputSignature: string;
+  snapshotEvaluationSignature?: string;
+  snapshotTargetRoleSignature?: string;
   pendingDiff: JDItemDiff;
   needsReanalysis: boolean;
   hasMissingAttachmentContext: boolean;
+  hasJdContext?: boolean;
 }): JDAnalyzePlan => {
   const contextDiff = buildDiffFromAnalysisContext(
     analysisContext,
@@ -61,13 +66,17 @@ export const resolveJDAnalyzePlan = ({
   const hasPendingDiff = hasDiff(diffSnapshot);
   const hasJdInputChanged =
     analysisContext?.jdInputSignature !== snapshotJdInputSignature;
+  const hasTargetRoleChanged = snapshotTargetRoleSignature
+    ? analysisContext?.targetRoleSignature !== snapshotTargetRoleSignature
+    : false;
   const hasPrevExperienceText =
     analysisContext?.experienceText !== undefined;
   const shouldSkipAnalyze =
     Boolean(analysisResult)
     && Boolean(analysisContext)
     && !hasPendingDiff
-    && !hasJdInputChanged;
+    && !hasJdInputChanged
+    && !hasTargetRoleChanged;
 
   if (shouldSkipAnalyze) {
     return {
@@ -80,11 +89,19 @@ export const resolveJDAnalyzePlan = ({
   if (hasMissingAttachmentContext) {
     return { action: "missing_attachment", status: "missing_attachment" };
   }
+  if (hasJdContext === false) {
+    return {
+      action: "run",
+      mode: "full",
+      diff: diffSnapshot,
+    };
+  }
   if (
     analysisResult
     && analysisContext
     && hasPendingDiff
     && !hasJdInputChanged
+    && !hasTargetRoleChanged
     && hasPrevExperienceText
   ) {
     return {

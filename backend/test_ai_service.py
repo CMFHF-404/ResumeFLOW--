@@ -4,7 +4,10 @@ import asyncio
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, Mock, call, patch
+
+import httpx
+from fastapi import HTTPException
 
 
 def _set_required_env_defaults() -> None:
@@ -675,6 +678,126 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(usage_event["model"], "aifast-resume-parser")
         self.assertEqual(usage_event["total_tokens"], 45)
 
+    async def test_resume_parse_arrearage_uses_configured_gemini_fallback(self) -> None:
+        primary_response = httpx.Response(
+            400,
+            json={"code": "Arrearage", "message": "Account is in arrears"},
+            request=httpx.Request("POST", "https://aifast.example.com/v1/chat/completions"),
+        )
+        fallback_response = _FakeJsonResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [{"text": json.dumps({"ok": True})}],
+                        }
+                    }
+                ]
+            }
+        )
+        clients = [
+            _FakePostClient(response=primary_response),
+            _FakePostClient(response=fallback_response),
+        ]
+
+        def _client_factory(*, timeout):
+            client = clients.pop(0)
+            client.timeout = timeout
+            return client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_fast_api_key="aifast-key",
+            ai_fast_base_url="https://aifast.example.com/v1",
+            ai_fast_model="aifast-resume-parser",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                with patch.object(llm_transport.logger, "error"):
+                    result = await llm_transport._call_llm(
+                        [{"role": "user", "content": "解析简历"}],
+                        json_mode=True,
+                        lane="resume_parse",
+                    )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(len(clients), 0)
+
+    async def test_resume_parse_regular_bad_request_does_not_fallback(self) -> None:
+        response = httpx.Response(
+            400,
+            json={"code": "InvalidParameter", "message": "schema is invalid"},
+            request=httpx.Request("POST", "https://aifast.example.com/v1/chat/completions"),
+        )
+        client = _FakePostClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="hybrid_gemini_aifast",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_fast_api_key="aifast-key",
+            ai_fast_base_url="https://aifast.example.com/v1",
+            ai_fast_model="aifast-resume-parser",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", return_value=client):
+                with patch.object(llm_transport.logger, "error"):
+                    with self.assertRaises(httpx.HTTPStatusError):
+                        await llm_transport._call_llm(
+                            [{"role": "user", "content": "解析简历"}],
+                            json_mode=True,
+                            lane="resume_parse",
+                        )
+
+        self.assertEqual(len(client.posts), 1)
+
+    async def test_resume_parse_provider_unavailable_without_fallback_is_clear(self) -> None:
+        response = httpx.Response(
+            400,
+            json={"code": "Arrearage", "message": "Account is in arrears"},
+            request=httpx.Request("POST", "https://dashscope.example.com/v1/chat/completions"),
+        )
+        client = _FakePostClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
+            ai_api_key="same-key",
+            ai_base_url="https://dashscope.example.com/v1",
+            ai_model="qwen3.7-plus",
+            ai_fast_api_key="same-key",
+            ai_fast_base_url="https://dashscope.example.com/v1",
+            ai_fast_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", return_value=client):
+                with patch.object(llm_transport.logger, "error"):
+                    with self.assertRaises(HTTPException) as context:
+                        await llm_transport._call_llm(
+                            [{"role": "user", "content": "解析简历"}],
+                            json_mode=True,
+                            lane="resume_parse",
+                        )
+
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertIn("no fallback AI route", context.exception.detail)
+
     async def test_hybrid_thinking_stream_uses_gemini_even_when_ai_model_is_qwen(self) -> None:
         answer_event = {
             "candidates": [
@@ -941,6 +1064,41 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertNotIn("responseMimeType", body["generationConfig"])
+        self.assertEqual(body["generationConfig"]["temperature"], 0.3)
+        self.assertNotIn("thinkingConfig", body["generationConfig"])
+
+    def test_gemini3_scoped_thinking_level_uses_default_temperature(self) -> None:
+        for level in ("minimal", "low", "medium", "high"):
+            with self.subTest(level=level):
+                body = llm_transport._build_gemini_generate_body(
+                    [{"role": "user", "content": "返回 JSON"}],
+                    model="gemini-3-flash-preview",
+                    gemini_thinking_level=level,
+                )
+
+                self.assertEqual(
+                    body["generationConfig"]["thinkingConfig"],
+                    {"thinkingLevel": level},
+                )
+                self.assertNotIn("temperature", body["generationConfig"])
+
+    def test_gemini_scoped_thinking_level_rejects_unknown_value(self) -> None:
+        with self.assertRaisesRegex(ValueError, "minimal, low, medium, high"):
+            llm_transport._build_gemini_generate_body(
+                [{"role": "user", "content": "返回 JSON"}],
+                model="gemini-3-flash-preview",
+                gemini_thinking_level="extreme",
+            )
+
+    def test_non_gemini3_model_ignores_valid_scoped_thinking_level(self) -> None:
+        body = llm_transport._build_gemini_generate_body(
+            [{"role": "user", "content": "返回 JSON"}],
+            model="gemini-2.5-flash",
+            gemini_thinking_level="low",
+        )
+
+        self.assertEqual(body["generationConfig"]["temperature"], 0.3)
+        self.assertNotIn("thinkingConfig", body["generationConfig"])
 
     async def test_call_llm_disables_qwen_thinking_for_standard_json_requests(self) -> None:
         response = _FakeJsonResponse(
@@ -968,12 +1126,14 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                 result = await llm_transport._call_llm(
                     [{"role": "user", "content": "返回 JSON"}],
                     json_mode=True,
+                    gemini_thinking_level="not-used-for-openai-compatible",
                 )
 
         self.assertEqual(result, {"ok": True})
         sent_payload = fake_client.posts[0][1]["json"]
         self.assertEqual(sent_payload["model"], "qwen3.7-plus")
         self.assertIs(sent_payload["enable_thinking"], False)
+        self.assertNotIn("thinkingConfig", sent_payload)
 
     async def test_call_llm_accepts_model_override_for_standard_json_requests(self) -> None:
         response = _FakeJsonResponse(
@@ -1666,7 +1826,12 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(jd_analysis_service, "settings", fake_settings):
             with patch.object(jd_analysis_service, "_stream_gemini_json_response", stream_mock):
-                await jd_analysis_service.analyze_jd_with_thoughts("JD text")
+                with patch.object(
+                    jd_analysis_service,
+                    "_finalize_jd_analysis_result",
+                    Mock(return_value={}),
+                ):
+                    await jd_analysis_service.analyze_jd_with_thoughts("JD text")
 
         self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 2048)
         self.assertEqual(stream_mock.await_args.kwargs["request_label"], "jd_text_analysis")
@@ -1681,10 +1846,15 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(jd_analysis_service, "settings", fake_settings):
             with patch.object(jd_analysis_service, "_stream_gemini_json_response", stream_mock):
-                await jd_analysis_service.analyze_jd_with_thoughts(
-                    "JD text",
-                    thought_callback=thought_callback,
-                )
+                with patch.object(
+                    jd_analysis_service,
+                    "_finalize_jd_analysis_result",
+                    Mock(return_value={}),
+                ):
+                    await jd_analysis_service.analyze_jd_with_thoughts(
+                        "JD text",
+                        thought_callback=thought_callback,
+                    )
 
         thought_callback.assert_awaited_once_with(
             {"type": "thought", "summary": "正在拆解岗位要求"}

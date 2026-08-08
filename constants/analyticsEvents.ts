@@ -35,6 +35,7 @@ export const ANALYTICS_PROPERTIES = {
   ACTION: 'action',
   DURATION_MS: 'duration_ms',
   MATCH_SCORE: 'match_score',
+  RESUME_QUALITY_SCORE: 'resume_quality_score',
   FROM: 'from',
   TO: 'to',
   LINE_HEIGHT: 'line_height',

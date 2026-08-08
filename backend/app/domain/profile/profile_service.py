@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ...models import Profile, ProfileLink
 from ...utils.time_utils import utc_now
 from ..account.user_onboarding_service import ensure_user_with_signup_bonus
+from ..resume.resume_analysis_freshness import acquire_user_resume_analysis_lock
 from .schemas import ProfileLinkPayload, ProfileUpdate
 
 
@@ -18,6 +19,16 @@ class NotFoundError(Exception):
 
 class ProfileUpdateConflictError(Exception):
     pass
+
+
+_RESUME_EVALUATION_PROFILE_FIELDS = {
+    "full_name",
+    "email",
+    "phone",
+    "location",
+    "summary",
+    "social_links",
+}
 
 
 def _normalize_timestamp(value: datetime) -> datetime:
@@ -70,15 +81,131 @@ async def update_profile(
     for json_field in ("social_links", "extra_json"):
         if json_field in update_data and update_data[json_field] is None:
             update_data[json_field] = {}
+    previous_resume_profile = _resume_editor_profile_snapshot(profile)
+    invalidates_resume_evaluations = any(
+        field in update_data and getattr(profile, field, None) != update_data[field]
+        for field in _RESUME_EVALUATION_PROFILE_FIELDS
+    )
     for field, value in update_data.items():
         setattr(profile, field, value)
     if "social_links" in update_data:
         await _clear_profile_links(session, user_id)
-    profile.updated_at = utc_now()
+    updated_at = utc_now()
+    next_resume_profile = _resume_editor_profile_snapshot(profile)
+    if previous_resume_profile != next_resume_profile:
+        await _sync_global_resumes_after_profile_update(
+            session,
+            user_id,
+            updated_at=updated_at,
+            previous_profile=previous_resume_profile,
+            invalidate_evaluations=invalidates_resume_evaluations,
+        )
+    profile.updated_at = updated_at
     session.add(profile)
     await session.commit()
     await session.refresh(profile)
     return profile
+
+
+def _social_link_url(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        url = value.get("url")
+        return str(url) if url is not None else ""
+    return ""
+
+
+def _resume_editor_profile_snapshot(profile: Any) -> Dict[str, str]:
+    social_links = getattr(profile, "social_links", None)
+    social_links = social_links if isinstance(social_links, dict) else {}
+    extra_json = getattr(profile, "extra_json", None)
+    extra_json = extra_json if isinstance(extra_json, dict) else {}
+    return {
+        "name": str(getattr(profile, "full_name", "") or ""),
+        "email": str(getattr(profile, "email", "") or ""),
+        "phone": str(getattr(profile, "phone", "") or ""),
+        "location": str(getattr(profile, "location", "") or ""),
+        "linkedin": _social_link_url(social_links.get("linkedin")),
+        "summary": str(getattr(profile, "summary", "") or ""),
+        "avatarDataUrl": str(extra_json.get("avatar_data_url") or ""),
+    }
+
+
+async def _sync_global_resumes_after_profile_update(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    updated_at: datetime,
+    previous_profile: Dict[str, str],
+    invalidate_evaluations: bool,
+) -> None:
+    """Refresh global resumes and migrate unambiguous legacy global snapshots.
+
+    A legacy embedded profile is global when it exactly matches the profile
+    snapshot from immediately before this locked profile update. Canonicalizing
+    it in the same transaction prevents the next read from misclassifying it as
+    a local snapshot after the global values change.
+    """
+    await acquire_user_resume_analysis_lock(session, user_id)
+    await session.execute(
+        text(
+            """
+            UPDATE resumes
+            SET config = (
+                    CASE
+                        WHEN :invalidate_evaluations
+                          AND jsonb_typeof(COALESCE(config, '{}'::jsonb) -> 'jdAnalysis') = 'object'
+                        THEN jsonb_set(
+                            jsonb_set(
+                                COALESCE(config, '{}'::jsonb),
+                                '{jdAnalysis,isOutdated}',
+                                'true'::jsonb,
+                                true
+                            ),
+                            '{jdAnalysis,evaluationIsOutdated}',
+                            'true'::jsonb,
+                            true
+                        )
+                        ELSE COALESCE(config, '{}'::jsonb)
+                    END
+                    || jsonb_build_object('profileSyncMode', 'global')
+                ) - 'profile',
+                updated_at = :updated_at
+            WHERE user_id = :user_id
+              AND (
+                    COALESCE(config, '{}'::jsonb) ->> 'profileSyncMode' = 'global'
+                    OR (
+                        NOT (COALESCE(config, '{}'::jsonb) ? 'profileSyncMode')
+                        AND NOT (COALESCE(config, '{}'::jsonb) ? 'profile')
+                    )
+                    OR (
+                        NOT (COALESCE(config, '{}'::jsonb) ? 'profileSyncMode')
+                        AND COALESCE(config, '{}'::jsonb) ? 'profile'
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'name', '') = :profile_name
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'email', '') = :profile_email
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'phone', '') = :profile_phone
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'location', '') = :profile_location
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'linkedin', '') = :profile_linkedin
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'summary', '') = :profile_summary
+                        AND COALESCE(COALESCE(config, '{}'::jsonb) -> 'profile' ->> 'avatarDataUrl', '') = :profile_avatar
+                    )
+                )
+            """
+        ),
+        {
+            "user_id": user_id,
+            "updated_at": updated_at,
+            "invalidate_evaluations": invalidate_evaluations,
+            "profile_name": previous_profile["name"],
+            "profile_email": previous_profile["email"],
+            "profile_phone": previous_profile["phone"],
+            "profile_location": previous_profile["location"],
+            "profile_linkedin": previous_profile["linkedin"],
+            "profile_summary": previous_profile["summary"],
+            "profile_avatar": previous_profile["avatarDataUrl"],
+        },
+    )
 
 
 async def _fetch_profile(session: AsyncSession, user_id: str) -> Optional[Profile]:

@@ -146,6 +146,9 @@ export const useJDAnalysisMatchState = ({
 
   const applyMatchScoresForResult = useCallback(
     (result: JDAnalysisResult, mode: MatchUpdateMode, diff: JDItemDiff) => {
+      if (mode === "quality") {
+        return;
+      }
       const skillMatches = result.skillMatches ?? [];
       if (mode === "partial") {
         applyExperienceMatchScores(result.experienceMatches, {

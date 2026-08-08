@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
@@ -12,7 +13,12 @@ from fastapi import HTTPException
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from ...models import ExperienceCategory
-from ..ai.ai_service import analyze_jd, generate_personal_summary, polish_experience
+from ..ai.ai_service import (
+    analyze_jd,
+    analyze_resume_evaluation,
+    generate_personal_summary,
+    polish_experience,
+)
 from ..export.schemas import (
     CertificationViewSnapshot,
     EducationViewSnapshot,
@@ -27,6 +33,7 @@ from ..export.browser_pdf_service import render_resume_pdf
 from ..export.snapshot_service import create_render_snapshot
 from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_schema import ResumeExperienceItem
+from ..resume.resume_analysis_freshness import acquire_user_resume_analysis_lock
 from .agent_option_helpers import (
     _absolute_url,
     _analysis_evaluation,
@@ -60,6 +67,7 @@ from .agent_pdf_helpers import (
     _summary_generation_payload,
 )
 from .agent_generated_resume_config import (
+    _build_agent_evaluation_signature,
     _build_agent_generated_resume_config,
     _build_agent_jd_analysis_config,
 )
@@ -120,6 +128,20 @@ class AgentJobAnalysisBuild:
     raw_result: Dict[str, Any]
 
 
+_AGENT_EVALUATION_SECTION_ORDER = (
+    "summary",
+    "education",
+    "work",
+    "project",
+    "certifications",
+    "skills",
+)
+
+
+class AgentBankChangedError(Exception):
+    pass
+
+
 def _now_aware() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -147,13 +169,43 @@ async def build_agent_job_analysis_detail(
         resume_items=resume_items,
         bank=bank,
         category_by_master_id=category_by_master_id,
+        target_role=payload.job_title,
     )
     result = await analyze_jd(
         payload.jd_text,
         resume_text=resume_text,
-        experience_text=resume_text,
     )
-    score = _clamp_score(result.get("matchPercentage"))
+    result = dict(result)
+    jd_match_score = _require_agent_match_percentage(result)
+    if payload.include_resume_evaluation:
+        evaluation_result = await analyze_resume_evaluation(
+            payload.jd_text,
+            resume_text,
+            jd_match_score,
+        )
+        if isinstance(evaluation_result.get("resumeEvaluation"), dict):
+            result = {
+                **result,
+                "resumeEvaluation": evaluation_result["resumeEvaluation"],
+            }
+    else:
+        result.pop("resumeEvaluation", None)
+        result.pop("resume_evaluation", None)
+    return _build_agent_job_analysis_from_result(payload, result)
+
+
+def _build_agent_job_analysis_from_result(
+    payload: AgentJobRequest,
+    result: Dict[str, Any],
+) -> AgentJobAnalysisBuild:
+    resume_evaluation = result.get("resumeEvaluation") if isinstance(result, dict) else None
+    jd_match_score = _require_agent_match_percentage(result)
+    resume_quality_score = (
+        _clamp_score(resume_evaluation.get("overallScore"))
+        if isinstance(resume_evaluation, dict)
+        and resume_evaluation.get("overallScore") is not None
+        else None
+    )
     strengths = _normalize_string_list(
         result.get("strengths"),
         _entry_reasons(result.get("experienceMatches"), minimum_score=80),
@@ -162,16 +214,40 @@ async def build_agent_job_analysis_detail(
     missing_keywords = _normalize_string_list(result.get("missingKeywords"))
     return AgentJobAnalysisBuild(
         response=AgentJobAnalysisResponse(
-            match_percentage=score,
+            match_percentage=jd_match_score,
+            jd_match_percentage=jd_match_score,
+            resume_quality_percentage=resume_quality_score,
+            score_version="resume_flow_v1",
             evaluation=_analysis_evaluation(result, payload),
             strengths=strengths,
             gaps=gaps,
             missing_keywords=missing_keywords,
-            recommendation=_recommendation(score),
-            suggested_folder_name=sanitize_folder_name(payload.company_name, payload.job_title, score),
+            recommendation=_recommendation(jd_match_score),
+            suggested_folder_name=sanitize_folder_name(payload.company_name, payload.job_title, jd_match_score),
         ),
         raw_result=result if isinstance(result, dict) else {},
     )
+
+
+def _require_agent_match_percentage(result: Dict[str, Any]) -> int:
+    raw_match_score = result.get("matchPercentage")
+    if raw_match_score is None:
+        raw_match_score = result.get("match_percentage")
+    if (
+        isinstance(raw_match_score, bool)
+        or not isinstance(raw_match_score, (int, float))
+        or not math.isfinite(float(raw_match_score))
+    ):
+        raise ValueError("AI analysis result is missing a valid matchPercentage.")
+    return _clamp_score(raw_match_score)
+
+
+def _replace_agent_job_analysis(
+    target: AgentJobAnalysisResponse,
+    replacement: AgentJobAnalysisResponse,
+) -> None:
+    for field, value in replacement.model_dump().items():
+        setattr(target, field, value)
 
 
 async def build_resume_analysis_text(
@@ -181,25 +257,355 @@ async def build_resume_analysis_text(
     resume_items: Optional[List[ResumeExperienceItem]] = None,
     bank: Optional[Dict[str, Any]] = None,
     category_by_master_id: Optional[Dict[str, ExperienceCategory]] = None,
+    target_role: Optional[str] = None,
 ) -> str:
     if bank is None:
         bank = await _load_agent_bank(session, user_id)
     if resume_items is not None and category_by_master_id is None:
         category_by_master_id = await _load_resume_item_categories(session, user_id, resume_items)
+    resume_payload = _agent_analysis_resume_payload(
+        bank,
+        resume,
+        resume_items,
+        category_by_master_id,
+    )
+    candidate_payload = _agent_analysis_bank_payload(bank)
+    raw_profile = (
+        resume_payload.get("profile")
+        if isinstance(resume_payload.get("profile"), dict)
+        else {}
+    )
+    personal_summary = str(raw_profile.get("summary") or "")
+    profile = _agent_visible_profile(raw_profile)
+    formal_experiences = [
+        *[
+            _agent_visible_experience(item, category="work")
+            for item in _agent_payload_list(resume_payload, "work_experiences")
+        ],
+        *[
+            _agent_visible_experience(item, category="project")
+            for item in _agent_payload_list(resume_payload, "project_experiences")
+        ],
+    ]
+    candidate_experiences = [
+        *(_agent_payload_list(candidate_payload, "work_experiences")),
+        *(_agent_payload_list(candidate_payload, "project_experiences")),
+    ]
+    formal_resume = {
+        "section_order": _agent_analysis_section_order(resume, personal_summary),
+        "profile": profile,
+        "personal_summary": personal_summary,
+        "experiences": formal_experiences,
+        "educations": [
+            _agent_visible_education(item)
+            for item in _agent_payload_list(resume_payload, "education_experiences")
+        ],
+        "certifications": [
+            _agent_visible_certification(item)
+            for item in _agent_payload_list(resume_payload, "certifications")
+        ],
+        "skills": [
+            _agent_visible_skill(item)
+            for item in _agent_payload_list(resume_payload, "skills")
+        ],
+    }
+    resolved_target_role = str(
+        target_role if target_role is not None else getattr(resume, "target_role", "") or ""
+    )
     payload = {
-        "resume": {
-            "id": str(resume.id),
-            "title": resume.title,
-            "target_role": resume.target_role,
+        "evaluation_scope": "full_resume",
+        "target_role": resolved_target_role,
+        "resume": formal_resume,
+        # The candidate pools intentionally remain broader than the assembled
+        # resume. They are consumed only by the existing independent match arrays.
+        "experience_atoms": candidate_experiences,
+        "match_candidates": {
+            "certifications": _agent_payload_list(candidate_payload, "certifications"),
+            "skills": _agent_payload_list(candidate_payload, "skills"),
         },
-        **_agent_analysis_resume_payload(
-            bank,
-            resume,
-            resume_items,
-            category_by_master_id,
+        "fact_metadata": _agent_resume_fact_metadata(
+            formal_resume,
+            target_role=resolved_target_role,
         ),
     }
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _agent_payload_list(payload: Dict[str, Any], key: str) -> List[Dict[str, Any]]:
+    value = payload.get(key)
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _normalize_agent_section_order(
+    value: Any,
+    *,
+    has_summary: bool,
+) -> List[str]:
+    raw_order = value if isinstance(value, list) else []
+    normalized: List[str] = []
+    for section_id in [*raw_order, *_AGENT_EVALUATION_SECTION_ORDER]:
+        if (
+            section_id not in _AGENT_EVALUATION_SECTION_ORDER
+            or section_id in normalized
+            or (section_id == "summary" and not has_summary)
+        ):
+            continue
+        normalized.append(section_id)
+    return normalized
+
+
+def _agent_analysis_section_order(resume: Any, personal_summary: str) -> List[str]:
+    raw_config = getattr(resume, "config", None)
+    config = raw_config if isinstance(raw_config, dict) else {}
+    layout = config.get("layout") if isinstance(config.get("layout"), dict) else {}
+    return _normalize_agent_section_order(
+        layout.get("sectionOrder"),
+        has_summary=bool(personal_summary.strip()),
+    )
+
+
+def _agent_visible_profile(profile: Dict[str, Any]) -> Dict[str, str]:
+    social_links = profile.get("social_links")
+    linkedin_value = social_links.get("linkedin") if isinstance(social_links, dict) else ""
+    if isinstance(linkedin_value, dict):
+        linkedin_value = linkedin_value.get("url")
+    return {
+        "name": str(profile.get("full_name") or ""),
+        "email": str(profile.get("email") or ""),
+        "phone": str(profile.get("phone") or ""),
+        "location": str(profile.get("location") or ""),
+        "linkedin": str(linkedin_value or ""),
+    }
+
+
+def _agent_visible_experience(item: Dict[str, Any], *, category: str) -> Dict[str, Any]:
+    raw_star = item.get("star") if isinstance(item.get("star"), dict) else {}
+    return {
+        "id": str(item.get("id") or ""),
+        "title": str(item.get("title") or ""),
+        "org": str(item.get("org") or ""),
+        "start_date": str(item.get("start_date") or ""),
+        "end_date": "至今" if item.get("is_current") is True else str(item.get("end_date") or ""),
+        "star": {
+            key: str(raw_star.get(key) or "")
+            for key in ("s", "t", "a", "r")
+        },
+        "category": category,
+    }
+
+
+def _agent_visible_education(item: Dict[str, Any]) -> Dict[str, Any]:
+    raw_star = item.get("star") if isinstance(item.get("star"), dict) else {}
+    title = str(item.get("title") or "")
+    degree = str(raw_star.get("degree") or "")
+    major = title if title and title != degree else str(raw_star.get("major") or item.get("summary") or "")
+    return {
+        "id": str(item.get("id") or ""),
+        "school": str(item.get("org") or title),
+        "major": major,
+        "degree": degree,
+        "start_date": str(item.get("start_date") or ""),
+        "end_date": "至今" if item.get("is_current") is True else str(item.get("end_date") or ""),
+        "gpa": str(raw_star.get("gpa") or ""),
+        "courses": str(raw_star.get("courses") or ""),
+    }
+
+
+def _agent_visible_certification(item: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "id": str(item.get("id") or ""),
+        "name": str(item.get("name") or ""),
+        "issuer": str(item.get("issuer") or ""),
+        "issue_date": str(item.get("issue_date") or ""),
+    }
+
+
+def _agent_visible_skill(item: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "id": str(item.get("id") or ""),
+        "name": str(item.get("name") or ""),
+        "category": str(item.get("category") or ""),
+    }
+
+
+def _agent_snapshot_analysis_text(
+    snapshot: ResumePdfRenderSnapshot,
+    bank: Dict[str, Any],
+    *,
+    target_role: str,
+) -> str:
+    formal_experiences = [
+        *[
+            {
+                "id": item.id,
+                "title": item.title,
+                "org": item.company,
+                "start_date": item.startDate or "",
+                "end_date": item.endDate or "",
+                "star": item.star.model_dump(mode="json"),
+                "category": "work",
+            }
+            for item in snapshot.selectedWorkItems
+        ],
+        *[
+            {
+                "id": item.id,
+                "title": item.title,
+                "org": item.company,
+                "start_date": item.startDate or "",
+                "end_date": item.endDate or "",
+                "star": item.star.model_dump(mode="json"),
+                "category": "project",
+            }
+            for item in snapshot.selectedProjectItems
+        ],
+    ]
+    formal_resume = {
+        "section_order": _normalize_agent_section_order(
+            snapshot.sectionOrder,
+            has_summary=bool(snapshot.profile.summary.strip()),
+        ),
+        "profile": {
+            "name": snapshot.profile.name,
+            "email": snapshot.profile.email,
+            "phone": snapshot.profile.phone,
+            "location": snapshot.profile.location,
+            "linkedin": snapshot.profile.linkedin,
+        },
+        "personal_summary": snapshot.profile.summary,
+        "experiences": formal_experiences,
+        "educations": [
+            {
+                "id": item.id,
+                "school": item.school,
+                "major": item.major,
+                "degree": item.degree,
+                "start_date": item.startDate,
+                "end_date": "至今" if item.isCurrent else item.endDate,
+                "gpa": item.gpa or "",
+                "courses": item.courses or "",
+            }
+            for item in snapshot.educations
+        ],
+        "certifications": [
+            {
+                "id": item.id,
+                "name": item.name,
+                "issuer": item.issuer or "",
+                "issue_date": item.date,
+            }
+            for item in snapshot.sortedCertifications
+        ],
+        "skills": [
+            {
+                "id": item.id,
+                "name": item.name,
+                "category": group.name,
+            }
+            for group in snapshot.selectedSkillGroups
+            for item in group.skills
+        ],
+    }
+    candidate_payload = _agent_analysis_bank_payload(bank)
+    candidate_experiences = [
+        *(_agent_payload_list(candidate_payload, "work_experiences")),
+        *(_agent_payload_list(candidate_payload, "project_experiences")),
+    ]
+    payload = {
+        "evaluation_scope": "full_resume",
+        "target_role": target_role,
+        "resume": formal_resume,
+        "experience_atoms": candidate_experiences,
+        "match_candidates": {
+            "certifications": _agent_payload_list(candidate_payload, "certifications"),
+            "skills": _agent_payload_list(candidate_payload, "skills"),
+        },
+        "fact_metadata": _agent_resume_fact_metadata(
+            formal_resume,
+            target_role=target_role,
+        ),
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _agent_bank_signature(bank: Dict[str, Any]) -> str:
+    return json.dumps(
+        _agent_analysis_bank_payload(bank),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
+
+
+def _expire_agent_bank_entities(session: AsyncSession, bank: Dict[str, Any]) -> None:
+    expire = getattr(session, "expire", None)
+    if not callable(expire):
+        return
+    entities: List[Any] = []
+    profile = bank.get("profile")
+    if profile is not None:
+        entities.append(profile)
+    for row in bank.get("experiences") or []:
+        if isinstance(row, (tuple, list)) or hasattr(row, "_mapping"):
+            entities.extend(item for item in row if item is not None)
+    entities.extend(bank.get("certifications") or [])
+    for row in bank.get("skills") or []:
+        if isinstance(row, (tuple, list)) or hasattr(row, "_mapping"):
+            entities.extend(item for item in row if item is not None)
+    seen: set[int] = set()
+    for entity in entities:
+        identity = id(entity)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        expire(entity)
+
+
+def _should_rescore_agent_final_snapshot(
+    payload: AgentJobGenerateRequest,
+    analysis_result: Optional[Dict[str, Any]],
+) -> bool:
+    return isinstance(analysis_result, dict)
+
+
+def _agent_resume_fact_metadata(
+    formal_resume: Dict[str, Any],
+    *,
+    target_role: str = "",
+) -> List[Dict[str, Any]]:
+    facts: List[Dict[str, Any]] = []
+
+    def add(source: str, value: Any) -> None:
+        if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+            return
+        content = str(value).strip()
+        if not content:
+            return
+        facts.append(
+            {
+                "fact_id": f"FACT_{len(facts) + 1:03d}",
+                "content": content,
+                "verification_status": "user_claimed",
+                "source": source,
+                "confidence": 1,
+            }
+        )
+
+    def collect(source: str, value: Any) -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                if key not in {"id", "category", "section_order"}:
+                    collect(f"{source}.{key}", nested)
+        elif isinstance(value, list):
+            for index, nested in enumerate(value):
+                collect(f"{source}[{index}]", nested)
+        else:
+            add(source, value)
+
+    collect("resume", formal_resume)
+    add("target_role", target_role)
+    return facts
 
 
 async def build_agent_resume_pdf(
@@ -244,6 +650,60 @@ async def build_agent_resume_pdf(
         analysis_result,
         enabled=options.force_one_page,
     )
+    final_analysis_result = analysis_result
+    final_resume_text: Optional[str] = None
+    should_rescore_final_snapshot = _should_rescore_agent_final_snapshot(
+        payload,
+        analysis_result,
+    )
+    if should_rescore_final_snapshot and isinstance(analysis_result, dict):
+        final_resume_text = _agent_snapshot_analysis_text(
+            snapshot,
+            bank,
+            target_role=payload.job_title,
+        )
+        final_result = await analyze_jd(
+            payload.jd_text,
+            resume_text=final_resume_text,
+        )
+        final_jd_match_score = _require_agent_match_percentage(final_result)
+        if payload.include_resume_evaluation:
+            if not isinstance(final_result.get("resumeEvaluation"), dict):
+                final_evaluation_result = await analyze_resume_evaluation(
+                    payload.jd_text,
+                    final_resume_text,
+                    final_jd_match_score,
+                )
+                if isinstance(final_evaluation_result.get("resumeEvaluation"), dict):
+                    final_result = {
+                        **final_result,
+                        "resumeEvaluation": final_evaluation_result["resumeEvaluation"],
+                    }
+        final_analysis_build = _build_agent_job_analysis_from_result(payload, final_result)
+        _replace_agent_job_analysis(analysis, final_analysis_build.response)
+        final_analysis_result = final_analysis_build.raw_result
+    original_bank_signature = _agent_bank_signature(bank)
+    await acquire_user_resume_analysis_lock(session, user_id)
+    _expire_agent_bank_entities(session, bank)
+    latest_bank = await _load_agent_bank(session, user_id)
+    bank_is_unchanged = original_bank_signature == _agent_bank_signature(latest_bank)
+    if final_resume_text is not None and not bank_is_unchanged:
+        raise AgentBankChangedError(
+            "Resume bank changed during generation. Retry with the latest data."
+        )
+    analysis_is_final_snapshot = final_resume_text is not None and bank_is_unchanged
+    if (
+        analysis_is_final_snapshot
+        and payload.include_resume_evaluation
+        and isinstance(final_analysis_result, dict)
+        and isinstance(final_analysis_result.get("resumeEvaluation"), dict)
+    ):
+        final_evaluation_signature = _build_agent_evaluation_signature(
+            payload.jd_text,
+            final_resume_text,
+        )
+    else:
+        final_evaluation_signature = None
     generated_resume = await _persist_agent_generated_resume(
         session,
         user_id,
@@ -253,6 +713,14 @@ async def build_agent_resume_pdf(
         snapshot=snapshot,
         payload=payload,
         analysis=analysis,
+        analysis_result=final_analysis_result,
+        include_resume_evaluation=bool(
+            payload.include_resume_evaluation
+            and isinstance(final_analysis_result, dict)
+            and isinstance(final_analysis_result.get("resumeEvaluation"), dict)
+        ),
+        evaluation_signature=final_evaluation_signature,
+        analysis_is_final_snapshot=analysis_is_final_snapshot,
         persist_snapshot_star_overrides=options.polish_before_output,
     )
     file_name = f"{analysis.suggested_folder_name}.pdf"
@@ -279,6 +747,9 @@ async def build_agent_job_metadata(
         generated_at=_now_aware(),
         folder_name=analysis.suggested_folder_name,
         match_percentage=analysis.match_percentage,
+        jd_match_percentage=analysis.jd_match_percentage,
+        resume_quality_percentage=analysis.resume_quality_percentage,
+        score_version=analysis.score_version,
     )
 
 
@@ -389,6 +860,10 @@ async def _persist_agent_generated_resume(
     snapshot: ResumePdfRenderSnapshot,
     payload: AgentJobGenerateRequest,
     analysis: AgentJobAnalysisResponse,
+    analysis_result: Optional[Dict[str, Any]] = None,
+    include_resume_evaluation: bool = True,
+    evaluation_signature: Optional[str] = None,
+    analysis_is_final_snapshot: bool = False,
     persist_snapshot_star_overrides: bool = False,
     bank_experience_rows: Optional[List[Tuple[Any, Any]]] = None,
 ) -> Resume:
@@ -403,6 +878,10 @@ async def _persist_agent_generated_resume(
             snapshot,
             payload,
             analysis,
+            analysis_result=analysis_result,
+            include_resume_evaluation=include_resume_evaluation,
+            evaluation_signature=evaluation_signature,
+            analysis_is_final_snapshot=analysis_is_final_snapshot,
         ),
     )
     session.add(generated)

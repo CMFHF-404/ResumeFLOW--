@@ -540,7 +540,9 @@ def _build_resume_pdf_snapshot(
     template_preset = _profile_template_preset(bank["profile"], template_id)
 
     return ResumePdfRenderSnapshot(
-        resumeName=analysis.suggested_folder_name,
+        # Keep the visible resume heading independent from screening scores;
+        # score-prefixed names belong to the download/archive layer only.
+        resumeName=f"{payload.company_name} - {payload.job_title}",
         profile=profile,
         lineHeight=snapshot_layout["lineHeight"],
         fontSize=snapshot_layout["fontSize"],
@@ -646,10 +648,19 @@ def _resume_with_agent_auto_assembly_selection(
 def _build_agent_jd_analysis_config(
     payload: AgentJobGenerateRequest,
     analysis: AgentJobAnalysisResponse,
+    *,
+    analysis_result: Optional[Dict[str, Any]] = None,
+    include_resume_evaluation: bool = True,
+    evaluation_signature: Optional[str] = None,
+    analysis_is_final_snapshot: bool = False,
 ) -> Dict[str, Any]:
     return _build_generated_jd_analysis_config(
         payload,
         analysis,
+        analysis_result=analysis_result,
+        include_resume_evaluation=include_resume_evaluation,
+        evaluation_signature=evaluation_signature,
+        analysis_is_final_snapshot=analysis_is_final_snapshot,
         ops=_legacy_generated_resume_config_ops(),
     )
 
@@ -671,12 +682,21 @@ def _build_agent_generated_resume_config(
     snapshot: ResumePdfRenderSnapshot,
     payload: AgentJobGenerateRequest,
     analysis: AgentJobAnalysisResponse,
+    *,
+    analysis_result: Optional[Dict[str, Any]] = None,
+    include_resume_evaluation: bool = True,
+    evaluation_signature: Optional[str] = None,
+    analysis_is_final_snapshot: bool = False,
 ) -> Dict[str, Any]:
     return _build_generated_resume_config(
         source_config,
         snapshot,
         payload,
         analysis,
+        analysis_result=analysis_result,
+        include_resume_evaluation=include_resume_evaluation,
+        evaluation_signature=evaluation_signature,
+        analysis_is_final_snapshot=analysis_is_final_snapshot,
         build_jd_analysis_config=_build_agent_jd_analysis_config,
         ops=_legacy_generated_resume_config_ops(),
     )

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
@@ -20,6 +21,8 @@ const importJDAnalysisExecution = async () => {
   const encoded = Buffer.from(source).toString('base64');
   return import(`data:text/javascript;base64,${encoded}`);
 };
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const emptyDiff = () => ({
   experiences: new Set(),
@@ -233,6 +236,11 @@ test('full execution applies result, persists state, and tracks analytics lifecy
   const { runJDAnalysisExecution } = await importJDAnalysisExecution();
   const finalResult = buildResult({
     matchPercentage: 91,
+    resumeEvaluation: {
+      evaluationVersion: 'resume_flow_v1',
+      overallScore: 91,
+      jdMatch: 82,
+    },
     experienceMatches: [{ id: 'exp-1', score: 88 }],
   });
   const stableDiff = diffOf({ experiences: ['exp-1'] });
@@ -285,7 +293,8 @@ test('full execution applies result, persists state, and tracks analytics lifecy
   assert.deepEqual(calls.starts, [{ resumeId: 'resume-1' }]);
   assert.equal(calls.completes.length, 1);
   assert.equal(calls.completes[0][0].resumeId, 'resume-1');
-  assert.equal(calls.completes[0][0].matchScore, 91);
+  assert.equal(calls.completes[0][0].jdMatchScore, 91);
+  assert.equal(calls.completes[0][0].resumeQualityScore, undefined);
   assert.equal(calls.completes[0][1], 'user-1');
   assert.deepEqual(calls.progress, [
     'prepare_context',
@@ -312,6 +321,16 @@ test('full execution applies result, persists state, and tracks analytics lifecy
   assert.equal(calls.diffUpdates.length, 1);
   assert.equal(calls.collapsed[0], true);
   assert.deepEqual(calls.debugInfo, [null]);
+});
+
+test('JD analytics preserves legacy match_score semantics and records quality separately', () => {
+  const tracker = read('utils/analyticsTracker.ts');
+  const events = read('constants/analyticsEvents.ts');
+
+  assert.match(events, /RESUME_QUALITY_SCORE: 'resume_quality_score'/);
+  assert.match(tracker, /ANALYTICS_PROPERTIES\.MATCH_SCORE\]: jdMatchScore/);
+  assert.match(tracker, /ANALYTICS_PROPERTIES\.RESUME_QUALITY_SCORE\]: resumeQualityScore/);
+  assert.doesNotMatch(tracker, /ANALYTICS_PROPERTIES\.MATCH_SCORE\]: matchScore/);
 });
 
 test('partial execution applies only stable diff and updates persisted state before diff state', async () => {

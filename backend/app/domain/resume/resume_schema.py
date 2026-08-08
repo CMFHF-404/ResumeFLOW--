@@ -28,6 +28,7 @@ class ResumeUpdate(BaseModel):
     title: Optional[str] = None
     target_role: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
+    expected_updated_at: Optional[datetime] = None
 
 
 class ResumeDuplicate(BaseModel):
@@ -73,3 +74,4 @@ class ResumeDetail(BaseModel):
 
 class ResumeAssemblyPatch(BaseModel):
     operations: List[Dict[str, Any]]
+    expected_updated_at: Optional[datetime] = None

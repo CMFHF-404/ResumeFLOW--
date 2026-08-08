@@ -5,6 +5,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...models import Skill, UserSkill
+from ...utils.time_utils import utc_now
+from ..resume.resume_analysis_freshness import invalidate_user_resume_analyses
 from .schemas import UserSkillCreate, UserSkillUpdate
 
 
@@ -48,6 +50,11 @@ async def create_user_skill(
         user_id=user_id, skill_id=skill.id, proficiency=payload.proficiency
     )
     session.add(user_skill)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=utc_now(),
+    )
     await session.commit()
     await session.refresh(user_skill)
     await session.refresh(skill)
@@ -87,6 +94,11 @@ async def update_user_skill(
         user_skill.proficiency = payload.proficiency
     
     session.add(user_skill)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=utc_now(),
+    )
     await session.commit()
     await session.refresh(user_skill)
     await session.refresh(skill)
@@ -99,4 +111,9 @@ async def delete_user_skill(
     """删除用户技能"""
     user_skill, _ = await get_user_skill(session, user_id, user_skill_id)
     await session.delete(user_skill)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=utc_now(),
+    )
     await session.commit()

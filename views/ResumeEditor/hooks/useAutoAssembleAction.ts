@@ -41,9 +41,7 @@ type UseAutoAssembleActionParams = {
     isFloatingExperiencePolishRunning: boolean;
     floatingPolishSession: unknown;
     isBatchPolishToolbarOpen: boolean;
-    hasMissingAttachmentContext: boolean;
-    jdFile: File | null;
-    jdText: string;
+    hasJdContext: boolean;
     isSmartPageApplied: boolean;
     currentLayout: SmartPageLayout;
     selectedExpIds: Set<string>;
@@ -77,9 +75,7 @@ export const useAutoAssembleAction = ({
     isFloatingExperiencePolishRunning,
     floatingPolishSession,
     isBatchPolishToolbarOpen,
-    hasMissingAttachmentContext,
-    jdFile,
-    jdText,
+    hasJdContext,
     isSmartPageApplied,
     currentLayout,
     selectedExpIds,
@@ -119,7 +115,7 @@ export const useAutoAssembleAction = ({
         showToastError('请先关闭当前批量润色弹窗');
         return;
     }
-    if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
+    if (!hasJdContext) {
         trackSmartAssemblyResult({
             resumeId,
             action: 'empty_jd',
@@ -273,14 +269,12 @@ export const useAutoAssembleAction = ({
     currentLayout,
     floatingPolishSession,
     handleAnalyzeWithAutoName,
-    hasMissingAttachmentContext,
+    hasJdContext,
     isAutoAssembling,
     isBatchPolishToolbarOpen,
     isFloatingExperiencePolishRunning,
     isOutdated,
     isSmartPageApplied,
-    jdFile,
-    jdText,
     latestLayoutSnapshotRef,
     latestResumeIdRef,
     manualLayoutVersionRef,

@@ -23,7 +23,7 @@ class ResumeBossGreetingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         resume = SimpleNamespace(
             id="resume-1",
             config={"jdAnalysis": {"summary": "existing"}},
-            updated_at=None,
+            updated_at=datetime(2026, 4, 3, tzinfo=timezone.utc),
         )
         timestamp = datetime(2026, 4, 4, tzinfo=timezone.utc)
 
@@ -51,6 +51,7 @@ class ResumeBossGreetingPersistenceTests(unittest.IsolatedAsyncioTestCase):
                     "resume-1",
                     "你好，我想应聘这个岗位",
                     "sig-123",
+                    resume.updated_at,
                 )
 
         self.assertIs(result, resume)
@@ -99,11 +100,15 @@ class BossGreetingEndpointPersistenceTests(unittest.IsolatedAsyncioTestCase):
             resume_text="{}",
             resume_id="resume-1",
             signature="sig-123",
+            expected_updated_at=datetime(2026, 4, 3, tzinfo=timezone.utc),
         )
         session = SimpleNamespace()
         current_user = SimpleNamespace(id="user-1")
         generate_mock = AsyncMock(return_value={"greeting": "你好"})
-        persist_mock = AsyncMock()
+        persisted_resume = SimpleNamespace(
+            updated_at=datetime(2026, 4, 4, tzinfo=timezone.utc)
+        )
+        persist_mock = AsyncMock(return_value=persisted_resume)
 
         with patch("app.domain.ai.ai_router.generate_boss_greeting", generate_mock):
             with patch("app.domain.ai.ai_router.persist_resume_boss_greeting", persist_mock):
@@ -113,11 +118,18 @@ class BossGreetingEndpointPersistenceTests(unittest.IsolatedAsyncioTestCase):
                     current_user=current_user,
                 )
 
-        self.assertEqual(result, {"greeting": "你好"})
+        self.assertEqual(
+            result,
+            {
+                "greeting": "你好",
+                "resume_updated_at": persisted_resume.updated_at.isoformat(),
+            },
+        )
         persist_mock.assert_awaited_once_with(
             session,
             "user-1",
             "resume-1",
             "你好",
             "sig-123",
+            payload.expected_updated_at,
         )

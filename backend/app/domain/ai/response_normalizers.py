@@ -93,14 +93,22 @@ def _extract_skill_ids(resume_text: Optional[str]) -> List[str]:
     payload = _safe_parse_resume_payload(resume_text)
     if not payload:
         return []
-    skills = payload.get(RESUME_SKILLS_KEY)
+    match_candidates = payload.get("match_candidates")
+    skills = match_candidates.get(RESUME_SKILLS_KEY) if isinstance(match_candidates, dict) else None
+    if not isinstance(skills, list):
+        skills = payload.get(RESUME_SKILLS_KEY)
+    if not isinstance(skills, list):
+        resume = payload.get("resume")
+        skills = resume.get(RESUME_SKILLS_KEY) if isinstance(resume, dict) else None
     if not isinstance(skills, list):
         return []
     ids: List[str] = []
+    seen_ids = set()
     for item in skills:
         if isinstance(item, dict):
             skill_id = item.get("id")
-            if isinstance(skill_id, str) and skill_id:
+            if isinstance(skill_id, str) and skill_id and skill_id not in seen_ids:
+                seen_ids.add(skill_id)
                 ids.append(skill_id)
     return ids
 
@@ -153,7 +161,11 @@ def _ensure_skill_matches(
     return result
 
 
-def _normalize_jd_analysis_result(result: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_jd_analysis_result(
+    result: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not isinstance(result, dict):
+        raise ValueError("JD analysis result must be an object")
     normalized = dict(result)
     extracted_jd_text = normalized.get("extractedJdText")
     if not isinstance(extracted_jd_text, str):

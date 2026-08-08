@@ -121,12 +121,12 @@ export const runJDAnalysisExecution = async ({
   if (mode === "partial" && !hasDiff(diff)) {
     return { status: "no_change" };
   }
-  if (mode === "full") {
+  if (mode !== "partial") {
     clearFullAnalysisDiffState();
   }
 
   const startedAt = now();
-  if (mode === "full") {
+  if (mode !== "partial") {
     trackStart({ resumeId });
   }
   setIsAnalyzing(true);
@@ -190,6 +190,9 @@ export const runJDAnalysisExecution = async ({
       result: finalResult,
       itemSignatures: startSnapshot.itemSignatures,
       experienceSignature: startSnapshot.experienceSignature,
+      evaluationSignature:
+        startSnapshot.evaluationSignature ?? startSnapshot.experienceSignature,
+      targetRoleSignature: startSnapshot.targetRoleSignature,
       jdInputSignature: persistedAttachmentFields.jdInputSignature,
       jdText: persistedAttachmentFields.jdText,
       experienceText: startSnapshot.experienceText,
@@ -198,14 +201,14 @@ export const runJDAnalysisExecution = async ({
       attachmentExtractedText: persistedAttachmentFields.attachmentExtractedText,
     });
     updateAnalyzeDiffState(mode, diff, changedDuringAnalyze);
-    if (mode === "full") {
+    if (mode !== "partial") {
       setIsJDCollapsed(true);
     }
     setDebugInfo(null);
-    if (mode === "full") {
+    if (mode !== "partial") {
       trackComplete({
         resumeId,
-        matchScore: finalResult.matchPercentage,
+        jdMatchScore: finalResult.matchPercentage,
         durationMs: now() - startedAt,
       }, authUserKey);
     }

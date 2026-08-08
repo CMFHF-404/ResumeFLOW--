@@ -66,15 +66,22 @@ async def resolve_agent_resume_detail(
 
 async def _load_agent_bank(session: AsyncSession, user_id: str) -> Dict[str, Any]:
     profile = await get_profile_if_exists(session, user_id)
-    experience_rows = await list_experiences(
-        session,
-        user_id,
-        category=None,
-        keyword=None,
-        limit=AGENT_EXPERIENCE_FETCH_LIMIT,
-        offset=0,
-        include_archived=False,
-    )
+    experience_rows = []
+    offset = 0
+    while True:
+        page = await list_experiences(
+            session,
+            user_id,
+            category=None,
+            keyword=None,
+            limit=AGENT_EXPERIENCE_FETCH_LIMIT,
+            offset=offset,
+            include_archived=False,
+        )
+        experience_rows.extend(page)
+        if len(page) < AGENT_EXPERIENCE_FETCH_LIMIT:
+            break
+        offset += len(page)
     certifications = await list_certifications(session, user_id)
     skill_rows = await list_user_skills(session, user_id)
     return {

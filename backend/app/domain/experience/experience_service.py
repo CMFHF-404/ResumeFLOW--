@@ -6,6 +6,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ...utils.time_utils import utc_now
+from ..resume.resume_analysis_freshness import invalidate_user_resume_analyses
 from .schemas import ExperienceCreate, ExperienceUpdate, ExperienceVersionPayload
 
 
@@ -30,7 +31,7 @@ async def list_experiences(
             isouter=True,
         )
         .where(MasterExperience.user_id == user_id)
-        .order_by(desc(MasterExperience.updated_at))  # 修复：使用desc()函数而非.desc()方法
+        .order_by(desc(MasterExperience.updated_at), desc(MasterExperience.id))
         .limit(limit)
         .offset(offset)
     )
@@ -101,8 +102,10 @@ async def create_experience(
     await session.flush()
 
     master.latest_version_id = version.id
-    master.updated_at = utc_now()
+    updated_at = utc_now()
+    master.updated_at = updated_at
     session.add(master)
+    await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
     await session.commit()
 
     await session.refresh(master)
@@ -130,8 +133,10 @@ async def update_experience(
         master.latest_version_id = version.id
         is_master_updated = True
     if is_master_updated:
-        master.updated_at = utc_now()
+        updated_at = utc_now()
+        master.updated_at = updated_at
         session.add(master)
+        await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
     await session.commit()
 
     await session.refresh(master)
@@ -145,8 +150,10 @@ async def archive_experience(
 ) -> MasterExperience:
     master = await _get_master(session, user_id, master_id)
     master.is_archived = True
-    master.updated_at = utc_now()
+    updated_at = utc_now()
+    master.updated_at = updated_at
     session.add(master)
+    await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
     await session.commit()
     await session.refresh(master)
     return master

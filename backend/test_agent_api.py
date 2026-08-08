@@ -29,6 +29,7 @@ from app.domain.agent import (  # noqa: E402
     agent_pdf_helpers,
     agent_pdf_trim_service,
     agent_profile_snapshot_service,
+    agent_resume_helpers,
     agent_resume_item_snapshot_service,
     agent_router,
     agent_service,
@@ -155,6 +156,40 @@ class AgentPdfFitPatchCompatibilityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AgentGeneratedResumeConfigBoundaryTests(unittest.TestCase):
+    def test_final_snapshot_rescore_runs_for_default_lightweight_analysis(self) -> None:
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+        )
+
+        self.assertTrue(
+            agent_service._should_rescore_agent_final_snapshot(
+                payload,
+                {"matchPercentage": 80},
+            )
+        )
+        self.assertTrue(
+            agent_service._should_rescore_agent_final_snapshot(
+                payload,
+                {"experienceMatches": []},
+            )
+        )
+        self.assertFalse(
+            agent_service._should_rescore_agent_final_snapshot(payload, None)
+        )
+
+    def test_agent_match_percentage_requires_a_finite_numeric_score(self) -> None:
+        self.assertEqual(
+            agent_service._require_agent_match_percentage({"match_percentage": 73.4}),
+            73,
+        )
+        for invalid in ({}, {"matchPercentage": "80"}, {"matchPercentage": float("nan")}):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    agent_service._require_agent_match_percentage(invalid)
+
     def test_generated_resume_config_module_imports_directly_without_agent_service(self) -> None:
         result = subprocess.run(
             [
@@ -255,8 +290,36 @@ class AgentGeneratedResumeConfigBoundaryTests(unittest.TestCase):
         with patch.object(agent_pdf_helpers, "_build_agent_jd_analysis_config", return_value={"patched": True}) as mocked_jd_config:
             config = agent_pdf_helpers._build_agent_generated_resume_config({}, snapshot, payload, analysis)
 
-        mocked_jd_config.assert_called_once_with(payload, analysis)
+        mocked_jd_config.assert_called_once_with(
+            payload,
+            analysis,
+            analysis_result=None,
+            include_resume_evaluation=True,
+            evaluation_signature=None,
+        )
         self.assertEqual(config["jdAnalysis"], {"patched": True})
+
+
+class AgentBankPaginationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_load_agent_bank_fetches_every_experience_page(self) -> None:
+        first_page = [(SimpleNamespace(id=f"exp-{index}"), None) for index in range(200)]
+        last_page = [(SimpleNamespace(id="exp-200"), None)]
+        list_mock = AsyncMock(side_effect=[first_page, last_page])
+
+        with patch.object(agent_resume_helpers, "get_profile_if_exists", AsyncMock(return_value=None)):
+            with patch.object(agent_resume_helpers, "list_experiences", list_mock):
+                with patch.object(agent_resume_helpers, "list_certifications", AsyncMock(return_value=[])):
+                    with patch.object(agent_resume_helpers, "list_user_skills", AsyncMock(return_value=[])):
+                        bank = await agent_resume_helpers._load_agent_bank(
+                            SimpleNamespace(),
+                            "user-1",
+                        )
+
+        self.assertEqual(len(bank["experiences"]), 201)
+        self.assertEqual(
+            [call.kwargs["offset"] for call in list_mock.await_args_list],
+            [0, 200],
+        )
 
 
 class AgentProfileSnapshotServiceBoundaryTests(unittest.TestCase):
@@ -1156,6 +1219,160 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.final_jd_analysis_patcher = patch.object(
+            agent_service,
+            "analyze_jd",
+            AsyncMock(
+                return_value={
+                    "matchPercentage": 0,
+                    "strengths": [],
+                    "gaps": [],
+                    "missingKeywords": [],
+                }
+            ),
+        )
+        self.final_jd_analysis_patcher.start()
+        self.resume_evaluation_patcher = patch.object(
+            agent_service,
+            "analyze_resume_evaluation",
+            AsyncMock(
+                return_value={
+                    "resumeEvaluation": {
+                        "evaluationVersion": "resume_flow_v1",
+                        "overallScore": 0,
+                    }
+                }
+            ),
+        )
+        self.resume_evaluation_patcher.start()
+
+    def tearDown(self) -> None:
+        self.resume_evaluation_patcher.stop()
+        self.final_jd_analysis_patcher.stop()
+
+    async def test_initial_deep_analysis_uses_validated_snake_case_match_score(self) -> None:
+        payload = agent_router.AgentJobRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+            include_resume_evaluation=True,
+        )
+        evaluation_mock = AsyncMock(
+            return_value={
+                "resumeEvaluation": {
+                    "evaluationVersion": "resume_flow_v1",
+                    "overallScore": 80,
+                    "jdMatch": 73,
+                }
+            }
+        )
+
+        with patch.object(agent_service, "resolve_agent_resume_detail", AsyncMock(return_value=(SimpleNamespace(), []))):
+            with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value={})):
+                with patch.object(agent_service, "_load_resume_item_categories", AsyncMock(return_value={})):
+                    with patch.object(agent_service, "build_resume_analysis_text", AsyncMock(return_value="{}")):
+                        with patch.object(agent_service, "analyze_jd", AsyncMock(return_value={"match_percentage": 73})):
+                            with patch.object(agent_service, "analyze_resume_evaluation", evaluation_mock):
+                                result = await agent_service.build_agent_job_analysis_detail(
+                                    SimpleNamespace(),
+                                    "user-1",
+                                    payload,
+                                )
+
+        self.assertEqual(evaluation_mock.await_args.args[2], 73)
+        self.assertEqual(result.response.match_percentage, 73)
+
+    async def test_analysis_keeps_quality_score_separate_from_jd_decisions(self) -> None:
+        payload = agent_router.AgentJobRequest(
+            job_title="前端实习生",
+            company_name="示例公司",
+            jd_text="React TypeScript 实习岗位",
+            job_url="https://example.com/jobs/1",
+            include_resume_evaluation=True,
+        )
+        raw_result = {
+            "matchPercentage": 61,
+            "strengths": ["React 项目经验"],
+            "gaps": ["缺少实习经历"],
+            "missingKeywords": ["TypeScript"],
+        }
+        agent_service.analyze_resume_evaluation.return_value = {
+            "resumeEvaluation": {
+                "jdMatch": 61,
+                "evaluationVersion": "resume_flow_v1",
+                "overallScore": 96,
+                "dimensions": {"experience": 98},
+            }
+        }
+        with patch.object(
+            agent_service,
+            "resolve_agent_resume_detail",
+            AsyncMock(return_value=(SimpleNamespace(), [])),
+        ):
+            with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value={})):
+                with patch.object(agent_service, "_load_resume_item_categories", AsyncMock(return_value={})):
+                    with patch.object(agent_service, "build_resume_analysis_text", AsyncMock(return_value="resume text")):
+                        with patch.object(agent_service, "analyze_jd", AsyncMock(return_value=raw_result)):
+                            build = await agent_service.build_agent_job_analysis_detail(
+                                SimpleNamespace(),
+                                "user-1",
+                                payload,
+                            )
+
+        response = build.response
+        self.assertEqual(response.match_percentage, 61)
+        self.assertEqual(response.jd_match_percentage, 61)
+        self.assertEqual(response.resume_quality_percentage, 96)
+        self.assertEqual(response.score_version, "resume_flow_v1")
+        self.assertEqual(response.recommendation, "skip")
+        self.assertEqual(response.suggested_folder_name, "61_示例公司_前端实习生")
+        self.assertIn("匹配度偏低", response.evaluation)
+        self.assertNotIn("简历质量较好", response.evaluation)
+        self.assertEqual(response.strengths, ["React 项目经验"])
+        self.assertEqual(build.raw_result["matchPercentage"], 61)
+        self.assertEqual(build.raw_result["resumeEvaluation"]["overallScore"], 96)
+        agent_service.analyze_resume_evaluation.assert_awaited_once_with(
+            payload.jd_text,
+            "resume text",
+            61,
+        )
+
+    async def test_analysis_uses_legacy_top_level_jd_match_without_quality_fallback(self) -> None:
+        payload = agent_router.AgentJobRequest(
+            job_title="前端实习生",
+            company_name="示例公司",
+            jd_text="React TypeScript 实习岗位",
+            job_url="https://example.com/jobs/1",
+        )
+        with patch.object(
+            agent_service,
+            "resolve_agent_resume_detail",
+            AsyncMock(return_value=(SimpleNamespace(), [])),
+        ):
+            with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value={})):
+                with patch.object(agent_service, "_load_resume_item_categories", AsyncMock(return_value={})):
+                    with patch.object(agent_service, "build_resume_analysis_text", AsyncMock(return_value="resume text")):
+                        with patch.object(
+                            agent_service,
+                            "analyze_jd",
+                            AsyncMock(return_value={"matchPercentage": 96, "resumeEvaluation": {}}),
+                        ):
+                            response = await agent_service.build_agent_job_analysis(
+                                SimpleNamespace(),
+                                "user-1",
+                                payload,
+                            )
+
+        self.assertEqual(response.match_percentage, 96)
+        self.assertEqual(response.jd_match_percentage, 96)
+        self.assertIsNone(response.resume_quality_percentage)
+        self.assertEqual(response.recommendation, "generate")
+        self.assertEqual(response.suggested_folder_name, "96_示例公司_前端实习生")
+        self.assertIn("匹配度较高", response.evaluation)
+        agent_service.analyze_resume_evaluation.assert_not_awaited()
+
     async def test_analyze_endpoint_returns_match_evaluation_and_folder_name(self) -> None:
         payload = agent_router.AgentJobRequest(
             job_title="前端实习生",
@@ -1224,17 +1441,19 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             source="shixiseng",
         )
         analysis = agent_router.AgentJobAnalysisResponse(
-            match_percentage=91,
+            match_percentage=81,
+            jd_match_percentage=81,
+            resume_quality_percentage=91,
             evaluation="强匹配。",
             strengths=["AI 项目经验"],
             gaps=[],
             missing_keywords=[],
             recommendation="generate",
-            suggested_folder_name="某科技_AI 产品实习_91",
+            suggested_folder_name="某科技_AI 产品实习_81",
         )
         pdf = agent_router.AgentResumePdf(
             download_url="/exports/download/resume-pdf/export-1?token=abc",
-            file_name="某科技_AI 产品实习_91.pdf",
+            file_name="某科技_AI 产品实习_81.pdf",
         )
 
         analysis_build = agent_router.AgentJobAnalysisBuild(
@@ -1250,11 +1469,18 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                     agent_user=SimpleNamespace(id="user-1"),
                 )
 
-        self.assertEqual(result.match_percentage, 91)
+        self.assertEqual(result.match_percentage, 81)
+        self.assertEqual(result.jd_match_percentage, 81)
+        self.assertEqual(result.resume_quality_percentage, 91)
+        self.assertEqual(result.score_version, "resume_flow_v1")
         self.assertEqual(result.resume_pdf, pdf)
         self.assertEqual(result.job_link_url, "https://example.com/jobs/2")
         self.assertEqual(result.job_metadata.company_name, "某科技")
         self.assertEqual(result.job_metadata.source, "shixiseng")
+        self.assertEqual(result.job_metadata.match_percentage, 81)
+        self.assertEqual(result.job_metadata.jd_match_percentage, 81)
+        self.assertEqual(result.job_metadata.resume_quality_percentage, 91)
+        self.assertEqual(result.job_metadata.score_version, "resume_flow_v1")
 
     async def test_generate_endpoint_maps_pdf_render_errors(self) -> None:
         payload = agent_router.AgentJobGenerateRequest(
@@ -1304,6 +1530,48 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(context.exception.status_code, expected_status)
             self.assertEqual(context.exception.detail, expected_detail)
+
+    async def test_generate_endpoint_maps_bank_drift_to_conflict(self) -> None:
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="AI 产品实习",
+            company_name="某科技",
+            jd_text="AI 产品经理实习岗位",
+            job_url="https://example.com/jobs/2",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=91,
+            evaluation="强匹配。",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="某科技_AI 产品实习_91",
+        )
+        analysis_build = agent_router.AgentJobAnalysisBuild(
+            response=analysis,
+            raw_result={"matchPercentage": 91},
+        )
+
+        with patch.object(
+            agent_router,
+            "build_agent_job_analysis_detail",
+            AsyncMock(return_value=analysis_build),
+        ):
+            with patch.object(
+                agent_router,
+                "build_agent_resume_pdf",
+                AsyncMock(side_effect=agent_service.AgentBankChangedError("bank changed")),
+            ):
+                with self.assertRaises(HTTPException) as context:
+                    await agent_router.generate_agent_job_resume(
+                        payload,
+                        request=SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                        session=SimpleNamespace(),
+                        agent_user=SimpleNamespace(id="user-1"),
+                    )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertEqual(context.exception.detail, "bank changed")
 
     async def test_resume_template_options_endpoint_returns_options_for_agent_user(self) -> None:
         expected = agent_router.AgentResumeTemplateOptionsResponse(
@@ -1387,7 +1655,23 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         session.execute.assert_awaited_once()
 
     async def test_resume_analysis_text_serializes_agent_bank_as_plain_json(self) -> None:
-        resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端")
+        resume = SimpleNamespace(
+            id="resume-1",
+            title="主简历",
+            target_role="前端",
+            config={
+                "layout": {
+                    "sectionOrder": [
+                        "summary",
+                        "work",
+                        "project",
+                        "education",
+                        "skills",
+                        "certifications",
+                    ],
+                },
+            },
+        )
         profile = SimpleNamespace(
             full_name="张三",
             title="前端工程师",
@@ -1426,12 +1710,152 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         }
 
         with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value=bank)):
-            result = await agent_service.build_resume_analysis_text(SimpleNamespace(), "user-1", resume)
+            result = await agent_service.build_resume_analysis_text(
+                SimpleNamespace(),
+                "user-1",
+                resume,
+                target_role="前端实习生",
+            )
 
-        self.assertIn('"full_name": "张三"', result)
-        self.assertIn('"title": "前端实习"', result)
-        self.assertIn('"name": "英语六级"', result)
-        self.assertIn('"name": "TypeScript"', result)
+        parsed = json.loads(result)
+        self.assertEqual(parsed["evaluation_scope"], "full_resume")
+        self.assertEqual(parsed["target_role"], "前端实习生")
+        self.assertEqual(parsed["resume"]["profile"]["name"], "张三")
+        self.assertNotIn("summary", parsed["resume"]["profile"])
+        self.assertNotIn("avatar_data_url", parsed["resume"]["profile"])
+        self.assertNotIn("title", parsed["resume"]["profile"])
+        self.assertNotIn("social_links", parsed["resume"]["profile"])
+        self.assertEqual(parsed["resume"]["personal_summary"], "React 开发")
+        self.assertEqual(
+            parsed["resume"]["section_order"],
+            ["summary", "work", "project", "education", "skills", "certifications"],
+        )
+        self.assertEqual([item["title"] for item in parsed["resume"]["experiences"]], ["前端实习"])
+        self.assertEqual(parsed["resume"]["experiences"][0]["category"], "work")
+        self.assertEqual(parsed["resume"]["experiences"][0]["end_date"], "至今")
+        self.assertNotIn("summary", parsed["resume"]["experiences"][0])
+        self.assertNotIn("tags", parsed["resume"]["experiences"][0])
+        self.assertNotIn("is_current", parsed["resume"]["experiences"][0])
+        self.assertEqual([item["name"] for item in parsed["resume"]["certifications"]], ["英语六级"])
+        self.assertNotIn("description", parsed["resume"]["certifications"][0])
+        self.assertEqual([item["name"] for item in parsed["resume"]["skills"]], ["TypeScript"])
+        self.assertNotIn("proficiency", parsed["resume"]["skills"][0])
+        self.assertEqual([item["id"] for item in parsed["experience_atoms"]], ["exp-master-1"])
+        self.assertEqual([item["id"] for item in parsed["match_candidates"]["skills"]], ["skill-link-1"])
+        self.assertTrue(parsed["fact_metadata"])
+        self.assertTrue(all(item["verification_status"] == "user_claimed" for item in parsed["fact_metadata"]))
+        self.assertTrue(all(item["confidence"] == 1.0 and item["source"] for item in parsed["fact_metadata"]))
+        fact_sources = [item["source"] for item in parsed["fact_metadata"]]
+        self.assertFalse(any(source.endswith(".category") for source in fact_sources))
+        self.assertFalse(any("summary" in source for source in fact_sources if source != "resume.personal_summary"))
+        self.assertFalse(any("tags" in source or "proficiency" in source for source in fact_sources))
+        self.assertIn(
+            {"source": "target_role", "content": "前端实习生"},
+            [
+                {"source": item["source"], "content": item["content"]}
+                for item in parsed["fact_metadata"]
+            ],
+        )
+
+    async def test_agent_pdf_generation_rescores_the_final_snapshot(self) -> None:
+        resume = SimpleNamespace(id="resume-1", title="主简历", target_role="产品", config={})
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="需要用户研究经验",
+            job_url="https://example.com/jobs/1",
+            include_resume_evaluation=True,
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=70,
+            jd_match_percentage=70,
+            resume_quality_percentage=60,
+            evaluation="源简历匹配一般",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="review",
+            suggested_folder_name="70_示例公司_产品实习",
+        )
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="产品实习",
+            profile=agent_service.ResumeEditorProfileSnapshot(
+                name="张三",
+                summary="最终生成摘要",
+            ),
+            lineHeight=1.6,
+            fontSize=16,
+            listSpacingValue="1em",
+            bulletSpacingValue="1em",
+            topPaddingPx=75.59,
+            sectionSpacingClass="mb-6",
+            listSpacingClass="space-y-2",
+            sectionOrder=["summary", "skills", "work"],
+            selectedWorkItems=[],
+            selectedProjectItems=[],
+            educations=[],
+        )
+        bank = {"profile": None, "experiences": [], "certifications": [], "skills": []}
+        options = agent_service.AgentGenerateOptions(
+            template_id="modern-slate",
+            polish_before_output=False,
+            polish_level="标准",
+            force_one_page=False,
+        )
+        final_result = {
+            "matchPercentage": 84,
+            "resumeEvaluation": {"jdMatch": 84, "overallScore": 88},
+            "summary": "这是简历质量结论，不应作为岗位匹配文案。",
+            "strengths": ["用户研究"],
+            "gaps": [],
+            "missingKeywords": [],
+        }
+
+        with patch.object(agent_service, "resolve_agent_generate_options", AsyncMock(return_value=options)):
+            with patch.object(agent_service, "resolve_agent_resume_detail", AsyncMock(return_value=(resume, []))):
+                with patch.object(agent_service, "_load_agent_bank", AsyncMock(return_value=bank)):
+                    with patch.object(agent_service, "_load_resume_item_categories", AsyncMock(return_value={})):
+                        with patch.object(agent_service, "_build_resume_pdf_snapshot", return_value=snapshot):
+                            with patch.object(
+                                agent_service,
+                                "_fit_snapshot_to_one_page",
+                                AsyncMock(return_value=snapshot),
+                            ):
+                                with patch.object(
+                                    agent_service,
+                                    "analyze_jd",
+                                    AsyncMock(return_value=final_result),
+                                ) as rescore:
+                                    with patch.object(
+                                        agent_service,
+                                        "_persist_agent_generated_resume",
+                                        AsyncMock(return_value=SimpleNamespace(id="generated-1", title="岗位简历")),
+                                    ) as persist:
+                                        with patch.object(
+                                            agent_service,
+                                            "create_render_snapshot",
+                                            AsyncMock(return_value=(SimpleNamespace(id="snapshot-1"), "token")),
+                                        ):
+                                            pdf = await agent_service.build_agent_resume_pdf(
+                                                SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                                SimpleNamespace(),
+                                                "user-1",
+                                                payload,
+                                                analysis,
+                                                analysis_result={"resumeEvaluation": {"overallScore": 60}},
+                                            )
+
+        rescored_payload = json.loads(rescore.await_args.kwargs["resume_text"])
+        self.assertEqual(rescored_payload["resume"]["section_order"], ["summary", "skills", "work", "education", "project", "certifications"])
+        self.assertEqual(rescored_payload["resume"]["personal_summary"], "最终生成摘要")
+        self.assertEqual(analysis.jd_match_percentage, 84)
+        self.assertEqual(analysis.resume_quality_percentage, 88)
+        self.assertIn("具备一定匹配度", analysis.evaluation)
+        self.assertEqual(persist.await_args.kwargs["analysis_result"], final_result)
+        self.assertEqual(persist.await_args.kwargs["analysis"], analysis)
+        self.assertTrue(persist.await_args.kwargs["include_resume_evaluation"])
+        self.assertTrue(persist.await_args.kwargs["evaluation_signature"])
+        self.assertEqual(pdf.file_name, "84_示例公司_产品实习.pdf")
 
     async def test_agent_analysis_uses_selected_resume_items(self) -> None:
         resume = SimpleNamespace(
@@ -1497,8 +1921,13 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                         await agent_service.build_agent_job_analysis(SimpleNamespace(), "user-1", payload)
 
         resume_text = mocked_analyze.await_args.kwargs["resume_text"]
+        self.assertNotIn("experience_text", mocked_analyze.await_args.kwargs)
         parsed = json.loads(resume_text)
-        self.assertEqual([item["title"] for item in parsed["work_experiences"]], ["已选工作"])
+        self.assertEqual([item["title"] for item in parsed["resume"]["experiences"]], ["已选工作"])
+        self.assertEqual(
+            [item["id"] for item in parsed["experience_atoms"]],
+            ["master-selected", "master-hidden"],
+        )
         self.assertNotIn("隐藏工作", resume_text)
 
     async def test_agent_analysis_includes_selected_bank_item_without_resume_link(self) -> None:
@@ -1564,7 +1993,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         parsed = json.loads(mocked_analyze.await_args.kwargs["resume_text"])
         self.assertEqual(
-            [item["title"] for item in parsed["work_experiences"]],
+            [item["title"] for item in parsed["resume"]["experiences"]],
             ["已链接经历", "一键组装选中但未链接"],
         )
 
@@ -1611,9 +2040,9 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                     await agent_service.build_agent_job_analysis(SimpleNamespace(), "user-1", payload)
 
         parsed = json.loads(mocked_analyze.await_args.kwargs["resume_text"])
-        self.assertEqual(parsed["profile"]["full_name"], "本地姓名")
-        self.assertEqual(parsed["profile"]["email"], "local@example.com")
-        self.assertNotEqual(parsed["profile"]["full_name"], "全局姓名")
+        self.assertEqual(parsed["resume"]["profile"]["name"], "本地姓名")
+        self.assertEqual(parsed["resume"]["profile"]["email"], "local@example.com")
+        self.assertNotEqual(parsed["resume"]["profile"]["name"], "全局姓名")
 
     async def test_agent_analysis_preserves_empty_resume_personal_summary(self) -> None:
         resume = SimpleNamespace(
@@ -1649,7 +2078,8 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                     await agent_service.build_agent_job_analysis(SimpleNamespace(), "user-1", payload)
 
         parsed = json.loads(mocked_analyze.await_args.kwargs["resume_text"])
-        self.assertEqual(parsed["profile"]["summary"], "")
+        self.assertNotIn("summary", parsed["resume"]["profile"])
+        self.assertEqual(parsed["resume"]["personal_summary"], "")
         self.assertNotIn("全局摘要", mocked_analyze.await_args.kwargs["resume_text"])
 
     async def test_agent_analysis_falls_back_to_bank_when_resume_has_no_items(self) -> None:
@@ -1700,8 +2130,12 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         )
 
         parsed = json.loads(result)
-        self.assertEqual([item["title"] for item in parsed["work_experiences"]], ["已选工作"])
-        self.assertNotIn("隐藏工作", result)
+        self.assertEqual([item["title"] for item in parsed["resume"]["experiences"]], ["已选工作"])
+        self.assertEqual(
+            [item["title"] for item in parsed["experience_atoms"]],
+            ["已选工作", "隐藏工作"],
+        )
+        self.assertNotIn("隐藏工作", json.dumps(parsed["resume"], ensure_ascii=False))
 
     def test_default_agent_pdf_snapshot_uses_certifications_section_id(self) -> None:
         resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端", config={})
@@ -1724,6 +2158,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         snapshot = agent_service._build_resume_pdf_snapshot(resume, bank, payload, analysis, "")
 
+        self.assertEqual(snapshot.resumeName, "示例公司 - 前端实习")
         self.assertIn("certifications", snapshot.sectionOrder)
         self.assertNotIn("certification", snapshot.sectionOrder)
 
@@ -2413,13 +2848,15 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             job_url="https://example.com/jobs/1",
         )
         analysis = agent_router.AgentJobAnalysisResponse(
-            match_percentage=90,
+            match_percentage=72,
+            jd_match_percentage=72,
+            resume_quality_percentage=90,
             evaluation="匹配",
             strengths=["沟通"],
             gaps=["数据"],
             missing_keywords=["SQL"],
             recommendation="generate",
-            suggested_folder_name="示例公司_产品实习_90",
+            suggested_folder_name="示例公司_产品实习_72",
         )
 
         config = agent_service._build_agent_generated_resume_config(
@@ -2427,6 +2864,15 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             snapshot,
             payload,
             analysis,
+            analysis_result={
+                "resumeEvaluation": {
+                    "jdMatch": 72,
+                    "evaluationVersion": "resume_flow_v1",
+                    "overallScore": 90,
+                    "dimensions": {"experience": 95},
+                },
+            },
+            evaluation_signature="agent-final-signature",
         )
 
         self.assertEqual(config["layout"]["sectionSpacingKey"], 8)
@@ -2439,9 +2885,72 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config["layout"]["orders"]["work"], ["work-1"])
         self.assertEqual(config["jdAnalysis"]["jdText"], "产品 JD")
         self.assertTrue(config["jdAnalysis"]["jdInputSignature"])
+        self.assertEqual(
+            config["jdAnalysis"]["targetRoleSignature"],
+            '{"targetRole":"产品实习"}',
+        )
+        self.assertTrue(config["jdAnalysis"]["evaluationSignature"])
+        self.assertEqual(
+            config["jdAnalysis"]["evaluationSignatureVersion"],
+            "agent_final_snapshot_v1",
+        )
+        self.assertFalse(config["jdAnalysis"]["isOutdated"])
+        self.assertFalse(config["jdAnalysis"]["evaluationIsOutdated"])
+        self.assertEqual(config["jdAnalysis"]["result"]["matchPercentage"], 72)
+        self.assertEqual(config["jdAnalysis"]["result"]["jdMatchPercentage"], 72)
+        self.assertEqual(config["jdAnalysis"]["result"]["resumeQualityPercentage"], 90)
+        self.assertEqual(config["jdAnalysis"]["result"]["scoreVersion"], "resume_flow_v1")
+        self.assertEqual(
+            config["jdAnalysis"]["result"]["resumeEvaluation"]["dimensions"],
+            {"experience": 95},
+        )
         self.assertEqual(config["agentJob"]["jobTitle"], "产品实习")
+        self.assertEqual(config["agentJob"]["matchPercentage"], 72)
+        self.assertEqual(config["agentJob"]["jdMatchPercentage"], 72)
+        self.assertEqual(config["agentJob"]["resumeQualityPercentage"], 90)
+        self.assertEqual(config["agentJob"]["scoreVersion"], "resume_flow_v1")
         self.assertEqual(config["agentJob"]["strengths"], ["沟通"])
         datetime.fromisoformat(config["agentJob"]["generatedAt"])
+
+        generated_config = agent_service._build_agent_generated_resume_config(
+            {},
+            snapshot,
+            payload,
+            analysis,
+            analysis_result={
+                "resumeEvaluation": {
+                    "jdMatch": 72,
+                    "evaluationVersion": "resume_flow_v1",
+                    "overallScore": 90,
+                    "dimensions": {"experience": 95},
+                },
+            },
+            include_resume_evaluation=False,
+        )
+        self.assertNotIn("resumeEvaluation", generated_config["jdAnalysis"]["result"])
+        self.assertNotIn("evaluationSignatureVersion", generated_config["jdAnalysis"])
+        self.assertTrue(generated_config["jdAnalysis"]["isOutdated"])
+        self.assertTrue(generated_config["jdAnalysis"]["evaluationIsOutdated"])
+
+        legacy_config = agent_pdf_helpers._build_agent_generated_resume_config(
+            {},
+            snapshot,
+            payload,
+            analysis,
+            analysis_result={
+                "resumeEvaluation": {
+                    "jdMatch": 72,
+                    "evaluationVersion": "resume_flow_v1",
+                    "overallScore": 90,
+                    "dimensions": {"experience": 95},
+                },
+            },
+        )
+        self.assertEqual(
+            legacy_config["jdAnalysis"]["result"]["resumeEvaluation"]["dimensions"],
+            {"experience": 95},
+        )
+        self.assertNotIn("evaluationSignatureVersion", legacy_config["jdAnalysis"])
 
     def test_agent_auto_assembly_selection_uses_match_scores(self) -> None:
         resume = SimpleNamespace(

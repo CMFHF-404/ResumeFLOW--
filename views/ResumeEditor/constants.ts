@@ -157,16 +157,16 @@ export const JD_ANALYSIS_PROGRESS_NODE_TITLES = {
     prepare_context: "准备分析上下文...",
     request_ai: "AI 正在思考中...",
     merge_result: "整理 AI 输出...",
-    apply_score: "计算匹配分...",
+    apply_score: "计算简历评分...",
     persist_result: "输出最终结果...",
 } as const;
 
 export const JD_ANALYSIS_TOAST_MESSAGES = {
-    loading: '正在进行 JD 分析...',
-    success: 'JD 分析完成',
-    noChange: 'JD 分析完成，但未产生可用调整',
-    error: 'JD 分析失败，请稍后重试',
-    empty: '请先填写 JD 内容或上传附件再分析',
+    loading: '正在生成简历评分...',
+    success: '简历评分完成',
+    noChange: '简历评分已是最新',
+    error: '简历评分失败，请稍后重试',
+    empty: '当前简历暂无可评分内容',
     missingAttachment: '该分析依赖已丢失的 JD 附件，请重新上传后再分析',
 } as const;
 export const BOSS_GREETING_TOAST_MESSAGES = {

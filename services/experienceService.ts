@@ -91,6 +91,7 @@ const isExperienceListCacheFresh = (entry: ExperienceListCacheEntry, now: number
 };
 
 const experienceListCache = new Map<ExperienceListCacheKey, ExperienceListCacheEntry>();
+const completeExperienceListCache = new Map<ExperienceListCacheKey, ExperienceListCacheEntry>();
 const experienceListInFlight = new Map<ExperienceListCacheKey, Promise<ExperienceListItem[]>>();
 let experienceListCacheVersion = 0;
 let experienceListCacheOwnerKey: string | null = null;
@@ -98,6 +99,7 @@ let experienceListCacheOwnerKey: string | null = null;
 const clearExperienceListCache = () => {
     experienceListCacheVersion += 1;
     experienceListCache.clear();
+    completeExperienceListCache.clear();
     experienceListInFlight.clear();
     experienceListCacheOwnerKey = null;
 };
@@ -142,6 +144,21 @@ export const experienceService = {
         return getCachedExperienceList(category, options);
     },
 
+    async peekCompleteListForCurrentUser(
+        category?: ExperienceCategory,
+        options?: { allowStale?: boolean }
+    ) {
+        await ensureExperienceCacheOwner();
+        const cached = completeExperienceListCache.get(buildExperienceListCacheKey(category));
+        if (!cached) {
+            return null;
+        }
+        if (!options?.allowStale && !isExperienceListCacheFresh(cached, Date.now())) {
+            return null;
+        }
+        return filterArchivedExperiences(cached.data);
+    },
+
     async list(category?: ExperienceCategory, options?: ExperienceListOptions) {
         await ensureExperienceCacheOwner();
         const cacheKey = buildExperienceListCacheKey(category);
@@ -184,6 +201,7 @@ export const experienceService = {
 
     async listAll(category?: ExperienceCategory) {
         await ensureExperienceCacheOwner();
+        const requestVersion = experienceListCacheVersion;
         const allItems: ExperienceListItem[] = [];
         let offset = 0;
 
@@ -202,6 +220,13 @@ export const experienceService = {
                 break;
             }
             offset += EXPERIENCE_LIST_PAGE_SIZE;
+        }
+
+        if (experienceListCacheVersion === requestVersion) {
+            completeExperienceListCache.set(buildExperienceListCacheKey(category), {
+                data: allItems,
+                fetchedAt: Date.now(),
+            });
         }
 
         return allItems;

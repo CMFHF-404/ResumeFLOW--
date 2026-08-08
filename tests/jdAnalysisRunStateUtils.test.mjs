@@ -44,6 +44,9 @@ const context = (overrides = {}) => ({
 
 const result = {
   matchPercentage: 80,
+  resumeEvaluation: {
+    evaluationVersion: 'resume_flow_v1',
+  },
   jobKeywords: [],
   missingKeywords: [],
   summary: 'Matched',
@@ -147,6 +150,94 @@ test('chooses full analysis when JD input changed', async () => {
     action: 'run',
     mode: 'full',
   });
+});
+
+test('lightweight JD analysis without a six-dimension evaluation can be current', async () => {
+  const { resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
+  const legacyResult = { ...result };
+  delete legacyResult.resumeEvaluation;
+
+  const plan = resolveJDAnalyzePlan({
+    analysisResult: legacyResult,
+    analysisContext: context(),
+    snapshotItemSignatures: itemSignatures(),
+    snapshotJdInputSignature: 'jd-signature',
+    pendingDiff: emptyDiff(),
+    needsReanalysis: false,
+    hasMissingAttachmentContext: false,
+    hasJdContext: true,
+  });
+
+  assert.deepEqual(plan, {
+    action: 'skip', status: 'no_change', shouldClearNeedsReanalysis: false, shouldClearPendingDiff: false,
+  });
+});
+
+test('never routes a default request into the removed quality-only mode', async () => {
+  const { resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
+
+  const plan = resolveJDAnalyzePlan({
+    analysisResult: result,
+    analysisContext: context(),
+    snapshotItemSignatures: itemSignatures('changed'),
+    snapshotJdInputSignature: 'empty-jd-signature',
+    snapshotEvaluationSignature: 'new-evaluation-signature',
+    pendingDiff: emptyDiff(),
+    needsReanalysis: true,
+    hasMissingAttachmentContext: false,
+    hasJdContext: false,
+  });
+
+  assert.equal(plan.action, 'run');
+  assert.equal(plan.mode, 'full');
+});
+
+test('profile-only evaluation changes do not rerun JD matching', async () => {
+  const { resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
+  const analysisContext = context({
+    evaluationSignature: 'old-evaluation-signature',
+    targetRoleSignature: 'same-role',
+  });
+
+  const plan = resolveJDAnalyzePlan({
+    analysisResult: result,
+    analysisContext,
+    snapshotItemSignatures: itemSignatures(),
+    snapshotJdInputSignature: 'jd-signature',
+    snapshotEvaluationSignature: 'new-evaluation-signature',
+    snapshotTargetRoleSignature: 'same-role',
+    pendingDiff: emptyDiff(),
+    needsReanalysis: false,
+    hasMissingAttachmentContext: false,
+    hasJdContext: true,
+  });
+
+  assert.deepEqual(plan, {
+    action: 'skip', status: 'no_change', shouldClearNeedsReanalysis: false, shouldClearPendingDiff: false,
+  });
+});
+
+test('target role changes force a full JD and independent-match refresh', async () => {
+  const { resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
+  const analysisContext = context({
+    evaluationSignature: 'old-evaluation-signature',
+    targetRoleSignature: 'old-role',
+  });
+
+  const plan = resolveJDAnalyzePlan({
+    analysisResult: result,
+    analysisContext,
+    snapshotItemSignatures: itemSignatures(),
+    snapshotJdInputSignature: 'jd-signature',
+    snapshotEvaluationSignature: 'new-evaluation-signature',
+    snapshotTargetRoleSignature: 'new-role',
+    pendingDiff: emptyDiff(),
+    needsReanalysis: false,
+    hasMissingAttachmentContext: false,
+    hasJdContext: true,
+  });
+
+  assert.deepEqual(plan, { action: 'run', mode: 'full' });
 });
 
 test('partial diff update computes needsReanalysis after clearing stable diff', async () => {
