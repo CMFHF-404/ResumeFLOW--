@@ -1,5 +1,5 @@
 import apiClient from './apiClient';
-import { normalizeJDAnalysisResult } from './aiNormalizeUtils';
+import { normalizeCurrentJDAnalysisResult, normalizeResumeEvaluation } from './aiNormalizeUtils';
 import { postStreamRequest } from './aiStreamUtils';
 import type { MatchScoreEntry } from '../types/analysis';
 import type {
@@ -7,9 +7,11 @@ import type {
     JDAnalysisResult,
     PolishMode,
     RawJDAnalysisResult,
+    ResumeEvaluation,
 } from '../types/ai';
 import type { ExperienceCategory } from './experienceService';
 import type { ResumeAISnapshot } from '../utils/resumeHelpers';
+import { getKnownResumeUpdatedAt, recordKnownResumeUpdatedAt } from './resumeService';
 
 export type {
     AssistantCertificationDraft,
@@ -87,6 +89,12 @@ export type AnalyzeJDWithAttachmentParams = {
     prevExperienceText?: string;
 };
 
+export type EvaluateResumeParams = {
+    text: string;
+    resumeText: string;
+    jdMatchPercentage?: number;
+};
+
 export interface GenerateBossGreetingParams {
     jdText: string;
     analysisSummary: string;
@@ -95,10 +103,12 @@ export interface GenerateBossGreetingParams {
     resumeText: string;
     resumeId?: string;
     signature?: string;
+    expectedUpdatedAt?: string;
 }
 
 export interface GenerateBossGreetingResponse {
     greeting: string;
+    resume_updated_at?: string;
 }
 
 export interface GeneratePersonalSummaryParams {
@@ -410,12 +420,42 @@ const streamAnalyzeRequest = async (
         },
         getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
-                return normalizeJDAnalysisResult(parsed.result);
+                return normalizeCurrentJDAnalysisResult(parsed.result);
             }
             return null;
         },
     });
 };
+
+const streamResumeEvaluationRequest = async (
+    payload: EvaluateResumeParams,
+    onEvent?: (event: AnalyzeStreamEvent) => void,
+    signal?: AbortSignal
+): Promise<ResumeEvaluation> => postStreamRequest<AnalyzeStreamEvent, ResumeEvaluation>({
+    path: '/api/resume-evaluation/stream',
+    body: JSON.stringify({
+        text: payload.text,
+        resume_text: payload.resumeText,
+        ...(typeof payload.jdMatchPercentage === 'number'
+            ? { jd_match_percentage: payload.jdMatchPercentage }
+            : {}),
+    }),
+    contentType: 'application/json',
+    signal,
+    onEvent,
+    getFinalResult: (parsed) => {
+        if (parsed.type !== 'final') {
+            return null;
+        }
+        const evaluation = normalizeResumeEvaluation(
+            (parsed.result as { resumeEvaluation?: unknown }).resumeEvaluation
+        );
+        if (!evaluation) {
+            throw new Error('六维报告结果结构无效，请重试');
+        }
+        return evaluation;
+    },
+});
 
 const streamPolishRequest = async (
     payload: Record<string, unknown>,
@@ -702,6 +742,8 @@ export const aiService = {
     },
 
     async generateBossGreeting(data: GenerateBossGreetingParams) {
+        const expectedUpdatedAt = data.expectedUpdatedAt
+            ?? (data.resumeId ? getKnownResumeUpdatedAt(data.resumeId) : undefined);
         const response = await apiClient.post<GenerateBossGreetingResponse>(
             '/api/generate-boss-greeting',
             {
@@ -712,8 +754,12 @@ export const aiService = {
                 resume_text: data.resumeText,
                 resume_id: data.resumeId,
                 signature: data.signature,
+                expected_updated_at: expectedUpdatedAt,
             }
         );
+        if (data.resumeId) {
+            recordKnownResumeUpdatedAt(data.resumeId, response.data.resume_updated_at);
+        }
         return response.data;
     },
 
@@ -721,6 +767,8 @@ export const aiService = {
         data: GenerateBossGreetingParams,
         onEvent?: (event: BossGreetingStreamEvent) => void
     ) {
+        const expectedUpdatedAt = data.expectedUpdatedAt
+            ?? (data.resumeId ? getKnownResumeUpdatedAt(data.resumeId) : undefined);
         const payload = {
             jd_text: data.jdText,
             analysis_summary: data.analysisSummary,
@@ -729,8 +777,13 @@ export const aiService = {
             resume_text: data.resumeText,
             resume_id: data.resumeId,
             signature: data.signature,
+            expected_updated_at: expectedUpdatedAt,
         };
-        return streamBossGreetingRequest(payload, { onEvent });
+        const result = await streamBossGreetingRequest(payload, { onEvent });
+        if (data.resumeId) {
+            recordKnownResumeUpdatedAt(data.resumeId, result.resume_updated_at);
+        }
+        return result;
     },
 
     async generatePersonalSummaryStream(
@@ -784,5 +837,13 @@ export const aiService = {
             contentType: null,
             signal,
         });
+    },
+
+    async evaluateResume(
+        params: EvaluateResumeParams,
+        onEvent?: (event: AnalyzeStreamEvent) => void,
+        signal?: AbortSignal
+    ) {
+        return streamResumeEvaluationRequest(params, onEvent, signal);
     },
 };

@@ -6,6 +6,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...models import Certification
 from ...utils.time_utils import utc_now
+from ..resume.resume_analysis_freshness import invalidate_user_resume_analyses
 from .schemas import CertificationCreate, CertificationUpdate
 
 
@@ -31,6 +32,11 @@ async def create_certification(
     """创建新证书"""
     cert = Certification(user_id=user_id, **payload.model_dump())
     session.add(cert)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=utc_now(),
+    )
     await session.commit()
     await session.refresh(cert)
     return cert
@@ -58,8 +64,10 @@ async def update_certification(
     cert = await get_certification(session, user_id, cert_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(cert, key, value)
-    cert.updated_at = utc_now()
+    updated_at = utc_now()
+    cert.updated_at = updated_at
     session.add(cert)
+    await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
     await session.commit()
     await session.refresh(cert)
     return cert
@@ -71,4 +79,9 @@ async def delete_certification(
     """删除证书"""
     cert = await get_certification(session, user_id, cert_id)
     await session.delete(cert)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=utc_now(),
+    )
     await session.commit()

@@ -7,6 +7,7 @@ import {
     trackBossGreetingResult,
     trackBossGreetingStart,
 } from '../../../utils/analyticsTracker';
+import { buildJDIntentSummary } from '../../../utils/assistantResumeContext';
 import {
     BOSS_GREETING_TOAST_MESSAGES,
     JD_ANALYSIS_TOAST_DURATION_MS,
@@ -34,10 +35,7 @@ type UseBossGreetingActionsParams = {
     isBossGreetingOutdated: boolean;
     isGeneratingBossGreeting: boolean;
     isOutdated: boolean;
-    jdFile: File | null;
-    jdText: string;
     jdPolishContext: string;
-    hasMissingAttachmentContext: boolean;
     selectedResumeSnapshotText: string;
     latestResumeIdRef: MutableRefObject<string | null | undefined>;
     latestBossGreetingSignatureRef: MutableRefObject<string>;
@@ -66,10 +64,7 @@ export const useBossGreetingActions = ({
     isBossGreetingOutdated,
     isGeneratingBossGreeting,
     isOutdated,
-    jdFile,
-    jdText,
     jdPolishContext,
-    hasMissingAttachmentContext,
     selectedResumeSnapshotText,
     latestResumeIdRef,
     latestBossGreetingSignatureRef,
@@ -110,7 +105,7 @@ export const useBossGreetingActions = ({
             });
             return;
         }
-        if (!analysisResult && !hasMissingAttachmentContext && !jdFile && !jdText.trim()) {
+        if (!jdPolishContext.trim()) {
             trackBossGreetingResult({
                 resumeId,
                 source: bossGreetingSource,
@@ -157,24 +152,10 @@ export const useBossGreetingActions = ({
                 releaseActiveBossGreetingToast();
                 return;
             }
-            if (!effectiveResult.summary?.trim()) {
-                trackBossGreetingResult({
-                    resumeId,
-                    source: bossGreetingSource,
-                    action: 'empty',
-                    durationMs: Date.now() - startedAt,
-                });
-                updateToast(toastId, {
-                    message: BOSS_GREETING_TOAST_MESSAGES.empty,
-                    type: 'error',
-                    duration: JD_ANALYSIS_TOAST_ERROR_DURATION_MS,
-                });
-                releaseActiveBossGreetingToast();
-                return;
-            }
+            const analysisSummary = buildJDIntentSummary(effectiveResult);
             const requestedBossGreetingSignature = buildBossGreetingSignature({
                 jdText: jdPolishContext,
-                summary: effectiveResult.summary,
+                summary: analysisSummary,
                 jobTitle: effectiveResult.jobTitle,
                 company: effectiveResult.company,
                 resumeText: selectedResumeSnapshotText,
@@ -183,7 +164,7 @@ export const useBossGreetingActions = ({
             const response = await aiService.generateBossGreetingStream(
                 {
                     jdText: jdPolishContext,
-                    analysisSummary: effectiveResult.summary,
+                    analysisSummary,
                     jobTitle: effectiveResult.jobTitle,
                     company: effectiveResult.company,
                     resumeText: selectedResumeSnapshotText,
@@ -279,14 +260,11 @@ export const useBossGreetingActions = ({
         bossGreetingUiStateRef,
         closeToast,
         handleAnalyzeWithAutoName,
-        hasMissingAttachmentContext,
         isBossGreetingOutdated,
         isBossGreetingVisible,
         isGeneratingBossGreeting,
         isOutdated,
-        jdFile,
         jdPolishContext,
-        jdText,
         latestBossGreetingAnalysisOutdatedRef,
         latestBossGreetingSignatureRef,
         latestResumeIdRef,

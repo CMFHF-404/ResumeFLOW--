@@ -349,7 +349,7 @@ def build_agent_polish_options() -> AgentPolishOptionsResponse:
     )
 
 def sanitize_folder_name(company_name: str, job_title: str, match_percentage: int) -> str:
-    parts = [company_name.strip(), job_title.strip(), str(match_percentage)]
+    parts = [str(match_percentage), company_name.strip(), job_title.strip()]
     cleaned_parts = []
     for part in parts:
         cleaned = FOLDER_SAFE_PATTERN.sub("_", part)
@@ -370,9 +370,14 @@ def _normalize_string_list(value: Any, fallback: Iterable[str] = ()) -> List[str
     return [item for item in fallback if item][:8]
 
 def _analysis_evaluation(result: Dict[str, Any], payload: AgentJobRequest) -> str:
-    summary = str(result.get("summary") or result.get("evaluation") or "").strip()
-    if summary:
-        return summary
+    if result.get("matchPercentage") is None:
+        legacy_summary = str(result.get("evaluation") or result.get("summary") or "").strip()
+        if legacy_summary:
+            return legacy_summary
+        return (
+            f"{payload.company_name} 的 {payload.job_title} 未返回 JD 匹配分，"
+            "已按 0 分保守处理，建议人工复核。"
+        )
     score = _clamp_score(result.get("matchPercentage"))
     if score >= 85:
         return f"{payload.company_name} 的 {payload.job_title} 匹配度较高，建议优先生成材料。"

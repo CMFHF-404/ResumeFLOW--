@@ -1,7 +1,15 @@
 import type { Resume } from '../../types';
-import { resolveDashboardResumeLocalMatchRate } from '../../utils/dashboardResumeMapper';
+import {
+  resolveDashboardResumeLocalEvaluationScore,
+  resolveDashboardResumeLocalMatchRate,
+} from '../../utils/dashboardResumeMapper';
 import { formatRelativeTime } from '../../utils/timeUtils';
 
+type EvaluationScoreResolver = (
+  id: string,
+  expectedBaseFingerprint?: string | null,
+  expectedTargetRoleSignature?: string
+) => number | undefined | null;
 type MatchRateResolver = (id: string) => number | undefined | null;
 type DashboardResumeServerUpdate = Pick<Resume, 'id'> & {
   title: string;
@@ -158,6 +166,30 @@ export const getVisibleDashboardResumes = (
     .map(({ resume }) => resume);
 };
 
+export const mergeEvaluationScoresIntoResumes = (
+  items: Resume[],
+  resolveLocalEvaluationScore: EvaluationScoreResolver = resolveDashboardResumeLocalEvaluationScore
+) => {
+  let changed = false;
+  const next = items.map((resume) => {
+    const localEvaluationScore = resolveLocalEvaluationScore(
+      resume.id,
+      resume.evaluationBaseFingerprint,
+      resume.evaluationTargetRoleSignature
+    );
+    const evaluationScore = localEvaluationScore === undefined
+      ? resume.evaluationScore ?? null
+      : localEvaluationScore;
+    const status = (resume.matchRate > 0 || evaluationScore !== null ? 'final' : 'draft') as Resume['status'];
+    if (resume.evaluationScore === evaluationScore && resume.status === status) {
+      return resume;
+    }
+    changed = true;
+    return { ...resume, evaluationScore, status };
+  });
+  return changed ? next : items;
+};
+
 export const mergeMatchRatesIntoResumes = (
   items: Resume[],
   resolveLocalMatchRate: MatchRateResolver = resolveDashboardResumeLocalMatchRate
@@ -166,7 +198,7 @@ export const mergeMatchRatesIntoResumes = (
   const next = items.map((resume) => {
     const localMatchRate = resolveLocalMatchRate(resume.id);
     const matchRate = typeof localMatchRate === 'number' ? localMatchRate : resume.matchRate;
-    const status = (matchRate > 0 ? 'final' : 'draft') as Resume['status'];
+    const status = (matchRate > 0 || typeof resume.evaluationScore === 'number' ? 'final' : 'draft') as Resume['status'];
     if (resume.matchRate === matchRate && resume.status === status) {
       return resume;
     }
@@ -189,6 +221,9 @@ export const areResumeListsEqual = (prev: Resume[], next: Resume[]) => {
       && item.name === other.name
       && item.targetRole === other.targetRole
       && item.matchRate === other.matchRate
+      && item.evaluationScore === other.evaluationScore
+      && item.evaluationBaseFingerprint === other.evaluationBaseFingerprint
+      && item.evaluationTargetRoleSignature === other.evaluationTargetRoleSignature
       && item.createdAt === other.createdAt
       && item.createdAtValue === other.createdAtValue
       && item.lastModified === other.lastModified

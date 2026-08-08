@@ -18,6 +18,10 @@ const normalizeResumeConfig = (config: unknown): ResumeEditorConfig => {
   return config as ResumeEditorConfig;
 };
 
+export const buildJDIntentSummary = (analysisResult: JDAnalysisResult | null) => (
+  analysisResult?.jdInterpretation?.roleIntent?.trim() ?? ''
+);
+
 export const buildJDPolishContext = (
   jdText: string,
   analysisResult: JDAnalysisResult | null,
@@ -36,7 +40,9 @@ export const buildJDPolishContext = (
   const contextLines = [
     analysisResult.jobTitle?.trim() ? `目标岗位：${analysisResult.jobTitle.trim()}` : '',
     analysisResult.company?.trim() ? `目标公司：${analysisResult.company.trim()}` : '',
-    analysisResult.summary?.trim() ? `岗位摘要：${analysisResult.summary.trim()}` : '',
+    buildJDIntentSummary(analysisResult)
+      ? `岗位诉求：${buildJDIntentSummary(analysisResult)}`
+      : '',
     analysisResult.jobKeywords?.length ? `岗位关键词：${analysisResult.jobKeywords.join('、')}` : '',
     analysisResult.missingKeywords?.length ? `重点补强：${analysisResult.missingKeywords.join('、')}` : '',
   ].filter(Boolean);
@@ -47,7 +53,15 @@ export const buildJDCapabilityContext = (
   analysisResult: JDAnalysisResult | null,
   isOutdated: boolean
 ) => {
-  const currentAnalysis = !isOutdated ? analysisResult : null;
+  const currentAnalysis = !isOutdated
+    ? analysisResult
+    : null;
+  // An explicit null JD match denotes a resume-quality-only evaluation.
+  // Lightweight JD responses omit resumeEvaluation entirely, so they remain
+  // valid capability context after the JD/report split.
+  if (currentAnalysis?.resumeEvaluation?.jdMatch === null) {
+    return '';
+  }
   const capabilityAnalysis = currentAnalysis?.capabilityAnalysis;
   const coreCapabilities = Array.isArray(capabilityAnalysis?.coreCapabilities)
     ? capabilityAnalysis.coreCapabilities
@@ -97,7 +111,7 @@ const buildExperienceSignature = (snapshot: ResumeAISnapshot) => canonicalString
 });
 
 const isJDAnalysisOutdated = (jdAnalysis: ResumeJDAnalysis | null, snapshot: ResumeAISnapshot) => {
-  if (!jdAnalysis) {
+  if (!jdAnalysis || jdAnalysis.isOutdated === true) {
     return true;
   }
   // Picker context only has the persisted resume payload, not the original uploaded JD file.

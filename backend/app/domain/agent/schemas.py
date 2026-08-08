@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 DEFAULT_AGENT_TEMPLATE_ID = "modern-slate"
@@ -93,6 +93,7 @@ class AgentJobRequest(BaseModel):
     job_url: HttpUrl
     source: Optional[str] = Field(default=None, max_length=80)
     resume_id: Optional[str] = None
+    include_resume_evaluation: bool = False
 
 
 class AgentJobGenerateRequest(AgentJobRequest):
@@ -103,13 +104,28 @@ class AgentJobGenerateRequest(AgentJobRequest):
 
 
 class AgentJobAnalysisResponse(BaseModel):
+    # Backward-compatible v1 JD-fit field. Existing Agent clients use this value
+    # for screening, so its meaning must not change in place.
     match_percentage: int
+    jd_match_percentage: int
+    resume_quality_percentage: Optional[int] = None
+    score_version: str = "resume_flow_v1"
     evaluation: str
     strengths: List[str] = Field(default_factory=list)
     gaps: List[str] = Field(default_factory=list)
     missing_keywords: List[str] = Field(default_factory=list)
     recommendation: Literal["skip", "review", "generate"] = "review"
     suggested_folder_name: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_explicit_scores_from_legacy_match(cls, value):
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        legacy_match = normalized.get("match_percentage", 0)
+        normalized.setdefault("jd_match_percentage", legacy_match)
+        return normalized
 
 
 class AgentResumePdf(BaseModel):
@@ -128,6 +144,19 @@ class AgentJobMetadata(BaseModel):
     generated_at: datetime
     folder_name: str
     match_percentage: int
+    jd_match_percentage: int
+    resume_quality_percentage: Optional[int] = None
+    score_version: str = "resume_flow_v1"
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_explicit_scores_from_legacy_match(cls, value):
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        legacy_match = normalized.get("match_percentage", 0)
+        normalized.setdefault("jd_match_percentage", legacy_match)
+        return normalized
 
 
 class AgentJobGenerateResponse(AgentJobAnalysisResponse):

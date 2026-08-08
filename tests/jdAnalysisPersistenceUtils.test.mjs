@@ -16,6 +16,18 @@ const importJDAnalysisPersistenceUtils = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+const importJDAnalysisStorage = async () => {
+  const result = await build({
+    entryPoints: ['views/jdAnalysisStorage.ts'],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const encoded = Buffer.from(result.outputFiles[0].text).toString('base64');
+  return import(`data:text/javascript;base64,${encoded}`);
+};
+
 const buildResult = () => ({
   matchPercentage: 80,
   jobKeywords: ['product'],
@@ -82,8 +94,119 @@ test('builds resume JD analysis payload with stable timestamp injection', async 
     inputMode: 'text',
     attachmentName: undefined,
     attachmentExtractedText: 'previous extracted text',
+    isOutdated: false,
     updatedAt: '2026-06-06T00:00:00.000Z',
   });
+});
+
+test('hydrates a fresh Agent final-snapshot evaluation against the current client snapshot', async () => {
+  const { resolveHydratedEvaluationSignature } = await importJDAnalysisPersistenceUtils();
+  const base = {
+    jdText: 'JD text',
+    jdInputSignature: 'jd-signature',
+    experienceSignature: 'experience-signature',
+    evaluationSignature: 'python-canonical-signature',
+    evaluationSignatureVersion: 'agent_final_snapshot_v1',
+    isOutdated: false,
+    evaluationIsOutdated: false,
+    result: buildResult(),
+    itemSignatures: buildItemSignatures(),
+    inputMode: 'text',
+    updatedAt: '2026-08-08T00:00:00.000Z',
+  };
+
+  assert.equal(
+    resolveHydratedEvaluationSignature(base, 'client-current-signature'),
+    'client-current-signature'
+  );
+  assert.equal(
+    resolveHydratedEvaluationSignature(
+      { ...base, evaluationIsOutdated: true },
+      'client-current-signature'
+    ),
+    'python-canonical-signature'
+  );
+  assert.equal(
+    resolveHydratedEvaluationSignature(
+      { ...base, evaluationIsOutdated: undefined },
+      'client-current-signature'
+    ),
+    'python-canonical-signature'
+  );
+});
+
+test('hydrates a fresh Agent final-snapshot JD analysis against current candidate signatures', async () => {
+  const { resolveHydratedAnalysisCandidate } = await importJDAnalysisPersistenceUtils();
+  const { normalizeJDAnalysisPersistence } = await importJDAnalysisStorage();
+  const currentItems = buildItemSignatures();
+  const base = {
+    jdText: 'JD text',
+    jdInputSignature: 'jd-signature',
+    experienceSignature: 'python-result-hash',
+    analysisSignatureVersion: 'agent_final_snapshot_v1',
+    isOutdated: false,
+    result: buildResult(),
+    itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+    inputMode: 'text',
+    updatedAt: '2026-08-08T00:00:00.000Z',
+  };
+  const normalizedBase = normalizeJDAnalysisPersistence(base);
+  assert.ok(normalizedBase);
+
+  assert.deepEqual(
+    resolveHydratedAnalysisCandidate(normalizedBase, 'client-candidate-signature', currentItems),
+    {
+      experienceSignature: 'client-candidate-signature',
+      itemSignatures: currentItems,
+    }
+  );
+  assert.deepEqual(
+    resolveHydratedAnalysisCandidate(
+      { ...normalizedBase, isOutdated: true },
+      'client-candidate-signature',
+      currentItems
+    ),
+    {
+      experienceSignature: 'python-result-hash',
+      itemSignatures: base.itemSignatures,
+    }
+  );
+});
+
+test('merges only authoritative stale flags from a differing backend payload', async () => {
+  const { mergeAuthoritativeStaleFlags } = await importJDAnalysisPersistenceUtils();
+  const local = {
+    jdText: 'local JD',
+    jdInputSignature: 'local-jd',
+    experienceSignature: 'local-experience',
+    result: buildResult(),
+    itemSignatures: buildItemSignatures(),
+    inputMode: 'text',
+    isOutdated: false,
+    evaluationIsOutdated: false,
+    updatedAt: '2026-08-08T00:00:00.000Z',
+  };
+
+  assert.deepEqual(
+    mergeAuthoritativeStaleFlags(local, {
+      ...local,
+      jdText: 'older backend JD',
+      isOutdated: true,
+      evaluationIsOutdated: true,
+    }),
+    {
+      ...local,
+      isOutdated: true,
+      evaluationIsOutdated: true,
+    }
+  );
+  assert.equal(
+    mergeAuthoritativeStaleFlags(
+      { ...local, isOutdated: true, evaluationIsOutdated: true },
+      { ...local, isOutdated: false, evaluationIsOutdated: false }
+    ),
+    null
+  );
 });
 
 test('resolves attachment analysis with extracted text as text-mode persisted JD', async () => {

@@ -118,13 +118,20 @@ export type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12;
 export type ResumeJDAnalysis = {
   jdText: string;
   jdInputSignature: string;
+  targetRoleSignature?: string;
   experienceSignature: string;
+  analysisSignatureVersion?: "agent_final_snapshot_v1";
+  evaluationSignature?: string;
+  evaluationSignatureVersion?: "agent_final_snapshot_v1";
   result: JDAnalysisResult;
   itemSignatures: JDAnalysisItemSignatures;
   experienceText?: string;
   inputMode: "text" | "attachment";
   attachmentName?: string;
   attachmentExtractedText?: string;
+  /** 六维报告与 JD 匹配独立过期，避免刷新 JD 时误废弃报告。 */
+  evaluationIsOutdated?: boolean;
+  isOutdated?: boolean;
   updatedAt: string;
 };
 

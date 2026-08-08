@@ -121,6 +121,10 @@ from .jd_analysis_service import (
     analyze_jd_with_image_thoughts,
     analyze_jd_with_thoughts,
 )
+from .resume_evaluation_service import (
+    analyze_resume_evaluation,
+    analyze_resume_evaluation_with_thoughts,
+)
 from .prompts import (
     CERTIFICATION_ASSISTANT_PROMPT,
     EXPERIENCE_ASSISTANT_PROMPT,

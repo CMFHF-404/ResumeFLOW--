@@ -4,7 +4,7 @@ import { ViewState } from '../../types';
 import { resolveAuthUserKeyFromActiveSession } from '../../services/apiClient';
 import { devLog } from '../../services/devLogger';
 import { profileService, type Profile } from '../../services/profileService';
-import { resumeService } from '../../services/resumeService';
+import { isResumeVersionConflict, resumeService } from '../../services/resumeService';
 import type { ToastConfig } from '../../components/Toast';
 import { DEFAULT_RESUME_TITLE } from '../../constants/resumeConstants';
 import { trackResumeDuplicated } from '../../utils/analyticsTracker';
@@ -17,6 +17,7 @@ import { buildPreferredResumeCreateConfig } from '../resumeTemplateStorage';
 import {
   areResumeListsEqual,
   mergeDashboardResumeServerUpdate,
+  mergeEvaluationScoresIntoResumes,
   mergeMatchRatesIntoResumes,
 } from './dashboardUtils';
 
@@ -88,7 +89,7 @@ export const useDashboardResumeList = ({
       setResumes((prev) => (prev.length === 0 ? prev : []));
       return;
     }
-    const hydrated = mergeMatchRatesIntoResumes(cachedResumes);
+    const hydrated = mergeMatchRatesIntoResumes(mergeEvaluationScoresIntoResumes(cachedResumes));
     setResumes((prev) => (areResumeListsEqual(prev, hydrated) ? prev : hydrated));
   }, [cachedResumes, isCacheOwnerMatched]);
 
@@ -246,12 +247,15 @@ export const useDashboardResumeList = ({
       return 'renamed';
     } catch (error) {
       console.error('[Dashboard] 重命名简历失败:', error);
+      if (isResumeVersionConflict(error)) {
+        await fetchDashboardResumes({ force: true });
+      }
       updateToast(toastId, { message: RENAME_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
       return 'error';
     } finally {
       setIsRenamingResume(false);
     }
-  }, [isAuthenticated, isRenamingResume, onRequireAuth, resumes, showToastLoading, updateToast]);
+  }, [fetchDashboardResumes, isAuthenticated, isRenamingResume, onRequireAuth, resumes, showToastLoading, updateToast]);
 
   return {
     resumes,

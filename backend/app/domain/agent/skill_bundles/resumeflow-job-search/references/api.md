@@ -342,19 +342,23 @@ Request body:
   "jd_text": "Full job description text...",
   "job_url": "https://example.com/jobs/123",
   "source": "optional job board name",
-  "resume_id": "optional ResumeFLOW resume id"
+  "resume_id": "optional ResumeFLOW resume id",
+  "include_resume_evaluation": false
 }
 ```
 
 Response fields:
 
-- `match_percentage`: 0-100 match score.
+- `match_percentage`: backward-compatible v1 alias of the 0-100 JD fit score. Existing clients may continue using it for screening.
+- `jd_match_percentage`: explicit 0-100 JD fit score. Use it for job filtering, thresholds, recommendations, and folder-name numeric prefixes. It is derived from the lightweight JD analysis top-level `matchPercentage` and falls back conservatively to `0` only when that score is absent.
+- `resume_quality_percentage`: independent 0-100 six-dimension resume quality score, or `null` by default. Set request field `include_resume_evaluation` to `true` only when the caller explicitly needs the deep six-dimension report; do not use this field to screen jobs.
+- `score_version`: score contract version; currently `resume_flow_v1`.
 - `evaluation`: short natural-language fit summary.
 - `strengths`: matching resume strengths.
 - `gaps`: risks or missing experience.
 - `missing_keywords`: keywords that appear important in the JD but are weak or absent in the resume.
 - `recommendation`: `skip`, `review`, or `generate`.
-- `suggested_folder_name`: ResumeFLOW's server-side safe folder suggestion. The local archive still uses `match-company-role` unless the user requests otherwise.
+- `suggested_folder_name`: ResumeFLOW's server-side safe folder suggestion, whose numeric prefix is the JD fit score. The local archive likewise uses `jd-match-company-role` unless the user requests otherwise.
 
 ## Generate A Tailored Resume
 
@@ -370,13 +374,14 @@ Use this endpoint only after the job passes the user's threshold and hard filter
   "job_url": "https://example.com/jobs/123",
   "source": "optional job board name",
   "resume_id": "optional ResumeFLOW resume id",
+  "include_resume_evaluation": false,
   "template_id": "optional template id",
   "polish_before_output": true,
   "polish_level": "标准"
 }
 ```
 
-Pass the user's selected `template_id`, `polish_before_output`, and `polish_level` from the current session. If the optional override fields are omitted, ResumeFLOW falls back to the user's saved server-side Agent plugin configuration for backward compatibility. Generated resumes are saved under the user's ResumeFLOW account with the source JD and default to the smart one-page layout for export.
+Pass the user's selected `template_id`, `polish_before_output`, and `polish_level` from the current session. `include_resume_evaluation` defaults to `false`; opt in only when the user explicitly requests the deep report because it performs an additional AI evaluation. If the optional generation override fields are omitted, ResumeFLOW falls back to the user's saved server-side Agent plugin configuration for backward compatibility. Generated resumes are saved under the user's ResumeFLOW account with the source JD and default to the smart one-page layout for export.
 
 Response fields include all analyze fields, plus:
 
@@ -384,7 +389,7 @@ Response fields include all analyze fields, plus:
 - `resume_pdf.file_name`: suggested PDF file name.
 - `resume_pdf.generated_resume_id`: ResumeFLOW resume id saved under the user's account.
 - `job_link_url`: direct job URL.
-- `job_metadata`: job title, company, JD text, URL, source, generation time, folder name, and match score.
+- `job_metadata`: job title, company, JD text, URL, source, generation time, folder name, both scores, and score version.
 
 ## Failure Handling
 

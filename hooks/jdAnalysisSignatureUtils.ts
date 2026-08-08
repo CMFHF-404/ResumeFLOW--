@@ -1,6 +1,8 @@
 import type { JDAnalysisItemSignatures } from "../types/analysis";
 import type {
   CertificationView,
+  EducationView,
+  ResumeEditorProfile,
   ResumeJDAnalysis,
   ResumeExperienceView,
   SkillGroupView,
@@ -10,6 +12,10 @@ import {
   buildJDTextSignature,
   buildResumeAISnapshot,
 } from "../utils/resumeHelpers";
+import {
+  buildResumeEvaluationSnapshot,
+  type ResumeEvaluationSnapshot,
+} from "../utils/resumeEvaluationSnapshot";
 import { canonicalStringify } from "../utils/canonicalStringify";
 
 export { canonicalStringify } from "../utils/canonicalStringify";
@@ -20,11 +26,57 @@ const buildExperienceAnalyzePayload = (experiences: ResumeExperienceView[]) => (
   experiences: experiences.map(buildExperienceAnalyzeEntry),
 });
 
+export type ResumeEvaluationInputContext = {
+  profile?: ResumeEditorProfile;
+  personalSummary?: string;
+  hasPersonalSummaryOverride?: boolean;
+  isSummaryVisible?: boolean;
+  targetRole?: string;
+  educations?: EducationView[];
+  selectedExperienceIds?: ReadonlySet<string>;
+  selectedEducationIds?: ReadonlySet<string>;
+  selectedCertificationIds?: ReadonlySet<string>;
+  selectedSkillIds?: ReadonlySet<string>;
+  sectionOrder?: readonly string[];
+};
+
+const EMPTY_PROFILE: ResumeEditorProfile = {
+  name: "",
+  email: "",
+  phone: "",
+  location: "",
+  linkedin: "",
+  summary: "",
+  avatarDataUrl: "",
+};
+
+const allIds = <T extends { id: string }>(items: T[]) => new Set(items.map((item) => item.id));
+
 export const buildAnalyzePayload = (
   experiences: ResumeExperienceView[],
   certifications: CertificationView[],
-  skillGroups: SkillGroupView[]
-) => buildResumeAISnapshot(experiences, certifications, skillGroups);
+  skillGroups: SkillGroupView[],
+  context: ResumeEvaluationInputContext = {}
+): ResumeEvaluationSnapshot => buildResumeEvaluationSnapshot({
+  profile: context.profile ?? EMPTY_PROFILE,
+  personalSummary: context.personalSummary ?? "",
+  hasPersonalSummaryOverride: context.hasPersonalSummaryOverride ?? false,
+  isSummaryVisible: context.isSummaryVisible ?? true,
+  targetRole: context.targetRole ?? "",
+  experiences,
+  selectedExperienceIds: context.selectedExperienceIds ?? allIds(experiences),
+  educations: context.educations ?? [],
+  selectedEducationIds:
+    context.selectedEducationIds ?? allIds(context.educations ?? []),
+  certifications,
+  selectedCertificationIds:
+    context.selectedCertificationIds ?? allIds(certifications),
+  skillGroups,
+  selectedSkillIds: context.selectedSkillIds ?? new Set(
+    skillGroups.flatMap((group) => group.skills.map((skill) => skill.id))
+  ),
+  sectionOrder: context.sectionOrder,
+});
 
 const sortById = <T extends { id: string }>(items: T[]) => {
   return [...items].sort((a, b) => a.id.localeCompare(b.id));
@@ -38,13 +90,28 @@ export const buildExperienceTextSnapshot = (experiences: ResumeExperienceView[])
 export const buildAnalyzeSignature = (
   experiences: ResumeExperienceView[],
   certifications: CertificationView[],
+  skillGroups: SkillGroupView[],
+  context: ResumeEvaluationInputContext = {}
+) => {
+  const payload = buildAnalyzePayload(experiences, certifications, skillGroups, context);
+  return canonicalStringify(payload);
+};
+
+/**
+ * Independent JD-match candidates deliberately exclude profile, education and
+ * selection state. This keeps the existing per-item stale/diff semantics
+ * separate from the full-resume evaluation signature.
+ */
+export const buildMatchCandidateSignature = (
+  experiences: ResumeExperienceView[],
+  certifications: CertificationView[],
   skillGroups: SkillGroupView[]
 ) => {
-  const payload = buildAnalyzePayload(experiences, certifications, skillGroups);
+  const snapshot = buildResumeAISnapshot(experiences, certifications, skillGroups);
   return canonicalStringify({
-    experiences: sortById(payload.experiences),
-    certifications: sortById(payload.certifications),
-    skills: sortById(payload.skills),
+    experiences: sortById(snapshot.experiences),
+    certifications: sortById(snapshot.certifications),
+    skills: sortById(snapshot.skills),
   });
 };
 

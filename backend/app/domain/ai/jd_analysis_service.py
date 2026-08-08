@@ -22,6 +22,42 @@ def _has_thinking_stream_provider() -> bool:
     return has_thinking_stream_provider(settings)
 
 
+def _resume_payload(resume_text: Optional[str]) -> str:
+    return resume_text or "Resume content not provided."
+
+
+def _build_text_context(
+    jd_text: str,
+    resume_text: Optional[str],
+    experience_payload: str,
+    previous_payload: str,
+    previous_experience_payload: str,
+) -> str:
+    return (
+        "Job Description:\n"
+        f"{jd_text}\n\n"
+        "Resume Content:\n"
+        f"{_resume_payload(resume_text)}\n\n"
+        "Current Experience Content:\n"
+        f"{experience_payload}\n\n"
+        "Previous Experience Content:\n"
+        f"{previous_experience_payload}\n\n"
+        "Previous Result:\n"
+        f"{previous_payload}"
+    )
+
+
+def _finalize_jd_analysis_result(
+    result: Dict[str, Any],
+    *,
+    skill_ids: List[str],
+) -> Dict[str, Any]:
+    normalized_result = _normalize_jd_analysis_result(result)
+    normalized_result.pop("resumeEvaluation", None)
+    normalized_result.pop("resume_evaluation", None)
+    return _ensure_skill_matches(normalized_result, skill_ids)
+
+
 async def analyze_jd(
     text: str,
     resume_text: Optional[str] = None,
@@ -29,7 +65,6 @@ async def analyze_jd(
     experience_text: Optional[str] = None,
     prev_experience_text: Optional[str] = None,
 ) -> Dict[str, Any]:
-    resume_payload = resume_text or "Resume content not provided."
     experience_payload = experience_text or "Experience content not provided."
     previous_payload = (
         json.dumps(prev_result, ensure_ascii=False)
@@ -37,50 +72,39 @@ async def analyze_jd(
         else "None"
     )
     previous_experience_payload = prev_experience_text or "None"
-    messages = [
+    messages: List[Dict[str, Any]] = [
         {"role": "system", "content": JD_ANALYSIS},
         {
             "role": "user",
-            "content": (
-                "Job Description:\n"
-                f"{text}\n\n"
-                "Resume Content:\n"
-                f"{resume_payload}\n\n"
-                "Current Experience Content:\n"
-                f"{experience_payload}\n\n"
-                "Previous Experience Content:\n"
-                f"{previous_experience_payload}\n\n"
-                "Previous Result:\n"
-                f"{previous_payload}"
+            "content": _build_text_context(
+                text,
+                resume_text,
+                experience_payload,
+                previous_payload,
+                previous_experience_payload,
             ),
         },
     ]
     result = await _call_llm(messages, json_mode=True)
     skill_ids = _extract_skill_ids(resume_text)
-    normalized_result = _normalize_jd_analysis_result(result)
-    return _ensure_skill_matches(normalized_result, skill_ids)
+    return _finalize_jd_analysis_result(result, skill_ids=skill_ids)
 
 
 def _build_jd_analysis_user_parts(
     text: str,
-    resume_payload: str,
+    resume_text: Optional[str],
     experience_payload: str,
     previous_payload: str,
     previous_experience_payload: str,
 ) -> List[Dict[str, Any]]:
     return [
         {
-            "text": (
-                "Job Description:\n"
-                f"{text}\n\n"
-                "Resume Content:\n"
-                f"{resume_payload}\n\n"
-                "Current Experience Content:\n"
-                f"{experience_payload}\n\n"
-                "Previous Experience Content:\n"
-                f"{previous_experience_payload}\n\n"
-                "Previous Result:\n"
-                f"{previous_payload}"
+            "text": _build_text_context(
+                text,
+                resume_text,
+                experience_payload,
+                previous_payload,
+                previous_experience_payload,
             )
         }
     ]
@@ -103,7 +127,6 @@ async def analyze_jd_with_thoughts(
             prev_experience_text,
         )
 
-    resume_payload = resume_text or "Resume content not provided."
     experience_payload = experience_text or "Experience content not provided."
     previous_payload = (
         json.dumps(prev_result, ensure_ascii=False)
@@ -120,7 +143,7 @@ async def analyze_jd_with_thoughts(
             system_prompt=JD_ANALYSIS,
             user_parts=_build_jd_analysis_user_parts(
                 text,
-                resume_payload,
+                resume_text,
                 experience_payload,
                 previous_payload,
                 previous_experience_payload,
@@ -143,14 +166,13 @@ async def analyze_jd_with_thoughts(
             prev_experience_text,
         )
     skill_ids = _extract_skill_ids(resume_text)
-    normalized_result = _normalize_jd_analysis_result(result)
-    return _ensure_skill_matches(normalized_result, skill_ids)
+    return _finalize_jd_analysis_result(result, skill_ids=skill_ids)
 
 
 def _build_image_jd_user_message(
     image_b64: str,
     mime_type: str,
-    resume_payload: str,
+    resume_text: Optional[str],
     experience_payload: str,
     previous_payload: str,
     previous_experience_payload: str,
@@ -161,8 +183,9 @@ def _build_image_jd_user_message(
     图像以 base64 data URL 内嵌，模型可直接读取图像中的 JD 内容。
     """
     text_context = (
+        "JD Source: attached image (authoritative)\n"
         f"Supplementary JD Text:\n{jd_text or 'None'}\n\n"
-        f"Resume Content:\n{resume_payload}\n\n"
+        f"Resume Content:\n{_resume_payload(resume_text)}\n\n"
         f"Current Experience Content:\n{experience_payload}\n\n"
         f"Previous Experience Content:\n{previous_experience_payload}\n\n"
         f"Previous Result:\n{previous_payload}"
@@ -194,7 +217,6 @@ async def analyze_jd_with_image(
     Vision 路径：将 JD 图像以 base64 内嵌到 multimodal message，
     由模型一次完成 OCR + 分析，无需额外 OCR 服务。
     """
-    resume_payload = resume_text or "Resume content not provided."
     experience_payload = experience_text or "Experience content not provided."
     previous_payload = (
         json.dumps(prev_result, ensure_ascii=False)
@@ -205,7 +227,7 @@ async def analyze_jd_with_image(
     user_message = _build_image_jd_user_message(
         image_b64,
         mime_type,
-        resume_payload,
+        resume_text,
         experience_payload,
         previous_payload,
         previous_experience_payload,
@@ -217,14 +239,13 @@ async def analyze_jd_with_image(
     ]
     result = await _call_llm(messages, json_mode=True)
     skill_ids = _extract_skill_ids(resume_text)
-    normalized_result = _normalize_jd_analysis_result(result)
-    return _ensure_skill_matches(normalized_result, skill_ids)
+    return _finalize_jd_analysis_result(result, skill_ids=skill_ids)
 
 
 def _build_image_jd_user_parts(
     image_b64: str,
     mime_type: str,
-    resume_payload: str,
+    resume_text: Optional[str],
     experience_payload: str,
     previous_payload: str,
     previous_experience_payload: str,
@@ -239,8 +260,9 @@ def _build_image_jd_user_parts(
         },
         {
             "text": (
+                "JD Source: attached image (authoritative)\n"
                 f"Supplementary JD Text:\n{jd_text or 'None'}\n\n"
-                f"Resume Content:\n{resume_payload}\n\n"
+                f"Resume Content:\n{_resume_payload(resume_text)}\n\n"
                 f"Current Experience Content:\n{experience_payload}\n\n"
                 f"Previous Experience Content:\n{previous_experience_payload}\n\n"
                 f"Previous Result:\n{previous_payload}"
@@ -270,7 +292,6 @@ async def analyze_jd_with_image_thoughts(
             prev_experience_text=prev_experience_text,
         )
 
-    resume_payload = resume_text or "Resume content not provided."
     experience_payload = experience_text or "Experience content not provided."
     previous_payload = (
         json.dumps(prev_result, ensure_ascii=False)
@@ -288,7 +309,7 @@ async def analyze_jd_with_image_thoughts(
             user_parts=_build_image_jd_user_parts(
                 image_b64,
                 mime_type,
-                resume_payload,
+                resume_text,
                 experience_payload,
                 previous_payload,
                 previous_experience_payload,
@@ -314,5 +335,4 @@ async def analyze_jd_with_image_thoughts(
             prev_experience_text=prev_experience_text,
         )
     skill_ids = _extract_skill_ids(resume_text)
-    normalized_result = _normalize_jd_analysis_result(result)
-    return _ensure_skill_matches(normalized_result, skill_ids)
+    return _finalize_jd_analysis_result(result, skill_ids=skill_ids)

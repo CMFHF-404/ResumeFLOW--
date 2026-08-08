@@ -140,3 +140,96 @@ test('full result keeps trend base when JD input signature is unchanged', async 
   assert.equal(finalResult.matchPercentage, 88);
   assert.equal(finalResult.matchTrend, 'up');
 });
+
+test('legacy JD fit is never used as the trend base for the current resume-quality score', async () => {
+  const { assembleJDAnalysisResult } = await importJDAnalysisResultAssemblyUtils();
+
+  const { finalResult, resetTrendBase } = assembleJDAnalysisResult({
+    mode: 'full',
+    analysisContext: {
+      jdInputSignature: 'jd-signature',
+      experienceSignature: 'experience-signature',
+      itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+      experienceText: 'previous-experience-text',
+    },
+    previousResult: result({ matchPercentage: 88 }),
+    incomingResult: result({
+      matchPercentage: 70,
+      resumeEvaluation: {
+        evaluationVersion: 'resume_flow_v1',
+        overallScore: 70,
+        jdMatch: 88,
+      },
+      experienceMatches: [{ id: 'exp-1', score: 75, reason: 'new exp' }],
+    }),
+    stableDiff: diffOf(),
+    currentJdInputSignature: 'jd-signature',
+  });
+
+  assert.equal(resetTrendBase, false);
+  assert.equal(finalResult.matchTrend, undefined);
+  assert.equal(finalResult.experienceMatches[0].trend, 'up');
+});
+
+test('quality-only result updates the six-dimension score and preserves every independent match', async () => {
+  const { assembleJDAnalysisResult } = await importJDAnalysisResultAssemblyUtils();
+  const previousResult = result({
+    matchPercentage: 70,
+    resumeEvaluation: { evaluationVersion: 'resume_flow_v1', overallScore: 70, jdMatch: 76 },
+  });
+  const incomingResult = result({
+    matchPercentage: 84,
+    resumeEvaluation: { evaluationVersion: 'resume_flow_v1', overallScore: 84, jdMatch: null },
+    experienceMatches: [],
+    certificationMatches: [],
+    skillMatches: [],
+  });
+
+  const { finalResult } = assembleJDAnalysisResult({
+    mode: 'quality',
+    analysisContext: {
+      jdInputSignature: 'jd-signature',
+      experienceSignature: 'experience-signature',
+      itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+      experienceText: 'previous-experience-text',
+    },
+    previousResult,
+    incomingResult,
+    stableDiff: diffOf({ experiences: ['exp-1'] }),
+    currentJdInputSignature: 'jd-signature',
+  });
+
+  assert.equal(finalResult.matchPercentage, 84);
+  assert.equal(finalResult.resumeEvaluation.jdMatch, null);
+  assert.deepEqual(finalResult.experienceMatches.map(({ id, score }) => ({ id, score })), [
+    { id: 'exp-1', score: 60 },
+    { id: 'exp-2', score: 50 },
+  ]);
+  assert.deepEqual(finalResult.certificationMatches.map(({ id, score }) => ({ id, score })), [
+    { id: 'cert-1', score: 40 },
+  ]);
+  assert.deepEqual(finalResult.skillMatches.map(({ id, score }) => ({ id, score })), [
+    { id: 'skill-1', score: 30 },
+  ]);
+});
+
+test('full lightweight JD refresh preserves an existing deep evaluation', async () => {
+  const { assembleJDAnalysisResult } = await importJDAnalysisResultAssemblyUtils();
+  const previousResult = result({
+    matchPercentage: 71,
+    resumeEvaluation: { evaluationVersion: 'resume_flow_v1', overallScore: 83, jdMatch: 71 },
+  });
+  const incomingResult = result({ matchPercentage: 88 });
+
+  const { finalResult } = assembleJDAnalysisResult({
+    mode: 'full',
+    analysisContext: null,
+    previousResult,
+    incomingResult,
+    stableDiff: diffOf(),
+    currentJdInputSignature: 'jd-signature',
+  });
+
+  assert.equal(finalResult.matchPercentage, 88);
+  assert.equal(finalResult.resumeEvaluation.overallScore, 83);
+});

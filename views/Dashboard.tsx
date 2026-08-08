@@ -1063,10 +1063,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="flex justify-between items-start mb-1">
                       <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2 text-base">{resume.name}</h3>
                     </div>
-                    {resume.matchRate > 0 && (
+                    {(resume.matchRate > 0 || typeof resume.evaluationScore === 'number') && (
                       <div className="mb-3">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 font-bold border border-emerald-200 dark:border-emerald-500/20">
-                          匹配度: {resume.matchRate}%
+                        <span className="whitespace-nowrap text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 font-bold border border-emerald-200 dark:border-emerald-500/20">
+                          {resume.matchRate > 0 ? `JD 匹配度: ${resume.matchRate}%` : ''}
+                          {resume.matchRate > 0 && typeof resume.evaluationScore === 'number' ? ' · ' : ''}
+                          {typeof resume.evaluationScore === 'number' ? `简历评分: ${resume.evaluationScore}分` : ''}
                         </span>
                       </div>
                     )}
@@ -1152,14 +1154,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          {resume.matchRate > 0 ? (
+                          {(resume.matchRate > 0 || typeof resume.evaluationScore === 'number') ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              {resume.matchRate}%
+                              {resume.matchRate > 0 ? `JD ${resume.matchRate}%` : ''}
+                              {resume.matchRate > 0 && typeof resume.evaluationScore === 'number' ? ' · ' : ''}
+                              {typeof resume.evaluationScore === 'number' ? `简历 ${resume.evaluationScore}分` : ''}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700/50 dark:text-gray-400 text-xs font-bold border border-gray-200 dark:border-gray-700 whitespace-nowrap">
-                              草稿
+                              待更新
                             </span>
                           )}
                         </td>
@@ -1217,9 +1221,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </h3>
                         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                           <div>
-                            <div className="text-gray-400">匹配度</div>
-                            <div className={`mt-1 font-semibold ${resume.matchRate > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
-                              {resume.matchRate > 0 ? `${resume.matchRate}%` : '草稿'}
+                            <div className="text-gray-400">
+                              {resume.matchRate > 0 ? 'JD 匹配度' : typeof resume.evaluationScore === 'number' ? '简历评分' : '状态'}
+                            </div>
+                            <div className={`mt-1 font-semibold ${(resume.matchRate > 0 || typeof resume.evaluationScore === 'number') ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
+                              {resume.matchRate > 0
+                                ? `${resume.matchRate}%${typeof resume.evaluationScore === 'number' ? ` · ${resume.evaluationScore}分` : ''}`
+                                : typeof resume.evaluationScore === 'number'
+                                  ? `${resume.evaluationScore}分`
+                                  : '草稿'}
                             </div>
                           </div>
                           <div>

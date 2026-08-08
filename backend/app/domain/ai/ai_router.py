@@ -1,21 +1,28 @@
 import asyncio
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Awaitable, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
-from starlette.status import HTTP_400_BAD_REQUEST
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_502_BAD_GATEWAY
 
 from ...database import get_session
 from ...dependencies import get_current_user
 from ..billing import billing_service
-from ..resume.resume_service import NotFoundError, persist_resume_boss_greeting
+from ..resume.resume_service import (
+    ConcurrencyConflictError,
+    NotFoundError,
+    persist_resume_boss_greeting,
+)
 from .ai_service import (
     analyze_jd,
     analyze_jd_with_image_thoughts,
     analyze_jd_with_thoughts,
     analyze_jd_with_image,
+    analyze_resume_evaluation,
+    analyze_resume_evaluation_with_thoughts,
     generate_personal_summary,
     generate_personal_summary_with_thoughts,
     generate_boss_greeting,
@@ -30,6 +37,18 @@ from . import jd_attachment_service
 router = APIRouter(prefix="/api", tags=["ai"])
 
 
+async def _resolve_jd_analysis_response(
+    operation: Awaitable[Dict[str, Any]],
+) -> Dict[str, Any]:
+    try:
+        return await operation
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="AI analysis returned an invalid response. Please retry.",
+        ) from exc
+
+
 
 
 def _ndjson_line(payload: Dict[str, Any]) -> str:
@@ -38,12 +57,30 @@ def _ndjson_line(payload: Dict[str, Any]) -> str:
     return _json.dumps(payload, ensure_ascii=False) + "\n"
 
 
+def _stream_error_event(exc: Exception) -> Dict[str, Any]:
+    if isinstance(exc, HTTPException):
+        message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        return {
+            "type": "error",
+            "message": message,
+            "statusCode": exc.status_code,
+            "retryable": exc.status_code == 504,
+        }
+    return {"type": "error", "message": str(exc)}
+
+
 class AnalyzeJDRequest(BaseModel):
     text: str
     resume_text: Optional[str] = None
     prev_result: Optional[Dict[str, Any]] = None
     experience_text: Optional[str] = None
     prev_experience_text: Optional[str] = None
+
+
+class ResumeEvaluationRequest(BaseModel):
+    text: str = ""
+    resume_text: str
+    jd_match_percentage: Optional[int] = Field(default=None, ge=0, le=100)
 
 
 class PolishTextRequest(BaseModel):
@@ -74,6 +111,7 @@ class GenerateBossGreetingRequest(BaseModel):
     resume_text: Optional[str] = None
     resume_id: Optional[str] = None
     signature: Optional[str] = None
+    expected_updated_at: Optional[datetime] = None
 
 
 class GeneratePersonalSummaryRequest(BaseModel):
@@ -100,12 +138,14 @@ async def analyze_jd_endpoint(
         metadata={"route": "/api/analyze-jd"},
     ):
         await billing_service.ensure_current_quota()
-        return await analyze_jd(
-            payload.text,
-            payload.resume_text,
-            payload.prev_result,
-            payload.experience_text,
-            payload.prev_experience_text,
+        return await _resolve_jd_analysis_response(
+            analyze_jd(
+                payload.text,
+                payload.resume_text,
+                payload.prev_result,
+                payload.experience_text,
+                payload.prev_experience_text,
+            )
         )
 
 
@@ -142,7 +182,7 @@ async def analyze_jd_stream_endpoint(
                         thought_callback=emit,
                     )
                 await emit({"type": "progress", "node": "merge_result", "title": "合并分析结果"})
-                await emit({"type": "progress", "node": "apply_score", "title": "生成匹配分与建议"})
+                await emit({"type": "progress", "node": "apply_score", "title": "生成 JD 匹配分与建议"})
                 await emit({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
                 await emit({"type": "final", "result": result})
             except Exception as exc:
@@ -151,6 +191,83 @@ async def analyze_jd_stream_endpoint(
                 await queue.put(None)
 
         producer = asyncio.create_task(run_analysis())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield _ndjson_line(event)
+        finally:
+            if not producer.done():
+                producer.cancel()
+            try:
+                await producer
+            except asyncio.CancelledError:
+                pass
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+@router.post("/resume-evaluation", response_model=Dict[str, Any])
+async def resume_evaluation_endpoint(
+    payload: ResumeEvaluationRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    async with billing_service.ai_billing_context(
+        session,
+        current_user.id,
+        entrypoint="resume_evaluation",
+        metadata={"route": "/api/resume-evaluation"},
+    ):
+        await billing_service.ensure_current_quota()
+        return await _resolve_jd_analysis_response(
+            analyze_resume_evaluation(
+                payload.text,
+                payload.resume_text,
+                payload.jd_match_percentage,
+            )
+        )
+
+
+@router.post("/resume-evaluation/stream")
+async def resume_evaluation_stream_endpoint(
+    payload: ResumeEvaluationRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    await billing_service.ensure_quota_available(session, current_user.id)
+
+    async def event_stream():
+        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+
+        async def emit(event: Dict[str, Any]) -> None:
+            await queue.put(event)
+
+        async def run_evaluation() -> None:
+            try:
+                async with billing_service.ai_billing_context(
+                    session,
+                    current_user.id,
+                    entrypoint="resume_evaluation",
+                    metadata={"route": "/api/resume-evaluation/stream"},
+                ):
+                    await emit({"type": "progress", "node": "prepare_context", "title": "准备六维评估上下文"})
+                    await emit({"type": "progress", "node": "request_ai", "title": "生成深度六维报告"})
+                    result = await analyze_resume_evaluation_with_thoughts(
+                        payload.text,
+                        payload.resume_text,
+                        payload.jd_match_percentage,
+                        thought_callback=emit,
+                    )
+                await emit({"type": "progress", "node": "validate_report", "title": "校验六维报告"})
+                await emit({"type": "final", "result": result})
+            except Exception as exc:
+                await emit(_stream_error_event(exc))
+            finally:
+                await queue.put(None)
+
+        producer = asyncio.create_task(run_evaluation())
         try:
             while True:
                 event = await queue.get()
@@ -244,7 +361,7 @@ async def analyze_jd_attachment_stream_endpoint(
                             result["extracted_jd_text"] = extracted_jd_text
 
                 await emit({"type": "progress", "node": "merge_result", "title": "合并分析结果"})
-                await emit({"type": "progress", "node": "apply_score", "title": "生成匹配分与建议"})
+                await emit({"type": "progress", "node": "apply_score", "title": "生成 JD 匹配分与建议"})
                 await emit({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
                 await emit({"type": "final", "result": result})
             except ValueError as exc:
@@ -410,15 +527,19 @@ async def generate_boss_greeting_endpoint(
         )
     if payload.resume_id and result.get("greeting"):
         try:
-            await persist_resume_boss_greeting(
+            updated_resume = await persist_resume_boss_greeting(
                 session,
                 current_user.id,
                 payload.resume_id,
                 result["greeting"],
                 payload.signature,
+                payload.expected_updated_at,
             )
+            result["resume_updated_at"] = updated_resume.updated_at.isoformat()
         except NotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ConcurrencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     return result
 
 
@@ -455,16 +576,20 @@ async def generate_boss_greeting_stream_endpoint(
                         thought_callback=emit,
                     )
                 if payload.resume_id and result.get("greeting"):
-                    await persist_resume_boss_greeting(
+                    updated_resume = await persist_resume_boss_greeting(
                         session,
                         current_user.id,
                         payload.resume_id,
                         result["greeting"],
                         payload.signature,
+                        payload.expected_updated_at,
                     )
+                    result["resume_updated_at"] = updated_resume.updated_at.isoformat()
                 await emit({"type": "progress", "node": "persist_result", "title": "整理 BOSS 招呼语结果"})
                 await emit({"type": "final", "result": result})
             except NotFoundError as exc:
+                await emit({"type": "error", "message": str(exc)})
+            except ConcurrencyConflictError as exc:
                 await emit({"type": "error", "message": str(exc)})
             except Exception as exc:
                 await emit({"type": "error", "message": str(exc)})
@@ -615,14 +740,16 @@ async def analyze_jd_attachment_endpoint(
     ):
         await billing_service.ensure_current_quota()
         if attachment.is_image:
-            result = await analyze_jd_with_image(
-                image_b64=attachment.image_b64,
-                mime_type=attachment.mime_type,
-                resume_text=resume_text,
-                prev_result=prev_result_dict,
-                experience_text=experience_text,
-                prev_experience_text=prev_experience_text,
-                jd_text=supplemental_jd_text or None,
+            result = await _resolve_jd_analysis_response(
+                analyze_jd_with_image(
+                    image_b64=attachment.image_b64,
+                    mime_type=attachment.mime_type,
+                    resume_text=resume_text,
+                    prev_result=prev_result_dict,
+                    experience_text=experience_text,
+                    prev_experience_text=prev_experience_text,
+                    jd_text=supplemental_jd_text or None,
+                )
             )
             extracted_jd_text = result.pop("extractedJdText", None)
             if isinstance(extracted_jd_text, str) and extracted_jd_text.strip():
@@ -638,12 +765,14 @@ async def analyze_jd_attachment_endpoint(
                 if extracted_jd_text
                 else supplemental_jd_text
             )
-        result = await analyze_jd(
-            text=combined_jd_text,
-            resume_text=resume_text,
-            prev_result=prev_result_dict,
-            experience_text=experience_text,
-            prev_experience_text=prev_experience_text,
+        result = await _resolve_jd_analysis_response(
+            analyze_jd(
+                text=combined_jd_text,
+                resume_text=resume_text,
+                prev_result=prev_result_dict,
+                experience_text=experience_text,
+                prev_experience_text=prev_experience_text,
+            )
         )
         if extracted_jd_text:
             result["extracted_jd_text"] = extracted_jd_text

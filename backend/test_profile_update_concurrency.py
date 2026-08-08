@@ -88,13 +88,171 @@ class ProfileUpdateConcurrencyTests(unittest.IsolatedAsyncioTestCase):
             "_fetch_profile_for_update",
             AsyncMock(return_value=profile),
         ):
-            with patch.object(profile_service, "utc_now", return_value=next_timestamp):
-                updated = await profile_service.update_profile(session, "user-1", payload)
+            with patch.object(
+                profile_service,
+                "_sync_global_resumes_after_profile_update",
+                AsyncMock(),
+            ):
+                with patch.object(profile_service, "utc_now", return_value=next_timestamp):
+                    updated = await profile_service.update_profile(session, "user-1", payload)
 
         self.assertIs(updated, profile)
         self.assertEqual(profile.updated_at, next_timestamp)
         self.assertFalse(hasattr(profile, "expected_updated_at"))
         session.commit.assert_awaited_once()
+
+    async def test_score_relevant_profile_change_invalidates_global_resume_evaluations(self) -> None:
+        current_timestamp = datetime(2026, 8, 1, 10, 0, tzinfo=timezone.utc)
+        next_timestamp = datetime(2026, 8, 1, 10, 1, tzinfo=timezone.utc)
+        profile = SimpleNamespace(
+            user_id="user-1",
+            full_name="旧姓名",
+            updated_at=current_timestamp,
+        )
+        session = SimpleNamespace(
+            add=Mock(),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        payload = ProfileUpdate(full_name="新姓名", expected_updated_at=current_timestamp)
+
+        with patch.object(
+            profile_service,
+            "_fetch_profile_for_update",
+            AsyncMock(return_value=profile),
+        ):
+            with patch.object(
+                profile_service,
+                "_sync_global_resumes_after_profile_update",
+                AsyncMock(),
+            ) as invalidate:
+                with patch.object(profile_service, "utc_now", return_value=next_timestamp):
+                    await profile_service.update_profile(session, "user-1", payload)
+
+        invalidate.assert_awaited_once_with(
+            session,
+            "user-1",
+            updated_at=next_timestamp,
+            previous_profile={
+                "name": "旧姓名",
+                "email": "",
+                "phone": "",
+                "location": "",
+                "linkedin": "",
+                "summary": "",
+                "avatarDataUrl": "",
+            },
+            invalidate_evaluations=True,
+        )
+        session.commit.assert_awaited_once()
+
+    async def test_unrelated_profile_metadata_does_not_invalidate_resume_evaluations(self) -> None:
+        current_timestamp = datetime(2026, 8, 1, 10, 0, tzinfo=timezone.utc)
+        profile = SimpleNamespace(
+            user_id="user-1",
+            extra_json={},
+            updated_at=current_timestamp,
+        )
+        session = SimpleNamespace(
+            add=Mock(),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        payload = ProfileUpdate(
+            extra_json={"resume_template_presets": {}},
+            expected_updated_at=current_timestamp,
+        )
+
+        with patch.object(
+            profile_service,
+            "_fetch_profile_for_update",
+            AsyncMock(return_value=profile),
+        ):
+            with patch.object(
+                profile_service,
+                "_sync_global_resumes_after_profile_update",
+                AsyncMock(),
+            ) as invalidate:
+                await profile_service.update_profile(session, "user-1", payload)
+
+        invalidate.assert_not_awaited()
+
+    async def test_global_resume_sync_migrates_legacy_snapshots_and_invalidates_scores(self) -> None:
+        updated_at = datetime(2026, 8, 1, 10, 1, tzinfo=timezone.utc)
+        session = SimpleNamespace(execute=AsyncMock())
+        previous_profile = {
+            "name": "旧姓名",
+            "email": "old@example.com",
+            "phone": "",
+            "location": "上海",
+            "linkedin": "",
+            "summary": "旧摘要",
+            "avatarDataUrl": "",
+        }
+
+        await profile_service._sync_global_resumes_after_profile_update(
+            session,
+            "user-1",
+            updated_at=updated_at,
+            previous_profile=previous_profile,
+            invalidate_evaluations=True,
+        )
+
+        self.assertEqual(session.execute.await_count, 2)
+        statement, parameters = session.execute.await_args_list[-1].args
+        sql = str(statement)
+        self.assertIn("UPDATE resumes", sql)
+        self.assertIn("'{jdAnalysis,isOutdated}'", sql)
+        self.assertIn("'{jdAnalysis,evaluationIsOutdated}'", sql)
+        self.assertIn("profileSyncMode", sql)
+        self.assertIn("jsonb_build_object('profileSyncMode', 'global')", sql)
+        self.assertIn("profile_avatar", sql)
+        self.assertEqual(
+            parameters,
+            {
+                "user_id": "user-1",
+                "updated_at": updated_at,
+                "invalidate_evaluations": True,
+                "profile_name": "旧姓名",
+                "profile_email": "old@example.com",
+                "profile_phone": "",
+                "profile_location": "上海",
+                "profile_linkedin": "",
+                "profile_summary": "旧摘要",
+                "profile_avatar": "",
+            },
+        )
+
+    async def test_avatar_only_change_refreshes_global_resume_preview_without_staling_score(self) -> None:
+        current_timestamp = datetime(2026, 8, 1, 10, 0, tzinfo=timezone.utc)
+        profile = SimpleNamespace(
+            user_id="user-1",
+            extra_json={"avatar_data_url": "old-avatar"},
+            updated_at=current_timestamp,
+        )
+        session = SimpleNamespace(add=Mock(), commit=AsyncMock(), refresh=AsyncMock())
+        payload = ProfileUpdate(
+            extra_json={"avatar_data_url": "new-avatar"},
+            expected_updated_at=current_timestamp,
+        )
+
+        with patch.object(
+            profile_service,
+            "_fetch_profile_for_update",
+            AsyncMock(return_value=profile),
+        ):
+            with patch.object(
+                profile_service,
+                "_sync_global_resumes_after_profile_update",
+                AsyncMock(),
+            ) as sync_resumes:
+                await profile_service.update_profile(session, "user-1", payload)
+
+        self.assertEqual(sync_resumes.await_args.kwargs["invalidate_evaluations"], False)
+        self.assertEqual(
+            sync_resumes.await_args.kwargs["previous_profile"]["avatarDataUrl"],
+            "old-avatar",
+        )
 
     async def test_expected_update_selects_the_profile_for_update(self) -> None:
         profile = SimpleNamespace(user_id="user-1")

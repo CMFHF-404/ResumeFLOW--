@@ -66,6 +66,74 @@ JD_CAPABILITY_RESPONSE_RULES = (
     "and keyword-only evidence that needs proof."
 )
 
+RESUME_EVALUATION_RULES = (
+    "Return JSON only with a single top-level key 'resumeEvaluation' for a strict full-resume quality evaluation. "
+    "The input uses this wrapper when available: evaluation_scope='full_resume', target_role, jd_text, "
+    "resume={section_order, profile, personal_summary, experiences, educations, certifications, skills}, "
+    "where every assembled experience includes its work/project category, experience_atoms, "
+    "match_candidates={certifications, skills}, fact_metadata, and optional canonical_jd_match. Evaluate only the "
+    "assembled current resume; experience_atoms and match_candidates are context pools, not evidence that omitted "
+    "content appears in the resume. Legacy snapshots may expose experiences, certifications, "
+    "and skills at the top level. Do not implement experience_atom evaluation. "
+    "Extract evidence before scoring and never invent facts, metrics, responsibility, education, skills, or results. "
+    "Every evidence item must use its own evidenceId (for example E001) and cite a fact_id that exists in the current "
+    "request fact_metadata through factId. FACT_* and LEGACY_FACT_* identifiers are factId values only and must never "
+    "be placed directly in an evidenceIds array. Its sourceText must be "
+    "an exact quote or faithful excerpt of that fact's content, and verificationStatus must exactly match the fact. "
+    "Never create a factId or relabel a fact's verification status. Only verified and user_claimed facts may be "
+    "referenced by a positive subscore; if any positive subscore uses user_claimed evidence, evaluationConfidence must "
+    "not exceed 0.89. unverified and inferred facts may only "
+    "support issues, risks, or missing-information questions and must not appear in evidenceIds for a positive subscore. "
+    "Every subscore greater than zero must include at least one evidenceId, and each referenced evidence item must list "
+    "that subscore's parent dimension in supportedDimensions. "
+    "Legacy inputs receive server-generated user_claimed fact_metadata derived only from their current resume fields; "
+    "use those generated IDs exactly and do not infer additional facts. Use section_order and experience category "
+    "when scoring information order and hierarchy. Do not assess visual "
+    "design, fonts, spacing, PDF compatibility, or actual ATS parsing from text-only input. "
+    "Use exactly six dimensions in this order, each with the exact fixed subscores and maxima: "
+    "逻辑清晰[信息顺序25,因果关系30,信息层级20,一致性与聚焦25]; "
+    "STAR应用[Situation情境15,Task任务15,Action行动35,Result结果35]; "
+    "内容可读[扫读结构25,句子清晰度25,信息密度20,语法与自然度15,重复与冗余15]; "
+    "内容完整[基础信息10,教育经历15,核心经历模块25,经历必要字段20,技能与资格15,求职方向10,补充信息5]; "
+    "专业表达[行动动词20,岗位术语20,表达精确度20,贡献与责任边界20,客观与可信20]; "
+    "成果量化[结果指标30,基线与前后对比25,覆盖规模15,时间窗口10,过程数量10,数据可信度10]. "
+    "A qualitative delivery or outcome still counts as STAR Result; absence of numbers belongs only to 成果量化. "
+    "Only process or scale numbers without numeric business results caps 成果量化 at 74; qualitative results with no "
+    "valid numbers cap it at 49. Pure dates, date ranges, and values from date fields are not valid numbers for this "
+    "dimension. Profile/contact values, credential IDs/URLs, and GPA are also not quantification evidence. A change "
+    "verb or business word only qualifies a number as a business result when it is locally and grammatically bound to "
+    "that number; for example, '提升用户体验并完成3次迭代' contains only a process count. A problem has exactly one "
+    "primaryDimension; relatedDimensions never cause another deduction. "
+    "Use integer scores. Each dimension score is the sum of its subscores. The six dimensions are equally weighted: "
+    "overallScore=round_half_up(dimensionSum/6), with no subjective calibration. Levels are 93-100卓越, "
+    "85-92优秀, 75-84良好, 60-74合格, 40-59较弱, 0-39不足. "
+    "JD matching is separate and never changes the six-dimensional score. resumeEvaluation.jdMatch is an integer "
+    "0-100 when a JD source exists and null when no JD source exists. If canonical_jd_match is provided, copy that "
+    "integer exactly into resumeEvaluation.jdMatch instead of rescoring it. "
+    "When no JD source exists (an empty text request), do not infer a job title, company, job keywords, requirements, "
+    "or capability gaps. "
+    "resumeEvaluation must use camelCase and contain evaluationVersion='resume_flow_v1', "
+    "evaluationScope='full_resume', targetRole, overallScore, overallLevel, evaluationConfidence(0-1), "
+    "scoreCalculation={dimensionSum,rawAverage,roundingRule:'round_half_up',finalScore}, dimensions, evidence, issues, "
+    "missingInformation, riskFlags, topPriorities, and jdMatch(number|null). Each dimension contains dimension, score, "
+    "level, subscores[{name,maxScore,score,evidenceIds}], strengths[string], issues[global issueId string], and "
+    "improvementQuestions[string]. Evidence contains evidenceId, exact sourceText, location, factId, "
+    "verificationStatus, supportedDimensions. Global issues contain issueId, description, primaryDimension, "
+    "relatedDimensions, evidenceIds, severity(high/medium/low), pointsNotEarned. All referenced IDs must exist and be "
+    "unique. Every global issue must be referenced by exactly one dimension, and that dimension must equal its "
+    "primaryDimension. For each dimension, the sum of its referenced issues' pointsNotEarned must equal exactly "
+    "100 minus that dimension's subscore-derived score. Never describe the same semantic issue under different "
+    "primaryDimensions, including paraphrases with reordered or synonymous missing/result/metric wording. Preserve the "
+    "rubric boundary between a missing STAR result and an existing result that lacks numbers. Also keep distinct issue "
+    "categories for narrative order, readability, module completeness, professional wording, and quantification so two "
+    "different problems citing the same evidence are not merged. Same-primary duplicates must be consolidated and "
+    "counted once. missingInformation entries "
+    "contain field, reason, question, potentialDimension, potentialScoreGain. "
+    "riskFlags contain type(unverified_fact/inferred_fact/exaggerated_claim/conflicting_date/duplicated_content), "
+    "description, evidenceIds. topPriorities contain priority, issueId, action, expectedScoreGain. Improvement actions "
+    "must ask for specific truthful information and must not fabricate replacement facts. "
+)
+
 JD_ANALYSIS_RESPONSE_RULES = (
     "Return JSON only with keys: "
     "'matchPercentage' (0-100), 'missingKeywords' (array of 3-6 short strings), "
@@ -152,10 +220,9 @@ JD_ANALYSIS_IMAGE_RESPONSE_RULES = (
 
 JD_ANALYSIS = (
     "You are an expert ATS analyzer. Given a Job Description and Resume content, "
-    "the resume content is a JSON object with keys: "
-    "'experiences' (array of items with id, title, org, start_date, end_date, star), "
-    "'certifications' (array of items with id, name, issuer, issue_date), "
-    "and 'skills' (array of items with id, name, category). "
+    "the resume may be a full_resume wrapper with the assembled resume under 'resume' and independent match pools "
+    "under 'experience_atoms' and 'match_candidates'. Legacy resume content exposes experiences, certifications, "
+    "and skills at the top level. Return only the lightweight JD-fit analysis; do not return a resumeEvaluation. "
     + JD_ANALYSIS_SHARED_RUBRIC
     + " "
     + JD_CAPABILITY_ANALYSIS_RULES
@@ -566,10 +633,9 @@ JD_ANALYSIS_IMAGE = (
     "First, read the job description directly from the image; treat the image as the authoritative "
     "source of the JD text. If additional text is provided alongside the image, use it as "
     "supplementary context only. "
-    "The resume content JSON has keys: "
-    "'experiences' (array of items with id, title, org, start_date, end_date, star), "
-    "'certifications' (array of items with id, name, issuer, issue_date), "
-    "and 'skills' (array of items with id, name, category). "
+    "Resume content may be a full_resume wrapper with the assembled resume under 'resume' and independent match pools "
+    "under 'experience_atoms' and 'match_candidates'. Legacy resume content may expose experiences, certifications, "
+    "and skills at the top level. Return only the lightweight JD-fit analysis; do not return a resumeEvaluation. "
     + JD_ANALYSIS_SHARED_RUBRIC
     + " "
     + JD_CAPABILITY_ANALYSIS_RULES
@@ -578,4 +644,24 @@ JD_ANALYSIS_IMAGE = (
     + " "
     "If Previous Result is provided, use it as reference but judge changes based on actual fit; "
     "always output absolute scores and do not apply artificial limits."
+)
+
+
+RESUME_EVALUATION = (
+    "You are a strict evidence-grounded resume evaluator. Evaluate the assembled current resume independently from "
+    "the lightweight JD analysis. "
+    + RESUME_EVALUATION_RULES
+)
+
+
+RESUME_EVALUATION_ISSUE_REPAIR = (
+    "You repair only the issue taxonomy of an existing six-dimension resume evaluation. "
+    "Return JSON with exactly one top-level issueRepair object containing: issues (the complete corrected issue array), "
+    "dimensionIssueIds (an object with all six fixed Chinese dimension names, each mapped to its complete issue ID array), "
+    "and topPriorities (the complete corrected priority array). Merge semantically duplicate issues that were assigned "
+    "to different primary dimensions. If separate deductions are genuinely needed, rewrite them as distinct, dimension-specific "
+    "issues grounded only in the supplied score/subscore gaps and existing issue text. Never invent resume facts, evidence, "
+    "metrics, or achievements. Preserve only evidence IDs listed in validEvidenceIds. Every issue must have exactly one "
+    "primaryDimension and must appear exactly once in that dimension's issue ID array. Keep pointsNotEarned as non-negative "
+    "integer weights; the server will deterministically reconcile them to each dimension gap. Return no Markdown or explanation."
 )

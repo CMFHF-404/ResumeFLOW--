@@ -8,7 +8,9 @@ export type MatchTrend = "up" | "same" | "down";
 
 export type JDAnalysisContext = {
   jdInputSignature: string;
+  targetRoleSignature?: string;
   experienceSignature: string;
+  evaluationSignature?: string;
   itemSignatures: JDAnalysisItemSignatures;
   experienceText?: string;
 };

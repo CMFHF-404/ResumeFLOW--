@@ -11,7 +11,7 @@ import { hasDiff } from "./jdAnalysisDiffUtils";
 
 const DEFAULT_SKILL_MATCH_SCORE = 0;
 
-export type MatchUpdateMode = "full" | "partial";
+export type MatchUpdateMode = "full" | "partial" | "quality";
 
 export type MatchApplyOptions = {
   mode?: MatchUpdateMode;
@@ -166,6 +166,9 @@ export const mergeAnalysisResult = (
     jobTitle: next.jobTitle ?? prev.jobTitle,
     company: next.company ?? prev.company,
     summary: next.summary,
+    // JD refreshes intentionally do not erase a separately generated
+    // six-dimension report when the lightweight endpoint omits it.
+    resumeEvaluation: next.resumeEvaluation ?? prev.resumeEvaluation,
     extractedJdText: next.extractedJdText ?? prev.extractedJdText,
     jdInterpretation: next.jdInterpretation ?? prev.jdInterpretation,
     capabilityAnalysis: next.capabilityAnalysis ?? prev.capabilityAnalysis,

@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlmodel.ext.asyncio.session import AsyncSession
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 
 from ...constants import DEFAULT_LIMIT, MAX_LIMIT
 from ...database import get_session
@@ -16,6 +16,7 @@ from .resume_schema import (
     ResumeUpdate,
 )
 from .resume_service import (
+    ConcurrencyConflictError,
     NotFoundError,
     create_resume,
     delete_resume,
@@ -71,6 +72,8 @@ async def patch_resume_item(
 ):
     try:
         resume = await update_resume(session, current_user.id, resume_id, payload)
+    except ConcurrencyConflictError as exc:
+        raise HTTPException(status_code=HTTP_409_CONFLICT, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _resume_to_read(resume)
@@ -133,6 +136,8 @@ async def patch_resume_assembly(
         resume, items = await get_resume_detail(session, current_user.id, resume_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ConcurrencyConflictError as exc:
+        raise HTTPException(status_code=HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ResumeDetail(resume=_resume_to_read(resume), experiences=items)

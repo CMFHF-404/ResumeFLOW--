@@ -9,6 +9,12 @@ export interface Resume {
   id: string;
   name: string;
   targetRole: string;
+  /** Only current-version resume evaluations can populate this dashboard score. */
+  evaluationScore?: number | null;
+  /** Fingerprint of the backend JD-analysis snapshot used to reconcile pending local scores. */
+  evaluationBaseFingerprint?: string | null;
+  /** Canonical target-role signature used to reject scores for a different role. */
+  evaluationTargetRoleSignature?: string;
   matchRate: number;
   createdAt: string;
   createdAtValue?: string;

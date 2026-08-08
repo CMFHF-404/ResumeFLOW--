@@ -42,6 +42,30 @@ LANE_DEFAULT = "default"
 LANE_TOOL_CALL = "tool_call"
 LANE_THINKING = "thinking"
 LANE_RESUME_PARSE = "resume_parse"
+_GEMINI_THINKING_LEVELS = {"minimal", "low", "medium", "high"}
+_PROVIDER_ACCESS_UNAVAILABLE_CODES = {
+    "accessdenied",
+    "accountarrearage",
+    "accountunavailable",
+    "arrearage",
+    "insufficientbalance",
+    "insufficientquota",
+    "invalidaccesskeyid",
+    "invalidapikey",
+    "modelaccessdenied",
+    "permissiondenied",
+    "provideraccessunavailable",
+    "quotaexhausted",
+}
+_PROVIDER_ACCESS_UNAVAILABLE_MESSAGE_MARKERS = (
+    "account is in arrears",
+    "insufficient balance",
+    "insufficient quota",
+    "no access to this model",
+    "does not have access to this model",
+    "provider access unavailable",
+    "provider is unavailable for this account",
+)
 THOUGHT_TITLE_PATTERN = re.compile(r"\*\*([^*\n]+?)\*\*")
 THOUGHT_NOISE_PREFIX_PATTERN = re.compile(
     r"^(?:思考中|思考过程|思考摘要|摘要|thinking process|reasoning summary|reasoning|summary)\s*[:：-]\s*",
@@ -174,6 +198,70 @@ def _resolve_ai_route(
     if _has_gemini_provider():
         return _resolve_gemini_route(model=model)
     return _resolve_openai_compatible_route(lane=normalized_lane, model=model)
+
+
+def _route_identity(route: AIRoute) -> tuple[str, str, str, Optional[str]]:
+    return (
+        route.provider,
+        route.base_url.rstrip("/"),
+        route.model,
+        route.api_key,
+    )
+
+
+def _resolve_provider_fallback_route(
+    primary_route: AIRoute,
+    *,
+    lane: str,
+) -> Optional[AIRoute]:
+    if lane != LANE_RESUME_PARSE:
+        return None
+    candidate = _resolve_ai_route(lane=LANE_DEFAULT)
+    if not candidate.api_key or not candidate.base_url or not candidate.model:
+        return None
+    if _route_identity(candidate) == _route_identity(primary_route):
+        return None
+    return candidate
+
+
+def _provider_access_unavailable_error(response: httpx.Response) -> bool:
+    if response.status_code not in {400, 401, 403}:
+        return False
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    code_candidates: List[Any] = []
+    message_candidates: List[Any] = []
+    if isinstance(payload, dict):
+        code_candidates.extend(
+            [payload.get("code"), payload.get("error_code"), payload.get("type")]
+        )
+        message_candidates.extend(
+            [payload.get("message"), payload.get("error_message")]
+        )
+        nested_error = payload.get("error")
+        if isinstance(nested_error, dict):
+            code_candidates.extend(
+                [nested_error.get("code"), nested_error.get("type")]
+            )
+            message_candidates.append(nested_error.get("message"))
+    normalized_codes = {
+        re.sub(r"[^a-z0-9]", "", value.casefold())
+        for value in code_candidates
+        if isinstance(value, str) and value.strip()
+    }
+    if normalized_codes & _PROVIDER_ACCESS_UNAVAILABLE_CODES:
+        return True
+    combined_message = " ".join(
+        value.casefold()
+        for value in message_candidates
+        if isinstance(value, str) and value.strip()
+    )
+    return any(
+        marker in combined_message
+        for marker in _PROVIDER_ACCESS_UNAVAILABLE_MESSAGE_MARKERS
+    )
 
 
 def _should_use_qwen_thinking() -> bool:
@@ -1030,6 +1118,7 @@ def _build_gemini_generate_body(
     messages: List[Dict[str, Any]],
     tools: Optional[List[Dict[str, Any]]] = None,
     model: Optional[str] = None,
+    gemini_thinking_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     system_parts: List[Dict[str, Any]] = []
     contents: List[Dict[str, Any]] = []
@@ -1065,7 +1154,25 @@ def _build_gemini_generate_body(
     if not contents:
         contents.append({"role": "user", "parts": [{"text": ""}]})
 
-    generation_config: Dict[str, Any] = {"temperature": 0.3}
+    normalized_thinking_level: Optional[str] = None
+    if gemini_thinking_level is not None:
+        normalized_thinking_level = str(gemini_thinking_level).strip().lower()
+        if normalized_thinking_level not in _GEMINI_THINKING_LEVELS:
+            raise ValueError(
+                "gemini_thinking_level must be one of: minimal, low, medium, high"
+            )
+    model_name = str(model or "").rsplit("/", 1)[-1].lower()
+    scoped_gemini3_thinking = (
+        normalized_thinking_level is not None
+        and model_name.startswith("gemini-3")
+    )
+    generation_config: Dict[str, Any] = {}
+    if scoped_gemini3_thinking:
+        generation_config["thinkingConfig"] = {
+            "thinkingLevel": normalized_thinking_level,
+        }
+    else:
+        generation_config["temperature"] = 0.3
     if _supports_gemini_response_mime_type(model):
         generation_config["responseMimeType"] = "application/json"
     body: Dict[str, Any] = {
@@ -1154,6 +1261,7 @@ async def _call_gemini_generate_content(
     json_mode: bool,
     usage_callback: UsageCallback,
     request_label: str,
+    gemini_thinking_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not route.api_key:
         raise HTTPException(
@@ -1161,7 +1269,11 @@ async def _call_gemini_generate_content(
             detail="GEMINI_API_KEY is not configured",
         )
     url = _build_gemini_generate_url(route)
-    payload = _build_gemini_generate_body(messages, model=route.model)
+    payload = _build_gemini_generate_body(
+        messages,
+        model=route.model,
+        gemini_thinking_level=gemini_thinking_level,
+    )
     try:
         async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
             response = await client.post(
@@ -1876,6 +1988,7 @@ async def _call_llm(
     usage_callback: UsageCallback = None,
     request_label: str = "chat_completion",
     lane: str = LANE_DEFAULT,
+    gemini_thinking_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     route = _resolve_ai_route(lane=lane, model=model)
     if _is_gemini_route(route):
@@ -1885,6 +1998,7 @@ async def _call_llm(
             json_mode=json_mode,
             usage_callback=usage_callback,
             request_label=request_label,
+            gemini_thinking_level=gemini_thinking_level,
         )
 
     resolved_model = route.model
@@ -1899,7 +2013,7 @@ async def _call_llm(
             response = await client.post(url, headers=_build_headers(route.api_key), json=payload)
             try:
                 response.raise_for_status()
-            except httpx.HTTPStatusError:
+            except httpx.HTTPStatusError as exc:
                 _log_http_error(response)
                 await _emit_failed_usage(
                     usage_callback,
@@ -1911,6 +2025,29 @@ async def _call_llm(
                         "http_status": response.status_code,
                     },
                 )
+                if lane == LANE_RESUME_PARSE and _provider_access_unavailable_error(response):
+                    fallback_route = _resolve_provider_fallback_route(route, lane=lane)
+                    if fallback_route is None:
+                        raise HTTPException(
+                            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                            detail=(
+                                "The configured resume-analysis AI provider account or access is unavailable, "
+                                "and no fallback AI route is configured."
+                            ),
+                        ) from exc
+                    logger.warning(
+                        "Resume-parse provider unavailable; retrying configured fallback provider: primary=%s fallback=%s",
+                        route.provider,
+                        fallback_route.provider,
+                    )
+                    return await _call_llm(
+                        messages,
+                        json_mode=json_mode,
+                        usage_callback=usage_callback,
+                        request_label=request_label,
+                        lane=LANE_DEFAULT,
+                        gemini_thinking_level=gemini_thinking_level,
+                    )
                 raise
             data = response.json()
             _log_http_success(response, payload["model"], len(messages))

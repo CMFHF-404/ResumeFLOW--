@@ -14,8 +14,10 @@ import type {
   JDAnalysisContext,
   JDAnalysisItemSignatures,
 } from "../types/analysis";
-import { buildAnalyzePayload, canonicalStringify, splitAttachmentDerivedJdText } from "./jdAnalysisSignatureUtils";
+import type { ResumeEvaluationSnapshot } from "../utils/resumeEvaluationSnapshot";
+import { canonicalStringify, splitAttachmentDerivedJdText } from "./jdAnalysisSignatureUtils";
 import { buildPrevResultPayload, type MatchUpdateMode } from "./jdAnalysisMatchUtils";
+import { buildResumeAISnapshot } from "../utils/resumeHelpers";
 
 export type JDAnalyzeProgressHandler = (node: JDAnalyzeProgressNode) => void;
 export type JDAnalyzeStreamHandler = (event: AnalyzeStreamEvent) => void;
@@ -29,8 +31,11 @@ export type JDAnalyzeRequestSnapshot = {
   attachmentExtractedText: string | null;
   itemSignatures: JDAnalysisItemSignatures;
   experienceSignature: string;
+  evaluationSignature?: string;
+  targetRoleSignature?: string;
   jdInputSignature: string;
   experienceText: string;
+  analysisPayload?: ResumeEvaluationSnapshot;
   inputMode: "text" | "attachment";
   attachmentName?: string;
 };
@@ -92,7 +97,9 @@ export const runJDAnalysisRequest = async ({
   service,
   signal,
 }: RunJDAnalysisRequestParams): Promise<RunJDAnalysisRequestResult> => {
-  const payload = buildAnalyzePayload(
+  // The normal JD route remains intentionally lightweight. Full-resume
+  // snapshots belong solely to the explicit six-dimension report request.
+  const payload = buildResumeAISnapshot(
     snapshot.experiences,
     snapshot.certifications,
     snapshot.skillGroups
@@ -101,9 +108,12 @@ export const runJDAnalysisRequest = async ({
   const prevExperienceText =
     mode === "partial" ? analysisContext?.experienceText : undefined;
   const prevResultPayload =
-    mode === "partial" ? buildPrevResultPayload(analysisResult) : undefined;
+    mode === "partial" || mode === "quality"
+      ? buildPrevResultPayload(analysisResult)
+      : undefined;
   const shouldUsePrev =
-    mode === "partial" && Boolean(prevExperienceText) && Boolean(prevResultPayload);
+    Boolean(prevResultPayload)
+    && (mode === "quality" || Boolean(prevExperienceText));
   const currentFile = snapshot.jdFile;
   const { supplementalText: attachmentSupplementalJdText } =
     splitAttachmentDerivedJdText(

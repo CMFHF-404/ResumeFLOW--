@@ -33,6 +33,10 @@ test('Dashboard derives visible resumes for search, filters, sort, and rendering
   assert.match(dashboard, /timeFilter/);
   assert.match(dashboard, /matchFilter/);
   assert.match(dashboard, /visibleResumes\.map/);
+  assert.match(dashboard, /resume\.matchRate > 0 \|\| typeof resume\.evaluationScore === 'number'/);
+  assert.match(dashboard, /JD 匹配度: \$\{resume\.matchRate\}%/);
+  assert.match(dashboard, /简历评分: \$\{resume\.evaluationScore\}分/);
+  assert.match(dashboard, /typeof resume\.evaluationScore === 'number' \? '简历评分' : '状态'/);
   assert.doesNotMatch(dashboard, /resumes\.map\(resume => \(/);
 });
 

@@ -35,15 +35,64 @@ class GeneratedResumeConfigOps:
 DEFAULT_GENERATED_RESUME_CONFIG_OPS = GeneratedResumeConfigOps()
 
 
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _build_agent_jd_input_signature(jd_text: str) -> str:
+    return _canonical_json(
+        {
+            "inputMode": "text",
+            "textSignature": jd_text.strip(),
+            "attachmentSignature": None,
+        }
+    )
+
+
+def _build_agent_evaluation_signature(jd_text: str, resume_text: str) -> str:
+    try:
+        snapshot = json.loads(resume_text)
+    except (TypeError, ValueError):
+        snapshot = resume_text
+    return _canonical_json(
+        {
+            "jdInputSignature": _build_agent_jd_input_signature(jd_text),
+            "resume": snapshot,
+        }
+    )
+
+
 def _build_agent_jd_analysis_config(
     payload: AgentJobGenerateRequest,
     analysis: AgentJobAnalysisResponse,
     *,
+    analysis_result: Optional[Dict[str, Any]] = None,
+    include_resume_evaluation: bool = True,
+    evaluation_signature: Optional[str] = None,
+    analysis_is_final_snapshot: bool = False,
     ops: GeneratedResumeConfigOps = DEFAULT_GENERATED_RESUME_CONFIG_OPS,
 ) -> Dict[str, Any]:
     jd_text = payload.jd_text.strip()
+    raw_resume_evaluation = (
+        analysis_result.get("resumeEvaluation")
+        if isinstance(analysis_result, dict)
+        else None
+    )
+    resume_evaluation = (
+        deepcopy(raw_resume_evaluation)
+        if isinstance(raw_resume_evaluation, dict)
+        else None
+    )
     result = {
         "matchPercentage": analysis.match_percentage,
+        "jdMatchPercentage": analysis.jd_match_percentage,
+        "resumeQualityPercentage": analysis.resume_quality_percentage,
+        "scoreVersion": analysis.score_version,
         "jobKeywords": [],
         "missingKeywords": analysis.missing_keywords,
         "jobTitle": payload.job_title,
@@ -51,10 +100,40 @@ def _build_agent_jd_analysis_config(
         "summary": analysis.evaluation,
         "extractedJdText": jd_text,
     }
+    if include_resume_evaluation and resume_evaluation is not None:
+        result["resumeEvaluation"] = resume_evaluation
+    has_current_evaluation = include_resume_evaluation and resume_evaluation is not None
+    has_final_snapshot_attestation = (
+        has_current_evaluation and bool(evaluation_signature)
+    )
+    has_final_snapshot_analysis = (
+        analysis_is_final_snapshot or has_final_snapshot_attestation
+    )
+    resolved_evaluation_signature = (
+        evaluation_signature if has_final_snapshot_attestation else None
+    )
     return {
         "jdText": jd_text,
-        "jdInputSignature": ops.hash_agent_text(jd_text),
+        "jdInputSignature": _build_agent_jd_input_signature(jd_text),
+        "targetRoleSignature": _canonical_json(
+            {"targetRole": payload.job_title.strip()}
+        ),
         "experienceSignature": ops.hash_agent_text(json.dumps(result, ensure_ascii=False, sort_keys=True)),
+        **(
+            {"analysisSignatureVersion": "agent_final_snapshot_v1"}
+            if has_final_snapshot_analysis
+            else {}
+        ),
+        **(
+            {"evaluationSignature": resolved_evaluation_signature}
+            if resolved_evaluation_signature
+            else {}
+        ),
+        **(
+            {"evaluationSignatureVersion": "agent_final_snapshot_v1"}
+            if has_final_snapshot_attestation
+            else {}
+        ),
         "result": result,
         "itemSignatures": {
             "experiences": {},
@@ -64,6 +143,8 @@ def _build_agent_jd_analysis_config(
         "experienceText": "",
         "inputMode": "text",
         "updatedAt": ops.now_aware().isoformat(),
+        "isOutdated": not has_final_snapshot_analysis,
+        "evaluationIsOutdated": not has_final_snapshot_attestation,
     }
 
 
@@ -73,10 +154,11 @@ def _build_agent_generated_resume_config(
     payload: AgentJobGenerateRequest,
     analysis: AgentJobAnalysisResponse,
     *,
-    build_jd_analysis_config: Optional[Callable[
-        [AgentJobGenerateRequest, AgentJobAnalysisResponse],
-        Dict[str, Any],
-    ]] = None,
+    analysis_result: Optional[Dict[str, Any]] = None,
+    include_resume_evaluation: bool = True,
+    evaluation_signature: Optional[str] = None,
+    analysis_is_final_snapshot: bool = False,
+    build_jd_analysis_config: Optional[Callable[..., Dict[str, Any]]] = None,
     ops: GeneratedResumeConfigOps = DEFAULT_GENERATED_RESUME_CONFIG_OPS,
 ) -> Dict[str, Any]:
     source = deepcopy(source_config) if isinstance(source_config, dict) else {}
@@ -117,9 +199,28 @@ def _build_agent_generated_resume_config(
             "skillTagSeparator": snapshot.skillTagSeparator,
         },
         "jdAnalysis": (
-            build_jd_analysis_config(payload, analysis)
+            build_jd_analysis_config(
+                payload,
+                analysis,
+                analysis_result=analysis_result,
+                include_resume_evaluation=include_resume_evaluation,
+                evaluation_signature=evaluation_signature,
+                **(
+                    {"analysis_is_final_snapshot": True}
+                    if analysis_is_final_snapshot
+                    else {}
+                ),
+            )
             if build_jd_analysis_config is not None
-            else _build_agent_jd_analysis_config(payload, analysis, ops=ops)
+            else _build_agent_jd_analysis_config(
+                payload,
+                analysis,
+                analysis_result=analysis_result,
+                include_resume_evaluation=include_resume_evaluation,
+                evaluation_signature=evaluation_signature,
+                analysis_is_final_snapshot=analysis_is_final_snapshot,
+                ops=ops,
+            )
         ),
         "agentJob": {
             "jobTitle": payload.job_title,
@@ -127,6 +228,9 @@ def _build_agent_generated_resume_config(
             "jobUrl": str(payload.job_url),
             "source": payload.source,
             "matchPercentage": analysis.match_percentage,
+            "jdMatchPercentage": analysis.jd_match_percentage,
+            "resumeQualityPercentage": analysis.resume_quality_percentage,
+            "scoreVersion": analysis.score_version,
             "recommendation": analysis.recommendation,
             "suggestedFolderName": analysis.suggested_folder_name,
             "strengths": analysis.strengths,
