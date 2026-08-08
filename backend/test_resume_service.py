@@ -68,7 +68,7 @@ class ResumeExperienceDateTests(unittest.TestCase):
 
 
 class ResumeTargetRoleEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase):
-    async def test_target_role_update_marks_mismatched_analysis_outdated(self) -> None:
+    async def test_target_role_update_only_marks_evaluation_outdated(self) -> None:
         resume = SimpleNamespace(
             target_role="产品经理",
             config={
@@ -93,7 +93,7 @@ class ResumeTargetRoleEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase)
             )
 
         self.assertEqual(resume.target_role, "增长产品经理")
-        self.assertTrue(resume.config["jdAnalysis"]["isOutdated"])
+        self.assertFalse(resume.config["jdAnalysis"]["isOutdated"])
         self.assertTrue(resume.config["jdAnalysis"]["evaluationIsOutdated"])
 
     async def test_target_role_update_does_not_trust_simultaneous_client_signature(self) -> None:
@@ -123,7 +123,7 @@ class ResumeTargetRoleEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase)
                 ),
             )
 
-        self.assertTrue(resume.config["jdAnalysis"]["isOutdated"])
+        self.assertFalse(resume.config["jdAnalysis"]["isOutdated"])
         self.assertTrue(resume.config["jdAnalysis"]["evaluationIsOutdated"])
 
     async def test_target_role_update_rejects_relabelled_old_evaluation(self) -> None:
@@ -158,7 +158,7 @@ class ResumeTargetRoleEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase)
                 ),
             )
 
-        self.assertTrue(resume.config["jdAnalysis"]["isOutdated"])
+        self.assertFalse(resume.config["jdAnalysis"]["isOutdated"])
         self.assertTrue(resume.config["jdAnalysis"]["evaluationIsOutdated"])
 
 
@@ -170,7 +170,7 @@ class ResumeContentEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase):
             refresh=AsyncMock(),
         )
 
-    async def test_evaluation_relevant_config_change_marks_analysis_outdated(self) -> None:
+    async def test_evaluation_relevant_config_change_only_marks_evaluation_outdated(self) -> None:
         resume = SimpleNamespace(
             target_role="产品经理",
             config={
@@ -192,7 +192,7 @@ class ResumeContentEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase):
                 _guarded_resume_update(resume, config=next_config),
             )
 
-        self.assertTrue(resume.config["jdAnalysis"]["isOutdated"])
+        self.assertFalse(resume.config["jdAnalysis"]["isOutdated"])
         self.assertTrue(resume.config["jdAnalysis"]["evaluationIsOutdated"])
 
     async def test_config_change_does_not_trust_simultaneous_client_signature(self) -> None:
@@ -218,7 +218,7 @@ class ResumeContentEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase):
                 _guarded_resume_update(resume, config=next_config),
             )
 
-        self.assertTrue(resume.config["jdAnalysis"]["isOutdated"])
+        self.assertFalse(resume.config["jdAnalysis"]["isOutdated"])
         self.assertTrue(resume.config["jdAnalysis"]["evaluationIsOutdated"])
 
     async def test_evaluation_only_update_preserves_current_evaluation(self) -> None:

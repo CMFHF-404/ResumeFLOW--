@@ -58,11 +58,22 @@ def _invalidate_resume_analysis_for_target_role(
         return config
     expected_signature = _target_role_signature(target_role)
     if analysis.get("targetRoleSignature") != expected_signature:
-        return _mark_resume_analysis_outdated(config)
+        return _mark_resume_evaluation_outdated(config)
 
     if _target_role_signature(previous_target_role) == expected_signature:
         return config
-    return _mark_resume_analysis_outdated(config)
+    return _mark_resume_evaluation_outdated(config)
+
+
+def _mark_resume_evaluation_outdated(config: Any) -> Any:
+    if not isinstance(config, dict):
+        return config
+    analysis = config.get("jdAnalysis")
+    if not isinstance(analysis, dict) or analysis.get("evaluationIsOutdated") is True:
+        return config
+    next_config = deepcopy(config)
+    next_config["jdAnalysis"]["evaluationIsOutdated"] = True
+    return next_config
 
 
 def _mark_resume_analysis_outdated(config: Any) -> Any:
@@ -174,7 +185,7 @@ def _invalidate_resume_analysis_for_config_change(
     ):
         return next_config
 
-    return _mark_resume_analysis_outdated(next_config)
+    return _mark_resume_evaluation_outdated(next_config)
 
 
 OP_REQUIREMENTS = {

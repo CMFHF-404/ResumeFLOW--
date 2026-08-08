@@ -202,7 +202,7 @@ class ProfileUpdateConcurrencyTests(unittest.IsolatedAsyncioTestCase):
         statement, parameters = session.execute.await_args_list[-1].args
         sql = str(statement)
         self.assertIn("UPDATE resumes", sql)
-        self.assertIn("'{jdAnalysis,isOutdated}'", sql)
+        self.assertNotIn("'{jdAnalysis,isOutdated}'", sql)
         self.assertIn("'{jdAnalysis,evaluationIsOutdated}'", sql)
         self.assertIn("profileSyncMode", sql)
         self.assertIn("jsonb_build_object('profileSyncMode', 'global')", sql)

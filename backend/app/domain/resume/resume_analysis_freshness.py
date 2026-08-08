@@ -26,14 +26,13 @@ async def invalidate_user_resume_analyses(
     user_id: str,
     *,
     updated_at: datetime,
+    invalidate_match: bool = True,
 ) -> None:
     """Mark persisted analyses stale when shared resume-bank data changes."""
     await acquire_user_resume_analysis_lock(session, user_id)
-    await session.execute(
-        text(
-            """
-            UPDATE resumes
-            SET config = jsonb_set(
+    if invalidate_match:
+        config_update = """
+                jsonb_set(
                     jsonb_set(
                         COALESCE(config, '{}'::jsonb),
                         '{jdAnalysis,isOutdated}',
@@ -43,20 +42,42 @@ async def invalidate_user_resume_analyses(
                     '{jdAnalysis,evaluationIsOutdated}',
                     'true'::jsonb,
                     true
-                ),
+                )
+        """
+        stale_condition = """
+                COALESCE(
+                    COALESCE(config, '{}'::jsonb) -> 'jdAnalysis' -> 'isOutdated',
+                    'false'::jsonb
+                ) <> 'true'::jsonb
+                OR COALESCE(
+                    COALESCE(config, '{}'::jsonb) -> 'jdAnalysis' -> 'evaluationIsOutdated',
+                    'false'::jsonb
+                ) <> 'true'::jsonb
+        """
+    else:
+        config_update = """
+                jsonb_set(
+                    COALESCE(config, '{}'::jsonb),
+                    '{jdAnalysis,evaluationIsOutdated}',
+                    'true'::jsonb,
+                    true
+                )
+        """
+        stale_condition = """
+                COALESCE(
+                    COALESCE(config, '{}'::jsonb) -> 'jdAnalysis' -> 'evaluationIsOutdated',
+                    'false'::jsonb
+                ) <> 'true'::jsonb
+        """
+    await session.execute(
+        text(
+            f"""
+            UPDATE resumes
+            SET config = {config_update},
                 updated_at = :updated_at
             WHERE user_id = :user_id
-              AND jsonb_typeof(COALESCE(config, '{}'::jsonb) -> 'jdAnalysis') = 'object'
-              AND (
-                    COALESCE(
-                        COALESCE(config, '{}'::jsonb) -> 'jdAnalysis' -> 'isOutdated',
-                        'false'::jsonb
-                    ) <> 'true'::jsonb
-                    OR COALESCE(
-                        COALESCE(config, '{}'::jsonb) -> 'jdAnalysis' -> 'evaluationIsOutdated',
-                        'false'::jsonb
-                    ) <> 'true'::jsonb
-                  )
+              AND jsonb_typeof(COALESCE(config, '{{}}'::jsonb) -> 'jdAnalysis') = 'object'
+              AND ({stale_condition})
             """
         ),
         {

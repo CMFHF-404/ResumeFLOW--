@@ -25,6 +25,8 @@ test('six-dimension report uses a dedicated stream and isolated controller', () 
   assert.match(jdHook, /persistedJDAnalysisRef\.current/);
   assert.match(jdHook, /jdInputSignature,\s*resume: evaluationSnapshot/);
   assert.match(jdHook, /evaluationIsOutdated: false/);
+  assert.match(jdHook, /evaluationSignature: requestEvaluationSignature,\s*targetRoleSignature,/);
+  assert.match(jdHook, /evaluationSignature: requestEvaluationSignature,\s*targetRoleSignature,\s*\}/);
   assert.match(editor, /await flushResumeConfig\(\)/);
   assert.match(editor, /return generateEvaluation\(\)/);
   assert.match(editor, /const handleAnalyzePersistedSnapshot = useCallback/);

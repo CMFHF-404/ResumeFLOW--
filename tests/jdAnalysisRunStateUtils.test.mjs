@@ -153,9 +153,16 @@ test('chooses full analysis when JD input changed', async () => {
 });
 
 test('lightweight JD analysis without a six-dimension evaluation can be current', async () => {
-  const { resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
+  const { resolveJDAnalysisOutdated, resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
   const legacyResult = { ...result };
   delete legacyResult.resumeEvaluation;
+
+  assert.equal(resolveJDAnalysisOutdated({
+    analysisResult: legacyResult,
+    analysisContext: context(),
+    jdInputSignature: 'jd-signature',
+    needsReanalysis: false,
+  }), false);
 
   const plan = resolveJDAnalyzePlan({
     analysisResult: legacyResult,
@@ -217,7 +224,7 @@ test('profile-only evaluation changes do not rerun JD matching', async () => {
   });
 });
 
-test('target role changes force a full JD and independent-match refresh', async () => {
+test('target role changes only invalidate the separate resume evaluation', async () => {
   const { resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
   const analysisContext = context({
     evaluationSignature: 'old-evaluation-signature',
@@ -237,7 +244,55 @@ test('target role changes force a full JD and independent-match refresh', async 
     hasJdContext: true,
   });
 
-  assert.deepEqual(plan, { action: 'run', mode: 'full' });
+  assert.deepEqual(plan, {
+    action: 'skip', status: 'no_change', shouldClearNeedsReanalysis: false, shouldClearPendingDiff: false,
+  });
+});
+
+test('JD freshness still detects changed JD input and candidate changes', async () => {
+  const { resolveJDAnalysisOutdated } = await importJDAnalysisRunStateUtils();
+
+  assert.equal(resolveJDAnalysisOutdated({
+    analysisResult: result,
+    analysisContext: context(),
+    jdInputSignature: 'new-jd-signature',
+    needsReanalysis: false,
+  }), true);
+  assert.equal(resolveJDAnalysisOutdated({
+    analysisResult: result,
+    analysisContext: context(),
+    jdInputSignature: 'jd-signature',
+    needsReanalysis: true,
+  }), true);
+});
+
+test('JD freshness preserves an authoritative persisted stale flag', async () => {
+  const { resolveJDAnalysisOutdated, resolveJDAnalyzePlan } = await importJDAnalysisRunStateUtils();
+
+  assert.equal(resolveJDAnalysisOutdated({
+    analysisResult: result,
+    analysisContext: context(),
+    jdInputSignature: 'jd-signature',
+    needsReanalysis: false,
+    persistedIsOutdated: true,
+  }), true);
+
+  const plan = resolveJDAnalyzePlan({
+    analysisResult: result,
+    analysisContext: context(),
+    snapshotItemSignatures: itemSignatures(),
+    snapshotJdInputSignature: 'jd-signature',
+    pendingDiff: emptyDiff(),
+    needsReanalysis: false,
+    persistedIsOutdated: true,
+    hasMissingAttachmentContext: false,
+    hasJdContext: true,
+  });
+
+  assert.deepEqual(plan, {
+    action: 'run',
+    mode: 'full',
+  });
 });
 
 test('partial diff update computes needsReanalysis after clearing stable diff', async () => {

@@ -60,6 +60,21 @@ test('radar coordinates clamp every score and always contain six finite points',
   }
 });
 
+test('radar uses the full report width and writes scores beside each axis label', () => {
+  const source = readFileSync(
+    new URL('../views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /max-w-\[320px\]/);
+  assert.match(source, /const item = dimensions\[index\]/);
+  assert.match(source, /<tspan[^>]*>\{dimension\}<\/tspan>/);
+  assert.match(source, /<tspan[^>]*>\{scoreText\}<\/tspan>/);
+  assert.match(source, /<div className="space-y-3">\s*<ResumeEvaluationRadar/);
+  assert.doesNotMatch(source, /sm:grid-cols-\[minmax\(0,1\.12fr\)/);
+  assert.doesNotMatch(source, /<ul className="mt-2 grid grid-cols-2/);
+  assert.doesNotMatch(source, /<ul className="mt-2 space-y-1 border-t/);
+});
+
 test('report keeps every returned item and marks stale evaluations as historical', () => {
   const source = readFileSync(
     new URL('../views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx', import.meta.url),
