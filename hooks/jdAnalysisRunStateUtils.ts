@@ -34,14 +34,34 @@ export const buildDiffFromAnalysisContext = (
   return diffJDItemSignatures(context.itemSignatures, signatures);
 };
 
+export const resolveJDAnalysisOutdated = ({
+  analysisResult,
+  analysisContext,
+  jdInputSignature,
+  needsReanalysis,
+  persistedIsOutdated,
+}: {
+  analysisResult: JDAnalysisResult | null;
+  analysisContext: JDAnalysisContext | null;
+  jdInputSignature: string;
+  needsReanalysis: boolean;
+  persistedIsOutdated?: boolean;
+}) => (
+  !analysisResult
+  || !analysisContext
+  || analysisContext.jdInputSignature !== jdInputSignature
+  || needsReanalysis
+  || persistedIsOutdated === true
+);
+
 export const resolveJDAnalyzePlan = ({
   analysisResult,
   analysisContext,
   snapshotItemSignatures,
   snapshotJdInputSignature,
-  snapshotTargetRoleSignature,
   pendingDiff,
   needsReanalysis,
+  persistedIsOutdated,
   hasMissingAttachmentContext,
   hasJdContext,
 }: {
@@ -50,9 +70,9 @@ export const resolveJDAnalyzePlan = ({
   snapshotItemSignatures: JDAnalysisItemSignatures;
   snapshotJdInputSignature: string;
   snapshotEvaluationSignature?: string;
-  snapshotTargetRoleSignature?: string;
   pendingDiff: JDItemDiff;
   needsReanalysis: boolean;
+  persistedIsOutdated?: boolean;
   hasMissingAttachmentContext: boolean;
   hasJdContext?: boolean;
 }): JDAnalyzePlan => {
@@ -66,9 +86,6 @@ export const resolveJDAnalyzePlan = ({
   const hasPendingDiff = hasDiff(diffSnapshot);
   const hasJdInputChanged =
     analysisContext?.jdInputSignature !== snapshotJdInputSignature;
-  const hasTargetRoleChanged = snapshotTargetRoleSignature
-    ? analysisContext?.targetRoleSignature !== snapshotTargetRoleSignature
-    : false;
   const hasPrevExperienceText =
     analysisContext?.experienceText !== undefined;
   const shouldSkipAnalyze =
@@ -76,7 +93,7 @@ export const resolveJDAnalyzePlan = ({
     && Boolean(analysisContext)
     && !hasPendingDiff
     && !hasJdInputChanged
-    && !hasTargetRoleChanged;
+    && persistedIsOutdated !== true;
 
   if (shouldSkipAnalyze) {
     return {
@@ -101,7 +118,6 @@ export const resolveJDAnalyzePlan = ({
     && analysisContext
     && hasPendingDiff
     && !hasJdInputChanged
-    && !hasTargetRoleChanged
     && hasPrevExperienceText
   ) {
     return {

@@ -157,12 +157,7 @@ async def _sync_global_resumes_after_profile_update(
                         WHEN :invalidate_evaluations
                           AND jsonb_typeof(COALESCE(config, '{}'::jsonb) -> 'jdAnalysis') = 'object'
                         THEN jsonb_set(
-                            jsonb_set(
-                                COALESCE(config, '{}'::jsonb),
-                                '{jdAnalysis,isOutdated}',
-                                'true'::jsonb,
-                                true
-                            ),
+                            COALESCE(config, '{}'::jsonb),
                             '{jdAnalysis,evaluationIsOutdated}',
                             'true'::jsonb,
                             true

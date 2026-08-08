@@ -70,10 +70,12 @@ import {
   resolveHydratedAnalysisCandidate,
   resolveHydratedEvaluationSignature,
   mergeAuthoritativeStaleFlags,
+  shouldKeepPendingLocalSnapshot,
   type AnalysisStatePayload,
 } from "./jdAnalysisPersistenceUtils";
 import {
   resolveAnalyzeDiffStateUpdate,
+  resolveJDAnalysisOutdated,
   resolveJDAnalyzePlan,
 } from "./jdAnalysisRunStateUtils";
 import { useJDAnalysisMatchState } from "./useJDAnalysisMatchState";
@@ -344,24 +346,13 @@ export const useJDAnalysis = ({
   persistedJDAnalysisRef.current = persistedJDAnalysis;
   persistedJDAnalysisConfigRef.current = persistedJDAnalysisConfig;
 
-  const isOutdated = useMemo(() => {
-    if (!analysisResult || !analysisContext) {
-      return true;
-    }
-    return (
-      analysisContext.jdInputSignature !== jdInputSignature
-      || analysisContext.targetRoleSignature !== targetRoleSignature
-      || needsReanalysis
-      || persistedJDAnalysis?.isOutdated === true
-    );
-  }, [
-    analysisContext,
+  const isOutdated = useMemo(() => resolveJDAnalysisOutdated({
     analysisResult,
+    analysisContext,
     jdInputSignature,
     needsReanalysis,
-    persistedJDAnalysis?.isOutdated,
-    targetRoleSignature,
-  ]);
+    persistedIsOutdated: persistedJDAnalysis?.isOutdated,
+  }), [analysisContext, analysisResult, jdInputSignature, needsReanalysis, persistedJDAnalysis?.isOutdated]);
   const isEvaluationOutdated = useMemo(() => (
     analysisResult?.resumeEvaluation?.evaluationVersion !== "resume_flow_v1"
     || analysisContext?.evaluationSignature !== evaluationSignature
@@ -564,35 +555,6 @@ export const useJDAnalysis = ({
   ]);
 
   useEffect(() => {
-    if (
-      !analysisContext
-      || !resumeId
-      || analysisContext.targetRoleSignature === targetRoleSignature
-    ) {
-      return;
-    }
-    applyExperienceMatchScores();
-    applyExperienceMatchTrends();
-    applyCertificationMatchScores();
-    applyCertificationMatchTrends();
-    applySkillMatchScores();
-    applySkillMatchTrends();
-    resetStaleExperienceIds();
-    setNeedsReanalysis(true);
-  }, [
-    analysisContext,
-    applyCertificationMatchScores,
-    applyCertificationMatchTrends,
-    applyExperienceMatchScores,
-    applyExperienceMatchTrends,
-    applySkillMatchScores,
-    applySkillMatchTrends,
-    resetStaleExperienceIds,
-    resumeId,
-    targetRoleSignature,
-  ]);
-
-  useEffect(() => {
     if (previousResumeIdRef.current === resumeId) {
       return;
     }
@@ -684,17 +646,27 @@ export const useJDAnalysis = ({
       return;
     }
     if (!arePersistedJDAnalysisEqual(backendPersisted, persistedJDAnalysis)) {
+      const localCache = loadJDAnalysisCache(resumeId);
+      const backendPersistedFingerprint =
+        buildJDAnalysisPersistenceFingerprint(backendPersisted);
       const staleMerged = mergeAuthoritativeStaleFlags(
         persistedJDAnalysis,
-        backendPersisted
+        backendPersisted,
+        {
+          localPendingSync: shouldKeepPendingLocalSnapshot({
+            pendingSync: localCache?.pendingSync === true,
+            basePersistedFingerprint:
+              localCache?.basePersistedFingerprint ?? null,
+            backendPersistedFingerprint,
+          }),
+        }
       );
       if (staleMerged) {
         persistedJDAnalysisRef.current = staleMerged;
         setPersistedJDAnalysis(staleMerged);
         saveJDAnalysisCache(resumeId, staleMerged, {
           pendingSync: false,
-          basePersistedFingerprint:
-            buildJDAnalysisPersistenceFingerprint(backendPersisted),
+          basePersistedFingerprint: backendPersistedFingerprint,
         });
       }
       return;
@@ -889,6 +861,7 @@ export const useJDAnalysis = ({
       ...currentPersisted,
       result: { ...currentResult, resumeEvaluation: evaluation },
       evaluationSignature: requestEvaluationSignature,
+      targetRoleSignature,
       evaluationIsOutdated: false,
       updatedAt: new Date().toISOString(),
     };
@@ -897,7 +870,11 @@ export const useJDAnalysis = ({
     setAnalysisResult(nextPersistedJDAnalysis.result);
     setPersistedJDAnalysis(nextPersistedJDAnalysis);
     setAnalysisContext((current) => current
-      ? { ...current, evaluationSignature: requestEvaluationSignature }
+      ? {
+        ...current,
+        evaluationSignature: requestEvaluationSignature,
+        targetRoleSignature,
+      }
       : current
     );
     if (resumeId) {
@@ -908,7 +885,7 @@ export const useJDAnalysis = ({
       });
     }
     return true;
-  }, [resumeId]);
+  }, [resumeId, targetRoleSignature]);
 
   const getAnalysisSnapshot = useCallback(() => {
     const analysisPayload = buildAnalyzePayload(
@@ -1139,9 +1116,9 @@ export const useJDAnalysis = ({
         snapshotItemSignatures: snapshot.itemSignatures,
         snapshotJdInputSignature: snapshot.jdInputSignature,
         snapshotEvaluationSignature: snapshot.evaluationSignature,
-        snapshotTargetRoleSignature: snapshot.targetRoleSignature,
         pendingDiff: pendingDiffRef.current,
         needsReanalysis,
+        persistedIsOutdated: persistedJDAnalysis?.isOutdated,
         hasMissingAttachmentContext: Boolean(restoredAttachmentContext && !snapshot.jdFile),
         hasJdContext: Boolean(snapshot.jdFile || snapshot.jdText.trim()),
       });
@@ -1182,6 +1159,7 @@ export const useJDAnalysis = ({
     applyMatchScoresForResult,
     buildAnalyzeSnapshot,
     needsReanalysis,
+    persistedJDAnalysis?.isOutdated,
     restoredAttachmentContext,
     runAnalyze,
     waitForPendingJdFileSelection,

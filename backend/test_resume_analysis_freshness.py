@@ -46,6 +46,31 @@ class ResumeAnalysisFreshnessTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_evaluation_only_change_preserves_jd_match_freshness(self) -> None:
+        session = SimpleNamespace(execute=AsyncMock())
+        updated_at = datetime(2026, 8, 8, 12, 1, tzinfo=timezone.utc)
+
+        await invalidate_user_resume_analyses(
+            session,
+            "user-1",
+            updated_at=updated_at,
+            invalidate_match=False,
+        )
+
+        self.assertEqual(session.execute.await_count, 2)
+        statement, parameters = session.execute.await_args_list[-1].args
+        sql = str(statement)
+        self.assertIn("'{jdAnalysis,evaluationIsOutdated}'", sql)
+        self.assertNotIn("'{jdAnalysis,isOutdated}'", sql)
+        self.assertNotIn("-> 'isOutdated'", sql)
+        self.assertEqual(
+            parameters,
+            {
+                "user_id": "user-1",
+                "updated_at": updated_at,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

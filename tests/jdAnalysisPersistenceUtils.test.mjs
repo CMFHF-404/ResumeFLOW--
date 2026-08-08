@@ -209,6 +209,48 @@ test('merges only authoritative stale flags from a differing backend payload', a
   );
 });
 
+test('keeps a pending local snapshot stable until it is synchronized', async () => {
+  const { mergeAuthoritativeStaleFlags } = await importJDAnalysisPersistenceUtils();
+  const local = {
+    jdText: 'local JD',
+    jdInputSignature: 'local-jd',
+    experienceSignature: 'local-experience',
+    result: buildResult(),
+    itemSignatures: buildItemSignatures(),
+    inputMode: 'text',
+    isOutdated: false,
+    evaluationIsOutdated: true,
+    updatedAt: '2026-08-08T00:00:00.000Z',
+  };
+  const backend = {
+    ...local,
+    isOutdated: true,
+    evaluationIsOutdated: true,
+  };
+
+  assert.equal(mergeAuthoritativeStaleFlags(local, backend, { localPendingSync: true }), null);
+});
+
+test('keeps a pending snapshot only while the backend is still its base snapshot', async () => {
+  const { shouldKeepPendingLocalSnapshot } = await importJDAnalysisPersistenceUtils();
+
+  assert.equal(shouldKeepPendingLocalSnapshot({
+    pendingSync: true,
+    basePersistedFingerprint: 'backend-v1',
+    backendPersistedFingerprint: 'backend-v1',
+  }), true);
+  assert.equal(shouldKeepPendingLocalSnapshot({
+    pendingSync: true,
+    basePersistedFingerprint: 'backend-v1',
+    backendPersistedFingerprint: 'backend-v2',
+  }), false);
+  assert.equal(shouldKeepPendingLocalSnapshot({
+    pendingSync: false,
+    basePersistedFingerprint: 'backend-v1',
+    backendPersistedFingerprint: 'backend-v1',
+  }), false);
+});
+
 test('resolves attachment analysis with extracted text as text-mode persisted JD', async () => {
   const { resolvePersistedAttachmentFields } = await importJDAnalysisPersistenceUtils();
 

@@ -51,16 +51,21 @@ const ResumeEvaluationRadar: React.FC<{
 
     return (
         <div className="rounded-xl border border-amber-100/70 bg-gradient-to-br from-amber-50/55 via-white to-emerald-50/25 p-3 dark:border-amber-900/35 dark:from-amber-950/15 dark:via-slate-950 dark:to-emerald-950/10">
-            <svg viewBox="0 0 100 100" role="img" aria-label={label} className="mx-auto block w-full max-w-[230px] overflow-visible">
+            <svg viewBox="-14 -7 128 114" role="img" aria-label={label} className="mx-auto block w-full max-w-[320px] overflow-visible">
                 <title>{label}</title>
                 {rings.map((ring) => <polygon key={ring} points={buildRadarPoints(Array(6).fill(ring))} fill="none" stroke="currentColor" strokeWidth="0.45" className="text-amber-200/80 dark:text-amber-900/60" />)}
                 {EVALUATION_DIMENSIONS.map((dimension, index) => {
                     const axis = buildRadarAxis(index);
-                    const text = buildRadarAxis(index, 48);
+                    const text = buildRadarAxis(index, 49);
+                    const item = dimensions[index];
+                    const scoreText = item?.unavailable ? '待评' : `${item?.score ?? 0} 分`;
                     const anchor = text.x < 43 ? 'end' : text.x > 57 ? 'start' : 'middle';
                     return <g key={dimension}>
                         <line x1="50" y1="50" x2={axis.x} y2={axis.y} stroke="currentColor" strokeWidth="0.45" className="text-amber-200/80 dark:text-amber-900/60" />
-                        <text x={text.x} y={text.y} textAnchor={anchor} dominantBaseline="middle" className="fill-slate-500 text-[4px] font-medium dark:fill-slate-400">{dimension}</text>
+                        <text x={text.x} y={text.y} textAnchor={anchor} className="text-[4px]">
+                            <tspan x={text.x} dy="-1.5" className="fill-slate-500 font-medium dark:fill-slate-400">{dimension}</tspan>
+                            <tspan x={text.x} dy="4.8" className="fill-amber-700 font-bold dark:fill-amber-300">{scoreText}</tspan>
+                        </text>
                     </g>;
                 })}
                 <polygon points={polygonPoints} fill="rgba(245, 158, 11, 0.22)" stroke="rgb(217, 119, 6)" strokeWidth="1.25" strokeLinejoin="round" className="dark:fill-amber-400/20 dark:stroke-amber-300" />
@@ -69,9 +74,6 @@ const ResumeEvaluationRadar: React.FC<{
                     return <circle key={EVALUATION_DIMENSIONS[index]} cx={point.x} cy={point.y} r="1.35" className="fill-amber-600 dark:fill-amber-300" />;
                 })}
             </svg>
-            <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-amber-100/70 pt-2 text-[10.5px] text-slate-600 dark:border-amber-900/30 dark:text-slate-300">
-                {dimensions.map((item) => <li key={item.dimension} className="flex justify-between gap-2"><span>{item.dimension}</span><strong className="font-semibold text-amber-700 dark:text-amber-300">{item.unavailable ? '待评' : `${item.score} 分`}</strong></li>)}
-            </ul>
         </div>
     );
 };
@@ -154,7 +156,7 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
                 {error ? <p role="alert" className="mt-2 text-[11px] text-rose-600 dark:text-rose-300">{error}</p> : null}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+            <div className="space-y-3">
                 <ResumeEvaluationRadar dimensions={report.dimensions} />
                 <div className="space-y-2">
                     <ReportList title="优先改进" items={report.topPriorities} tone="amber" emptyText="暂未列出优先改进项" />

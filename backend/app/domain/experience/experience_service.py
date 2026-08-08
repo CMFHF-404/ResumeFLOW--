@@ -14,6 +14,15 @@ class NotFoundError(Exception):
     pass
 
 
+_JD_MATCH_CATEGORIES = frozenset(
+    {ExperienceCategory.WORK, ExperienceCategory.PROJECT}
+)
+
+
+def _categories_affect_jd_match(*categories: ExperienceCategory) -> bool:
+    return any(category in _JD_MATCH_CATEGORIES for category in categories)
+
+
 async def list_experiences(
     session: AsyncSession,
     user_id: str,
@@ -105,7 +114,12 @@ async def create_experience(
     updated_at = utc_now()
     master.updated_at = updated_at
     session.add(master)
-    await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=updated_at,
+        invalidate_match=_categories_affect_jd_match(master.category),
+    )
     await session.commit()
 
     await session.refresh(master)
@@ -118,6 +132,7 @@ async def update_experience(
 ) -> Tuple[MasterExperience, Optional[ExperienceVersion]]:
     version: Optional[ExperienceVersion] = None
     master = await _get_master(session, user_id, master_id)
+    previous_category = master.category
     is_master_updated = False
     if payload.category is not None:
         master.category = payload.category
@@ -136,7 +151,15 @@ async def update_experience(
         updated_at = utc_now()
         master.updated_at = updated_at
         session.add(master)
-        await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
+        await invalidate_user_resume_analyses(
+            session,
+            user_id,
+            updated_at=updated_at,
+            invalidate_match=_categories_affect_jd_match(
+                previous_category,
+                master.category,
+            ),
+        )
     await session.commit()
 
     await session.refresh(master)
@@ -153,7 +176,12 @@ async def archive_experience(
     updated_at = utc_now()
     master.updated_at = updated_at
     session.add(master)
-    await invalidate_user_resume_analyses(session, user_id, updated_at=updated_at)
+    await invalidate_user_resume_analyses(
+        session,
+        user_id,
+        updated_at=updated_at,
+        invalidate_match=_categories_affect_jd_match(master.category),
+    )
     await session.commit()
     await session.refresh(master)
     return master
