@@ -160,7 +160,8 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                                     event.clientY,
                                     DATA_ITEM_ID_ATTR,
                                     draggedItemKey,
-                                    event.target
+                                    event.target,
+                                    event.clientX
                                 );
                                 if (!target) {
                                     return;
@@ -196,7 +197,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                             >
                                 {useTimelineMarkers ? renderTimelineBlueLeadMarkers(showTimelineRail) : null}
                                 {!isReadOnly ? (
-                                    <div className={getItemControlClass(itemKey)}>
+                                    <div className={`rf-template-item-control ${getItemControlClass(itemKey)}`}>
                                         <div
                                             onTouchStart={
                                                 showTouchDragHandles

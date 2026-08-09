@@ -420,7 +420,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 ? `${itemControlBaseClass} opacity-100`
                 : `${itemControlBaseClass} pointer-events-none opacity-0`;
         }
-        return `${itemControlBaseClass} opacity-0 group-hover/item:opacity-100 transition-opacity`;
+        return `${itemControlBaseClass} pointer-events-none opacity-0 group-hover/item:pointer-events-auto group-hover/item:opacity-100 transition-opacity`;
     }, [
         activeMobileItemControlId,
         getTouchFeedbackState,
@@ -650,7 +650,8 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             clientY,
             DATA_ITEM_ID_ATTR,
             session.sourceId,
-            currentTarget
+            currentTarget,
+            clientX
         );
         if (target) {
             onItemDragHover(target.id, target.position);
