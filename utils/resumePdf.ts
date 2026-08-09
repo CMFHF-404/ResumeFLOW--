@@ -15,6 +15,7 @@ import {
 
 type ResumePdfSnapshotInput = {
   resumeName: string;
+  targetRole: string;
   profile: ResumeEditorProfile;
   lineHeight: number;
   fontSize: number;
@@ -53,6 +54,7 @@ const normalizeFiniteNumber = (value: number, fallback: number) => (
 
 export const buildResumePdfRenderSnapshot = ({
   resumeName,
+  targetRole,
   profile,
   lineHeight,
   fontSize,
@@ -75,6 +77,7 @@ export const buildResumePdfRenderSnapshot = ({
   skillTagSeparator,
 }: ResumePdfSnapshotInput): ResumePdfRenderSnapshot => ({
   resumeName,
+  targetRole: targetRole.trim(),
   profile: { ...profile },
   lineHeight: normalizeFiniteNumber(lineHeight, LINE_HEIGHT_DEFAULT),
   fontSize: normalizeFiniteNumber(fontSize, FONT_SIZE_DEFAULT),

@@ -20,7 +20,7 @@ export type SharedResumePreviewProps = Pick<
     | 'selectedCertIds'
     | 'selectedSkillGroups'
     | 'onNavigateTab'
-    | 'resumeDisplayTitle'
+    | 'targetRole'
 >;
 
 type UseResumeEditorPreviewWorkspacePropsOptions = {

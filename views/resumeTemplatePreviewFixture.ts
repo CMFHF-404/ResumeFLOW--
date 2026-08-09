@@ -10,6 +10,7 @@ export const buildResumeTemplatePreviewSnapshot = (
   templateId: ResumeTemplateId
 ): ResumePdfRenderSnapshot => ({
   resumeName: 'AI 产品经理',
+  targetRole: 'AI 产品经理',
   profile: {
     name: '林澈',
     email: 'lin.che@example.com',

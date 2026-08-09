@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
 import type { Resume as DashboardResume } from '../../../types';
 import { resumeService, type Resume as ResumeRecord } from '../../../services/resumeService';
-import { mapResumesToDashboard } from '../../../utils/dashboardResumeMapper';
-import { mergeDashboardResumeServerUpdate } from '../../Dashboard/dashboardUtils';
+import {
+    mapResumesToDashboard,
+    replaceDashboardResumeFromServer,
+} from '../../../utils/dashboardResumeMapper';
 
 export type DashboardResumesSyncResult =
     | { status: 'success' | 'skipped' }
@@ -24,11 +26,7 @@ export const useDashboardResumeSync = ({
             if (!onResumesUpdate || cachedResumes.length === 0 || !isCacheOwnerMatched) {
                 return;
             }
-            const next = cachedResumes.map((resume) =>
-                resume.id === updated.id
-                    ? mergeDashboardResumeServerUpdate(resume, updated)
-                    : resume
-            );
+            const next = replaceDashboardResumeFromServer(cachedResumes, updated);
             onResumesUpdate(next);
         },
         [cachedResumes, isCacheOwnerMatched, onResumesUpdate]

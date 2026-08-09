@@ -176,6 +176,56 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
   );
 });
 
+test('replacing a Dashboard cache entry after target-role save clears an evaluation for the old role', async () => {
+  globalThis.localStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  };
+  const {
+    buildDashboardTargetRoleSignature,
+    replaceDashboardResumeFromServer,
+  } = await importDashboardMapper();
+  const oldRoleSignature = buildDashboardTargetRoleSignature('产品经理');
+  const updatedRole = '增长产品经理';
+  const current = resume({
+    targetRole: '产品经理',
+    evaluationScore: 86,
+    evaluationTargetRoleSignature: oldRoleSignature,
+    status: 'final',
+  });
+  const updated = {
+    id: 'resume-1',
+    user_id: 'user-1',
+    title: '主简历',
+    target_role: updatedRole,
+    config: {
+      jdAnalysis: {
+        jdText: '',
+        jdInputSignature: '',
+        experienceSignature: 'experience-signature',
+        evaluationSignature: 'evaluation-signature',
+        targetRoleSignature: oldRoleSignature,
+        result: { matchPercentage: 86, resumeEvaluation: evaluationAt(86) },
+        itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+        inputMode: 'text',
+        updatedAt: '2026-08-08T00:00:00.000Z',
+      },
+    },
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-08-09T00:00:00.000Z',
+  };
+
+  const [replaced] = replaceDashboardResumeFromServer([current], updated);
+
+  assert.equal(replaced.targetRole, updatedRole);
+  assert.equal(replaced.evaluationScore, null);
+  assert.equal(
+    replaced.evaluationTargetRoleSignature,
+    buildDashboardTargetRoleSignature(updatedRole)
+  );
+});
+
 test('dashboard hides an explicitly stale JD match rate', async () => {
   globalThis.localStorage = {
     getItem: () => null,

@@ -8,7 +8,7 @@ type DeepHireHeaderBlockProps = {
     activeTemplate: ResumeTemplateDefinition;
     profile: ResumeEditorProfile;
     contactItems: string[];
-    resumeDisplayTitle?: string;
+    targetRole?: string;
     sectionSpacingClass: string;
     headerStyle: React.CSSProperties;
     getSectionOverflowHighlightStyle: (sectionId: string) => React.CSSProperties | undefined;
@@ -19,7 +19,7 @@ type DeepHireHeaderBlockProps = {
 const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
     activeTemplate,
     profile,
-    resumeDisplayTitle,
+    targetRole,
     sectionSpacingClass,
     headerStyle,
     getSectionOverflowHighlightStyle,
@@ -79,9 +79,9 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                         <h1 className="rf-watercolor-name text-[34px] font-bold leading-none tracking-[0.06em]">
                             {profile.name}
                         </h1>
-                        {resumeDisplayTitle ? (
+                        {targetRole ? (
                             <p className="rf-watercolor-title mt-3 text-[11px] font-medium leading-snug">
-                                {resumeDisplayTitle}
+                                {targetRole}
                             </p>
                         ) : null}
                         {renderWatercolorContactRow(
@@ -90,7 +90,7 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                         )}
                         {renderWatercolorContactRow(
                             primaryContactEntries,
-                            `rf-watercolor-contact-row ${secondaryContactEntries.length || resumeDisplayTitle ? 'mt-2.5' : 'mt-4'} flex flex-wrap gap-x-5 gap-y-1 text-[10.5px] font-medium`
+                            `rf-watercolor-contact-row ${secondaryContactEntries.length || targetRole ? 'mt-2.5' : 'mt-4'} flex flex-wrap gap-x-5 gap-y-1 text-[10.5px] font-medium`
                         )}
                     </div>
                     {renderAvatarFrame(
@@ -126,9 +126,9 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                             <h1 className="rf-deephire-name mt-2 text-[30px] font-bold leading-tight tracking-[0.06em] text-gray-950">
                                 {profile.name}
                             </h1>
-                            {resumeDisplayTitle ? (
+                            {targetRole ? (
                                 <p className="rf-deephire-title mt-1.5 text-[11px] font-semibold leading-snug text-gray-600">
-                                    {resumeDisplayTitle}
+                                    {targetRole}
                                 </p>
                             ) : null}
                             {renderContactList('mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] font-medium text-gray-600')}
@@ -168,9 +168,9 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                     <h1 className={`rf-deephire-name text-[28px] font-bold leading-tight tracking-[0.08em] ${useLightText ? 'text-white' : 'text-gray-950'}`}>
                         {profile.name}
                     </h1>
-                    {resumeDisplayTitle ? (
+                    {targetRole ? (
                         <p className={`rf-deephire-title mt-1.5 text-[11px] font-semibold leading-snug ${useLightText ? 'text-white/75' : 'text-gray-600'}`}>
-                            {resumeDisplayTitle}
+                            {targetRole}
                         </p>
                     ) : null}
                     <div className="mt-3 h-[2px] w-12 rounded-full" style={{ backgroundColor: useLightText ? 'rgba(255,255,255,0.72)' : 'var(--rf-accent-color)' }} />
@@ -241,9 +241,9 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                         <h1 className="rf-deephire-name text-[34px] font-bold leading-none tracking-[0.1em] text-inherit">
                             {profile.name}
                         </h1>
-                        {resumeDisplayTitle ? (
+                        {targetRole ? (
                             <p className="rf-deephire-title mt-2 text-[11px] font-semibold leading-snug text-inherit opacity-80">
-                                {resumeDisplayTitle}
+                                {targetRole}
                             </p>
                         ) : null}
                         {renderContactList('mt-4 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] font-medium text-inherit opacity-80')}
@@ -271,8 +271,8 @@ const DeepHireHeaderBlock: React.FC<DeepHireHeaderBlockProps> = ({
                     <h1 className="rf-deephire-name text-[32px] font-bold leading-none tracking-[0.08em] text-gray-950">
                         {profile.name}
                     </h1>
-                    {resumeDisplayTitle ? (
-                        <p className="rf-deephire-title mt-2 text-[11px] font-semibold leading-snug text-gray-600">{resumeDisplayTitle}</p>
+                    {targetRole ? (
+                        <p className="rf-deephire-title mt-2 text-[11px] font-semibold leading-snug text-gray-600">{targetRole}</p>
                     ) : null}
                     {renderContactList('mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] font-medium text-gray-600')}
                 </div>

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { resolveResumeDisplayTitle } from '../../../constants/resumeConstants';
 import ResumePreview, { type ResumePreviewProps } from '../../ResumeEditor/components/ResumePreview';
 import {
     DASHBOARD_RESUME_PREVIEW_ERROR_TEXT,
@@ -150,7 +149,6 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
             previewContentRef,
             {
                 previewScope: 'dashboard-modal',
-                resumeDisplayTitle: resolveResumeDisplayTitle(resumeName),
             }
         )
         : null;

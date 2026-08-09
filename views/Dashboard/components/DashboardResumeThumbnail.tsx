@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Eye, FileText } from 'lucide-react';
 import type { Resume } from '../../../types';
-import { resolveResumeDisplayTitle } from '../../../constants/resumeConstants';
 import ResumePreview from '../../ResumeEditor/components/ResumePreview';
 import { buildDashboardResumePreviewProps } from '../resumePreviewState';
 import type {
@@ -119,10 +118,9 @@ const DashboardResumeThumbnail: React.FC<DashboardResumeThumbnailProps> = ({
             previewContentRef,
             {
                 previewScope,
-                resumeDisplayTitle: resolveResumeDisplayTitle(resume.name),
             }
         );
-    }, [entry.snapshot, previewScope, resume.name]);
+    }, [entry.snapshot, previewScope]);
 
     const rootClassName = `relative h-full w-full overflow-hidden bg-gray-100 dark:bg-gray-900 ${className}`.trim();
 

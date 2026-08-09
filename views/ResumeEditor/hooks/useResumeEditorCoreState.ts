@@ -64,6 +64,8 @@ export function useResumeEditorCoreState() {
     const [isAutoSavePaused, setIsAutoSavePaused] = useState(false);
     const [isCreatingResume, setIsCreatingResume] = useState(false);
     const [resumeName, setResumeName] = useState(UNTITLED_RESUME_TITLE);
+    const [targetRole, setTargetRole] = useState('');
+    const [originalTargetRole, setOriginalTargetRole] = useState('');
 
     const [profile, setProfile] = useState<ResumeEditorProfile>(DEFAULT_PROFILE);
     const [personalSummary, setPersonalSummary] = useState('');
@@ -220,6 +222,8 @@ export function useResumeEditorCoreState() {
         isAutoSavePaused, setIsAutoSavePaused,
         isCreatingResume, setIsCreatingResume,
         resumeName, setResumeName,
+        targetRole, setTargetRole,
+        originalTargetRole, setOriginalTargetRole,
         profile, setProfile,
         personalSummary, setPersonalSummary,
         hasPersonalSummaryOverride, setHasPersonalSummaryOverride,

@@ -4,8 +4,15 @@ import type { GeneratePersonalSummaryParams } from '../../services/aiService';
 import { devLog } from '../../services/devLogger';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../../services/parserService';
 import { type Profile, profileService } from '../../services/profileService';
+import {
+  isResumeVersionConflict,
+  resumeService,
+  waitForResumeMutations,
+  type Resume as ResumeRecord,
+} from '../../services/resumeService';
 import type { ExperienceBankPdfRenderSnapshot } from '../../types/experienceBankExport';
 import { mergeLinkedInLink } from '../profileUtils';
+import { getActiveResumeId, setActiveResumeId } from '../resumeStorage';
 import {
   buildDraftProfileSnapshot as buildProfileDraftSnapshot,
   buildProfileFormSnapshot,
@@ -13,9 +20,16 @@ import {
   createProfileDraftOverrides,
 } from './profileDraftUtils';
 import { useExperienceBankSummaryGeneration } from './useExperienceBankSummaryGeneration';
+import { updateResumeTargetRoleWithConflictRetry } from './targetRoleUpdate';
 
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const SUMMARY_PREVIEW_CHAR_LIMIT = 100;
+const TARGET_ROLE_UPDATE_DEPENDENCIES = {
+  update: resumeService.update,
+  get: resumeService.get,
+  waitForMutations: waitForResumeMutations,
+  isConflict: isResumeVersionConflict,
+};
 
 type ToastFn = (message: string, duration?: number) => string;
 type LoadingToastFn = (message: string) => string;
@@ -26,6 +40,7 @@ type UseExperienceBankProfileParams = {
   onRequireAuth: () => void | Promise<void>;
   cachedProfile?: Profile | null;
   onProfileUpdate?: (data: Profile) => void;
+  onResumeUpdate?: (data: ResumeRecord) => void;
   refreshEducation: () => Promise<unknown>;
   loadExportSnapshot: () => Promise<ExperienceBankPdfRenderSnapshot>;
   loadValidationSnapshot: () => Promise<ExperienceBankPdfRenderSnapshot | null>;
@@ -113,6 +128,7 @@ export const useExperienceBankProfile = ({
   onRequireAuth,
   cachedProfile,
   onProfileUpdate,
+  onResumeUpdate,
   refreshEducation,
   loadExportSnapshot,
   loadValidationSnapshot,
@@ -124,8 +140,12 @@ export const useExperienceBankProfile = ({
   closeToast,
 }: UseExperienceBankProfileParams) => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(isAuthenticated);
+  const [isLoadingTargetRole, setIsLoadingTargetRole] = useState(isAuthenticated);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [activeResumeId, setActiveResumeIdState] = useState<string | null>(null);
+  const [targetRole, setTargetRole] = useState('');
+  const [originalTargetRole, setOriginalTargetRole] = useState('');
   const [originalProfile, setOriginalProfile] = useState({
     name: '',
     email: '',
@@ -162,6 +182,7 @@ export const useExperienceBankProfile = ({
     profileSocialLinks: {} as Record<string, any>,
   });
   const onProfileUpdateRef = useRef(onProfileUpdate);
+  const onResumeUpdateRef = useRef(onResumeUpdate);
 
   latestDraftProfileRef.current = {
     name,
@@ -240,6 +261,10 @@ export const useExperienceBankProfile = ({
   }, [onProfileUpdate]);
 
   useEffect(() => {
+    onResumeUpdateRef.current = onResumeUpdate;
+  }, [onResumeUpdate]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       return;
     }
@@ -250,6 +275,68 @@ export const useExperienceBankProfile = ({
     hasHydratedProfileRef.current = true;
     setIsLoadingProfile(false);
   }, [cachedProfile, applyProfileSnapshot, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setActiveResumeIdState(null);
+      setTargetRole('');
+      setOriginalTargetRole('');
+      setIsLoadingTargetRole(false);
+      return;
+    }
+    let isCancelled = false;
+    const loadTargetRole = async () => {
+      setIsLoadingTargetRole(true);
+      try {
+        let resumeId = getActiveResumeId();
+        let resolvedTargetRole = '';
+        if (resumeId) {
+          try {
+            const detail = await resumeService.get(resumeId);
+            resolvedTargetRole = detail.resume.target_role?.trim() ?? '';
+          } catch (error) {
+            const status = typeof error === 'object' && error
+              ? (error as { response?: { status?: number } }).response?.status
+              : undefined;
+            if (status !== 404) {
+              throw error;
+            }
+            resumeId = null;
+          }
+        }
+        if (!resumeId) {
+          const resumes = await resumeService.list({ force: true });
+          const firstResume = resumes[0];
+          if (firstResume) {
+            resumeId = firstResume.id;
+            resolvedTargetRole = firstResume.target_role?.trim() ?? '';
+            setActiveResumeId(firstResume.id);
+          }
+        }
+        if (isCancelled) {
+          return;
+        }
+        setActiveResumeIdState(resumeId);
+        setTargetRole(resolvedTargetRole);
+        setOriginalTargetRole(resolvedTargetRole);
+      } catch (error) {
+        console.error('[ExperienceBank] 加载意向岗位失败:', error);
+        if (!isCancelled) {
+          setActiveResumeIdState(null);
+          setTargetRole('');
+          setOriginalTargetRole('');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingTargetRole(false);
+        }
+      }
+    };
+    void loadTargetRole();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -307,8 +394,9 @@ export const useExperienceBankProfile = ({
       avatarDataUrl,
       extraJson: profileExtraJson,
     });
+    setOriginalTargetRole(targetRole);
     setIsEditingProfile(true);
-  }, [avatarDataUrl, email, isAuthenticated, isLoadingProfile, link, location, name, onRequireAuth, phone, profileExtraJson, summary]);
+  }, [avatarDataUrl, email, isAuthenticated, isLoadingProfile, link, location, name, onRequireAuth, phone, profileExtraJson, summary, targetRole]);
 
   const {
     isGeneratingSummary,
@@ -349,17 +437,19 @@ export const useExperienceBankProfile = ({
     setPhone(originalProfile.phone);
     setLocation(originalProfile.location);
     setLink(originalProfile.link);
+    setTargetRole(originalTargetRole);
     setSummary(originalProfile.summary);
     setAvatarDataUrl(originalProfile.avatarDataUrl);
     setProfileExtraJson(originalProfile.extraJson);
     setIsEditingProfile(false);
-  }, [cancelSummaryGeneration, originalProfile, resetProfileDraftOverrides]);
+  }, [cancelSummaryGeneration, originalProfile, originalTargetRole, resetProfileDraftOverrides]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!isAuthenticated) {
       await onRequireAuth();
       return;
     }
+    let profileSaved = false;
     try {
       cancelSummaryGeneration();
       setIsSavingProfile(true);
@@ -380,17 +470,36 @@ export const useExperienceBankProfile = ({
         extra_json: nextExtraJson,
       });
       applyProfileSnapshot(updated);
-      setIsEditingProfile(false);
+      profileSaved = true;
       onProfileUpdateRef.current?.(updated);
+      const normalizedTargetRole = targetRole.trim();
+      if (activeResumeId && normalizedTargetRole !== originalTargetRole.trim()) {
+        const updatedResume = await updateResumeTargetRoleWithConflictRetry(
+          activeResumeId,
+          normalizedTargetRole,
+          TARGET_ROLE_UPDATE_DEPENDENCIES,
+        );
+        const savedTargetRole = updatedResume.target_role?.trim() ?? normalizedTargetRole;
+        setTargetRole(savedTargetRole);
+        setOriginalTargetRole(savedTargetRole);
+        onResumeUpdateRef.current?.(updatedResume);
+      } else {
+        setTargetRole(normalizedTargetRole);
+        setOriginalTargetRole(normalizedTargetRole);
+      }
+      setIsEditingProfile(false);
       success('个人信息保存成功');
     } catch (error) {
       console.error('Failed to save profile:', error);
-      toastError('个人信息保存失败');
+      toastError(profileSaved
+        ? '个人信息已保存，但意向岗位保存失败'
+        : '个人信息保存失败');
     } finally {
       setIsSavingProfile(false);
     }
   }, [
     applyProfileSnapshot,
+    activeResumeId,
     avatarDataUrl,
     cancelSummaryGeneration,
     email,
@@ -405,6 +514,8 @@ export const useExperienceBankProfile = ({
     toastError,
     isAuthenticated,
     onRequireAuth,
+    originalTargetRole,
+    targetRole,
   ]);
 
   const resolveCurrentProfileSnapshot = useCallback(async () => {
@@ -471,6 +582,10 @@ export const useExperienceBankProfile = ({
     markProfileFieldDraftTouched('location');
     setLocation(value);
   }, [markProfileFieldDraftTouched]);
+
+  const handleTargetRoleChange = useCallback((value: string) => {
+    setTargetRole(value);
+  }, []);
 
   const handleLinkChange = useCallback((value: string) => {
     markProfileFieldDraftTouched('link');
@@ -543,12 +658,15 @@ export const useExperienceBankProfile = ({
 
   return {
     isLoadingProfile,
+    isLoadingTargetRole,
     isSavingProfile,
     isEditingProfile,
+    activeResumeId,
     name,
     email,
     phone,
     location,
+    targetRole,
     link,
     summary,
     summaryText,
@@ -572,6 +690,7 @@ export const useExperienceBankProfile = ({
     handleEmailChange,
     handlePhoneChange,
     handleLocationChange,
+    handleTargetRoleChange,
     handleLinkChange,
     handleAvatarUploadClick,
     handleFileSelected,

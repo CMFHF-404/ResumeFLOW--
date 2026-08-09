@@ -284,6 +284,7 @@ export type AssistantLinkedDraftState = {
 
 export type ResumePdfRenderSnapshot = {
   resumeName: string;
+  targetRole: string;
   profile: ResumeEditorProfile;
   lineHeight: number;
   fontSize: number;

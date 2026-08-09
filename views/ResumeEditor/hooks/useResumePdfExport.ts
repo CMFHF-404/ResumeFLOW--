@@ -27,6 +27,7 @@ type UseResumePdfExportParams = {
     showToastLoading: (message: string) => string;
     updateToast: UpdateToast;
     resumeName: string;
+    targetRole: string;
     profile: ResumeEditorProfile;
     lineHeight: number;
     fontSize: number;
@@ -56,6 +57,7 @@ export const useResumePdfExport = ({
     showToastLoading,
     updateToast,
     resumeName,
+    targetRole,
     profile,
     lineHeight,
     fontSize,
@@ -83,6 +85,7 @@ export const useResumePdfExport = ({
 
     const snapshot = buildResumePdfRenderSnapshot({
         resumeName,
+        targetRole,
         profile,
         lineHeight,
         fontSize,
@@ -145,6 +148,7 @@ export const useResumePdfExport = ({
     listSpacingValue,
     profile,
     resumeName,
+    targetRole,
     sectionOrder,
     sectionSpacingClass,
     selectedCertIds,

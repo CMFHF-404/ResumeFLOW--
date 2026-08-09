@@ -30,7 +30,7 @@ test('all resume templates expose one generated local A4 preview asset', async (
   assert.equal(RESUME_TEMPLATE_DEFINITIONS.length, 37);
 
   assert.equal(shouldUseStaticResumeTemplateThumbnail('modern-slate', 'slate'), true);
-  assert.equal(shouldUseStaticResumeTemplateThumbnail('modern-slate', 'emerald'), false);
+  assert.equal(shouldUseStaticResumeTemplateThumbnail('modern-slate', 'emerald'), true);
   assert.equal(shouldUseStaticResumeTemplateThumbnail('deephire-standard', 'emerald'), true);
   assert.equal(shouldUseStaticResumeTemplateThumbnail('modern-slate', 'slate', false), false);
 
@@ -57,6 +57,7 @@ test('template preview generation uses the fixed fictional fixture and a develop
 
   for (const expected of [
     "name: '林澈'",
+    "targetRole: 'AI 产品经理'",
     "email: 'lin.che@example.com'",
     "linkedin: 'portfolio.example.com/lin-che'",
     "location: '杭州'",

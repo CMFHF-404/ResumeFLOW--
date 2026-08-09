@@ -74,6 +74,7 @@ class SkillGroupViewSnapshot(BaseModel):
 
 class ResumePdfRenderSnapshot(BaseModel):
     resumeName: str
+    targetRole: str = ""
     profile: ResumeEditorProfileSnapshot
     lineHeight: float
     fontSize: float

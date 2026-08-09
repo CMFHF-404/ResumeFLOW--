@@ -9,7 +9,7 @@ type HeaderBlockProps = {
     activeTemplate: ResumeTemplateDefinition;
     profile: ResumeEditorProfile;
     contactItems: string[];
-    resumeDisplayTitle?: string;
+    targetRole?: string;
     sectionSpacingClass: string;
     headerStyle: React.CSSProperties;
     isOpenSourceClassicTemplate: boolean;
@@ -25,7 +25,7 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
     activeTemplate,
     profile,
     contactItems,
-    resumeDisplayTitle,
+    targetRole,
     sectionSpacingClass,
     headerStyle,
     isOpenSourceClassicTemplate,
@@ -47,7 +47,7 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
                 activeTemplate={activeTemplate}
                 profile={profile}
                 contactItems={contactItems}
-                resumeDisplayTitle={resumeDisplayTitle}
+                targetRole={targetRole}
                 sectionSpacingClass={sectionSpacingClass}
                 headerStyle={commonHeaderStyle}
                 getSectionOverflowHighlightStyle={getSectionOverflowHighlightStyle}
@@ -147,9 +147,9 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
                         <h1 className="text-[34px] font-bold tracking-[0.06em] leading-tight text-gray-950">
                             {profile.name}
                         </h1>
-                        {resumeDisplayTitle ? (
+                        {targetRole ? (
                             <p className="mt-1 text-[12px] font-semibold leading-snug text-gray-700">
-                                {resumeDisplayTitle}
+                                {targetRole}
                             </p>
                         ) : null}
                         {contactEntries.length ? (
@@ -186,9 +186,9 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
                         <h1 className={`text-[28px] font-bold tracking-[0.12em] ${isPhotoSidebarTemplate ? 'text-white' : 'text-gray-900'}`}>
                             {profile.name}
                         </h1>
-                        {isPhotoSidebarTemplate && resumeDisplayTitle ? (
+                        {isPhotoSidebarTemplate && targetRole ? (
                             <p className="mt-1 text-[11px] font-semibold leading-snug tracking-normal text-white/75">
-                                {resumeDisplayTitle}
+                                {targetRole}
                             </p>
                         ) : null}
                     </div>
