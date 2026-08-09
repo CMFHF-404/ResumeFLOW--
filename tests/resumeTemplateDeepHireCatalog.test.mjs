@@ -120,6 +120,19 @@ const loadPreviewRenderUtils = async () => {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 };
 
+const loadDragSortUtils = async () => {
+  const result = await build({
+    absWorkingDir: rootDir,
+    entryPoints: ['utils/dragSort.ts'],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+  });
+  const outputText = result.outputFiles[0].text;
+  return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+};
+
 test('DeepHire catalog exposes the exact supported template set and local assets', async () => {
   const {
     DEFAULT_RESUME_TEMPLATE_ID,
@@ -604,6 +617,165 @@ test('card-style DeepHire certifications render the certificate name only', asyn
   const certificationSource = read('views/ResumeEditor/components/ResumePreview/sections/CertificationSection.tsx');
   assert.match(certificationSource, /showIssuerAndDate\s*\?\s*\(/);
   assert.match(certificationSource, /showIssuerAndDate && cert\.issuer/);
+});
+
+test('card-style DeepHire certifications share inline wrapping and consistent gaps', async () => {
+  const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
+  const { buildDeepHireTemplateCss, usesDeepHireCertificationCards } = await loadDeepHireTemplateStyles();
+
+  for (const template of RESUME_TEMPLATE_DEFINITIONS.filter(usesDeepHireCertificationCards)) {
+    const css = buildDeepHireTemplateCss(template, 'editor');
+    assert.match(
+      css,
+      /\[data-rf-item-container="certifications"\]\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;[^}]*row-gap:\s*var\(--rf-list-spacing\)\s*!important;[^}]*column-gap:\s*12px\s*!important;/s,
+      `${template.id} should place certificate cards inline while preserving editor-controlled row spacing`,
+    );
+    assert.match(
+      css,
+      /\[data-rf-item-container="certifications"\]\s*>\s*\[data-rf-item-id\]\s*\{[^}]*flex:\s*0 0 auto;[^}]*max-width:\s*100%;[^}]*margin-top:\s*0\s*!important;[^}]*margin-bottom:\s*0\s*!important;/s,
+      `${template.id} should wrap whole cards before shrinking them into the remaining row`,
+    );
+    assert.match(
+      css,
+      /\[data-rf-item-container="certifications"\]\s+\.rf-template-certification-name\s*\{[^}]*word-break:\s*keep-all;[^}]*overflow-wrap:\s*break-word;/s,
+      `${template.id} should wrap a single overlong certificate name safely`,
+    );
+    assert.match(
+      css,
+      /\[data-rf-item-container="certifications"\]\s+\[data-rf-item-surface\]\s*\{[^}]*box-sizing:\s*border-box;[^}]*width:\s*max-content\s*!important;[^}]*max-width:\s*100%;/s,
+      `${template.id} should keep ordinary certificate names on one line before wrapping overlong content`,
+    );
+    assert.match(
+      css,
+      /\[data-rf-preview-scope="editor"\][^{]*\.rf-template-item-control\s*\{[^}]*left:\s*auto\s*!important;[^}]*right:\s*2px;[^}]*top:\s*2px\s*!important;[^}]*z-index:\s*10;[^}]*flex-direction:\s*row\s*!important;/s,
+      `${template.id} should keep editor controls inside their own inline card`,
+    );
+  }
+
+  const certificationSource = read('views/ResumeEditor/components/ResumePreview/sections/CertificationSection.tsx');
+  const previewSource = read('views/ResumeEditor/components/ResumePreview.tsx');
+  assert.match(certificationSource, /rf-template-item-control/);
+  assert.match(
+    previewSource,
+    /pointer-events-none opacity-0 group-hover\/item:pointer-events-auto group-hover\/item:opacity-100/,
+    'desktop item controls should not intercept clicks while hidden',
+  );
+});
+
+test('wrapped certification cards resolve drag order on the horizontal axis', async () => {
+  const { resolveDragAxisFromRects, resolveDragPosition, resolveDragTarget } = await loadDragSortUtils();
+  const certificationSource = read('views/ResumeEditor/components/ResumePreview/sections/CertificationSection.tsx');
+  const previewSource = read('views/ResumeEditor/components/ResumePreview.tsx');
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+  });
+  const firstCard = rect(0, 0, 80, 30);
+  const secondCard = rect(92, 0, 90, 30);
+
+  assert.equal(resolveDragAxisFromRects([firstCard, secondCard]), 'horizontal');
+  assert.equal(
+    resolveDragPosition(secondCard, 29, 100, 'horizontal'),
+    'before',
+    'the left half should insert before even when the pointer is below the vertical midpoint',
+  );
+  assert.equal(
+    resolveDragPosition(secondCard, 1, 175, 'horizontal'),
+    'after',
+    'the right half should insert after even when the pointer is above the vertical midpoint',
+  );
+
+  const firstRow = rect(0, 0, 200, 30);
+  const secondRow = rect(0, 42, 200, 30);
+  assert.equal(resolveDragAxisFromRects([firstRow, secondRow]), 'vertical');
+  assert.equal(resolveDragPosition(secondRow, 45, 195, 'vertical'), 'before');
+  assert.equal(resolveDragPosition(secondRow, 70, 5, 'vertical'), 'after');
+
+  class FakeDragElement {
+    constructor(id, bounds) {
+      this.id = id;
+      this.bounds = bounds;
+      this.parentElement = null;
+    }
+
+    closest(selector) {
+      return selector === '[data-rf-item-id]' ? this : null;
+    }
+
+    getAttribute(name) {
+      return name === 'data-rf-item-id' ? this.id : null;
+    }
+
+    getBoundingClientRect() {
+      return this.bounds;
+    }
+  }
+
+  const wrappedCards = [
+    new FakeDragElement('A', rect(0, 0, 80, 30)),
+    new FakeDragElement('B', rect(92, 0, 80, 30)),
+    new FakeDragElement('C', rect(0, 42, 80, 30)),
+    new FakeDragElement('D', rect(92, 42, 80, 30)),
+  ];
+  const container = {
+    querySelectorAll: () => wrappedCards,
+    contains: (element) => wrappedCards.includes(element),
+  };
+  const previousElement = globalThis.Element;
+  const previousNode = globalThis.Node;
+  const previousHtmlElement = globalThis.HTMLElement;
+
+  try {
+    globalThis.Element = FakeDragElement;
+    globalThis.Node = FakeDragElement;
+    globalThis.HTMLElement = FakeDragElement;
+    assert.equal(
+      resolveDragTarget(
+        container,
+        57,
+        'data-rf-item-id',
+        'C',
+        wrappedCards[2],
+        40,
+      ),
+      null,
+      'hovering the dragged card itself must not pick a spatially-nearest card from another row',
+    );
+    assert.deepEqual(
+      resolveDragTarget(
+        container,
+        57,
+        'data-rf-item-id',
+        null,
+        null,
+        20,
+      ),
+      { id: 'C', position: 'before' },
+      'a null excluded id should continue to resolve the nearest card',
+    );
+  } finally {
+    if (previousElement === undefined) delete globalThis.Element;
+    else globalThis.Element = previousElement;
+    if (previousNode === undefined) delete globalThis.Node;
+    else globalThis.Node = previousNode;
+    if (previousHtmlElement === undefined) delete globalThis.HTMLElement;
+    else globalThis.HTMLElement = previousHtmlElement;
+  }
+
+  assert.match(
+    certificationSource,
+    /resolveDragTarget\([\s\S]*?event\.clientY,[\s\S]*?event\.target,\s*event\.clientX\s*\)/,
+    'desktop certification dragging should provide the horizontal pointer coordinate',
+  );
+  assert.match(
+    previewSource,
+    /resolveDragTarget\(\s*session\.container,[\s\S]*?clientY,[\s\S]*?currentTarget,\s*clientX\s*\)/,
+    'touch item dragging should provide the horizontal pointer coordinate',
+  );
 });
 
 test('campus youth headings reuse the multicolor divider as a polished underline', async () => {

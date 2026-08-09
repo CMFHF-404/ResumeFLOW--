@@ -55,6 +55,41 @@ export const usesDeepHireCertificationCards = (
 ) => isDeepHireTemplate(activeTemplate)
     && DEEPHIRE_CERTIFICATION_CARD_TEMPLATE_IDS.has(activeTemplate.id);
 
+const buildCertificationCardLayoutCss = (
+    activeTemplate: ResumeTemplateDefinition,
+    rootSelector: string
+) => usesDeepHireCertificationCards(activeTemplate) ? `
+${rootSelector} [data-rf-item-container="certifications"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  row-gap: var(--rf-list-spacing) !important;
+  column-gap: 12px !important;
+}
+${rootSelector} [data-rf-item-container="certifications"] > [data-rf-item-id] {
+  flex: 0 0 auto;
+  max-width: 100%;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+${rootSelector} [data-rf-item-container="certifications"] [data-rf-item-surface] {
+  box-sizing: border-box;
+  width: max-content !important;
+  max-width: 100%;
+}
+${rootSelector} [data-rf-item-container="certifications"] .rf-template-certification-name {
+  display: block;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+${rootSelector}[data-rf-preview-scope="editor"] [data-rf-item-container="certifications"] > [data-rf-item-id] > .rf-template-item-control {
+  left: auto !important;
+  right: 2px;
+  top: 2px !important;
+  z-index: 10;
+  flex-direction: row !important;
+}` : '';
+
 const normalizeTopPaddingPx = (topPaddingPx: number) => (
     Number.isFinite(topPaddingPx)
         ? Math.max(0, topPaddingPx)
@@ -1007,6 +1042,7 @@ ${rootSelector} .rf-deephire-avatar {
         baseCss,
         buildSectionVariantCss(rootSelector, activeTemplate.sectionVariant),
         buildTemplateSpecificCss(activeTemplate, rootSelector),
+        buildCertificationCardLayoutCss(activeTemplate, rootSelector),
         avatarQualityCss,
     ].filter(Boolean).join('\n');
 };

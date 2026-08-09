@@ -7,6 +7,52 @@ export type DragTarget = {
     position: DropPosition;
 };
 
+type DragRect = Pick<DOMRect, 'top' | 'right' | 'bottom' | 'left' | 'width' | 'height'>;
+
+export type DragAxis = 'vertical' | 'horizontal';
+
+const HORIZONTAL_ROW_OVERLAP_RATIO = 0.5;
+const MIN_HORIZONTAL_CENTER_DISTANCE_PX = 1;
+
+export const resolveDragAxisFromRects = (rects: DragRect[]): DragAxis => {
+    for (let index = 0; index < rects.length; index += 1) {
+        const rect = rects[index];
+        for (let candidateIndex = index + 1; candidateIndex < rects.length; candidateIndex += 1) {
+            const candidateRect = rects[candidateIndex];
+            const verticalOverlap = Math.min(rect.bottom, candidateRect.bottom)
+                - Math.max(rect.top, candidateRect.top);
+            const minimumHeight = Math.min(rect.height, candidateRect.height);
+            const horizontalCenterDistance = Math.abs(
+                (rect.left + (rect.width / 2))
+                - (candidateRect.left + (candidateRect.width / 2))
+            );
+
+            if (
+                minimumHeight > 0
+                && verticalOverlap >= minimumHeight * HORIZONTAL_ROW_OVERLAP_RATIO
+                && horizontalCenterDistance > MIN_HORIZONTAL_CENTER_DISTANCE_PX
+            ) {
+                return 'horizontal';
+            }
+        }
+    }
+
+    return 'vertical';
+};
+
+export const resolveDragPosition = (
+    rect: DragRect,
+    clientY: number,
+    clientX: number | undefined,
+    axis: DragAxis
+): DropPosition => {
+    if (axis === 'horizontal' && typeof clientX === 'number' && Number.isFinite(clientX)) {
+        return clientX < rect.left + (rect.width / 2) ? 'before' : 'after';
+    }
+
+    return clientY < rect.top + (rect.height / 2) ? 'before' : 'after';
+};
+
 const resolveClosestDragElement = (
     target: EventTarget | null,
     container: HTMLElement,
@@ -28,15 +74,29 @@ const resolveClosestDragElement = (
 
 const resolveNearestDragCandidate = (
     candidates: Array<{ el: HTMLElement; id: string }>,
-    clientY: number
+    clientY: number,
+    clientX: number | undefined,
+    axis: DragAxis
 ) => {
     let best = candidates[0];
     let bestDistance = Number.POSITIVE_INFINITY;
 
     for (const candidate of candidates) {
         const rect = candidate.el.getBoundingClientRect();
-        const midpoint = rect.top + rect.height / 2;
-        const distance = Math.abs(clientY - midpoint);
+        const distance = axis === 'horizontal' && typeof clientX === 'number'
+            ? Math.hypot(
+                clientX < rect.left
+                    ? rect.left - clientX
+                    : clientX > rect.right
+                        ? clientX - rect.right
+                        : 0,
+                clientY < rect.top
+                    ? rect.top - clientY
+                    : clientY > rect.bottom
+                        ? clientY - rect.bottom
+                        : 0
+            )
+            : Math.abs(clientY - (rect.top + (rect.height / 2)));
         if (distance < bestDistance) {
             best = candidate;
             bestDistance = distance;
@@ -51,7 +111,8 @@ export const resolveDragTarget = (
     clientY: number,
     dataAttr: string,
     excludedId: string | null,
-    eventTarget: EventTarget | null
+    eventTarget: EventTarget | null,
+    clientX?: number
 ): DragTarget | null => {
     const elements = Array.from(container.querySelectorAll<HTMLElement>(`[${dataAttr}]`));
     const candidates = elements
@@ -62,16 +123,25 @@ export const resolveDragTarget = (
         return null;
     }
 
+    const axis = typeof clientX === 'number' && Number.isFinite(clientX)
+        ? resolveDragAxisFromRects(elements.map((element) => element.getBoundingClientRect()))
+        : 'vertical';
+
     const hoveredEl = resolveClosestDragElement(eventTarget, container, dataAttr);
     const hoveredId = hoveredEl?.getAttribute(dataAttr) ?? null;
+    if (excludedId !== null && hoveredId === excludedId) {
+        return null;
+    }
     const picked =
-        hoveredEl && hoveredId && hoveredId !== excludedId
+        hoveredEl && hoveredId
             ? { el: hoveredEl, id: hoveredId }
-            : resolveNearestDragCandidate(candidates, clientY);
+            : resolveNearestDragCandidate(candidates, clientY, clientX, axis);
 
     const rect = picked.el.getBoundingClientRect();
-    const midpoint = rect.top + rect.height / 2;
-    return { id: picked.id, position: clientY < midpoint ? 'before' : 'after' };
+    return {
+        id: picked.id,
+        position: resolveDragPosition(rect, clientY, clientX, axis),
+    };
 };
 
 const resolveInsertIndex = (
@@ -106,4 +176,3 @@ export const moveItemWithDropPosition = <T,>(
 };
 
 export type SortableDragStartHandler = (event: React.DragEvent, itemKey: string) => void;
-

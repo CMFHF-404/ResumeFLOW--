@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -30,6 +31,7 @@ READ_ERROR_EXPRESSION = "() => document.body?.dataset?.rfExportError ?? ''"
 _browser_lock = asyncio.Lock()
 _playwright: Optional[Playwright] = None
 _browser: Optional[Browser] = None
+_BROWSER_CHANNEL_FALLBACKS: tuple[str | None, ...] = (None, "chrome", "msedge")
 
 
 class BrowserPdfRenderError(Exception):
@@ -82,18 +84,55 @@ async def _get_browser() -> Browser:
         if _playwright is None:
             _playwright = await async_playwright().start()
 
-        _browser = await _playwright.chromium.launch(
-            headless=True,
-            args=["--disable-dev-shm-usage"],
-        )
+        _browser = await _launch_browser(_playwright)
         return _browser
 
 
-async def _launch_browser(playwright: Playwright) -> Browser:
-    return await playwright.chromium.launch(
-        headless=True,
-        args=["--disable-dev-shm-usage"],
+async def _launch_browser(
+    playwright: Playwright,
+    launch_timeout_seconds: float | None = None,
+) -> Browser:
+    resolved_timeout_seconds = (
+        float(launch_timeout_seconds)
+        if launch_timeout_seconds is not None
+        else float(load_settings().export_render_timeout_seconds)
     )
+    deadline = time.monotonic() + max(0.001, resolved_timeout_seconds)
+    last_error: PlaywrightError | None = None
+    last_timeout_error: PlaywrightTimeoutError | None = None
+
+    for channel in _BROWSER_CHANNEL_FALLBACKS:
+        remaining_timeout_ms = max(0.0, (deadline - time.monotonic()) * 1000)
+        if remaining_timeout_ms <= 0:
+            break
+        attempt_timeout_ms = max(1.0, remaining_timeout_ms)
+        try:
+            if channel is None:
+                return await playwright.chromium.launch(
+                    headless=True,
+                    args=["--disable-dev-shm-usage"],
+                    timeout=attempt_timeout_ms,
+                )
+            return await playwright.chromium.launch(
+                channel=channel,
+                headless=True,
+                args=["--disable-dev-shm-usage"],
+                timeout=attempt_timeout_ms,
+            )
+        except PlaywrightTimeoutError as exc:
+            last_error = exc
+            last_timeout_error = exc
+        except PlaywrightError as exc:
+            last_error = exc
+
+    if last_timeout_error is not None or time.monotonic() >= deadline:
+        raise BrowserPdfRenderTimeoutError("PDF 渲染浏览器启动超时。") from (
+            last_timeout_error or last_error
+        )
+
+    raise BrowserPdfRenderError(
+        "PDF 渲染浏览器不可用，请安装 Playwright Chromium 或系统 Chrome/Edge。"
+    ) from last_error
 
 
 def _build_page_url_for_path(snapshot_id: str, token: str, page_path: str) -> str:
