@@ -2159,6 +2159,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         snapshot = agent_service._build_resume_pdf_snapshot(resume, bank, payload, analysis, "")
 
         self.assertEqual(snapshot.resumeName, "示例公司 - 前端实习")
+        self.assertEqual(snapshot.targetRole, "前端实习")
         self.assertIn("certifications", snapshot.sectionOrder)
         self.assertNotIn("certification", snapshot.sectionOrder)
 

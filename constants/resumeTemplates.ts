@@ -930,14 +930,10 @@ export const resolveDefaultResumeThemeColorPresetId = (
 );
 
 export const shouldUseStaticResumeTemplateThumbnail = (
-  templateId?: ResumeTemplateId | string | null,
-  themeColorPresetId?: ResumeThemeColorPresetId | string | null,
+  _templateId?: ResumeTemplateId | string | null,
+  _themeColorPresetId?: ResumeThemeColorPresetId | string | null,
   preferStaticThumbnail = true,
-): boolean => preferStaticThumbnail && (
-  !supportsResumeTemplateThemeColorCustomization(templateId)
-  || !themeColorPresetId
-  || themeColorPresetId === resolveDefaultResumeThemeColorPresetId(templateId)
-);
+): boolean => preferStaticThumbnail;
 
 export const resolveResumeThemeColor = (
   templateId?: ResumeTemplateId | string | null,

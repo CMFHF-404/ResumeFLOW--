@@ -150,3 +150,13 @@ export const mapResumeToDashboard = (
 export const mapResumesToDashboard = (
     resumes: Array<Pick<ResumeRecord, 'id' | 'title' | 'target_role' | 'config' | 'created_at' | 'updated_at'>>
 ) => resumes.map(mapResumeToDashboard);
+
+export const replaceDashboardResumeFromServer = (
+    resumes: DashboardResume[],
+    updated: ResumeRecord
+) => {
+    const mapped = mapResumeToDashboard(updated);
+    return resumes.map((resume) => (
+        resume.id === mapped.id ? mapped : resume
+    ));
+};

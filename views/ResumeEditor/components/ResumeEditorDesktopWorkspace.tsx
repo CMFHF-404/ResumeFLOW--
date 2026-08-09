@@ -3,7 +3,6 @@ import ResumeFactorySidebar, { type ResumeFactorySidebarProps } from './ResumeFa
 import ResumeEditorLayoutAdjustPanel from './ResumeEditorLayoutAdjustPanel';
 import ResumeEditorPreviewStage from './ResumeEditorPreviewStage';
 import type { ResumePreviewProps } from './ResumePreview';
-import type { TokenQuotaSummary } from '../../../services/billingService';
 
 type ResumeEditorDesktopWorkspaceProps = {
     factorySidebarProps: ResumeFactorySidebarProps;
@@ -11,8 +10,6 @@ type ResumeEditorDesktopWorkspaceProps = {
     previewProps: ResumePreviewProps;
     assistantSidebar?: React.ReactNode;
     isAssistantSidebarOpen?: boolean;
-    quotaSummary?: TokenQuotaSummary | null;
-    onOpenTokenQuota?: () => void;
 };
 
 const ASSISTANT_SIDEBAR_WIDTH = '390px';

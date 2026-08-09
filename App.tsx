@@ -17,7 +17,7 @@ import {
   trackAuthenticatedVisit,
   trackPageView,
 } from './utils/analyticsTracker';
-import { resumeService } from './services/resumeService';
+import { resumeService, type Resume as ResumeRecord } from './services/resumeService';
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
 import { billingService, type TokenQuotaSummary } from './services/billingService';
@@ -29,6 +29,7 @@ import {
   useAuthUserKey,
   writeStoredAuthUserKey,
 } from './hooks/useAuthUserKey';
+import { replaceDashboardResumeFromServer } from './utils/dashboardResumeMapper';
 
 const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
 
@@ -308,6 +309,11 @@ const App: React.FC = () => {
     setCachedResumesOwnerKey(authUserKey ?? null);
   }, [authUserKey]);
 
+  const handleResumeRecordUpdate = useCallback((updated: ResumeRecord) => {
+    setCachedResumes((current) => replaceDashboardResumeFromServer(current, updated));
+    setCachedResumesOwnerKey(authUserKey ?? null);
+  }, [authUserKey]);
+
   // 处理经历库数据更新的回调
   const handleProfileUpdate = useCallback((data: any) => {
     devLog('[App] 更新经历库缓存');
@@ -384,6 +390,7 @@ const App: React.FC = () => {
             isAuthenticated={isAuthenticated}
             onRequireAuth={handleRequireAuth}
             onProfileUpdate={handleProfileUpdate}
+            onResumeUpdate={handleResumeRecordUpdate}
             shouldOpenResumeUpload={shouldOpenResumeUpload}
             onLaunchAssistant={handleLaunchAssistant}
             onOpenAssistantSession={handleOpenAssistantSession}
@@ -404,8 +411,6 @@ const App: React.FC = () => {
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
             focusExperienceRequest={resumeEditorFocusRequest}
-            quotaSummary={quotaSummary}
-            onOpenTokenQuota={handleOpenTokenQuota}
           />
         ) : (
           <GuestResumeEditorPreview onRequireAuth={handleRequireAuth} />

@@ -58,6 +58,7 @@ import {
 export type DashboardResumePreviewScope = 'dashboard-modal' | 'dashboard-card' | 'dashboard-row';
 
 export type DashboardResumePreviewState = {
+    targetRole: string;
     profile: ResumeEditorProfile;
     sectionOrder: string[];
     selectedWorkItems: ResumeExperienceView[];
@@ -94,7 +95,6 @@ export type DashboardResumePreviewGlobalData = {
 
 type BuildDashboardResumePreviewPropsOptions = {
     previewScope?: DashboardResumePreviewScope;
-    resumeDisplayTitle?: string;
 };
 
 export const DASHBOARD_RESUME_PREVIEW_LOADING_TEXT = '正在加载简历预览...';
@@ -261,6 +261,7 @@ export const buildDashboardResumePreviewState = (
     );
 
     return {
+        targetRole: detail.resume.target_role?.trim() ?? '',
         profile: resolveProfileSnapshot(config, profileData || undefined),
         sectionOrder,
         selectedWorkItems,
@@ -393,7 +394,7 @@ export const buildDashboardResumePreviewProps = (
         sortedCertifications: previewState.sortedCertifications,
         selectedCertIds: previewState.selectedCertIds,
         selectedSkillGroups: previewState.selectedSkillGroups,
-        resumeDisplayTitle: options.resumeDisplayTitle,
+        targetRole: previewState.targetRole,
         isDragging: false,
         draggedItemKey: null,
         draggedSectionId: null,

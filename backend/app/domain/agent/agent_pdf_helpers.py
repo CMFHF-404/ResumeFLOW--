@@ -543,6 +543,7 @@ def _build_resume_pdf_snapshot(
         # Keep the visible resume heading independent from screening scores;
         # score-prefixed names belong to the download/archive layer only.
         resumeName=f"{payload.company_name} - {payload.job_title}",
+        targetRole=str(payload.job_title or getattr(resume, "target_role", "") or "").strip(),
         profile=profile,
         lineHeight=snapshot_layout["lineHeight"],
         fontSize=snapshot_layout["fontSize"],

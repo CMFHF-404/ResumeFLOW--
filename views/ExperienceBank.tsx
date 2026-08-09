@@ -23,6 +23,7 @@ import { devLog } from '../services/devLogger';
 import type { Profile } from '../services/profileService';
 import type { AssistantDraftApplyNavigation } from '../services/aiService';
 import { experienceService } from '../services/experienceService';
+import type { Resume as ResumeRecord } from '../services/resumeService';
 import { useEducationManager } from '../hooks/useEducationManager';
 import EducationSection from './EducationSection';
 import ExperienceSection from './ExperienceSection';
@@ -81,6 +82,7 @@ interface ExperienceBankProps {
   onRequireAuth: () => void | Promise<void>;
   cachedProfile?: Profile;
   onProfileUpdate?: (data: Profile) => void;
+  onResumeUpdate?: (data: ResumeRecord) => void;
   shouldOpenResumeUpload?: boolean; // 是否自动打开简历上传弹窗
   onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
   onOpenAssistantSession?: (sessionId: string) => void;
@@ -93,6 +95,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   onRequireAuth,
   cachedProfile,
   onProfileUpdate,
+  onResumeUpdate,
   shouldOpenResumeUpload = false,
   onLaunchAssistant,
   onOpenAssistantSession,
@@ -235,12 +238,15 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
   const {
     isLoadingProfile,
+    isLoadingTargetRole,
     isSavingProfile,
     isEditingProfile,
+    activeResumeId,
     name,
     email,
     phone,
     location,
+    targetRole,
     link,
     summary,
     summaryText,
@@ -264,6 +270,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     handleEmailChange,
     handlePhoneChange,
     handleLocationChange,
+    handleTargetRoleChange,
     handleLinkChange,
     handleAvatarUploadClick,
     handleFileSelected,
@@ -275,6 +282,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     onRequireAuth: handleSignIn,
     cachedProfile,
     onProfileUpdate,
+    onResumeUpdate,
     refreshEducation,
     loadExportSnapshot: loadExperienceBankExportSnapshot,
     loadValidationSnapshot: loadExperienceBankValidationSnapshot,
@@ -585,7 +593,8 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                       电话（mobile 已在上方单独渲染）
                       邮箱 order-1  → 排第1
                       地点 order-2  → 排第2
-                      链接 order-3  → 排第3
+                      意向岗位 order-3 → 排第3
+                      链接 order-4  → 排第4
                     PC (md+) 所有 order 重置为 0，按 DOM 顺序流动
                   */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -642,8 +651,21 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                       />
                     </div>
 
+                    {/* 意向岗位 - 同步当前活动简历 */}
+                    <div className="order-3 md:order-none space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <Briefcase className="w-3 h-3" /> 意向岗位
+                      </label>
+                      <input
+                        className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
+                        value={targetRole}
+                        onChange={(e) => handleTargetRoleChange(e.target.value)}
+                        disabled={!isEditingProfile || isLoadingProfile || isLoadingTargetRole || !activeResumeId}
+                      />
+                    </div>
+
                     {/* 链接 */}
-                    <div className="order-3 md:order-none md:col-span-2 space-y-1">
+                    <div className="order-4 md:order-none md:col-span-2 lg:col-span-1 space-y-1">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <LinkIcon className="w-3 h-3" /> 链接 (LinkedIn/Portfolio)
                       </label>

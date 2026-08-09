@@ -159,7 +159,7 @@ export type ResumePreviewProps = {
     onEditCertification: (id: string) => void;
     onEditSkill: (id: string) => void;
     /** 简历文档标题（如「AI产品经理 - 某公司」），用于头像名片等页眉副标题 */
-    resumeDisplayTitle?: string;
+    targetRole?: string;
 };
 
 const ResumePreview: React.FC<ResumePreviewProps> = ({
@@ -209,7 +209,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditExperience,
     onEditCertification,
     onEditSkill,
-    resumeDisplayTitle: resumeDisplayTitleProp,
+    targetRole: targetRoleProp,
 }) => {
     const isDashboardCardPreview = previewScope === 'dashboard-card';
     const isDashboardThumbnailPreview = isDashboardCardPreview || previewScope === 'dashboard-row';
@@ -233,9 +233,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     )
     );
     const isReadOnly = Boolean(readOnly);
-    const resumeDisplayTitle = React.useMemo(
-        () => (resumeDisplayTitleProp ?? '').trim() || undefined,
-        [resumeDisplayTitleProp]
+    const targetRole = React.useMemo(
+        () => (targetRoleProp ?? '').trim() || undefined,
+        [targetRoleProp]
     );
     const useMobileEditorInteraction = previewScope === 'editor' && !isDesktopEditorViewport;
     const showTouchDragHandles = !isReadOnly
@@ -1694,7 +1694,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             activeTemplate={activeTemplate}
             profile={profile}
             contactItems={contactItems}
-            resumeDisplayTitle={resumeDisplayTitle}
+            targetRole={targetRole}
             sectionSpacingClass={sectionSpacingClass}
             headerStyle={headerStyle}
             isOpenSourceClassicTemplate={isOpenSourceClassicTemplate}

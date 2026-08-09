@@ -69,18 +69,17 @@ test('billingService uses the backend billing API surface and refreshes after re
   assert.match(service, /TokenQuotaSummary/);
 });
 
-test('ProfileTab shows read-only token usage and opens the shared quota modal', () => {
+test('ProfileTab omits token quota details and keeps the shared quota entry in GlobalSidebar', () => {
   const profileTab = read('views/ResumeEditor/components/ProfileTab.tsx');
   const editorDesktop = read('views/ResumeEditor/components/ResumeEditorDesktopWorkspace.tsx');
 
-  assert.match(profileTab, /quotaSummary/);
-  assert.match(profileTab, /onOpenTokenQuota/);
-  assert.match(profileTab, /is_unlimited/);
-  assert.match(profileTab, /无限额度/);
-  assert.match(profileTab, /剩余额度/);
-  assert.match(profileTab, /当前用量/);
-  assert.match(profileTab, /查看额度/);
+  assert.doesNotMatch(profileTab, /quotaSummary/);
+  assert.doesNotMatch(profileTab, /onOpenTokenQuota/);
+  assert.doesNotMatch(profileTab, /AI 额度/);
+  assert.doesNotMatch(profileTab, /剩余额度/);
+  assert.doesNotMatch(profileTab, /当前用量/);
+  assert.doesNotMatch(profileTab, /查看额度/);
 
-  assert.match(editorDesktop, /quotaSummary/);
-  assert.match(editorDesktop, /onOpenTokenQuota/);
+  assert.doesNotMatch(editorDesktop, /quotaSummary/);
+  assert.doesNotMatch(editorDesktop, /onOpenTokenQuota/);
 });

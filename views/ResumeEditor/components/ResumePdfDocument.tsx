@@ -1,6 +1,5 @@
 import React from 'react';
 import type { ResumePdfRenderSnapshot } from '../../../types/resume';
-import { resolveResumeDisplayTitle } from '../../../constants/resumeConstants';
 import ResumePreview from './ResumePreview';
 
 type ResumePdfDocumentProps = {
@@ -74,7 +73,7 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
         onEditExperience={noop}
         onEditCertification={noop}
         onEditSkill={noop}
-        resumeDisplayTitle={resolveResumeDisplayTitle(snapshot.resumeName)}
+        targetRole={snapshot.targetRole}
       />
     </div>
   );

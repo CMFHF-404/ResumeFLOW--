@@ -7,7 +7,6 @@ import { useResumeEvaluation } from '../../hooks/useResumeEvaluation';
 import { useResumeData } from '../../hooks/useResumeData';
 import { experienceService } from '../../services/experienceService';
 import type { AssistantSelectedResume } from '../../services/aiService';
-import type { TokenQuotaSummary } from '../../services/billingService';
 import type {
     CertificationView,
     EducationView,
@@ -30,7 +29,7 @@ import {
 import {
     trackLayoutModeChange,
 } from '../../utils/analyticsTracker';
-import { resolveResumeDisplayTitle, UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
+import { UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
     CERTIFICATION_DRAFT_PREFIX,
@@ -168,8 +167,6 @@ type ResumeEditorProps = {
         requestId: number;
         targetId?: string;
     } | null;
-    quotaSummary?: TokenQuotaSummary | null;
-    onOpenTokenQuota?: () => void;
 };
 
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
@@ -197,8 +194,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     mobileDrawerOpenRequest = 0,
     onMobileDrawerOpenRequestConsumed,
     focusExperienceRequest = null,
-    quotaSummary,
-    onOpenTokenQuota,
 }) => {
     const { isDarkMode, toggleTheme } = useEditorThemeState();
     const {
@@ -214,6 +209,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isAutoSavePaused, setIsAutoSavePaused,
         isCreatingResume, setIsCreatingResume,
         resumeName, setResumeName,
+        targetRole, setTargetRole,
+        originalTargetRole, setOriginalTargetRole,
         profile, setProfile,
         personalSummary, setPersonalSummary,
         hasPersonalSummaryOverride, setHasPersonalSummaryOverride,
@@ -911,6 +908,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         const nextTitle = normalizeResumeTitle(resumeDetail.resume.title || UNTITLED_RESUME_TITLE);
         setResumeName(nextTitle || UNTITLED_RESUME_TITLE);
     }, [resumeDetail]);
+    useEffect(() => {
+        if (!resumeDetail?.resume || isEditingProfile) {
+            return;
+        }
+        const nextTargetRole = resumeDetail.resume.target_role?.trim() ?? '';
+        setTargetRole(nextTargetRole);
+        setOriginalTargetRole(nextTargetRole);
+    }, [isEditingProfile, resumeDetail, setOriginalTargetRole, setTargetRole]);
     const handleAnalyzePersistedSnapshot = useCallback(async (
         options?: Parameters<typeof handleAnalyze>[0]
     ) => {
@@ -951,6 +956,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } = useProfileEditActions({
         profile,
         setProfile,
+        targetRole,
+        setTargetRole,
+        originalTargetRole,
+        setOriginalTargetRole,
+        resumeId,
+        resumeDetail,
+        applyResumeDetail,
+        updateDashboardCache,
+        flushResumeConfig,
         originalProfile,
         setOriginalProfile,
         profileSyncMode,
@@ -963,6 +977,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsEditingProfile,
         isSavingProfile,
         setIsSavingProfile,
+        showToastError,
     });
     const resetRenamingCategory = () => {
         skill.setRenamingCategoryTarget(null);
@@ -1614,6 +1629,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastLoading,
         updateToast,
         resumeName,
+        targetRole,
         profile: previewProfile,
         lineHeight,
         fontSize,
@@ -1720,7 +1736,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedCertIds,
         selectedSkillGroups,
         onNavigateTab: handlePreviewNavigateTab,
-        resumeDisplayTitle: resolveResumeDisplayTitle(resumeName),
+        targetRole,
     };
     const {
         layoutAdjustProps,
@@ -1816,6 +1832,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         profileTabProps: {
             profile,
             setProfile,
+            targetRole,
+            setTargetRole,
             profileSyncMode,
             setProfileSyncMode,
             isEditingProfile,
@@ -1838,8 +1856,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             onSaveEducation: education.handleSaveEducation,
             onRequestDeleteEducation: education.requestDeleteEducation,
             onToggleEducationSelection: trackedSelection.toggleEducationSelection,
-            quotaSummary,
-            onOpenTokenQuota,
         },
         experienceTabProps: {
             experience,
@@ -2150,8 +2166,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 previewProps={editorPreviewProps}
                 isAssistantSidebarOpen={isRightSidebarOpen}
                 assistantSidebar={rightSidebarContent}
-                quotaSummary={quotaSummary}
-                onOpenTokenQuota={onOpenTokenQuota}
             />
             <TemplateSelectorModal
                 isOpen={isTemplateSelectorOpen}
