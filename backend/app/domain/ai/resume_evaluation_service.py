@@ -149,17 +149,6 @@ def _build_messages(evaluation_input: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def _build_user_parts(evaluation_input: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return [
-        {
-            "text": (
-                "Full Resume Evaluation Input (JSON):\n"
-                f"{json.dumps(evaluation_input, ensure_ascii=False)}"
-            )
-        }
-    ]
-
-
 def _normalize_response(
     result: Any,
     *,

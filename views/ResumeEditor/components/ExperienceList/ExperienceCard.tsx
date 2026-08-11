@@ -108,19 +108,8 @@ type ExperienceCardFooterProps = {
 const ExperienceCardFooter: React.FC<ExperienceCardFooterProps> = ({
     item,
     hasReason,
-    isReasonOpen,
     staleExperienceIds,
-    onToggleReason,
 }) => {
-    // 处理徽章点击的包装函数
-    const handleBadgeClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        // 如果有理由，点击整个徽章都可以切换
-        if (hasReason) {
-            e.stopPropagation();
-            onToggleReason(e);
-        }
-    };
-
     return (
         <div className="flex items-center justify-between mt-2">
             <p className="text-[10px] text-gray-400 font-mono">{item.date || '未填写时间'}</p>

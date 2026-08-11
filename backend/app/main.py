@@ -13,6 +13,7 @@ from .domain.agent.agent_router import router as agent_router
 from .domain.ai.ai_router import router as ai_router
 from .domain.assistant.assistant_router import router as assistant_router
 from .domain.billing.billing_router import router as billing_router
+from .domain.billing.payment_router import router as payment_router
 from .domain.billing.redemption_router import admin_router as redemption_admin_router
 from .domain.billing.redemption_router import router as redemption_router
 from .domain.certifications.certification_router import router as certifications_router
@@ -85,6 +86,7 @@ app.include_router(agent_router)
 app.include_router(ai_router)
 app.include_router(assistant_router)
 app.include_router(billing_router)
+app.include_router(payment_router)
 app.include_router(redemption_router)
 app.include_router(redemption_admin_router)
 app.include_router(parser_router)

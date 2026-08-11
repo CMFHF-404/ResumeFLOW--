@@ -27,7 +27,6 @@ import type {
     SkillGroupView,
 } from '../../../types/resume';
 import {
-    RICH_TEXT_INLINE_STYLES_CLASS,
     sanitizeRichTextHtml,
     stripRichTextToText,
 } from '../../../utils/richText';
@@ -48,7 +47,6 @@ import {
     MOBILE_EDITOR_MEDIA_QUERY,
     PREVIEW_SCALE_EPSILON,
     PREVIEW_SIZE_EPSILON,
-    SPLIT_TEMPLATE_SIDEBAR_RATIO,
     buildPreviewTypographyCss,
     detectDesktopEditorViewport,
     detectTouchOnlyInteractionEnvironment,
@@ -1264,7 +1262,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         },
         [isSectionOverflowHighlighted]
     );
-    const getTemplateSectionWrapperStyle = React.useCallback((sectionId: string) => {
+    const getTemplateSectionWrapperStyle = React.useCallback((_sectionId: string) => {
         return sectionWrapperStyle;
     }, [sectionWrapperStyle]);
     const sectionHeadingTextClassName = React.useMemo(() => {

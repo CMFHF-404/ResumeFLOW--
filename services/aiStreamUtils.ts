@@ -1,6 +1,10 @@
 import { getAuthorizationHeader } from './apiClient';
 import { dispatchLoginRequired } from './authRedirect';
 import { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
+import {
+    DEFAULT_QUOTA_PURCHASE_MESSAGE,
+    dispatchQuotaPurchaseRequired,
+} from './quotaPurchasePrompt';
 
 export { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
 
@@ -34,7 +38,9 @@ export const ensureStreamResponseOk = async (response: Response) => {
     }
     const message = await readStreamErrorMessage(response);
     if (response.status === 402) {
-        throw new Error(message || 'AI token 额度已用完，请打开额度入口兑换卡密或联系管理员。');
+        const quotaMessage = message || DEFAULT_QUOTA_PURCHASE_MESSAGE;
+        dispatchQuotaPurchaseRequired(quotaMessage);
+        throw new Error(quotaMessage);
     }
     throw new Error(message || `AI stream request failed: ${response.status}`);
 };

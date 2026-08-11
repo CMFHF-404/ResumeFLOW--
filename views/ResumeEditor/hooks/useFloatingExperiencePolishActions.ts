@@ -68,8 +68,6 @@ export const useFloatingExperiencePolishActions = ({
     jdPolishContext,
     jdCapabilityPolishContext,
     floatingPolishMode,
-    setFloatingPolishMode,
-    defaultFloatingPolishMode,
     floatingPolishCustomPrompt,
     floatingSmartCompletionPrompt,
     setFloatingSmartCompletionPrompt,
@@ -121,10 +119,8 @@ export const useFloatingExperiencePolishActions = ({
         }
 
         const draft = buildExperienceEditDraft(targetItem);
-        let toastId: string | null = null;
         let hasError = false;
         let applied = false;
-        let requestedSmartCompletion = false;
         let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
@@ -152,7 +148,6 @@ export const useFloatingExperiencePolishActions = ({
             }, floatingAbortControllerRef.current?.signal);
 
             if (shouldAskBeforeSmartCompletionRewrite(floatingPolishMode, result)) {
-                requestedSmartCompletion = true;
                 setFloatingSmartCompletionPrompt((prev) => buildSmartCompletionPromptState(result, prev));
                 return;
             }

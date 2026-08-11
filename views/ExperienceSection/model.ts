@@ -134,7 +134,6 @@ export const useExperienceSectionModel = ({
   category,
   refreshSignal,
   defaultOrg,
-  defaultTitle,
   emptyTitleError,
   titleRequired = true,
   toast,

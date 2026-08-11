@@ -68,8 +68,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
     onSaveEducation,
     onRequestDeleteEducation,
     onToggleEducationSelection,
-    onEducationDragStart,
-    onEducationDragEnd,
 }) => (
     <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">

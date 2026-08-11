@@ -48,6 +48,49 @@ export interface TokenRedemptionResponse {
   summary: TokenQuotaSummary;
 }
 
+export type BillingProductCategory = 'tokens' | 'unlimited';
+
+export interface BillingProduct {
+  sku: string;
+  name: string;
+  description: string;
+  amount_fen: number;
+  currency: string;
+  category: BillingProductCategory;
+  token_amount?: number | null;
+  unlimited_duration_days?: number | null;
+}
+
+export interface BillingProductsResponse {
+  payments_enabled: boolean;
+  products: BillingProduct[];
+}
+
+export type PaymentOrderStatus = 'pending' | 'paid' | 'fulfilled' | 'failed' | 'expired';
+
+export interface PaymentOrder {
+  id: string;
+  status: PaymentOrderStatus;
+  sku: string;
+  product_name?: string | null;
+  amount_fen: number;
+  currency: string;
+  created_at: string;
+  expires_at?: string | null;
+  paid_at?: string | null;
+  fulfilled_at?: string | null;
+  provider_trade_no?: string | null;
+  summary?: TokenQuotaSummary | null;
+  failure_reason?: string | null;
+}
+
+export interface PaymentCheckoutForm {
+  order: PaymentOrder;
+  action: string;
+  method: 'POST';
+  fields: Record<string, string>;
+}
+
 const BILLING_CACHE_TTL_MS = 10_000;
 
 let quotaSummaryCache: { ownerKey: string; data: TokenQuotaSummary; fetchedAt: number } | null = null;
@@ -71,6 +114,11 @@ const ensureBillingCacheOwner = async () => {
 };
 
 export const billingService = {
+  async getProducts(): Promise<BillingProductsResponse> {
+    const response = await apiClient.get<BillingProductsResponse>('/api/billing/products');
+    return response.data;
+  },
+
   async getSummary(options?: { force?: boolean }): Promise<TokenQuotaSummary> {
     const ownerKey = await ensureBillingCacheOwner();
     const now = Date.now();
@@ -110,6 +158,33 @@ export const billingService = {
     });
     const ownerKey = await getAuthCacheKey();
     quotaSummaryCache = { ownerKey, data: response.data.summary, fetchedAt: Date.now() };
+    return response.data;
+  },
+
+  async createPaymentOrder(sku: string, idempotencyKey: string): Promise<PaymentOrder> {
+    const response = await apiClient.post<PaymentOrder>(
+      '/api/billing/payment-orders',
+      { sku },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+    return response.data;
+  },
+
+  async getPaymentCheckout(orderId: string): Promise<PaymentCheckoutForm> {
+    const encodedOrderId = encodeURIComponent(orderId);
+    const response = await apiClient.post<PaymentCheckoutForm>(`/api/billing/payment-orders/${encodedOrderId}/checkout`);
+    return response.data;
+  },
+
+  async getPaymentOrder(orderId: string): Promise<PaymentOrder> {
+    const encodedOrderId = encodeURIComponent(orderId);
+    const response = await apiClient.get<PaymentOrder>(`/api/billing/payment-orders/${encodedOrderId}`);
+    return response.data;
+  },
+
+  async syncPaymentOrder(orderId: string): Promise<PaymentOrder> {
+    const encodedOrderId = encodeURIComponent(orderId);
+    const response = await apiClient.post<PaymentOrder>(`/api/billing/payment-orders/${encodedOrderId}/sync`);
     return response.data;
   },
 

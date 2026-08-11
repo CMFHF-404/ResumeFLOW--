@@ -3,6 +3,10 @@ import { requestAuthToken } from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
 import { devLog } from './devLogger';
 import { readAuthUserKeyFromToken } from './apiClientAuth';
+import {
+    dispatchQuotaPurchaseRequired,
+    readQuotaPurchaseMessage,
+} from './quotaPurchasePrompt';
 
 declare module 'axios' {
     interface AxiosRequestConfig<D = any> {
@@ -147,6 +151,9 @@ apiClient.interceptors.response.use(
             dispatchLoginRequired(
                 isWriteMethod(error.config?.method) ? 'unauthorized-write' : 'unauthorized'
             );
+        }
+        if (error.response?.status === 402) {
+            dispatchQuotaPurchaseRequired(readQuotaPurchaseMessage(error.response.data));
         }
         return Promise.reject(error);
     }

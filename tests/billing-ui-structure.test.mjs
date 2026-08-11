@@ -10,6 +10,10 @@ test('GlobalSidebar exposes token quota ring and quota menu entry', () => {
 
   assert.match(sidebar, /quotaSummary/);
   assert.match(sidebar, /onOpenTokenQuota/);
+  assert.match(sidebar, /onOpenTokenPurchase/);
+  assert.match(sidebar, /购买套餐/);
+  assert.match(sidebar, /CreditCard/);
+  assert.equal((sidebar.match(/data-token-quota-focus-return/g) ?? []).length, 2);
   assert.match(sidebar, /TokenQuotaSummary/);
   assert.match(sidebar, /isUnlimitedQuota/);
   assert.match(sidebar, /unlimited_expires_at/);
@@ -23,9 +27,15 @@ test('GlobalSidebar exposes token quota ring and quota menu entry', () => {
   assert.match(app, /isTokenQuotaOpen/);
   assert.match(app, /billingService/);
   assert.match(app, /handleOpenTokenQuota/);
+  assert.match(app, /handleOpenTokenPurchase/);
+  assert.match(app, /initialView=\{tokenQuotaInitialView\}/);
+  assert.match(app, /returnFocusElement=\{tokenQuotaReturnFocusElement\}/);
+  assert.match(app, /onOpenPurchase=\{\(\) => handleOpenTokenPurchase\(\)\}/);
+  assert.doesNotMatch(sidebar, /赞赏作者|HeartHandshake|onOpenAppreciation/);
+  assert.doesNotMatch(app, /AppreciationModal|isAppreciationOpen|handleOpenAppreciation/);
 });
 
-test('TokenQuotaModal renders summary, charts, usage detail, and redemption actions', () => {
+test('TokenQuotaModal renders summary, charts, usage detail, payment, and redemption actions', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 
   assert.match(modal, /TokenQuotaModal/);
@@ -40,8 +50,11 @@ test('TokenQuotaModal renders summary, charts, usage detail, and redemption acti
   assert.match(modal, /用量明细/);
   assert.match(modal, /兑换卡密/);
   assert.match(modal, /购买额度/);
-  assert.doesNotMatch(modal, /立即购买/);
+  assert.match(modal, /PurchaseCatalog/);
+  assert.match(modal, /不自动续费/);
+  assert.match(modal, /paymentsEnabled/);
   assert.doesNotMatch(modal, /createPlaceholderPurchase/);
+  assert.doesNotMatch(modal, /item\.taobao\.com/);
 });
 
 test('TokenQuotaModal keeps the usage analysis title on one line and hides chart tabs on desktop', () => {
@@ -52,18 +65,24 @@ test('TokenQuotaModal keeps the usage analysis title on one line and hides chart
   assert.match(modal, /<div className="[^"]*\binline-flex\b[^"]*\bmd:hidden\b[^"]*">/);
 });
 
-test('billingService uses the backend billing API surface and refreshes after redemption', () => {
+test('billingService uses the billing, redemption, and Yifut payment API surface', () => {
   const service = read('services/billingService.ts');
 
   assert.match(service, /\/api\/billing\/summary/);
   assert.match(service, /\/api\/billing\/usage/);
   assert.match(service, /\/api\/billing\/redemptions/);
+  assert.match(service, /\/api\/billing\/products/);
+  assert.match(service, /\/api\/billing\/payment-orders/);
+  assert.match(service, /Idempotency-Key/);
+  assert.match(service, /getPaymentCheckout/);
+  assert.match(service, /syncPaymentOrder/);
+  assert.match(service, /payments_enabled: boolean/);
+  assert.match(service, /amount_fen: number/);
   assert.match(service, /redeemCode/);
   assert.match(service, /is_unlimited: boolean/);
   assert.match(service, /unlimited_expires_at\?: string \| null/);
   assert.match(service, /unlimited_plan_name\?: string \| null/);
   assert.doesNotMatch(service, /\/api\/billing\/purchases\/options/);
-  assert.doesNotMatch(service, /\/api\/billing\/purchases/);
   assert.doesNotMatch(service, /createPlaceholderPurchase/);
   assert.match(service, /clearBillingCache/);
   assert.match(service, /TokenQuotaSummary/);

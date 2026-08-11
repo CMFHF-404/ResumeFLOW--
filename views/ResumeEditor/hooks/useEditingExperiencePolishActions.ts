@@ -102,7 +102,6 @@ export const useEditingExperiencePolishActions = ({
             return;
         }
 
-        let toastId: string | null = null;
         let hasError = false;
         let applied = false;
         let requestedSmartCompletion = false;

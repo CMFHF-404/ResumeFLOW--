@@ -24,7 +24,7 @@ import type { ResumeDetail, ResumeExperienceItem } from '../../services/resumeSe
 import type { UserSkill } from '../../services/skillsService';
 import type { Profile } from '../../services/profileService';
 import { buildExperienceDate, formatYearMonth, normalizeDateInput } from '../../utils/dateUtils';
-import { buildStarFields, mergeStarFieldsWithSource, normalizeEducationStar, normalizeStarValue } from '../../utils/resumeHelpers';
+import { buildStarFields, mergeStarFieldsWithSource, normalizeEducationStar } from '../../utils/resumeHelpers';
 import { parseYearMonthValue } from '../experienceUtils';
 import { resolveLinkedInLink } from '../profileUtils';
 import {
@@ -35,14 +35,13 @@ import {
     DEFAULT_EXPERIENCE_COMPANY_BY_CATEGORY,
     DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY,
     DEFAULT_PROFILE,
-    DEFAULT_SECTION_ORDER,
     DEFAULT_SKILL_CATEGORY,
     EXPERIENCE_CATEGORY_ORDER,
     PROFILE_SYNC_MODES,
-    RESUME_SECTION_IDS,
     A4_HEIGHT_MM,
     SMART_PAGE_MIN_SCALE,
 } from './constants';
+export { normalizeSectionOrder } from './sectionOrder';
 
 export const normalizeJobKeywords = (keywords?: string[]): string[] => {
     return (keywords || [])
@@ -474,25 +473,6 @@ export const buildResumeConfigSnapshot = (
     },
     ...(jdAnalysis ? { jdAnalysis } : {}),
 });
-
-export const normalizeSectionOrder = (order?: string[]) => {
-    const filtered = (order || []).filter((sectionId) => RESUME_SECTION_IDS.has(sectionId));
-    const unique: string[] = [];
-    filtered.forEach((sectionId) => {
-        if (!unique.includes(sectionId)) {
-            unique.push(sectionId);
-        }
-    });
-    if (!unique.includes('summary')) {
-        unique.unshift('summary');
-    }
-    DEFAULT_SECTION_ORDER.forEach((sectionId) => {
-        if (!unique.includes(sectionId)) {
-            unique.push(sectionId);
-        }
-    });
-    return unique.length ? unique : [...DEFAULT_SECTION_ORDER];
-};
 
 export const getA4PixelHeight = () => {
     const probe = document.createElement('div');

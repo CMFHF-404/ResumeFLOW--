@@ -12,7 +12,6 @@ import {
     buildLayoutSnapshot,
     buildSelectionSnapshot,
     type AutoAssemblySelection,
-    type ManualSelectionSnapshot,
 } from '../autoAssemblyUtils';
 import {
     trackSmartAssemblyResult,

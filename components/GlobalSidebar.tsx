@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, HeartHandshake, UserCog, Gauge } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, CreditCard, UserCog, Gauge } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { markUserSignInStarted, markUserSignOutStarted } from '../services/authFlowState';
@@ -13,9 +13,9 @@ interface GlobalSidebarProps {
   setView: (view: ViewState) => void;
   onOpenFeedback: () => void;
   onOpenAgentPluginConfig: () => void;
-  onOpenAppreciation: (returnFocusElement?: HTMLElement | null) => void;
   quotaSummary?: TokenQuotaSummary | null;
-  onOpenTokenQuota: () => void;
+  onOpenTokenQuota: (returnFocusElement?: HTMLElement | null) => void;
+  onOpenTokenPurchase: (returnFocusElement?: HTMLElement | null) => void;
 }
 
 const DEFAULT_PROFILE_NAME = '即刻开始';
@@ -45,9 +45,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   setView,
   onOpenFeedback,
   onOpenAgentPluginConfig,
-  onOpenAppreciation,
   quotaSummary,
   onOpenTokenQuota,
+  onOpenTokenPurchase,
 }) => {
   const { signOut, signIn, isAuthenticated } = useLogto();
   const { profile } = useProfile();
@@ -177,9 +177,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     onOpenFeedback();
   };
 
-  const handleOpenAppreciation = (returnFocusElement?: HTMLElement | null) => {
+  const handleOpenTokenPurchase = (returnFocusElement?: HTMLElement | null) => {
     setIsAvatarMenuOpen(false);
-    onOpenAppreciation(returnFocusElement);
+    onOpenTokenPurchase(returnFocusElement);
   };
 
   const handleOpenAgentPluginConfig = () => {
@@ -187,9 +187,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     onOpenAgentPluginConfig();
   };
 
-  const handleOpenTokenQuota = () => {
+  const handleOpenTokenQuota = (returnFocusElement?: HTMLElement | null) => {
     setIsAvatarMenuOpen(false);
-    onOpenTokenQuota();
+    onOpenTokenQuota(returnFocusElement);
   };
 
   const handleOpenAccountManagement = () => {
@@ -228,14 +228,14 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </button>
         <button
           className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-amber-300 transition hover:bg-amber-500/10 hover:text-amber-200"
-          onClick={() => handleOpenAppreciation(
+          onClick={() => handleOpenTokenPurchase(
             placement === 'mobile' ? mobileAvatarButtonRef.current : desktopAvatarButtonRef.current
           )}
           type="button"
           role="menuitem"
         >
-          <HeartHandshake className="h-4 w-4" />
-          <span>赞赏作者</span>
+          <CreditCard className="h-4 w-4" />
+          <span>购买套餐</span>
         </button>
         <button
           className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
@@ -248,7 +248,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </button>
         <button
           className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
-          onClick={handleOpenTokenQuota}
+          onClick={() => handleOpenTokenQuota(
+            placement === 'mobile' ? mobileAvatarButtonRef.current : desktopAvatarButtonRef.current
+          )}
           type="button"
           role="menuitem"
         >
@@ -310,6 +312,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
               className="group relative flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-base font-bold text-white shadow-lg ring-2 ring-slate-800 transition-all hover:ring-slate-700"
               onClick={handleAvatarClick}
               type="button"
+              data-token-quota-focus-return
               aria-label="打开头像工具栏"
               aria-expanded={isAvatarMenuOpen}
               aria-haspopup="menu"
@@ -368,6 +371,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
             aria-label="当前用户头像"
             aria-expanded={isAvatarMenuOpen}
             aria-haspopup="menu"
+            data-token-quota-focus-return
             onClick={handleAvatarClick}
             title={`${displayName} · ${quotaTitle}`}
             type="button"
@@ -438,16 +442,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </div>
 
         <div className="mt-auto flex w-full flex-col items-center gap-4 pb-2">
-          <button
-            className="group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 text-amber-400 transition-all hover:bg-amber-500/10 hover:text-amber-300 md:p-3"
-            onClick={(event) => handleOpenAppreciation(event.currentTarget)}
-            type="button"
-            aria-label="赞赏作者"
-          >
-            <HeartHandshake className="h-5 w-5" />
-            <div className="nav-tooltip hidden md:block">赞赏作者</div>
-          </button>
-
           <button
             className={desktopUtilityButtonClass}
             onClick={handleToggleTheme}

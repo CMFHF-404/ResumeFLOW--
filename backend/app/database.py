@@ -5,6 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel
 
 from .config import load_settings
+from .runtime_schema.billing_tables import (
+    execute_ai_token_billing_statements,
+    execute_redemption_code_statements,
+)
 
 settings = load_settings()
 engine = create_async_engine(
@@ -330,115 +334,9 @@ async def ensure_ai_token_billing_tables() -> None:
         return
 
     async with engine.begin() as connection:
-        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS ai_token_wallets (
-                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    token_limit INTEGER NOT NULL DEFAULT 0,
-                    remaining_tokens INTEGER NOT NULL DEFAULT 0,
-                    used_tokens INTEGER NOT NULL DEFAULT 0,
-                    unlimited_tokens_expires_at TIMESTAMPTZ,
-                    unlimited_tokens_plan_name TEXT,
-                    last_purchase_id UUID,
-                    last_purchase_tokens INTEGER NOT NULL DEFAULT 0,
-                    last_purchase_at TIMESTAMPTZ,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                ALTER TABLE ai_token_wallets
-                ADD COLUMN IF NOT EXISTS unlimited_tokens_expires_at TIMESTAMPTZ,
-                ADD COLUMN IF NOT EXISTS unlimited_tokens_plan_name TEXT
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS ai_token_usage_events (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    entrypoint TEXT NOT NULL DEFAULT 'unknown',
-                    request_label TEXT NOT NULL DEFAULT 'ai_request',
-                    provider TEXT NOT NULL DEFAULT 'unknown',
-                    model TEXT NOT NULL DEFAULT '',
-                    status TEXT NOT NULL DEFAULT 'success',
-                    prompt_tokens INTEGER NOT NULL DEFAULT 0,
-                    completion_tokens INTEGER NOT NULL DEFAULT 0,
-                    total_tokens INTEGER NOT NULL DEFAULT 0,
-                    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS ai_token_purchase_events (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    option_id TEXT NOT NULL,
-                    label TEXT NOT NULL,
-                    tokens INTEGER NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'placeholder_succeeded',
-                    before_remaining_tokens INTEGER NOT NULL DEFAULT 0,
-                    after_remaining_tokens INTEGER NOT NULL DEFAULT 0,
-                    before_token_limit INTEGER NOT NULL DEFAULT 0,
-                    after_token_limit INTEGER NOT NULL DEFAULT 0,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_ai_token_usage_events_user_created
-                ON ai_token_usage_events(user_id, created_at DESC)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_ai_token_usage_events_entrypoint
-                ON ai_token_usage_events(entrypoint)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_ai_token_purchase_events_user_created
-                ON ai_token_purchase_events(user_id, created_at DESC)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                ALTER TABLE ai_token_purchase_events
-                ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'placeholder_purchase',
-                ADD COLUMN IF NOT EXISTS source_id TEXT,
-                ADD COLUMN IF NOT EXISTS metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_ai_token_purchase_events_source
-                ON ai_token_purchase_events(source, source_id)
-                """
-            )
+        await execute_ai_token_billing_statements(
+            execute=connection.execute,
+            text=text,
         )
 
 
@@ -448,143 +346,9 @@ async def ensure_redemption_code_tables() -> None:
         return
 
     async with engine.begin() as connection:
-        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS redemption_packages (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    name TEXT NOT NULL,
-                    token_amount INTEGER NOT NULL DEFAULT 0,
-                    benefit_type TEXT NOT NULL DEFAULT 'tokens',
-                    unlimited_duration_days INTEGER,
-                    unlimited_duration_hours INTEGER,
-                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                    notes TEXT NOT NULL DEFAULT '',
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                ALTER TABLE redemption_packages
-                ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'tokens',
-                ADD COLUMN IF NOT EXISTS unlimited_duration_days INTEGER,
-                ADD COLUMN IF NOT EXISTS unlimited_duration_hours INTEGER
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS redemption_batches (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    package_id UUID REFERENCES redemption_packages(id) ON DELETE SET NULL,
-                    name TEXT NOT NULL,
-                    channel TEXT NOT NULL DEFAULT '',
-                    package_name TEXT NOT NULL,
-                    token_amount INTEGER NOT NULL DEFAULT 0,
-                    benefit_type TEXT NOT NULL DEFAULT 'tokens',
-                    unlimited_duration_days INTEGER,
-                    unlimited_duration_hours INTEGER,
-                    code_count INTEGER NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    created_by_user_id TEXT NOT NULL,
-                    exported_at TIMESTAMPTZ,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                ALTER TABLE redemption_batches
-                ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'tokens',
-                ADD COLUMN IF NOT EXISTS unlimited_duration_days INTEGER,
-                ADD COLUMN IF NOT EXISTS unlimited_duration_hours INTEGER
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS redemption_codes (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    batch_id UUID REFERENCES redemption_batches(id) ON DELETE SET NULL,
-                    package_id UUID REFERENCES redemption_packages(id) ON DELETE SET NULL,
-                    code_hash TEXT NOT NULL UNIQUE,
-                    code_ciphertext TEXT NOT NULL,
-                    code_prefix TEXT NOT NULL DEFAULT '',
-                    token_amount INTEGER NOT NULL DEFAULT 0,
-                    package_name TEXT NOT NULL,
-                    benefit_type TEXT NOT NULL DEFAULT 'tokens',
-                    unlimited_duration_days INTEGER,
-                    unlimited_duration_hours INTEGER,
-                    status TEXT NOT NULL DEFAULT 'unused',
-                    redeemed_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-                    redeemed_at TIMESTAMPTZ,
-                    revoked_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-                    revoked_at TIMESTAMPTZ,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                ALTER TABLE redemption_codes
-                ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'tokens',
-                ADD COLUMN IF NOT EXISTS unlimited_duration_days INTEGER,
-                ADD COLUMN IF NOT EXISTS unlimited_duration_hours INTEGER
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_redemption_batches_package_id
-                ON redemption_batches(package_id)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_redemption_codes_batch_id
-                ON redemption_codes(batch_id)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_redemption_codes_package_id
-                ON redemption_codes(package_id)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_redemption_codes_status
-                ON redemption_codes(status)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_redemption_codes_code_prefix
-                ON redemption_codes(code_prefix)
-                """
-            )
+        await execute_redemption_code_statements(
+            execute=connection.execute,
+            text=text,
         )
 
 

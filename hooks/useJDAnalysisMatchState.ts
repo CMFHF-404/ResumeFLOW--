@@ -144,6 +144,24 @@ export const useJDAnalysisMatchState = ({
     setStaleExperienceIds(new Set());
   }, []);
 
+  const resetAllMatchState = useCallback(() => {
+    applyExperienceMatchScores();
+    applyExperienceMatchTrends();
+    applyCertificationMatchScores();
+    applyCertificationMatchTrends();
+    applySkillMatchScores();
+    applySkillMatchTrends();
+    resetStaleExperienceIds();
+  }, [
+    applyCertificationMatchScores,
+    applyCertificationMatchTrends,
+    applyExperienceMatchScores,
+    applyExperienceMatchTrends,
+    applySkillMatchScores,
+    applySkillMatchTrends,
+    resetStaleExperienceIds,
+  ]);
+
   const applyMatchScoresForResult = useCallback(
     (result: JDAnalysisResult, mode: MatchUpdateMode, diff: JDItemDiff) => {
       if (mode === "quality") {
@@ -212,6 +230,7 @@ export const useJDAnalysisMatchState = ({
     applySkillMatchScores,
     applySkillMatchTrends,
     applyMatchScoresForResult,
+    resetAllMatchState,
     markStaleMatches,
     clearStaleExperienceIds,
   };

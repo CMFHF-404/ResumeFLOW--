@@ -30,18 +30,14 @@ import { createEducationHandlers, createCertificationHandlers } from './experien
 import { createSkillHandlers } from './experienceActionHandlers/skillHandlers';
 import type {
     CertificationDomain,
-    CertificationState,
     ConfirmCopy,
     DraftPrefixes,
     EducationDomain,
-    EducationState,
     ExperienceDefaults,
     ExperienceDomain,
     ExperienceHelpers,
-    ExperienceState,
     MatchScoreDomain,
     SkillDomain,
-    SkillState,
     ToastApi,
 } from './experienceActionHandlers/types';
 import {

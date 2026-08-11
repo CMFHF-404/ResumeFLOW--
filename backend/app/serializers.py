@@ -5,24 +5,12 @@ from .domain.experience.serializers import (
     experience_version_to_read,
     master_experience_to_read,
 )
-from .models import ExperienceVersion, Resume, ResumeExperienceLink
+from .domain.resume.serializers import resume_to_read
+from .models import ExperienceVersion, ResumeExperienceLink
 from .schemas import (
     ResumeExperienceItem,
     ResumeExperienceMerged,
-    ResumeRead,
 )
-
-
-def resume_to_read(resume: Resume) -> ResumeRead:
-    return ResumeRead(
-        id=str(resume.id),
-        user_id=str(resume.user_id),
-        title=resume.title,
-        target_role=resume.target_role,
-        config=resume.config or {},
-        created_at=resume.created_at,
-        updated_at=resume.updated_at,
-    )
 
 
 def resume_experience_to_read(

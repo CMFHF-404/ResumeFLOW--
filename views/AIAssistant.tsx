@@ -93,14 +93,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 }) => {
   const isSidebarSurface = surface === 'sidebar';
   const { isAuthenticated } = useLogto();
-  const { toasts, success, error, loading, updateToast, closeToast } = useToast();
+  const { toasts, success, error, closeToast } = useToast();
   const implicitLiveSelectedResume = useMemo(
     () => markImplicitCurrentResume(normalizeSelectedResume(liveSelectedResume)),
     [liveSelectedResume],
   );
   const [inputValue, setInputValue] = useState(draftInput);
   const [activeComposerSkillId, setActiveComposerSkillId] = useState<AssistantSkillId | null>(null);
-  const [lastAssistantSkillId, setLastAssistantSkillId] = useState<AssistantSkillId | null>(null);
+  const [, setLastAssistantSkillId] = useState<AssistantSkillId | null>(null);
   const [activeThought, setActiveThought] = useState<string>('');
   const [draftDeepThinkingEnabled, setDraftDeepThinkingEnabled] = useState(false);
   const [deepThinkingBySessionId, setDeepThinkingBySessionId] = useState<Record<string, boolean>>({});

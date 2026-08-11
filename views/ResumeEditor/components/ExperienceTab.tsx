@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Sparkles, Wand2, X } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
