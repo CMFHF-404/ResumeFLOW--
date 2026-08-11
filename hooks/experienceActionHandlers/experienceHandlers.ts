@@ -4,15 +4,13 @@ import {
     experienceService,
     type ExperienceDetail,
     type ExperienceListItem,
-    type ExperienceUpdatePayload,
     type ExperienceVersion,
 } from '../../services/experienceService';
 import {
     resumeService,
     type ResumeDetail,
-    type ResumeExperienceItem,
 } from '../../services/resumeService';
-import type { ConfirmDialogState, DatePayloadFallback, ExperienceEditDraft, ResumeExperienceView, StarFieldKey, StarFields } from '../../types/resume';
+import type { ConfirmDialogState, ExperienceEditDraft, ResumeExperienceView, StarFieldKey, StarFields } from '../../types/resume';
 import { normalizeAiRichText } from '../../utils/richText';
 import { resolveThoughtDisplayEvent } from '../../utils/aiThought';
 import {

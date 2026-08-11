@@ -189,7 +189,7 @@ export const trackLoginSuccessImmediate = (source = 'callback') => {
 };
 
 export const trackAuthenticatedVisit = (
-  authUserKey: string,
+  _authUserKey: string,
   source: 'post_login' | 'session_restore',
   view?: string
 ) => {

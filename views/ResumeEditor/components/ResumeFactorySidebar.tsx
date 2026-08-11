@@ -279,17 +279,6 @@ const LayoutPanel: React.FC<Omit<
     setDragActiveId(null);
   };
 
-  const moveSection = (sectionId: string, offset: number) => {
-    const currentIndex = sectionOrder.indexOf(sectionId);
-    const nextIndex = currentIndex + offset;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= sectionOrder.length) {
-      return;
-    }
-    const nextOrder = [...sectionOrder];
-    nextOrder.splice(currentIndex, 1);
-    nextOrder.splice(nextIndex, 0, sectionId);
-    onSectionOrderChange(nextOrder);
-  };
   const saveDefault = async () => {
     setIsSaving(true);
     try {

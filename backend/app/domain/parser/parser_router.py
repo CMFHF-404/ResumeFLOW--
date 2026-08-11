@@ -11,6 +11,7 @@ from starlette.status import HTTP_400_BAD_REQUEST
 
 from ...database import get_session
 from ...dependencies import get_current_user
+from ...utils.ndjson import ndjson_line as _ndjson_line
 from ..billing import billing_service
 from .parser_service import (
     apply_duplicate_flags,
@@ -31,14 +32,6 @@ from .semantic_duplicate_detection import apply_semantic_duplicate_flags
 router = APIRouter(prefix="/parser", tags=["parser"])
 logger = logging.getLogger(__name__)
 GENERIC_STREAM_PARSE_ERROR = "解析失败，请检查文件内容或稍后重试。"
-
-
-def _ndjson_line(payload: Dict[str, Any]) -> str:
-    import json as _json
-
-    return _json.dumps(payload, ensure_ascii=False) + "\n"
-
-
 async def _build_parse_response(
     *,
     file: UploadFile,
@@ -149,7 +142,11 @@ async def parse_resume_stream_endpoint(
         file.content_type or "",
         enable_thinking,
     )
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="resume_parse",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -164,6 +161,8 @@ async def parse_resume_stream_endpoint(
                     current_user.id,
                     entrypoint="resume_parse",
                     metadata={"route": "/parser/parse/stream", "request_id": request_id},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit(
                         {"type": "progress", "node": "receive_file", "title": "接收简历附件"}
@@ -271,5 +270,7 @@ async def parse_resume_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")

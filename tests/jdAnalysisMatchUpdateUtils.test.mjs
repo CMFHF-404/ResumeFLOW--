@@ -77,6 +77,42 @@ test('applies experience trends and clears missing trends in full mode', async (
   assert.equal(next[1].matchTrend, undefined);
 });
 
+test('empty full updates clear existing experience and map match state', async () => {
+  const {
+    applyExperienceScoreUpdate,
+    applyExperienceTrendUpdate,
+    applyScoreMapUpdateValue,
+    applyTrendMapUpdateValue,
+    buildSkillScoreUpdateMap,
+  } = await importJDAnalysisMatchUpdateUtils();
+  const items = [
+    buildExperience('exp-1', {
+      matchScore: 88,
+      matchReason: 'old reason',
+      matchTrend: 'up',
+    }),
+  ];
+
+  const withoutScores = applyExperienceScoreUpdate(items);
+  const withoutTrends = applyExperienceTrendUpdate(withoutScores);
+  const clearedScores = applyScoreMapUpdateValue(new Map([['item-1', 88]]), new Map());
+  const clearedTrends = applyTrendMapUpdateValue(new Map([['item-1', 'up']]), new Map());
+  const clearedSkillScores = buildSkillScoreUpdateMap(undefined, [
+    {
+      id: 'group-1',
+      name: 'Product',
+      skills: [{ id: 'skill-1', name: 'Roadmap' }],
+    },
+  ]);
+
+  assert.equal(withoutTrends[0].matchScore, undefined);
+  assert.equal(withoutTrends[0].matchReason, undefined);
+  assert.equal(withoutTrends[0].matchTrend, undefined);
+  assert.deepEqual([...clearedScores], []);
+  assert.deepEqual([...clearedTrends], []);
+  assert.deepEqual([...clearedSkillScores], []);
+});
+
 test('applies partial score map updates and deletes missing target scores', async () => {
   const { applyScoreMapUpdateValue } = await importJDAnalysisMatchUpdateUtils();
   const prev = new Map([

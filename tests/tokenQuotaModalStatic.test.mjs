@@ -39,14 +39,81 @@ test('token quota modal prioritizes token redemption message over existing unlim
   );
 });
 
-test('token quota modal exposes monthly and pay-as-you-go product entries', () => {
+test('token quota modal renders server-owned packages and removes Taobao purchase links', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+  const service = read('services/billingService.ts');
+
+  assert.match(modal, />\s*按量\s*<\/button>/);
+  assert.match(modal, />\s*包月\s*<\/button>/);
+  assert.match(modal, /不自动续费/);
+  assert.match(modal, /paymentsEnabled/);
+  assert.match(modal, /activeProducts = products\.filter\(\(product\) => product\.category === activeTab\)/);
+  assert.match(modal, /activeTab === 'tokens' \? 'sm:grid-cols-2' : 'sm:grid-cols-3'/);
+  assert.doesNotMatch(modal, /item\.taobao\.com/);
+  assert.doesNotMatch(modal, /立即赞赏获取卡密/);
+  assert.match(service, /getProducts/);
+  assert.match(service, /createPaymentOrder/);
+  assert.match(service, /getPaymentCheckout/);
+});
+
+test('token quota modal opens purchases as an accessible secondary page', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 
-  assert.match(modal, /包月/);
-  assert.match(modal, /https:\/\/item\.taobao\.com\/item\.htm\?ft=t&id=1065655992699/);
-  assert.match(modal, /按量付费/);
-  assert.match(modal, /https:\/\/item\.taobao\.com\/item\.htm\?ft=t&id=1063261946760/);
-  assert.doesNotMatch(modal, /立即赞赏获取卡密/);
+  assert.match(modal, /type QuotaModalView = 'overview' \| 'purchase'/);
+  assert.match(modal, /onOpenPurchase=\{openPurchaseView\}/);
+  assert.match(modal, /aria-label="返回额度概览"/);
+  assert.match(modal, /activeView === 'overview' \? \(/);
+  assert.match(modal, /data-quota-view="overview"/);
+  assert.match(modal, /data-quota-view="purchase"/);
+  assert.match(modal, /role="tablist"/);
+  assert.match(modal, /role="tab"/);
+  assert.match(modal, /aria-selected=\{activeTab === 'tokens'\}/);
+  assert.match(modal, /aria-selected=\{activeTab === 'unlimited'\}/);
+  assert.equal((modal.match(/aria-controls="billing-plan-panel"/g) ?? []).length, 2);
+  assert.match(modal, /id="billing-plan-panel"/);
+  assert.match(modal, /role="tabpanel"/);
+  assert.match(modal, /event\.key === 'ArrowLeft' \|\| event\.key === 'ArrowRight'/);
+  assert.match(modal, /initialView\?: QuotaModalView/);
+  assert.match(modal, /initialView = 'overview'/);
+  assert.match(modal, /returnFocusElement\?: HTMLElement \| null/);
+  assert.match(modal, /dialogRef\.current\?\.focus\(\)/);
+  assert.match(modal, /visibleAvatarButton/);
+  assert.match(modal, /\[data-token-quota-focus-return\]/);
+  assert.match(modal, /focusTarget\?\.isConnected && focusTarget\.offsetParent !== null/);
+  assert.match(modal, /if \(initialView === 'purchase' \|\| returnedPaymentOrderId\) \{\s*setActiveView\('purchase'\);/);
+  assert.match(modal, /if \(!isOpen\) \{\s*setActiveView\('overview'\);/);
+  assert.match(modal, /role="dialog"/);
+  assert.match(modal, /aria-modal="true"/);
+  assert.match(modal, /aria-labelledby="token-quota-dialog-title"/);
+  assert.match(modal, /backButtonRef\.current\?\.focus\(\)/);
+  assert.match(modal, /purchaseButtonRef\.current\?\.focus\(\)/);
+  assert.match(modal, /event\.key === 'Escape'/);
+  assert.match(modal, /event\.key !== 'Tab'/);
+  assert.match(modal, /dialog\.querySelectorAll<HTMLElement>/);
+  assert.doesNotMatch(modal, /收起兑换/);
+  assert.doesNotMatch(modal, /isRedeemOpen/);
+});
+
+test('payment checkout submits the signed server form and returned orders sync safely', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+  const app = read('App.tsx');
+
+  assert.match(modal, /crypto\.randomUUID/);
+  assert.match(modal, /purchaseInFlightRef/);
+  assert.match(modal, /checkoutFormRef\.current\.submit\(\)/);
+  assert.match(modal, /activeView !== 'purchase'/);
+  assert.match(modal, /\[activeView, checkoutForm, isOpen\]/);
+  assert.match(modal, /action=\{checkoutForm\.action\}/);
+  assert.match(modal, /Object\.entries\(checkoutForm\.fields\)/);
+  assert.match(modal, /syncPaymentOrder\(returnedPaymentOrderId\)/);
+  assert.match(modal, /attempts < 6/);
+  assert.match(modal, /重新查询支付状态/);
+  assert.match(modal, /setPaymentSyncRetryRequest\(\(request\) => request \+ 1\)/);
+  assert.match(modal, /'creating' \| 'processing'/);
+  assert.match(app, /payment_order/);
+  assert.match(app, /'sign_type'/);
+  assert.match(app, /setIsTokenQuotaOpen\(true\)/);
+  assert.match(app, /history\.replaceState/);
 });
 
 test('usage trend chart fills its card height and reserves space for date labels', () => {

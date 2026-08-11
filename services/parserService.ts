@@ -1,5 +1,9 @@
 import apiClient, { getAuthorizationHeader } from './apiClient';
 import { dispatchLoginRequired } from './authRedirect';
+import {
+  DEFAULT_QUOTA_PURCHASE_MESSAGE,
+  dispatchQuotaPurchaseRequired,
+} from './quotaPurchasePrompt';
 import { parseNdjsonChunk, resolveApiUrl } from './apiStreamUtils';
 import type { ExperienceCategory } from './experienceService';
 
@@ -160,6 +164,11 @@ const streamResumeParseRequest = async (
       dispatchLoginRequired('unauthorized-write');
     }
     const errorMessage = await readErrorMessage(response);
+    if (response.status === 402) {
+      const quotaMessage = errorMessage || DEFAULT_QUOTA_PURCHASE_MESSAGE;
+      dispatchQuotaPurchaseRequired(quotaMessage);
+      throw new Error(quotaMessage);
+    }
     throw new Error(errorMessage || `Resume parse stream request failed: ${response.status}`);
   }
   if (!response.body) {

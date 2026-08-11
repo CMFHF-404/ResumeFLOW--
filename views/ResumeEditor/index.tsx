@@ -5,16 +5,7 @@ import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeEvaluation } from '../../hooks/useResumeEvaluation';
 import { useResumeData } from '../../hooks/useResumeData';
-import { experienceService } from '../../services/experienceService';
 import type { AssistantSelectedResume } from '../../services/aiService';
-import type {
-    CertificationView,
-    EducationView,
-    ProfileSyncMode,
-    ResumeEditorProfile,
-    ResumeExperienceView,
-    SkillGroupView,
-} from '../../types/resume';
 import type { Resume as DashboardResume } from '../../types';
 import { buildExperienceDate } from '../../utils/dateUtils';
 import {
@@ -95,11 +86,7 @@ import {
 import {
     buildBossGreetingSignature,
     buildPersonalSummarySignature,
-    waitForNextFrame,
 } from './snapshotUtils';
-import {
-    buildPreferredResumeCreateConfig,
-} from '../resumeTemplateStorage';
 import type { EditorSidebarProps } from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
 import MobileEditorHeader from './components/MobileEditorHeader';
@@ -256,7 +243,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         activeBossGreetingToastIdRef,
         bossGreetingUiStateRef,
         currentLayout,
-        defaultLayout,
         isLayoutModified,
         sectionOrder, setSectionOrder,
         isSummaryVisible, setIsSummaryVisible,
@@ -809,8 +795,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         experiencePolishPreview,
         setExperiencePolishPreview,
         isEditingExperiencePolishRunning,
-        setIsEditingExperiencePolishRunning,
-        editingExperiencePolishRunningRef,
         floatingPolishMode,
         floatingPolishCustomPrompt,
         setFloatingPolishCustomPrompt,
@@ -929,7 +913,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [flushResumeConfig, handleAnalyze, showToastError]);
     const {
         handleAnalyzeWithAutoName,
-        runJdAnalyzeWithToast,
         invalidateJdAnalyzeWorkflow,
     } = useJdAnalyzeWithToast({
         handleAnalyze: handleAnalyzePersistedSnapshot,
@@ -1103,10 +1086,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectedWorkItems,
         selectedProjectItems,
         selectedExperienceCount,
-        selectedEducations,
         sortedCertifications,
         selectedSkillGroups,
-        selectedCertifications,
         selectedResumeSnapshot,
         selectedResumeSnapshotText,
         editablePersonalSummary,
@@ -1993,6 +1974,19 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         templatePresetMap,
     ]);
     const isRightSidebarOpen = isAssistantSidebarOpen || isJDAnalysisDetailsSidebarOpen;
+    const jdAnalysisDetailsSidebarProps = analysisResult ? {
+        analysisResult,
+        jdText,
+        isOutdated,
+        isEvaluationOutdated,
+        isEvaluating,
+        evaluationThinkingText,
+        evaluationError,
+        onGenerateEvaluation: handleGenerateEvaluation,
+        onStopEvaluation: stopEvaluation,
+        onClose: handleCloseJDAnalysisDetailsSidebar,
+        onOpenAgentPluginConfig,
+    } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
     const rightSidebarContent = isRightSidebarOpen ? (
         <div className="relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950">
             <div
@@ -2023,20 +2017,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isJDAnalysisDetailsSidebarOpen ? 'translate-y-0' : 'translate-y-full pointer-events-none',
                 ].join(' ')}
             >
-                {analysisResult ? (
-                    <JDAnalysisDetailsSidebar
-                        analysisResult={analysisResult}
-                        jdText={jdText}
-                        isOutdated={isOutdated}
-                        isEvaluationOutdated={isEvaluationOutdated}
-                        isEvaluating={isEvaluating}
-                        evaluationThinkingText={evaluationThinkingText}
-                        evaluationError={evaluationError}
-                        onGenerateEvaluation={handleGenerateEvaluation}
-                        onStopEvaluation={stopEvaluation}
-                        onClose={handleCloseJDAnalysisDetailsSidebar}
-                        onOpenAgentPluginConfig={onOpenAgentPluginConfig}
-                    />
+                {jdAnalysisDetailsSidebarProps ? (
+                    <JDAnalysisDetailsSidebar {...jdAnalysisDetailsSidebarProps} />
                 ) : null}
             </div>
         </div>
@@ -2126,7 +2108,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onStopAnalyze={handleStopAnalysisWithToast}
                 />
             </div>
-            {isJDAnalysisDetailsSidebarOpen && analysisResult && isMobileAnalysisViewport ? (
+            {isJDAnalysisDetailsSidebarOpen && jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport ? (
                 <div
                     ref={mobileAnalysisDialogRef}
                     className="fixed inset-0 z-[80] flex items-end bg-slate-950/45 backdrop-blur-[1px] md:hidden"
@@ -2144,19 +2126,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         className="h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950"
                         onMouseDown={(event) => event.stopPropagation()}
                     >
-                        <JDAnalysisDetailsSidebar
-                            analysisResult={analysisResult}
-                            jdText={jdText}
-                            isOutdated={isOutdated}
-                            isEvaluationOutdated={isEvaluationOutdated}
-                            isEvaluating={isEvaluating}
-                            evaluationThinkingText={evaluationThinkingText}
-                            evaluationError={evaluationError}
-                            onGenerateEvaluation={handleGenerateEvaluation}
-                            onStopEvaluation={stopEvaluation}
-                            onClose={handleCloseJDAnalysisDetailsSidebar}
-                            onOpenAgentPluginConfig={onOpenAgentPluginConfig}
-                        />
+                        <JDAnalysisDetailsSidebar {...jdAnalysisDetailsSidebarProps} />
                     </div>
                 </div>
             ) : null}

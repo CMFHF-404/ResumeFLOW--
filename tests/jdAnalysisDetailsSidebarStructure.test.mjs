@@ -58,8 +58,14 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(editor, /aria-hidden=\{!isJDAnalysisDetailsSidebarOpen\}/);
   assert.match(editor, /inert=\{!isJDAnalysisDetailsSidebarOpen \? true : undefined\}/);
   assert.match(editor, /isJDAnalysisDetailsSidebarOpen\s*\?\s*'translate-y-0'[\s\S]*:\s*'translate-y-full pointer-events-none'/);
-  assert.match(editor, /<JDAnalysisDetailsSidebar/);
-  assert.match(editor, /onClose=\{handleCloseJDAnalysisDetailsSidebar\}/);
+  assert.match(
+    editor,
+    /const jdAnalysisDetailsSidebarProps = analysisResult \? \{[\s\S]*?onClose: handleCloseJDAnalysisDetailsSidebar,[\s\S]*?\} satisfies React\.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;/,
+  );
+  assert.equal(
+    (editor.match(/<JDAnalysisDetailsSidebar \{\.\.\.jdAnalysisDetailsSidebarProps\} \/>/g) ?? []).length,
+    2,
+  );
   assert.doesNotMatch(editor, /onOpenAssistantSidebar=\{handleReturnToAssistantSidebar\}/);
   assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /assistantSidebar=\{rightSidebarContent\}/);
@@ -128,7 +134,7 @@ test('mobile editor exposes the shared report in a full-height dialog and uses J
   assert.match(editor, /mediaQuery\.addEventListener\('change', syncViewport\)/);
   assert.match(editor, /mediaQuery\.removeEventListener\('change', syncViewport\)/);
   assert.match(editor, /!isMobileAnalysisViewport/);
-  assert.match(editor, /analysisResult && isMobileAnalysisViewport \? \(/);
+  assert.match(editor, /jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport \? \(/);
   assert.match(editor, /event\.key === 'Escape'/);
   assert.match(editor, /element\.inert = true/);
   assert.match(editor, /document\.body\.style\.overflow = 'hidden'/);

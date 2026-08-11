@@ -15,8 +15,8 @@ import {
   normalizeResumeExperienceListMarkerStyle,
   normalizeResumeSkillTagSeparator,
 } from '../utils/resumeCustomization';
-import { DEFAULT_SECTION_ORDER, RESUME_SECTION_IDS } from './ResumeEditor/constants';
 import type { SmartPageLayout } from './ResumeEditor/layoutUtils';
+import { normalizeSectionOrder } from './ResumeEditor/sectionOrder';
 
 const PREFERRED_RESUME_TEMPLATE_STORAGE_KEY = 'yuanzijianli.preferredResumeTemplate';
 const RESUME_TEMPLATE_PRESETS_STORAGE_KEY = 'yuanzijianli.resumeTemplatePresets';
@@ -51,25 +51,6 @@ export type ResumeTemplatePresetMap = Partial<Record<ResumeTemplateId, ResumeTem
 
 const RESUME_TEMPLATE_ID_SET = new Set<string>(RESUME_TEMPLATE_DEFINITIONS.map((item) => item.id));
 const RESUME_THEME_COLOR_PRESET_ID_SET = new Set<string>(RESUME_THEME_COLOR_PRESETS.map((item) => item.id));
-
-const normalizeSectionOrder = (order?: string[]) => {
-  const filtered = (order || []).filter((sectionId) => RESUME_SECTION_IDS.has(sectionId));
-  const unique: string[] = [];
-  filtered.forEach((sectionId) => {
-    if (!unique.includes(sectionId)) {
-      unique.push(sectionId);
-    }
-  });
-  if (!unique.includes('summary')) {
-    unique.unshift('summary');
-  }
-  DEFAULT_SECTION_ORDER.forEach((sectionId) => {
-    if (!unique.includes(sectionId)) {
-      unique.push(sectionId);
-    }
-  });
-  return unique.length ? unique : [...DEFAULT_SECTION_ORDER];
-};
 
 const resolveUpdatedAt = (value?: string) => {
   if (!value) {

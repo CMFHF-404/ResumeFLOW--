@@ -16,7 +16,7 @@ import {
     Wand2,
     X,
 } from 'lucide-react';
-import type { JDAnalysisResult, JDCoreCapability } from '../../../services/aiService';
+import type { JDAnalysisResult } from '../../../services/aiService';
 import {
     getMobileCapabilityFollowUpQuestion,
     SUMMARY_CLAMP_STYLE,
@@ -87,7 +87,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     resumeName,
     onResumeNameChange,
     analysisResult,
-    isOutdated,
     isAnalyzing,
     onAnalyze,
     onOpenAnalysisDetails,
@@ -125,7 +124,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     jdFile,
     onFileSelect,
     onFileClear,
-    hasMissingAttachmentContext,
     hasJdContext,
     isJDCollapsed,
     onJDCollapseChange,

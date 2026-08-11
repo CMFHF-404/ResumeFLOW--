@@ -121,8 +121,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const {
     resumes,
     setResumes,
-    isLoading,
-    error,
     isCreatingResume,
     isCopyingResume,
     isRenamingResume,

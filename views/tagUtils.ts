@@ -55,13 +55,3 @@ export const buildTagSuggestions = (
     })
     .slice(0, TAG_SUGGESTION_LIMIT);
 };
-
-export const sanitizeTagList = (payload: unknown): string[] => {
-  if (!Array.isArray(payload)) {
-    return [];
-  }
-  return payload
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter(Boolean);
-};

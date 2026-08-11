@@ -15,6 +15,7 @@ from starlette.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST, HTTP_404
 from ...database import get_session as get_db_session
 from ...dependencies import get_current_user
 from ...models import AIAssistantImageBlob
+from ...utils.ndjson import ndjson_line as _ndjson_line
 from ..billing import billing_service
 from ..ai import jd_attachment_service
 from ..ai.ai_service import (
@@ -71,14 +72,6 @@ logger = logging.getLogger("uvicorn.error")
 MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024
 MAX_ASSISTANT_ATTACHMENT_TEXT_CHARS = 12_000
 MAX_ASSISTANT_ATTACHMENT_EXCERPT_CHARS = 1_200
-
-
-def _ndjson_line(payload: Dict[str, Any]) -> str:
-    import json as _json
-
-    return _json.dumps(payload, ensure_ascii=False) + "\n"
-
-
 def _to_session_read(session) -> AssistantSessionRead:
     return AssistantSessionRead(
         id=str(session.id),
@@ -654,7 +647,11 @@ async def stream_assistant_session_turn(
     current_user=Depends(get_current_user),
 ):
     payload, raw_attachment_files = await _parse_stream_payload(request)
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="ai_assistant",
+    )
     attachment_files = (
         raw_attachment_files
         if isinstance(raw_attachment_files, list)
@@ -693,6 +690,8 @@ async def stream_assistant_session_turn(
                     current_user.id,
                     entrypoint="ai_assistant",
                     metadata={"route": f"/api/assistant/sessions/{session_id}/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     assistant_session = await get_assistant_session(session, current_user.id, session_id)
                     messages = (await get_session_detail(session, current_user.id, session_id))[1]
@@ -796,5 +795,7 @@ async def stream_assistant_session_turn(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")

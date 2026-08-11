@@ -7,6 +7,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND, HTTP_409_
 from ...constants import DEFAULT_LIMIT, MAX_LIMIT
 from ...database import get_session
 from ...dependencies import get_current_user
+from .serializers import resume_to_read as _resume_to_read
 from .resume_schema import (
     ResumeAssemblyPatch,
     ResumeCreate,
@@ -28,18 +29,6 @@ from .resume_service import (
 )
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
-
-
-def _resume_to_read(resume) -> ResumeRead:
-    return ResumeRead(
-        id=str(resume.id),
-        user_id=str(resume.user_id),
-        title=resume.title,
-        target_role=resume.target_role,
-        config=resume.config or {},
-        created_at=resume.created_at,
-        updated_at=resume.updated_at,
-    )
 
 
 @router.get("", response_model=List[ResumeRead])

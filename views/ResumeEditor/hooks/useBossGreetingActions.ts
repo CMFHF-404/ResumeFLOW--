@@ -1,7 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { ToastConfig } from '../../../components/Toast';
 import { aiService, type BossGreetingStreamEvent, type JDAnalysisResult } from '../../../services/aiService';
-import type { ResumeBossGreeting } from '../../../types/resume';
 import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 import {
     trackBossGreetingResult,

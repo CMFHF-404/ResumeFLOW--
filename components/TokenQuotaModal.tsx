@@ -1,33 +1,27 @@
 import React from 'react';
-import { BarChart3, ExternalLink, HeartHandshake, KeyRound, RefreshCw, TrendingUp, Wallet, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, CreditCard, KeyRound, LoaderCircle, RefreshCw, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   billingService,
+  type BillingProduct,
+  type PaymentCheckoutForm,
+  type PaymentOrder,
   type TokenQuotaSummary,
   type TokenUsageAggregate,
   type TokenUsageEvent,
 } from '../services/billingService';
+
+type QuotaModalView = 'overview' | 'purchase';
 
 type TokenQuotaModalProps = {
   isOpen: boolean;
   onClose: () => void;
   summary: TokenQuotaSummary | null;
   onSummaryChange: (summary: TokenQuotaSummary) => void;
+  initialView?: QuotaModalView;
+  returnFocusElement?: HTMLElement | null;
+  returnedPaymentOrderId?: string | null;
+  onPaymentOrderHandled?: () => void;
 };
-
-const TAOBAO_PRODUCT_LINKS = [
-  {
-    label: '包月套餐',
-    href: 'https://item.taobao.com/item.htm?ft=t&id=1065655992699',
-    className:
-      'border-amber-200 bg-amber-500 text-white shadow-sm hover:bg-amber-600 focus:ring-amber-200 dark:border-amber-400/30 dark:bg-amber-500 dark:hover:bg-amber-400',
-  },
-  {
-    label: '按量付费',
-    href: 'https://item.taobao.com/item.htm?ft=t&id=1063261946760',
-    className:
-      'border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 focus:ring-emerald-200 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20',
-  },
-] as const;
 
 // 格式化 Tokens 数量显示，如 1.1M, 48.3k
 const formatTokens = (value?: number | null): string => {
@@ -54,9 +48,9 @@ const formatDateTime = (value?: string | null): string => {
 // ==========================================
 const QuotaDashboard: React.FC<{
   summary: TokenQuotaSummary | null;
-  onOpenRedeem: () => void;
-  isRedeemOpen: boolean;
-}> = ({ summary, onOpenRedeem, isRedeemOpen }) => {
+  onOpenPurchase: () => void;
+  purchaseButtonRef: React.RefObject<HTMLButtonElement | null>;
+}> = ({ summary, onOpenPurchase, purchaseButtonRef }) => {
   const remaining = Math.max(Number(summary?.remaining_tokens ?? 0), 0);
   const used = Math.max(Number(summary?.used_tokens ?? 0), 0);
   const limit = Math.max(Number(summary?.token_limit ?? 0), 0);
@@ -146,11 +140,12 @@ const QuotaDashboard: React.FC<{
           )}
         </div>
         <button
+          ref={purchaseButtonRef}
           type="button"
-          onClick={onOpenRedeem}
-          className="inline-flex items-center gap-1 font-bold text-emerald-600 transition hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 focus:outline-none"
+          onClick={onOpenPurchase}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-bold text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:text-emerald-400 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300 dark:focus:ring-emerald-500/20"
         >
-          <span>{isRedeemOpen ? '收起兑换' : '购买额度 / 兑换卡密'}</span>
+          <span>购买额度 / 兑换卡密</span>
         </button>
       </div>
     </div>
@@ -515,11 +510,180 @@ const UsageDetailList: React.FC<{ usageEvents: TokenUsageEvent[] }> = ({ usageEv
   );
 };
 
+const formatPrice = (amountFen: number, currency: string) => {
+  const amount = Math.max(Number(amountFen || 0), 0) / 100;
+  return `${currency === 'CNY' ? '¥' : `${currency} `}${amount.toFixed(2)}`;
+};
+
+type PaymentUiStatus = 'creating' | 'processing' | PaymentOrder['status'] | null;
+
+const paymentStatusCopy = (status: PaymentUiStatus) => {
+  switch (status) {
+    case 'creating': return '正在创建订单…';
+    case 'processing': return '正在确认付款状态…';
+    case 'pending': return '订单已创建，正在前往收银台…';
+    case 'paid': return '付款已确认，正在到账…';
+    case 'fulfilled': return '权益已到账，额度已刷新。';
+    case 'expired': return '订单已过期，请重新选择套餐。';
+    case 'failed': return '订单未完成，请重试或选择其他套餐。';
+    default: return '';
+  }
+};
+
+const PurchaseCatalog: React.FC<{
+  products: BillingProduct[];
+  paymentsEnabled: boolean;
+  isLoading: boolean;
+  isPurchasing: boolean;
+  paymentStatus: PaymentUiStatus;
+  onPurchase: (product: BillingProduct) => void;
+}> = ({ products, paymentsEnabled, isLoading, isPurchasing, paymentStatus, onPurchase }) => {
+  const [activeTab, setActiveTab] = React.useState<BillingProduct['category']>('tokens');
+  const tokenTabRef = React.useRef<HTMLButtonElement | null>(null);
+  const unlimitedTabRef = React.useRef<HTMLButtonElement | null>(null);
+  const activeProducts = products.filter((product) => product.category === activeTab);
+  const switchTabFromKeyboard = (nextTab: BillingProduct['category']) => {
+    setActiveTab(nextTab);
+    const nextTabRef = nextTab === 'tokens' ? tokenTabRef : unlimitedTabRef;
+    nextTabRef.current?.focus();
+  };
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      switchTabFromKeyboard(activeTab === 'tokens' ? 'unlimited' : 'tokens');
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      switchTabFromKeyboard('tokens');
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      switchTabFromKeyboard('unlimited');
+    }
+  };
+  const renderProduct = (product: BillingProduct) => {
+    const isUnlimited = product.category === 'unlimited';
+    const benefit = isUnlimited
+      ? `${product.unlimited_duration_days ?? 0} 天不限量`
+      : `${formatTokens(product.token_amount)} Tokens`;
+    return (
+      <article
+        key={product.sku}
+        className={`group relative flex min-w-0 flex-col overflow-hidden rounded-xl border p-3.5 transition sm:p-4 ${
+          isUnlimited
+            ? 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 shadow-[0_10px_30px_-22px_rgba(217,119,6,0.65)] dark:border-amber-500/25 dark:from-amber-950/30 dark:via-gray-950 dark:to-amber-950/10'
+            : 'border-emerald-100 bg-white shadow-[0_10px_24px_-24px_rgba(5,150,105,0.7)] dark:border-emerald-500/15 dark:bg-gray-950'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className={`truncate text-sm font-extrabold ${isUnlimited ? 'text-amber-900 dark:text-amber-100' : 'text-gray-900 dark:text-white'}`}>{product.name}</h4>
+            <p className="mt-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{benefit}</p>
+          </div>
+          {isUnlimited && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-200">∞ UNLIMITED</span>}
+        </div>
+        <p className="mt-3 min-h-8 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{product.description}</p>
+        <div className="mt-4 flex items-end justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+          <strong className={`text-xl tracking-tight ${isUnlimited ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-400'}`}>{formatPrice(product.amount_fen, product.currency)}</strong>
+          {paymentsEnabled && (
+            <button
+              type="button"
+              disabled={isPurchasing}
+              onClick={() => onPurchase(product)}
+              className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-extrabold text-white transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                isUnlimited
+                  ? 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-200 dark:hover:bg-amber-400'
+                  : 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-200 dark:hover:bg-emerald-500'
+              }`}
+            >
+              {isPurchasing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+              购买
+            </button>
+          )}
+        </div>
+      </article>
+    );
+  };
+
+  if (isLoading) {
+    return <div className="rounded-xl border border-gray-200 px-4 py-6 text-center text-xs font-semibold text-gray-400 dark:border-gray-800">正在加载可购买套餐…</div>;
+  }
+
+  if (!paymentsEnabled && products.length === 0) {
+    return <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">在线支付暂未开放；您仍可使用下方卡密兑换。</div>;
+  }
+
+  return (
+    <section aria-label="购买套餐" className="mx-auto w-full max-w-3xl space-y-4">
+      <div className="text-center">
+        <div
+          role="tablist"
+          aria-label="套餐类型"
+          className="inline-flex rounded-xl border border-gray-200 bg-gray-100/80 p-1 shadow-inner dark:border-gray-800 dark:bg-gray-900"
+        >
+          <button
+            ref={tokenTabRef}
+            id="billing-tab-tokens"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'tokens'}
+            aria-controls="billing-plan-panel"
+            tabIndex={activeTab === 'tokens' ? 0 : -1}
+            onClick={() => setActiveTab('tokens')}
+            onKeyDown={handleTabKeyDown}
+            className={`min-w-24 rounded-lg px-5 py-2 text-xs font-extrabold transition focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:focus:ring-emerald-500/20 ${
+              activeTab === 'tokens'
+                ? 'bg-white text-emerald-700 shadow-sm dark:bg-gray-800 dark:text-emerald-300'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            按量
+          </button>
+          <button
+            ref={unlimitedTabRef}
+            id="billing-tab-unlimited"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'unlimited'}
+            aria-controls="billing-plan-panel"
+            tabIndex={activeTab === 'unlimited' ? 0 : -1}
+            onClick={() => setActiveTab('unlimited')}
+            onKeyDown={handleTabKeyDown}
+            className={`min-w-24 rounded-lg px-5 py-2 text-xs font-extrabold transition focus:outline-none focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-500/20 ${
+              activeTab === 'unlimited'
+                ? 'bg-white text-amber-700 shadow-sm dark:bg-gray-800 dark:text-amber-300'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            包月
+          </button>
+        </div>
+        <p className="mt-2 text-[10px] font-semibold text-gray-400">易付通收银台 · 一次购买 · 不自动续费</p>
+        {paymentStatus && (
+          <p role="status" aria-live="polite" className={`mt-2 text-[10px] font-bold ${paymentStatus === 'fulfilled' ? 'text-emerald-600 dark:text-emerald-400' : paymentStatus === 'failed' || paymentStatus === 'expired' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-300'}`}>
+            {paymentStatusCopy(paymentStatus)}
+          </p>
+        )}
+      </div>
+      {!paymentsEnabled && (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">
+          在线支付暂未开放；套餐购买按钮已隐藏，您仍可使用卡密兑换。
+        </div>
+      )}
+      <div
+        id="billing-plan-panel"
+        role="tabpanel"
+        aria-labelledby={`billing-tab-${activeTab}`}
+        className="animate-in fade-in slide-in-from-bottom-1 duration-200"
+      >
+        <div className={`grid grid-cols-1 gap-2 ${activeTab === 'tokens' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+          {activeProducts.map(renderProduct)}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 // ==========================================
-// 6. 卡密兑换区
-// ==========================================
-// ==========================================
-// 6. 卡密兑换卡片 (优化样式并融入购买引导)
+// 卡密兑换卡片
 // ==========================================
 const RedemptionCard: React.FC<{
   code: string;
@@ -536,43 +700,13 @@ const RedemptionCard: React.FC<{
 }) => {
   return (
     <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 p-4 shadow-sm dark:border-emerald-500/10 dark:from-emerald-950/10 dark:to-teal-950/5">
-      <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:divide-x md:divide-emerald-100/50 dark:md:divide-emerald-900/20">
-        {/* 左侧：如何获取额度 */}
-        <div className="flex flex-1 flex-col justify-between pr-0 md:pr-4">
-          <div>
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-              <span className="flex h-5 w-5 items-center justify-center rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
-                <HeartHandshake className="h-3 w-3" />
-              </span>
-              <span>如何获取额度</span>
-            </div>
-            <p className="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-              选择适合的商品入口完成购买，付款后按商品说明获取卡密并在右侧兑换为 AI 服务额度。
-            </p>
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {TAOBAO_PRODUCT_LINKS.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-extrabold transition active:scale-95 focus:outline-none focus:ring-2 ${item.className}`}
-              >
-                <span>{item.label}</span>
-                <ExternalLink className="h-3 w-3 shrink-0" />
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* 右侧：卡密兑换 */}
+      <div className="flex flex-col gap-4">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             onRedeem();
           }}
-          className="flex flex-1 flex-col justify-between pl-0 pt-3 md:pl-4 md:pt-0"
+          className="flex flex-col justify-between"
         >
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-900 dark:text-white">
@@ -625,6 +759,10 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   onClose,
   summary,
   onSummaryChange,
+  initialView = 'overview',
+  returnFocusElement = null,
+  returnedPaymentOrderId = null,
+  onPaymentOrderHandled,
 }) => {
   const [usageEvents, setUsageEvents] = React.useState<TokenUsageEvent[]>([]);
   const [usageByDay, setUsageByDay] = React.useState<TokenUsageAggregate[]>([]);
@@ -633,8 +771,23 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   const [redemptionMessage, setRedemptionMessage] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [isRedeeming, setIsRedeeming] = React.useState(false);
-  const [isRedeemOpen, setIsRedeemOpen] = React.useState(false);
+  const [activeView, setActiveView] = React.useState<QuotaModalView>('overview');
   const [error, setError] = React.useState('');
+  const [products, setProducts] = React.useState<BillingProduct[]>([]);
+  const [paymentsEnabled, setPaymentsEnabled] = React.useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = React.useState(false);
+  const [isPurchasing, setIsPurchasing] = React.useState(false);
+  const [paymentStatus, setPaymentStatus] = React.useState<PaymentUiStatus>(null);
+  const [checkoutForm, setCheckoutForm] = React.useState<PaymentCheckoutForm | null>(null);
+  const checkoutFormRef = React.useRef<HTMLFormElement | null>(null);
+  const returnedOrderRef = React.useRef<string | null>(null);
+  const purchaseInFlightRef = React.useRef(false);
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const purchaseButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const backButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const restorePurchaseButtonFocusRef = React.useRef(false);
+  const [paymentSyncRetryRequest, setPaymentSyncRetryRequest] = React.useState(0);
+  const [canRetryPaymentSync, setCanRetryPaymentSync] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     setIsLoading(true);
@@ -661,6 +814,155 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
       void refresh();
     }
   }, [isOpen, refresh]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      setActiveView('overview');
+      return;
+    }
+    if (initialView === 'purchase' || returnedPaymentOrderId) {
+      setActiveView('purchase');
+    }
+  }, [initialView, isOpen, returnedPaymentOrderId]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      if (activeView === 'purchase') {
+        backButtonRef.current?.focus();
+      } else if (restorePurchaseButtonFocusRef.current) {
+        restorePurchaseButtonFocusRef.current = false;
+        purchaseButtonRef.current?.focus();
+      } else {
+        dialogRef.current?.focus();
+      }
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activeView, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setIsLoadingProducts(true);
+    billingService.getProducts()
+      .then((response) => {
+        if (!cancelled) {
+          setProducts(response.products);
+          setPaymentsEnabled(response.payments_enabled);
+        }
+      })
+      .catch((productError) => {
+        console.warn('Failed to load billing products', productError);
+        if (!cancelled) {
+          setProducts([]);
+          setPaymentsEnabled(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingProducts(false);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen || activeView !== 'purchase' || !checkoutForm || !checkoutFormRef.current) return;
+    checkoutFormRef.current.submit();
+  }, [activeView, checkoutForm, isOpen]);
+
+  const finishReturnedOrder = React.useCallback(async (order: PaymentOrder) => {
+    setPaymentStatus(order.status);
+    if (order.status !== 'fulfilled') return false;
+    billingService.clearBillingCache();
+    try {
+      const nextSummary = order.summary ?? await billingService.getSummary({ force: true });
+      onSummaryChange(nextSummary);
+    } catch (summaryError) {
+      console.warn('Payment fulfilled but quota refresh failed', summaryError);
+    }
+    await refresh();
+    onPaymentOrderHandled?.();
+    return true;
+  }, [onPaymentOrderHandled, onSummaryChange, refresh]);
+
+  React.useEffect(() => {
+    if (!isOpen || !returnedPaymentOrderId || returnedOrderRef.current === returnedPaymentOrderId) return;
+    returnedOrderRef.current = returnedPaymentOrderId;
+    setError('');
+    setCanRetryPaymentSync(false);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const inspectOrder = async (shouldSync: boolean) => {
+      try {
+        setPaymentStatus('processing');
+        const order = shouldSync
+          ? await billingService.syncPaymentOrder(returnedPaymentOrderId)
+          : await billingService.getPaymentOrder(returnedPaymentOrderId);
+        if (cancelled) return;
+        if (await finishReturnedOrder(order)) return;
+        if (order.status === 'failed' || order.status === 'expired') {
+          onPaymentOrderHandled?.();
+          return;
+        }
+        attempts += 1;
+        if (attempts < 6) {
+          timer = setTimeout(() => { void inspectOrder(false); }, 1_500);
+        } else {
+          returnedOrderRef.current = null;
+          setCanRetryPaymentSync(true);
+          setError('支付状态仍在确认中，您可以重新查询。');
+        }
+      } catch (syncError) {
+        console.warn('Failed to sync payment order', syncError);
+        if (!cancelled) {
+          returnedOrderRef.current = null;
+          setCanRetryPaymentSync(true);
+          setError('支付状态暂时无法确认，请重新查询。');
+        }
+      }
+    };
+    void inspectOrder(true);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (returnedOrderRef.current === returnedPaymentOrderId) {
+        returnedOrderRef.current = null;
+      }
+    };
+  }, [finishReturnedOrder, isOpen, onPaymentOrderHandled, paymentSyncRetryRequest, returnedPaymentOrderId]);
+
+  const retryReturnedPaymentOrder = () => {
+    if (!returnedPaymentOrderId) return;
+    returnedOrderRef.current = null;
+    setCanRetryPaymentSync(false);
+    setError('');
+    setPaymentSyncRetryRequest((request) => request + 1);
+  };
+
+  const handlePurchase = async (product: BillingProduct) => {
+    if (purchaseInFlightRef.current || isPurchasing || !paymentsEnabled) return;
+    purchaseInFlightRef.current = true;
+    setIsPurchasing(true);
+    setPaymentStatus('creating');
+    setError('');
+    try {
+      const idempotencyKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `billing-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const order = await billingService.createPaymentOrder(product.sku, idempotencyKey);
+      setPaymentStatus(order.status);
+      const checkout = await billingService.getPaymentCheckout(order.id);
+      setPaymentStatus(checkout.order.status);
+      setCheckoutForm(checkout);
+    } catch (purchaseError) {
+      console.error(purchaseError);
+      setPaymentStatus('failed');
+      setError('订单创建失败，请稍后重试。');
+    } finally {
+      purchaseInFlightRef.current = false;
+      setIsPurchasing(false);
+    }
+  };
 
   const handleRedeem = async () => {
     const code = redemptionCode.trim();
@@ -690,35 +992,128 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     }
   };
 
+  const openPurchaseView = () => {
+    setError('');
+    setActiveView('purchase');
+  };
+
+  const returnToOverview = () => {
+    setError('');
+    restorePurchaseButtonFocusRef.current = true;
+    setActiveView('overview');
+  };
+
+  const handleClose = () => {
+    const focusTarget = returnFocusElement;
+    restorePurchaseButtonFocusRef.current = false;
+    setActiveView('overview');
+    onClose();
+    window.requestAnimationFrame(() => {
+      const visibleAvatarButton = Array.from(document.querySelectorAll<HTMLElement>('[data-token-quota-focus-return]'))
+        .find((element) => element.offsetParent !== null);
+      const visibleFocusTarget = focusTarget?.isConnected && focusTarget.offsetParent !== null
+        ? focusTarget
+        : visibleAvatarButton;
+      visibleFocusTarget?.focus();
+    });
+  };
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (activeView === 'purchase') {
+        returnToOverview();
+      } else {
+        handleClose();
+      }
+      return;
+    }
+    if (event.key !== 'Tab' || !dialogRef.current) return;
+
+    const dialog = dialogRef.current;
+    const focusableElements = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => (
+      !element.hasAttribute('hidden')
+      && element.getAttribute('aria-hidden') !== 'true'
+      && element.offsetParent !== null
+    ));
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+    if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && (activeElement === lastElement || !dialog.contains(activeElement))) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-950">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="token-quota-dialog-title"
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
+        className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-950"
+      >
         {/* 头部区域 */}
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3.5 dark:border-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-              <Wallet className="h-5 w-5" />
+          {activeView === 'purchase' ? (
+            <div className="flex items-center gap-2.5">
+              <button
+                ref={backButtonRef}
+                type="button"
+                onClick={returnToOverview}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:hover:bg-gray-800 dark:hover:text-white dark:focus:ring-emerald-500/20"
+                aria-label="返回额度概览"
+                title="返回额度概览"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div>
+                <h2 id="token-quota-dialog-title" className="text-sm font-extrabold text-gray-900 dark:text-white">购买套餐</h2>
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">选择套餐或兑换卡密</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-extrabold text-gray-900 dark:text-white">额度</h2>
-              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">AI 服务 token 用量</p>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                <Wallet className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 id="token-quota-dialog-title" className="text-sm font-extrabold text-gray-900 dark:text-white">额度</h2>
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">AI 服务 token 用量</p>
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex items-center gap-2">
+            {activeView === 'overview' && (
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-white"
+                aria-label="刷新额度"
+                title="刷新额度"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => void refresh()}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-white"
-              aria-label="刷新额度"
-              title="刷新额度"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-white"
               aria-label="关闭额度弹窗"
             >
@@ -727,16 +1122,60 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
           </div>
         </div>
 
-        {/* 内容滚动区域 */}
-        <div className="min-h-0 overflow-y-auto p-4 space-y-4">
-          <QuotaDashboard
-            summary={summary}
-            onOpenRedeem={() => setIsRedeemOpen(!isRedeemOpen)}
-            isRedeemOpen={isRedeemOpen}
-          />
+        {activeView === 'overview' ? (
+          /* 额度概览与套餐页条件卸载，避免不可见控件仍进入键盘焦点 */
+          <div className="min-h-0 space-y-4 overflow-y-auto p-4" data-quota-view="overview">
+            <QuotaDashboard
+              summary={summary}
+              onOpenPurchase={openPurchaseView}
+              purchaseButtonRef={purchaseButtonRef}
+            />
 
-          {isRedeemOpen && (
-            <div className="animate-in fade-in slide-in-from-top-3 duration-200">
+            {error && (
+              <div className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {error}
+              </div>
+            )}
+
+            <QuotaCharts usageByDay={usageByDay} usageByEntrypoint={usageByEntrypoint} />
+
+            {/* 用量明细 */}
+            <div className="mt-2">
+              <div className="mb-2.5 flex items-center justify-between">
+                <h3 className="text-xs font-bold text-gray-900 dark:text-white">用量明细</h3>
+                <span className="text-[10px] font-semibold text-gray-400">最近 {usageEvents.length} 条</span>
+              </div>
+              <UsageDetailTable usageEvents={usageEvents} />
+              <UsageDetailList usageEvents={usageEvents} />
+            </div>
+          </div>
+        ) : (
+          <div className="min-h-0 space-y-5 overflow-y-auto p-4 sm:p-5" data-quota-view="purchase">
+            <PurchaseCatalog
+              products={products}
+              paymentsEnabled={paymentsEnabled}
+              isLoading={isLoadingProducts}
+              isPurchasing={isPurchasing}
+              paymentStatus={paymentStatus}
+              onPurchase={handlePurchase}
+            />
+
+            {error && (
+              <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                <span>{error}</span>
+                {canRetryPaymentSync && returnedPaymentOrderId && (
+                  <button
+                    type="button"
+                    onClick={retryReturnedPaymentOrder}
+                    className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/20"
+                  >
+                    重新查询支付状态
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="mx-auto max-w-3xl border-t border-gray-100 pt-5 dark:border-gray-800">
               <RedemptionCard
                 code={redemptionCode}
                 isRedeeming={isRedeeming}
@@ -745,26 +1184,15 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
                 onRedeem={handleRedeem}
               />
             </div>
-          )}
-
-          {error && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
-              {error}
-            </div>
-          )}
-
-          <QuotaCharts usageByDay={usageByDay} usageByEntrypoint={usageByEntrypoint} />
-
-          {/* 用量明细 */}
-          <div className="mt-2">
-            <div className="mb-2.5 flex items-center justify-between">
-              <h3 className="text-xs font-bold text-gray-900 dark:text-white">用量明细</h3>
-              <span className="text-[10px] font-semibold text-gray-400">最近 {usageEvents.length} 条</span>
-            </div>
-            <UsageDetailTable usageEvents={usageEvents} />
-            <UsageDetailList usageEvents={usageEvents} />
           </div>
-        </div>
+        )}
+        {checkoutForm && (
+          <form ref={checkoutFormRef} action={checkoutForm.action} method={checkoutForm.method} className="hidden" aria-hidden="true">
+            {Object.entries(checkoutForm.fields).map(([name, value]) => (
+              <input key={name} type="hidden" name={name} value={value} />
+            ))}
+          </form>
+        )}
       </div>
     </div>
   );

@@ -2,9 +2,9 @@ import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRe
 import { useLogto } from '@logto/react';
 import AuthGuard from './components/AuthGuard';
 import FeedbackModal from './components/FeedbackModal';
-import AppreciationModal from './components/AppreciationModal';
 import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
 import GlobalSidebar from './components/GlobalSidebar';
+import QuotaPurchasePrompt from './components/QuotaPurchasePrompt';
 import TokenQuotaModal from './components/TokenQuotaModal';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest, AssistantOpenSessionRequest } from './views/AIAssistant/types';
@@ -21,6 +21,10 @@ import { resumeService, type Resume as ResumeRecord } from './services/resumeSer
 import { profileService } from './services/profileService';
 import { experienceService } from './services/experienceService';
 import { billingService, type TokenQuotaSummary } from './services/billingService';
+import {
+  DEFAULT_QUOTA_PURCHASE_MESSAGE,
+  subscribeQuotaPurchaseRequired,
+} from './services/quotaPurchasePrompt';
 import type { AssistantDraftApplyNavigation } from './services/aiService';
 import { devLog } from './services/devLogger';
 import { clearActiveResumeId, setActiveResumeId } from './views/resumeStorage';
@@ -93,11 +97,15 @@ const App: React.FC = () => {
   // 标记是否需要在ExperienceBank中自动打开简历上传弹窗
   const [shouldOpenResumeUpload, setShouldOpenResumeUpload] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [isAppreciationOpen, setIsAppreciationOpen] = useState(false);
-  const [appreciationReturnFocusElement, setAppreciationReturnFocusElement] = useState<HTMLElement | null>(null);
   const [isAgentPluginConfigOpen, setIsAgentPluginConfigOpen] = useState(false);
   const [isTokenQuotaOpen, setIsTokenQuotaOpen] = useState(false);
+  const [tokenQuotaInitialView, setTokenQuotaInitialView] = useState<'overview' | 'purchase'>('overview');
+  const [tokenQuotaReturnFocusElement, setTokenQuotaReturnFocusElement] = useState<HTMLElement | null>(null);
   const [quotaSummary, setQuotaSummary] = useState<TokenQuotaSummary | null>(null);
+  const [quotaPurchasePromptMessage, setQuotaPurchasePromptMessage] = useState<string | null>(null);
+  const [returnedPaymentOrderId, setReturnedPaymentOrderId] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('payment_order');
+  });
   const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const [assistantOpenSessionRequest, setAssistantOpenSessionRequest] = useState<AssistantOpenSessionRequest | null>(null);
   const [assistantDraftInput, setAssistantDraftInput] = useState('');
@@ -132,11 +140,13 @@ const App: React.FC = () => {
     setProfileCache(null);
     setShouldOpenResumeUpload(false);
     setIsFeedbackOpen(false);
-    setIsAppreciationOpen(false);
-    setAppreciationReturnFocusElement(null);
     setIsAgentPluginConfigOpen(false);
     setIsTokenQuotaOpen(false);
+    setTokenQuotaInitialView('overview');
+    setTokenQuotaReturnFocusElement(null);
     setQuotaSummary(null);
+    setQuotaPurchasePromptMessage(null);
+    setReturnedPaymentOrderId(null);
     setAssistantLaunchRequest(null);
     setAssistantOpenSessionRequest(null);
     setAssistantDraftInput('');
@@ -325,26 +335,59 @@ const App: React.FC = () => {
   const handleCloseFeedback = useCallback(() => {
     setIsFeedbackOpen(false);
   }, []);
-  const handleOpenAppreciation = useCallback((returnFocusElement?: HTMLElement | null) => {
-    setAppreciationReturnFocusElement(returnFocusElement ?? null);
-    setIsAppreciationOpen(true);
-  }, []);
-  const handleCloseAppreciation = useCallback(() => {
-    setIsAppreciationOpen(false);
-  }, []);
   const handleOpenAgentPluginConfig = useCallback(() => {
     setIsAgentPluginConfigOpen(true);
   }, []);
   const handleCloseAgentPluginConfig = useCallback(() => {
     setIsAgentPluginConfigOpen(false);
   }, []);
-  const handleOpenTokenQuota = useCallback(() => {
+  const handleOpenTokenQuota = useCallback((returnFocusElement?: HTMLElement | null) => {
+    setQuotaPurchasePromptMessage(null);
+    setTokenQuotaInitialView('overview');
+    setTokenQuotaReturnFocusElement(returnFocusElement ?? null);
+    setIsTokenQuotaOpen(true);
+  }, []);
+  const handleOpenTokenPurchase = useCallback((returnFocusElement?: HTMLElement | null) => {
+    setQuotaPurchasePromptMessage(null);
+    setTokenQuotaInitialView('purchase');
+    setTokenQuotaReturnFocusElement(returnFocusElement ?? null);
     setIsTokenQuotaOpen(true);
   }, []);
   const handleCloseTokenQuota = useCallback(() => {
     setIsTokenQuotaOpen(false);
+    setTokenQuotaInitialView('overview');
+    setTokenQuotaReturnFocusElement(null);
+  }, []);
+  const handlePaymentOrderHandled = useCallback(() => {
+    const url = new URL(window.location.href);
+    [
+      'payment_order',
+      'pid',
+      'trade_no',
+      'out_trade_no',
+      'api_trade_no',
+      'type',
+      'trade_status',
+      'addtime',
+      'endtime',
+      'name',
+      'money',
+      'param',
+      'buyer',
+      'timestamp',
+      'sign',
+      'sign_type',
+    ].forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    setReturnedPaymentOrderId(null);
   }, []);
   const feedbackContext = useMemo(() => buildFeedbackContext(currentView), [currentView]);
+
+  useEffect(() => {
+    return subscribeQuotaPurchaseRequired(({ message }) => {
+      setQuotaPurchasePromptMessage(message?.trim() || DEFAULT_QUOTA_PURCHASE_MESSAGE);
+    });
+  }, []);
 
   useEffect(() => {
     if (!authUserKey || !isAuthenticated) {
@@ -366,6 +409,16 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, [authUserKey, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const paymentOrderId = new URLSearchParams(window.location.search).get('payment_order');
+    if (!paymentOrderId) return;
+    setReturnedPaymentOrderId(paymentOrderId);
+    setTokenQuotaInitialView('purchase');
+    setTokenQuotaReturnFocusElement(null);
+    setIsTokenQuotaOpen(true);
+  }, [isAuthenticated]);
 
   const renderView = () => {
     switch (currentView) {
@@ -453,9 +506,9 @@ const App: React.FC = () => {
           setView={handleSetView}
           onOpenFeedback={handleOpenFeedback}
           onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
-          onOpenAppreciation={handleOpenAppreciation}
           quotaSummary={quotaSummary}
           onOpenTokenQuota={handleOpenTokenQuota}
+          onOpenTokenPurchase={handleOpenTokenPurchase}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
@@ -464,15 +517,17 @@ const App: React.FC = () => {
             </Suspense>
           </ViewErrorBoundary>
         </div>
+        {quotaPurchasePromptMessage && !isTokenQuotaOpen && (
+          <QuotaPurchasePrompt
+            message={quotaPurchasePromptMessage}
+            onOpenPurchase={() => handleOpenTokenPurchase()}
+            onDismiss={() => setQuotaPurchasePromptMessage(null)}
+          />
+        )}
         <FeedbackModal
           isOpen={isFeedbackOpen}
           context={feedbackContext}
           onClose={handleCloseFeedback}
-        />
-        <AppreciationModal
-          isOpen={isAppreciationOpen}
-          onClose={handleCloseAppreciation}
-          returnFocusElement={appreciationReturnFocusElement}
         />
         <AgentApiPluginConfigModal
           isOpen={isAgentPluginConfigOpen}
@@ -483,6 +538,10 @@ const App: React.FC = () => {
           onClose={handleCloseTokenQuota}
           summary={quotaSummary}
           onSummaryChange={setQuotaSummary}
+          initialView={tokenQuotaInitialView}
+          returnFocusElement={tokenQuotaReturnFocusElement}
+          returnedPaymentOrderId={returnedPaymentOrderId}
+          onPaymentOrderHandled={handlePaymentOrderHandled}
         />
       </div>
     </AuthGuard>

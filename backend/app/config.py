@@ -36,10 +36,16 @@ ENV_FEISHU_WEBHOOK_URL = "FEISHU_WEBHOOK_URL"
 ENV_FEISHU_APP_ID = "FEISHU_APP_ID"
 ENV_FEISHU_APP_SECRET = "FEISHU_APP_SECRET"
 ENV_FRONTEND_ORIGIN = "FRONTEND_ORIGIN"
+ENV_PUBLIC_API_ORIGIN = "PUBLIC_API_ORIGIN"
 ENV_EXPORT_SNAPSHOT_TTL_SECONDS = "EXPORT_SNAPSHOT_TTL_SECONDS"
 ENV_EXPORT_TOKEN_SECRET = "EXPORT_TOKEN_SECRET"
 ENV_EXPORT_RENDER_TIMEOUT_SECONDS = "EXPORT_RENDER_TIMEOUT_SECONDS"
 ENV_REDEMPTION_CODE_ENCRYPTION_KEY = "REDEMPTION_CODE_ENCRYPTION_KEY"
+ENV_YIFUT_ENABLED = "YIFUT_ENABLED"
+ENV_YIFUT_MERCHANT_ID = "YIFUT_MERCHANT_ID"
+ENV_YIFUT_MERCHANT_PRIVATE_KEY = "YIFUT_MERCHANT_PRIVATE_KEY"
+ENV_YIFUT_PLATFORM_PUBLIC_KEY = "YIFUT_PLATFORM_PUBLIC_KEY"
+ENV_YIFUT_BASE_URL = "YIFUT_BASE_URL"
 DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_AI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_AI_MODEL = "qwen3.7-plus"
@@ -58,6 +64,8 @@ DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:3000",
 ]
 DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
+DEFAULT_PUBLIC_API_ORIGIN = "http://localhost:8000"
+DEFAULT_YIFUT_BASE_URL = "https://www.yifut.com"
 DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS = 300
 DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS = 45
 ENV_FILE_NAME = ".env"
@@ -194,10 +202,16 @@ class Settings:
     feishu_app_id: Optional[str]
     feishu_app_secret: Optional[str]
     frontend_origin: str
+    public_api_origin: str
     export_snapshot_ttl_seconds: int
     export_token_secret: str
     export_render_timeout_seconds: int
     redemption_code_encryption_key: Optional[str]
+    yifut_enabled: bool
+    yifut_merchant_id: Optional[str]
+    yifut_merchant_private_key: Optional[str]
+    yifut_platform_public_key: Optional[str]
+    yifut_base_url: str
 
 
 _settings: Optional[Settings] = None
@@ -259,6 +273,9 @@ def load_settings() -> Settings:
     feishu_app_id = os.getenv(ENV_FEISHU_APP_ID)
     feishu_app_secret = os.getenv(ENV_FEISHU_APP_SECRET)
     frontend_origin = _resolve_frontend_origin(cors_allow_origins)
+    public_api_origin = _normalize_origin(
+        os.getenv(ENV_PUBLIC_API_ORIGIN, DEFAULT_PUBLIC_API_ORIGIN)
+    )
     export_snapshot_ttl_seconds = int(
         os.getenv(ENV_EXPORT_SNAPSHOT_TTL_SECONDS, DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS)
     )
@@ -271,6 +288,13 @@ def load_settings() -> Settings:
         os.getenv(ENV_EXPORT_RENDER_TIMEOUT_SECONDS, DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS)
     )
     redemption_code_encryption_key = os.getenv(ENV_REDEMPTION_CODE_ENCRYPTION_KEY)
+    yifut_enabled = _get_bool_env(ENV_YIFUT_ENABLED, False)
+    yifut_merchant_id = os.getenv(ENV_YIFUT_MERCHANT_ID)
+    yifut_merchant_private_key = os.getenv(ENV_YIFUT_MERCHANT_PRIVATE_KEY)
+    yifut_platform_public_key = os.getenv(ENV_YIFUT_PLATFORM_PUBLIC_KEY)
+    yifut_base_url = _normalize_origin(
+        os.getenv(ENV_YIFUT_BASE_URL, DEFAULT_YIFUT_BASE_URL)
+    )
 
     _settings = Settings(
         database_url=database_url,
@@ -303,10 +327,16 @@ def load_settings() -> Settings:
         feishu_app_id=feishu_app_id,
         feishu_app_secret=feishu_app_secret,
         frontend_origin=frontend_origin,
+        public_api_origin=public_api_origin,
         export_snapshot_ttl_seconds=export_snapshot_ttl_seconds,
         export_token_secret=export_token_secret,
         export_render_timeout_seconds=export_render_timeout_seconds,
         redemption_code_encryption_key=redemption_code_encryption_key,
+        yifut_enabled=yifut_enabled,
+        yifut_merchant_id=yifut_merchant_id,
+        yifut_merchant_private_key=yifut_merchant_private_key,
+        yifut_platform_public_key=yifut_platform_public_key,
+        yifut_base_url=yifut_base_url,
     )
     return _settings
 

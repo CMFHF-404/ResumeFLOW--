@@ -10,6 +10,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_502_BAD_GATEWAY
 
 from ...database import get_session
 from ...dependencies import get_current_user
+from ...utils.ndjson import ndjson_line as _ndjson_line
 from ..billing import billing_service
 from ..resume.resume_service import (
     ConcurrencyConflictError,
@@ -47,15 +48,6 @@ async def _resolve_jd_analysis_response(
             status_code=HTTP_502_BAD_GATEWAY,
             detail="AI analysis returned an invalid response. Please retry.",
         ) from exc
-
-
-
-
-def _ndjson_line(payload: Dict[str, Any]) -> str:
-    import json as _json
-
-    return _json.dumps(payload, ensure_ascii=False) + "\n"
-
 
 def _stream_error_event(exc: Exception) -> Dict[str, Any]:
     if isinstance(exc, HTTPException):
@@ -155,7 +147,11 @@ async def analyze_jd_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="jd_analysis",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -170,6 +166,8 @@ async def analyze_jd_stream_endpoint(
                     current_user.id,
                     entrypoint="jd_analysis",
                     metadata={"route": "/api/analyze-jd/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit({"type": "progress", "node": "prepare_context", "title": "准备分析上下文"})
                     await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行分析"})
@@ -204,6 +202,8 @@ async def analyze_jd_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
@@ -236,7 +236,11 @@ async def resume_evaluation_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="resume_evaluation",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -251,6 +255,8 @@ async def resume_evaluation_stream_endpoint(
                     current_user.id,
                     entrypoint="resume_evaluation",
                     metadata={"route": "/api/resume-evaluation/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit({"type": "progress", "node": "prepare_context", "title": "准备六维评估上下文"})
                     await emit({"type": "progress", "node": "request_ai", "title": "生成深度六维报告"})
@@ -281,6 +287,8 @@ async def resume_evaluation_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
@@ -296,7 +304,11 @@ async def analyze_jd_attachment_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="jd_attachment_analysis",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -311,6 +323,8 @@ async def analyze_jd_attachment_stream_endpoint(
                     current_user.id,
                     entrypoint="jd_attachment_analysis",
                     metadata={"route": "/api/analyze-jd-attachment/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit({"type": "progress", "node": "prepare_context", "title": "解析 JD 附件"})
                     attachment = await jd_attachment_service.extract_jd_from_attachment(file)
@@ -385,6 +399,8 @@ async def analyze_jd_attachment_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
@@ -438,7 +454,11 @@ async def polish_text_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint=payload.entry_source or "experience_polish",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -453,6 +473,8 @@ async def polish_text_stream_endpoint(
                     current_user.id,
                     entrypoint=payload.entry_source or "experience_polish",
                     metadata={"route": "/api/polish-text/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit({"type": "progress", "node": "prepare_context", "title": "准备润色上下文"})
                     await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 进行润色"})
@@ -485,6 +507,8 @@ async def polish_text_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
@@ -549,7 +573,11 @@ async def generate_boss_greeting_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="boss_greeting",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -564,6 +592,8 @@ async def generate_boss_greeting_stream_endpoint(
                     current_user.id,
                     entrypoint="boss_greeting",
                     metadata={"route": "/api/generate-boss-greeting/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit({"type": "progress", "node": "prepare_context", "title": "准备 BOSS 招呼语上下文"})
                     await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成 BOSS 招呼语"})
@@ -610,6 +640,8 @@ async def generate_boss_greeting_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
@@ -645,7 +677,11 @@ async def generate_personal_summary_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
-    await billing_service.ensure_quota_available(session, current_user.id)
+    request_lease = await billing_service.begin_ai_request(
+        session,
+        current_user.id,
+        entrypoint="personal_summary",
+    )
 
     async def event_stream():
         queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
@@ -660,6 +696,8 @@ async def generate_personal_summary_stream_endpoint(
                     current_user.id,
                     entrypoint="personal_summary",
                     metadata={"route": "/api/generate-personal-summary/stream"},
+                    request_lease=request_lease,
+                    release_request_lease_on_exit=False,
                 ):
                     await emit({"type": "progress", "node": "prepare_context", "title": "准备个人评价上下文"})
                     await emit({"type": "progress", "node": "request_ai", "title": "调用 AI 生成个人评价"})
@@ -695,6 +733,8 @@ async def generate_personal_summary_stream_endpoint(
                 await producer
             except asyncio.CancelledError:
                 pass
+            if request_lease is not None:
+                await request_lease.release()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 

@@ -253,7 +253,7 @@ const createSkillRenameHandlers = (
 };
 
 const createSkillDeleteHandlers = (
-    domain: SkillDomain,
+    _domain: SkillDomain,
     state: SkillState,
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,

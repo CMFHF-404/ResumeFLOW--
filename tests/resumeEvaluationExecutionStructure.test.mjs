@@ -69,5 +69,5 @@ test('report stop action and single-button placeholder stay accessible', () => {
   );
   assert.doesNotMatch(placeholder, /<h4|<p/);
   assert.match(panel, /onStopEvaluation\?: \(\) => void/);
-  assert.match(editor, /onStopEvaluation=\{stopEvaluation\}/);
+  assert.match(editor, /onStopEvaluation: stopEvaluation/);
 });

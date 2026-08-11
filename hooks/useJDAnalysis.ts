@@ -20,10 +20,7 @@ import {
   saveJDAnalysisCache,
   selectPreferredPersistedJDAnalysis,
 } from "../views/jdAnalysisStorage";
-import {
-  diffJDItemSignatures,
-  sortExperienceItemsForMatch,
-} from "../utils/resumeHelpers";
+import { diffJDItemSignatures } from "../utils/resumeHelpers";
 import { resolveThoughtDisplayEvent } from "../utils/aiThought";
 import { createJDAttachmentSelectionController } from "../utils/jdAttachment";
 import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../views/ResumeEditor/constants";
@@ -283,6 +280,7 @@ export const useJDAnalysis = ({
     applySkillMatchScores,
     applySkillMatchTrends,
     applyMatchScoresForResult,
+    resetAllMatchState,
     markStaleMatches,
     clearStaleExperienceIds,
   } = useJDAnalysisMatchState({
@@ -436,12 +434,7 @@ export const useJDAnalysis = ({
       const hasEvaluationWithoutJd =
         normalizedPayload.result.resumeEvaluation?.jdMatch === null;
       if (hasEvaluationWithoutJd) {
-        applyExperienceMatchScores();
-        applyExperienceMatchTrends();
-        applyCertificationMatchScores();
-        applyCertificationMatchTrends();
-        applySkillMatchScores();
-        applySkillMatchTrends();
+        resetAllMatchState();
       } else {
         const skillMatches = normalizedPayload.result.skillMatches ?? [];
         applyExperienceMatchScores(normalizedPayload.result.experienceMatches);
@@ -450,9 +443,9 @@ export const useJDAnalysis = ({
         applyCertificationMatchTrends(normalizedPayload.result.certificationMatches);
         applySkillMatchScores(skillMatches);
         applySkillMatchTrends(skillMatches);
+        resetStaleExperienceIds();
       }
       setIsJDCollapsed(true);
-      resetStaleExperienceIds();
       setNeedsReanalysis(false);
       setDebugInfo(null);
       pendingDiffRef.current = buildEmptyDiff();
@@ -469,6 +462,7 @@ export const useJDAnalysis = ({
       certifications,
       experienceItems,
       experienceSignature,
+      resetAllMatchState,
       resetStaleExperienceIds,
       skillGroups,
     ]
@@ -487,16 +481,10 @@ export const useJDAnalysis = ({
       }
       setAnalysisContext(null);
       setIsJDCollapsed(false);
-      resetStaleExperienceIds();
       setNeedsReanalysis(false);
       setDebugInfo(null);
       pendingDiffRef.current = buildEmptyDiff();
-      applyExperienceMatchScores();
-      applyExperienceMatchTrends();
-      applyCertificationMatchScores();
-      applyCertificationMatchTrends();
-      applySkillMatchScores();
-      applySkillMatchTrends();
+      resetAllMatchState();
       if (options?.resetJdText) {
         setJdText(DEFAULT_JD_TEXT);
         setAttachmentExtractedText(null);
@@ -511,14 +499,8 @@ export const useJDAnalysis = ({
       }
     },
     [
-      applyCertificationMatchScores,
-      applyCertificationMatchTrends,
-      applyExperienceMatchScores,
-      applyExperienceMatchTrends,
-      applySkillMatchScores,
-      applySkillMatchTrends,
       clearJdFile,
-      resetStaleExperienceIds,
+      resetAllMatchState,
       resumeId,
     ]
   );
@@ -531,25 +513,13 @@ export const useJDAnalysis = ({
       if (restoredAttachmentContext) {
         setRestoredAttachmentContext(null);
       }
-      applyExperienceMatchScores();
-      applyExperienceMatchTrends();
-      applyCertificationMatchScores();
-      applyCertificationMatchTrends();
-      applySkillMatchScores();
-      applySkillMatchTrends();
-      resetStaleExperienceIds();
+      resetAllMatchState();
       setNeedsReanalysis(true);
     }
   }, [
     analysisContext,
-    applyCertificationMatchScores,
-    applyCertificationMatchTrends,
-    applyExperienceMatchScores,
-    applyExperienceMatchTrends,
-    applySkillMatchScores,
-    applySkillMatchTrends,
     jdInputSignature,
-    resetStaleExperienceIds,
+    resetAllMatchState,
     restoredAttachmentContext,
     resumeId,
   ]);
@@ -811,13 +781,7 @@ export const useJDAnalysis = ({
         experienceText: nextExperienceText,
       });
       if (result.resumeEvaluation?.jdMatch === null) {
-        applyExperienceMatchScores();
-        applyExperienceMatchTrends();
-        applyCertificationMatchScores();
-        applyCertificationMatchTrends();
-        applySkillMatchScores();
-        applySkillMatchTrends();
-        resetStaleExperienceIds();
+        resetAllMatchState();
       }
       if (resumeId) {
         saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
@@ -828,16 +792,10 @@ export const useJDAnalysis = ({
       }
     },
     [
-      applyCertificationMatchScores,
-      applyCertificationMatchTrends,
-      applyExperienceMatchScores,
-      applyExperienceMatchTrends,
-      applySkillMatchScores,
-      applySkillMatchTrends,
       persistedJDAnalysisConfig,
       analysisContext?.evaluationSignature,
       persistedJDAnalysis?.evaluationSignature,
-      resetStaleExperienceIds,
+      resetAllMatchState,
       resumeId,
     ]
   );

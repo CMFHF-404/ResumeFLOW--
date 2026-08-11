@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from sqlalchemy import Column, DateTime, Text, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, Index, Text, Enum as SAEnum, UniqueConstraint, text as sa_text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlmodel import Field, SQLModel
 
@@ -227,16 +227,16 @@ class AITokenWallet(SQLModel, table=True):
     __tablename__ = "ai_token_wallets"
 
     user_id: str = Field(primary_key=True, foreign_key="users.id")
-    token_limit: int = Field(default=0, nullable=False)
-    remaining_tokens: int = Field(default=0, nullable=False)
-    used_tokens: int = Field(default=0, nullable=False)
+    token_limit: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    remaining_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    used_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
     unlimited_tokens_expires_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     unlimited_tokens_plan_name: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     last_purchase_id: Optional[uuid.UUID] = Field(default=None, index=True)
-    last_purchase_tokens: int = Field(default=0, nullable=False)
+    last_purchase_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
     last_purchase_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
@@ -261,9 +261,9 @@ class AITokenUsageEvent(SQLModel, table=True):
     provider: str = Field(default="unknown", sa_column=Column(Text, nullable=False))
     model: str = Field(default="", sa_column=Column(Text, nullable=False))
     status: str = Field(default="success", sa_column=Column(Text, nullable=False))
-    prompt_tokens: int = Field(default=0, nullable=False)
-    completion_tokens: int = Field(default=0, nullable=False)
-    total_tokens: int = Field(default=0, nullable=False)
+    prompt_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    completion_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    total_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
     created_at: datetime = Field(
         default_factory=utc_now_aware,
@@ -273,23 +273,100 @@ class AITokenUsageEvent(SQLModel, table=True):
 
 class AITokenPurchaseEvent(SQLModel, table=True):
     __tablename__ = "ai_token_purchase_events"
+    __table_args__ = (
+        Index(
+            "uq_ai_token_purchase_events_source_id",
+            "source",
+            "source_id",
+            unique=True,
+            postgresql_where=sa_text("source_id IS NOT NULL"),
+        ),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
     option_id: str = Field(sa_column=Column(Text, nullable=False))
     label: str = Field(sa_column=Column(Text, nullable=False))
-    tokens: int = Field(nullable=False)
+    tokens: int = Field(sa_column=Column(BigInteger, nullable=False))
     status: str = Field(default="placeholder_succeeded", sa_column=Column(Text, nullable=False))
-    before_remaining_tokens: int = Field(default=0, nullable=False)
-    after_remaining_tokens: int = Field(default=0, nullable=False)
-    before_token_limit: int = Field(default=0, nullable=False)
-    after_token_limit: int = Field(default=0, nullable=False)
+    before_remaining_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    after_remaining_tokens: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    before_token_limit: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    after_token_limit: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
     source: str = Field(default="placeholder_purchase", sa_column=Column(Text, nullable=False))
     source_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
     created_at: datetime = Field(
         default_factory=utc_now_aware,
         sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class PaymentOrder(SQLModel, table=True):
+    __tablename__ = "payment_orders"
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_payment_orders_user_idempotency"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    provider: str = Field(default="yifut", sa_column=Column(Text, nullable=False))
+    merchant_order_no: str = Field(sa_column=Column(Text, nullable=False, unique=True))
+    idempotency_key: str = Field(sa_column=Column(Text, nullable=False))
+    sku: str = Field(sa_column=Column(Text, nullable=False))
+    product_name: str = Field(sa_column=Column(Text, nullable=False))
+    amount_fen: int = Field(sa_column=Column(BigInteger, nullable=False))
+    currency: str = Field(default="CNY", sa_column=Column(Text, nullable=False))
+    benefit_type: str = Field(sa_column=Column(Text, nullable=False))
+    token_amount: int = Field(default=0, sa_column=Column(BigInteger, nullable=False))
+    unlimited_duration_days: Optional[int] = Field(default=None)
+    entitlement_snapshot_json: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False),
+    )
+    status: str = Field(default="pending", sa_column=Column(Text, nullable=False, index=True))
+    provider_trade_no: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True, unique=True),
+    )
+    failure_reason: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    paid_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    fulfilled_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class PaymentWebhookEvent(SQLModel, table=True):
+    __tablename__ = "payment_webhook_events"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    provider: str = Field(default="yifut", sa_column=Column(Text, nullable=False))
+    event_key: str = Field(sa_column=Column(Text, nullable=False, unique=True))
+    merchant_order_no: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True, index=True))
+    provider_trade_no: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True, index=True))
+    signature_valid: bool = Field(default=False, nullable=False)
+    payload_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    processing_error: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    received_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    processed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
     )
 
 

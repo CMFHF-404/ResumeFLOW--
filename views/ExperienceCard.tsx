@@ -197,7 +197,7 @@ const ExperienceCardHeader: React.FC<{
   onFieldChange: (field: string, value: string | string[]) => void;
   isLocked: boolean;
   themeColor?: string;
-}> = ({ data, labels, onFieldChange, isLocked, themeColor }) => (
+}> = ({ data, labels, onFieldChange, isLocked }) => (
   <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
     <div className="flex flex-col lg:flex-row gap-6 mb-4">
       <div className="flex-1">

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -16,6 +17,7 @@ from ...database import AsyncSessionFactory
 from ...models import AITokenPurchaseEvent, AITokenUsageEvent, AITokenWallet
 from ...utils.time_utils import utc_now_aware as utc_now
 from ..ai.usage_bridge import configure_usage_sink
+from . import usage_guard
 from .schemas import (
     TokenPurchaseEventRead,
     TokenPurchaseOption,
@@ -66,6 +68,11 @@ class BillingContext:
     user_id: str
     entrypoint: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    request_lease: usage_guard.UnlimitedRequestLease | None = None
+    quota_checked: bool = False
+
+
+_usage_alert_tasks: set[asyncio.Task[None]] = set()
 
 
 _billing_context: ContextVar[BillingContext | None] = ContextVar(
@@ -276,10 +283,45 @@ async def ensure_quota_available(session: AsyncSession, user_id: str) -> TokenQu
             status_code=402,
             detail={
                 "code": "ai_token_quota_exhausted",
-                "message": "AI token 额度已用完，请打开额度入口兑换卡密或联系管理员。",
+                "message": "AI Token 额度已用完，请购买套餐或兑换卡密后继续使用。",
             },
         )
     return _to_summary(wallet)
+
+
+async def begin_ai_request(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    entrypoint: str,
+) -> usage_guard.UnlimitedRequestLease | None:
+    """Check quota and acquire the per-request fair-use lease when unlimited."""
+    summary = await ensure_quota_available(session, user_id)
+    if getattr(summary, "is_unlimited", False) is not True:
+        return None
+    return await usage_guard.acquire_unlimited_request(
+        user_id=user_id,
+        entrypoint=entrypoint or "unknown",
+    )
+
+
+def _schedule_daily_usage_alert(
+    *,
+    user_id: str,
+    observed_at: datetime,
+    plan_name: str,
+    expires_at: datetime | None,
+) -> None:
+    task = asyncio.create_task(
+        usage_guard.maybe_send_daily_usage_alert(
+            user_id=user_id,
+            observed_at=observed_at,
+            plan_name=plan_name,
+            expires_at=expires_at,
+        )
+    )
+    _usage_alert_tasks.add(task)
+    task.add_done_callback(_usage_alert_tasks.discard)
 
 
 async def _create_placeholder_purchase_record(
@@ -402,6 +444,13 @@ async def record_usage_event(
     if commit:
         await _maybe_commit(session)
     await _maybe_refresh(session, wallet)
+    if commit and event.status == "success" and total_tokens > 0 and is_unlimited:
+        _schedule_daily_usage_alert(
+            user_id=user_id,
+            observed_at=now,
+            plan_name=wallet.unlimited_tokens_plan_name or "",
+            expires_at=wallet.unlimited_tokens_expires_at,
+        )
     return _to_summary(wallet)
 
 
@@ -453,19 +502,26 @@ async def ai_billing_context(
     *,
     entrypoint: str,
     metadata: Dict[str, Any] | None = None,
+    request_lease: usage_guard.UnlimitedRequestLease | None = None,
+    release_request_lease_on_exit: bool = True,
 ):
-    token = _billing_context.set(
-        BillingContext(
-            session=session,
-            user_id=user_id,
-            entrypoint=entrypoint,
-            metadata=metadata or {},
-        )
+    context = BillingContext(
+        session=session,
+        user_id=user_id,
+        entrypoint=entrypoint,
+        metadata=metadata or {},
+        request_lease=request_lease,
+        quota_checked=request_lease is not None,
     )
+    token = _billing_context.set(context)
     try:
         yield
     finally:
-        _billing_context.reset(token)
+        try:
+            if release_request_lease_on_exit and context.request_lease is not None:
+                await context.request_lease.release()
+        finally:
+            _billing_context.reset(token)
 
 
 def get_current_billing_context() -> BillingContext | None:
@@ -476,7 +532,14 @@ async def ensure_current_quota() -> None:
     context = get_current_billing_context()
     if context is None:
         return
-    await ensure_quota_available(context.session, context.user_id)
+    if context.quota_checked:
+        return
+    context.request_lease = await begin_ai_request(
+        context.session,
+        context.user_id,
+        entrypoint=context.entrypoint,
+    )
+    context.quota_checked = True
 
 
 async def emit_usage_callback(

@@ -29,6 +29,7 @@ PUBLIC_GET_PATH_PREFIXES = (
 PUBLIC_PATH_PREFIXES = (
     "/agent/v1/",
 )
+YIFUT_NOTIFY_PATH = "/api/billing/payments/yifut/notify"
 
 class AuthError(Exception):
     pass
@@ -87,6 +88,8 @@ def _extract_token(request: Request) -> Optional[str]:
 def _is_public_request(request: Request) -> bool:
     path = request.url.path
     if path in PUBLIC_PATHS or request.method == "OPTIONS":
+        return True
+    if request.method == "GET" and path == YIFUT_NOTIFY_PATH:
         return True
     if any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES):
         return True

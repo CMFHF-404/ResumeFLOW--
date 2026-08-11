@@ -7,7 +7,6 @@ import hmac
 import io
 import os
 import secrets
-from datetime import timedelta
 from typing import Any, Iterable
 import uuid
 
@@ -19,14 +18,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...config import ENV_REDEMPTION_CODE_ENCRYPTION_KEY, load_settings
 from ...models import (
-    AITokenPurchaseEvent,
-    AITokenWallet,
     RedemptionBatch,
     RedemptionCode,
     RedemptionPackage,
 )
 from ...utils.time_utils import utc_now_aware as utc_now
 from . import billing_service
+from .entitlement_service import EntitlementGrant, grant_entitlement
 from .redemption_schemas import (
     RedemptionBatchCreate,
     RedemptionBatchCreateResponse,
@@ -185,17 +183,6 @@ def _validate_unlimited_duration(
             detail={"code": "invalid_unlimited_duration", "message": "无限套餐时长必须大于 0。"},
         )
     return duration_days or None, duration_hours or None
-
-
-def _unlimited_duration_delta(
-    unlimited_duration_days: int | None,
-    unlimited_duration_hours: int | None = None,
-) -> timedelta:
-    duration_days, duration_hours = _validate_unlimited_duration(
-        unlimited_duration_days,
-        unlimited_duration_hours,
-    )
-    return timedelta(days=duration_days or 0, hours=duration_hours or 0)
 
 
 def _validate_benefit_type(benefit_type: str | None) -> str:
@@ -482,65 +469,28 @@ async def redeem_code(
     else:
         _validate_unlimited_duration(record.unlimited_duration_days, record.unlimited_duration_hours)
 
-    wallet = await billing_service._get_wallet(session, user_id, create=True, for_update=True)  # noqa: SLF001
-    assert wallet is not None
     now = utc_now()
-    before_remaining = max(int(wallet.remaining_tokens or 0), 0)
-    before_limit = max(int(wallet.token_limit or 0), 0)
     token_amount = int(record.token_amount) if benefit_type == BENEFIT_TOKENS else 0
-    after_remaining = before_remaining + token_amount
-    after_limit = before_limit + token_amount
-    previous_unlimited_expires_at = wallet.unlimited_tokens_expires_at
-    next_unlimited_expires_at = previous_unlimited_expires_at
-    if benefit_type == BENEFIT_UNLIMITED_TIME:
-        extension_base = (
-            previous_unlimited_expires_at
-            if billing_service._is_unlimited_active(wallet, now)  # noqa: SLF001
-            else now
-        )
-        next_unlimited_expires_at = extension_base + _unlimited_duration_delta(
-            record.unlimited_duration_days,
-            record.unlimited_duration_hours,
-        )
-
-    purchase = AITokenPurchaseEvent(
+    granted = await grant_entitlement(
+        session,
         user_id=user_id,
-        option_id=f"redemption:{record.id}",
-        label=record.package_name,
-        tokens=token_amount,
-        status="redemption_succeeded",
-        before_remaining_tokens=before_remaining,
-        after_remaining_tokens=after_remaining,
-        before_token_limit=before_limit,
-        after_token_limit=after_limit,
+        grant=EntitlementGrant(
+            option_id=f"redemption:{record.id}",
+            label=record.package_name,
+            benefit_type=benefit_type,
+            token_amount=token_amount,
+            unlimited_duration_days=record.unlimited_duration_days,
+            unlimited_duration_hours=record.unlimited_duration_hours,
+        ),
         source=SOURCE_REDEMPTION_CODE,
         source_id=str(record.id),
-        metadata_json={
+        status="redemption_succeeded",
+        metadata={
             "batch_id": str(record.batch_id) if record.batch_id else None,
             "package_id": str(record.package_id) if record.package_id else None,
-            "benefit_type": benefit_type,
-            "unlimited_duration_days": record.unlimited_duration_days,
-            "unlimited_duration_hours": record.unlimited_duration_hours,
-            "previous_unlimited_expires_at": previous_unlimited_expires_at.isoformat()
-            if previous_unlimited_expires_at
-            else None,
-            "next_unlimited_expires_at": next_unlimited_expires_at.isoformat()
-            if next_unlimited_expires_at
-            else None,
         },
-        created_at=now,
+        now=now,
     )
-    session.add(purchase)
-
-    wallet.token_limit = after_limit
-    wallet.remaining_tokens = after_remaining
-    if benefit_type == BENEFIT_UNLIMITED_TIME:
-        wallet.unlimited_tokens_expires_at = next_unlimited_expires_at
-        wallet.unlimited_tokens_plan_name = record.package_name
-    wallet.last_purchase_id = purchase.id
-    wallet.last_purchase_tokens = token_amount
-    wallet.last_purchase_at = now
-    wallet.updated_at = now
 
     record.status = STATUS_REDEEMED
     record.redeemed_by_user_id = user_id
@@ -548,14 +498,14 @@ async def redeem_code(
     record.updated_at = now
 
     await _maybe_commit(session)
-    await _maybe_refresh(session, wallet)
+    await _maybe_refresh(session, granted.wallet)
     await _maybe_refresh(session, record)
-    await _maybe_refresh(session, purchase)
+    await _maybe_refresh(session, granted.purchase)
 
     return RedemptionRedeemResponse(
         tokens=token_amount,
         package_name=record.package_name,
-        summary=billing_service._to_summary(wallet),  # noqa: SLF001
+        summary=billing_service._to_summary(granted.wallet),  # noqa: SLF001
     )
 
 

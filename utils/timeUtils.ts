@@ -1,8 +1,6 @@
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
-const MONTH_MS = 30 * DAY_MS;
 
 export const formatRelativeTime = (dateStr: string): string => {
     const date = new Date(dateStr);
