@@ -16,6 +16,7 @@ from .domain.billing.billing_router import router as billing_router
 from .domain.billing.payment_router import router as payment_router
 from .domain.billing.redemption_router import admin_router as redemption_admin_router
 from .domain.billing.redemption_router import router as redemption_router
+from .domain.billing.payment_expiry_worker import PaymentExpiryWorker
 from .domain.certifications.certification_router import router as certifications_router
 from .domain.experience import experience_router
 from .domain.experience.draft_router import router as experience_draft_router
@@ -42,6 +43,7 @@ def build_cors_allow_credentials(allow_origins: List[str]) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    payment_expiry_worker = PaymentExpiryWorker()
     # 启动时：检查数据库连接
     print("Verifying database connection on startup...")
     try:
@@ -52,10 +54,16 @@ async def lifespan(app: FastAPI):
         print(f"CRITICAL: Failed to connect to database. {e}")
         # 在某些环境（如 Uvicorn）下，抛出异常会直接停止进程
         raise RuntimeError("Stopped application startup due to database connection failure.") from e
-    
-    yield
-    # 关闭时：清理工作（如果有）
-    await close_browser()
+
+    await payment_expiry_worker.start()
+    try:
+        yield
+    finally:
+        # Always stop database maintenance before releasing the browser process.
+        try:
+            await payment_expiry_worker.stop()
+        finally:
+            await close_browser()
 
 app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
 settings = load_settings()

@@ -5,8 +5,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from sqlalchemy import BigInteger, Column, DateTime, Index, Text, Enum as SAEnum, UniqueConstraint, text as sa_text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Text, Enum as SAEnum, UniqueConstraint, text as sa_text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
 from .utils.time_utils import utc_now
@@ -306,6 +306,11 @@ class PaymentOrder(SQLModel, table=True):
     __tablename__ = "payment_orders"
     __table_args__ = (
         UniqueConstraint("user_id", "idempotency_key", name="uq_payment_orders_user_idempotency"),
+        Index(
+            "idx_payment_orders_pending_expires",
+            "expires_at",
+            postgresql_where=sa_text("status = 'pending'"),
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -325,6 +330,10 @@ class PaymentOrder(SQLModel, table=True):
         sa_column=Column(JSONB, nullable=False),
     )
     status: str = Field(default="pending", sa_column=Column(Text, nullable=False, index=True))
+    state_version: int = Field(
+        default=1,
+        sa_column=Column(BigInteger, nullable=False, server_default="1"),
+    )
     provider_trade_no: Optional[str] = Field(
         default=None,
         sa_column=Column(Text, nullable=True, unique=True),
@@ -338,12 +347,72 @@ class PaymentOrder(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    cancelled_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     created_at: datetime = Field(
         default_factory=utc_now_aware,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
     updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class PaymentOrderIdempotencyAlias(SQLModel, table=True):
+    __tablename__ = "payment_order_idempotency_aliases"
+    __table_args__ = (
+        Index(
+            "idx_payment_order_idempotency_aliases_order",
+            "payment_order_id",
+        ),
+    )
+
+    user_id: str = Field(
+        sa_column=Column(
+            Text,
+            ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        )
+    )
+    idempotency_key: str = Field(
+        sa_column=Column(Text, primary_key=True)
+    )
+    payment_order_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("payment_orders.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class PaymentOrderProviderOpenClaim(SQLModel, table=True):
+    __tablename__ = "payment_order_provider_open_claims"
+
+    user_id: str = Field(
+        sa_column=Column(
+            Text,
+            ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        )
+    )
+    payment_order_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("payment_orders.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        )
+    )
+    created_at: datetime = Field(
         default_factory=utc_now_aware,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )

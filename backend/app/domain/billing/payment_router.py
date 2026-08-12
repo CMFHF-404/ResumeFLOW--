@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -13,6 +13,8 @@ from .payment_schemas import (
     PaymentCheckoutResponse,
     PaymentOrderCreate,
     PaymentOrderRead,
+    PaymentOrdersResponse,
+    PaymentPurchaseContextResponse,
     PaymentProductsResponse,
 )
 
@@ -56,6 +58,37 @@ async def create_payment_order(
         user_id=current_user.id,
         sku=payload.sku,
         idempotency_key=idempotency_key,
+        expected_payment_state_token=payload.expected_payment_state_token,
+        expected_catalog_version=payload.expected_catalog_version,
+    )
+
+
+@router.get(
+    "/payment-orders/purchase-context",
+    response_model=PaymentPurchaseContextResponse,
+)
+async def get_payment_purchase_context(
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    return await payment_service.get_purchase_context(
+        session,
+        user_id=current_user.id,
+    )
+
+
+@router.get("/payment-orders", response_model=PaymentOrdersResponse)
+async def list_payment_orders(
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    return await payment_service.list_orders(
+        session,
+        user_id=current_user.id,
+        limit=limit,
+        cursor=cursor,
     )
 
 
@@ -66,6 +99,19 @@ async def create_payment_checkout(
     current_user=Depends(get_current_user),
 ):
     return await payment_service.create_checkout(
+        session,
+        user_id=current_user.id,
+        order_id=order_id,
+    )
+
+
+@router.post("/payment-orders/{order_id}/cancel", response_model=PaymentOrderRead)
+async def cancel_payment_order(
+    order_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    return await payment_service.cancel_order(
         session,
         user_id=current_user.id,
         order_id=order_id,

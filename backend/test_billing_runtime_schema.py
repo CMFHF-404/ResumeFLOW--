@@ -3,6 +3,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from app import database
+from app.models import (
+    PaymentOrder,
+    PaymentOrderIdempotencyAlias,
+    PaymentOrderProviderOpenClaim,
+)
 from app.runtime_schema.billing_tables import (
     AI_TOKEN_BILLING_STATEMENTS,
     REDEMPTION_CODE_STATEMENTS,
@@ -69,6 +74,28 @@ class BillingRuntimeSchemaLeafTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("ALTER COLUMN token_limit TYPE BIGINT" in item for item in executed))
         self.assertTrue(any("uq_ai_token_purchase_events_source_id" in item for item in executed))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS payment_orders" in item for item in executed))
+        self.assertTrue(any("cancelled_at TIMESTAMPTZ" in item for item in executed))
+        self.assertTrue(any("ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ" in item for item in executed))
+        self.assertTrue(any("state_version BIGINT NOT NULL DEFAULT 1" in item for item in executed))
+        self.assertTrue(any("idx_payment_orders_pending_expires" in item for item in executed))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS payment_order_idempotency_aliases" in item for item in executed))
+        self.assertTrue(any("INSERT INTO payment_order_idempotency_aliases" in item for item in executed))
+        self.assertTrue(any("idx_payment_order_idempotency_aliases_order" in item for item in executed))
+        self.assertTrue(any("payment_order_claim_original_idempotency_key" in item for item in executed))
+        self.assertTrue(any("payment_order_bump_state_version" in item for item in executed))
+        self.assertTrue(any("trg_payment_order_claim_original_idempotency_key" in item for item in executed))
+        self.assertTrue(any("trg_payment_order_bump_state_version" in item for item in executed))
+        claim_trigger_index = next(
+            index
+            for index, item in enumerate(executed)
+            if "CREATE TRIGGER trg_payment_order_claim_original_idempotency_key" in item
+        )
+        alias_backfill_index = next(
+            index
+            for index, item in enumerate(executed)
+            if "SELECT user_id, idempotency_key, id, created_at" in item
+        )
+        self.assertLess(claim_trigger_index, alias_backfill_index)
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS payment_webhook_events" in item for item in executed))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS ai_unlimited_request_leases" in item for item in executed))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS ai_unlimited_usage_alerts" in item for item in executed))
@@ -236,6 +263,23 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
             "uq_payment_orders_user_idempotency",
             "idx_payment_orders_user_created",
             "idx_payment_orders_status",
+            "cancelled_at TIMESTAMPTZ",
+            "state_version BIGINT NOT NULL DEFAULT 1",
+            "idx_payment_orders_pending_expires",
+            "CREATE TABLE IF NOT EXISTS payment_order_provider_open_claims",
+            "INSERT INTO payment_order_provider_open_claims",
+            "payment_order_enforce_provider_open_per_user",
+            "trg_payment_order_enforce_provider_open_per_user",
+            "payment_order_reconciliation_required",
+            "status IN ('pending', 'paid', 'cancelled', 'expired')",
+            "CREATE TABLE IF NOT EXISTS payment_order_idempotency_aliases",
+            "PRIMARY KEY (user_id, idempotency_key)",
+            "INSERT INTO payment_order_idempotency_aliases",
+            "idx_payment_order_idempotency_aliases_order",
+            "payment_order_claim_original_idempotency_key",
+            "trg_payment_order_claim_original_idempotency_key",
+            "payment_order_bump_state_version",
+            "trg_payment_order_bump_state_version",
             "idx_payment_webhook_events_order",
             "CREATE TABLE IF NOT EXISTS ai_unlimited_request_leases",
             "CREATE TABLE IF NOT EXISTS ai_unlimited_usage_alerts",
@@ -267,6 +311,18 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
         guard_migration = (
             backend_root / "migrations" / "010_add_unlimited_usage_guard.sql"
         ).read_text(encoding="utf-8")
+        cancellation_migration = (
+            backend_root / "migrations" / "011_add_payment_order_cancellation.sql"
+        ).read_text(encoding="utf-8")
+        alias_migration = (
+            backend_root / "migrations" / "012_add_payment_order_idempotency_aliases.sql"
+        ).read_text(encoding="utf-8")
+        state_version_migration = (
+            backend_root / "migrations" / "013_add_payment_order_state_version.sql"
+        ).read_text(encoding="utf-8")
+        writer_guard_migration = (
+            backend_root / "migrations" / "014_add_payment_order_writer_guards.sql"
+        ).read_text(encoding="utf-8")
 
         for fragment in (
             "ADD COLUMN IF NOT EXISTS source TEXT",
@@ -285,6 +341,106 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
         ):
             with self.subTest(migration="guard", fragment=fragment):
                 self.assertIn(fragment, guard_migration)
+        for fragment in (
+            "ALTER TABLE payment_orders",
+            "ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+            "idx_payment_orders_pending_expires",
+            "WHERE status = 'pending'",
+        ):
+            with self.subTest(migration="cancellation", fragment=fragment):
+                self.assertIn(fragment, cancellation_migration)
+        for fragment in (
+            "CREATE TABLE IF NOT EXISTS payment_order_idempotency_aliases",
+            "PRIMARY KEY (user_id, idempotency_key)",
+            "REFERENCES payment_orders(id) ON DELETE CASCADE",
+            "INSERT INTO payment_order_idempotency_aliases",
+            "SELECT user_id, idempotency_key, id, created_at",
+            "ON CONFLICT (user_id, idempotency_key) DO NOTHING",
+            "idx_payment_order_idempotency_aliases_order",
+        ):
+            with self.subTest(migration="idempotency_alias", fragment=fragment):
+                self.assertIn(fragment, alias_migration)
+        for fragment in (
+            "ALTER TABLE payment_orders",
+            "ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 1",
+        ):
+            with self.subTest(migration="state_version", fragment=fragment):
+                self.assertIn(fragment, state_version_migration)
+        for fragment in (
+            "payment_order_claim_original_idempotency_key",
+            "INSERT INTO payment_order_idempotency_aliases",
+            "trg_payment_order_claim_original_idempotency_key",
+            "AFTER INSERT ON payment_orders",
+            "payment_order_bump_state_version",
+            "NEW.state_version = OLD.state_version",
+            "trg_payment_order_bump_state_version",
+            "BEFORE UPDATE ON payment_orders",
+            "payment_order_reconciliation_required",
+            "CREATE TABLE IF NOT EXISTS payment_order_provider_open_claims",
+            "INSERT INTO payment_order_provider_open_claims",
+            "payment_order_enforce_provider_open_per_user",
+            "trg_payment_order_enforce_provider_open_per_user",
+            "status IN ('pending', 'paid', 'cancelled', 'expired')",
+        ):
+            with self.subTest(migration="writer_guards", fragment=fragment):
+                self.assertIn(fragment, writer_guard_migration)
+        self.assertLess(
+            writer_guard_migration.index(
+                "CREATE TRIGGER trg_payment_order_claim_original_idempotency_key"
+            ),
+            writer_guard_migration.index(
+                "SELECT user_id, idempotency_key, id, created_at"
+            ),
+        )
+
+        self.assertLess(
+            writer_guard_migration.index("payment_order_reconciliation_required"),
+            writer_guard_migration.index(
+                "CREATE TRIGGER trg_payment_order_enforce_provider_open_per_user"
+            ),
+        )
+
+    def test_payment_order_state_version_model_matches_ddl_contract(self) -> None:
+        column = PaymentOrder.__table__.columns.state_version
+        self.assertFalse(column.nullable)
+        self.assertEqual(str(column.type), "BIGINT")
+        self.assertEqual(str(column.server_default.arg), "1")
+
+    def test_payment_order_idempotency_alias_model_matches_ddl_contract(self) -> None:
+        table = PaymentOrderIdempotencyAlias.__table__
+        self.assertEqual(
+            [column.name for column in table.primary_key.columns],
+            ["user_id", "idempotency_key"],
+        )
+        self.assertEqual(
+            {index.name for index in table.indexes},
+            {"idx_payment_order_idempotency_aliases_order"},
+        )
+        foreign_keys = {
+            column.name: next(iter(column.foreign_keys))
+            for column in table.columns
+            if column.foreign_keys
+        }
+        self.assertEqual(foreign_keys["user_id"].target_fullname, "users.id")
+        self.assertEqual(foreign_keys["payment_order_id"].target_fullname, "payment_orders.id")
+        self.assertEqual(foreign_keys["user_id"].ondelete, "CASCADE")
+        self.assertEqual(foreign_keys["payment_order_id"].ondelete, "CASCADE")
+
+    def test_payment_order_provider_open_claim_model_matches_ddl_contract(self) -> None:
+        table = PaymentOrderProviderOpenClaim.__table__
+        self.assertEqual([column.name for column in table.primary_key], ["user_id"])
+        self.assertTrue(table.columns.payment_order_id.unique)
+        self.assertFalse(table.columns.payment_order_id.nullable)
+        foreign_keys = {
+            column.name: next(iter(column.foreign_keys))
+            for column in table.columns
+            if column.foreign_keys
+        }
+        self.assertEqual(foreign_keys["user_id"].target_fullname, "users.id")
+        self.assertEqual(
+            foreign_keys["payment_order_id"].target_fullname,
+            "payment_orders.id",
+        )
 
 
 if __name__ == "__main__":
