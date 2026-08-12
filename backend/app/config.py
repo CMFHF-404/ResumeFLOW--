@@ -292,7 +292,8 @@ def load_settings() -> Settings:
     redemption_code_encryption_key = os.getenv(ENV_REDEMPTION_CODE_ENCRYPTION_KEY)
     yifut_enabled = _get_bool_env(ENV_YIFUT_ENABLED, False)
     yifut_test_user_ids = _parse_csv_env(ENV_YIFUT_TEST_USER_IDS, [])
-    yifut_merchant_id = os.getenv(ENV_YIFUT_MERCHANT_ID)
+    raw_yifut_merchant_id = os.getenv(ENV_YIFUT_MERCHANT_ID)
+    yifut_merchant_id = raw_yifut_merchant_id.strip() if raw_yifut_merchant_id else None
     yifut_merchant_private_key = os.getenv(ENV_YIFUT_MERCHANT_PRIVATE_KEY)
     yifut_platform_public_key = os.getenv(ENV_YIFUT_PLATFORM_PUBLIC_KEY)
     yifut_base_url = _normalize_origin(
