@@ -36,11 +36,16 @@ STATUS_EXPIRED = "expired"
 STATUS_FAILED = "failed"
 
 
+def _valid_merchant_id(value: Any) -> bool:
+    merchant_id = str(value or "").strip()
+    return bool(merchant_id and merchant_id.isascii() and merchant_id.isdecimal())
+
+
 def payments_enabled(settings: Settings | Any | None = None) -> bool:
     current = settings or load_settings()
     return bool(
         current.yifut_enabled
-        and current.yifut_merchant_id
+        and _valid_merchant_id(current.yifut_merchant_id)
         and current.yifut_merchant_private_key
         and current.yifut_platform_public_key
         and current.yifut_base_url
@@ -64,7 +69,7 @@ def _require_payments_enabled(settings: Settings | Any | None = None) -> Any:
 
 def _require_notification_configured(settings: Settings | Any | None = None) -> Any:
     current = settings or load_settings()
-    if not current.yifut_merchant_id or not current.yifut_platform_public_key:
+    if not _valid_merchant_id(current.yifut_merchant_id) or not current.yifut_platform_public_key:
         raise HTTPException(
             status_code=503,
             detail={
@@ -78,7 +83,7 @@ def _require_notification_configured(settings: Settings | Any | None = None) -> 
 def _require_query_configured(settings: Settings | Any | None = None) -> Any:
     current = settings or load_settings()
     if not (
-        current.yifut_merchant_id
+        _valid_merchant_id(current.yifut_merchant_id)
         and current.yifut_merchant_private_key
         and current.yifut_platform_public_key
         and current.yifut_base_url

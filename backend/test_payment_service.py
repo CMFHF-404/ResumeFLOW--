@@ -70,7 +70,7 @@ def _settings(**overrides):
     values = {
         "yifut_enabled": True,
         "yifut_test_user_ids": [],
-        "yifut_merchant_id": "merchant-1",
+        "yifut_merchant_id": "1001",
         "yifut_merchant_private_key": "private-key",
         "yifut_platform_public_key": "public-key",
         "yifut_base_url": "https://www.yifut.com/",
@@ -125,6 +125,16 @@ class PaymentCatalogTests(unittest.IsolatedAsyncioTestCase):
     def test_payment_flag_requires_switch_and_all_secrets(self) -> None:
         self.assertFalse(payment_service.payments_enabled(_settings(yifut_enabled=False)))
         self.assertFalse(payment_service.payments_enabled(_settings(yifut_platform_public_key=None)))
+
+        malformed_settings = _settings(yifut_merchant_id="1796复制")
+        self.assertFalse(payment_service.payments_enabled(malformed_settings))
+        for require_configured in (
+            payment_service._require_notification_configured,
+            payment_service._require_query_configured,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                require_configured(malformed_settings)
+            self.assertEqual(raised.exception.status_code, 503)
 
     def test_purchase_source_id_model_index_matches_partial_database_index(self) -> None:
         index = next(
@@ -418,7 +428,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             expires_at=utc_now_aware() + timedelta(minutes=20),
         )
         valid = {
-            "pid": "merchant-1",
+            "pid": "1001",
             "out_trade_no": "RF-ORDER-1",
             "money": "9.90",
             "currency": "CNY",
@@ -481,7 +491,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         )
         wallet = AITokenWallet(user_id="user-1", token_limit=1_000, remaining_tokens=400, used_tokens=600)
         payload = {
-            "pid": "merchant-1",
+            "pid": "1001",
             "out_trade_no": order.merchant_order_no,
             "money": "9.90",
             "currency": "CNY",
@@ -564,7 +574,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             used_tokens=975,
         )
         payload = {
-            "pid": "merchant-1",
+            "pid": "1001",
             "out_trade_no": order.merchant_order_no,
             "money": "9.90",
             "trade_status": "TRADE_SUCCESS",
@@ -612,7 +622,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         wallet = AITokenWallet(user_id="user-1", token_limit=1_000, remaining_tokens=400, used_tokens=600)
         provider_payload = {
             "code": 0,
-            "pid": "merchant-1",
+            "pid": "1001",
             "out_trade_no": order.merchant_order_no,
             "money": "29.80",
             "currency": "CNY",
