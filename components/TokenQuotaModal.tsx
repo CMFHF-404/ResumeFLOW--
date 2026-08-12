@@ -5,12 +5,23 @@ import {
   type BillingProduct,
   type PaymentCheckoutForm,
   type PaymentOrder,
+  type PaymentPurchaseContext,
   type TokenQuotaSummary,
   type TokenUsageAggregate,
   type TokenUsageEvent,
 } from '../services/billingService';
+import {
+  appendPaymentOrderPage,
+  clearMatchingTerminalPurchaseAttempt,
+  coordinatePaymentOrdersAndContextRefresh,
+  getOrderRefreshPageDepth,
+  getOrCreatePurchaseIdempotencyKey,
+  paymentOrderConflictMessage,
+  requiresRepeatPurchaseAcknowledgement,
+  resolveUnsettledPaymentOrderConflict,
+} from './tokenQuotaOrderUtils';
 
-type QuotaModalView = 'overview' | 'purchase';
+type QuotaModalView = 'overview' | 'purchase' | 'orders';
 
 type TokenQuotaModalProps = {
   isOpen: boolean;
@@ -524,7 +535,8 @@ const paymentStatusCopy = (status: PaymentUiStatus) => {
     case 'pending': return '订单已创建，正在前往收银台…';
     case 'paid': return '付款已确认，正在到账…';
     case 'fulfilled': return '权益已到账，额度已刷新。';
-    case 'expired': return '订单已过期，请重新选择套餐。';
+    case 'cancelled': return '订单已暂停；支付平台未关单，请继续原订单确认状态。';
+    case 'expired': return '订单已过期，可继续原订单。';
     case 'failed': return '订单未完成，请重试或选择其他套餐。';
     default: return '';
   }
@@ -535,9 +547,11 @@ const PurchaseCatalog: React.FC<{
   paymentsEnabled: boolean;
   isLoading: boolean;
   isPurchasing: boolean;
+  isCheckoutSubmitting: boolean;
+  isPurchaseContextReady: boolean;
   paymentStatus: PaymentUiStatus;
   onPurchase: (product: BillingProduct) => void;
-}> = ({ products, paymentsEnabled, isLoading, isPurchasing, paymentStatus, onPurchase }) => {
+}> = ({ products, paymentsEnabled, isLoading, isPurchasing, isCheckoutSubmitting, isPurchaseContextReady, paymentStatus, onPurchase }) => {
   const [activeTab, setActiveTab] = React.useState<BillingProduct['category']>('tokens');
   const tokenTabRef = React.useRef<HTMLButtonElement | null>(null);
   const unlimitedTabRef = React.useRef<HTMLButtonElement | null>(null);
@@ -561,6 +575,9 @@ const PurchaseCatalog: React.FC<{
   };
   const renderProduct = (product: BillingProduct) => {
     const isUnlimited = product.category === 'unlimited';
+    const tokenAmount = Math.max(Number(product.token_amount ?? 0), 0);
+    const estimatedJdAnalyses = Math.floor(tokenAmount / 17_000);
+    const estimatedAssistantActions = Math.floor(tokenAmount / 5_000);
     const benefit = isUnlimited
       ? `${product.unlimited_duration_days ?? 0} 天不限量`
       : `${formatTokens(product.token_amount)} Tokens`;
@@ -580,13 +597,20 @@ const PurchaseCatalog: React.FC<{
           </div>
           {isUnlimited && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-200">∞ UNLIMITED</span>}
         </div>
-        <p className="mt-3 min-h-8 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{product.description}</p>
+        <div className="mt-3 min-h-12 space-y-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+          <p>{product.description}</p>
+          {!isUnlimited && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">
+              约 {estimatedJdAnalyses} 次 JD 分析，或 {estimatedAssistantActions} 条 AI 助理消息 / {estimatedAssistantActions} 次 AI 润色
+            </p>
+          )}
+        </div>
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
           <strong className={`text-xl tracking-tight ${isUnlimited ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-400'}`}>{formatPrice(product.amount_fen, product.currency)}</strong>
           {paymentsEnabled && (
             <button
               type="button"
-              disabled={isPurchasing}
+              disabled={isPurchasing || isCheckoutSubmitting || !isPurchaseContextReady}
               onClick={() => onPurchase(product)}
               className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-extrabold text-white transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 ${
                 isUnlimited
@@ -599,6 +623,11 @@ const PurchaseCatalog: React.FC<{
             </button>
           )}
         </div>
+        {!isUnlimited && (
+          <p className="mt-2 text-[9px] font-medium leading-relaxed text-gray-400 dark:text-gray-500">
+            按 JD 分析约 17K、AI 助理消息或润色约 5K Token 估算，实际消耗会随内容变化。
+          </p>
+        )}
       </article>
     );
   };
@@ -608,7 +637,7 @@ const PurchaseCatalog: React.FC<{
   }
 
   if (!paymentsEnabled && products.length === 0) {
-    return <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">在线支付暂未开放；您仍可使用下方卡密兑换。</div>;
+    return <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">在线支付暂未开放，您仍可在下方兑换卡密。</div>;
   }
 
   return (
@@ -656,7 +685,7 @@ const PurchaseCatalog: React.FC<{
             包月
           </button>
         </div>
-        <p className="mt-2 text-[10px] font-semibold text-gray-400">易付通收银台 · 一次购买 · 不自动续费</p>
+        <p className="mt-2 text-[10px] font-semibold text-gray-400">选择套餐后将直接跳转支付</p>
         {paymentStatus && (
           <p role="status" aria-live="polite" className={`mt-2 text-[10px] font-bold ${paymentStatus === 'fulfilled' ? 'text-emerald-600 dark:text-emerald-400' : paymentStatus === 'failed' || paymentStatus === 'expired' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-300'}`}>
             {paymentStatusCopy(paymentStatus)}
@@ -665,7 +694,7 @@ const PurchaseCatalog: React.FC<{
       </div>
       {!paymentsEnabled && (
         <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">
-          在线支付暂未开放；套餐购买按钮已隐藏，您仍可使用卡密兑换。
+          在线支付暂未开放；套餐购买按钮已隐藏，您仍可在下方兑换卡密。
         </div>
       )}
       <div
@@ -674,7 +703,7 @@ const PurchaseCatalog: React.FC<{
         aria-labelledby={`billing-tab-${activeTab}`}
         className="animate-in fade-in slide-in-from-bottom-1 duration-200"
       >
-        <div className={`grid grid-cols-1 gap-2 ${activeTab === 'tokens' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {activeProducts.map(renderProduct)}
         </div>
       </div>
@@ -682,72 +711,253 @@ const PurchaseCatalog: React.FC<{
   );
 };
 
-// ==========================================
-// 卡密兑换卡片
-// ==========================================
 const RedemptionCard: React.FC<{
   code: string;
   isRedeeming: boolean;
   redemptionMessage: string;
+  redemptionError: string;
   onCodeChange: (value: string) => void;
   onRedeem: () => void;
-}> = ({
-  code,
-  isRedeeming,
-  redemptionMessage,
-  onCodeChange,
-  onRedeem,
-}) => {
-  return (
-    <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 p-4 shadow-sm dark:border-emerald-500/10 dark:from-emerald-950/10 dark:to-teal-950/5">
-      <div className="flex flex-col gap-4">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onRedeem();
-          }}
-          className="flex flex-col justify-between"
-        >
-          <div>
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-900 dark:text-white">
-              <span className="flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                <KeyRound className="h-3 w-3" />
-              </span>
-              <span>兑换卡密</span>
-            </div>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2.5">
-              输入您的卡密以兑换对应的 AI 服务额度。
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => onCodeChange(e.target.value)}
-                placeholder="RF-XXXX-XXXX-XXXX-XXXX"
-                className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold tracking-wide text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-gray-800 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-700 dark:focus:border-emerald-500 dark:focus:ring-emerald-500/10"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button
-                type="submit"
-                disabled={isRedeeming || !code.trim()}
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white transition hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 focus:outline-none"
-              >
-                {isRedeeming ? '兑换中' : '确认兑换'}
-              </button>
-            </div>
-            {redemptionMessage && (
-              <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                {redemptionMessage}
-              </div>
-            )}
-          </div>
-        </form>
+}> = ({ code, isRedeeming, redemptionMessage, redemptionError, onCodeChange, onRedeem }) => (
+  <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 p-4 shadow-sm dark:border-emerald-500/10 dark:from-emerald-950/10 dark:to-teal-950/5">
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onRedeem();
+      }}
+      className="flex flex-col justify-between"
+    >
+      <div>
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-900 dark:text-white">
+          <span className="flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+            <KeyRound className="h-3 w-3" />
+          </span>
+          <span>兑换卡密</span>
+        </div>
+        <p className="mb-2.5 text-[11px] text-gray-500 dark:text-gray-400">输入您的卡密以兑换对应的 AI 服务额度。</p>
       </div>
-    </div>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            aria-label="卡密"
+            disabled={isRedeeming}
+            value={code}
+            onChange={(event) => onCodeChange(event.target.value)}
+            placeholder="RF-XXXX-XXXX-XXXX-XXXX"
+            className="h-9 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold tracking-wide text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-700 dark:focus:border-emerald-500 dark:focus:ring-emerald-500/10"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="submit"
+            disabled={isRedeeming || !code.trim()}
+            className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white transition hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 focus:outline-none"
+          >
+            {isRedeeming ? '兑换中' : '确认兑换'}
+          </button>
+        </div>
+        {redemptionMessage && (
+          <div role="status" aria-live="polite" className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+            {redemptionMessage}
+          </div>
+        )}
+        {redemptionError && (
+          <div role="alert" className="text-[10px] font-semibold text-red-600 dark:text-red-300">
+            {redemptionError}
+          </div>
+        )}
+      </div>
+    </form>
+  </div>
+);
+
+const paymentOrderStatusCopy = (status: PaymentOrder['status']) => {
+  switch (status) {
+    case 'pending': return '待支付';
+    case 'paid': return '支付确认中';
+    case 'fulfilled': return '已完成';
+    case 'cancelled': return '已取消';
+    case 'expired': return '已取消（超时）';
+    case 'failed': return '支付失败';
+    default: return status;
+  }
+};
+
+const isOrderPastDue = (order: PaymentOrder, now: number) => {
+  if (order.status !== 'pending' || !order.expires_at) return false;
+  const expiresAt = new Date(order.expires_at).getTime();
+  return !Number.isNaN(expiresAt) && expiresAt <= now;
+};
+
+const PaymentOrdersPanel: React.FC<{
+  orders: PaymentOrder[];
+  isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+  error: string;
+  now: number;
+  actionOrderId: string | null;
+  onRefresh: () => void;
+  onLoadMore: () => void;
+  onContinuePayment: (order: PaymentOrder) => void;
+  onSync: (order: PaymentOrder) => void;
+  onCancel: (order: PaymentOrder) => void;
+  onPurchaseAgain: (order: PaymentOrder) => void;
+}> = ({
+  orders,
+  isLoading,
+  isLoadingMore,
+  hasMore,
+  error,
+  now,
+  actionOrderId,
+  onRefresh,
+  onLoadMore,
+  onContinuePayment,
+  onSync,
+  onCancel,
+  onPurchaseAgain,
+}) => {
+  const [confirmingOrderId, setConfirmingOrderId] = React.useState<string | null>(null);
+  const confirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const cancelTriggerRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  const orderArticleRefs = React.useRef(new Map<string, HTMLElement>());
+  const restoreCancelFocusRef = React.useRef<string | null>(null);
+
+  const openCancelConfirmation = (orderId: string) => {
+    restoreCancelFocusRef.current = null;
+    setConfirmingOrderId(orderId);
+  };
+
+  const closeCancelConfirmation = () => {
+    restoreCancelFocusRef.current = confirmingOrderId;
+    setConfirmingOrderId(null);
+  };
+
+  React.useEffect(() => {
+    if (!confirmingOrderId) return;
+    const animationFrame = window.requestAnimationFrame(() => confirmButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [confirmingOrderId]);
+
+  React.useEffect(() => {
+    const orderId = restoreCancelFocusRef.current;
+    if (confirmingOrderId || !orderId) return;
+    restoreCancelFocusRef.current = null;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const target = cancelTriggerRefs.current.get(orderId) ?? orderArticleRefs.current.get(orderId);
+      target?.focus();
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [confirmingOrderId]);
+
+  React.useEffect(() => {
+    if (confirmingOrderId && !orders.some((order) => order.id === confirmingOrderId && order.status === 'pending')) {
+      restoreCancelFocusRef.current = confirmingOrderId;
+      setConfirmingOrderId(null);
+    }
+  }, [confirmingOrderId, orders]);
+
+  if (isLoading && orders.length === 0) {
+    return <div className="rounded-xl border border-gray-200 px-4 py-8 text-center text-xs font-semibold text-gray-400 dark:border-gray-800">正在加载订单…</div>;
+  }
+
+  return (
+    <section aria-label="我的订单" className="mx-auto w-full max-w-3xl space-y-3" data-quota-view="orders">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-900 dark:text-white">我的订单</h3>
+          <p className="mt-0.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500">仅显示当前账户创建的订单</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          刷新
+        </button>
+      </div>
+      {error && (
+        <div role="alert" aria-live="assertive" className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+          <span>{error}</span>
+          <button type="button" onClick={onRefresh} className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-red-700 transition hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">重试</button>
+        </div>
+      )}
+      {!error && orders.length === 0 && (
+        <div className="rounded-xl border border-dashed border-gray-200 px-4 py-10 text-center text-xs font-semibold text-gray-400 dark:border-gray-800">暂无订单，选择套餐后即可在这里查看进度。</div>
+      )}
+      <div className="space-y-2">
+        {orders.map((order) => {
+          const isPastDue = isOrderPastDue(order, now);
+          const isPending = order.status === 'pending';
+          const isTerminal = order.status === 'cancelled' || order.status === 'expired' || order.status === 'failed';
+          const canResumeOriginalOrder = order.status === 'cancelled' || order.status === 'expired';
+          const canSelectNewPurchase = order.status === 'failed';
+          const isBusy = actionOrderId !== null;
+          const isCurrentAction = actionOrderId === order.id;
+          const isConfirming = confirmingOrderId === order.id;
+          return (
+            <article
+              key={order.id}
+              ref={(element) => {
+                if (element) orderArticleRefs.current.set(order.id, element);
+                else orderArticleRefs.current.delete(order.id);
+              }}
+              tabIndex={-1}
+              className="rounded-xl border border-gray-200 p-3.5 outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-800 dark:focus:ring-emerald-500/20"
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h4 className="truncate text-xs font-extrabold text-gray-900 dark:text-white">{order.product_name || order.sku}</h4>
+                  <p className="mt-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{formatPrice(order.amount_fen, order.currency)} · 创建于 {formatDateTime(order.created_at)}</p>
+                  {order.token_amount ? <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{formatTokens(order.token_amount)} Tokens</p> : order.unlimited_duration_days ? <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{order.unlimited_duration_days} 天不限量</p> : null}
+                </div>
+                <span className={`w-fit rounded-full px-2 py-1 text-[10px] font-extrabold ${
+                  order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                    : order.status === 'pending' || order.status === 'paid' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                }`}>{paymentOrderStatusCopy(order.status)}</span>
+              </div>
+              {isPending && order.expires_at && <p className={`mt-2 text-[10px] font-medium ${isPastDue ? 'text-red-500 dark:text-red-300' : 'text-gray-400 dark:text-gray-500'}`}>{isPastDue ? '按本机时间估计已超过付款时限，最终状态以服务端为准。' : `请于 ${formatDateTime(order.expires_at)} 前完成支付`}</p>}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {isPending && !isConfirming && (
+                  <>
+                    <button type="button" disabled={isBusy} onClick={() => onContinuePayment(order)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">继续支付</button>
+                    <button type="button" disabled={isBusy} onClick={() => onSync(order)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900">查询状态</button>
+                    <button
+                      ref={(element) => {
+                        if (element) cancelTriggerRefs.current.set(order.id, element);
+                        else cancelTriggerRefs.current.delete(order.id);
+                      }}
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => openCancelConfirmation(order.id)}
+                      className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900"
+                    >取消订单</button>
+                  </>
+                )}
+                {isConfirming && (
+                  <div className="w-full rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
+                    <p>本地取消只会暂停订单，支付平台未关单；后续请继续原订单确认状态。</p>
+                    <div className="mt-2 flex gap-2">
+                      <button ref={confirmButtonRef} type="button" disabled={isBusy} onClick={() => onCancel(order)} className="rounded-md bg-amber-600 px-2.5 py-1 text-[11px] font-extrabold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">{isCurrentAction ? '取消中…' : '确认取消'}</button>
+                      <button type="button" disabled={isBusy} onClick={closeCancelConfirmation} className="rounded-md border border-amber-200 bg-white px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-100">暂不取消</button>
+                    </div>
+                  </div>
+                )}
+                {(order.status === 'paid' || isTerminal) && <button type="button" disabled={isBusy} onClick={() => onSync(order)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900">查询最终状态</button>}
+                {canResumeOriginalOrder && <button type="button" disabled={isBusy} onClick={() => onContinuePayment(order)} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10">继续原订单</button>}
+                {canSelectNewPurchase && <button type="button" disabled={isBusy} onClick={() => onPurchaseAgain(order)} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10">重新选择套餐</button>}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {hasMore && <div className="pt-1 text-center"><button type="button" disabled={isLoadingMore} onClick={onLoadMore} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900">{isLoadingMore ? '正在加载…' : '加载更多'}</button></div>}
+    </section>
   );
 };
 
@@ -769,45 +979,404 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   const [usageByEntrypoint, setUsageByEntrypoint] = React.useState<TokenUsageAggregate[]>([]);
   const [redemptionCode, setRedemptionCode] = React.useState('');
   const [redemptionMessage, setRedemptionMessage] = React.useState('');
+  const [redemptionError, setRedemptionError] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [isRedeeming, setIsRedeeming] = React.useState(false);
+  const redemptionRequestGenerationRef = React.useRef(0);
+  const redemptionAbortControllerRef = React.useRef<AbortController | null>(null);
   const [activeView, setActiveView] = React.useState<QuotaModalView>('overview');
   const [error, setError] = React.useState('');
   const [products, setProducts] = React.useState<BillingProduct[]>([]);
+  const [catalogVersion, setCatalogVersion] = React.useState<string | null>(null);
   const [paymentsEnabled, setPaymentsEnabled] = React.useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = React.useState(false);
+  const productsRequestGenerationRef = React.useRef(0);
+  const productsAbortControllerRef = React.useRef<AbortController | null>(null);
   const [isPurchasing, setIsPurchasing] = React.useState(false);
+  const [isCheckoutSubmitting, setIsCheckoutSubmitting] = React.useState(false);
   const [paymentStatus, setPaymentStatus] = React.useState<PaymentUiStatus>(null);
   const [checkoutForm, setCheckoutForm] = React.useState<PaymentCheckoutForm | null>(null);
   const checkoutFormRef = React.useRef<HTMLFormElement | null>(null);
+  const submittedCheckoutOrderIdRef = React.useRef<string | null>(null);
+  const checkoutSubmitWatchdogRef = React.useRef<number | null>(null);
+  const checkoutPageHideRef = React.useRef(false);
+  const [checkoutReturnSyncOrderId, setCheckoutReturnSyncOrderId] = React.useState<string | null>(null);
+  const [purchaseContext, setPurchaseContext] = React.useState<PaymentPurchaseContext | null>(null);
+  const [isLoadingPurchaseContext, setIsLoadingPurchaseContext] = React.useState(false);
+  const [purchaseContextError, setPurchaseContextError] = React.useState('');
+  const purchaseContextRequestGenerationRef = React.useRef(0);
+  const purchaseContextAbortControllerRef = React.useRef<AbortController | null>(null);
+  const paymentRefreshLifecycleGenerationRef = React.useRef(0);
+  const quotaRefreshGenerationRef = React.useRef(0);
+  const quotaRefreshAbortControllerRef = React.useRef<AbortController | null>(null);
+  const fulfilledRefreshGenerationRef = React.useRef(0);
+  const fulfilledRefreshAbortControllerRef = React.useRef<AbortController | null>(null);
+  const purchaseContextTokenRef = React.useRef<string | null>(null);
+  const acknowledgedPaymentStateTokenRef = React.useRef<string | null>(null);
+  const purchaseIdempotencyKeysRef = React.useRef(new Map<string, string>());
+  const purchaseOrderIdsRef = React.useRef(new Map<string, string>());
   const returnedOrderRef = React.useRef<string | null>(null);
-  const purchaseInFlightRef = React.useRef(false);
+  const checkoutRequestGenerationRef = React.useRef(0);
+  const checkoutInFlightGenerationRef = React.useRef<number | null>(null);
+  const checkoutAbortControllerRef = React.useRef<AbortController | null>(null);
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const purchaseButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const backButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const restorePurchaseButtonFocusRef = React.useRef(false);
   const [paymentSyncRetryRequest, setPaymentSyncRetryRequest] = React.useState(0);
   const [canRetryPaymentSync, setCanRetryPaymentSync] = React.useState(false);
+  const [orders, setOrders] = React.useState<PaymentOrder[]>([]);
+  const ordersCursorRef = React.useRef<string | null>(null);
+  const [ordersHasMore, setOrdersHasMore] = React.useState(false);
+  const [isLoadingOrders, setIsLoadingOrders] = React.useState(false);
+  const [isLoadingMoreOrders, setIsLoadingMoreOrders] = React.useState(false);
+  const ordersLoadRequestRef = React.useRef<number | null>(null);
+  const ordersLoadMoreRequestRef = React.useRef<number | null>(null);
+  const loadedOrderCountRef = React.useRef(0);
+  const ordersRequestGenerationRef = React.useRef(0);
+  const ordersAbortControllersRef = React.useRef(new Set<AbortController>());
+  const [ordersError, setOrdersError] = React.useState('');
+  const [orderActionId, setOrderActionId] = React.useState<string | null>(null);
+  const orderActionInFlightRef = React.useRef(false);
+  const orderActionGenerationRef = React.useRef(0);
+  const orderActionAbortControllerRef = React.useRef<AbortController | null>(null);
+  const [ordersNow, setOrdersNow] = React.useState(() => Date.now());
 
-  const refresh = React.useCallback(async () => {
+  const beginCheckoutRequest = React.useCallback(() => {
+    if (checkoutInFlightGenerationRef.current !== null) return null;
+    const generation = checkoutRequestGenerationRef.current + 1;
+    checkoutRequestGenerationRef.current = generation;
+    checkoutInFlightGenerationRef.current = generation;
+    checkoutAbortControllerRef.current?.abort();
+    checkoutAbortControllerRef.current = new AbortController();
+    return generation;
+  }, []);
+
+  const isCheckoutRequestCurrent = React.useCallback((generation: number) => (
+    checkoutRequestGenerationRef.current === generation
+    && checkoutInFlightGenerationRef.current === generation
+  ), []);
+
+  const finishCheckoutRequest = React.useCallback((generation: number) => {
+    if (checkoutInFlightGenerationRef.current !== generation) return;
+    checkoutInFlightGenerationRef.current = null;
+    checkoutAbortControllerRef.current = null;
+    setIsPurchasing(false);
+  }, []);
+
+  const invalidateCheckoutRequest = React.useCallback(() => {
+    checkoutAbortControllerRef.current?.abort();
+    checkoutAbortControllerRef.current = null;
+    checkoutRequestGenerationRef.current += 1;
+    checkoutInFlightGenerationRef.current = null;
+    orderActionGenerationRef.current += 1;
+    orderActionAbortControllerRef.current?.abort();
+    orderActionAbortControllerRef.current = null;
+    orderActionInFlightRef.current = false;
+    setOrderActionId(null);
+    setCheckoutForm(null);
+    setIsPurchasing(false);
+    return true;
+  }, []);
+
+  const clearCheckoutSubmitWatchdog = React.useCallback(() => {
+    if (checkoutSubmitWatchdogRef.current !== null) {
+      window.clearTimeout(checkoutSubmitWatchdogRef.current);
+      checkoutSubmitWatchdogRef.current = null;
+    }
+  }, []);
+
+  const resetCheckoutAfterExternalReturn = React.useCallback(() => {
+    clearCheckoutSubmitWatchdog();
+    checkoutPageHideRef.current = false;
+    checkoutRequestGenerationRef.current += 1;
+    checkoutInFlightGenerationRef.current = null;
+    checkoutAbortControllerRef.current?.abort();
+    checkoutAbortControllerRef.current = null;
+    setCheckoutForm(null);
+    setIsPurchasing(false);
+    setIsCheckoutSubmitting(false);
+  }, [clearCheckoutSubmitWatchdog]);
+
+  const invalidateOrderLoadRequests = React.useCallback(() => {
+    ordersRequestGenerationRef.current += 1;
+    ordersAbortControllersRef.current.forEach((controller) => controller.abort());
+    ordersAbortControllersRef.current.clear();
+    ordersLoadRequestRef.current = null;
+    ordersLoadMoreRequestRef.current = null;
+    setIsLoadingOrders(false);
+    setIsLoadingMoreOrders(false);
+  }, []);
+
+  const rememberOrderForCheckoutRecovery = React.useCallback((nextOrder: PaymentOrder) => {
+    clearMatchingTerminalPurchaseAttempt(
+      purchaseIdempotencyKeysRef.current,
+      purchaseOrderIdsRef.current,
+      nextOrder,
+    );
+    setOrders((current) => {
+      const exists = current.some((order) => order.id === nextOrder.id);
+      const next = exists
+        ? current.map((order) => order.id === nextOrder.id ? { ...order, ...nextOrder } : order)
+        : [nextOrder, ...current];
+      if (!exists) loadedOrderCountRef.current = next.length;
+      return next;
+    });
+  }, []);
+
+  const invalidatePurchaseContextRequest = React.useCallback(() => {
+    purchaseContextRequestGenerationRef.current += 1;
+    purchaseContextAbortControllerRef.current?.abort();
+    purchaseContextAbortControllerRef.current = null;
+    setIsLoadingPurchaseContext(false);
+  }, []);
+
+  const invalidateProductsRequest = React.useCallback(() => {
+    productsRequestGenerationRef.current += 1;
+    productsAbortControllerRef.current?.abort();
+    productsAbortControllerRef.current = null;
+    setIsLoadingProducts(false);
+  }, []);
+
+  const invalidateRedemptionRequest = React.useCallback(() => {
+    redemptionRequestGenerationRef.current += 1;
+    redemptionAbortControllerRef.current?.abort();
+    redemptionAbortControllerRef.current = null;
+  }, []);
+
+  const invalidateQuotaRefresh = React.useCallback(() => {
+    quotaRefreshGenerationRef.current += 1;
+    quotaRefreshAbortControllerRef.current?.abort();
+    quotaRefreshAbortControllerRef.current = null;
+    fulfilledRefreshGenerationRef.current += 1;
+    fulfilledRefreshAbortControllerRef.current?.abort();
+    fulfilledRefreshAbortControllerRef.current = null;
+    billingService.clearBillingCache();
+  }, []);
+
+  const invalidatePaymentRefreshLifecycle = React.useCallback(() => {
+    paymentRefreshLifecycleGenerationRef.current += 1;
+    invalidateQuotaRefresh();
+  }, [invalidateQuotaRefresh]);
+
+  const refreshProducts = React.useCallback(async () => {
+    const generation = productsRequestGenerationRef.current + 1;
+    productsRequestGenerationRef.current = generation;
+    productsAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    productsAbortControllerRef.current = controller;
+    setIsLoadingProducts(true);
+    try {
+      const response = await billingService.getProducts({ signal: controller.signal });
+      if (generation !== productsRequestGenerationRef.current) return null;
+      setProducts(response.products);
+      setCatalogVersion(response.catalog_version);
+      setPaymentsEnabled(response.payments_enabled);
+      return response;
+    } catch (productError) {
+      if (generation !== productsRequestGenerationRef.current || controller.signal.aborted) return null;
+      console.warn('Failed to load billing products', productError);
+      setProducts([]);
+      setCatalogVersion(null);
+      setPaymentsEnabled(false);
+      return null;
+    } finally {
+      if (generation === productsRequestGenerationRef.current) {
+        productsAbortControllerRef.current = null;
+        setIsLoadingProducts(false);
+      }
+    }
+  }, []);
+
+  const refreshPurchaseContext = React.useCallback(async () => {
+    const generation = purchaseContextRequestGenerationRef.current + 1;
+    purchaseContextRequestGenerationRef.current = generation;
+    purchaseContextAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    purchaseContextAbortControllerRef.current = controller;
+    setPurchaseContext(null);
+    setPurchaseContextError('');
+    setIsLoadingPurchaseContext(true);
+    try {
+      const nextContext = await billingService.getPaymentPurchaseContext({ signal: controller.signal });
+      if (generation !== purchaseContextRequestGenerationRef.current) return null;
+      if (purchaseContextTokenRef.current !== nextContext.payment_state_token) {
+        acknowledgedPaymentStateTokenRef.current = null;
+      }
+      purchaseContextTokenRef.current = nextContext.payment_state_token;
+      setPurchaseContext(nextContext);
+      if (nextContext.latest_order) rememberOrderForCheckoutRecovery(nextContext.latest_order);
+      return nextContext;
+    } catch (contextError) {
+      if (generation !== purchaseContextRequestGenerationRef.current || controller.signal.aborted) return null;
+      console.warn('Failed to load payment purchase context', contextError);
+      setPurchaseContextError('购买上下文加载失败，请刷新后再试。');
+      return null;
+    } finally {
+      if (generation === purchaseContextRequestGenerationRef.current) {
+        purchaseContextAbortControllerRef.current = null;
+        setIsLoadingPurchaseContext(false);
+      }
+    }
+  }, [rememberOrderForCheckoutRecovery]);
+
+  const recoverCheckoutSubmission = React.useCallback((order: PaymentOrder) => {
+    clearCheckoutSubmitWatchdog();
+    checkoutPageHideRef.current = false;
+    submittedCheckoutOrderIdRef.current = null;
+    checkoutRequestGenerationRef.current += 1;
+    checkoutInFlightGenerationRef.current = null;
+    setCheckoutForm(null);
+    setIsPurchasing(false);
+    setIsCheckoutSubmitting(false);
+    setPaymentStatus(order.status);
+    rememberOrderForCheckoutRecovery(order);
+    setOrdersError('未能跳转至收银台，订单已保留。请在订单列表继续原订单。');
+    setActiveView('orders');
+  }, [clearCheckoutSubmitWatchdog, rememberOrderForCheckoutRecovery]);
+
+  const armCheckoutSubmitWatchdog = React.useCallback((order: PaymentOrder) => {
+    if (checkoutPageHideRef.current) return;
+    clearCheckoutSubmitWatchdog();
+    checkoutSubmitWatchdogRef.current = window.setTimeout(() => {
+      checkoutSubmitWatchdogRef.current = null;
+      if (checkoutPageHideRef.current) return;
+      recoverCheckoutSubmission(order);
+    }, 10_000);
+  }, [clearCheckoutSubmitWatchdog, recoverCheckoutSubmission]);
+
+  const beginOrderAction = React.useCallback(() => {
+    if (orderActionInFlightRef.current) return null;
+    orderActionInFlightRef.current = true;
+    const generation = orderActionGenerationRef.current + 1;
+    orderActionGenerationRef.current = generation;
+    orderActionAbortControllerRef.current?.abort();
+    orderActionAbortControllerRef.current = new AbortController();
+    invalidateOrderLoadRequests();
+    setIsLoadingOrders(false);
+    setIsLoadingMoreOrders(false);
+    return generation;
+  }, [invalidateOrderLoadRequests]);
+
+  const isOrderActionCurrent = React.useCallback((generation: number) => (
+    orderActionInFlightRef.current && orderActionGenerationRef.current === generation
+  ), []);
+
+  const finishOrderAction = React.useCallback((generation: number) => {
+    if (!isOrderActionCurrent(generation)) return;
+    orderActionInFlightRef.current = false;
+    orderActionAbortControllerRef.current = null;
+    setOrderActionId(null);
+  }, [isOrderActionCurrent]);
+
+  const clearRedemptionPresentation = React.useCallback(() => {
+    setRedemptionCode('');
+    setRedemptionMessage('');
+    setRedemptionError('');
+  }, []);
+
+  const clearPurchaseAttemptForTerminalOrder = React.useCallback((order: PaymentOrder) => {
+    clearMatchingTerminalPurchaseAttempt(
+      purchaseIdempotencyKeysRef.current,
+      purchaseOrderIdsRef.current,
+      order,
+    );
+  }, []);
+
+  const refresh = React.useCallback(async (options?: { preserveError?: boolean }) => {
+    const lifecycleGeneration = paymentRefreshLifecycleGenerationRef.current;
+    invalidateQuotaRefresh();
+    const refreshGeneration = quotaRefreshGenerationRef.current;
+    const controller = new AbortController();
+    quotaRefreshAbortControllerRef.current = controller;
     setIsLoading(true);
-    setError('');
+    if (!options?.preserveError) setError('');
     try {
       const [nextSummary, usage] = await Promise.all([
-        billingService.getSummary({ force: true }),
-        billingService.getUsage(80),
+        billingService.getSummary({ force: true, signal: controller.signal }),
+        billingService.getUsage(80, { signal: controller.signal }),
       ]);
+      if (
+        controller.signal.aborted
+        || paymentRefreshLifecycleGenerationRef.current !== lifecycleGeneration
+        || quotaRefreshGenerationRef.current !== refreshGeneration
+      ) return;
       onSummaryChange(nextSummary);
       setUsageEvents(usage.events);
       setUsageByDay(usage.usage_by_day);
       setUsageByEntrypoint(usage.usage_by_entrypoint);
     } catch (fetchError) {
+      if (
+        controller.signal.aborted
+        || paymentRefreshLifecycleGenerationRef.current !== lifecycleGeneration
+        || quotaRefreshGenerationRef.current !== refreshGeneration
+      ) return;
       console.error(fetchError);
-      setError('额度信息加载失败，请稍后重试。');
+      if (!options?.preserveError) setError('额度信息加载失败，请稍后重试。');
     } finally {
-      setIsLoading(false);
+      if (quotaRefreshGenerationRef.current === refreshGeneration) {
+        quotaRefreshAbortControllerRef.current = null;
+        setIsLoading(false);
+      }
     }
-  }, [onSummaryChange]);
+  }, [invalidateQuotaRefresh, onSummaryChange]);
+
+  const refreshFulfilledOrderData = React.useCallback((order: PaymentOrder, reportError: boolean) => {
+    invalidateQuotaRefresh();
+    setIsLoading(false);
+    const lifecycleGeneration = paymentRefreshLifecycleGenerationRef.current;
+    const refreshGeneration = fulfilledRefreshGenerationRef.current;
+    const controller = new AbortController();
+    fulfilledRefreshAbortControllerRef.current = controller;
+
+    if (order.summary) {
+      onSummaryChange(order.summary);
+    }
+
+    void (async () => {
+      const [summaryResult, usageResult] = await Promise.allSettled([
+        order.summary
+          ? Promise.resolve<TokenQuotaSummary | null>(null)
+          : billingService.getSummary({ force: true, signal: controller.signal }),
+        billingService.getUsage(80, { signal: controller.signal }),
+      ]);
+      const isCurrent = (
+        !controller.signal.aborted
+        && paymentRefreshLifecycleGenerationRef.current === lifecycleGeneration
+        && fulfilledRefreshGenerationRef.current === refreshGeneration
+      );
+      if (!isCurrent) return;
+
+      if (summaryResult.status === 'fulfilled' && summaryResult.value) {
+        onSummaryChange(summaryResult.value);
+      } else if (summaryResult.status === 'rejected') {
+        console.warn('Payment fulfilled but quota summary refresh failed', summaryResult.reason);
+      }
+      if (usageResult.status === 'fulfilled') {
+        setUsageEvents(usageResult.value.events);
+        setUsageByDay(usageResult.value.usage_by_day);
+        setUsageByEntrypoint(usageResult.value.usage_by_entrypoint);
+      } else {
+        console.warn('Payment fulfilled but usage refresh failed', usageResult.reason);
+      }
+      if (reportError && (summaryResult.status === 'rejected' || usageResult.status === 'rejected')) {
+        setError('权益已到账，但额度明细刷新失败，请手动刷新。');
+      }
+    })().catch((refreshError) => {
+      const isCurrent = (
+        !controller.signal.aborted
+        && paymentRefreshLifecycleGenerationRef.current === lifecycleGeneration
+        && fulfilledRefreshGenerationRef.current === refreshGeneration
+      );
+      if (!isCurrent) return;
+      console.warn('Payment fulfilled but post-payment refresh failed', refreshError);
+      if (reportError) setError('权益已到账，但额度明细刷新失败，请手动刷新。');
+    }).finally(() => {
+      if (fulfilledRefreshGenerationRef.current === refreshGeneration) {
+        fulfilledRefreshAbortControllerRef.current = null;
+      }
+    });
+  }, [invalidateQuotaRefresh, onSummaryChange]);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -817,18 +1386,48 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
   React.useEffect(() => {
     if (!isOpen) {
+      invalidatePaymentRefreshLifecycle();
+      invalidateRedemptionRequest();
+      setIsLoading(false);
+      setIsRedeeming(false);
+      clearCheckoutSubmitWatchdog();
+      invalidateCheckoutRequest();
+      invalidateOrderLoadRequests();
+      invalidatePurchaseContextRequest();
+      invalidateProductsRequest();
+      setPurchaseContext(null);
+      setCatalogVersion(null);
       setActiveView('overview');
       return;
     }
     if (initialView === 'purchase' || returnedPaymentOrderId) {
       setActiveView('purchase');
     }
-  }, [initialView, isOpen, returnedPaymentOrderId]);
+  }, [clearCheckoutSubmitWatchdog, initialView, invalidateCheckoutRequest, invalidateOrderLoadRequests, invalidatePaymentRefreshLifecycle, invalidateProductsRequest, invalidatePurchaseContextRequest, invalidateRedemptionRequest, isOpen, returnedPaymentOrderId]);
+
+  React.useLayoutEffect(() => {
+    if (!isOpen) {
+      invalidatePaymentRefreshLifecycle();
+      invalidateRedemptionRequest();
+    }
+    return () => {
+      invalidatePaymentRefreshLifecycle();
+      invalidateRedemptionRequest();
+    };
+  }, [invalidatePaymentRefreshLifecycle, invalidateRedemptionRequest, isOpen]);
+
+  React.useEffect(() => () => {
+    clearCheckoutSubmitWatchdog();
+    invalidateCheckoutRequest();
+    invalidateOrderLoadRequests();
+    invalidatePurchaseContextRequest();
+    invalidateProductsRequest();
+  }, [clearCheckoutSubmitWatchdog, invalidateCheckoutRequest, invalidateOrderLoadRequests, invalidateProductsRequest, invalidatePurchaseContextRequest]);
 
   React.useEffect(() => {
     if (!isOpen) return;
     const animationFrame = window.requestAnimationFrame(() => {
-      if (activeView === 'purchase') {
+      if (activeView !== 'overview') {
         backButtonRef.current?.focus();
       } else if (restorePurchaseButtonFocusRef.current) {
         restorePurchaseButtonFocusRef.current = false;
@@ -842,47 +1441,142 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
   React.useEffect(() => {
     if (!isOpen) return;
-    let cancelled = false;
-    setIsLoadingProducts(true);
-    billingService.getProducts()
-      .then((response) => {
-        if (!cancelled) {
-          setProducts(response.products);
-          setPaymentsEnabled(response.payments_enabled);
-        }
-      })
-      .catch((productError) => {
-        console.warn('Failed to load billing products', productError);
-        if (!cancelled) {
-          setProducts([]);
-          setPaymentsEnabled(false);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingProducts(false);
-      });
-    return () => { cancelled = true; };
-  }, [isOpen]);
+    void refreshProducts();
+    return invalidateProductsRequest;
+  }, [invalidateProductsRequest, isOpen, refreshProducts]);
+
+  const loadOrders = React.useCallback(async (options?: { append?: boolean; replayLoadedDepth?: boolean }): Promise<boolean> => {
+    if (orderActionInFlightRef.current) return false;
+    const append = Boolean(options?.append);
+    const replayLoadedDepth = Boolean(options?.replayLoadedDepth);
+    let cursor = append ? ordersCursorRef.current : null;
+    if (append && !cursor) return false;
+    if (append && (ordersLoadRequestRef.current !== null || ordersLoadMoreRequestRef.current !== null)) return false;
+    if (!append && (ordersLoadRequestRef.current !== null || ordersLoadMoreRequestRef.current !== null)) return false;
+    const requestGeneration = append
+      ? ordersRequestGenerationRef.current
+      : ordersRequestGenerationRef.current + 1;
+    if (!append) ordersRequestGenerationRef.current = requestGeneration;
+    if (append) ordersLoadMoreRequestRef.current = requestGeneration;
+    else ordersLoadRequestRef.current = requestGeneration;
+    append ? setIsLoadingMoreOrders(true) : setIsLoadingOrders(true);
+    const controller = new AbortController();
+    ordersAbortControllersRef.current.add(controller);
+    try {
+      const replayPageDepth = replayLoadedDepth
+        ? getOrderRefreshPageDepth(loadedOrderCountRef.current, 20)
+        : 1;
+      let response = await billingService.listPaymentOrders(20, cursor, { signal: controller.signal });
+      let items = response.items;
+      let loadedPages = 1;
+      while (
+        !append
+        && loadedPages < replayPageDepth
+        && response.has_more
+        && response.next_cursor
+      ) {
+        if (requestGeneration !== ordersRequestGenerationRef.current) return false;
+        cursor = response.next_cursor;
+        response = await billingService.listPaymentOrders(20, cursor, { signal: controller.signal });
+        items = appendPaymentOrderPage(items, response.items);
+        loadedPages += 1;
+      }
+      if (requestGeneration !== ordersRequestGenerationRef.current) return false;
+      setOrdersError('');
+      items.forEach(clearPurchaseAttemptForTerminalOrder);
+      if (append) {
+        setOrders((current) => {
+          const next = appendPaymentOrderPage(current, items);
+          loadedOrderCountRef.current = next.length;
+          return next;
+        });
+      } else {
+        loadedOrderCountRef.current = items.length;
+        setOrders(items);
+      }
+      if (append) {
+        ordersCursorRef.current = response.next_cursor;
+        setOrdersHasMore(response.has_more);
+      } else {
+        ordersCursorRef.current = response.next_cursor;
+        setOrdersHasMore(response.has_more);
+      }
+      setOrdersNow(Date.now());
+      return true;
+    } catch (ordersFetchError) {
+      if (requestGeneration !== ordersRequestGenerationRef.current || controller.signal.aborted) return false;
+      console.warn('Failed to load payment orders', ordersFetchError);
+      setOrdersError('订单加载失败，请稍后重试。');
+      return false;
+    } finally {
+      ordersAbortControllersRef.current.delete(controller);
+      if (append && ordersLoadMoreRequestRef.current === requestGeneration) {
+        ordersLoadMoreRequestRef.current = null;
+        setIsLoadingMoreOrders(false);
+      } else if (!append && ordersLoadRequestRef.current === requestGeneration) {
+        ordersLoadRequestRef.current = null;
+        setIsLoadingOrders(false);
+      }
+    }
+  }, [clearPurchaseAttemptForTerminalOrder]);
+
+  const coordinatePaymentDataRefresh = React.useCallback(() => {
+    const lifecycleGeneration = paymentRefreshLifecycleGenerationRef.current;
+    return coordinatePaymentOrdersAndContextRefresh(
+      loadOrders,
+      refreshPurchaseContext,
+      () => paymentRefreshLifecycleGenerationRef.current === lifecycleGeneration,
+    );
+  }, [loadOrders, refreshPurchaseContext]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    // Order history and purchase context fail independently. A temporary
+    // history outage must not leave the direct purchase page disabled.
+    void coordinatePaymentDataRefresh();
+  }, [coordinatePaymentDataRefresh, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen || activeView !== 'orders' || checkoutReturnSyncOrderId) return;
+    void coordinatePaymentDataRefresh();
+    const timer = window.setInterval(() => {
+      setOrdersNow(Date.now());
+      void loadOrders({ replayLoadedDepth: true });
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+      invalidateOrderLoadRequests();
+    };
+  }, [activeView, checkoutReturnSyncOrderId, coordinatePaymentDataRefresh, invalidateOrderLoadRequests, isOpen, loadOrders]);
 
   React.useEffect(() => {
     if (!isOpen || activeView !== 'purchase' || !checkoutForm || !checkoutFormRef.current) return;
-    checkoutFormRef.current.submit();
-  }, [activeView, checkoutForm, isOpen]);
-
-  const finishReturnedOrder = React.useCallback(async (order: PaymentOrder) => {
-    setPaymentStatus(order.status);
-    if (order.status !== 'fulfilled') return false;
-    billingService.clearBillingCache();
+    const form = checkoutFormRef.current;
+    const { order } = checkoutForm;
+    setIsCheckoutSubmitting(true);
+    submittedCheckoutOrderIdRef.current = order.id;
+    checkoutPageHideRef.current = false;
+    armCheckoutSubmitWatchdog(order);
     try {
-      const nextSummary = order.summary ?? await billingService.getSummary({ force: true });
-      onSummaryChange(nextSummary);
-    } catch (summaryError) {
-      console.warn('Payment fulfilled but quota refresh failed', summaryError);
+      form.submit();
+      armCheckoutSubmitWatchdog(order);
+    } catch (submitError) {
+      console.warn('Failed to submit payment checkout form', submitError);
+      recoverCheckoutSubmission(order);
+      return;
     }
-    await refresh();
-    onPaymentOrderHandled?.();
+    setCheckoutForm(null);
+  }, [activeView, armCheckoutSubmitWatchdog, checkoutForm, isOpen, recoverCheckoutSubmission]);
+
+  const finishReturnedOrder = React.useCallback(async (order: PaymentOrder, consumeReturnedOrder = false) => {
+    if (consumeReturnedOrder) setPaymentStatus(order.status);
+    if (order.status !== 'fulfilled') return false;
+    if (consumeReturnedOrder && order.id === returnedPaymentOrderId) {
+      onPaymentOrderHandled?.();
+    }
+    refreshFulfilledOrderData(order, consumeReturnedOrder);
     return true;
-  }, [onPaymentOrderHandled, onSummaryChange, refresh]);
+  }, [onPaymentOrderHandled, refreshFulfilledOrderData, returnedPaymentOrderId]);
 
   React.useEffect(() => {
     if (!isOpen || !returnedPaymentOrderId || returnedOrderRef.current === returnedPaymentOrderId) return;
@@ -899,8 +1593,14 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
           ? await billingService.syncPaymentOrder(returnedPaymentOrderId)
           : await billingService.getPaymentOrder(returnedPaymentOrderId);
         if (cancelled) return;
-        if (await finishReturnedOrder(order)) return;
-        if (order.status === 'failed' || order.status === 'expired') {
+        rememberOrderForCheckoutRecovery(order);
+        if (await finishReturnedOrder(order, true)) {
+          void refreshPurchaseContext();
+          return;
+        }
+        await refreshPurchaseContext();
+        if (cancelled) return;
+        if (order.status === 'failed' || order.status === 'expired' || order.status === 'cancelled') {
           onPaymentOrderHandled?.();
           return;
         }
@@ -929,7 +1629,7 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
         returnedOrderRef.current = null;
       }
     };
-  }, [finishReturnedOrder, isOpen, onPaymentOrderHandled, paymentSyncRetryRequest, returnedPaymentOrderId]);
+  }, [finishReturnedOrder, isOpen, onPaymentOrderHandled, paymentSyncRetryRequest, refreshPurchaseContext, rememberOrderForCheckoutRecovery, returnedPaymentOrderId]);
 
   const retryReturnedPaymentOrder = () => {
     if (!returnedPaymentOrderId) return;
@@ -939,41 +1639,196 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     setPaymentSyncRetryRequest((request) => request + 1);
   };
 
+  const updateListedOrder = rememberOrderForCheckoutRecovery;
+
+  React.useEffect(() => {
+    const handlePageHide = () => {
+      checkoutPageHideRef.current = true;
+      clearCheckoutSubmitWatchdog();
+    };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      const orderId = submittedCheckoutOrderIdRef.current;
+      resetCheckoutAfterExternalReturn();
+      if (orderId) setCheckoutReturnSyncOrderId(orderId);
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('pageshow', handlePageShow);
+      clearCheckoutSubmitWatchdog();
+    };
+  }, [clearCheckoutSubmitWatchdog, resetCheckoutAfterExternalReturn]);
+
+  React.useEffect(() => {
+    if (!checkoutReturnSyncOrderId) return;
+    const orderId = checkoutReturnSyncOrderId;
+    let cancelled = false;
+    invalidateOrderLoadRequests();
+    setActiveView('orders');
+    setOrdersError('');
+    const syncReturnedCheckout = async () => {
+      try {
+        const order = await billingService.syncPaymentOrder(orderId);
+        if (cancelled) return;
+        updateListedOrder(order);
+        setPaymentStatus(order.status);
+        await finishReturnedOrder(order);
+        await refreshPurchaseContext();
+      } catch (syncError) {
+        if (!cancelled) {
+          console.warn('Failed to sync payment order after returning from checkout', syncError);
+          setOrdersError('已返回应用，但支付状态暂时无法确认。请在订单列表中重新查询。');
+        }
+      } finally {
+        if (!cancelled) {
+          submittedCheckoutOrderIdRef.current = null;
+          setCheckoutReturnSyncOrderId(null);
+          // The orders effect starts a fresh generation after sync is released,
+          // so a response started before the sync cannot overwrite this order.
+        }
+      }
+    };
+    void syncReturnedCheckout();
+    return () => { cancelled = true; };
+  }, [checkoutReturnSyncOrderId, finishReturnedOrder, invalidateOrderLoadRequests, refreshPurchaseContext, updateListedOrder]);
+
   const handlePurchase = async (product: BillingProduct) => {
-    if (purchaseInFlightRef.current || isPurchasing || !paymentsEnabled) return;
-    purchaseInFlightRef.current = true;
+    if (isPurchasing || isCheckoutSubmitting || !paymentsEnabled) return;
+    const observedPaymentStateToken = purchaseContext?.payment_state_token;
+    const observedCatalogVersion = catalogVersion;
+    if (!observedPaymentStateToken || !observedCatalogVersion) {
+      setError('购买上下文尚未就绪，请刷新后再试。');
+      void refreshPurchaseContext();
+      return;
+    }
+    if (requiresRepeatPurchaseAcknowledgement(
+      observedPaymentStateToken,
+      purchaseContext.latest_order,
+      acknowledgedPaymentStateTokenRef.current,
+    )) {
+      acknowledgedPaymentStateTokenRef.current = observedPaymentStateToken;
+      if (purchaseContext.latest_order) updateListedOrder(purchaseContext.latest_order);
+      setError('最近订单已支付或到账；如确需再次购买，请再次点击购买。');
+      return;
+    }
+    const requestGeneration = beginCheckoutRequest();
+    if (requestGeneration === null) return;
+    const requestSignal = checkoutAbortControllerRef.current?.signal;
     setIsPurchasing(true);
     setPaymentStatus('creating');
     setError('');
     try {
-      const idempotencyKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `billing-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const order = await billingService.createPaymentOrder(product.sku, idempotencyKey);
+      const idempotencyKey = getOrCreatePurchaseIdempotencyKey(
+        purchaseIdempotencyKeysRef.current,
+        product.sku,
+        () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `billing-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const order = await billingService.createPaymentOrder(
+        product.sku,
+        idempotencyKey,
+        observedPaymentStateToken,
+        observedCatalogVersion,
+        { signal: requestSignal },
+      );
+      if (!isCheckoutRequestCurrent(requestGeneration)) return;
+      purchaseOrderIdsRef.current.set(product.sku, order.id);
+      updateListedOrder(order);
       setPaymentStatus(order.status);
-      const checkout = await billingService.getPaymentCheckout(order.id);
-      setPaymentStatus(checkout.order.status);
-      setCheckoutForm(checkout);
+      if (order.status !== 'pending' && order.status !== 'cancelled' && order.status !== 'expired') {
+        setPaymentStatus(order.status);
+        setOrdersError('订单状态已变化，请确认最新状态后再继续。');
+        setActiveView('orders');
+        await refreshPurchaseContext();
+        return;
+      }
+      try {
+        const checkout = await billingService.getPaymentCheckout(order.id, { signal: requestSignal });
+        if (!isCheckoutRequestCurrent(requestGeneration)) return;
+        setPaymentStatus(checkout.order.status);
+        setIsCheckoutSubmitting(true);
+        setCheckoutForm(checkout);
+      } catch (checkoutError) {
+        if (!isCheckoutRequestCurrent(requestGeneration)) return;
+        console.warn('Failed to load checkout for created payment order', checkoutError);
+        updateListedOrder(order);
+        const checkoutConflict = resolveUnsettledPaymentOrderConflict(checkoutError);
+        setOrdersError(checkoutConflict
+          ? paymentOrderConflictMessage(checkoutConflict)
+          : '订单已创建，但暂时无法打开收银台。请稍后点击“继续支付”。');
+        setActiveView('orders');
+        await refreshPurchaseContext();
+      }
     } catch (purchaseError) {
-      console.error(purchaseError);
+      if (!isCheckoutRequestCurrent(requestGeneration)) return;
+      const unsettledConflict = resolveUnsettledPaymentOrderConflict(purchaseError);
+      if (unsettledConflict) {
+        if (unsettledConflict.code === 'payment_order_state_changed') {
+          acknowledgedPaymentStateTokenRef.current = null;
+        }
+        setCheckoutForm(null);
+        setIsCheckoutSubmitting(false);
+        setPaymentStatus(null);
+        finishCheckoutRequest(requestGeneration);
+        if (unsettledConflict.code === 'payment_catalog_changed') {
+          purchaseIdempotencyKeysRef.current.delete(product.sku);
+          purchaseOrderIdsRef.current.delete(product.sku);
+          setOrdersError('');
+          setError(paymentOrderConflictMessage(unsettledConflict));
+          await Promise.all([refreshProducts(), refreshPurchaseContext()]);
+          return;
+        }
+        setError('');
+        if (unsettledConflict.code === 'payment_order_state_changed') {
+          purchaseIdempotencyKeysRef.current.delete(product.sku);
+          purchaseOrderIdsRef.current.delete(product.sku);
+        }
+        setOrdersError(paymentOrderConflictMessage(unsettledConflict));
+        setActiveView('orders');
+        if (unsettledConflict.latestOrder) updateListedOrder(unsettledConflict.latestOrder);
+        if (unsettledConflict.orderId) {
+          try {
+            const order = await billingService.getPaymentOrder(unsettledConflict.orderId);
+            if (checkoutRequestGenerationRef.current !== requestGeneration) return;
+            updateListedOrder(order);
+          } catch (orderError) {
+            console.warn('Failed to load unsettled payment order', orderError);
+          }
+        }
+        await refreshPurchaseContext();
+        return;
+      }
+      console.warn('Failed to create payment order');
       setPaymentStatus('failed');
       setError('订单创建失败，请稍后重试。');
     } finally {
-      purchaseInFlightRef.current = false;
-      setIsPurchasing(false);
+      finishCheckoutRequest(requestGeneration);
     }
   };
 
   const handleRedeem = async () => {
     const code = redemptionCode.trim();
-    if (!code || isRedeeming) {
-      return;
-    }
+    if (!code || isRedeeming) return;
+    const lifecycleGeneration = paymentRefreshLifecycleGenerationRef.current;
+    const requestGeneration = redemptionRequestGenerationRef.current + 1;
+    redemptionRequestGenerationRef.current = requestGeneration;
+    redemptionAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    redemptionAbortControllerRef.current = controller;
+    const isCurrent = () => (
+      !controller.signal.aborted
+      && paymentRefreshLifecycleGenerationRef.current === lifecycleGeneration
+      && redemptionRequestGenerationRef.current === requestGeneration
+    );
     setIsRedeeming(true);
-    setError('');
     setRedemptionMessage('');
+    setRedemptionError('');
     try {
-      const result = await billingService.redeemCode(code);
+      const result = await billingService.redeemCode(code, { signal: controller.signal });
+      if (!isCurrent()) return;
       onSummaryChange(result.summary);
       setRedemptionCode('');
       if (result.tokens > 0) {
@@ -983,28 +1838,152 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
       } else {
         setRedemptionMessage(`已兑换 ${formatTokens(result.tokens)} Tokens，来自 ${result.package_name}`);
       }
-      void refresh();
-    } catch (redeemError) {
-      console.error(redeemError);
-      setError('卡密兑换失败，请检查卡密或联系管理员。');
+      void refresh({ preserveError: true });
+    } catch {
+      if (!isCurrent()) return;
+      console.warn('Redemption request failed');
+      setRedemptionCode('');
+      setRedemptionError('卡密兑换失败，请检查卡密或联系管理员。');
     } finally {
-      setIsRedeeming(false);
+      if (isCurrent()) {
+        redemptionAbortControllerRef.current = null;
+        setIsRedeeming(false);
+      }
+    }
+  };
+
+  const handleContinuePayment = async (order: PaymentOrder) => {
+    if (isCheckoutSubmitting) return;
+    const actionGeneration = beginOrderAction();
+    if (actionGeneration === null) return;
+    const requestGeneration = beginCheckoutRequest();
+    if (requestGeneration === null) {
+      finishOrderAction(actionGeneration);
+      return;
+    }
+    setOrderActionId(order.id);
+    setIsPurchasing(true);
+    setError('');
+    try {
+      const requestSignal = checkoutAbortControllerRef.current?.signal;
+      const checkout = await billingService.getPaymentCheckout(order.id, { signal: requestSignal });
+      if (!isCheckoutRequestCurrent(requestGeneration) || !isOrderActionCurrent(actionGeneration)) return;
+      updateListedOrder(checkout.order);
+      setPaymentStatus(checkout.order.status);
+      setIsCheckoutSubmitting(true);
+      setCheckoutForm(checkout);
+      setActiveView('purchase');
+    } catch (checkoutError) {
+      if (!isCheckoutRequestCurrent(requestGeneration) || !isOrderActionCurrent(actionGeneration)) return;
+      console.warn('Failed to resume payment order', checkoutError);
+      const unsettledConflict = resolveUnsettledPaymentOrderConflict(checkoutError);
+      if (unsettledConflict) {
+        setOrdersError(paymentOrderConflictMessage(unsettledConflict));
+        if (unsettledConflict.latestOrder) updateListedOrder(unsettledConflict.latestOrder);
+        if (unsettledConflict.orderId) {
+          try {
+            const nextOrder = await billingService.getPaymentOrder(unsettledConflict.orderId);
+            if (checkoutRequestGenerationRef.current === requestGeneration) updateListedOrder(nextOrder);
+          } catch (orderError) {
+            console.warn('Failed to load conflicted payment order', orderError);
+          }
+        }
+        await refreshPurchaseContext();
+      } else {
+        setOrdersError('订单无法继续支付，请刷新后重试。');
+      }
+    } finally {
+      finishCheckoutRequest(requestGeneration);
+      finishOrderAction(actionGeneration);
+    }
+  };
+
+  const handleSyncOrder = async (order: PaymentOrder) => {
+    const actionGeneration = beginOrderAction();
+    if (actionGeneration === null) return;
+    setOrderActionId(order.id);
+    setOrdersError('');
+    try {
+      const nextOrder = await billingService.syncPaymentOrder(order.id, {
+        signal: orderActionAbortControllerRef.current?.signal,
+      });
+      if (!isOrderActionCurrent(actionGeneration)) return;
+      updateListedOrder(nextOrder);
+      await finishReturnedOrder(nextOrder, nextOrder.id === returnedPaymentOrderId);
+      if (!isOrderActionCurrent(actionGeneration)) return;
+      await refreshPurchaseContext();
+    } catch (syncError) {
+      if (!isOrderActionCurrent(actionGeneration)) return;
+      console.warn('Failed to sync listed payment order', syncError);
+      setOrdersError('订单状态暂时无法确认，请稍后重试。');
+    } finally {
+      finishOrderAction(actionGeneration);
+    }
+  };
+
+  const handleCancelOrder = async (order: PaymentOrder) => {
+    const actionGeneration = beginOrderAction();
+    if (actionGeneration === null) return;
+    setOrderActionId(order.id);
+    setOrdersError('');
+    try {
+      const nextOrder = await billingService.cancelPaymentOrder(order.id, {
+        signal: orderActionAbortControllerRef.current?.signal,
+      });
+      if (!isOrderActionCurrent(actionGeneration)) return;
+      updateListedOrder(nextOrder);
+      setOrdersNow(Date.now());
+      await refreshPurchaseContext();
+    } catch (cancelError) {
+      if (!isOrderActionCurrent(actionGeneration)) return;
+      console.warn('Failed to cancel payment order', cancelError);
+      setOrdersError('订单取消失败，请刷新后重试。');
+    } finally {
+      finishOrderAction(actionGeneration);
     }
   };
 
   const openPurchaseView = () => {
     setError('');
     setActiveView('purchase');
+    if (!purchaseContext) void refreshPurchaseContext();
+    if (!catalogVersion) void refreshProducts();
   };
 
   const returnToOverview = () => {
+    if (isCheckoutSubmitting) return;
+    invalidateCheckoutRequest();
     setError('');
+    clearRedemptionPresentation();
     restorePurchaseButtonFocusRef.current = true;
     setActiveView('overview');
   };
 
+  const returnToPurchase = () => {
+    if (isCheckoutSubmitting) return;
+    invalidateCheckoutRequest();
+    setError('');
+    setOrdersError('');
+    setActiveView('purchase');
+    void refreshPurchaseContext();
+  };
+
+  const handlePurchaseAgain = (order: PaymentOrder) => {
+    clearPurchaseAttemptForTerminalOrder(order);
+    returnToPurchase();
+  };
+
   const handleClose = () => {
     const focusTarget = returnFocusElement;
+    if (isCheckoutSubmitting) return;
+    invalidatePaymentRefreshLifecycle();
+    invalidateRedemptionRequest();
+    setIsRedeeming(false);
+    invalidateCheckoutRequest();
+    invalidateOrderLoadRequests();
+    invalidatePurchaseContextRequest();
+    invalidateProductsRequest();
+    clearRedemptionPresentation();
     restorePurchaseButtonFocusRef.current = false;
     setActiveView('overview');
     onClose();
@@ -1021,7 +2000,10 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (activeView === 'purchase') {
+      if (isCheckoutSubmitting) return;
+      if (activeView === 'orders') {
+        returnToPurchase();
+      } else if (activeView === 'purchase') {
         returnToOverview();
       } else {
         handleClose();
@@ -1071,21 +2053,22 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
       >
         {/* 头部区域 */}
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3.5 dark:border-gray-800">
-          {activeView === 'purchase' ? (
+          {activeView !== 'overview' ? (
             <div className="flex items-center gap-2.5">
               <button
                 ref={backButtonRef}
                 type="button"
-                onClick={returnToOverview}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:hover:bg-gray-800 dark:hover:text-white dark:focus:ring-emerald-500/20"
-                aria-label="返回额度概览"
-                title="返回额度概览"
+                disabled={activeView === 'purchase' && isCheckoutSubmitting}
+                onClick={activeView === 'orders' ? returnToPurchase : returnToOverview}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-gray-800 dark:hover:text-white dark:focus:ring-emerald-500/20"
+                aria-label={activeView === 'orders' ? '返回购买套餐' : '返回额度概览'}
+                title={activeView === 'orders' ? '返回购买套餐' : '返回额度概览'}
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
               <div>
-                <h2 id="token-quota-dialog-title" className="text-sm font-extrabold text-gray-900 dark:text-white">购买套餐</h2>
-                <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">选择套餐或兑换卡密</p>
+                <h2 id="token-quota-dialog-title" className="text-sm font-extrabold text-gray-900 dark:text-white">{activeView === 'orders' ? '我的订单' : '购买套餐'}</h2>
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">{activeView === 'orders' ? '查看过往已创建订单' : '选择套餐后将直接跳转支付'}</p>
               </div>
             </div>
           ) : (
@@ -1111,10 +2094,26 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
             )}
+            {activeView === 'purchase' && (
+              <button
+                type="button"
+                disabled={isCheckoutSubmitting}
+                onClick={() => {
+                  invalidateCheckoutRequest();
+                  clearRedemptionPresentation();
+                  setOrdersError('');
+                  setActiveView('orders');
+                }}
+                className="rounded-lg px-2.5 py-1.5 text-[11px] font-extrabold text-emerald-700 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 focus:ring-emerald-200 dark:text-emerald-300 dark:hover:bg-emerald-500/10 dark:focus:ring-emerald-500/20"
+              >
+                我的订单
+              </button>
+            )}
             <button
               type="button"
+              disabled={isCheckoutSubmitting}
               onClick={handleClose}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-white"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-gray-800 dark:hover:text-white"
               aria-label="关闭额度弹窗"
             >
               <X className="h-4 w-4" />
@@ -1132,7 +2131,7 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
             />
 
             {error && (
-              <div className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+              <div role="alert" aria-live="assertive" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
                 {error}
               </div>
             )}
@@ -1149,20 +2148,22 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
               <UsageDetailList usageEvents={usageEvents} />
             </div>
           </div>
-        ) : (
+        ) : activeView === 'purchase' ? (
           <div className="min-h-0 space-y-5 overflow-y-auto p-4 sm:p-5" data-quota-view="purchase">
             <PurchaseCatalog
               products={products}
               paymentsEnabled={paymentsEnabled}
               isLoading={isLoadingProducts}
               isPurchasing={isPurchasing}
+              isCheckoutSubmitting={isCheckoutSubmitting}
+              isPurchaseContextReady={Boolean(purchaseContext && catalogVersion) && !isLoadingPurchaseContext && !isLoadingProducts}
               paymentStatus={paymentStatus}
               onPurchase={handlePurchase}
             />
 
-            {error && (
-              <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
-                <span>{error}</span>
+            {(error || purchaseContextError) && (
+              <div role="alert" aria-live="assertive" className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                <span>{error || purchaseContextError}</span>
                 {canRetryPaymentSync && returnedPaymentOrderId && (
                   <button
                     type="button"
@@ -1175,18 +2176,44 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
               </div>
             )}
 
+            {isLoadingPurchaseContext && (
+              <p role="status" aria-live="polite" className="mx-auto max-w-3xl text-[10px] font-semibold text-amber-600 dark:text-amber-300">
+                正在确认最新订单状态，完成后可购买。
+              </p>
+            )}
+
             <div className="mx-auto max-w-3xl border-t border-gray-100 pt-5 dark:border-gray-800">
               <RedemptionCard
                 code={redemptionCode}
                 isRedeeming={isRedeeming}
                 redemptionMessage={redemptionMessage}
+                redemptionError={redemptionError}
                 onCodeChange={setRedemptionCode}
                 onRedeem={handleRedeem}
               />
             </div>
+
+          </div>
+        ) : (
+          <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+            <PaymentOrdersPanel
+              orders={orders}
+              isLoading={isLoadingOrders}
+              isLoadingMore={isLoadingMoreOrders}
+              hasMore={ordersHasMore}
+              error={ordersError}
+              now={ordersNow}
+              actionOrderId={orderActionId}
+              onRefresh={() => void coordinatePaymentDataRefresh()}
+              onLoadMore={() => void loadOrders({ append: true })}
+              onContinuePayment={(order) => void handleContinuePayment(order)}
+              onSync={(order) => void handleSyncOrder(order)}
+              onCancel={(order) => void handleCancelOrder(order)}
+              onPurchaseAgain={handlePurchaseAgain}
+            />
           </div>
         )}
-        {checkoutForm && (
+        {activeView === 'purchase' && checkoutForm && (
           <form ref={checkoutFormRef} action={checkoutForm.action} method={checkoutForm.method} className="hidden" aria-hidden="true">
             {Object.entries(checkoutForm.fields).map(([name, value]) => (
               <input key={name} type="hidden" name={name} value={value} />

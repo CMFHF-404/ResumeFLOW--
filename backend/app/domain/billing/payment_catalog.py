@@ -35,6 +35,14 @@ TEST_PRODUCT = PaymentProduct(
 
 PRODUCTS: tuple[PaymentProduct, ...] = (
     PaymentProduct(
+        sku="tokens_100k",
+        name="100K Token 包",
+        category="tokens",
+        amount_fen=198,
+        token_amount=100_000,
+        description="100,000 Token，永久有效",
+    ),
+    PaymentProduct(
         sku="tokens_500k",
         name="500K Token 包",
         category="tokens",

@@ -35,23 +35,25 @@ test('GlobalSidebar exposes token quota ring and quota menu entry', () => {
   assert.doesNotMatch(app, /AppreciationModal|isAppreciationOpen|handleOpenAppreciation/);
 });
 
-test('TokenQuotaModal renders summary, charts, usage detail, payment, and redemption actions', () => {
+test('TokenQuotaModal renders summary, charts, usage detail, payment, and order actions', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 
   assert.match(modal, /TokenQuotaModal/);
   assert.match(modal, /usageByDay/);
   assert.match(modal, /usageByEntrypoint/);
-  assert.match(modal, /redeemCode/);
   assert.match(modal, /svg/);
   assert.match(modal, /isUnlimitedQuota/);
   assert.match(modal, /unlimited_expires_at/);
   assert.match(modal, /∞/);
   assert.match(modal, /金色/);
   assert.match(modal, /用量明细/);
-  assert.match(modal, /兑换卡密/);
   assert.match(modal, /购买额度/);
   assert.match(modal, /PurchaseCatalog/);
-  assert.match(modal, /不自动续费/);
+  assert.match(modal, /选择套餐后将直接跳转支付/);
+  assert.match(modal, /我的订单/);
+  assert.match(modal, /PaymentOrdersPanel/);
+  assert.match(modal, /RedemptionCard/);
+  assert.match(modal, /兑换卡密/);
   assert.match(modal, /paymentsEnabled/);
   assert.doesNotMatch(modal, /createPlaceholderPurchase/);
   assert.doesNotMatch(modal, /item\.taobao\.com/);
@@ -76,15 +78,35 @@ test('billingService uses the billing, redemption, and Yifut payment API surface
   assert.match(service, /Idempotency-Key/);
   assert.match(service, /getPaymentCheckout/);
   assert.match(service, /syncPaymentOrder/);
+  assert.match(service, /listPaymentOrders/);
+  assert.match(service, /cancelPaymentOrder/);
+  assert.match(service, /state_version: number/);
+  assert.match(service, /getPaymentPurchaseContext/);
+  assert.match(service, /payment-orders\/purchase-context/);
+  assert.match(service, /expected_payment_state_token: expectedPaymentStateToken/);
+  assert.match(service, /expected_catalog_version: expectedCatalogVersion/);
+  assert.match(service, /PAYMENT_REQUEST_TIMEOUT_MS = 15_000/);
+  assert.match(service, /signal: options\?\.signal/);
+  assert.match(service, /getSummary\(options\?: \{ force\?: boolean; signal\?: AbortSignal \}\)/);
+  assert.match(service, /getUsage\(limit = 50, options\?: PaymentRequestOptions\)/);
+  assert.ok((service.match(/timeout: PAYMENT_REQUEST_TIMEOUT_MS/g) ?? []).length >= 8);
+  assert.match(service, /cancelled_at/);
+  assert.match(service, /'cancelled'/);
+  assert.match(service, /PaymentBenefitType = 'tokens' \| 'unlimited_time'/);
   assert.match(service, /payments_enabled: boolean/);
+  assert.match(service, /catalog_version: string/);
   assert.match(service, /amount_fen: number/);
   assert.match(service, /redeemCode/);
+  assert.match(service, /redeemCode\(code: string, options\?: PaymentRequestOptions\)/);
+  assert.match(service, /expectedAuthCacheKey: ownerKey/);
   assert.match(service, /is_unlimited: boolean/);
   assert.match(service, /unlimited_expires_at\?: string \| null/);
   assert.match(service, /unlimited_plan_name\?: string \| null/);
   assert.doesNotMatch(service, /\/api\/billing\/purchases\/options/);
   assert.doesNotMatch(service, /createPlaceholderPurchase/);
   assert.match(service, /clearBillingCache/);
+  assert.match(service, /quotaSummaryCacheGeneration/);
+  assert.match(service, /quotaSummaryCacheOwnerKey/);
   assert.match(service, /TokenQuotaSummary/);
 });
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -9,31 +11,52 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
+from sqlalchemy import and_, or_, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...config import Settings, load_settings
-from ...models import PaymentOrder, PaymentWebhookEvent
+from ...models import PaymentOrder, PaymentOrderIdempotencyAlias, PaymentWebhookEvent, User
 from ...utils.time_utils import utc_now_aware as utc_now
 from . import billing_service, payment_provider
 from .entitlement_service import EntitlementGrant, grant_entitlement
 from .payment_catalog import PaymentProduct, get_product, get_products
 from .payment_schemas import (
     PaymentCheckoutResponse,
+    PaymentOrderListItem,
     PaymentOrderRead,
+    PaymentOrdersResponse,
+    PaymentPurchaseContextResponse,
     PaymentProductRead,
     PaymentProductsResponse,
 )
 
 
 ORDER_TTL = timedelta(minutes=30)
+EXPIRY_USER_BATCH_SIZE = 100
 SOURCE_YIFUT_PAYMENT = "yifut_payment"
 STATUS_PENDING = "pending"
 STATUS_PAID = "paid"
 STATUS_FULFILLED = "fulfilled"
 STATUS_EXPIRED = "expired"
+STATUS_CANCELLED = "cancelled"
 STATUS_FAILED = "failed"
+PROVIDER_OPEN_ORDER_STATUSES = (
+    STATUS_PENDING,
+    STATUS_PAID,
+    STATUS_CANCELLED,
+    STATUS_EXPIRED,
+)
+PROVIDER_OPEN_GUARD_CONSTRAINTS = frozenset(
+    {
+        "payment_orders_one_provider_open_per_user",
+        # Compatibility with a claim table created before the primary key was
+        # explicitly named by migration 014.
+        "payment_order_provider_open_claims_pkey",
+    }
+)
 
 
 def _valid_merchant_id(value: Any) -> bool:
@@ -61,7 +84,7 @@ def _require_payments_enabled(settings: Settings | Any | None = None) -> Any:
             status_code=503,
             detail={
                 "code": "payments_unavailable",
-                "message": "在线支付暂未开放，请使用卡密兑换。",
+                "message": "在线支付暂未开放，请稍后重试。",
             },
         )
     return current
@@ -108,11 +131,12 @@ def list_products(
     user_id: str = "",
 ) -> PaymentProductsResponse:
     current = settings or load_settings()
-    products = get_products(
+    products = list(get_products(
         include_test_product=_test_product_allowed(current, user_id)
-    )
+    ))
     return PaymentProductsResponse(
         payments_enabled=payments_enabled(current),
+        catalog_version=_catalog_version(products),
         products=[PaymentProductRead(**product.__dict__) for product in products],
     )
 
@@ -137,6 +161,99 @@ def _is_expired(order: PaymentOrder, now: datetime | None = None) -> bool:
     return _aware_utc(order.expires_at) <= _aware_utc(now or utc_now())
 
 
+def _expire_order_if_due(order: PaymentOrder, *, now: datetime) -> bool:
+    if order.status != STATUS_PENDING or not _is_expired(order, now):
+        return False
+    order.status = STATUS_EXPIRED
+    order.state_version += 1
+    order.updated_at = now
+    return True
+
+
+async def expire_pending_orders(
+    session: AsyncSession,
+    *,
+    user_id: str | None = None,
+    now: datetime | None = None,
+    batch_size: int = EXPIRY_USER_BATCH_SIZE,
+) -> int:
+    """Persist all orders that reached their strict 30-minute boundary.
+
+    Expiration only closes the local presentation.  ``create_order`` and
+    ``create_checkout`` reuse the same merchant order number for an expired
+    order, rather than creating a replacement that can be paid independently.
+    Global maintenance locks due users in bounded, skip-locked batches and
+    commits each batch so multiple workers neither pile up user locks nor wait
+    on the same batch. A targeted user pass retains its single-transaction
+    behavior for request paths.
+    """
+    if batch_size < 1:
+        raise ValueError("payment expiry batch_size must be positive")
+    expired_at = _aware_utc(now or utc_now())
+    if user_id is not None:
+        await _lock_payment_user(session, user_id)
+        result = await session.execute(
+            update(PaymentOrder)
+            .where(
+                PaymentOrder.user_id == user_id,
+                PaymentOrder.status == STATUS_PENDING,
+                PaymentOrder.expires_at <= expired_at,
+            )
+            .values(
+                status=STATUS_EXPIRED,
+                state_version=PaymentOrder.state_version + 1,
+                updated_at=expired_at,
+            )
+        )
+        await session.commit()
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    expired_count = 0
+    while True:
+        due_users = (
+            select(PaymentOrder.user_id.label("user_id"))
+            .where(
+                PaymentOrder.status == STATUS_PENDING,
+                PaymentOrder.expires_at <= expired_at,
+            )
+            .distinct()
+            .subquery()
+        )
+        due_users_result = await session.execute(
+            select(User.id)
+            .join(
+                due_users,
+                due_users.c.user_id == User.id,
+            )
+            .order_by(User.id)
+            .limit(batch_size)
+            .with_for_update(key_share=True, skip_locked=True, of=User)
+        )
+        due_user_ids = list(due_users_result.scalars().all())
+        if not due_user_ids:
+            break
+        for due_user_id in due_user_ids:
+            # The batch query already holds User locks in stable order. Each
+            # update therefore preserves User -> PaymentOrder lock ordering.
+            result = await session.execute(
+                update(PaymentOrder)
+                .where(
+                    PaymentOrder.user_id == due_user_id,
+                    PaymentOrder.status == STATUS_PENDING,
+                    PaymentOrder.expires_at <= expired_at,
+                )
+                .values(
+                    status=STATUS_EXPIRED,
+                    state_version=PaymentOrder.state_version + 1,
+                    updated_at=expired_at,
+                )
+            )
+            expired_count += int(getattr(result, "rowcount", 0) or 0)
+        # Release all user locks before selecting the next bounded batch.
+        await session.commit()
+    return expired_count
+
+
 def _merchant_order_no(now: datetime) -> str:
     return f"RF{now.strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:16].upper()}"
 
@@ -155,6 +272,63 @@ def _product_snapshot(product: PaymentProduct) -> dict[str, Any]:
     }
 
 
+def _catalog_version(products: list[PaymentProduct]) -> str:
+    snapshots = sorted(
+        (_product_snapshot(product) for product in products),
+        key=lambda snapshot: str(snapshot["sku"]),
+    )
+    canonical = json.dumps(
+        snapshots,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(canonical.encode("ascii")).hexdigest()
+
+
+def _order_matches_product_snapshot(order: PaymentOrder, product: PaymentProduct) -> bool:
+    """Require the provider charge and entitlement snapshot to remain immutable."""
+    return (
+        order.sku == product.sku
+        and order.product_name == product.name
+        and int(order.amount_fen) == int(product.amount_fen)
+        and order.currency == product.currency
+        and order.benefit_type == product.benefit_type
+        and int(order.token_amount or 0) == int(product.token_amount or 0)
+        and order.unlimited_duration_days == product.unlimited_duration_days
+        and dict(order.entitlement_snapshot_json or {}) == _product_snapshot(product)
+    )
+
+
+def _catalog_changed_error(order: PaymentOrder) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "payment_order_catalog_changed",
+            "message": "套餐价格或权益已变更，该历史订单不能继续支付，请联系客服处理。",
+            "order_id": str(order.id),
+        },
+    )
+
+
+def _reopen_order_for_checkout(
+    order: PaymentOrder,
+    *,
+    now: datetime,
+    increment_state_version: bool = True,
+) -> bool:
+    """Reopen a locally terminal checkout without changing its merchant number."""
+    if order.status not in {STATUS_CANCELLED, STATUS_EXPIRED}:
+        return False
+    order.status = STATUS_PENDING
+    if increment_state_version:
+        order.state_version += 1
+    order.expires_at = _aware_utc(now) + ORDER_TTL
+    order.cancelled_at = None
+    order.updated_at = now
+    return True
+
+
 async def _summary_for_order(session: AsyncSession, order: PaymentOrder):
     if order.status != STATUS_FULFILLED:
         return None
@@ -165,6 +339,7 @@ async def to_order_read(session: AsyncSession, order: PaymentOrder) -> PaymentOr
     return PaymentOrderRead(
         id=str(order.id),
         status=order.status,
+        state_version=int(order.state_version),
         sku=order.sku,
         product_name=order.product_name,
         amount_fen=int(order.amount_fen),
@@ -173,9 +348,71 @@ async def to_order_read(session: AsyncSession, order: PaymentOrder) -> PaymentOr
         expires_at=order.expires_at,
         paid_at=order.paid_at,
         fulfilled_at=order.fulfilled_at,
+        cancelled_at=order.cancelled_at,
         provider_trade_no=order.provider_trade_no,
         summary=await _summary_for_order(session, order),
     )
+
+
+def _order_description(order: PaymentOrder) -> str:
+    snapshot = order.entitlement_snapshot_json
+    if not isinstance(snapshot, dict):
+        return ""
+    return str(snapshot.get("description") or "")
+
+
+def to_order_list_item(order: PaymentOrder) -> PaymentOrderListItem:
+    return PaymentOrderListItem(
+        id=str(order.id),
+        status=order.status,
+        state_version=int(order.state_version),
+        sku=order.sku,
+        product_name=order.product_name,
+        amount_fen=int(order.amount_fen),
+        currency=order.currency,
+        benefit_type=order.benefit_type,
+        token_amount=int(order.token_amount or 0),
+        unlimited_duration_days=order.unlimited_duration_days,
+        description=_order_description(order),
+        created_at=order.created_at,
+        expires_at=order.expires_at,
+        paid_at=order.paid_at,
+        fulfilled_at=order.fulfilled_at,
+        cancelled_at=order.cancelled_at,
+    )
+
+
+def _encode_orders_cursor(created_at: datetime, order_id: uuid.UUID) -> str:
+    payload = json.dumps(
+        {
+            "created_at": _aware_utc(created_at).isoformat(),
+            "id": str(order_id),
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+
+
+def _decode_orders_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    value = (cursor or "").strip()
+    try:
+        if not value or len(value) > 512:
+            raise ValueError("invalid cursor length")
+        padded = value + "=" * (-len(value) % 4)
+        raw = base64.b64decode(padded, altchars=b"-_", validate=True)
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict) or set(payload) != {"created_at", "id"}:
+            raise ValueError("invalid cursor payload")
+        created_at = datetime.fromisoformat(str(payload["created_at"]).replace("Z", "+00:00"))
+        if created_at.tzinfo is None:
+            raise ValueError("cursor datetime must be timezone-aware")
+        order_id = uuid.UUID(str(payload["id"]))
+        return _aware_utc(created_at), order_id
+    except (OverflowError, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_payment_orders_cursor", "message": "订单列表游标无效。"},
+        ) from exc
 
 
 async def _find_by_id(
@@ -200,23 +437,274 @@ async def _find_by_id(
     return order
 
 
+async def _lock_payment_user(session: AsyncSession, user_id: str) -> None:
+    """Serialize payment attempts without blocking entitlement FK key-shares.
+
+    ``key_share=True`` with SQLAlchemy's default ``read=False`` emits PostgreSQL
+    ``FOR NO KEY UPDATE``.  It is mutually exclusive with another payment lock
+    for this user, but compatible with the ``KEY SHARE`` taken by foreign-key
+    writes from other entitlement paths.
+    """
+    await session.execute(
+        select(User.id).where(User.id == user_id).with_for_update(key_share=True)
+    )
+
+
+async def _find_order_by_idempotency_alias(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    idempotency_key: str,
+) -> PaymentOrder | None:
+    result = await session.execute(
+        select(PaymentOrder)
+        .join(
+            PaymentOrderIdempotencyAlias,
+            PaymentOrderIdempotencyAlias.payment_order_id == PaymentOrder.id,
+        )
+        .where(
+            PaymentOrderIdempotencyAlias.user_id == user_id,
+            PaymentOrderIdempotencyAlias.idempotency_key == idempotency_key,
+            PaymentOrder.user_id == user_id,
+        )
+    )
+    return result.scalars().first()
+
+
+async def _find_legacy_order_by_original_key(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    idempotency_key: str,
+) -> PaymentOrder | None:
+    result = await session.execute(
+        select(PaymentOrder).where(
+            PaymentOrder.user_id == user_id,
+            PaymentOrder.idempotency_key == idempotency_key,
+        )
+    )
+    return result.scalars().first()
+
+
+def _validate_idempotent_replay(order: PaymentOrder, requested_sku: str) -> None:
+    if order.sku != requested_sku:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "idempotency_key_conflict", "message": "该幂等键已用于其他套餐。"},
+        )
+
+
+async def _find_payment_state_orders(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    for_update: bool = False,
+) -> list[PaymentOrder]:
+    statement = (
+        select(PaymentOrder)
+        .where(PaymentOrder.user_id == user_id)
+        .order_by(PaymentOrder.updated_at.desc(), PaymentOrder.id.desc())
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    result = await session.execute(
+        statement
+    )
+    return list(result.scalars().all())
+
+
+def _payment_state_token(orders: list[PaymentOrder]) -> str:
+    state = sorted(
+        ((str(order.id), int(order.state_version)) for order in orders),
+        key=lambda item: item[0],
+    )
+    canonical = json.dumps(state, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(canonical.encode("ascii")).hexdigest()
+
+
+def _payment_state_changed_error(orders: list[PaymentOrder]) -> HTTPException:
+    latest = orders[0] if orders else None
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "payment_order_state_changed",
+            "message": "支付订单状态已变化，请刷新订单状态后重试。",
+            "payment_state_token": _payment_state_token(orders),
+            "latest_order": (
+                to_order_list_item(latest).model_dump(mode="json")
+                if latest is not None
+                else None
+            ),
+        },
+    )
+
+
+def _is_provider_open_guard_conflict(error: BaseException) -> bool:
+    pending: list[object] = [error]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in visited:
+            continue
+        visited.add(id(current))
+        names = {
+            getattr(current, "constraint_name", None),
+            getattr(getattr(current, "diag", None), "constraint_name", None),
+        }
+        if PROVIDER_OPEN_GUARD_CONSTRAINTS.intersection(names):
+            return True
+        for attribute in ("orig", "__cause__", "__context__"):
+            nested = getattr(current, attribute, None)
+            if nested is not None:
+                pending.append(nested)
+    return any(name in str(error) for name in PROVIDER_OPEN_GUARD_CONSTRAINTS)
+
+
+async def _raise_if_provider_open_write_conflict(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    error: IntegrityError,
+) -> None:
+    if not _is_provider_open_guard_conflict(error):
+        return
+    orders = await _find_payment_state_orders(session, user_id=user_id)
+    provider_open = [
+        order for order in orders if order.status in PROVIDER_OPEN_ORDER_STATUSES
+    ]
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "payment_order_reconciliation_required",
+            "message": "支付订单已被并发更新，请刷新订单状态后重试。",
+            "retryable": True,
+            "payment_state_token": _payment_state_token(orders),
+            "order_id": str(provider_open[0].id) if provider_open else None,
+        },
+    )
+
+
+def _raise_if_payment_state_changed(
+    orders: list[PaymentOrder],
+    *,
+    expected_token: str | None,
+) -> None:
+    if expected_token is not None and expected_token == _payment_state_token(orders):
+        return
+    raise _payment_state_changed_error(orders)
+
+
+async def _insert_idempotency_alias(
+    session: AsyncSession,
+    *,
+    order: PaymentOrder,
+    user_id: str,
+    idempotency_key: str,
+    now: datetime,
+) -> None:
+    """Insert the permanent key mapping in the caller's order transaction."""
+    await session.flush()
+    result = await session.execute(
+        pg_insert(PaymentOrderIdempotencyAlias.__table__)
+        .values(
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            payment_order_id=order.id,
+            created_at=now,
+        )
+        .on_conflict_do_nothing(index_elements=["user_id", "idempotency_key"])
+    )
+    if int(getattr(result, "rowcount", 0) or 0) != 0:
+        return
+    mapped = await _find_order_by_idempotency_alias(
+        session,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+    )
+    if mapped is None or mapped.id != order.id:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "idempotency_key_conflict", "message": "该幂等键已绑定其他支付订单。"},
+        )
+
+
 async def create_order(
     session: AsyncSession,
     *,
     user_id: str,
     sku: str,
     idempotency_key: str,
+    expected_payment_state_token: str | None = None,
+    expected_catalog_version: str | None = None,
 ) -> PaymentOrderRead:
-    current = _require_payments_enabled()
     key = (idempotency_key or "").strip()
     if not key or len(key) > 128:
         raise HTTPException(
             status_code=400,
             detail={"code": "invalid_idempotency_key", "message": "Idempotency-Key 必填且不能超过 128 字符。"},
         )
-    product = get_product(
-        sku,
-        include_test_product=_test_product_allowed(current, user_id),
+    requested_sku = str(sku or "").strip()
+    if not requested_sku or len(requested_sku) > 64:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_payment_product", "message": "未知的支付套餐。"},
+        )
+
+    # Serialise payment-attempt creation even when this user does not yet have
+    # an order row (locking payment_orders alone would not protect that gap).
+    await _lock_payment_user(session, user_id)
+
+    existing = await _find_order_by_idempotency_alias(
+        session,
+        user_id=user_id,
+        idempotency_key=key,
+    )
+    if existing is not None:
+        _validate_idempotent_replay(existing, requested_sku)
+        return await to_order_read(session, existing)
+
+    # Transitional fallback for deployments where application traffic reaches
+    # this code before the alias backfill has observed an older order.
+    legacy = await _find_legacy_order_by_original_key(
+        session,
+        user_id=user_id,
+        idempotency_key=key,
+    )
+    if legacy is not None:
+        _validate_idempotent_replay(legacy, requested_sku)
+        now = utc_now()
+        await _insert_idempotency_alias(
+            session,
+            order=legacy,
+            user_id=user_id,
+            idempotency_key=key,
+            now=now,
+        )
+        await session.commit()
+        await session.refresh(legacy)
+        return await to_order_read(session, legacy)
+
+    current = _require_payments_enabled()
+    visible_products = list(
+        get_products(include_test_product=_test_product_allowed(current, user_id))
+    )
+    current_catalog_version = _catalog_version(visible_products)
+    if (
+        expected_catalog_version is None
+        or expected_catalog_version != current_catalog_version
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "payment_catalog_changed",
+                "message": "支付套餐已更新，请刷新套餐与价格后重试。",
+                "catalog_version": current_catalog_version,
+            },
+        )
+    product = next(
+        (item for item in visible_products if item.sku == requested_sku),
+        None,
     )
     if product is None:
         raise HTTPException(
@@ -224,22 +712,82 @@ async def create_order(
             detail={"code": "invalid_payment_product", "message": "未知的支付套餐。"},
         )
 
-    existing_result = await session.execute(
-        select(PaymentOrder).where(
-            PaymentOrder.user_id == user_id,
-            PaymentOrder.idempotency_key == key,
-        )
+    state_orders = await _find_payment_state_orders(
+        session,
+        user_id=user_id,
+        for_update=True,
     )
-    existing = existing_result.scalars().first()
-    if existing is not None:
-        if existing.sku != product.sku:
+    _raise_if_payment_state_changed(
+        state_orders,
+        expected_token=expected_payment_state_token,
+    )
+
+    # A local expiry or cancellation cannot close a checkout at the provider.
+    # Reuse an unsettled order of the same SKU, preserving its merchant order
+    # number; reject a different SKU instead of making a second payable order.
+    now = utc_now()
+    unsettled_orders = [
+        order for order in state_orders if order.status in PROVIDER_OPEN_ORDER_STATUSES
+    ]
+    if len(unsettled_orders) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "payment_order_reconciliation_required",
+                "message": "存在多笔未结算订单，需人工对账，请联系客服。",
+                "order_id": str(unsettled_orders[0].id),
+            },
+        )
+    if unsettled_orders:
+        unsettled = unsettled_orders[0]
+        if unsettled.sku != product.sku:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "idempotency_key_conflict", "message": "该幂等键已用于其他套餐。"},
+                detail={
+                    "code": "payment_order_unsettled",
+                    "message": "已有未结算订单，请继续或查询该订单后再选择其他套餐。",
+                    "order_id": str(unsettled.id),
+                    "sku": unsettled.sku,
+                },
             )
-        return await to_order_read(session, existing)
+        if not _order_matches_product_snapshot(unsettled, product):
+            raise _catalog_changed_error(unsettled)
+        expired_in_transaction = False
+        if unsettled.status == STATUS_PENDING:
+            expired_in_transaction = _expire_order_if_due(unsettled, now=now)
+        _reopen_order_for_checkout(
+            unsettled,
+            now=now,
+            increment_state_version=not expired_in_transaction,
+        )
+        await _insert_idempotency_alias(
+            session,
+            order=unsettled,
+            user_id=user_id,
+            idempotency_key=key,
+            now=now,
+        )
+        try:
+            await session.commit()
+        except IntegrityError as error:
+            await session.rollback()
+            raced = await _find_order_by_idempotency_alias(
+                session,
+                user_id=user_id,
+                idempotency_key=key,
+            )
+            if raced is None:
+                await _raise_if_provider_open_write_conflict(
+                    session,
+                    user_id=user_id,
+                    error=error,
+                )
+                raise
+            _validate_idempotent_replay(raced, requested_sku)
+            return await to_order_read(session, raced)
+        await session.refresh(unsettled)
+        return await to_order_read(session, unsettled)
 
-    now = utc_now()
     snapshot = _product_snapshot(product)
     order = PaymentOrder(
         user_id=user_id,
@@ -260,40 +808,153 @@ async def create_order(
     )
     session.add(order)
     try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        raced_result = await session.execute(
-            select(PaymentOrder).where(
-                PaymentOrder.user_id == user_id,
-                PaymentOrder.idempotency_key == key,
-            )
+        await _insert_idempotency_alias(
+            session,
+            order=order,
+            user_id=user_id,
+            idempotency_key=key,
+            now=now,
         )
-        raced = raced_result.scalars().first()
+        await session.commit()
+    except IntegrityError as error:
+        await session.rollback()
+        raced_from_legacy = False
+        raced = await _find_order_by_idempotency_alias(
+            session,
+            user_id=user_id,
+            idempotency_key=key,
+        )
         if raced is None:
-            raise
-        if raced.sku != product.sku:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "idempotency_key_conflict",
-                    "message": "该幂等键已用于其他套餐。",
-                },
+            raced = await _find_legacy_order_by_original_key(
+                session,
+                user_id=user_id,
+                idempotency_key=key,
             )
+            raced_from_legacy = raced is not None
+        if raced is None:
+            await _raise_if_provider_open_write_conflict(
+                session,
+                user_id=user_id,
+                error=error,
+            )
+            raise
+        _validate_idempotent_replay(raced, requested_sku)
+        if raced_from_legacy:
+            await _insert_idempotency_alias(
+                session,
+                order=raced,
+                user_id=user_id,
+                idempotency_key=key,
+                now=utc_now(),
+            )
+            await session.commit()
+            await session.refresh(raced)
         order = raced
     else:
         await session.refresh(order)
     return await to_order_read(session, order)
 
 
+async def get_purchase_context(
+    session: AsyncSession,
+    *,
+    user_id: str,
+) -> PaymentPurchaseContextResponse:
+    orders = await _find_payment_state_orders(session, user_id=user_id)
+    return PaymentPurchaseContextResponse(
+        payment_state_token=_payment_state_token(orders),
+        latest_order=to_order_list_item(orders[0]) if orders else None,
+    )
+
+
+async def list_orders(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    limit: int = 20,
+    cursor: str | None = None,
+) -> PaymentOrdersResponse:
+    if limit < 1 or limit > 50:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_payment_orders_limit", "message": "订单列表每页数量必须在 1 到 50 之间。"},
+        )
+    cursor_values = _decode_orders_cursor(cursor) if cursor is not None else None
+    await expire_pending_orders(session, user_id=user_id)
+
+    statement = select(PaymentOrder).where(PaymentOrder.user_id == user_id)
+    if cursor_values is not None:
+        cursor_created_at, cursor_id = cursor_values
+        statement = statement.where(
+            or_(
+                PaymentOrder.created_at < cursor_created_at,
+                and_(
+                    PaymentOrder.created_at == cursor_created_at,
+                    PaymentOrder.id < cursor_id,
+                ),
+            )
+        )
+    statement = statement.order_by(
+        PaymentOrder.created_at.desc(),
+        PaymentOrder.id.desc(),
+    ).limit(limit + 1)
+    result = await session.execute(statement)
+    orders = list(result.scalars().all())
+    has_more = len(orders) > limit
+    visible_orders = orders[:limit]
+    next_cursor = None
+    if has_more and visible_orders:
+        last_order = visible_orders[-1]
+        next_cursor = _encode_orders_cursor(last_order.created_at, last_order.id)
+    return PaymentOrdersResponse(
+        items=[to_order_list_item(order) for order in visible_orders],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
 async def get_order(session: AsyncSession, *, user_id: str, order_id: str) -> PaymentOrderRead:
+    await _lock_payment_user(session, user_id)
     order = await _find_by_id(session, order_id, user_id=user_id, for_update=True)
-    if order.status == STATUS_PENDING and _is_expired(order):
-        order.status = STATUS_EXPIRED
-        order.updated_at = utc_now()
+    now = utc_now()
+    if _expire_order_if_due(order, now=now):
         await session.commit()
         await session.refresh(order)
     return await to_order_read(session, order)
+
+
+async def cancel_order(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    order_id: str,
+) -> PaymentOrderRead:
+    await _lock_payment_user(session, user_id)
+    order = await _find_by_id(session, order_id, user_id=user_id, for_update=True)
+    now = utc_now()
+    if _expire_order_if_due(order, now=now):
+        await session.commit()
+        await session.refresh(order)
+        return await to_order_read(session, order)
+    if order.status == STATUS_PENDING:
+        order.status = STATUS_CANCELLED
+        order.state_version += 1
+        order.cancelled_at = now
+        order.updated_at = now
+        await session.commit()
+        await session.refresh(order)
+        return await to_order_read(session, order)
+    if order.status in {STATUS_CANCELLED, STATUS_EXPIRED, STATUS_FAILED}:
+        return await to_order_read(session, order)
+    if order.status in {STATUS_PAID, STATUS_FULFILLED}:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "payment_order_not_cancellable", "message": "已支付订单不能取消。"},
+        )
+    raise HTTPException(
+        status_code=409,
+        detail={"code": "payment_order_not_cancellable", "message": "该订单当前不能取消。"},
+    )
 
 
 async def create_checkout(
@@ -303,15 +964,55 @@ async def create_checkout(
     order_id: str,
 ) -> PaymentCheckoutResponse:
     settings = _require_payments_enabled()
+    await _lock_payment_user(session, user_id)
     order = await _find_by_id(session, order_id, user_id=user_id, for_update=True)
-    if order.status == STATUS_PENDING and _is_expired(order):
-        order.status = STATUS_EXPIRED
-        order.updated_at = utc_now()
+    unsettled_result = await session.execute(
+        select(PaymentOrder)
+        .where(
+            PaymentOrder.user_id == user_id,
+            PaymentOrder.status.in_(PROVIDER_OPEN_ORDER_STATUSES),
+        )
+        .order_by(PaymentOrder.created_at.desc(), PaymentOrder.id.desc())
+        .with_for_update()
+    )
+    unsettled_orders = list(unsettled_result.scalars().all())
+    if unsettled_orders and (
+        len(unsettled_orders) != 1 or unsettled_orders[0].id != order.id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "payment_order_reconciliation_required",
+                "message": "存在多笔未结算订单，需人工对账，请联系客服。",
+                "order_id": str(unsettled_orders[0].id),
+            },
+        )
+    product = get_product(
+        order.sku,
+        include_test_product=_test_product_allowed(settings, user_id),
+    )
+    if product is None or not _order_matches_product_snapshot(order, product):
+        raise _catalog_changed_error(order)
+    now = utc_now()
+    expired_in_transaction = False
+    if order.status == STATUS_PENDING:
+        expired_in_transaction = _expire_order_if_due(order, now=now)
+    if _reopen_order_for_checkout(
+        order,
+        now=now,
+        increment_state_version=not expired_in_transaction,
+    ):
         await session.commit()
+        await session.refresh(order)
     if order.status != STATUS_PENDING:
         raise HTTPException(
             status_code=409,
-            detail={"code": "payment_order_not_payable", "message": "该订单当前不能发起支付。"},
+            detail={
+                "code": "payment_order_not_payable",
+                "message": "该订单当前不能发起支付。",
+                "order_id": str(order.id),
+                "state_version": int(order.state_version),
+            },
         )
 
     return_url = f"{settings.frontend_origin}/?{urlencode({'payment_order': str(order.id)})}"
@@ -370,7 +1071,10 @@ def _validate_provider_payload(
         raise HTTPException(status_code=400, detail={"code": "payment_currency_mismatch", "message": "支付币种不匹配。"})
     if require_success:
         is_success = (
-            str(payload.get("status") or "") == "1"
+            (
+                str(payload.get("status") or "") == "1"
+                or str(payload.get("trade_status") or "") == "TRADE_SUCCESS"
+            )
             if allow_query_status
             else str(payload.get("trade_status") or "") == "TRADE_SUCCESS"
         )
@@ -414,6 +1118,16 @@ async def _fulfill_verified_payment(
     allow_query_status: bool = False,
 ) -> PaymentOrderRead:
     current_settings = settings or _require_notification_configured()
+    owner_result = await session.execute(
+        select(PaymentOrder.user_id).where(PaymentOrder.merchant_order_no == merchant_order_no)
+    )
+    order_user_id = owner_result.scalars().first()
+    if order_user_id is None:
+        raise HTTPException(status_code=404, detail={"code": "payment_order_not_found", "message": "支付订单不存在。"})
+    # Keep the same User -> PaymentOrder lock order as creation and checkout.
+    # The entitlement write references users, so taking the order lock first can
+    # deadlock against a concurrent checkout which already holds the user row.
+    await _lock_payment_user(session, order_user_id)
     result = await session.execute(
         select(PaymentOrder)
         .where(PaymentOrder.merchant_order_no == merchant_order_no)
@@ -451,6 +1165,7 @@ async def _fulfill_verified_payment(
 
     now = utc_now()
     if order.status != STATUS_FULFILLED:
+        order.state_version += 1
         order.status = STATUS_PAID
         order.provider_trade_no = trade_no
         order.paid_at = order.paid_at or _provider_paid_at(payload, now)
@@ -532,11 +1247,22 @@ async def sync_order(session: AsyncSession, *, user_id: str, order_id: str) -> P
             detail={"code": "payment_sync_failed", "message": "暂时无法向支付平台查询订单。"},
         ) from exc
 
-    if str(payload.get("code")) != "0" or not _query_reports_paid(payload):
-        order = await _find_by_id(session, order_id, user_id=user_id)
-        if order.status == STATUS_PENDING and _is_expired(order):
-            order.status = STATUS_EXPIRED
-            order.updated_at = utc_now()
+    if str(payload.get("code")) != "0":
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "payment_sync_failed", "message": "支付平台未能确认订单状态。"},
+        )
+
+    if not _query_reports_paid(payload):
+        await _lock_payment_user(session, user_id)
+        order = await _find_by_id(
+            session,
+            order_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        now = utc_now()
+        if _expire_order_if_due(order, now=now):
             await session.commit()
             await session.refresh(order)
         return await to_order_read(session, order)

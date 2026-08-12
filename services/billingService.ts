@@ -63,13 +63,16 @@ export interface BillingProduct {
 
 export interface BillingProductsResponse {
   payments_enabled: boolean;
+  catalog_version: string;
   products: BillingProduct[];
 }
 
-export type PaymentOrderStatus = 'pending' | 'paid' | 'fulfilled' | 'failed' | 'expired';
+export type PaymentOrderStatus = 'pending' | 'paid' | 'fulfilled' | 'failed' | 'expired' | 'cancelled';
+export type PaymentBenefitType = 'tokens' | 'unlimited_time';
 
 export interface PaymentOrder {
   id: string;
+  state_version: number;
   status: PaymentOrderStatus;
   sku: string;
   product_name?: string | null;
@@ -79,6 +82,11 @@ export interface PaymentOrder {
   expires_at?: string | null;
   paid_at?: string | null;
   fulfilled_at?: string | null;
+  cancelled_at?: string | null;
+  benefit_type?: PaymentBenefitType | null;
+  token_amount?: number | null;
+  unlimited_duration_days?: number | null;
+  description?: string | null;
   provider_trade_no?: string | null;
   summary?: TokenQuotaSummary | null;
   failure_reason?: string | null;
@@ -91,35 +99,63 @@ export interface PaymentCheckoutForm {
   fields: Record<string, string>;
 }
 
+export interface PaymentOrderListResponse {
+  items: PaymentOrder[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface PaymentPurchaseContext {
+  payment_state_token: string;
+  latest_order: PaymentOrder | null;
+}
+
+type PaymentRequestOptions = {
+  signal?: AbortSignal;
+};
+
+const PAYMENT_REQUEST_TIMEOUT_MS = 15_000;
+
 const BILLING_CACHE_TTL_MS = 10_000;
 
 let quotaSummaryCache: { ownerKey: string; data: TokenQuotaSummary; fetchedAt: number } | null = null;
 let quotaSummaryInFlight: Promise<TokenQuotaSummary> | null = null;
+let quotaSummaryCacheOwnerKey: string | null = null;
+let quotaSummaryCacheGeneration = 0;
 
 const isSummaryFresh = (now: number) => {
   return quotaSummaryCache !== null && now - quotaSummaryCache.fetchedAt < BILLING_CACHE_TTL_MS;
 };
 
 export const clearBillingCache = () => {
+  quotaSummaryCacheGeneration += 1;
+  quotaSummaryCacheOwnerKey = null;
   quotaSummaryCache = null;
   quotaSummaryInFlight = null;
 };
 
 const ensureBillingCacheOwner = async () => {
   const ownerKey = await getAuthCacheKey();
-  if (quotaSummaryCache && quotaSummaryCache.ownerKey !== ownerKey) {
+  if (
+    (quotaSummaryCacheOwnerKey !== null && quotaSummaryCacheOwnerKey !== ownerKey)
+    || (quotaSummaryCache !== null && quotaSummaryCache.ownerKey !== ownerKey)
+  ) {
     clearBillingCache();
   }
+  quotaSummaryCacheOwnerKey = ownerKey;
   return ownerKey;
 };
 
 export const billingService = {
-  async getProducts(): Promise<BillingProductsResponse> {
-    const response = await apiClient.get<BillingProductsResponse>('/api/billing/products');
+  async getProducts(options?: PaymentRequestOptions): Promise<BillingProductsResponse> {
+    const response = await apiClient.get<BillingProductsResponse>('/api/billing/products', {
+      signal: options?.signal,
+      timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+    });
     return response.data;
   },
 
-  async getSummary(options?: { force?: boolean }): Promise<TokenQuotaSummary> {
+  async getSummary(options?: { force?: boolean; signal?: AbortSignal }): Promise<TokenQuotaSummary> {
     const ownerKey = await ensureBillingCacheOwner();
     const now = Date.now();
     if (!options?.force && isSummaryFresh(now) && quotaSummaryCache) {
@@ -129,10 +165,22 @@ export const billingService = {
       return quotaSummaryInFlight;
     }
 
+    const requestCacheGeneration = quotaSummaryCacheGeneration + 1;
+    quotaSummaryCacheGeneration = requestCacheGeneration;
     const request = apiClient
-      .get<TokenQuotaSummary>('/api/billing/summary')
-      .then((response) => {
-        quotaSummaryCache = { ownerKey, data: response.data, fetchedAt: Date.now() };
+      .get<TokenQuotaSummary>('/api/billing/summary', {
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+      })
+      .then(async (response) => {
+        const currentOwnerKey = await getAuthCacheKey();
+        if (
+          quotaSummaryCacheGeneration === requestCacheGeneration
+          && quotaSummaryCacheOwnerKey === ownerKey
+          && currentOwnerKey === ownerKey
+        ) {
+          quotaSummaryCache = { ownerKey, data: response.data, fetchedAt: Date.now() };
+        }
         return response.data;
       });
     quotaSummaryInFlight = request;
@@ -145,46 +193,113 @@ export const billingService = {
     }
   },
 
-  async getUsage(limit = 50): Promise<TokenUsageListResponse> {
+  async getUsage(limit = 50, options?: PaymentRequestOptions): Promise<TokenUsageListResponse> {
     const response = await apiClient.get<TokenUsageListResponse>('/api/billing/usage', {
       params: { limit },
+      signal: options?.signal,
+      timeout: PAYMENT_REQUEST_TIMEOUT_MS,
     });
     return response.data;
   },
 
-  async redeemCode(code: string): Promise<TokenRedemptionResponse> {
-    const response = await apiClient.post<TokenRedemptionResponse>('/api/billing/redemptions', {
-      code,
-    });
+  async redeemCode(code: string, options?: PaymentRequestOptions): Promise<TokenRedemptionResponse> {
     const ownerKey = await getAuthCacheKey();
+    const response = await apiClient.post<TokenRedemptionResponse>(
+      '/api/billing/redemptions',
+      { code },
+      {
+        expectedAuthCacheKey: ownerKey,
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+      },
+    );
+    const currentOwnerKey = await getAuthCacheKey();
+    if (currentOwnerKey !== ownerKey) {
+      clearBillingCache();
+      throw new Error('Authentication context changed during redemption');
+    }
+    clearBillingCache();
+    quotaSummaryCacheOwnerKey = ownerKey;
     quotaSummaryCache = { ownerKey, data: response.data.summary, fetchedAt: Date.now() };
     return response.data;
   },
 
-  async createPaymentOrder(sku: string, idempotencyKey: string): Promise<PaymentOrder> {
+  async createPaymentOrder(
+    sku: string,
+    idempotencyKey: string,
+    expectedPaymentStateToken: string,
+    expectedCatalogVersion: string,
+    options?: PaymentRequestOptions,
+  ): Promise<PaymentOrder> {
     const response = await apiClient.post<PaymentOrder>(
       '/api/billing/payment-orders',
-      { sku },
-      { headers: { 'Idempotency-Key': idempotencyKey } },
+      {
+        sku,
+        expected_payment_state_token: expectedPaymentStateToken,
+        expected_catalog_version: expectedCatalogVersion,
+      },
+      {
+        headers: { 'Idempotency-Key': idempotencyKey },
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+      },
     );
     return response.data;
   },
 
-  async getPaymentCheckout(orderId: string): Promise<PaymentCheckoutForm> {
+  async getPaymentCheckout(orderId: string, options?: PaymentRequestOptions): Promise<PaymentCheckoutForm> {
     const encodedOrderId = encodeURIComponent(orderId);
-    const response = await apiClient.post<PaymentCheckoutForm>(`/api/billing/payment-orders/${encodedOrderId}/checkout`);
+    const response = await apiClient.post<PaymentCheckoutForm>(
+      `/api/billing/payment-orders/${encodedOrderId}/checkout`,
+      undefined,
+      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+    );
     return response.data;
   },
 
-  async getPaymentOrder(orderId: string): Promise<PaymentOrder> {
-    const encodedOrderId = encodeURIComponent(orderId);
-    const response = await apiClient.get<PaymentOrder>(`/api/billing/payment-orders/${encodedOrderId}`);
+  async getPaymentPurchaseContext(options?: PaymentRequestOptions): Promise<PaymentPurchaseContext> {
+    const response = await apiClient.get<PaymentPurchaseContext>(
+      '/api/billing/payment-orders/purchase-context',
+      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+    );
     return response.data;
   },
 
-  async syncPaymentOrder(orderId: string): Promise<PaymentOrder> {
+  async getPaymentOrder(orderId: string, options?: PaymentRequestOptions): Promise<PaymentOrder> {
     const encodedOrderId = encodeURIComponent(orderId);
-    const response = await apiClient.post<PaymentOrder>(`/api/billing/payment-orders/${encodedOrderId}/sync`);
+    const response = await apiClient.get<PaymentOrder>(
+      `/api/billing/payment-orders/${encodedOrderId}`,
+      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+    );
+    return response.data;
+  },
+
+  async listPaymentOrders(limit = 20, cursor?: string | null, options?: PaymentRequestOptions): Promise<PaymentOrderListResponse> {
+    const response = await apiClient.get<PaymentOrderListResponse>('/api/billing/payment-orders', {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+      signal: options?.signal,
+      timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+    });
+    return response.data;
+  },
+
+  async cancelPaymentOrder(orderId: string, options?: PaymentRequestOptions): Promise<PaymentOrder> {
+    const encodedOrderId = encodeURIComponent(orderId);
+    const response = await apiClient.post<PaymentOrder>(
+      `/api/billing/payment-orders/${encodedOrderId}/cancel`,
+      undefined,
+      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+    );
+    return response.data;
+  },
+
+  async syncPaymentOrder(orderId: string, options?: PaymentRequestOptions): Promise<PaymentOrder> {
+    const encodedOrderId = encodeURIComponent(orderId);
+    const response = await apiClient.post<PaymentOrder>(
+      `/api/billing/payment-orders/${encodedOrderId}/sync`,
+      undefined,
+      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+    );
     return response.data;
   },
 
