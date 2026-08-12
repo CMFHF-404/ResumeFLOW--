@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.requests import Request
 
 from app import auth_middleware
-from app.domain.billing import payment_provider, payment_service
+from app.domain.billing import payment_provider, payment_router, payment_service
 from app.domain.billing.entitlement_service import EntitlementGrant, grant_entitlement
 from app.models import AITokenPurchaseEvent, AITokenWallet, PaymentOrder, PaymentWebhookEvent
 from app.utils.time_utils import utc_now_aware
@@ -69,6 +69,7 @@ class _IntegrityRaceSession(_FakeSession):
 def _settings(**overrides):
     values = {
         "yifut_enabled": True,
+        "yifut_test_user_ids": [],
         "yifut_merchant_id": "merchant-1",
         "yifut_merchant_private_key": "private-key",
         "yifut_platform_public_key": "public-key",
@@ -80,7 +81,7 @@ def _settings(**overrides):
     return SimpleNamespace(**values)
 
 
-class PaymentCatalogTests(unittest.TestCase):
+class PaymentCatalogTests(unittest.IsolatedAsyncioTestCase):
     def test_catalog_has_fixed_skus_prices_and_benefits(self) -> None:
         response = payment_service.list_products(_settings())
         self.assertTrue(response.payments_enabled)
@@ -99,6 +100,27 @@ class PaymentCatalogTests(unittest.TestCase):
             [item.unlimited_duration_days for item in response.products[2:]],
             [30, 90, 365],
         )
+
+    def test_catalog_exposes_ten_cent_test_package_only_when_enabled(self) -> None:
+        disabled = payment_service.list_products(_settings())
+        enabled = payment_service.list_products(
+            _settings(yifut_test_user_ids=["user-1"]),
+            user_id="user-1",
+        )
+
+        self.assertNotIn("tokens_test_10k", [item.sku for item in disabled.products])
+        self.assertEqual(enabled.products[0].sku, "tokens_test_10k")
+        self.assertEqual(enabled.products[0].name, "10K Token 测试包")
+        self.assertEqual(enabled.products[0].amount_fen, 10)
+        self.assertEqual(enabled.products[0].token_amount, 10_000)
+
+    async def test_products_route_passes_authenticated_user_to_allowlist_filter(self) -> None:
+        expected = payment_service.list_products(_settings())
+        with patch.object(payment_router.payment_service, "list_products", return_value=expected) as mocked:
+            result = await payment_router.get_payment_products(SimpleNamespace(id="user-1"))
+
+        self.assertIs(result, expected)
+        mocked.assert_called_once_with(user_id="user-1")
 
     def test_payment_flag_requires_switch_and_all_secrets(self) -> None:
         self.assertFalse(payment_service.payments_enabled(_settings(yifut_enabled=False)))
@@ -211,6 +233,80 @@ class EntitlementServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_test_package_order_requires_allowlist_and_snapshots_ten_cent_benefit(self) -> None:
+        disabled_session = _FakeSession([_ExecuteResult()])
+        with (
+            patch.object(
+                payment_service,
+                "_require_payments_enabled",
+                return_value=_settings(yifut_test_user_ids=["another-user"]),
+            ),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            await payment_service.create_order(
+                disabled_session,
+                user_id="user-1",
+                sku="tokens_test_10k",
+                idempotency_key="disabled-test-package",
+            )
+
+        self.assertEqual(raised.exception.detail["code"], "invalid_payment_product")
+        enabled_session = _FakeSession([_ExecuteResult()])
+        with patch.object(
+            payment_service,
+            "_require_payments_enabled",
+            return_value=_settings(yifut_test_user_ids=["user-1"]),
+        ):
+            created = await payment_service.create_order(
+                enabled_session,
+                user_id="user-1",
+                sku="tokens_test_10k",
+                idempotency_key="enabled-test-package",
+            )
+
+        order = next(item for item in enabled_session.added if isinstance(item, PaymentOrder))
+        self.assertEqual(created.sku, "tokens_test_10k")
+        self.assertEqual((order.amount_fen, order.token_amount), (10, 10_000))
+        self.assertEqual(order.entitlement_snapshot_json["amount_fen"], 10)
+        self.assertEqual(order.entitlement_snapshot_json["token_amount"], 10_000)
+
+    async def test_test_package_checkout_signs_ten_cent_money(self) -> None:
+        now = utc_now_aware()
+        order = PaymentOrder(
+            user_id="user-1",
+            merchant_order_no="RF-TEST-TEN-CENTS",
+            idempotency_key="test-ten-cents",
+            sku="tokens_test_10k",
+            product_name="10K Token 测试包",
+            amount_fen=10,
+            currency="CNY",
+            benefit_type="tokens",
+            token_amount=10_000,
+            expires_at=now + timedelta(minutes=20),
+        )
+        session = _FakeSession([_ExecuteResult(order)])
+
+        with (
+            patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
+            patch.object(
+                payment_service.payment_provider,
+                "build_signed_fields",
+                side_effect=lambda fields, _private_key: {
+                    **{key: str(value) for key, value in fields.items()},
+                    "sign_type": "RSA",
+                    "sign": "sig",
+                },
+            ),
+        ):
+            response = await payment_service.create_checkout(
+                session,
+                user_id="user-1",
+                order_id=str(order.id),
+            )
+
+        self.assertEqual(response.fields["money"], "0.10")
+        self.assertEqual(response.fields["name"], "10K Token 测试包")
+
     async def test_order_creation_is_idempotent_and_snapshots_catalog_values(self) -> None:
         session = _FakeSession([_ExecuteResult()])
         with patch.object(payment_service, "_require_payments_enabled", return_value=_settings()):

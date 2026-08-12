@@ -18,7 +18,7 @@ from ...models import PaymentOrder, PaymentWebhookEvent
 from ...utils.time_utils import utc_now_aware as utc_now
 from . import billing_service, payment_provider
 from .entitlement_service import EntitlementGrant, grant_entitlement
-from .payment_catalog import PRODUCTS, PaymentProduct, get_product
+from .payment_catalog import PaymentProduct, get_product, get_products
 from .payment_schemas import (
     PaymentCheckoutResponse,
     PaymentOrderRead,
@@ -93,10 +93,22 @@ def _require_query_configured(settings: Settings | Any | None = None) -> Any:
     return current
 
 
-def list_products(settings: Settings | Any | None = None) -> PaymentProductsResponse:
+def _test_product_allowed(settings: Settings | Any, user_id: str) -> bool:
+    return bool(user_id and user_id in getattr(settings, "yifut_test_user_ids", ()))
+
+
+def list_products(
+    settings: Settings | Any | None = None,
+    *,
+    user_id: str = "",
+) -> PaymentProductsResponse:
+    current = settings or load_settings()
+    products = get_products(
+        include_test_product=_test_product_allowed(current, user_id)
+    )
     return PaymentProductsResponse(
-        payments_enabled=payments_enabled(settings),
-        products=[PaymentProductRead(**product.__dict__) for product in PRODUCTS],
+        payments_enabled=payments_enabled(current),
+        products=[PaymentProductRead(**product.__dict__) for product in products],
     )
 
 
@@ -190,14 +202,17 @@ async def create_order(
     sku: str,
     idempotency_key: str,
 ) -> PaymentOrderRead:
-    _require_payments_enabled()
+    current = _require_payments_enabled()
     key = (idempotency_key or "").strip()
     if not key or len(key) > 128:
         raise HTTPException(
             status_code=400,
             detail={"code": "invalid_idempotency_key", "message": "Idempotency-Key 必填且不能超过 128 字符。"},
         )
-    product = get_product(sku)
+    product = get_product(
+        sku,
+        include_test_product=_test_product_allowed(current, user_id),
+    )
     if product is None:
         raise HTTPException(
             status_code=400,
