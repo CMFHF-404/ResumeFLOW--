@@ -22,8 +22,8 @@ router = APIRouter(prefix="/api/billing", tags=["billing-payments"])
 
 
 @router.get("/products", response_model=PaymentProductsResponse)
-async def get_payment_products():
-    return payment_service.list_products()
+async def get_payment_products(current_user=Depends(get_current_user)):
+    return payment_service.list_products(user_id=current_user.id)
 
 
 @router.get("/payments/yifut/notify", response_class=PlainTextResponse)
@@ -88,4 +88,3 @@ async def sync_payment_order(
     current_user=Depends(get_current_user),
 ):
     return await payment_service.sync_order(session, user_id=current_user.id, order_id=order_id)
-

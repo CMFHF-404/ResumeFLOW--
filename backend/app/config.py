@@ -42,6 +42,7 @@ ENV_EXPORT_TOKEN_SECRET = "EXPORT_TOKEN_SECRET"
 ENV_EXPORT_RENDER_TIMEOUT_SECONDS = "EXPORT_RENDER_TIMEOUT_SECONDS"
 ENV_REDEMPTION_CODE_ENCRYPTION_KEY = "REDEMPTION_CODE_ENCRYPTION_KEY"
 ENV_YIFUT_ENABLED = "YIFUT_ENABLED"
+ENV_YIFUT_TEST_USER_IDS = "YIFUT_TEST_USER_IDS"
 ENV_YIFUT_MERCHANT_ID = "YIFUT_MERCHANT_ID"
 ENV_YIFUT_MERCHANT_PRIVATE_KEY = "YIFUT_MERCHANT_PRIVATE_KEY"
 ENV_YIFUT_PLATFORM_PUBLIC_KEY = "YIFUT_PLATFORM_PUBLIC_KEY"
@@ -208,6 +209,7 @@ class Settings:
     export_render_timeout_seconds: int
     redemption_code_encryption_key: Optional[str]
     yifut_enabled: bool
+    yifut_test_user_ids: List[str]
     yifut_merchant_id: Optional[str]
     yifut_merchant_private_key: Optional[str]
     yifut_platform_public_key: Optional[str]
@@ -289,6 +291,7 @@ def load_settings() -> Settings:
     )
     redemption_code_encryption_key = os.getenv(ENV_REDEMPTION_CODE_ENCRYPTION_KEY)
     yifut_enabled = _get_bool_env(ENV_YIFUT_ENABLED, False)
+    yifut_test_user_ids = _parse_csv_env(ENV_YIFUT_TEST_USER_IDS, [])
     yifut_merchant_id = os.getenv(ENV_YIFUT_MERCHANT_ID)
     yifut_merchant_private_key = os.getenv(ENV_YIFUT_MERCHANT_PRIVATE_KEY)
     yifut_platform_public_key = os.getenv(ENV_YIFUT_PLATFORM_PUBLIC_KEY)
@@ -333,6 +336,7 @@ def load_settings() -> Settings:
         export_render_timeout_seconds=export_render_timeout_seconds,
         redemption_code_encryption_key=redemption_code_encryption_key,
         yifut_enabled=yifut_enabled,
+        yifut_test_user_ids=yifut_test_user_ids,
         yifut_merchant_id=yifut_merchant_id,
         yifut_merchant_private_key=yifut_merchant_private_key,
         yifut_platform_public_key=yifut_platform_public_key,

@@ -23,6 +23,16 @@ class PaymentProduct:
         return "tokens" if self.category == "tokens" else "unlimited_time"
 
 
+TEST_PRODUCT = PaymentProduct(
+    sku="tokens_test_10k",
+    name="10K Token 测试包",
+    category="tokens",
+    amount_fen=10,
+    token_amount=10_000,
+    description="10,000 Token，仅用于真实支付链路测试",
+)
+
+
 PRODUCTS: tuple[PaymentProduct, ...] = (
     PaymentProduct(
         sku="tokens_500k",
@@ -69,6 +79,14 @@ PRODUCTS: tuple[PaymentProduct, ...] = (
 PRODUCTS_BY_SKU = {product.sku: product for product in PRODUCTS}
 
 
-def get_product(sku: str) -> PaymentProduct | None:
-    return PRODUCTS_BY_SKU.get((sku or "").strip())
+def get_products(*, include_test_product: bool = False) -> tuple[PaymentProduct, ...]:
+    if include_test_product:
+        return (TEST_PRODUCT, *PRODUCTS)
+    return PRODUCTS
 
+
+def get_product(sku: str, *, include_test_product: bool = False) -> PaymentProduct | None:
+    normalized_sku = (sku or "").strip()
+    if include_test_product and normalized_sku == TEST_PRODUCT.sku:
+        return TEST_PRODUCT
+    return PRODUCTS_BY_SKU.get(normalized_sku)
