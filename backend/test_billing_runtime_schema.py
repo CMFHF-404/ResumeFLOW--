@@ -7,6 +7,7 @@ from app.models import (
     PaymentOrder,
     PaymentOrderIdempotencyAlias,
     PaymentOrderProviderOpenClaim,
+    PaymentOrderStateRevision,
 )
 from app.runtime_schema.billing_tables import (
     AI_TOKEN_BILLING_STATEMENTS,
@@ -85,6 +86,23 @@ class BillingRuntimeSchemaLeafTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("payment_order_bump_state_version" in item for item in executed))
         self.assertTrue(any("trg_payment_order_claim_original_idempotency_key" in item for item in executed))
         self.assertTrue(any("trg_payment_order_bump_state_version" in item for item in executed))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS payment_order_state_revisions" in item for item in executed))
+        self.assertTrue(any("payment_order_advance_state_revision" in item for item in executed))
+        self.assertTrue(any("trg_payment_order_advance_state_revision" in item for item in executed))
+        state_revision_backfill = next(
+            item
+            for item in executed
+            if "SUM(orders.state_version) OVER (PARTITION BY orders.user_id)" in item
+        )
+        self.assertIn("WHERE NOT EXISTS", state_revision_backfill)
+        self.assertIn(
+            "FROM payment_order_state_revisions AS existing_revision",
+            state_revision_backfill,
+        )
+        self.assertIn(
+            "existing_revision.user_id = orders.user_id",
+            state_revision_backfill,
+        )
         claim_trigger_index = next(
             index
             for index, item in enumerate(executed)
@@ -271,7 +289,8 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
             "payment_order_enforce_provider_open_per_user",
             "trg_payment_order_enforce_provider_open_per_user",
             "payment_order_reconciliation_required",
-            "status IN ('pending', 'paid', 'cancelled', 'expired')",
+            "status IN ('pending', 'paid')",
+            "existing.status NOT IN ('pending', 'paid')",
             "CREATE TABLE IF NOT EXISTS payment_order_idempotency_aliases",
             "PRIMARY KEY (user_id, idempotency_key)",
             "INSERT INTO payment_order_idempotency_aliases",
@@ -280,6 +299,12 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
             "trg_payment_order_claim_original_idempotency_key",
             "payment_order_bump_state_version",
             "trg_payment_order_bump_state_version",
+            "CREATE TABLE IF NOT EXISTS payment_order_state_revisions",
+            "payment_order_advance_state_revision",
+            "trg_payment_order_advance_state_revision",
+            "SUM(orders.state_version) OVER (PARTITION BY orders.user_id)",
+            "FROM payment_order_state_revisions AS existing_revision",
+            "existing_revision.user_id = orders.user_id",
             "idx_payment_webhook_events_order",
             "CREATE TABLE IF NOT EXISTS ai_unlimited_request_leases",
             "CREATE TABLE IF NOT EXISTS ai_unlimited_usage_alerts",
@@ -322,6 +347,16 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         writer_guard_migration = (
             backend_root / "migrations" / "014_add_payment_order_writer_guards.sql"
+        ).read_text(encoding="utf-8")
+        terminal_repurchase_migration = (
+            backend_root
+            / "migrations"
+            / "015_allow_repurchase_after_terminal_order.sql"
+        ).read_text(encoding="utf-8")
+        state_revision_migration = (
+            backend_root
+            / "migrations"
+            / "016_add_payment_order_state_revisions.sql"
         ).read_text(encoding="utf-8")
 
         for fragment in (
@@ -393,10 +428,43 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
             ),
         )
 
+        for fragment in (
+            "CREATE TABLE IF NOT EXISTS payment_order_state_revisions",
+            "revision BIGINT NOT NULL DEFAULT 0",
+            "payment_order_advance_state_revision",
+            "trg_payment_order_advance_state_revision",
+            "AFTER INSERT OR UPDATE OR DELETE ON payment_orders",
+            "SUM(orders.state_version) OVER (PARTITION BY orders.user_id)",
+            "WHERE NOT EXISTS",
+            "FROM payment_order_state_revisions AS existing_revision",
+            "existing_revision.user_id = orders.user_id",
+            "ON CONFLICT (user_id) DO NOTHING",
+        ):
+            with self.subTest(migration="state_revision", fragment=fragment):
+                self.assertIn(fragment, state_revision_migration)
+
         self.assertLess(
             writer_guard_migration.index("payment_order_reconciliation_required"),
             writer_guard_migration.index(
                 "CREATE TRIGGER trg_payment_order_enforce_provider_open_per_user"
+            ),
+        )
+
+        for fragment in (
+            "CREATE OR REPLACE FUNCTION payment_order_enforce_provider_open_per_user",
+            "status IN ('pending', 'paid')",
+            "existing.status NOT IN ('pending', 'paid')",
+            "DELETE FROM payment_order_provider_open_claims AS claim",
+            "INSERT INTO payment_order_provider_open_claims",
+        ):
+            with self.subTest(migration="terminal_repurchase", fragment=fragment):
+                self.assertIn(fragment, terminal_repurchase_migration)
+        self.assertLess(
+            terminal_repurchase_migration.index(
+                "DELETE FROM payment_order_provider_open_claims AS claim"
+            ),
+            terminal_repurchase_migration.rindex(
+                "INSERT INTO payment_order_provider_open_claims"
             ),
         )
 
@@ -405,6 +473,17 @@ class BillingRuntimeSchemaStaticTests(unittest.TestCase):
         self.assertFalse(column.nullable)
         self.assertEqual(str(column.type), "BIGINT")
         self.assertEqual(str(column.server_default.arg), "1")
+
+    def test_payment_order_state_revision_model_matches_ddl_contract(self) -> None:
+        table = PaymentOrderStateRevision.__table__
+        self.assertEqual(
+            [column.name for column in table.primary_key.columns],
+            ["user_id"],
+        )
+        self.assertEqual(str(table.columns.revision.type), "BIGINT")
+        self.assertFalse(table.columns.revision.nullable)
+        self.assertEqual(str(table.columns.revision.server_default.arg), "0")
+        self.assertIsNone(next(iter(table.columns.latest_order_id.foreign_keys), None))
 
     def test_payment_order_idempotency_alias_model_matches_ddl_contract(self) -> None:
         table = PaymentOrderIdempotencyAlias.__table__

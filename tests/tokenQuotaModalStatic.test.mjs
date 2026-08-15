@@ -22,12 +22,14 @@ test('token quota modal renders unlimited monthly plan state in gold', () => {
   assert.match(modal, /到期时间/);
 });
 
-test('token quota modal keeps redemption UI connected to the service API', () => {
+test('token quota modal hides redemption UI while keeping it connected to the service API', () => {
   const modal = read('components/TokenQuotaModal.tsx');
   const service = read('services/billingService.ts');
 
   assert.match(modal, /RedemptionCard/);
   assert.match(modal, /兑换卡密/);
+  assert.match(modal, /const SHOW_REDEMPTION_CARD = false;/);
+  assert.match(modal, /SHOW_REDEMPTION_CARD && \([\s\S]*<RedemptionCard/);
   assert.match(modal, /handleRedeem/);
   assert.match(modal, /isRedeeming/);
   assert.match(modal, /aria-label="卡密"\s+disabled=\{isRedeeming\}/);
@@ -50,13 +52,17 @@ test('token quota modal keeps redemption UI connected to the service API', () =>
   assert.match(service, /expectedAuthCacheKey: ownerKey/);
 });
 
-test('token quota modal presents token-use estimates from server-owned package amounts', () => {
+test('token quota modal presents permanent token packages as a bold unordered benefit list', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 
   assert.match(modal, /Math\.floor\(tokenAmount \/ 17_000\)/);
   assert.match(modal, /Math\.floor\(tokenAmount \/ 5_000\)/);
-  assert.match(modal, /约 \{estimatedJdAnalyses\} 次 JD 分析/);
-  assert.match(modal, /实际消耗会随内容变化/);
+  assert.match(modal, /: '永久有效';/);
+  assert.match(modal, /<ul className="list-disc[^\"]*">/);
+  assert.match(modal, /<strong className="font-extrabold[^\"]*">\{estimatedJdAnalyses\}<\/strong> 次 JD 分析/);
+  assert.equal((modal.match(/\{estimatedAssistantActions\}<\/strong>/g) ?? []).length, 2);
+  assert.doesNotMatch(modal, /实际消耗会随内容变化/);
+  assert.doesNotMatch(modal, /\{formatTokens\(product\.token_amount\)\} Tokens/);
   assert.equal(Math.floor(100_000 / 17_000), 5);
   assert.equal(Math.floor(100_000 / 5_000), 20);
   assert.equal(Math.floor(500_000 / 17_000), 29);
@@ -70,6 +76,7 @@ test('token quota modal renders server-owned packages and removes Taobao purchas
   assert.match(modal, />\s*按量\s*<\/button>/);
   assert.match(modal, />\s*包月\s*<\/button>/);
   assert.match(modal, /选择套餐后将直接跳转支付/);
+  assert.doesNotMatch(modal, /购买额度 \/ 兑换卡密/);
   assert.match(modal, /paymentsEnabled/);
   assert.match(modal, /activeProducts = products\.filter\(\(product\) => product\.category === activeTab\)/);
   assert.match(modal, /grid grid-cols-1 gap-2 sm:grid-cols-3/);
@@ -140,7 +147,7 @@ test('purchase context loads independently from order history', () => {
   );
 });
 
-test('token quota modal lists, refreshes, resumes, and cancels orders', () => {
+test('token quota modal lists, refreshes, repeats, and cancels orders', () => {
   const modal = read('components/TokenQuotaModal.tsx');
   const service = read('services/billingService.ts');
 
@@ -151,14 +158,23 @@ test('token quota modal lists, refreshes, resumes, and cancels orders', () => {
   assert.match(modal, /继续支付/);
   assert.match(modal, /查询最终状态/);
   assert.match(modal, /确认取消/);
-  assert.match(modal, /本地取消只会暂停订单，支付平台未关单；后续请继续原订单确认状态。/);
-  assert.match(modal, /const canResumeOriginalOrder = order\.status === 'cancelled' \|\| order\.status === 'expired';/);
-  assert.match(modal, /canResumeOriginalOrder && <button[^>]*onClick=\{\(\) => onContinuePayment\(order\)\}[^>]*>继续原订单<\/button>/);
+  assert.match(modal, /本地取消不会关闭支付平台上的旧收银台；“再次下单”会创建一笔新的同套餐订单。/);
+  assert.match(modal, /const canRepeatPurchase = order\.status === 'cancelled' \|\| order\.status === 'expired';/);
+  assert.match(modal, /const canQueryFinalStatus = order\.status === 'paid' \|\| canRepeatPurchase;/);
+  assert.match(modal, /canRepeatPurchase && \([\s\S]*onClick=\{\(\) => onRepeatPurchase\(order\)\}[\s\S]*'再次下单'/);
+  assert.doesNotMatch(modal, />继续原订单<\/button>/);
+  const orderSummaryActions = modal.match(/<div className="flex shrink-0 items-center gap-2 self-start">[\s\S]*?paymentOrderStatusCopy\(order\.status\)[\s\S]*?<\/div>/)?.[0] ?? '';
+  assert.match(orderSummaryActions, /isPending && !isConfirming/);
+  assert.match(orderSummaryActions, /onContinuePayment\(order\)/);
+  assert.match(orderSummaryActions, /继续支付/);
+  assert.match(orderSummaryActions, /onRepeatPurchase\(order\)/);
+  assert.match(orderSummaryActions, /再次下单/);
+  assert.match(modal, /canQueryFinalStatus && <button[^>]*onClick=\{\(\) => onSync\(order\)\}[^>]*>查询最终状态<\/button>/);
   assert.match(modal, /const canSelectNewPurchase = order\.status === 'failed';/);
   assert.match(modal, /重新选择套餐/);
   assert.match(modal, /case 'cancelled': return '已取消'/);
   assert.match(modal, /case 'expired': return '已取消（超时）'/);
-  assert.match(modal, /case 'expired': return '订单已过期，可继续原订单。';/);
+  assert.match(modal, /case 'expired': return '订单已过期；如仍需购买，请再次下单。';/);
   assert.match(modal, /isOrderPastDue/);
   assert.match(modal, /ordersRequestGenerationRef/);
   assert.ok((modal.match(/if \(requestGeneration !== ordersRequestGenerationRef\.current\) return false;/g) ?? []).length >= 2);
@@ -231,7 +247,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /form\.submit\(\);\s*armCheckoutSubmitWatchdog\(order\);/);
   assert.match(modal, /const handlePageHide = \(\) => \{\s*checkoutPageHideRef\.current = true;\s*clearCheckoutSubmitWatchdog\(\);/);
   assert.match(modal, /window\.addEventListener\('pagehide', handlePageHide\)/);
-  assert.match(modal, /未能跳转至收银台，订单已保留。请在订单列表继续原订单。/);
+  assert.match(modal, /未能跳转至收银台，订单已保留。请在订单列表点击“继续支付”。/);
   assert.match(modal, /setIsCheckoutSubmitting\(true\)/);
   assert.match(modal, /submittedCheckoutOrderIdRef\.current = order\.id/);
   assert.match(modal, /const handlePageShow = \(event: PageTransitionEvent\) => \{\s*if \(!event\.persisted\) return;/);
@@ -243,6 +259,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /isPurchasing \|\| isCheckoutSubmitting/);
   assert.match(modal, /订单已创建，但暂时无法打开收银台。请稍后点击“继续支付”。/);
   assert.match(modal, /resolveUnsettledPaymentOrderConflict\(purchaseError\)/);
+  assert.match(modal, /paymentOrderCreationRateLimitMessage\(purchaseError\)[\s\S]*setError\(rateLimitMessage\)/);
   assert.match(modal, /paymentOrderConflictMessage\(unsettledConflict\)/);
   assert.match(modal, /const handleContinuePayment = async \(order: PaymentOrder\) => \{\s*if \(isCheckoutSubmitting\) return;/);
   assert.match(modal, /Failed to resume payment order[\s\S]*resolveUnsettledPaymentOrderConflict\(checkoutError\)/);
@@ -250,7 +267,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /billingService\.getPaymentOrder\(unsettledConflict\.orderId\)/);
   assert.match(modal, /console\.warn\('Failed to load checkout for created payment order', checkoutError\)/);
   assert.match(modal, /resolveUnsettledPaymentOrderConflict\(checkoutError\)/);
-  assert.match(modal, /const handlePurchaseAgain = \(order: PaymentOrder\) => \{\s*clearPurchaseAttemptForTerminalOrder\(order\);\s*returnToPurchase\(\);/);
+  assert.match(modal, /const handleRepeatPurchase = async \(order: PaymentOrder\) => \{[\s\S]*if \(!paymentsEnabled\)[\s\S]*products\.find\(\(candidate\) => candidate\.sku === order\.sku\)[\s\S]*clearPurchaseAttemptForTerminalOrder\(order\);[\s\S]*setActiveView\('purchase'\);\s*await handlePurchase\(product\);/);
   assert.match(modal, /activeView !== 'purchase'/);
   assert.match(modal, /isPurchasing \|\| isCheckoutSubmitting \|\| !paymentsEnabled/);
   assert.match(modal, /disabled=\{isPurchasing \|\| isCheckoutSubmitting \|\| !isPurchaseContextReady\}/);

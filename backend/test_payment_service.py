@@ -20,6 +20,7 @@ from app.models import (
     AITokenWallet,
     PaymentOrder,
     PaymentOrderIdempotencyAlias,
+    PaymentOrderStateRevision,
     PaymentWebhookEvent,
 )
 from app.utils.time_utils import utc_now_aware
@@ -48,10 +49,14 @@ class _ExecuteResult:
     def scalars(self):
         return _ScalarResult(self._first_value)
 
+    def scalar_one(self):
+        return self._first_value
+
 
 class _FakeSession:
-    def __init__(self, values=()):
+    def __init__(self, values=(), *, terminal_attempt_count=0):
         self.values = list(values)
+        self.terminal_attempt_count = terminal_attempt_count
         self.added = []
         self.statements = []
         self.commits = 0
@@ -66,6 +71,23 @@ class _FakeSession:
             return _ExecuteResult(rowcount=1)
         if "SELECT payment_orders.user_id" in statement_text:
             return self.values[0] if self.values else _ExecuteResult()
+        if "FROM payment_order_state_revisions" in statement_text:
+            upcoming = self.values[0]._first_value if self.values else None
+            orders = upcoming if isinstance(upcoming, list) else [upcoming]
+            orders = [order for order in orders if isinstance(order, PaymentOrder)]
+            if not orders:
+                return _ExecuteResult()
+            latest = max(orders, key=lambda order: (order.updated_at, order.id))
+            return _ExecuteResult(
+                PaymentOrderStateRevision(
+                    user_id=latest.user_id,
+                    revision=sum(int(order.state_version) for order in orders),
+                    latest_order_id=latest.id,
+                    updated_at=latest.updated_at,
+                )
+            )
+        if "count(payment_orders.id)" in statement_text:
+            return _ExecuteResult(self.terminal_attempt_count)
         if "FROM users" in statement_text and "payment_orders" not in statement_text:
             return _ExecuteResult()
         return self.values.pop(0) if self.values else _ExecuteResult()
@@ -231,10 +253,10 @@ class PaymentCatalogTests(unittest.IsolatedAsyncioTestCase):
             "status = 'pending'",
         )
 
-    def test_provider_open_order_states_cover_all_provider_payable_states(self) -> None:
+    def test_active_payment_order_states_exclude_replaceable_terminal_orders(self) -> None:
         self.assertEqual(
-            set(payment_service.PROVIDER_OPEN_ORDER_STATUSES),
-            {"pending", "paid", "cancelled", "expired"},
+            set(payment_service.ACTIVE_PAYMENT_ORDER_STATUSES),
+            {"pending", "paid"},
         )
 
     def test_provider_open_guard_conflict_recognizes_asyncpg_and_dbapi_orig(self) -> None:
@@ -783,8 +805,9 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             expires_at=utc_now_aware(),
             updated_at=now,
         )
+        context_session = _FakeSession([_ExecuteResult([latest, older])])
         context = await payment_service.get_purchase_context(
-            _FakeSession([_ExecuteResult([latest, older])]),
+            context_session,
             user_id="user-1",
         )
 
@@ -792,6 +815,9 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.latest_order.state_version, 2)
         self.assertEqual(context.payment_state_token, _state_token(older, latest))
         self.assertEqual(len(context.payment_state_token), 64)
+        latest_statement = str(context_session.statements[1])
+        self.assertIn("payment_orders.id =", latest_statement)
+        self.assertNotIn("ORDER BY", latest_statement)
 
         # A late callback to an older-created order makes that order the most
         # recently changed context item without changing token determinism.
@@ -804,6 +830,172 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(refreshed.latest_order.id, str(older.id))
         self.assertEqual(refreshed.latest_order.state_version, 4)
+
+    async def test_active_payment_state_query_locks_at_most_two_active_orders(self) -> None:
+        session = _FakeSession([_ExecuteResult([])])
+
+        await payment_service._find_active_payment_orders(
+            session,
+            user_id="user-1",
+            for_update=True,
+        )
+
+        statement = session.statements[0]
+        statement_text = str(statement)
+        self.assertIn("payment_orders.status IN", statement_text)
+        self.assertIn("LIMIT", statement_text)
+        self.assertIn(2, statement.compile().params.values())
+        self.assertIsNotNone(statement._for_update_arg)
+
+    async def test_terminal_repurchase_rate_limit_rejects_before_new_order(self) -> None:
+        now = datetime(2026, 8, 14, 4, 30, tzinfo=timezone.utc)
+        old_order = PaymentOrder(
+            user_id="user-1",
+            merchant_order_no="RF-RATE-LIMIT-OLD",
+            idempotency_key="rate-limit-old",
+            sku="tokens_100k",
+            product_name="100K Token 包",
+            amount_fen=198,
+            currency="CNY",
+            benefit_type="tokens",
+            token_amount=100_000,
+            entitlement_snapshot_json=_snapshot_for("tokens_100k"),
+            status="cancelled",
+            cancelled_at=now - timedelta(minutes=1),
+            expires_at=now - timedelta(minutes=1),
+            created_at=now - timedelta(minutes=5),
+            updated_at=now - timedelta(minutes=1),
+        )
+        session = _FakeSession(
+            [_ExecuteResult(), _ExecuteResult(), _ExecuteResult(old_order)],
+            terminal_attempt_count=payment_service.TERMINAL_REPURCHASE_RATE_LIMIT_MAX,
+        )
+
+        with (
+            patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
+            patch.object(payment_service, "utc_now", return_value=now),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            await payment_service.create_order(
+                session,
+                user_id="user-1",
+                sku="tokens_100k",
+                idempotency_key="rate-limit-new",
+                expected_payment_state_token=_state_token(old_order),
+                expected_catalog_version=_catalog_version(),
+            )
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(raised.exception.detail["code"], "payment_order_rate_limited")
+        self.assertEqual(raised.exception.headers["Retry-After"], "3600")
+        self.assertEqual(
+            [item for item in session.added if isinstance(item, PaymentOrder)],
+            [],
+        )
+        count_statement = next(
+            statement
+            for statement in session.statements
+            if "count(payment_orders.id)" in str(statement)
+        )
+        self.assertIn("payment_orders.created_at >=", str(count_statement))
+
+    async def test_terminal_repurchase_rate_limit_counts_just_expired_order(self) -> None:
+        now = datetime(2026, 8, 14, 4, 30, tzinfo=timezone.utc)
+        due_order = PaymentOrder(
+            user_id="user-1",
+            merchant_order_no="RF-RATE-LIMIT-DUE",
+            idempotency_key="rate-limit-due",
+            sku="tokens_100k",
+            product_name="100K Token 包",
+            amount_fen=198,
+            currency="CNY",
+            benefit_type="tokens",
+            token_amount=100_000,
+            entitlement_snapshot_json=_snapshot_for("tokens_100k"),
+            status="pending",
+            expires_at=now - timedelta(seconds=1),
+            created_at=now - timedelta(minutes=5),
+            updated_at=now - timedelta(minutes=1),
+        )
+        session = _FakeSession(
+            [_ExecuteResult(), _ExecuteResult(), _ExecuteResult(due_order)],
+            terminal_attempt_count=(
+                payment_service.TERMINAL_REPURCHASE_RATE_LIMIT_MAX - 1
+            ),
+        )
+
+        with (
+            patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
+            patch.object(payment_service, "utc_now", return_value=now),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            await payment_service.create_order(
+                session,
+                user_id="user-1",
+                sku="tokens_100k",
+                idempotency_key="rate-limit-new",
+                expected_payment_state_token=_state_token(due_order),
+                expected_catalog_version=_catalog_version(),
+            )
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(raised.exception.detail["code"], "payment_order_rate_limited")
+        self.assertEqual(due_order.status, "pending")
+        self.assertEqual(
+            [item for item in session.added if isinstance(item, PaymentOrder)],
+            [],
+        )
+        self.assertEqual(session.commits, 0)
+
+    async def test_new_key_cannot_alias_an_active_order(self) -> None:
+        now = datetime(2026, 8, 14, 4, 30, tzinfo=timezone.utc)
+        active_order = PaymentOrder(
+            user_id="user-1",
+            merchant_order_no="RF-RATE-LIMIT-ACTIVE",
+            idempotency_key="active-original",
+            sku="tokens_100k",
+            product_name="100K Token 包",
+            amount_fen=198,
+            currency="CNY",
+            benefit_type="tokens",
+            token_amount=100_000,
+            entitlement_snapshot_json=_snapshot_for("tokens_100k"),
+            status="pending",
+            expires_at=now + timedelta(minutes=20),
+            created_at=now - timedelta(minutes=10),
+            updated_at=now - timedelta(minutes=10),
+        )
+        session = _FakeSession(
+            [_ExecuteResult(), _ExecuteResult(), _ExecuteResult(active_order)],
+            terminal_attempt_count=payment_service.TERMINAL_REPURCHASE_RATE_LIMIT_MAX,
+        )
+
+        with (
+            patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
+            patch.object(payment_service, "utc_now", return_value=now),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            await payment_service.create_order(
+                session,
+                user_id="user-1",
+                sku="tokens_100k",
+                idempotency_key="active-retry",
+                expected_payment_state_token=_state_token(active_order),
+                expected_catalog_version=_catalog_version(),
+            )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.detail["code"], "payment_order_unsettled")
+        self.assertEqual(raised.exception.detail["order_id"], str(active_order.id))
+        self.assertEqual(
+            [item for item in session.added if isinstance(item, PaymentOrder)],
+            [],
+        )
+        self.assertEqual(session.alias_inserts, [])
+        self.assertEqual(session.commits, 0)
+        self.assertFalse(
+            any("count(payment_orders.id)" in str(statement) for statement in session.statements)
+        )
 
     async def test_callback_first_invalidates_observed_state_before_new_order(self) -> None:
         order = PaymentOrder(
@@ -1015,7 +1207,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 )
             self.assertEqual(replayed.id, str(order.id))
 
-    async def test_same_sku_terminal_repurchase_reuses_merchant_order(self) -> None:
+    async def test_same_sku_terminal_repurchase_creates_new_merchant_order(self) -> None:
         now = datetime(2026, 8, 12, 4, 30, tzinfo=timezone.utc)
         old_order = PaymentOrder(
             user_id="user-1",
@@ -1038,7 +1230,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
             patch.object(payment_service, "utc_now", return_value=now),
         ):
-            reused = await payment_service.create_order(
+            replacement = await payment_service.create_order(
                 session,
                 user_id="user-1",
                 sku="tokens_100k",
@@ -1047,21 +1239,28 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 expected_catalog_version=_catalog_version(),
             )
 
-        self.assertEqual(reused.id, str(old_order.id))
+        replacement_order = next(
+            item for item in session.added if isinstance(item, PaymentOrder)
+        )
+        self.assertEqual(replacement.id, str(replacement_order.id))
+        self.assertNotEqual(replacement.id, str(old_order.id))
         self.assertEqual(old_order.merchant_order_no, "RF-REUSE-TERMINAL")
-        self.assertEqual(old_order.status, "pending")
-        self.assertEqual(old_order.expires_at, now + payment_service.ORDER_TTL)
-        self.assertIsNone(old_order.cancelled_at)
-        self.assertEqual(session.added, [])
+        self.assertEqual(old_order.status, "cancelled")
+        self.assertEqual(old_order.cancelled_at, now - timedelta(minutes=1))
+        self.assertEqual(replacement_order.sku, old_order.sku)
+        self.assertEqual(replacement_order.status, "pending")
+        self.assertEqual(replacement_order.expires_at, now + payment_service.ORDER_TTL)
+        self.assertNotEqual(replacement_order.merchant_order_no, old_order.merchant_order_no)
         self.assertEqual(session.commits, 1)
         _assert_no_key_user_lock(self, session.statements[0])
         self.assertTrue(
             any("payment_orders" in str(item) for item in _locking_statements(session)[1:])
         )
         self.assertEqual(session.alias_inserts[0]["idempotency_key"], "second-attempt")
-        self.assertEqual(reused.state_version, 2)
+        self.assertEqual(session.alias_inserts[0]["payment_order_id"], replacement_order.id)
+        self.assertEqual(replacement.state_version, 1)
 
-    async def test_reused_order_persists_every_key_across_fulfillment(self) -> None:
+    async def test_terminal_repurchase_keeps_each_key_bound_to_its_own_order(self) -> None:
         now = datetime(2026, 8, 12, 4, 30, tzinfo=timezone.utc)
         order = PaymentOrder(
             user_id="user-1",
@@ -1084,7 +1283,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
             patch.object(payment_service, "utc_now", return_value=now),
         ):
-            reused = await payment_service.create_order(
+            replacement = await payment_service.create_order(
                 reuse_session,
                 user_id="user-1",
                 sku="tokens_100k",
@@ -1093,14 +1292,21 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 expected_catalog_version=_catalog_version(),
             )
 
-        self.assertEqual(reused.id, str(order.id))
+        replacement_order = next(
+            item for item in reuse_session.added if isinstance(item, PaymentOrder)
+        )
+        self.assertEqual(replacement.id, str(replacement_order.id))
+        self.assertNotEqual(replacement.id, str(order.id))
         self.assertEqual(reuse_session.alias_inserts[0]["idempotency_key"], "K2")
-        self.assertEqual(reuse_session.alias_inserts[0]["payment_order_id"], order.id)
+        self.assertEqual(
+            reuse_session.alias_inserts[0]["payment_order_id"],
+            replacement_order.id,
+        )
 
-        order.status = "fulfilled"
-        order.fulfilled_at = now
-        for key in ("K2", "K1"):
-            replay_session = _FakeSession([_ExecuteResult(order)])
+        replacement_order.status = "fulfilled"
+        replacement_order.fulfilled_at = now
+        for key, expected_order in (("K2", replacement_order), ("K1", order)):
+            replay_session = _FakeSession([_ExecuteResult(expected_order)])
             with patch.object(
                 payment_service,
                 "_require_payments_enabled",
@@ -1116,7 +1322,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                     sku="tokens_100k",
                     idempotency_key=key,
                 )
-            self.assertEqual(replayed.id, str(order.id))
+            self.assertEqual(replayed.id, str(expected_order.id))
             self.assertEqual(
                 [item for item in replay_session.added if isinstance(item, PaymentOrder)],
                 [],
@@ -1151,7 +1357,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.commits, 1)
         self.assertEqual(session.alias_inserts[0]["payment_order_id"], order.id)
 
-    async def test_create_order_blocks_price_and_benefit_catalog_drift(self) -> None:
+    async def test_terminal_repurchase_uses_the_current_product_snapshot(self) -> None:
         current_snapshot = _snapshot_for("tokens_100k")
         cases = (
             ("price", {**current_snapshot, "amount_fen": 197}, 197, 100_000),
@@ -1176,15 +1382,12 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 session = _FakeSession(
                     [_ExecuteResult(), _ExecuteResult(), _ExecuteResult(order)]
                 )
-                with (
-                    patch.object(
-                        payment_service,
-                        "_require_payments_enabled",
-                        return_value=_settings(),
-                    ),
-                    self.assertRaises(HTTPException) as raised,
+                with patch.object(
+                    payment_service,
+                    "_require_payments_enabled",
+                    return_value=_settings(),
                 ):
-                    await payment_service.create_order(
+                    replacement = await payment_service.create_order(
                         session,
                         user_id="user-1",
                         sku="tokens_100k",
@@ -1193,13 +1396,21 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                         expected_catalog_version=_catalog_version(),
                     )
 
-                self.assertEqual(raised.exception.detail["code"], "payment_order_catalog_changed")
-                self.assertEqual(raised.exception.detail["order_id"], str(order.id))
+                replacement_order = next(
+                    item for item in session.added if isinstance(item, PaymentOrder)
+                )
+                self.assertEqual(replacement.id, str(replacement_order.id))
+                self.assertNotEqual(replacement.id, str(order.id))
                 self.assertEqual(order.status, "expired")
-                self.assertEqual(session.commits, 0)
-                self.assertEqual(session.alias_inserts, [])
+                self.assertEqual(replacement_order.amount_fen, 198)
+                self.assertEqual(replacement_order.token_amount, 100_000)
+                self.assertEqual(
+                    replacement_order.entitlement_snapshot_json,
+                    current_snapshot,
+                )
+                self.assertEqual(session.commits, 1)
 
-    async def test_different_sku_is_blocked_by_unsettled_order(self) -> None:
+    async def test_terminal_order_does_not_block_a_new_different_sku(self) -> None:
         old_order = PaymentOrder(
             user_id="user-1",
             merchant_order_no="RF-BLOCK-DIFFERENT-SKU",
@@ -1210,16 +1421,14 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             currency="CNY",
             benefit_type="tokens",
             token_amount=100_000,
+            entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=utc_now_aware() - timedelta(minutes=1),
         )
         session = _FakeSession([_ExecuteResult(), _ExecuteResult(), _ExecuteResult(old_order)])
 
-        with (
-            patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
-            self.assertRaises(HTTPException) as raised,
-        ):
-            await payment_service.create_order(
+        with patch.object(payment_service, "_require_payments_enabled", return_value=_settings()):
+            replacement = await payment_service.create_order(
                 session,
                 user_id="user-1",
                 sku="tokens_500k",
@@ -1228,13 +1437,15 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 expected_catalog_version=_catalog_version(),
             )
 
-        self.assertEqual(raised.exception.status_code, 409)
-        self.assertEqual(raised.exception.detail["code"], "payment_order_unsettled")
-        self.assertEqual(raised.exception.detail["order_id"], str(old_order.id))
-        self.assertEqual(raised.exception.detail["sku"], "tokens_100k")
-        self.assertEqual(session.added, [])
+        replacement_order = next(
+            item for item in session.added if isinstance(item, PaymentOrder)
+        )
+        self.assertEqual(replacement.id, str(replacement_order.id))
+        self.assertNotEqual(replacement.id, str(old_order.id))
+        self.assertEqual(replacement_order.sku, "tokens_500k")
+        self.assertEqual(old_order.status, "expired")
 
-    async def test_multiple_legacy_unsettled_orders_fail_closed(self) -> None:
+    async def test_multiple_terminal_orders_do_not_block_a_new_order(self) -> None:
         now = utc_now_aware()
         orders = [
             PaymentOrder(
@@ -1254,11 +1465,8 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         ]
         session = _FakeSession([_ExecuteResult(), _ExecuteResult(), _ExecuteResult(orders)])
 
-        with (
-            patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
-            self.assertRaises(HTTPException) as raised,
-        ):
-            await payment_service.create_order(
+        with patch.object(payment_service, "_require_payments_enabled", return_value=_settings()):
+            replacement = await payment_service.create_order(
                 session,
                 user_id="user-1",
                 sku="tokens_100k",
@@ -1267,14 +1475,14 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 expected_catalog_version=_catalog_version(),
             )
 
-        self.assertEqual(raised.exception.status_code, 409)
-        self.assertEqual(raised.exception.detail["code"], "payment_order_reconciliation_required")
-        self.assertIn("人工对账", raised.exception.detail["message"])
-        self.assertIn("联系客服", raised.exception.detail["message"])
-        self.assertEqual(session.added, [])
+        replacement_order = next(
+            item for item in session.added if isinstance(item, PaymentOrder)
+        )
+        self.assertEqual(replacement.id, str(replacement_order.id))
+        self.assertTrue(all(order.status == "expired" for order in orders))
         _assert_no_key_user_lock(self, session.statements[0])
 
-    async def test_late_callback_after_repurchase_reuses_locked_order_once(self) -> None:
+    async def test_late_callback_after_repurchase_fulfills_only_the_old_order(self) -> None:
         now = datetime(2026, 8, 12, 4, 30, tzinfo=timezone.utc)
         old_order = PaymentOrder(
             user_id="user-1",
@@ -1297,7 +1505,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
             patch.object(payment_service, "utc_now", return_value=now),
         ):
-            reused = await payment_service.create_order(
+            replacement = await payment_service.create_order(
                 repurchase_session,
                 user_id="user-1",
                 sku="tokens_100k",
@@ -1306,7 +1514,12 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 expected_catalog_version=_catalog_version(),
             )
 
-        grant_mock = AsyncMock()
+        status_during_grant: list[str] = []
+
+        async def capture_terminal_status(*args, **kwargs):
+            status_during_grant.append(old_order.status)
+
+        grant_mock = AsyncMock(side_effect=capture_terminal_status)
         callback_session = _FakeSession([_ExecuteResult(old_order)])
         payload = {
             "pid": "1001",
@@ -1328,12 +1541,21 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 settings=_settings(),
             )
 
-        self.assertEqual(reused.id, str(old_order.id))
+        replacement_order = next(
+            item for item in repurchase_session.added if isinstance(item, PaymentOrder)
+        )
+        self.assertEqual(replacement.id, str(replacement_order.id))
+        self.assertNotEqual(replacement.id, str(old_order.id))
         self.assertEqual(fulfilled.id, str(old_order.id))
         self.assertEqual(fulfilled.status, "fulfilled")
         self.assertEqual(old_order.merchant_order_no, "RF-REUSE-LATE-CALLBACK")
-        self.assertEqual(repurchase_session.added, [])
+        self.assertEqual(replacement_order.status, "pending")
+        self.assertNotEqual(
+            replacement_order.merchant_order_no,
+            old_order.merchant_order_no,
+        )
         grant_mock.assert_awaited_once()
+        self.assertEqual(status_during_grant, ["expired"])
         self.assertTrue(
             any(
                 "payment_orders" in str(item)
@@ -1545,7 +1767,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["notify_url"], "https://api.example.com/api/billing/payments/yifut/notify")
         self.assertEqual(captured["return_url"], f"https://app.example.com/?payment_order={order.id}")
 
-    async def test_checkout_reopens_terminal_order_without_replacing_merchant_number(self) -> None:
+    async def test_checkout_rejects_terminal_order_without_reopening_it(self) -> None:
         now = datetime(2026, 8, 12, 4, 30, tzinfo=timezone.utc)
         order = PaymentOrder(
             user_id="user-1",
@@ -1565,20 +1787,21 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
             patch.object(payment_service, "utc_now", return_value=now),
-            patch.object(payment_service.payment_provider, "build_signed_fields", return_value={"sign": "sig"}),
+            patch.object(payment_service.payment_provider, "build_signed_fields") as sign,
+            self.assertRaises(HTTPException) as raised,
         ):
-            response = await payment_service.create_checkout(
+            await payment_service.create_checkout(
                 session,
                 user_id="user-1",
                 order_id=str(order.id),
             )
 
-        self.assertEqual(response.order.id, str(order.id))
+        self.assertEqual(raised.exception.detail["code"], "payment_order_not_payable")
         self.assertEqual(order.merchant_order_no, "RF-CHECKOUT-REOPEN")
-        self.assertEqual(order.status, "pending")
-        self.assertEqual(order.expires_at, now + payment_service.ORDER_TTL)
-        self.assertEqual(session.commits, 1)
-        self.assertEqual(response.order.state_version, 2)
+        self.assertEqual(order.status, "expired")
+        self.assertEqual(order.expires_at, now - timedelta(minutes=1))
+        self.assertEqual(session.commits, 0)
+        sign.assert_not_called()
         _assert_no_key_user_lock(self, session.statements[0])
 
     async def test_checkout_blocks_catalog_drift_before_reopen_or_signing(self) -> None:
@@ -1624,7 +1847,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(session.commits, 0)
                 sign.assert_not_called()
 
-    async def test_checkout_rejects_multiple_legacy_unsettled_orders(self) -> None:
+    async def test_checkout_rejects_terminal_order_with_terminal_history(self) -> None:
         now = utc_now_aware()
         target = PaymentOrder(
             user_id="user-1",
@@ -1636,6 +1859,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             currency="CNY",
             benefit_type="tokens",
             token_amount=100_000,
+            entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=now - timedelta(minutes=2),
         )
@@ -1653,7 +1877,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             expires_at=now - timedelta(minutes=1),
             cancelled_at=now - timedelta(minutes=1),
         )
-        session = _FakeSession([_ExecuteResult(target), _ExecuteResult([target, other])])
+        session = _FakeSession([_ExecuteResult(target), _ExecuteResult([])])
         with (
             patch.object(payment_service, "_require_payments_enabled", return_value=_settings()),
             self.assertRaises(HTTPException) as raised,
@@ -1665,9 +1889,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(raised.exception.status_code, 409)
-        self.assertEqual(raised.exception.detail["code"], "payment_order_reconciliation_required")
-        self.assertIn("人工对账", raised.exception.detail["message"])
-        self.assertIn("联系客服", raised.exception.detail["message"])
+        self.assertEqual(raised.exception.detail["code"], "payment_order_not_payable")
         self.assertEqual(target.status, "expired")
         self.assertEqual(session.commits, 0)
         _assert_no_key_user_lock(self, session.statements[0])

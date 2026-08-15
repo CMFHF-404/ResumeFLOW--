@@ -194,6 +194,40 @@ test('unsettled payment conflict resolver ignores unrelated errors and missing o
   }), { code: 'payment_order_unsettled', orderId: null, latestOrder: null });
 });
 
+test('payment order creation rate limits expose only the supported 429 message', async () => {
+  const { paymentOrderCreationRateLimitMessage } = await importTypeScriptModule('components/tokenQuotaOrderUtils.ts');
+
+  assert.equal(paymentOrderCreationRateLimitMessage({
+    response: {
+      status: 429,
+      data: {
+        detail: {
+          code: 'payment_order_rate_limited',
+          message: ' 请一小时后再试。 ',
+        },
+      },
+    },
+  }), '请一小时后再试。');
+  assert.equal(paymentOrderCreationRateLimitMessage({
+    response: {
+      status: 429,
+      data: { detail: { code: 'payment_order_rate_limited' } },
+    },
+  }), '短时间内取消或超时的支付订单过多，请一小时后再试。');
+  assert.equal(paymentOrderCreationRateLimitMessage({
+    response: {
+      status: 409,
+      data: { detail: { code: 'payment_order_rate_limited' } },
+    },
+  }), null);
+  assert.equal(paymentOrderCreationRateLimitMessage({
+    response: {
+      status: 429,
+      data: { detail: { code: 'unrelated_rate_limit' } },
+    },
+  }), null);
+});
+
 test('paid purchase context requires a deliberate second click for the same token', async () => {
   const { requiresRepeatPurchaseAcknowledgement } = await importTypeScriptModule('components/tokenQuotaOrderUtils.ts');
 
@@ -219,7 +253,7 @@ test('purchase retries reuse one idempotency key per SKU until the attempt is cl
   assert.equal(getOrCreatePurchaseIdempotencyKey(keysBySku, 'tokens_100k', createKey), 'key-3');
 });
 
-test('only a matching fulfilled or failed order clears an active purchase attempt', async () => {
+test('any matching terminal order clears an active purchase attempt', async () => {
   const { clearMatchingTerminalPurchaseAttempt } = await importTypeScriptModule('components/tokenQuotaOrderUtils.ts');
   const keysBySku = new Map([['tokens_100k', 'active-key']]);
   const orderIdsBySku = new Map([['tokens_100k', 'pending-a']]);
@@ -236,17 +270,24 @@ test('only a matching fulfilled or failed order clears an active purchase attemp
     id: 'pending-a',
     sku: 'tokens_100k',
     status: 'cancelled',
-  }), false);
+  }), true);
+  assert.equal(keysBySku.has('tokens_100k'), false);
+  assert.equal(orderIdsBySku.has('tokens_100k'), false);
+
+  keysBySku.set('tokens_100k', 'expired-key');
+  orderIdsBySku.set('tokens_100k', 'expired-order');
   assert.equal(clearMatchingTerminalPurchaseAttempt(keysBySku, orderIdsBySku, {
-    id: 'pending-a',
+    id: 'expired-order',
     sku: 'tokens_100k',
     status: 'expired',
-  }), false);
-  assert.equal(keysBySku.get('tokens_100k'), 'active-key');
-  assert.equal(orderIdsBySku.get('tokens_100k'), 'pending-a');
+  }), true);
+  assert.equal(keysBySku.has('tokens_100k'), false);
+  assert.equal(orderIdsBySku.has('tokens_100k'), false);
 
+  keysBySku.set('tokens_100k', 'fulfilled-key');
+  orderIdsBySku.set('tokens_100k', 'fulfilled-order');
   assert.equal(clearMatchingTerminalPurchaseAttempt(keysBySku, orderIdsBySku, {
-    id: 'pending-a',
+    id: 'fulfilled-order',
     sku: 'tokens_100k',
     status: 'fulfilled',
   }), true);

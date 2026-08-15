@@ -11,14 +11,20 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, update
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...config import Settings, load_settings
-from ...models import PaymentOrder, PaymentOrderIdempotencyAlias, PaymentWebhookEvent, User
+from ...models import (
+    PaymentOrder,
+    PaymentOrderIdempotencyAlias,
+    PaymentOrderStateRevision,
+    PaymentWebhookEvent,
+    User,
+)
 from ...utils.time_utils import utc_now_aware as utc_now
 from . import billing_service, payment_provider
 from .entitlement_service import EntitlementGrant, grant_entitlement
@@ -43,12 +49,17 @@ STATUS_FULFILLED = "fulfilled"
 STATUS_EXPIRED = "expired"
 STATUS_CANCELLED = "cancelled"
 STATUS_FAILED = "failed"
-PROVIDER_OPEN_ORDER_STATUSES = (
+ACTIVE_PAYMENT_ORDER_STATUSES = (
     STATUS_PENDING,
     STATUS_PAID,
-    STATUS_CANCELLED,
-    STATUS_EXPIRED,
 )
+TERMINAL_REPURCHASE_RATE_LIMIT_STATUSES = (
+    STATUS_EXPIRED,
+    STATUS_CANCELLED,
+    STATUS_FAILED,
+)
+TERMINAL_REPURCHASE_RATE_LIMIT_WINDOW = timedelta(hours=1)
+TERMINAL_REPURCHASE_RATE_LIMIT_MAX = 10
 PROVIDER_OPEN_GUARD_CONSTRAINTS = frozenset(
     {
         "payment_orders_one_provider_open_per_user",
@@ -179,9 +190,10 @@ async def expire_pending_orders(
 ) -> int:
     """Persist all orders that reached their strict 30-minute boundary.
 
-    Expiration only closes the local presentation.  ``create_order`` and
-    ``create_checkout`` reuse the same merchant order number for an expired
-    order, rather than creating a replacement that can be paid independently.
+    Expiration closes the local checkout and releases its active-payment claim.
+    The original merchant order remains available for independently verified
+    late provider reconciliation, while an explicit repurchase creates a new
+    merchant order and ``create_checkout`` rejects the expired order.
     Global maintenance locks due users in bounded, skip-locked batches and
     commits each batch so multiple workers neither pile up user locks nor wait
     on the same batch. A targeted user pass retains its single-transaction
@@ -309,24 +321,6 @@ def _catalog_changed_error(order: PaymentOrder) -> HTTPException:
             "order_id": str(order.id),
         },
     )
-
-
-def _reopen_order_for_checkout(
-    order: PaymentOrder,
-    *,
-    now: datetime,
-    increment_state_version: bool = True,
-) -> bool:
-    """Reopen a locally terminal checkout without changing its merchant number."""
-    if order.status not in {STATUS_CANCELLED, STATUS_EXPIRED}:
-        return False
-    order.status = STATUS_PENDING
-    if increment_state_version:
-        order.state_version += 1
-    order.expires_at = _aware_utc(now) + ORDER_TTL
-    order.cancelled_at = None
-    order.updated_at = now
-    return True
 
 
 async def _summary_for_order(session: AsyncSession, order: PaymentOrder):
@@ -494,7 +488,41 @@ def _validate_idempotent_replay(order: PaymentOrder, requested_sku: str) -> None
         )
 
 
-async def _find_payment_state_orders(
+async def _find_payment_state_snapshot(
+    session: AsyncSession,
+    *,
+    user_id: str,
+) -> tuple[int, uuid.UUID | None]:
+    result = await session.execute(
+        select(PaymentOrderStateRevision).where(
+            PaymentOrderStateRevision.user_id == user_id
+        )
+    )
+    state = result.scalars().first()
+    if state is None:
+        return 0, None
+    return int(state.revision), state.latest_order_id
+
+
+async def _find_latest_payment_order(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    latest_order_id: uuid.UUID | None,
+) -> PaymentOrder | None:
+    if latest_order_id is None:
+        return None
+    result = await session.execute(
+        select(PaymentOrder)
+        .where(
+            PaymentOrder.id == latest_order_id,
+            PaymentOrder.user_id == user_id,
+        )
+    )
+    return result.scalars().first()
+
+
+async def _find_active_payment_orders(
     session: AsyncSession,
     *,
     user_id: str,
@@ -502,34 +530,47 @@ async def _find_payment_state_orders(
 ) -> list[PaymentOrder]:
     statement = (
         select(PaymentOrder)
-        .where(PaymentOrder.user_id == user_id)
+        .where(
+            PaymentOrder.user_id == user_id,
+            PaymentOrder.status.in_(ACTIVE_PAYMENT_ORDER_STATUSES),
+        )
         .order_by(PaymentOrder.updated_at.desc(), PaymentOrder.id.desc())
+        .limit(2)
     )
     if for_update:
         statement = statement.with_for_update()
-    result = await session.execute(
-        statement
-    )
-    return list(result.scalars().all())
+    result = await session.execute(statement)
+    return [
+        order
+        for order in result.scalars().all()
+        if order.status in ACTIVE_PAYMENT_ORDER_STATUSES
+    ]
+
+
+def _payment_state_token_from_revision(revision: int) -> str:
+    canonical = str(max(0, int(revision))).encode("ascii")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _payment_state_token(orders: list[PaymentOrder]) -> str:
-    state = sorted(
-        ((str(order.id), int(order.state_version)) for order in orders),
-        key=lambda item: item[0],
+    # Migration 016 initializes the per-user revision to this aggregate. Every
+    # later insert or update advances the stored revision exactly once.
+    return _payment_state_token_from_revision(
+        sum(max(0, int(order.state_version)) for order in orders)
     )
-    canonical = json.dumps(state, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(canonical.encode("ascii")).hexdigest()
 
 
-def _payment_state_changed_error(orders: list[PaymentOrder]) -> HTTPException:
-    latest = orders[0] if orders else None
+def _payment_state_changed_error(
+    *,
+    revision: int,
+    latest: PaymentOrder | None,
+) -> HTTPException:
     return HTTPException(
         status_code=409,
         detail={
             "code": "payment_order_state_changed",
             "message": "支付订单状态已变化，请刷新订单状态后重试。",
-            "payment_state_token": _payment_state_token(orders),
+            "payment_state_token": _payment_state_token_from_revision(revision),
             "latest_order": (
                 to_order_list_item(latest).model_dump(mode="json")
                 if latest is not None
@@ -568,30 +609,76 @@ async def _raise_if_provider_open_write_conflict(
 ) -> None:
     if not _is_provider_open_guard_conflict(error):
         return
-    orders = await _find_payment_state_orders(session, user_id=user_id)
-    provider_open = [
-        order for order in orders if order.status in PROVIDER_OPEN_ORDER_STATUSES
-    ]
+    revision, _ = await _find_payment_state_snapshot(session, user_id=user_id)
+    provider_open = await _find_active_payment_orders(session, user_id=user_id)
     raise HTTPException(
         status_code=409,
         detail={
             "code": "payment_order_reconciliation_required",
             "message": "支付订单已被并发更新，请刷新订单状态后重试。",
             "retryable": True,
-            "payment_state_token": _payment_state_token(orders),
+            "payment_state_token": _payment_state_token_from_revision(revision),
             "order_id": str(provider_open[0].id) if provider_open else None,
         },
     )
 
 
-def _raise_if_payment_state_changed(
-    orders: list[PaymentOrder],
+async def _raise_if_payment_state_changed(
+    session: AsyncSession,
     *,
+    user_id: str,
+    revision: int,
+    latest_order_id: uuid.UUID | None,
     expected_token: str | None,
 ) -> None:
-    if expected_token is not None and expected_token == _payment_state_token(orders):
+    if (
+        expected_token is not None
+        and expected_token == _payment_state_token_from_revision(revision)
+    ):
         return
-    raise _payment_state_changed_error(orders)
+    latest = await _find_latest_payment_order(
+        session,
+        user_id=user_id,
+        latest_order_id=latest_order_id,
+    )
+    raise _payment_state_changed_error(revision=revision, latest=latest)
+
+
+async def _enforce_terminal_repurchase_rate_limit(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    now: datetime,
+    additional_terminal_attempt_count: int = 0,
+) -> None:
+    result = await session.execute(
+        select(func.count(PaymentOrder.id)).where(
+            PaymentOrder.user_id == user_id,
+            PaymentOrder.status.in_(TERMINAL_REPURCHASE_RATE_LIMIT_STATUSES),
+            PaymentOrder.created_at >= now - TERMINAL_REPURCHASE_RATE_LIMIT_WINDOW,
+        )
+    )
+    terminal_attempt_count = int(result.scalar_one() or 0) + max(
+        0,
+        int(additional_terminal_attempt_count),
+    )
+    if terminal_attempt_count < TERMINAL_REPURCHASE_RATE_LIMIT_MAX:
+        return
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "code": "payment_order_rate_limited",
+            "message": "短时间内取消或超时的支付订单过多，请一小时后再试。",
+            "retry_after_seconds": int(
+                TERMINAL_REPURCHASE_RATE_LIMIT_WINDOW.total_seconds()
+            ),
+        },
+        headers={
+            "Retry-After": str(
+                int(TERMINAL_REPURCHASE_RATE_LIMIT_WINDOW.total_seconds())
+            )
+        },
+    )
 
 
 async def _insert_idempotency_alias(
@@ -712,82 +799,73 @@ async def create_order(
             detail={"code": "invalid_payment_product", "message": "未知的支付套餐。"},
         )
 
-    state_orders = await _find_payment_state_orders(
+    state_revision, latest_order_id = await _find_payment_state_snapshot(
+        session,
+        user_id=user_id,
+    )
+    await _raise_if_payment_state_changed(
+        session,
+        user_id=user_id,
+        revision=state_revision,
+        latest_order_id=latest_order_id,
+        expected_token=expected_payment_state_token,
+    )
+
+    # A cancelled or expired order remains available for late provider
+    # reconciliation under its own merchant number, while an explicit
+    # repurchase creates a new order. A genuinely new idempotency key must not
+    # be attached to an active order: the user has to settle or cancel that
+    # order first. Replays of the original key have already returned above.
+    now = utc_now()
+    active_orders = await _find_active_payment_orders(
         session,
         user_id=user_id,
         for_update=True,
     )
-    _raise_if_payment_state_changed(
-        state_orders,
-        expected_token=expected_payment_state_token,
-    )
-
-    # A local expiry or cancellation cannot close a checkout at the provider.
-    # Reuse an unsettled order of the same SKU, preserving its merchant order
-    # number; reject a different SKU instead of making a second payable order.
-    now = utc_now()
-    unsettled_orders = [
-        order for order in state_orders if order.status in PROVIDER_OPEN_ORDER_STATUSES
+    due_orders = [
+        order
+        for order in active_orders
+        if order.status == STATUS_PENDING and _is_expired(order, now)
     ]
-    if len(unsettled_orders) > 1:
+    active_orders = [order for order in active_orders if order not in due_orders]
+    if len(active_orders) > 1:
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "payment_order_reconciliation_required",
                 "message": "存在多笔未结算订单，需人工对账，请联系客服。",
-                "order_id": str(unsettled_orders[0].id),
+                "order_id": str(active_orders[0].id),
             },
         )
-    if unsettled_orders:
-        unsettled = unsettled_orders[0]
-        if unsettled.sku != product.sku:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "payment_order_unsettled",
-                    "message": "已有未结算订单，请继续或查询该订单后再选择其他套餐。",
-                    "order_id": str(unsettled.id),
-                    "sku": unsettled.sku,
-                },
-            )
-        if not _order_matches_product_snapshot(unsettled, product):
-            raise _catalog_changed_error(unsettled)
-        expired_in_transaction = False
-        if unsettled.status == STATUS_PENDING:
-            expired_in_transaction = _expire_order_if_due(unsettled, now=now)
-        _reopen_order_for_checkout(
-            unsettled,
-            now=now,
-            increment_state_version=not expired_in_transaction,
+    if active_orders:
+        active_order = active_orders[0]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "payment_order_unsettled",
+                "message": "已有未结算订单，请先完成支付、等待到账或取消该订单后再重新下单。",
+                "order_id": str(active_order.id),
+                "sku": active_order.sku,
+            },
         )
-        await _insert_idempotency_alias(
-            session,
-            order=unsettled,
-            user_id=user_id,
-            idempotency_key=key,
-            now=now,
-        )
-        try:
-            await session.commit()
-        except IntegrityError as error:
-            await session.rollback()
-            raced = await _find_order_by_idempotency_alias(
-                session,
-                user_id=user_id,
-                idempotency_key=key,
-            )
-            if raced is None:
-                await _raise_if_provider_open_write_conflict(
-                    session,
-                    user_id=user_id,
-                    error=error,
-                )
-                raise
-            _validate_idempotent_replay(raced, requested_sku)
-            return await to_order_read(session, raced)
-        await session.refresh(unsettled)
-        return await to_order_read(session, unsettled)
 
+    due_terminal_attempt_count = sum(
+        1
+        for order in due_orders
+        if _aware_utc(order.created_at)
+        >= now - TERMINAL_REPURCHASE_RATE_LIMIT_WINDOW
+    )
+    await _enforce_terminal_repurchase_rate_limit(
+        session,
+        user_id=user_id,
+        now=now,
+        additional_terminal_attempt_count=due_terminal_attempt_count,
+    )
+    # The rolling limit includes just-expired active rows in memory before
+    # mutating them. This avoids an autoflush counting an uncommitted expiration
+    # and then rolling that expiration back with the 429 response.
+    for due_order in due_orders:
+        _expire_order_if_due(due_order, now=now)
     snapshot = _product_snapshot(product)
     order = PaymentOrder(
         user_id=user_id,
@@ -860,10 +938,18 @@ async def get_purchase_context(
     *,
     user_id: str,
 ) -> PaymentPurchaseContextResponse:
-    orders = await _find_payment_state_orders(session, user_id=user_id)
+    revision, latest_order_id = await _find_payment_state_snapshot(
+        session,
+        user_id=user_id,
+    )
+    latest = await _find_latest_payment_order(
+        session,
+        user_id=user_id,
+        latest_order_id=latest_order_id,
+    )
     return PaymentPurchaseContextResponse(
-        payment_state_token=_payment_state_token(orders),
-        latest_order=to_order_list_item(orders[0]) if orders else None,
+        payment_state_token=_payment_state_token_from_revision(revision),
+        latest_order=to_order_list_item(latest) if latest is not None else None,
     )
 
 
@@ -970,7 +1056,7 @@ async def create_checkout(
         select(PaymentOrder)
         .where(
             PaymentOrder.user_id == user_id,
-            PaymentOrder.status.in_(PROVIDER_OPEN_ORDER_STATUSES),
+            PaymentOrder.status.in_(ACTIVE_PAYMENT_ORDER_STATUSES),
         )
         .order_by(PaymentOrder.created_at.desc(), PaymentOrder.id.desc())
         .with_for_update()
@@ -994,14 +1080,11 @@ async def create_checkout(
     if product is None or not _order_matches_product_snapshot(order, product):
         raise _catalog_changed_error(order)
     now = utc_now()
-    expired_in_transaction = False
     if order.status == STATUS_PENDING:
         expired_in_transaction = _expire_order_if_due(order, now=now)
-    if _reopen_order_for_checkout(
-        order,
-        now=now,
-        increment_state_version=not expired_in_transaction,
-    ):
+    else:
+        expired_in_transaction = False
+    if expired_in_transaction:
         await session.commit()
         await session.refresh(order)
     if order.status != STATUS_PENDING:
@@ -1165,11 +1248,7 @@ async def _fulfill_verified_payment(
 
     now = utc_now()
     if order.status != STATUS_FULFILLED:
-        order.state_version += 1
-        order.status = STATUS_PAID
-        order.provider_trade_no = trade_no
-        order.paid_at = order.paid_at or _provider_paid_at(payload, now)
-        order.updated_at = now
+        paid_at = order.paid_at or _provider_paid_at(payload, now)
         await grant_entitlement(
             session,
             user_id=order.user_id,
@@ -1190,8 +1269,14 @@ async def _fulfill_verified_payment(
                 "amount_fen": int(order.amount_fen),
                 "currency": order.currency,
             },
-            now=order.paid_at,
+            now=paid_at,
         )
+        # Persist the payment order as one terminal transition after the
+        # entitlement write. This avoids an observable intermediate `paid`
+        # state competing with a newer active order's per-user claim.
+        order.state_version += 1
+        order.provider_trade_no = trade_no
+        order.paid_at = paid_at
         order.status = STATUS_FULFILLED
         order.fulfilled_at = now
         order.updated_at = now

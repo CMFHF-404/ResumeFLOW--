@@ -17,11 +17,14 @@ import {
   getOrderRefreshPageDepth,
   getOrCreatePurchaseIdempotencyKey,
   paymentOrderConflictMessage,
+  paymentOrderCreationRateLimitMessage,
   requiresRepeatPurchaseAcknowledgement,
   resolveUnsettledPaymentOrderConflict,
 } from './tokenQuotaOrderUtils';
 
 type QuotaModalView = 'overview' | 'purchase' | 'orders';
+
+const SHOW_REDEMPTION_CARD = false;
 
 type TokenQuotaModalProps = {
   isOpen: boolean;
@@ -156,7 +159,7 @@ const QuotaDashboard: React.FC<{
           onClick={onOpenPurchase}
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-bold text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:text-emerald-400 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300 dark:focus:ring-emerald-500/20"
         >
-          <span>购买额度 / 兑换卡密</span>
+          <span>购买额度</span>
         </button>
       </div>
     </div>
@@ -535,8 +538,8 @@ const paymentStatusCopy = (status: PaymentUiStatus) => {
     case 'pending': return '订单已创建，正在前往收银台…';
     case 'paid': return '付款已确认，正在到账…';
     case 'fulfilled': return '权益已到账，额度已刷新。';
-    case 'cancelled': return '订单已暂停；支付平台未关单，请继续原订单确认状态。';
-    case 'expired': return '订单已过期，可继续原订单。';
+    case 'cancelled': return '订单已暂停；如仍需购买，请再次下单。';
+    case 'expired': return '订单已过期；如仍需购买，请再次下单。';
     case 'failed': return '订单未完成，请重试或选择其他套餐。';
     default: return '';
   }
@@ -580,7 +583,7 @@ const PurchaseCatalog: React.FC<{
     const estimatedAssistantActions = Math.floor(tokenAmount / 5_000);
     const benefit = isUnlimited
       ? `${product.unlimited_duration_days ?? 0} 天不限量`
-      : `${formatTokens(product.token_amount)} Tokens`;
+      : '永久有效';
     return (
       <article
         key={product.sku}
@@ -597,12 +600,15 @@ const PurchaseCatalog: React.FC<{
           </div>
           {isUnlimited && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-200">∞ UNLIMITED</span>}
         </div>
-        <div className="mt-3 min-h-12 space-y-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-          <p>{product.description}</p>
-          {!isUnlimited && (
-            <p className="text-[10px] text-gray-400 dark:text-gray-500">
-              约 {estimatedJdAnalyses} 次 JD 分析，或 {estimatedAssistantActions} 条 AI 助理消息 / {estimatedAssistantActions} 次 AI 润色
-            </p>
+        <div className="mt-3 min-h-16 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+          {isUnlimited ? (
+            <p>{product.description}</p>
+          ) : (
+            <ul className="list-disc space-y-1 pl-4 marker:text-emerald-400 dark:marker:text-emerald-500">
+              <li>约 <strong className="font-extrabold text-gray-700 dark:text-gray-200">{estimatedJdAnalyses}</strong> 次 JD 分析</li>
+              <li>约 <strong className="font-extrabold text-gray-700 dark:text-gray-200">{estimatedAssistantActions}</strong> 条 AI 助理消息</li>
+              <li>约 <strong className="font-extrabold text-gray-700 dark:text-gray-200">{estimatedAssistantActions}</strong> 次 AI 润色</li>
+            </ul>
           )}
         </div>
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
@@ -623,11 +629,6 @@ const PurchaseCatalog: React.FC<{
             </button>
           )}
         </div>
-        {!isUnlimited && (
-          <p className="mt-2 text-[9px] font-medium leading-relaxed text-gray-400 dark:text-gray-500">
-            按 JD 分析约 17K、AI 助理消息或润色约 5K Token 估算，实际消耗会随内容变化。
-          </p>
-        )}
       </article>
     );
   };
@@ -637,7 +638,7 @@ const PurchaseCatalog: React.FC<{
   }
 
   if (!paymentsEnabled && products.length === 0) {
-    return <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">在线支付暂未开放，您仍可在下方兑换卡密。</div>;
+    return <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">在线支付暂未开放，请稍后重试。</div>;
   }
 
   return (
@@ -694,7 +695,7 @@ const PurchaseCatalog: React.FC<{
       </div>
       {!paymentsEnabled && (
         <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">
-          在线支付暂未开放；套餐购买按钮已隐藏，您仍可在下方兑换卡密。
+          在线支付暂未开放；套餐购买按钮已隐藏，请稍后重试。
         </div>
       )}
       <div
@@ -803,7 +804,8 @@ const PaymentOrdersPanel: React.FC<{
   onContinuePayment: (order: PaymentOrder) => void;
   onSync: (order: PaymentOrder) => void;
   onCancel: (order: PaymentOrder) => void;
-  onPurchaseAgain: (order: PaymentOrder) => void;
+  onRepeatPurchase: (order: PaymentOrder) => void;
+  onSelectNewPurchase: () => void;
 }> = ({
   orders,
   isLoading,
@@ -817,7 +819,8 @@ const PaymentOrdersPanel: React.FC<{
   onContinuePayment,
   onSync,
   onCancel,
-  onPurchaseAgain,
+  onRepeatPurchase,
+  onSelectNewPurchase,
 }) => {
   const [confirmingOrderId, setConfirmingOrderId] = React.useState<string | null>(null);
   const confirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
@@ -893,8 +896,8 @@ const PaymentOrdersPanel: React.FC<{
         {orders.map((order) => {
           const isPastDue = isOrderPastDue(order, now);
           const isPending = order.status === 'pending';
-          const isTerminal = order.status === 'cancelled' || order.status === 'expired' || order.status === 'failed';
-          const canResumeOriginalOrder = order.status === 'cancelled' || order.status === 'expired';
+          const canRepeatPurchase = order.status === 'cancelled' || order.status === 'expired';
+          const canQueryFinalStatus = order.status === 'paid' || canRepeatPurchase;
           const canSelectNewPurchase = order.status === 'failed';
           const isBusy = actionOrderId !== null;
           const isCurrentAction = actionOrderId === order.id;
@@ -915,17 +918,34 @@ const PaymentOrdersPanel: React.FC<{
                   <p className="mt-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{formatPrice(order.amount_fen, order.currency)} · 创建于 {formatDateTime(order.created_at)}</p>
                   {order.token_amount ? <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{formatTokens(order.token_amount)} Tokens</p> : order.unlimited_duration_days ? <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{order.unlimited_duration_days} 天不限量</p> : null}
                 </div>
-                <span className={`w-fit rounded-full px-2 py-1 text-[10px] font-extrabold ${
-                  order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                    : order.status === 'pending' || order.status === 'paid' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200'
-                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
-                }`}>{paymentOrderStatusCopy(order.status)}</span>
+                <div className="flex shrink-0 items-center gap-2 self-start">
+                  {isPending && !isConfirming && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onContinuePayment(order)}
+                      className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >{isCurrentAction ? '打开中…' : '继续支付'}</button>
+                  )}
+                  {canRepeatPurchase && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onRepeatPurchase(order)}
+                      className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                    >{isCurrentAction ? '下单中…' : '再次下单'}</button>
+                  )}
+                  <span className={`w-fit rounded-full px-2 py-1 text-[10px] font-extrabold ${
+                    order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                      : order.status === 'pending' || order.status === 'paid' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200'
+                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                  }`}>{paymentOrderStatusCopy(order.status)}</span>
+                </div>
               </div>
               {isPending && order.expires_at && <p className={`mt-2 text-[10px] font-medium ${isPastDue ? 'text-red-500 dark:text-red-300' : 'text-gray-400 dark:text-gray-500'}`}>{isPastDue ? '按本机时间估计已超过付款时限，最终状态以服务端为准。' : `请于 ${formatDateTime(order.expires_at)} 前完成支付`}</p>}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              {(isPending || canQueryFinalStatus || canSelectNewPurchase) && <div className="mt-3 flex flex-wrap items-center gap-2">
                 {isPending && !isConfirming && (
                   <>
-                    <button type="button" disabled={isBusy} onClick={() => onContinuePayment(order)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">继续支付</button>
                     <button type="button" disabled={isBusy} onClick={() => onSync(order)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900">查询状态</button>
                     <button
                       ref={(element) => {
@@ -941,17 +961,16 @@ const PaymentOrdersPanel: React.FC<{
                 )}
                 {isConfirming && (
                   <div className="w-full rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
-                    <p>本地取消只会暂停订单，支付平台未关单；后续请继续原订单确认状态。</p>
+                    <p>本地取消不会关闭支付平台上的旧收银台；“再次下单”会创建一笔新的同套餐订单。</p>
                     <div className="mt-2 flex gap-2">
                       <button ref={confirmButtonRef} type="button" disabled={isBusy} onClick={() => onCancel(order)} className="rounded-md bg-amber-600 px-2.5 py-1 text-[11px] font-extrabold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">{isCurrentAction ? '取消中…' : '确认取消'}</button>
                       <button type="button" disabled={isBusy} onClick={closeCancelConfirmation} className="rounded-md border border-amber-200 bg-white px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-100">暂不取消</button>
                     </div>
                   </div>
                 )}
-                {(order.status === 'paid' || isTerminal) && <button type="button" disabled={isBusy} onClick={() => onSync(order)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900">查询最终状态</button>}
-                {canResumeOriginalOrder && <button type="button" disabled={isBusy} onClick={() => onContinuePayment(order)} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10">继续原订单</button>}
-                {canSelectNewPurchase && <button type="button" disabled={isBusy} onClick={() => onPurchaseAgain(order)} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10">重新选择套餐</button>}
-              </div>
+                {canQueryFinalStatus && <button type="button" disabled={isBusy} onClick={() => onSync(order)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900">查询最终状态</button>}
+                {canSelectNewPurchase && <button type="button" disabled={isBusy} onClick={onSelectNewPurchase} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10">重新选择套餐</button>}
+              </div>}
             </article>
           );
         })}
@@ -1231,7 +1250,7 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     setIsCheckoutSubmitting(false);
     setPaymentStatus(order.status);
     rememberOrderForCheckoutRecovery(order);
-    setOrdersError('未能跳转至收银台，订单已保留。请在订单列表继续原订单。');
+    setOrdersError('未能跳转至收银台，订单已保留。请在订单列表点击“继续支付”。');
     setActiveView('orders');
   }, [clearCheckoutSubmitWatchdog, rememberOrderForCheckoutRecovery]);
 
@@ -1801,6 +1820,12 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
         await refreshPurchaseContext();
         return;
       }
+      const rateLimitMessage = paymentOrderCreationRateLimitMessage(purchaseError);
+      if (rateLimitMessage) {
+        setPaymentStatus('failed');
+        setError(rateLimitMessage);
+        return;
+      }
       console.warn('Failed to create payment order');
       setPaymentStatus('failed');
       setError('订单创建失败，请稍后重试。');
@@ -1968,9 +1993,21 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     void refreshPurchaseContext();
   };
 
-  const handlePurchaseAgain = (order: PaymentOrder) => {
+  const handleRepeatPurchase = async (order: PaymentOrder) => {
+    if (!paymentsEnabled) {
+      setOrdersError('在线支付暂未开放，请稍后重试。');
+      return;
+    }
+    const product = products.find((candidate) => candidate.sku === order.sku);
+    if (!product) {
+      setOrdersError('该套餐已下架或已更新，无法再次下单。请返回购买套餐重新选择。');
+      void refreshProducts();
+      return;
+    }
     clearPurchaseAttemptForTerminalOrder(order);
-    returnToPurchase();
+    setOrdersError('');
+    setActiveView('purchase');
+    await handlePurchase(product);
   };
 
   const handleClose = () => {
@@ -2182,16 +2219,18 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
               </p>
             )}
 
-            <div className="mx-auto max-w-3xl border-t border-gray-100 pt-5 dark:border-gray-800">
-              <RedemptionCard
-                code={redemptionCode}
-                isRedeeming={isRedeeming}
-                redemptionMessage={redemptionMessage}
-                redemptionError={redemptionError}
-                onCodeChange={setRedemptionCode}
-                onRedeem={handleRedeem}
-              />
-            </div>
+            {SHOW_REDEMPTION_CARD && (
+              <div className="mx-auto max-w-3xl border-t border-gray-100 pt-5 dark:border-gray-800">
+                <RedemptionCard
+                  code={redemptionCode}
+                  isRedeeming={isRedeeming}
+                  redemptionMessage={redemptionMessage}
+                  redemptionError={redemptionError}
+                  onCodeChange={setRedemptionCode}
+                  onRedeem={handleRedeem}
+                />
+              </div>
+            )}
 
           </div>
         ) : (
@@ -2209,7 +2248,8 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
               onContinuePayment={(order) => void handleContinuePayment(order)}
               onSync={(order) => void handleSyncOrder(order)}
               onCancel={(order) => void handleCancelOrder(order)}
-              onPurchaseAgain={handlePurchaseAgain}
+              onRepeatPurchase={(order) => void handleRepeatPurchase(order)}
+              onSelectNewPurchase={returnToPurchase}
             />
           </div>
         )}
