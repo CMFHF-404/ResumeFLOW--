@@ -470,6 +470,21 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                     trigger_names,
                 )
                 self.assertIn("trg_payment_order_bump_state_version", trigger_names)
+                self.assertIn("trg_payment_order_advance_state_revision", trigger_names)
+
+                state_revision = (
+                    await connection.execute(
+                        text(
+                            """
+                            SELECT revision, latest_order_id
+                            FROM payment_order_state_revisions
+                            WHERE user_id = 'legacy-user'
+                            """
+                        )
+                    )
+                ).one()
+                self.assertEqual(state_revision[0], 1)
+                self.assertEqual(state_revision[1], legacy_order_id)
 
                 self.assertEqual(
                     (
@@ -533,9 +548,9 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                     3,
                 )
 
-                # Fulfillment is the boundary that permits a new purchase. It
-                # also keeps the alias-collision assertion below focused on the
-                # authoritative alias trigger rather than the per-user index.
+                # Terminal orders no longer hold the active-payment claim. The
+                # alias-collision assertion below stays focused on the
+                # authoritative alias trigger rather than the per-user guard.
                 await connection.execute(
                     text(
                         """
@@ -554,6 +569,20 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                         await connection.execute(
                             text("SELECT state_version FROM payment_orders WHERE id = :order_id"),
                             {"order_id": legacy_order_id},
+                        )
+                    ).scalar_one(),
+                    4,
+                )
+                self.assertEqual(
+                    (
+                        await connection.execute(
+                            text(
+                                """
+                                SELECT revision
+                                FROM payment_order_state_revisions
+                                WHERE user_id = 'legacy-user'
+                                """
+                            )
                         )
                     ).scalar_one(),
                     4,
@@ -646,11 +675,23 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
             / "migrations"
             / "014_add_payment_order_writer_guards.sql"
         ).read_text(encoding="utf-8")
+        terminal_repurchase_migration_source = (
+            Path(__file__).resolve().parent
+            / "migrations"
+            / "015_allow_repurchase_after_terminal_order.sql"
+        ).read_text(encoding="utf-8")
+        state_revision_migration_source = (
+            Path(__file__).resolve().parent
+            / "migrations"
+            / "016_add_payment_order_state_revisions.sql"
+        ).read_text(encoding="utf-8")
         migration_statements = (
             *_split_migration_statements(cancellation_migration_source),
             *_split_migration_statements(alias_migration_source),
             *_split_migration_statements(state_version_migration_source),
             *_split_migration_statements(writer_guard_migration_source),
+            *_split_migration_statements(terminal_repurchase_migration_source),
+            *_split_migration_statements(state_revision_migration_source),
         )
         runtime_statements = tuple(
             statement
@@ -658,14 +699,117 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
             if "payment_order" in statement
         )
 
-        self.assertEqual(len(migration_statements), 18)
-        self.assertGreaterEqual(len(runtime_statements), 19)
+        self.assertEqual(len(migration_statements), 26)
+        self.assertGreaterEqual(len(runtime_statements), 24)
         for path_name, statements in (
             ("migration", migration_statements),
             ("runtime", runtime_statements),
         ):
             with self.subTest(path=path_name):
                 await self._assert_upgrade_path(statements)
+
+    async def test_state_revision_backfill_repairs_only_missing_users(self) -> None:
+        migration_source = (
+            Path(__file__).resolve().parent
+            / "migrations"
+            / "016_add_payment_order_state_revisions.sql"
+        ).read_text(encoding="utf-8")
+        migration_statements = _split_migration_statements(migration_source)
+        schema_name = f"payment_revision_partial_{uuid.uuid4().hex}"
+        quoted_schema = f'"{schema_name}"'
+        preseeded_order_id = uuid.uuid4()
+        missing_order_id = uuid.uuid4()
+
+        try:
+            async with self.engine.begin() as connection:
+                await connection.execute(text(f"CREATE SCHEMA {quoted_schema}"))
+                await connection.execute(text(f"SET LOCAL search_path TO {quoted_schema}"))
+                await connection.execute(text("CREATE TABLE users (id TEXT PRIMARY KEY)"))
+                await connection.execute(
+                    text(
+                        """
+                        CREATE TABLE payment_orders (
+                            id UUID PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            state_version BIGINT NOT NULL DEFAULT 1,
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                        )
+                        """
+                    )
+                )
+                await connection.execute(
+                    text(
+                        """
+                        INSERT INTO users (id)
+                        VALUES ('preseeded-user'), ('missing-user')
+                        """
+                    )
+                )
+                await connection.execute(
+                    text(
+                        """
+                        INSERT INTO payment_orders (id, user_id, state_version, updated_at)
+                        VALUES
+                            (:preseeded_order_id, 'preseeded-user', 7, now() - interval '1 minute'),
+                            (:missing_order_id, 'missing-user', 3, now())
+                        """
+                    ),
+                    {
+                        "preseeded_order_id": preseeded_order_id,
+                        "missing_order_id": missing_order_id,
+                    },
+                )
+                await connection.execute(
+                    text(
+                        """
+                        CREATE TABLE payment_order_state_revisions (
+                            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                            revision BIGINT NOT NULL DEFAULT 0,
+                            latest_order_id UUID,
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                        )
+                        """
+                    )
+                )
+                await connection.execute(
+                    text(
+                        """
+                        INSERT INTO payment_order_state_revisions (
+                            user_id, revision, latest_order_id, updated_at
+                        ) VALUES (
+                            'preseeded-user', 99, :preseeded_order_id, now()
+                        )
+                        """
+                    ),
+                    {"preseeded_order_id": preseeded_order_id},
+                )
+
+                for statement in migration_statements:
+                    await connection.execute(text(statement))
+
+                revisions = (
+                    await connection.execute(
+                        text(
+                            """
+                            SELECT user_id, revision, latest_order_id
+                            FROM payment_order_state_revisions
+                            ORDER BY user_id
+                            """
+                        )
+                    )
+                ).all()
+                self.assertEqual(
+                    revisions,
+                    [
+                        ("missing-user", 3, missing_order_id),
+                        ("preseeded-user", 99, preseeded_order_id),
+                    ],
+                )
+        finally:
+            async with self.engine.begin() as connection:
+                await connection.execute(
+                    text(f"DROP SCHEMA IF EXISTS {quoted_schema} CASCADE")
+                )
 
     async def test_schema_sql_upgrades_a_legacy_payment_orders_table_twice(self) -> None:
         schema_source = (Path(__file__).resolve().parent / "schema.sql").read_text(
@@ -896,7 +1040,7 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
             await connection.execute(f"DROP SCHEMA IF EXISTS {quoted_schema} CASCADE")
             await connection.close()
 
-    async def test_provider_open_claim_serializes_different_keys_and_releases_on_fulfillment(
+    async def test_provider_open_claim_serializes_different_keys_and_releases_on_cancellation(
         self,
     ) -> None:
         schema_name = f"payment_claim_concurrency_{uuid.uuid4().hex}"
@@ -921,6 +1065,7 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                 "012_add_payment_order_idempotency_aliases.sql",
                 "013_add_payment_order_state_version.sql",
                 "014_add_payment_order_writer_guards.sql",
+                "015_allow_repurchase_after_terminal_order.sql",
             ):
                 source = (
                     Path(__file__).resolve().parent / "migrations" / migration_name
@@ -972,7 +1117,7 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
             await connection_a.execute(
                 """
                 UPDATE payment_orders
-                SET status = 'fulfilled', fulfilled_at = now()
+                SET status = 'cancelled', cancelled_at = now()
                 WHERE id = $1
                 """,
                 first_id,
@@ -982,7 +1127,7 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                 connection_b.execute(
                     insert_sql,
                     third_id,
-                    "RF-CONCURRENT-AFTER-FULFILLED",
+                    "RF-CONCURRENT-AFTER-CANCELLED",
                     "different-key-three",
                 )
             )
@@ -1053,7 +1198,7 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
             await connection_b.close()
             await connection_a.close()
 
-    async def test_historical_duplicates_do_not_block_install_but_remain_fail_closed(
+    async def test_historical_terminal_duplicates_do_not_block_new_active_order(
         self,
     ) -> None:
         schema_name = f"payment_claim_dirty_{uuid.uuid4().hex}"
@@ -1090,6 +1235,7 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                 "012_add_payment_order_idempotency_aliases.sql",
                 "013_add_payment_order_state_version.sql",
                 "014_add_payment_order_writer_guards.sql",
+                "015_allow_repurchase_after_terminal_order.sql",
             ):
                 source = (
                     Path(__file__).resolve().parent / "migrations" / migration_name
@@ -1115,24 +1261,30 @@ class PaymentPostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                 WHERE merchant_order_no = 'RF-DIRTY-ONE'
                 """
             )
-            with self.assertRaises(asyncpg.UniqueViolationError) as raised:
-                await connection.execute(
-                    """
-                    INSERT INTO payment_orders (
-                        id, user_id, merchant_order_no, idempotency_key, sku,
-                        product_name, amount_fen, benefit_type, token_amount,
-                        entitlement_snapshot_json, expires_at
-                    ) VALUES (
-                        $1, 'dirty-user', 'RF-DIRTY-THREE', 'dirty-key-three',
-                        'tokens_100k', '100K Token package', 198, 'tokens',
-                        100000, '{}'::jsonb, now() + interval '30 minutes'
-                    )
-                    """,
-                    uuid.uuid4(),
+            new_order_id = uuid.uuid4()
+            await connection.execute(
+                """
+                INSERT INTO payment_orders (
+                    id, user_id, merchant_order_no, idempotency_key, sku,
+                    product_name, amount_fen, benefit_type, token_amount,
+                    entitlement_snapshot_json, expires_at
+                ) VALUES (
+                    $1, 'dirty-user', 'RF-DIRTY-THREE', 'dirty-key-three',
+                    'tokens_100k', '100K Token package', 198, 'tokens',
+                    100000, '{}'::jsonb, now() + interval '30 minutes'
                 )
-            self.assertIn(
-                "payment_order_reconciliation_required",
-                str(raised.exception),
+                """,
+                new_order_id,
+            )
+            self.assertEqual(
+                await connection.fetchval(
+                    """
+                    SELECT payment_order_id
+                    FROM payment_order_provider_open_claims
+                    WHERE user_id = 'dirty-user'
+                    """
+                ),
+                new_order_id,
             )
         finally:
             await connection.execute("RESET search_path")

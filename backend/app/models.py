@@ -418,6 +418,32 @@ class PaymentOrderProviderOpenClaim(SQLModel, table=True):
     )
 
 
+class PaymentOrderStateRevision(SQLModel, table=True):
+    __tablename__ = "payment_order_state_revisions"
+
+    user_id: str = Field(
+        sa_column=Column(
+            Text,
+            ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        )
+    )
+    revision: int = Field(
+        default=0,
+        sa_column=Column(BigInteger, nullable=False, server_default="0"),
+    )
+    # Deliberately not a foreign key: the AFTER DELETE revision trigger must be
+    # able to replace this pointer without a circular referential action.
+    latest_order_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), nullable=True),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
 class PaymentWebhookEvent(SQLModel, table=True):
     __tablename__ = "payment_webhook_events"
 

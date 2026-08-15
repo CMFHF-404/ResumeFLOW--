@@ -68,6 +68,16 @@ export const resolveUnsettledPaymentOrderConflict = (
   };
 };
 
+export const paymentOrderCreationRateLimitMessage = (error: unknown): string | null => {
+  if (!isRecord(error) || !isRecord(error.response) || error.response.status !== 429) return null;
+  const responseData = error.response.data;
+  if (!isRecord(responseData) || !isRecord(responseData.detail)) return null;
+  const { code, message } = responseData.detail;
+  if (code !== 'payment_order_rate_limited') return null;
+  const normalizedMessage = typeof message === 'string' ? message.trim() : '';
+  return normalizedMessage || '短时间内取消或超时的支付订单过多，请一小时后再试。';
+};
+
 export const getOrCreatePurchaseIdempotencyKey = (
   keysBySku: Map<string, string>,
   sku: string,
@@ -83,6 +93,8 @@ export const getOrCreatePurchaseIdempotencyKey = (
 const FINAL_PAYMENT_ORDER_STATUSES = new Set<PaymentOrder['status']>([
   'fulfilled',
   'failed',
+  'cancelled',
+  'expired',
 ]);
 
 export const clearMatchingTerminalPurchaseAttempt = (

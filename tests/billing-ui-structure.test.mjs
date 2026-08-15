@@ -54,6 +54,7 @@ test('TokenQuotaModal renders summary, charts, usage detail, payment, and order 
   assert.match(modal, /PaymentOrdersPanel/);
   assert.match(modal, /RedemptionCard/);
   assert.match(modal, /兑换卡密/);
+  assert.match(modal, /const SHOW_REDEMPTION_CARD = false;/);
   assert.match(modal, /paymentsEnabled/);
   assert.doesNotMatch(modal, /createPlaceholderPurchase/);
   assert.doesNotMatch(modal, /item\.taobao\.com/);

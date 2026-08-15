@@ -44,10 +44,12 @@
 - AI thinking and JD-analysis UI checks commonly use `node --test tests/aiStopHandlingStructure.test.mjs tests/jdAnalysisThinkingText.test.mjs tests/jdAnalysisToastThinking.test.mjs`; assistant thinking persistence commonly uses `node --test tests/assistantMessageSendUtils.test.mjs tests/assistantThinkingDisplay.test.mjs`.
 - Assistant sidebar and selected-resume context checks commonly use `node --test tests/assistantSidebarStructure.test.mjs tests/assistantSkillPresetPanelStructure.test.mjs tests/assistantResumeSelectionUtils.test.mjs tests/assistantContextRailRender.test.mjs tests/assistantSidebarContextPersistence.test.mjs`.
 - Resume factory desktop sidebar checks commonly use `node --test tests/resumeEditorDesktopWorkspaceStructure.test.mjs tests/resumeEditorToolbarStructure.test.mjs tests/jdAnalysisDetailsSidebarStructure.test.mjs`.
+- JD match-state, persistence, request-runner, and evaluation changes commonly use `node --test tests/jdAnalysisPersistenceUtils.test.mjs tests/jdAnalysisRequestRunner.test.mjs tests/jdAnalysisResultAssemblyUtils.test.mjs tests/jdAnalysisRunStateUtils.test.mjs tests/resumeEvaluationExecutionStructure.test.mjs tests/resumeEvaluationNormalize.test.mjs tests/resumeEvaluationReport.test.mjs tests/resumeEvaluationSnapshot.test.mjs`.
 - Resume-template catalog, thumbnail assets, and preview changes commonly use `node --test tests/resumeTemplateDeepHireCatalog.test.mjs tests/resumeTemplatePreviewAssets.test.mjs tests/resumeEditorDesktopWorkspaceStructure.test.mjs`.
 - DeepHire changes that affect Agent template options also use `python -m unittest test_agent_api` from `backend/`.
 - Rich text editor clipboard/caret checks commonly use `node --test tests/richTextEditorCaret.test.mjs`; API auth timeout checks commonly use `node --test tests/apiClientAuthTimeout.test.mjs`.
-- Billing and quota UI checks commonly use `node --test tests/billing-ui-structure.test.mjs tests/tokenQuotaModalStatic.test.mjs`.
+- Billing and quota UI checks commonly use `node --test tests/billing-ui-structure.test.mjs tests/billingServiceCache.test.mjs tests/quotaPurchasePromptStatic.test.mjs tests/tokenQuotaModalStatic.test.mjs tests/tokenQuotaOrderUtils.test.mjs`.
+- Zeabur root-Dockerfile deployment configuration changes commonly use `node --test tests/zeaburDeploymentStructure.test.mjs`.
 - Backend env and connectivity checks from `backend/`:
   - `python verify_env.py`
   - `python verify_db.py`
@@ -59,6 +61,8 @@
 - Account and experience draft backend checks commonly use `python -m unittest test_account_verification_cooldown` and `python -m unittest test_experience_drafts` from `backend/`.
 - Profile updates with optimistic-concurrency handling commonly use `python -m unittest test_profile_update_concurrency` from `backend/`.
 - Billing and redemption backend checks commonly use `python -m unittest test_billing_service test_redemption_code_service test_redemption_router` from `backend/`.
+- Payment lifecycle, provider, expiry-worker, runtime-schema, and usage-guard changes commonly use `python -B -m unittest test_billing_service test_payment_provider test_payment_service test_payment_expiry_worker test_billing_runtime_schema test_unlimited_usage_guard` from `backend/`.
+- Payment PostgreSQL migration coverage is opt-in: set `RUN_PAYMENT_MIGRATION_POSTGRES_TESTS=1` and an isolated `PAYMENT_MIGRATION_TEST_DATABASE_URL`, then run `python -m unittest test_payment_postgres_migration` from `backend/`.
 
 ## Guardrails
 
