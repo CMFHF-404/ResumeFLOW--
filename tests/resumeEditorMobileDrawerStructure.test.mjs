@@ -35,4 +35,14 @@ test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', (
 
   assert.match(drawerHook, /scrollContainer\.style\.overflow = 'hidden'/);
   assert.doesNotMatch(drawerHook, /document\.body\.style\.overflow/);
+  assert.match(drawerHook, /const cancelOpenFrameRef = useRef<\(\(\) => void\) \| null>\(null\)/);
+  const clearOpenFrame = drawerHook.match(
+    /const clearOpenFrame = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/,
+  )?.[0] ?? '';
+  assert.match(clearOpenFrame, /cancelOpenFrameRef\.current\?\.\(\)/);
+  assert.match(clearOpenFrame, /cancelOpenFrameRef\.current = null/);
+  assert.match(drawerHook, /cancelOpenFrameRef\.current = waitForNextFrame/);
+  assert.match(drawerHook, /const dismissImmediately = useCallback\(\(\) => \{[\s\S]*?clearOpenFrame\(\);[\s\S]*?setIsOpen\(false\)/);
+  assert.match(drawerHook, /const close = useCallback\(\(\) => \{[\s\S]*?clearOpenFrame\(\);[\s\S]*?window\.setTimeout/);
+  assert.match(drawerHook, /return \(\) => \{[\s\S]*?clearDrawerTimer\(\);[\s\S]*?clearOpenFrame\(\);[\s\S]*?\};/);
 });

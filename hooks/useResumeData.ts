@@ -55,6 +55,7 @@ import {
     createResumeConfigSaveCoordinator,
     type ResumeConfigSaveOptions,
 } from './resumeConfigSaveCoordinator';
+import { mergeResumeSaveResultIntoDetail } from './resumeSaveResultUtils';
 
 type ExperienceBuilder = (item: ExperienceListItem, resumeItem?: ResumeExperienceItem) => ResumeExperienceView;
 type EducationBuilder = (item: ExperienceListItem) => EducationView;
@@ -135,6 +136,7 @@ type UseResumeDataResult = {
     isLoadingExperiences: boolean;
     saveState: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
     lastSavedAt: string | null;
+    hasResumeVersionConflict: boolean;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
     flushResumeConfig: (configOverride?: ResumeEditorConfig) => Promise<void>;
     reloadResumeContext: (resumeId?: string | null) => Promise<ReloadResumeContextResult>;
@@ -309,22 +311,6 @@ const updateLastSavedRef = (
     signatureRef.current = signature;
 };
 
-const mergeResumeRecordIntoDetail = (
-    detail: ResumeDetail | null,
-    updatedResume: Resume
-) => {
-    if (!detail || detail.resume.id !== updatedResume.id) {
-        return detail;
-    }
-    return {
-        ...detail,
-        resume: {
-            ...detail.resume,
-            ...updatedResume,
-        },
-    };
-};
-
 const buildEffectiveConfigSnapshot = (
     configSnapshot: ResumeEditorConfig,
     persistedJDAnalysisSnapshot: ResumeEditorConfig['jdAnalysis'] | null | undefined,
@@ -360,6 +346,7 @@ const useResumeContextLoader = (
     resolveProfileSyncMode: ProfileSyncResolver,
     resolveProfileSnapshot: ProfileSnapshotResolver,
     waitForPendingResumeSaves: () => Promise<void>,
+    automaticReloadBlockedRef: MutableRefObject<boolean>,
     authUserKey?: string | null
 ) => {
     const {
@@ -491,8 +478,11 @@ const useResumeContextLoader = (
     );
 
     useEffect(() => {
+        if (automaticReloadBlockedRef.current) {
+            return;
+        }
         void reloadResumeContext();
-    }, [reloadResumeContext]);
+    }, [automaticReloadBlockedRef, reloadResumeContext]);
 
     return reloadResumeContext;
 };
@@ -559,8 +549,7 @@ const useResumeAutoSave = (
     hasHydratedConfigRef: MutableRefObject<boolean>,
     shouldWaitForDebouncedConfigRef: MutableRefObject<boolean>,
     suppressedAutoSaveSignatureRef: MutableRefObject<string | null>,
-    isConflictRecoveryPending: boolean,
-    saveRetryVersion: number
+    hasResumeVersionConflict: boolean,
 ) => {
     const debouncedConfig = useDebounce(configSnapshot, autoSaveDelayMs);
     const debouncedConfigSignature = useMemo(
@@ -578,7 +567,7 @@ const useResumeAutoSave = (
     }, [resumeId]);
 
     useEffect(() => {
-        if (isConflictRecoveryPending) {
+        if (hasResumeVersionConflict) {
             return;
         }
         if (
@@ -586,6 +575,7 @@ const useResumeAutoSave = (
             && configSignature !== suppressedAutoSaveSignatureRef.current
         ) {
             suppressedAutoSaveSignatureRef.current = null;
+            shouldWaitForDebouncedConfigRef.current = true;
         }
         if (!hasHydratedConfigRef.current || isAutoSavePaused) {
             return;
@@ -612,11 +602,11 @@ const useResumeAutoSave = (
         hasHydratedConfigRef,
         isAutoSavePaused,
         suppressedAutoSaveSignatureRef,
-        isConflictRecoveryPending,
+        hasResumeVersionConflict,
     ]);
 
     useEffect(() => {
-        if (!resumeId || !hasHydratedConfigRef.current || isConflictRecoveryPending) {
+        if (!resumeId || !hasHydratedConfigRef.current || hasResumeVersionConflict) {
             return;
         }
         if (shouldWaitForDebouncedConfigRef.current) {
@@ -652,17 +642,21 @@ const useResumeAutoSave = (
         configSignature,
         shouldWaitForDebouncedConfigRef,
         suppressedAutoSaveSignatureRef,
-        isConflictRecoveryPending,
-        saveRetryVersion,
+        hasResumeVersionConflict,
     ]);
 };
 
 const useResumeConfigFlusher = (
     configSnapshot: ResumeEditorConfig,
     saveResumeConfig: SaveResumeConfig,
-    setSaveState: ResumeState['setSaveState']
+    setSaveState: ResumeState['setSaveState'],
+    resumeVersionConflictRef: MutableRefObject<boolean>
 ) => {
     return useCallback(async (configOverride?: ResumeEditorConfig) => {
+        if (resumeVersionConflictRef.current) {
+            setSaveState('error');
+            throw new Error('Resume version conflict requires an explicit reload.');
+        }
         const nextConfig = configOverride ?? configSnapshot;
         try {
             await saveResumeConfig(nextConfig, { forceVersionCheck: true });
@@ -673,6 +667,7 @@ const useResumeConfigFlusher = (
         }
     }, [
         configSnapshot,
+        resumeVersionConflictRef,
         saveResumeConfig,
         setSaveState,
     ]);
@@ -681,9 +676,9 @@ const useResumeConfigFlusher = (
 
 export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResult => {
     const state = useResumeState();
-    const [isConflictRecoveryPending, setIsConflictRecoveryPending] = useState(false);
-    const [saveRetryVersion, setSaveRetryVersion] = useState(0);
-    const conflictRecoveryIdRef = useRef(0);
+    const [hasResumeVersionConflict, setHasResumeVersionConflict] = useState(false);
+    const resumeVersionConflictRef = useRef(false);
+    const resumeVersionConflictEpochRef = useRef(0);
     const pendingResumeSaveDrainRef = useRef<() => Promise<void>>(() => Promise.resolve());
     const waitForPendingResumeSaves = useCallback(
         async () => {
@@ -715,7 +710,7 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     const applyEducationState = useEducationStateApplier(options);
     const applyCertificationState = useCertificationStateApplier(options);
     const applySkillState = useSkillStateApplier(options);
-    const reloadResumeContext = useResumeContextLoader(
+    const reloadResumeContextBase = useResumeContextLoader(
         state,
         applyResumeConfig,
         applyExperienceState,
@@ -725,8 +720,21 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         options.resolveProfileSyncMode,
         options.resolveProfileSnapshot,
         waitForPendingResumeSaves,
+        resumeVersionConflictRef,
         options.authUserKey
     );
+    const reloadResumeContext = useCallback(async (requestedId?: string | null) => {
+        const conflictEpochAtStart = resumeVersionConflictEpochRef.current;
+        const result = await reloadResumeContextBase(requestedId);
+        if (
+            result.status === 'success'
+            && resumeVersionConflictEpochRef.current === conflictEpochAtStart
+        ) {
+            resumeVersionConflictRef.current = false;
+            setHasResumeVersionConflict(false);
+        }
+        return result;
+    }, [reloadResumeContextBase]);
     const effectiveConfigSnapshot = useMemo(
         () => buildEffectiveConfigSnapshot(
             options.configSnapshot,
@@ -744,50 +752,41 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     const latestEffectiveConfigSnapshotRef = useRef(effectiveConfigSnapshot);
     latestEffectiveConfigSnapshotRef.current = effectiveConfigSnapshot;
     useEffect(() => {
+        if (hasResumeVersionConflict) {
+            state.suppressedAutoSaveSignatureRef.current = JSON.stringify(
+                latestEffectiveConfigSnapshotRef.current
+            );
+        }
+    }, [
+        effectiveConfigSnapshot,
+        hasResumeVersionConflict,
+        state.suppressedAutoSaveSignatureRef,
+    ]);
+    useEffect(() => {
         if (!state.resumeId) {
             return;
         }
         return subscribeToResumeVersionConflicts(state.resumeId, () => {
             const conflictedDraft = latestEffectiveConfigSnapshotRef.current;
             const conflictedDraftSignature = JSON.stringify(conflictedDraft);
-            const conflictedResumeId = state.resumeId;
-            const recoveryId = conflictRecoveryIdRef.current + 1;
-            conflictRecoveryIdRef.current = recoveryId;
-            setIsConflictRecoveryPending(true);
+            resumeVersionConflictEpochRef.current += 1;
+            resumeVersionConflictRef.current = true;
+            setHasResumeVersionConflict(true);
             state.suppressedAutoSaveSignatureRef.current = conflictedDraftSignature;
             state.setSaveState('error');
-            void waitForResumeMutations(conflictedResumeId)
-                .then(() => resumeService.get(conflictedResumeId))
-                .then((latestDetail) => {
-                    if (conflictRecoveryIdRef.current !== recoveryId) {
-                        return;
-                    }
-                    state.resumeUpdatedAtRef.current = latestDetail.resume.updated_at;
-                    setIsConflictRecoveryPending(false);
-                    if (
-                        JSON.stringify(latestEffectiveConfigSnapshotRef.current)
-                        !== conflictedDraftSignature
-                    ) {
-                        state.suppressedAutoSaveSignatureRef.current = null;
-                        state.shouldWaitForDebouncedConfigRef.current = true;
-                        state.setSaveState('dirty');
-                        setSaveRetryVersion((version) => version + 1);
-                    }
-                })
-                .catch((error) => {
-                    if (conflictRecoveryIdRef.current === recoveryId) {
-                        setIsConflictRecoveryPending(false);
-                    }
-                    console.error('[ResumeEditor] 获取冲突后的最新版本失败:', error);
-                });
         });
-    }, [state.resumeId, state.resumeUpdatedAtRef, state.setSaveState, state.shouldWaitForDebouncedConfigRef, state.suppressedAutoSaveSignatureRef]);
+    }, [state.resumeId, state.setSaveState, state.suppressedAutoSaveSignatureRef]);
     const saveCoordinator = useMemo(
         () => createResumeConfigSaveCoordinator<ResumeEditorConfig, Resume>({
             getResumeId: () => state.activeResumeIdRef.current,
             getExpectedUpdatedAt: () => state.resumeUpdatedAtRef.current,
             getLastSavedSignature: () => state.lastSavedConfigRef.current,
             isHydrated: () => state.hasHydratedConfigRef.current,
+            assertCanPersist: () => {
+                if (resumeVersionConflictRef.current) {
+                    throw new Error('Resume version conflict requires an explicit reload.');
+                }
+            },
             persist: (resumeId, config, expectedUpdatedAt) => resumeService.update(
                 resumeId,
                 {
@@ -797,8 +796,24 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
             ),
             onSaveStart: () => state.setSaveState('saving'),
             onSaveSuccess: (_resumeId, updatedResume, configSignature) => {
+                const pendingJDAnalysisCache = loadJDAnalysisCache(_resumeId);
+                const savedJDAnalysis = normalizeJDAnalysisPersistence(
+                    (updatedResume.config as ResumeEditorConfig | undefined)?.jdAnalysis
+                );
+                const latestConfigSignature = JSON.stringify(
+                    latestEffectiveConfigSnapshotRef.current
+                );
                 state.resumeUpdatedAtRef.current = updatedResume.updated_at;
-                state.setResumeDetail((prev) => mergeResumeRecordIntoDetail(prev, updatedResume));
+                state.setResumeDetail((prev) => mergeResumeSaveResultIntoDetail(
+                    prev,
+                    updatedResume,
+                    {
+                        savedConfigSignature: configSignature,
+                        latestConfigSignature,
+                        pendingJDAnalysisCache,
+                        savedJDAnalysis,
+                    }
+                ));
                 updateLastSavedRef(state.lastSavedConfigRef, configSignature);
                 state.setSaveState('saved');
                 state.setLastSavedAt(new Date().toLocaleTimeString());
@@ -828,13 +843,13 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         state.hasHydratedConfigRef,
         state.shouldWaitForDebouncedConfigRef,
         state.suppressedAutoSaveSignatureRef,
-        isConflictRecoveryPending,
-        saveRetryVersion
+        hasResumeVersionConflict,
     );
     const flushResumeConfig = useResumeConfigFlusher(
         effectiveConfigSnapshot,
         saveResumeConfig,
-        state.setSaveState
+        state.setSaveState,
+        resumeVersionConflictRef
     );
     const suppressAutoSaveForConfig = useCallback((config: ResumeEditorConfig) => {
         state.suppressedAutoSaveSignatureRef.current = JSON.stringify(config);
@@ -854,6 +869,7 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         isLoadingExperiences: state.isLoadingExperiences,
         saveState: state.saveState,
         lastSavedAt: state.lastSavedAt,
+        hasResumeVersionConflict,
         applyResumeDetail,
         flushResumeConfig,
         reloadResumeContext,

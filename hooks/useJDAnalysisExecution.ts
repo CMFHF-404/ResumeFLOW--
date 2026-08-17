@@ -78,6 +78,7 @@ export type JDAnalysisExecutionParams = {
   logError?: (...args: unknown[]) => void;
   signal?: AbortSignal;
   shouldContinue?: () => boolean;
+  canApplyAnalysisResult?: () => boolean;
 };
 
 const isAbortError = (error: unknown) => (
@@ -114,6 +115,7 @@ export const runJDAnalysisExecution = async ({
   logError = console.error,
   signal,
   shouldContinue = () => true,
+  canApplyAnalysisResult = () => true,
 }: JDAnalysisExecutionParams): Promise<JDAnalyzeOutcome> => {
   if (!shouldContinue()) {
     return { status: "aborted" };
@@ -145,6 +147,9 @@ export const runJDAnalysisExecution = async ({
       signal,
     });
     if (!shouldContinue()) {
+      return { status: "aborted" };
+    }
+    if (!canApplyAnalysisResult()) {
       return { status: "aborted" };
     }
     const latestSnapshot = buildAnalyzeSnapshot();

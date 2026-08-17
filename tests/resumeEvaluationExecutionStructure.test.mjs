@@ -34,14 +34,48 @@ test('six-dimension report uses a dedicated stream and isolated controller', () 
   assert.match(resumeData, /expected_updated_at: expectedUpdatedAt/);
   assert.match(resumeData, /forceVersionCheck: true/);
   assert.match(resumeData, /subscribeToResumeVersionConflicts/);
-  assert.match(resumeData, /waitForResumeMutations\(conflictedResumeId\)/);
-  assert.match(resumeData, /resumeService\.get\(conflictedResumeId\)/);
   assert.match(resumeData, /const conflictedDraftSignature = JSON\.stringify\(conflictedDraft\)/);
   assert.match(resumeData, /suppressedAutoSaveSignatureRef\.current = conflictedDraftSignature/);
-  assert.match(resumeData, /if \(isConflictRecoveryPending\) \{\s*return;/);
-  assert.match(resumeData, /setIsConflictRecoveryPending\(false\)/);
-  assert.match(resumeData, /shouldWaitForDebouncedConfigRef\.current = true/);
-  assert.match(resumeData, /setSaveRetryVersion\(\(version\) => version \+ 1\)/);
+  assert.match(resumeData, /if \(hasResumeVersionConflict\) \{\s*return;/);
+  const conflictRecovery = resumeData.match(
+    /return subscribeToResumeVersionConflicts[\s\S]*?\n\s*\}, \[state\.resumeId,[^\n]+\]\);/,
+  )?.[0] ?? '';
+  assert.match(conflictRecovery, /resumeVersionConflictRef\.current = true/);
+  assert.match(conflictRecovery, /resumeVersionConflictEpochRef\.current \+= 1/);
+  assert.match(conflictRecovery, /setHasResumeVersionConflict\(true\)/);
+  assert.doesNotMatch(conflictRecovery, /resumeService\.get|resumeUpdatedAtRef|setHasResumeVersionConflict\(false\)/);
+  assert.match(resumeData, /assertCanPersist: \(\) => \{\s*if \(resumeVersionConflictRef\.current\) \{\s*throw new Error/);
+  assert.match(resumeData, /if \(resumeVersionConflictRef\.current\) \{\s*setSaveState\('error'\);\s*throw new Error/);
+  assert.match(
+    resumeData,
+    /suppressedAutoSaveSignatureRef\.current = null;\s*shouldWaitForDebouncedConfigRef\.current = true;/,
+  );
+  const autoSave = resumeData.slice(
+    resumeData.indexOf('const useResumeAutoSave = ('),
+    resumeData.indexOf('const useResumeConfigFlusher = ('),
+  );
+  const suppressionClearIndex = autoSave.indexOf('suppressedAutoSaveSignatureRef.current = null;');
+  const barrierResetIndex = autoSave.indexOf(
+    'shouldWaitForDebouncedConfigRef.current = true;',
+    suppressionClearIndex,
+  );
+  const barrierCheckIndex = autoSave.indexOf('if (shouldWaitForDebouncedConfigRef.current)');
+  const debounceGuardIndex = autoSave.indexOf(
+    'if (debouncedConfigSignature !== configSignature)',
+    barrierCheckIndex,
+  );
+  const persistIndex = autoSave.indexOf('saveResumeConfig(debouncedConfig)');
+  assert.ok(suppressionClearIndex >= 0 && suppressionClearIndex < barrierResetIndex);
+  assert.ok(barrierResetIndex < barrierCheckIndex);
+  assert.ok(barrierCheckIndex < debounceGuardIndex && debounceGuardIndex < persistIndex);
+  const explicitReload = resumeData.match(
+    /const reloadResumeContext = useCallback\(async[\s\S]*?\n\s*\}, \[reloadResumeContextBase\]\);/,
+  )?.[0] ?? '';
+  assert.match(explicitReload, /const conflictEpochAtStart = resumeVersionConflictEpochRef\.current/);
+  assert.match(explicitReload, /resumeVersionConflictEpochRef\.current === conflictEpochAtStart/);
+  assert.doesNotMatch(explicitReload, /suppressedAutoSaveSignatureRef\.current = null/);
+  assert.match(editor, /自动保存已暂停/);
+  assert.match(editor, /重新加载远端版本/);
 });
 
 test('default JD matching keeps the lightweight request and does not require a report', () => {

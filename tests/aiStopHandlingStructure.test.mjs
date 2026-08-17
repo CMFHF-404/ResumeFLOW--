@@ -212,11 +212,13 @@ test('mobile JD analysis running status aligns the thinking label with the stop 
 test('JD analysis stop invalidates stale runs before they can clear a newer run', () => {
   const source = readSource('hooks/useJDAnalysis.ts');
   const stopBody = bodyOf(source, 'handleStopAnalysis');
+  const invalidateBody = bodyOf(source, 'invalidateAnalysisRun');
   const runBody = bodyOf(source, 'runAnalyze');
 
   assert.match(source, /const analysisRunIdRef = useRef\(0\);/);
   assert.match(source, /const activeAnalysisRunIdRef = useRef\(0\);/);
-  assert.match(stopBody, /activeAnalysisRunIdRef\.current = 0;/);
+  assert.match(stopBody, /invalidateAnalysisRun\(\);/);
+  assert.match(invalidateBody, /activeAnalysisRunIdRef\.current = 0;/);
   assert.match(runBody, /const runId = analysisRunIdRef\.current \+ 1;/);
   assert.match(runBody, /activeAnalysisRunIdRef\.current = runId;/);
   assert.match(runBody, /const setIsAnalyzingForRun = \(value: boolean\) => \{/);
@@ -226,12 +228,14 @@ test('JD analysis stop invalidates stale runs before they can clear a newer run'
 
 test('JD analysis invalidates active work when the selected resume changes', () => {
   const source = readSource('hooks/useJDAnalysis.ts');
+  const invalidateBody = bodyOf(source, 'invalidateAnalysisRun');
 
   assert.match(source, /const activeResumeIdRef = useRef\(resumeId\);/);
   assert.match(source, /previousResumeIdRef\.current === resumeId/);
-  assert.match(source, /activeAnalysisRunIdRef\.current = 0;/);
-  assert.match(source, /analyzeRequestRef\.current = null;/);
-  assert.match(source, /abortControllerRef\.current\.abort\(\);/);
+  assert.match(source, /previousResumeIdRef\.current = resumeId;[\s\S]*invalidateAnalysisRun\(\);/);
+  assert.match(invalidateBody, /activeAnalysisRunIdRef\.current = 0;/);
+  assert.match(invalidateBody, /analyzeRequestRef\.current = null;/);
+  assert.match(invalidateBody, /abortControllerRef\.current\.abort\(\);/);
   assert.match(
     source,
     /shouldContinue: \(\) => \([\s\S]*activeResumeIdRef\.current === resumeId[\s\S]*\)/,
@@ -241,9 +245,11 @@ test('JD analysis invalidates active work when the selected resume changes', () 
 test('JD analysis stop releases both request and UI workflow locks', () => {
   const analysisSource = readSource('hooks/useJDAnalysis.ts');
   const stopBody = bodyOf(analysisSource, 'handleStopAnalysis');
+  const invalidateBody = bodyOf(analysisSource, 'invalidateAnalysisRun');
   const workflowSource = readSource('views/ResumeEditor/jdAnalyzeWorkflow.ts');
 
-  assert.match(stopBody, /analyzeRequestRef\.current = null;/);
+  assert.match(stopBody, /invalidateAnalysisRun\(\);/);
+  assert.match(invalidateBody, /analyzeRequestRef\.current = null;/);
   assert.match(workflowSource, /invalidate\(\) \{[\s\S]*inFlight = null;/);
 });
 

@@ -13,10 +13,10 @@ import {
 } from "../services/aiService";
 import { devLog } from "../services/devLogger";
 import {
-  buildJDAnalysisPersistenceFingerprint,
   clearJDAnalysisCache,
   loadJDAnalysisCache,
   normalizeJDAnalysisPersistence,
+  resolveLocalJDAnalysisWriteBase,
   saveJDAnalysisCache,
   selectPreferredPersistedJDAnalysis,
 } from "../views/jdAnalysisStorage";
@@ -66,8 +66,6 @@ import {
   normalizePersistedAnalysisForState,
   resolveHydratedAnalysisCandidate,
   resolveHydratedEvaluationSignature,
-  mergeAuthoritativeStaleFlags,
-  shouldKeepPendingLocalSnapshot,
   type AnalysisStatePayload,
 } from "./jdAnalysisPersistenceUtils";
 import {
@@ -204,6 +202,7 @@ export const useJDAnalysis = ({
   const [isJDCollapsed, setIsJDCollapsed] = useState(false);
   const [analysisContext, setAnalysisContext] =
     useState<JDAnalysisContext | null>(null);
+  const analysisContextRef = useRef<JDAnalysisContext | null>(null);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [needsReanalysis, setNeedsReanalysis] = useState(false);
   const hasLoadedJdCacheRef = useRef(false);
@@ -288,6 +287,19 @@ export const useJDAnalysis = ({
     skillGroupsRef,
   });
 
+  const invalidateAnalysisRun = useCallback((options: { clearUi?: boolean } = {}) => {
+    activeAnalysisRunIdRef.current = 0;
+    analyzeRequestRef.current = null;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (options.clearUi !== false) {
+      setIsAnalyzing(false);
+      setThinkingText("");
+    }
+  }, []);
+
   useEffect(() => {
     jdFileRef.current = jdFile;
   }, [jdFile]);
@@ -341,6 +353,7 @@ export const useJDAnalysis = ({
   }), [evaluationSnapshot, jdInputSignature]);
   evaluationSignatureRef.current = evaluationSignature;
   analysisResultRef.current = analysisResult;
+  analysisContextRef.current = analysisContext;
   persistedJDAnalysisRef.current = persistedJDAnalysis;
   persistedJDAnalysisConfigRef.current = persistedJDAnalysisConfig;
 
@@ -358,6 +371,23 @@ export const useJDAnalysis = ({
   ), [analysisContext?.evaluationSignature, analysisResult?.resumeEvaluation?.evaluationVersion, evaluationSignature, persistedJDAnalysis?.evaluationIsOutdated]);
   const hasMissingAttachmentContext = Boolean(restoredAttachmentContext && !jdFile);
 
+  const resolveLocalAnalysisWriteBase = useCallback((
+    currentPersisted: ResumeJDAnalysis | null | undefined,
+  ): string | null | undefined => {
+    const backendPersisted = normalizeJDAnalysisPersistence(
+      persistedJDAnalysisConfigRef.current
+    );
+    return resolveLocalJDAnalysisWriteBase(
+      backendPersisted,
+      resumeId ? loadJDAnalysisCache(resumeId) : null,
+      currentPersisted,
+    );
+  }, [resumeId]);
+
+  const canApplyAnalysisResult = useCallback(() => (
+    resolveLocalAnalysisWriteBase(persistedJDAnalysisRef.current) !== undefined
+  ), [resolveLocalAnalysisWriteBase]);
+
   useEffect(() => {
     if (
       !resumeId
@@ -369,26 +399,29 @@ export const useJDAnalysis = ({
     ) {
       return;
     }
+    const basePersistedFingerprint = resolveLocalAnalysisWriteBase(
+      persistedJDAnalysis
+    );
+    if (basePersistedFingerprint === undefined) {
+      return;
+    }
     const nextPersistedJDAnalysis: ResumeJDAnalysis = {
       ...persistedJDAnalysis,
       isOutdated,
       evaluationIsOutdated: isEvaluationOutdated,
     };
-    const backendPersisted = normalizeJDAnalysisPersistence(
-      persistedJDAnalysisConfig
-    );
     persistedJDAnalysisRef.current = nextPersistedJDAnalysis;
     setPersistedJDAnalysis(nextPersistedJDAnalysis);
     saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
       pendingSync: true,
-      basePersistedFingerprint:
-        buildJDAnalysisPersistenceFingerprint(backendPersisted),
+      basePersistedFingerprint,
     });
   }, [
     isEvaluationOutdated,
     isOutdated,
     persistedJDAnalysis,
     persistedJDAnalysisConfig,
+    resolveLocalAnalysisWriteBase,
     resumeId,
   ]);
 
@@ -414,14 +447,16 @@ export const useJDAnalysis = ({
         experienceSignature,
         buildJDItemSignatures(experienceItems, certifications, skillGroups)
       );
-      setAnalysisContext({
+      const nextAnalysisContext: JDAnalysisContext = {
         jdInputSignature: normalizedPayload.jdInputSignature,
         targetRoleSignature: normalizedPayload.targetRoleSignature,
         experienceSignature: hydratedAnalysisCandidate.experienceSignature,
         evaluationSignature: hydratedEvaluationSignature,
         itemSignatures: hydratedAnalysisCandidate.itemSignatures,
         experienceText: normalizedPayload.experienceText,
-      });
+      };
+      analysisContextRef.current = nextAnalysisContext;
+      setAnalysisContext(nextAnalysisContext);
       setRestoredAttachmentContext(
         normalizedPayload.inputMode === "attachment"
           ? {
@@ -475,10 +510,13 @@ export const useJDAnalysis = ({
       clearCache?: boolean;
       resetPersistedJDAnalysis?: boolean;
     }) => {
+      analysisResultRef.current = null;
       setAnalysisResult(null);
       if (options?.resetPersistedJDAnalysis) {
+        persistedJDAnalysisRef.current = undefined;
         setPersistedJDAnalysis(undefined);
       }
+      analysisContextRef.current = null;
       setAnalysisContext(null);
       setIsJDCollapsed(false);
       setNeedsReanalysis(false);
@@ -530,25 +568,15 @@ export const useJDAnalysis = ({
     }
     previousResumeIdRef.current = resumeId;
     invalidatePendingJdFileSelection();
-    activeAnalysisRunIdRef.current = 0;
-    analyzeRequestRef.current = null;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsAnalyzing(false);
-    setThinkingText("");
-  }, [invalidatePendingJdFileSelection, resumeId]);
+    invalidateAnalysisRun();
+  }, [invalidateAnalysisRun, invalidatePendingJdFileSelection, resumeId]);
 
   useEffect(() => {
     return () => {
       invalidatePendingJdFileSelection();
-      activeAnalysisRunIdRef.current = 0;
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      invalidateAnalysisRun({ clearUi: false });
     };
-  }, [invalidatePendingJdFileSelection]);
+  }, [invalidateAnalysisRun, invalidatePendingJdFileSelection]);
 
   useEffect(() => {
     if (!resumeId) {
@@ -581,7 +609,7 @@ export const useJDAnalysis = ({
       cached
     );
 
-    if (preferredPersistedState) {
+    if (preferredPersistedState.payload) {
       const normalizedPersisted = applyPersistedAnalysisState(
         preferredPersistedState.payload
       );
@@ -606,47 +634,49 @@ export const useJDAnalysis = ({
   ]);
 
   useEffect(() => {
-    if (!resumeId || !persistedJDAnalysis) {
+    if (!resumeId || !hasLoadedJdCacheRef.current) {
       return;
     }
     const backendPersisted = normalizeJDAnalysisPersistence(
       persistedJDAnalysisConfig
     );
-    if (!backendPersisted) {
+    const reconciliation = selectPreferredPersistedJDAnalysis(
+      backendPersisted,
+      loadJDAnalysisCache(resumeId)
+    );
+    if (reconciliation.kind === "keep_pending_local") {
       return;
     }
-    if (!arePersistedJDAnalysisEqual(backendPersisted, persistedJDAnalysis)) {
-      const localCache = loadJDAnalysisCache(resumeId);
-      const backendPersistedFingerprint =
-        buildJDAnalysisPersistenceFingerprint(backendPersisted);
-      const staleMerged = mergeAuthoritativeStaleFlags(
-        persistedJDAnalysis,
-        backendPersisted,
-        {
-          localPendingSync: shouldKeepPendingLocalSnapshot({
-            pendingSync: localCache?.pendingSync === true,
-            basePersistedFingerprint:
-              localCache?.basePersistedFingerprint ?? null,
-            backendPersistedFingerprint,
-          }),
-        }
-      );
-      if (staleMerged) {
-        persistedJDAnalysisRef.current = staleMerged;
-        setPersistedJDAnalysis(staleMerged);
-        saveJDAnalysisCache(resumeId, staleMerged, {
-          pendingSync: false,
-          basePersistedFingerprint: backendPersistedFingerprint,
-        });
+    if (reconciliation.payload === null) {
+      if (persistedJDAnalysis !== null) {
+        invalidateAnalysisRun();
+        resetJDAnalysisState();
+        persistedJDAnalysisRef.current = null;
+        setPersistedJDAnalysis(null);
       }
+      clearJDAnalysisCache(resumeId);
       return;
     }
-    saveJDAnalysisCache(resumeId, backendPersisted, {
+    let reconciledPayload = normalizePersistedAnalysisForState(
+      reconciliation.payload,
+      buildEmptyJDItemSignatures()
+    );
+    if (!arePersistedJDAnalysisEqual(reconciledPayload, persistedJDAnalysis)) {
+      invalidateAnalysisRun();
+      reconciledPayload = applyPersistedAnalysisState(reconciliation.payload);
+    }
+    saveJDAnalysisCache(resumeId, reconciledPayload, {
       pendingSync: false,
-      basePersistedFingerprint:
-        buildJDAnalysisPersistenceFingerprint(backendPersisted),
+      basePersistedFingerprint: reconciliation.basePersistedFingerprint,
     });
-  }, [persistedJDAnalysis, persistedJDAnalysisConfig, resumeId]);
+  }, [
+    applyPersistedAnalysisState,
+    invalidateAnalysisRun,
+    persistedJDAnalysis,
+    persistedJDAnalysisConfig,
+    resetJDAnalysisState,
+    resumeId,
+  ]);
 
   useEffect(() => {
     if (!restoredAttachmentContext) {
@@ -699,15 +729,17 @@ export const useJDAnalysis = ({
       setNeedsReanalysis(true);
       markStaleMatches(diff);
     }
-    setAnalysisContext((prev) =>
-      prev
+    setAnalysisContext((prev) => {
+      const nextContext = prev
         ? {
           ...prev,
           experienceSignature,
           itemSignatures: nextSignatures,
         }
-        : prev
-    );
+        : prev;
+      analysisContextRef.current = nextContext;
+      return nextContext;
+    });
   }, [
     analysisContext,
     certifications,
@@ -739,11 +771,15 @@ export const useJDAnalysis = ({
       attachmentName,
       attachmentExtractedText,
     }: AnalysisStatePayload) => {
-      const currentBackendPersisted = normalizeJDAnalysisPersistence(
-        persistedJDAnalysisConfig
+      const basePersistedFingerprint = resolveLocalAnalysisWriteBase(
+        persistedJDAnalysisRef.current
       );
-      const previousEvaluationSignature = analysisContext?.evaluationSignature
-        ?? persistedJDAnalysis?.evaluationSignature;
+      if (basePersistedFingerprint === undefined) {
+        return;
+      }
+      const currentPersisted = persistedJDAnalysisRef.current;
+      const previousEvaluationSignature = analysisContextRef.current?.evaluationSignature
+        ?? currentPersisted?.evaluationSignature;
       const mergedResult = result.resumeEvaluation || !analysisResultRef.current?.resumeEvaluation
         ? result
         : { ...result, resumeEvaluation: analysisResultRef.current.resumeEvaluation };
@@ -763,14 +799,9 @@ export const useJDAnalysis = ({
         attachmentExtractedText,
         evaluationIsOutdated: result.resumeEvaluation
           ? false
-          : (persistedJDAnalysis?.evaluationIsOutdated ?? true),
+          : (currentPersisted?.evaluationIsOutdated ?? true),
       });
-      analysisResultRef.current = mergedResult;
-      persistedJDAnalysisRef.current = nextPersistedJDAnalysis;
-      setAnalysisResult(mergedResult);
-      setAttachmentExtractedText(attachmentExtractedText ?? null);
-      setPersistedJDAnalysis(nextPersistedJDAnalysis);
-      setAnalysisContext({
+      const nextAnalysisContext: JDAnalysisContext = {
         jdInputSignature: nextJdInputSignature,
         targetRoleSignature: nextTargetRoleSignature,
         experienceSignature: nextExperienceSignature,
@@ -779,23 +810,27 @@ export const useJDAnalysis = ({
           : previousEvaluationSignature,
         itemSignatures,
         experienceText: nextExperienceText,
-      });
+      };
+      analysisResultRef.current = mergedResult;
+      persistedJDAnalysisRef.current = nextPersistedJDAnalysis;
+      analysisContextRef.current = nextAnalysisContext;
+      setAnalysisResult(mergedResult);
+      setAttachmentExtractedText(attachmentExtractedText ?? null);
+      setPersistedJDAnalysis(nextPersistedJDAnalysis);
+      setAnalysisContext(nextAnalysisContext);
       if (result.resumeEvaluation?.jdMatch === null) {
         resetAllMatchState();
       }
       if (resumeId) {
         saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
           pendingSync: true,
-          basePersistedFingerprint:
-            buildJDAnalysisPersistenceFingerprint(currentBackendPersisted),
+          basePersistedFingerprint,
         });
       }
     },
     [
-      persistedJDAnalysisConfig,
-      analysisContext?.evaluationSignature,
-      persistedJDAnalysis?.evaluationSignature,
       resetAllMatchState,
+      resolveLocalAnalysisWriteBase,
       resumeId,
     ]
   );
@@ -814,7 +849,12 @@ export const useJDAnalysis = ({
     if (!currentResult || !currentPersisted) {
       return false;
     }
-    const backendPersisted = normalizeJDAnalysisPersistence(currentConfig);
+    const basePersistedFingerprint = resolveLocalAnalysisWriteBase(
+      currentPersisted
+    );
+    if (basePersistedFingerprint === undefined) {
+      return false;
+    }
     const nextPersistedJDAnalysis: ResumeJDAnalysis = {
       ...currentPersisted,
       result: { ...currentResult, resumeEvaluation: evaluation },
@@ -827,23 +867,25 @@ export const useJDAnalysis = ({
     persistedJDAnalysisRef.current = nextPersistedJDAnalysis;
     setAnalysisResult(nextPersistedJDAnalysis.result);
     setPersistedJDAnalysis(nextPersistedJDAnalysis);
-    setAnalysisContext((current) => current
-      ? {
-        ...current,
-        evaluationSignature: requestEvaluationSignature,
-        targetRoleSignature,
-      }
-      : current
-    );
+    setAnalysisContext((current) => {
+      const nextContext = current
+        ? {
+          ...current,
+          evaluationSignature: requestEvaluationSignature,
+          targetRoleSignature,
+        }
+        : current;
+      analysisContextRef.current = nextContext;
+      return nextContext;
+    });
     if (resumeId) {
       saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
         pendingSync: true,
-        basePersistedFingerprint:
-          buildJDAnalysisPersistenceFingerprint(backendPersisted),
+        basePersistedFingerprint,
       });
     }
     return true;
-  }, [resumeId, targetRoleSignature]);
+  }, [resolveLocalAnalysisWriteBase, resumeId, targetRoleSignature]);
 
   const getAnalysisSnapshot = useCallback(() => {
     const analysisPayload = buildAnalyzePayload(
@@ -954,15 +996,8 @@ export const useJDAnalysis = ({
   }, [clearJdFile]);
 
   const handleStopAnalysis = useCallback(() => {
-    activeAnalysisRunIdRef.current = 0;
-    analyzeRequestRef.current = null;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsAnalyzing(false);
-    setThinkingText("");
-  }, []);
+    invalidateAnalysisRun();
+  }, [invalidateAnalysisRun]);
 
   const runAnalyze = useCallback(
     async (
@@ -1040,6 +1075,7 @@ export const useJDAnalysis = ({
           activeAnalysisRunIdRef.current === runId
           && activeResumeIdRef.current === resumeId
         ),
+        canApplyAnalysisResult,
       });
       return outcome;
     },
@@ -1048,6 +1084,7 @@ export const useJDAnalysis = ({
       analysisResult,
       applyMatchScoresForResult,
       buildAnalyzeSnapshot,
+      canApplyAnalysisResult,
       clearFullAnalysisDiffState,
       recordPostAnalyzeDiff,
       promoteAttachmentToText,

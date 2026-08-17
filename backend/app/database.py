@@ -9,6 +9,7 @@ from .runtime_schema.billing_tables import (
     execute_ai_token_billing_statements,
     execute_redemption_code_statements,
 )
+from .runtime_schema.agent_api_tables import execute_agent_api_table_statements
 
 settings = load_settings()
 engine = create_async_engine(
@@ -27,6 +28,9 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
+    # SQLModel only knows tables after the model module has registered them.
+    from . import models as _models  # noqa: F401
+
     async with engine.begin() as connection:
         await connection.run_sync(SQLModel.metadata.create_all)
 
@@ -238,93 +242,9 @@ async def ensure_agent_api_keys_table() -> None:
         return
 
     async with engine.begin() as connection:
-        await connection.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS agent_api_keys (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    name TEXT NOT NULL,
-                    key_prefix TEXT NOT NULL,
-                    key_hash TEXT NOT NULL,
-                    key_plaintext TEXT,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    last_used_at TIMESTAMPTZ,
-                    revoked_at TIMESTAMPTZ
-                )
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                ALTER TABLE agent_api_keys
-                ADD COLUMN IF NOT EXISTS key_plaintext TEXT
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                WITH ranked_active_keys AS (
-                    SELECT
-                        id,
-                        row_number() OVER (
-                            PARTITION BY user_id
-                            ORDER BY created_at DESC, id DESC
-                        ) AS active_rank
-                    FROM agent_api_keys
-                    WHERE revoked_at IS NULL
-                )
-                UPDATE agent_api_keys AS key
-                SET
-                    revoked_at = now(),
-                    key_plaintext = NULL
-                FROM ranked_active_keys
-                WHERE key.id = ranked_active_keys.id
-                  AND ranked_active_keys.active_rank > 1
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_agent_api_keys_user_id
-                ON agent_api_keys(user_id)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_agent_api_keys_key_prefix
-                ON agent_api_keys(key_prefix)
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS uniq_agent_api_keys_active_user
-                ON agent_api_keys(user_id)
-                WHERE revoked_at IS NULL
-                """
-            )
-        )
-        await connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS agent_plugin_configs (
-                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    selected_template_id TEXT NOT NULL DEFAULT 'modern-slate',
-                    polish_before_output BOOLEAN NOT NULL DEFAULT true,
-                    polish_level TEXT NOT NULL DEFAULT '标准',
-                    force_one_page BOOLEAN NOT NULL DEFAULT true,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
+        await execute_agent_api_table_statements(
+            execute=connection.execute,
+            text=text,
         )
 
 

@@ -80,8 +80,12 @@ CREATE TABLE IF NOT EXISTS experience_versions (
     summary TEXT,
     highlights TEXT[] NOT NULL DEFAULT '{}'::text[],
     star JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tags TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE experience_versions
+    ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
 
 DO $$
 BEGIN
@@ -204,6 +208,12 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE feedback
+    ADD COLUMN IF NOT EXISTS contact_type TEXT;
+
+ALTER TABLE feedback
+    ADD COLUMN IF NOT EXISTS image_base64_list TEXT[] NOT NULL DEFAULT '{}';
+
 CREATE TABLE IF NOT EXISTS agent_api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -215,6 +225,37 @@ CREATE TABLE IF NOT EXISTS agent_api_keys (
     last_used_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ
 );
+
+ALTER TABLE agent_api_keys
+    ADD COLUMN IF NOT EXISTS key_plaintext TEXT;
+
+WITH ranked_active_keys AS (
+    SELECT
+        id,
+        row_number() OVER (
+            PARTITION BY user_id
+            ORDER BY created_at DESC, id DESC
+        ) AS active_rank
+    FROM agent_api_keys
+    WHERE revoked_at IS NULL
+)
+UPDATE agent_api_keys AS key
+SET
+    revoked_at = now(),
+    key_plaintext = NULL
+FROM ranked_active_keys
+WHERE key.id = ranked_active_keys.id
+  AND ranked_active_keys.active_rank > 1;
+
+CREATE INDEX IF NOT EXISTS idx_agent_api_keys_user_id
+    ON agent_api_keys(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_api_keys_key_prefix
+    ON agent_api_keys(key_prefix);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_agent_api_keys_active_user
+    ON agent_api_keys(user_id)
+    WHERE revoked_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS agent_plugin_configs (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -725,8 +766,6 @@ CREATE INDEX IF NOT EXISTS idx_resume_experiences_resume_id ON resume_experience
 CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
-CREATE INDEX IF NOT EXISTS idx_agent_api_keys_user_id ON agent_api_keys(user_id);
-CREATE INDEX IF NOT EXISTS idx_agent_api_keys_key_prefix ON agent_api_keys(key_prefix);
 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_user_id ON export_render_snapshots(user_id);
 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_expires_at ON export_render_snapshots(expires_at);
 CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_user_id ON ai_assistant_sessions(user_id);

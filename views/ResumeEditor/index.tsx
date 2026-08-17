@@ -139,6 +139,7 @@ import {
     type ResumePolishMode,
 } from './hooks/useResumeEditorExperiencePolishControls';
 import { useResumeEditorExperiencePolishCoordinator } from './hooks/useResumeEditorExperiencePolishCoordinator';
+import { useResumeEditorExperienceFocusRequest } from './hooks/useResumeEditorExperienceFocusRequest';
 import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
 type ResumeEditorProps = {
     cachedResumes?: DashboardResume[];
@@ -154,6 +155,7 @@ type ResumeEditorProps = {
         requestId: number;
         targetId?: string;
     } | null;
+    onFocusExperienceRequestHandled?: (requestId: number) => void;
 };
 
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
@@ -181,6 +183,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     mobileDrawerOpenRequest = 0,
     onMobileDrawerOpenRequestConsumed,
     focusExperienceRequest = null,
+    onFocusExperienceRequestHandled,
 }) => {
     const { isDarkMode, toggleTheme } = useEditorThemeState();
     const {
@@ -279,7 +282,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         updateToast,
         closeToast,
     } = useToast();
-    const lastFocusExperienceRequestIdRef = useRef<number | null>(null);
     const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
     const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
     const [isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen] = useState(false);
@@ -453,6 +455,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isLoadingExperiences,
         saveState,
         lastSavedAt,
+        hasResumeVersionConflict,
         applyResumeDetail,
         flushResumeConfig,
         reloadResumeContext,
@@ -622,6 +625,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         evaluationSignature,
         persistEvaluation: persistResumeEvaluation,
     });
+
+    const handleReloadAfterResumeConflict = useCallback(async () => {
+        if (!resumeId || !hasResumeVersionConflict) return;
+        if (!window.confirm('检测到该简历已在其他页面更新。重新加载将放弃当前未保存修改，是否继续？')) {
+            return;
+        }
+        const result = await reloadResumeContext(resumeId);
+        if (result.status === 'failed') {
+            showToastError('重新加载失败，请刷新页面后重试。');
+        }
+    }, [hasResumeVersionConflict, reloadResumeContext, resumeId, showToastError]);
     const handleGenerateEvaluation = useCallback(async () => {
         try {
             await flushResumeConfig();
@@ -1672,32 +1686,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         beginEditEducation: education.beginEditEducation,
     });
 
-    useEffect(() => {
-        if (!focusExperienceRequest?.targetId || isLoadingResume || isLoadingExperiences) {
-            return;
-        }
-        if (lastFocusExperienceRequestIdRef.current === focusExperienceRequest.requestId) {
-            return;
-        }
-        setSidebarTab('experience');
-        mobileEditorDrawer.open();
-        const targetExists = experienceItems.some((item) => item.id === focusExperienceRequest.targetId);
-        if (!targetExists) {
-            showToastError('未找到目标经历，已打开简历工厂');
-            return;
-        }
-        lastFocusExperienceRequestIdRef.current = focusExperienceRequest.requestId;
-        experience.startEditingExperience(focusExperienceRequest.targetId);
-    }, [
-        experience,
+    useResumeEditorExperienceFocusRequest({
+        request: focusExperienceRequest,
+        isLoading: isLoadingResume || isLoadingExperiences,
         experienceItems,
-        focusExperienceRequest,
-        isLoadingExperiences,
-        isLoadingResume,
-        mobileEditorDrawer,
-        setSidebarTab,
-        showToastError,
-    ]);
+        onOpenExperienceEditor: () => {
+            setSidebarTab('experience');
+            mobileEditorDrawer.open();
+        },
+        onStartEditing: experience.startEditingExperience,
+        onMissingTarget: () => {
+            showToastError('未找到目标经历，已打开简历工厂');
+        },
+        onHandled: onFocusExperienceRequestHandled,
+    });
 
     const canCreateResume = !isLoadingResume;
     const isEditorBusy = isLoadingResume || isCreatingResume;
@@ -2030,6 +2032,21 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             className="relative flex min-h-full flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] bg-background-light dark:bg-background-dark md:h-full md:overflow-hidden"
             aria-busy={isEditorBusy}
         >
+            {hasResumeVersionConflict ? (
+                <div
+                    role="alert"
+                    className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 md:px-6"
+                >
+                    <span>检测到远端更新，自动保存已暂停，以避免覆盖其他页面的修改。</span>
+                    <button
+                        type="button"
+                        onClick={() => void handleReloadAfterResumeConflict()}
+                        className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-amber-800 transition hover:bg-amber-100 dark:border-amber-400/40 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-500/20"
+                    >
+                        重新加载远端版本
+                    </button>
+                </div>
+            ) : null}
             <div className="hidden md:block">
                 <EditorToolbar
                     isDarkMode={isDarkMode}

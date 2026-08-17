@@ -21,7 +21,7 @@ from fastapi import HTTPException  # noqa: E402
 from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from app.models import ExperienceCategory  # noqa: E402
-from app import database  # noqa: E402
+from app.runtime_schema.agent_api_tables import AGENT_API_TABLE_STATEMENTS  # noqa: E402
 from app.domain.export.schemas import CertificationViewSnapshot, SkillGroupViewSnapshot  # noqa: E402
 from app.domain.agent import (  # noqa: E402
     agent_auto_assembly_service,
@@ -1032,8 +1032,7 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result[0].key)
 
     def test_agent_key_table_enforces_one_active_key_per_user(self) -> None:
-        source = database.ensure_agent_api_keys_table.__code__.co_consts
-        migration_sql = "\n".join(item for item in source if isinstance(item, str))
+        migration_sql = "\n".join(AGENT_API_TABLE_STATEMENTS)
 
         self.assertIn("uniq_agent_api_keys_active_user", migration_sql)
         self.assertIn("WHERE revoked_at IS NULL", migration_sql)

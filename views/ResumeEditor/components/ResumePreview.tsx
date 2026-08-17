@@ -106,6 +106,11 @@ import EducationSection from './ResumePreview/sections/EducationSection';
 import CertificationSection from './ResumePreview/sections/CertificationSection';
 import SkillSection from './ResumePreview/sections/SkillSection';
 import HeaderBlock from './ResumePreview/sections/HeaderBlock';
+import {
+    resolveResumePreviewSectionPlan,
+    type ResumePreviewSectionLayout,
+    type ResumePreviewSectionPlan,
+} from './ResumePreview/sectionRenderPlan';
 
 const CSS_PX_PER_MM = 96 / 25.4;
 
@@ -1704,37 +1709,41 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             renderAvatarFrame={renderAvatarFrame}
         />
     );
-    const renderSectionById = (sectionId: string) => {
-        if (sectionId === 'summary') {
+    const renderSectionByPlan = (plan: ResumePreviewSectionPlan) => {
+        if (plan.kind === 'summary') {
             return renderSummarySection();
         }
 
-        if (sectionId === 'work') {
-            return renderExperienceSection('work', '工作经历', selectedWorkItems);
+        if (plan.kind === 'experience') {
+            return renderExperienceSection(
+                plan.experienceKind,
+                plan.title,
+                plan.experienceKind === 'work' ? selectedWorkItems : selectedProjectItems,
+            );
         }
 
-        if (sectionId === 'project') {
-            return renderExperienceSection('project', '项目经历', selectedProjectItems);
+        if (plan.kind === 'education') {
+            return renderEducationSection(plan.variant, plan.includeOverflowState);
         }
 
-        if (sectionId === 'education') {
-            return renderEducationSection('split', false);
+        if (plan.kind === 'certifications') {
+            return renderCertificationSection(plan.variant, plan.includeOverflowState);
         }
 
-        if (sectionId === 'certifications') {
-            return renderCertificationSection('split', false);
-        }
-
-        if (sectionId === 'skills') {
-            return renderSkillSection(false);
-        }
-
-        return null;
+        return renderSkillSection(plan.includeOverflowState);
     };
 
-    const renderOrderedSections = (sectionIds: string[]) => sectionIds.map((sectionId) => (
+    const renderSectionById = (sectionId: string, layout: ResumePreviewSectionLayout) => {
+        const plan = resolveResumePreviewSectionPlan(sectionId, layout);
+        return plan ? renderSectionByPlan(plan) : null;
+    };
+
+    const renderOrderedSections = (
+        sectionIds: string[],
+        layout: ResumePreviewSectionLayout,
+    ) => sectionIds.map((sectionId) => (
         <React.Fragment key={sectionId}>
-            {renderSectionById(sectionId)}
+            {renderSectionById(sectionId, layout)}
         </React.Fragment>
     ));
 
@@ -1837,49 +1846,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                                 className={`rf-template-sidebar flex min-h-0 min-w-0 flex-col self-stretch px-6 pb-7 pt-6 ${useLightSplitSidebar ? 'text-white [&_.text-gray-950]:!text-white [&_.text-gray-900]:!text-white [&_.text-gray-800]:!text-white/85 [&_.text-gray-700]:!text-white/75 [&_.text-gray-600]:!text-white/70 [&_.text-gray-500]:!text-white/60' : ''}`}
                             >
                                 {splitHeaderPlacement === 'sidebar' ? renderHeaderBlock() : null}
-                                {renderOrderedSections(splitColumnSectionIds.sidebar)}
+                                {renderOrderedSections(splitColumnSectionIds.sidebar, 'split')}
                             </div>
                             <div
                                 className="rf-template-main flex min-h-0 min-w-0 flex-col self-stretch px-7 pb-7 pt-6"
                             >
                                 {splitHeaderPlacement === 'main' ? renderHeaderBlock() : null}
-                                {renderOrderedSections(splitColumnSectionIds.main)}
+                                {renderOrderedSections(splitColumnSectionIds.main, 'split')}
                             </div>
                         </>
                     ) : (
                     <>
                     {renderHeaderBlock()}
-                    {visibleSectionOrder.map((sectionId) => (
-                        <React.Fragment key={sectionId}>
-                            {(() => {
-                        if (sectionId === 'summary') {
-                            return renderSummarySection();
-                        }
-
-                        if (sectionId === 'work') {
-                            return renderExperienceSection('work', '工作经历', selectedWorkItems);
-                        }
-
-                        if (sectionId === 'project') {
-                            return renderExperienceSection('project', '项目经历', selectedProjectItems);
-                        }
-
-                        if (sectionId === 'education') {
-                            return renderEducationSection('page', true);
-                        }
-
-                        if (sectionId === 'certifications') {
-                            return renderCertificationSection('page', true);
-                        }
-
-                        if (sectionId === 'skills') {
-                            return renderSkillSection(true);
-                        }
-
-                        return null;
-                            })()}
-                        </React.Fragment>
-                    ))}
+                    {renderOrderedSections(visibleSectionOrder, 'page')}
                     </>
                     )}
                 </div>

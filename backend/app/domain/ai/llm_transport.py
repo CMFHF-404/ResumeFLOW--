@@ -1871,11 +1871,14 @@ async def _stream_gemini_json_response(
 ) -> Dict[str, Any]:
     stream_route = _resolve_ai_route(lane=LANE_THINKING)
 
-    async def record_stream_failure(error: Exception) -> None:
+    async def record_stream_failure(
+        error: Exception,
+        route: AIRoute = stream_route,
+    ) -> None:
         await _emit_failed_usage(
             usage_callback,
-            provider=stream_route.provider,
-            model=stream_route.model,
+            provider=route.provider,
+            model=route.model,
             request_label=request_label,
             metadata={
                 "transport": "thinking_stream",
@@ -1935,7 +1938,10 @@ async def _stream_gemini_json_response(
                             usage_callback=usage_callback,
                         )
                     except Exception as gemini_error:
-                        await record_stream_failure(gemini_error)
+                        await record_stream_failure(
+                            gemini_error,
+                            _resolve_gemini_route(),
+                        )
                         raise
                 await record_stream_failure(qwen_chat_error)
                 raise
@@ -1976,7 +1982,7 @@ async def _stream_gemini_json_response(
             usage_callback=usage_callback,
         )
     except Exception as gemini_error:
-        await record_stream_failure(gemini_error)
+        await record_stream_failure(gemini_error, _resolve_gemini_route())
         raise
 
 
