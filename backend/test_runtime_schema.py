@@ -24,6 +24,10 @@ class RuntimeSchemaTests(unittest.IsolatedAsyncioTestCase):
         schema = (Path(__file__).resolve().parent / "schema.sql").read_text(encoding="utf-8")
 
         self.assertIn("key_plaintext TEXT", schema)
+        self.assertIn("ADD COLUMN IF NOT EXISTS tags TEXT[]", schema)
+        self.assertIn("ADD COLUMN IF NOT EXISTS contact_type TEXT", schema)
+        self.assertIn("ADD COLUMN IF NOT EXISTS image_base64_list TEXT[]", schema)
+        self.assertIn("uniq_agent_api_keys_active_user", schema)
         self.assertIn("CREATE TABLE IF NOT EXISTS ai_assistant_image_blobs", schema)
         self.assertIn("idx_ai_assistant_image_blobs_session_id", schema)
 

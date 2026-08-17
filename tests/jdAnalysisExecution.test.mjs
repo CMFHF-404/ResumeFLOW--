@@ -144,6 +144,7 @@ const buildDeps = (overrides = {}) => {
       },
       onProgress: (node) => calls.progress.push(node),
       onEvent: (event) => calls.events.push(event),
+      canApplyAnalysisResult: () => true,
       ...overrides,
     },
   };
@@ -321,6 +322,35 @@ test('full execution applies result, persists state, and tracks analytics lifecy
   assert.equal(calls.diffUpdates.length, 1);
   assert.equal(calls.collapsed[0], true);
   assert.deepEqual(calls.debugInfo, [null]);
+});
+
+test('authority changes abort a provider result before any local state is applied', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  let backendStillMatches = true;
+  const { calls, params } = buildDeps({
+    canApplyAnalysisResult: () => backendStillMatches,
+    requestRunner: async () => {
+      calls.requestRuns += 1;
+      backendStillMatches = false;
+      return {
+        result: buildResult(),
+        currentFile: null,
+        attachmentSupplementalJdText: '',
+        extractedAttachmentText: '',
+        shouldPersistAttachmentAsText: false,
+      };
+    },
+  });
+
+  const outcome = await runJDAnalysisExecution(params);
+
+  assert.deepEqual(outcome, { status: 'aborted' });
+  assert.equal(calls.requestRuns, 1);
+  assert.deepEqual(calls.scores, []);
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.diffUpdates, []);
+  assert.deepEqual(calls.promotions, []);
+  assert.deepEqual(calls.completes, []);
 });
 
 test('JD analytics preserves legacy match_score semantics and records quality separately', () => {

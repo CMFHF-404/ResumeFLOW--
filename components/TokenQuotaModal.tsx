@@ -11,16 +11,19 @@ import {
   type TokenUsageEvent,
 } from '../services/billingService';
 import {
-  appendPaymentOrderPage,
   clearMatchingTerminalPurchaseAttempt,
   coordinatePaymentOrdersAndContextRefresh,
-  getOrderRefreshPageDepth,
   getOrCreatePurchaseIdempotencyKey,
   paymentOrderConflictMessage,
   paymentOrderCreationRateLimitMessage,
   requiresRepeatPurchaseAcknowledgement,
   resolveUnsettledPaymentOrderConflict,
 } from './tokenQuotaOrderUtils';
+import { usePaymentOrdersController } from './usePaymentOrdersController';
+import {
+  createPaymentCheckoutSubmissionController,
+  type PaymentCheckoutSubmission,
+} from './paymentCheckoutSubmissionController';
 
 type QuotaModalView = 'overview' | 'purchase' | 'orders';
 
@@ -1016,9 +1019,10 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   const [paymentStatus, setPaymentStatus] = React.useState<PaymentUiStatus>(null);
   const [checkoutForm, setCheckoutForm] = React.useState<PaymentCheckoutForm | null>(null);
   const checkoutFormRef = React.useRef<HTMLFormElement | null>(null);
-  const submittedCheckoutOrderIdRef = React.useRef<string | null>(null);
   const checkoutSubmitWatchdogRef = React.useRef<number | null>(null);
-  const checkoutPageHideRef = React.useRef(false);
+  const checkoutSubmissionControllerRef = React.useRef(
+    createPaymentCheckoutSubmissionController(),
+  );
   const [checkoutReturnSyncOrderId, setCheckoutReturnSyncOrderId] = React.useState<string | null>(null);
   const [purchaseContext, setPurchaseContext] = React.useState<PaymentPurchaseContext | null>(null);
   const [isLoadingPurchaseContext, setIsLoadingPurchaseContext] = React.useState(false);
@@ -1044,22 +1048,34 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   const restorePurchaseButtonFocusRef = React.useRef(false);
   const [paymentSyncRetryRequest, setPaymentSyncRetryRequest] = React.useState(0);
   const [canRetryPaymentSync, setCanRetryPaymentSync] = React.useState(false);
-  const [orders, setOrders] = React.useState<PaymentOrder[]>([]);
-  const ordersCursorRef = React.useRef<string | null>(null);
-  const [ordersHasMore, setOrdersHasMore] = React.useState(false);
-  const [isLoadingOrders, setIsLoadingOrders] = React.useState(false);
-  const [isLoadingMoreOrders, setIsLoadingMoreOrders] = React.useState(false);
-  const ordersLoadRequestRef = React.useRef<number | null>(null);
-  const ordersLoadMoreRequestRef = React.useRef<number | null>(null);
-  const loadedOrderCountRef = React.useRef(0);
-  const ordersRequestGenerationRef = React.useRef(0);
-  const ordersAbortControllersRef = React.useRef(new Set<AbortController>());
-  const [ordersError, setOrdersError] = React.useState('');
-  const [orderActionId, setOrderActionId] = React.useState<string | null>(null);
-  const orderActionInFlightRef = React.useRef(false);
-  const orderActionGenerationRef = React.useRef(0);
-  const orderActionAbortControllerRef = React.useRef<AbortController | null>(null);
-  const [ordersNow, setOrdersNow] = React.useState(() => Date.now());
+
+  const clearPurchaseAttemptForTerminalOrder = React.useCallback((order: PaymentOrder) => {
+    clearMatchingTerminalPurchaseAttempt(
+      purchaseIdempotencyKeysRef.current,
+      purchaseOrderIdsRef.current,
+      order,
+    );
+  }, []);
+
+  const {
+    orders,
+    ordersHasMore,
+    isLoadingOrders,
+    isLoadingMoreOrders,
+    ordersError,
+    orderActionId,
+    ordersNow,
+    loadOrders,
+    invalidateOrderLoadRequests,
+    rememberOrderForCheckoutRecovery,
+    setOrdersError,
+    touchOrdersNow,
+    markOrderAction,
+    beginOrderAction,
+    isOrderActionCurrent,
+    finishOrderAction,
+    invalidateOrderAction,
+  } = usePaymentOrdersController(clearPurchaseAttemptForTerminalOrder);
 
   const beginCheckoutRequest = React.useCallback(() => {
     if (checkoutInFlightGenerationRef.current !== null) return null;
@@ -1088,15 +1104,13 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     checkoutAbortControllerRef.current = null;
     checkoutRequestGenerationRef.current += 1;
     checkoutInFlightGenerationRef.current = null;
-    orderActionGenerationRef.current += 1;
-    orderActionAbortControllerRef.current?.abort();
-    orderActionAbortControllerRef.current = null;
-    orderActionInFlightRef.current = false;
-    setOrderActionId(null);
+    checkoutSubmissionControllerRef.current.invalidate();
+    invalidateOrderAction();
     setCheckoutForm(null);
     setIsPurchasing(false);
+    setIsCheckoutSubmitting(false);
     return true;
-  }, []);
+  }, [invalidateOrderAction]);
 
   const clearCheckoutSubmitWatchdog = React.useCallback(() => {
     if (checkoutSubmitWatchdogRef.current !== null) {
@@ -1107,7 +1121,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
   const resetCheckoutAfterExternalReturn = React.useCallback(() => {
     clearCheckoutSubmitWatchdog();
-    checkoutPageHideRef.current = false;
     checkoutRequestGenerationRef.current += 1;
     checkoutInFlightGenerationRef.current = null;
     checkoutAbortControllerRef.current?.abort();
@@ -1116,32 +1129,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     setIsPurchasing(false);
     setIsCheckoutSubmitting(false);
   }, [clearCheckoutSubmitWatchdog]);
-
-  const invalidateOrderLoadRequests = React.useCallback(() => {
-    ordersRequestGenerationRef.current += 1;
-    ordersAbortControllersRef.current.forEach((controller) => controller.abort());
-    ordersAbortControllersRef.current.clear();
-    ordersLoadRequestRef.current = null;
-    ordersLoadMoreRequestRef.current = null;
-    setIsLoadingOrders(false);
-    setIsLoadingMoreOrders(false);
-  }, []);
-
-  const rememberOrderForCheckoutRecovery = React.useCallback((nextOrder: PaymentOrder) => {
-    clearMatchingTerminalPurchaseAttempt(
-      purchaseIdempotencyKeysRef.current,
-      purchaseOrderIdsRef.current,
-      nextOrder,
-    );
-    setOrders((current) => {
-      const exists = current.some((order) => order.id === nextOrder.id);
-      const next = exists
-        ? current.map((order) => order.id === nextOrder.id ? { ...order, ...nextOrder } : order)
-        : [nextOrder, ...current];
-      if (!exists) loadedOrderCountRef.current = next.length;
-      return next;
-    });
-  }, []);
 
   const invalidatePurchaseContextRequest = React.useCallback(() => {
     purchaseContextRequestGenerationRef.current += 1;
@@ -1241,8 +1228,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
   const recoverCheckoutSubmission = React.useCallback((order: PaymentOrder) => {
     clearCheckoutSubmitWatchdog();
-    checkoutPageHideRef.current = false;
-    submittedCheckoutOrderIdRef.current = null;
     checkoutRequestGenerationRef.current += 1;
     checkoutInFlightGenerationRef.current = null;
     setCheckoutForm(null);
@@ -1254,52 +1239,23 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     setActiveView('orders');
   }, [clearCheckoutSubmitWatchdog, rememberOrderForCheckoutRecovery]);
 
-  const armCheckoutSubmitWatchdog = React.useCallback((order: PaymentOrder) => {
-    if (checkoutPageHideRef.current) return;
+  const armCheckoutSubmitWatchdog = React.useCallback((
+    order: PaymentOrder,
+    submission: PaymentCheckoutSubmission,
+  ) => {
+    if (!checkoutSubmissionControllerRef.current.shouldRecoverFromWatchdog(submission)) return;
     clearCheckoutSubmitWatchdog();
     checkoutSubmitWatchdogRef.current = window.setTimeout(() => {
       checkoutSubmitWatchdogRef.current = null;
-      if (checkoutPageHideRef.current) return;
+      if (!checkoutSubmissionControllerRef.current.shouldRecoverFromWatchdog(submission)) return;
       recoverCheckoutSubmission(order);
     }, 10_000);
   }, [clearCheckoutSubmitWatchdog, recoverCheckoutSubmission]);
-
-  const beginOrderAction = React.useCallback(() => {
-    if (orderActionInFlightRef.current) return null;
-    orderActionInFlightRef.current = true;
-    const generation = orderActionGenerationRef.current + 1;
-    orderActionGenerationRef.current = generation;
-    orderActionAbortControllerRef.current?.abort();
-    orderActionAbortControllerRef.current = new AbortController();
-    invalidateOrderLoadRequests();
-    setIsLoadingOrders(false);
-    setIsLoadingMoreOrders(false);
-    return generation;
-  }, [invalidateOrderLoadRequests]);
-
-  const isOrderActionCurrent = React.useCallback((generation: number) => (
-    orderActionInFlightRef.current && orderActionGenerationRef.current === generation
-  ), []);
-
-  const finishOrderAction = React.useCallback((generation: number) => {
-    if (!isOrderActionCurrent(generation)) return;
-    orderActionInFlightRef.current = false;
-    orderActionAbortControllerRef.current = null;
-    setOrderActionId(null);
-  }, [isOrderActionCurrent]);
 
   const clearRedemptionPresentation = React.useCallback(() => {
     setRedemptionCode('');
     setRedemptionMessage('');
     setRedemptionError('');
-  }, []);
-
-  const clearPurchaseAttemptForTerminalOrder = React.useCallback((order: PaymentOrder) => {
-    clearMatchingTerminalPurchaseAttempt(
-      purchaseIdempotencyKeysRef.current,
-      purchaseOrderIdsRef.current,
-      order,
-    );
   }, []);
 
   const refresh = React.useCallback(async (options?: { preserveError?: boolean }) => {
@@ -1464,81 +1420,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     return invalidateProductsRequest;
   }, [invalidateProductsRequest, isOpen, refreshProducts]);
 
-  const loadOrders = React.useCallback(async (options?: { append?: boolean; replayLoadedDepth?: boolean }): Promise<boolean> => {
-    if (orderActionInFlightRef.current) return false;
-    const append = Boolean(options?.append);
-    const replayLoadedDepth = Boolean(options?.replayLoadedDepth);
-    let cursor = append ? ordersCursorRef.current : null;
-    if (append && !cursor) return false;
-    if (append && (ordersLoadRequestRef.current !== null || ordersLoadMoreRequestRef.current !== null)) return false;
-    if (!append && (ordersLoadRequestRef.current !== null || ordersLoadMoreRequestRef.current !== null)) return false;
-    const requestGeneration = append
-      ? ordersRequestGenerationRef.current
-      : ordersRequestGenerationRef.current + 1;
-    if (!append) ordersRequestGenerationRef.current = requestGeneration;
-    if (append) ordersLoadMoreRequestRef.current = requestGeneration;
-    else ordersLoadRequestRef.current = requestGeneration;
-    append ? setIsLoadingMoreOrders(true) : setIsLoadingOrders(true);
-    const controller = new AbortController();
-    ordersAbortControllersRef.current.add(controller);
-    try {
-      const replayPageDepth = replayLoadedDepth
-        ? getOrderRefreshPageDepth(loadedOrderCountRef.current, 20)
-        : 1;
-      let response = await billingService.listPaymentOrders(20, cursor, { signal: controller.signal });
-      let items = response.items;
-      let loadedPages = 1;
-      while (
-        !append
-        && loadedPages < replayPageDepth
-        && response.has_more
-        && response.next_cursor
-      ) {
-        if (requestGeneration !== ordersRequestGenerationRef.current) return false;
-        cursor = response.next_cursor;
-        response = await billingService.listPaymentOrders(20, cursor, { signal: controller.signal });
-        items = appendPaymentOrderPage(items, response.items);
-        loadedPages += 1;
-      }
-      if (requestGeneration !== ordersRequestGenerationRef.current) return false;
-      setOrdersError('');
-      items.forEach(clearPurchaseAttemptForTerminalOrder);
-      if (append) {
-        setOrders((current) => {
-          const next = appendPaymentOrderPage(current, items);
-          loadedOrderCountRef.current = next.length;
-          return next;
-        });
-      } else {
-        loadedOrderCountRef.current = items.length;
-        setOrders(items);
-      }
-      if (append) {
-        ordersCursorRef.current = response.next_cursor;
-        setOrdersHasMore(response.has_more);
-      } else {
-        ordersCursorRef.current = response.next_cursor;
-        setOrdersHasMore(response.has_more);
-      }
-      setOrdersNow(Date.now());
-      return true;
-    } catch (ordersFetchError) {
-      if (requestGeneration !== ordersRequestGenerationRef.current || controller.signal.aborted) return false;
-      console.warn('Failed to load payment orders', ordersFetchError);
-      setOrdersError('订单加载失败，请稍后重试。');
-      return false;
-    } finally {
-      ordersAbortControllersRef.current.delete(controller);
-      if (append && ordersLoadMoreRequestRef.current === requestGeneration) {
-        ordersLoadMoreRequestRef.current = null;
-        setIsLoadingMoreOrders(false);
-      } else if (!append && ordersLoadRequestRef.current === requestGeneration) {
-        ordersLoadRequestRef.current = null;
-        setIsLoadingOrders(false);
-      }
-    }
-  }, [clearPurchaseAttemptForTerminalOrder]);
-
   const coordinatePaymentDataRefresh = React.useCallback(() => {
     const lifecycleGeneration = paymentRefreshLifecycleGenerationRef.current;
     return coordinatePaymentOrdersAndContextRefresh(
@@ -1559,28 +1440,28 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     if (!isOpen || activeView !== 'orders' || checkoutReturnSyncOrderId) return;
     void coordinatePaymentDataRefresh();
     const timer = window.setInterval(() => {
-      setOrdersNow(Date.now());
+      touchOrdersNow();
       void loadOrders({ replayLoadedDepth: true });
     }, 30_000);
     return () => {
       window.clearInterval(timer);
       invalidateOrderLoadRequests();
     };
-  }, [activeView, checkoutReturnSyncOrderId, coordinatePaymentDataRefresh, invalidateOrderLoadRequests, isOpen, loadOrders]);
+  }, [activeView, checkoutReturnSyncOrderId, coordinatePaymentDataRefresh, invalidateOrderLoadRequests, isOpen, loadOrders, touchOrdersNow]);
 
   React.useEffect(() => {
     if (!isOpen || activeView !== 'purchase' || !checkoutForm || !checkoutFormRef.current) return;
     const form = checkoutFormRef.current;
     const { order } = checkoutForm;
     setIsCheckoutSubmitting(true);
-    submittedCheckoutOrderIdRef.current = order.id;
-    checkoutPageHideRef.current = false;
-    armCheckoutSubmitWatchdog(order);
+    const submission = checkoutSubmissionControllerRef.current.beginSubmission(order.id);
+    armCheckoutSubmitWatchdog(order, submission);
     try {
       form.submit();
-      armCheckoutSubmitWatchdog(order);
+      armCheckoutSubmitWatchdog(order, submission);
     } catch (submitError) {
       console.warn('Failed to submit payment checkout form', submitError);
+      checkoutSubmissionControllerRef.current.invalidate();
       recoverCheckoutSubmission(order);
       return;
     }
@@ -1662,12 +1543,12 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
   React.useEffect(() => {
     const handlePageHide = () => {
-      checkoutPageHideRef.current = true;
+      checkoutSubmissionControllerRef.current.markPageHidden();
       clearCheckoutSubmitWatchdog();
     };
     const handlePageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-      const orderId = submittedCheckoutOrderIdRef.current;
+      const orderId = checkoutSubmissionControllerRef.current.consumePersistedPageShow();
       resetCheckoutAfterExternalReturn();
       if (orderId) setCheckoutReturnSyncOrderId(orderId);
     };
@@ -1702,7 +1583,6 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
         }
       } finally {
         if (!cancelled) {
-          submittedCheckoutOrderIdRef.current = null;
           setCheckoutReturnSyncOrderId(null);
           // The orders effect starts a fresh generation after sync is released,
           // so a response started before the sync cannot overwrite this order.
@@ -1879,27 +1759,27 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
   const handleContinuePayment = async (order: PaymentOrder) => {
     if (isCheckoutSubmitting) return;
-    const actionGeneration = beginOrderAction();
-    if (actionGeneration === null) return;
+    const actionRequest = beginOrderAction();
+    if (actionRequest === null) return;
     const requestGeneration = beginCheckoutRequest();
     if (requestGeneration === null) {
-      finishOrderAction(actionGeneration);
+      finishOrderAction(actionRequest);
       return;
     }
-    setOrderActionId(order.id);
+    markOrderAction(order.id);
     setIsPurchasing(true);
     setError('');
     try {
       const requestSignal = checkoutAbortControllerRef.current?.signal;
       const checkout = await billingService.getPaymentCheckout(order.id, { signal: requestSignal });
-      if (!isCheckoutRequestCurrent(requestGeneration) || !isOrderActionCurrent(actionGeneration)) return;
+      if (!isCheckoutRequestCurrent(requestGeneration) || !isOrderActionCurrent(actionRequest)) return;
       updateListedOrder(checkout.order);
       setPaymentStatus(checkout.order.status);
       setIsCheckoutSubmitting(true);
       setCheckoutForm(checkout);
       setActiveView('purchase');
     } catch (checkoutError) {
-      if (!isCheckoutRequestCurrent(requestGeneration) || !isOrderActionCurrent(actionGeneration)) return;
+      if (!isCheckoutRequestCurrent(requestGeneration) || !isOrderActionCurrent(actionRequest)) return;
       console.warn('Failed to resume payment order', checkoutError);
       const unsettledConflict = resolveUnsettledPaymentOrderConflict(checkoutError);
       if (unsettledConflict) {
@@ -1919,52 +1799,52 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
       }
     } finally {
       finishCheckoutRequest(requestGeneration);
-      finishOrderAction(actionGeneration);
+      finishOrderAction(actionRequest);
     }
   };
 
   const handleSyncOrder = async (order: PaymentOrder) => {
-    const actionGeneration = beginOrderAction();
-    if (actionGeneration === null) return;
-    setOrderActionId(order.id);
+    const actionRequest = beginOrderAction();
+    if (actionRequest === null) return;
+    markOrderAction(order.id);
     setOrdersError('');
     try {
       const nextOrder = await billingService.syncPaymentOrder(order.id, {
-        signal: orderActionAbortControllerRef.current?.signal,
+        signal: actionRequest.abortController.signal,
       });
-      if (!isOrderActionCurrent(actionGeneration)) return;
+      if (!isOrderActionCurrent(actionRequest)) return;
       updateListedOrder(nextOrder);
       await finishReturnedOrder(nextOrder, nextOrder.id === returnedPaymentOrderId);
-      if (!isOrderActionCurrent(actionGeneration)) return;
+      if (!isOrderActionCurrent(actionRequest)) return;
       await refreshPurchaseContext();
     } catch (syncError) {
-      if (!isOrderActionCurrent(actionGeneration)) return;
+      if (!isOrderActionCurrent(actionRequest)) return;
       console.warn('Failed to sync listed payment order', syncError);
       setOrdersError('订单状态暂时无法确认，请稍后重试。');
     } finally {
-      finishOrderAction(actionGeneration);
+      finishOrderAction(actionRequest);
     }
   };
 
   const handleCancelOrder = async (order: PaymentOrder) => {
-    const actionGeneration = beginOrderAction();
-    if (actionGeneration === null) return;
-    setOrderActionId(order.id);
+    const actionRequest = beginOrderAction();
+    if (actionRequest === null) return;
+    markOrderAction(order.id);
     setOrdersError('');
     try {
       const nextOrder = await billingService.cancelPaymentOrder(order.id, {
-        signal: orderActionAbortControllerRef.current?.signal,
+        signal: actionRequest.abortController.signal,
       });
-      if (!isOrderActionCurrent(actionGeneration)) return;
+      if (!isOrderActionCurrent(actionRequest)) return;
       updateListedOrder(nextOrder);
-      setOrdersNow(Date.now());
+      touchOrdersNow();
       await refreshPurchaseContext();
     } catch (cancelError) {
-      if (!isOrderActionCurrent(actionGeneration)) return;
+      if (!isOrderActionCurrent(actionRequest)) return;
       console.warn('Failed to cancel payment order', cancelError);
       setOrdersError('订单取消失败，请刷新后重试。');
     } finally {
-      finishOrderAction(actionGeneration);
+      finishOrderAction(actionRequest);
     }
   };
 

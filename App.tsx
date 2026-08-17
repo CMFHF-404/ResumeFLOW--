@@ -259,6 +259,18 @@ const App: React.FC = () => {
     setEditorMobileDrawerOpenRequest(0);
   }, []);
 
+  const handleConsumeResumeEditorFocusRequest = useCallback((requestId: number) => {
+    setResumeEditorFocusRequest((current) => (
+      current?.requestId === requestId ? null : current
+    ));
+  }, []);
+
+  useEffect(() => {
+    if (currentView !== ViewState.EDITOR) {
+      setResumeEditorFocusRequest(null);
+    }
+  }, [currentView]);
+
   useEffect(() => {
     trackPageView(currentView);
   }, [currentView]);
@@ -464,6 +476,7 @@ const App: React.FC = () => {
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
             focusExperienceRequest={resumeEditorFocusRequest}
+            onFocusExperienceRequestHandled={handleConsumeResumeEditorFocusRequest}
           />
         ) : (
           <GuestResumeEditorPreview onRequireAuth={handleRequireAuth} />

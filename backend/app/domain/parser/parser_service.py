@@ -392,34 +392,6 @@ def _build_resume_messages(prompt: str, content: str) -> List[Dict[str, Any]]:
     ]
 
 
-def _build_resume_attachment_messages(
-    prompt: str,
-    filename: str,
-    mime_type: str,
-    encoded_file: str,
-) -> List[Dict[str, Any]]:
-    data_url = f"data:{mime_type};base64,{encoded_file}"
-    return [
-        {"role": "system", "content": prompt},
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        "请直接解析附件简历，并严格按 JSON schema 返回。"
-                        f"文件名：{filename or 'resume'}"
-                    ),
-                },
-                {
-                    "type": "file_url",
-                    "file_url": {"url": data_url},
-                },
-            ],
-        },
-    ]
-
-
 async def _emit_progress(
     progress_callback: ParseProgressCallback,
     payload: Dict[str, Any],
@@ -796,49 +768,6 @@ async def _parse_resume_from_text(
         total_ms,
         request_id,
         {"mode": mode, "input_length": len(cleaned_text)},
-    )
-    return _normalize_parse_result(result)
-
-
-async def _parse_resume_from_attachment(
-    *,
-    encoded_file: str,
-    filename: str,
-    file_mime_type: str,
-    request_id: Optional[str],
-    progress_callback: ParseProgressCallback = None,
-) -> Dict[str, Any]:
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "request_ai", "title": "调用 AI 解析附件"},
-    )
-    total_start = perf_counter()
-    messages = _build_resume_attachment_messages(
-        RESUME_PARSING_PROMPT,
-        filename,
-        file_mime_type,
-        encoded_file,
-    )
-    result = await _call_resume_llm(
-        messages,
-        request_id,
-        "ai_call",
-        {
-            "filename": filename,
-            "content_type": file_mime_type,
-            "mode": "attachment",
-        },
-    )
-    await _emit_progress(
-        progress_callback,
-        {"type": "progress", "node": "merge_result", "title": "整理解析结果"},
-    )
-    total_ms = (perf_counter() - total_start) * 1000
-    _log_timing(
-        "parse_resume_total",
-        total_ms,
-        request_id,
-        {"mode": "attachment"},
     )
     return _normalize_parse_result(result)
 

@@ -149,12 +149,18 @@ test('purchase context loads independently from order history', () => {
 
 test('token quota modal lists, refreshes, repeats, and cancels orders', () => {
   const modal = read('components/TokenQuotaModal.tsx');
+  const ordersHook = read('components/usePaymentOrdersController.ts');
+  const listLoader = read('components/paymentOrderListLoader.ts');
+  const requestController = read('components/paymentOrderRequestController.ts');
   const service = read('services/billingService.ts');
 
-  assert.match(modal, /listPaymentOrders\(20, cursor, \{ signal: controller\.signal \}\)/);
+  assert.match(
+    ordersHook,
+    /fetchPage: \(limit, cursor, signal\) => billingService\.listPaymentOrders\([\s\S]*limit,[\s\S]*cursor,[\s\S]*\{ signal \}/,
+  );
   assert.match(modal, /加载更多/);
   assert.match(modal, /暂无订单/);
-  assert.match(modal, /订单加载失败，请稍后重试/);
+  assert.match(ordersHook, /订单加载失败，请稍后重试/);
   assert.match(modal, /继续支付/);
   assert.match(modal, /查询最终状态/);
   assert.match(modal, /确认取消/);
@@ -176,32 +182,28 @@ test('token quota modal lists, refreshes, repeats, and cancels orders', () => {
   assert.match(modal, /case 'expired': return '已取消（超时）'/);
   assert.match(modal, /case 'expired': return '订单已过期；如仍需购买，请再次下单。';/);
   assert.match(modal, /isOrderPastDue/);
-  assert.match(modal, /ordersRequestGenerationRef/);
-  assert.ok((modal.match(/if \(requestGeneration !== ordersRequestGenerationRef\.current\) return false;/g) ?? []).length >= 2);
-  assert.match(modal, /const orderActionInFlightRef = React\.useRef\(false\)/);
-  assert.match(modal, /const beginOrderAction = React\.useCallback/);
-  assert.match(modal, /const invalidateOrderLoadRequests = React\.useCallback/);
-  assert.match(modal, /ordersRequestGenerationRef\.current \+= 1;/);
-  assert.match(modal, /ordersAbortControllersRef\.current\.forEach\(\(controller\) => controller\.abort\(\)\)/);
-  assert.match(modal, /ordersLoadRequestRef\.current = null;/);
-  assert.match(modal, /ordersLoadMoreRequestRef\.current = null;/);
-  assert.match(modal, /setIsLoadingOrders\(false\);\s*setIsLoadingMoreOrders\(false\);/);
-  assert.match(modal, /const loadOrders = React\.useCallback[\s\S]*if \(orderActionInFlightRef\.current\) return false;/);
-  assert.match(modal, /const loadedOrderCountRef = React\.useRef\(0\)/);
-  assert.match(modal, /const replayLoadedDepth = Boolean\(options\?\.replayLoadedDepth\)/);
-  assert.match(modal, /const ordersLoadRequestRef = React\.useRef<number \| null>\(null\)/);
-  assert.match(modal, /const ordersLoadMoreRequestRef = React\.useRef<number \| null>\(null\)/);
-  assert.match(modal, /if \(!append && \(ordersLoadRequestRef\.current !== null \|\| ordersLoadMoreRequestRef\.current !== null\)\) return false;/);
-  assert.match(modal, /ordersLoadRequestRef\.current === requestGeneration/);
-  assert.match(modal, /ordersLoadMoreRequestRef\.current === requestGeneration/);
-  assert.match(modal, /const replayPageDepth = replayLoadedDepth\s+\? getOrderRefreshPageDepth\(loadedOrderCountRef\.current, 20\)/);
-  assert.match(modal, /while \(\s*!append\s+&& loadedPages < replayPageDepth/);
+  assert.match(modal, /usePaymentOrdersController\(clearPurchaseAttemptForTerminalOrder\)/);
+  assert.doesNotMatch(modal, /ordersRequestGenerationRef|ordersLoadRequestRef|orderActionInFlightRef/);
+  assert.match(requestController, /private ordersRequestGeneration = 0/);
+  assert.match(requestController, /private orderActionInFlight = false/);
+  assert.match(requestController, /this\.ordersAbortControllers\.forEach\(\(controller\) => controller\.abort\(\)\)/);
+  assert.match(requestController, /if \(this\.orderActionInFlight\) return null/);
+  assert.match(requestController, /this\.invalidateLoads\(\)/);
+  assert.match(ordersHook, /const invalidateOrderLoadRequests = React\.useCallback/);
+  assert.match(ordersHook, /controller\.invalidateLoads\(\);\s*setIsLoadingOrders\(false\);\s*setIsLoadingMoreOrders\(false\);/);
+  assert.match(listLoader, /controller\.beginLoad\(\{[\s\S]*replayLoadedDepth: Boolean\(options\?\.replayLoadedDepth\)/);
+  assert.match(listLoader, /while \(\s*!append\s*&& loadedPages < request\.replayPageDepth/);
+  assert.match(listLoader, /if \(!controller\.isLoadCurrent\(request\)\) return false;/);
+  assert.match(listLoader, /onFinish\(controller\.finishLoad\(request\)\)/);
   assert.match(modal, /loadOrders\(\{ replayLoadedDepth: true \}\)/);
   assert.match(modal, /if \(!isOpen \|\| activeView !== 'orders' \|\| checkoutReturnSyncOrderId\) return;/);
   assert.match(modal, /window\.clearInterval\(timer\);\s*invalidateOrderLoadRequests\(\);/);
-  assert.match(modal, /const finishOrderAction = React\.useCallback/);
-  assert.match(modal, /orderActionAbortControllerRef\.current\?\.abort\(\)/);
-  assert.ok((modal.match(/finishOrderAction\(actionGeneration\)/g) ?? []).length >= 3);
+  assert.match(modal, /invalidateOrderAction\(\);[\s\S]*setCheckoutForm\(null\)/);
+  assert.match(ordersHook, /const finishOrderAction = React\.useCallback/);
+  assert.match(requestController, /this\.orderActionAbortController\?\.abort\(\)/);
+  assert.ok((modal.match(/finishOrderAction\(actionRequest\)/g) ?? []).length >= 3);
+  assert.ok((modal.match(/isOrderActionCurrent\(actionRequest\)/g) ?? []).length >= 6);
+  assert.ok((modal.match(/signal: actionRequest\.abortController\.signal/g) ?? []).length >= 2);
   assert.match(modal, /const isBusy = actionOrderId !== null;/);
   assert.match(modal, /const isCurrentAction = actionOrderId === order\.id;/);
   assert.match(modal, /const isPastDue = isOrderPastDue\(order, now\)/);
@@ -219,6 +221,7 @@ test('token quota modal lists, refreshes, repeats, and cancels orders', () => {
 test('payment checkout submits the signed server form and returned orders sync safely', () => {
   const modal = read('components/TokenQuotaModal.tsx');
   const orderUtils = read('components/tokenQuotaOrderUtils.ts');
+  const submissionController = read('components/paymentCheckoutSubmissionController.ts');
   const app = read('App.tsx');
 
   assert.match(modal, /crypto\.randomUUID/);
@@ -236,6 +239,11 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /isCheckoutRequestCurrent/);
   assert.match(modal, /finishCheckoutRequest/);
   assert.match(modal, /invalidateCheckoutRequest/);
+  const checkoutInvalidator = modal.match(
+    /const invalidateCheckoutRequest = React\.useCallback\(\(\) => \{[\s\S]*?\}, \[invalidateOrderAction\]\);/,
+  )?.[0] ?? '';
+  assert.match(checkoutInvalidator, /checkoutSubmissionControllerRef\.current\.invalidate\(\)/);
+  assert.match(checkoutInvalidator, /setIsCheckoutSubmitting\(false\)/);
   assert.match(modal, /checkoutAbortControllerRef\.current\?\.abort\(\);[\s\S]*checkoutRequestGenerationRef\.current \+= 1;/);
   assert.match(modal, /const handleClose = \(\) => \{[\s\S]*if \(isCheckoutSubmitting\) return;\s*invalidatePaymentRefreshLifecycle\(\);\s*invalidateRedemptionRequest\(\);\s*setIsRedeeming\(false\);\s*invalidateCheckoutRequest\(\);/);
   assert.match(modal, /setCheckoutForm\(null\)/);
@@ -243,14 +251,25 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /const clearCheckoutSubmitWatchdog = React\.useCallback/);
   assert.match(modal, /const recoverCheckoutSubmission = React\.useCallback/);
   assert.match(modal, /const armCheckoutSubmitWatchdog = React\.useCallback/);
+  const checkoutRecovery = modal.match(
+    /const recoverCheckoutSubmission = React\.useCallback\([\s\S]*?\}, \[clearCheckoutSubmitWatchdog, rememberOrderForCheckoutRecovery\]\);/,
+  )?.[0] ?? '';
+  const checkoutWatchdog = modal.match(
+    /const armCheckoutSubmitWatchdog = React\.useCallback\([\s\S]*?\}, \[clearCheckoutSubmitWatchdog, recoverCheckoutSubmission\]\);/,
+  )?.[0] ?? '';
+  assert.match(checkoutRecovery, /setActiveView\('orders'\)/);
+  assert.match(checkoutWatchdog, /recoverCheckoutSubmission\(order\)/);
+  assert.doesNotMatch(checkoutRecovery, /checkoutSubmissionControllerRef\.current\.invalidate\(\)/);
+  assert.doesNotMatch(checkoutWatchdog, /checkoutSubmissionControllerRef\.current\.invalidate\(\)/);
   assert.match(modal, /\}, 10_000\);/);
-  assert.match(modal, /form\.submit\(\);\s*armCheckoutSubmitWatchdog\(order\);/);
-  assert.match(modal, /const handlePageHide = \(\) => \{\s*checkoutPageHideRef\.current = true;\s*clearCheckoutSubmitWatchdog\(\);/);
+  assert.match(modal, /form\.submit\(\);\s*armCheckoutSubmitWatchdog\(order, submission\);/);
+  assert.match(modal, /const handlePageHide = \(\) => \{\s*checkoutSubmissionControllerRef\.current\.markPageHidden\(\);\s*clearCheckoutSubmitWatchdog\(\);/);
   assert.match(modal, /window\.addEventListener\('pagehide', handlePageHide\)/);
   assert.match(modal, /未能跳转至收银台，订单已保留。请在订单列表点击“继续支付”。/);
   assert.match(modal, /setIsCheckoutSubmitting\(true\)/);
-  assert.match(modal, /submittedCheckoutOrderIdRef\.current = order\.id/);
+  assert.match(modal, /checkoutSubmissionControllerRef\.current\.beginSubmission\(order\.id\)/);
   assert.match(modal, /const handlePageShow = \(event: PageTransitionEvent\) => \{\s*if \(!event\.persisted\) return;/);
+  assert.match(modal, /checkoutSubmissionControllerRef\.current\.consumePersistedPageShow\(\)/);
   assert.match(modal, /resetCheckoutAfterExternalReturn\(\);/);
   assert.match(modal, /setCheckoutReturnSyncOrderId\(orderId\);/);
   assert.match(modal, /billingService\.syncPaymentOrder\(orderId\)/);
@@ -276,6 +295,9 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /Object\.entries\(checkoutForm\.fields\)/);
   assert.match(modal, /syncPaymentOrder\(returnedPaymentOrderId\)/);
   assert.match(modal, /finishReturnedOrder\(order, true\)/);
+  assert.match(submissionController, /shouldRecoverFromWatchdog/);
+  assert.match(submissionController, /consumePersistedPageShow/);
+  assert.doesNotMatch(modal, /submittedCheckoutOrderIdRef|checkoutPageHideRef/);
   assert.match(modal, /if \(consumeReturnedOrder && order\.id === returnedPaymentOrderId\)/);
   const fulfilledHandler = modal.match(/const finishReturnedOrder = React\.useCallback\([\s\S]*?\}, \[onPaymentOrderHandled, refreshFulfilledOrderData, returnedPaymentOrderId\]\);/)?.[0] ?? '';
   assert.ok(fulfilledHandler.indexOf('onPaymentOrderHandled?.()') < fulfilledHandler.indexOf('refreshFulfilledOrderData(order, consumeReturnedOrder)'));

@@ -83,45 +83,6 @@ export const resolveHydratedAnalysisCandidate = (
     }
 );
 
-export const mergeAuthoritativeStaleFlags = (
-  local: ResumeJDAnalysis,
-  backend: ResumeJDAnalysis,
-  options: { localPendingSync?: boolean } = {}
-): ResumeJDAnalysis | null => {
-  if (options.localPendingSync) {
-    return null;
-  }
-  const nextIsOutdated = local.isOutdated === true || backend.isOutdated === true;
-  const nextEvaluationIsOutdated = (
-    local.evaluationIsOutdated === true
-    || backend.evaluationIsOutdated === true
-  );
-  if (
-    nextIsOutdated === (local.isOutdated === true)
-    && nextEvaluationIsOutdated === (local.evaluationIsOutdated === true)
-  ) {
-    return null;
-  }
-  return {
-    ...local,
-    isOutdated: nextIsOutdated,
-    evaluationIsOutdated: nextEvaluationIsOutdated,
-  };
-};
-
-export const shouldKeepPendingLocalSnapshot = ({
-  pendingSync,
-  basePersistedFingerprint,
-  backendPersistedFingerprint,
-}: {
-  pendingSync: boolean;
-  basePersistedFingerprint: string | null;
-  backendPersistedFingerprint: string;
-}) => (
-  pendingSync
-  && basePersistedFingerprint === backendPersistedFingerprint
-);
-
 export const buildResumeJDAnalysisPayload = (
   payload: AnalysisStatePayload,
   updatedAt: string = new Date().toISOString()

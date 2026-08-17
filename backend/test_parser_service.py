@@ -390,9 +390,9 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(parser_service, "extract_resume_text", return_value=" \n !!! "):
             with patch.object(
                 parser_service,
-                "_parse_resume_from_attachment",
+                "_call_resume_llm",
                 new_callable=AsyncMock,
-            ) as attachment_parse:
+            ) as llm_call:
                 with self.assertRaisesRegex(ValueError, "无法读取附件中的文本内容"):
                     await parser_service.parse_resume(
                         b"%PDF-1.4",
@@ -401,24 +401,30 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
                         request_id="req-unreadable",
                     )
 
-        attachment_parse.assert_not_called()
+        llm_call.assert_not_called()
 
     async def test_parse_resume_with_thoughts_rejects_unreadable_text_without_attachment_ai(self) -> None:
         with patch.object(parser_service, "extract_resume_text", return_value=" \n !!! "):
             with patch.object(
                 parser_service,
-                "_parse_resume_from_attachment",
+                "_call_resume_llm",
                 new_callable=AsyncMock,
-            ) as attachment_parse:
-                with self.assertRaisesRegex(ValueError, "无法读取附件中的文本内容"):
-                    await parser_service.parse_resume_with_thoughts(
-                        b"%PDF-1.4",
-                        "resume.pdf",
-                        "application/pdf",
-                        request_id="req-unreadable-stream",
-                    )
+            ) as llm_call:
+                with patch.object(
+                    parser_service,
+                    "_stream_resume_thinking_parse",
+                    new_callable=AsyncMock,
+                ) as thinking_call:
+                    with self.assertRaisesRegex(ValueError, "无法读取附件中的文本内容"):
+                        await parser_service.parse_resume_with_thoughts(
+                            b"%PDF-1.4",
+                            "resume.pdf",
+                            "application/pdf",
+                            request_id="req-unreadable-stream",
+                        )
 
-        attachment_parse.assert_not_called()
+        llm_call.assert_not_called()
+        thinking_call.assert_not_called()
 
     def test_normalize_date_uses_month_granularity(self) -> None:
         self.assertEqual(parser_service._normalize_date("2024.05"), "2024-05-01")

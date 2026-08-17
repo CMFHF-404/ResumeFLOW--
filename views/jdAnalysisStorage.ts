@@ -13,6 +13,20 @@ export type JDAnalysisCacheRecord = {
     basePersistedFingerprint: string | null;
 };
 
+export type PreferredPersistedJDAnalysis =
+    | {
+        kind: 'keep_pending_local' | 'adopt_backend' | 'in_sync';
+        payload: ResumeJDAnalysis;
+        shouldKeepLocalPendingSync: boolean;
+        basePersistedFingerprint: string | null;
+    }
+    | {
+        kind: 'adopt_backend_null' | 'in_sync_empty';
+        payload: null;
+        shouldKeepLocalPendingSync: false;
+        basePersistedFingerprint: string;
+    };
+
 type LegacyJDAnalysisRecord = Partial<ResumeJDAnalysis> & {
     jdText?: unknown;
     jdInputSignature?: unknown;
@@ -160,7 +174,7 @@ const normalizeJDAnalysisCacheRecord = (value: unknown): JDAnalysisCacheRecord |
 export const selectPreferredPersistedJDAnalysis = (
     backend: ResumeJDAnalysis | null,
     local: JDAnalysisCacheRecord | null
-) => {
+): PreferredPersistedJDAnalysis => {
     const backendFingerprint = buildJDAnalysisPersistenceFingerprint(backend);
 
     if (backend) {
@@ -170,12 +184,16 @@ export const selectPreferredPersistedJDAnalysis = (
             && !arePersistedJDAnalysisEqual(backend, local.payload)
         ) {
             return {
+                kind: 'keep_pending_local',
                 payload: local.payload,
                 shouldKeepLocalPendingSync: true,
                 basePersistedFingerprint: local.basePersistedFingerprint,
             };
         }
         return {
+            kind: local && arePersistedJDAnalysisEqual(backend, local.payload)
+                ? 'in_sync'
+                : 'adopt_backend',
             payload: backend,
             shouldKeepLocalPendingSync: false,
             basePersistedFingerprint: backendFingerprint,
@@ -186,12 +204,35 @@ export const selectPreferredPersistedJDAnalysis = (
         && local.basePersistedFingerprint === backendFingerprint
     ) {
         return {
+            kind: 'keep_pending_local',
             payload: local.payload,
             shouldKeepLocalPendingSync: true,
             basePersistedFingerprint: local.basePersistedFingerprint,
         };
     }
-    return null;
+    return {
+        kind: local ? 'adopt_backend_null' : 'in_sync_empty',
+        payload: null,
+        shouldKeepLocalPendingSync: false,
+        basePersistedFingerprint: backendFingerprint,
+    };
+};
+
+export const resolveLocalJDAnalysisWriteBase = (
+    backend: ResumeJDAnalysis | null,
+    local: JDAnalysisCacheRecord | null,
+    currentPersisted: ResumeJDAnalysis | null | undefined
+): string | null | undefined => {
+    const decision = selectPreferredPersistedJDAnalysis(backend, local);
+    if (decision.kind === 'keep_pending_local') {
+        return currentPersisted
+            && arePersistedJDAnalysisEqual(currentPersisted, decision.payload)
+            ? decision.basePersistedFingerprint
+            : undefined;
+    }
+    return arePersistedJDAnalysisEqual(currentPersisted ?? null, backend)
+        ? decision.basePersistedFingerprint
+        : undefined;
 };
 
 export const loadJDAnalysisCache = (resumeId: string): JDAnalysisCacheRecord | null => {

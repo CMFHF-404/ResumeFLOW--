@@ -7,6 +7,7 @@ type ResumeConfigSaveCoordinatorOptions<TConfig, TResult> = {
   getExpectedUpdatedAt: () => string | undefined;
   getLastSavedSignature: () => string | null;
   isHydrated: () => boolean;
+  assertCanPersist?: () => void;
   persist: (
     resumeId: string,
     config: TConfig,
@@ -26,6 +27,7 @@ export const createResumeConfigSaveCoordinator = <TConfig, TResult>({
   getExpectedUpdatedAt,
   getLastSavedSignature,
   isHydrated,
+  assertCanPersist = () => undefined,
   persist,
   onSaveStart,
   onSaveSuccess,
@@ -51,6 +53,7 @@ export const createResumeConfigSaveCoordinator = <TConfig, TResult>({
       if (getResumeId() !== requestedResumeId || !isHydrated()) {
         return;
       }
+      assertCanPersist();
       const alreadySaved = configSignature === getLastSavedSignature();
       if (alreadySaved && (!forceVersionCheck || pendingForSameSnapshot > 0)) {
         return;

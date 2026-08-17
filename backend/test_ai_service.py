@@ -1560,6 +1560,93 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         chat_payload = chat_client.stream_calls[0][1]["json"]
         self.assertEqual(chat_payload["thinking_budget"], 1024)
 
+    async def test_qwen_stream_gemini_fallback_failure_attributes_actual_provider(self) -> None:
+        fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-2.5-flash",
+        )
+        failed_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.logger, "warning"),
+        ):
+            with patch.object(
+                llm_transport,
+                "_stream_qwen_responses_json_response",
+                new=AsyncMock(side_effect=RuntimeError("responses failed")),
+            ):
+                with patch.object(
+                    llm_transport,
+                    "_stream_qwen_json_response",
+                    new=AsyncMock(side_effect=RuntimeError("chat failed")),
+                ):
+                    with patch.object(
+                        llm_transport,
+                        "_stream_gemini_json_response_legacy",
+                        new=AsyncMock(side_effect=RuntimeError("gemini failed")),
+                    ):
+                        with patch.object(llm_transport, "_emit_failed_usage", failed_usage):
+                            with self.assertRaisesRegex(RuntimeError, "gemini failed"):
+                                await llm_transport._stream_gemini_json_response(
+                                    system_prompt="严格输出 JSON",
+                                    user_parts=[{"text": "输入内容"}],
+                                    error_message="生成失败",
+                                    request_label="qwen_to_gemini_failure",
+                                )
+
+        failed_usage.assert_awaited_once()
+        self.assertEqual(failed_usage.await_args.kwargs["provider"], "gemini")
+        self.assertEqual(failed_usage.await_args.kwargs["model"], "gemini-2.5-flash")
+
+    async def test_qwen_stream_failure_without_gemini_stays_attributed_to_qwen(self) -> None:
+        fake_settings = SimpleNamespace(
+            ai_route_profile="qwen_primary",
+            ai_api_key="dashscope-key",
+            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+            ai_model="qwen3.7-plus",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        failed_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.logger, "warning"),
+        ):
+            with patch.object(
+                llm_transport,
+                "_stream_qwen_responses_json_response",
+                new=AsyncMock(side_effect=RuntimeError("responses failed")),
+            ):
+                with patch.object(
+                    llm_transport,
+                    "_stream_qwen_json_response",
+                    new=AsyncMock(side_effect=RuntimeError("chat failed")),
+                ):
+                    with patch.object(llm_transport, "_emit_failed_usage", failed_usage):
+                        with self.assertRaisesRegex(RuntimeError, "chat failed"):
+                            await llm_transport._stream_gemini_json_response(
+                                system_prompt="严格输出 JSON",
+                                user_parts=[{"text": "输入内容"}],
+                                error_message="生成失败",
+                                request_label="qwen_failure",
+                            )
+
+        failed_usage.assert_awaited_once()
+        self.assertEqual(failed_usage.await_args.kwargs["provider"], "dashscope")
+        self.assertEqual(failed_usage.await_args.kwargs["model"], "qwen3.7-plus")
+
     async def test_qwen_stream_buffers_fragmented_reasoning_before_emitting_summary(self) -> None:
         thought_event_a = {
             "choices": [

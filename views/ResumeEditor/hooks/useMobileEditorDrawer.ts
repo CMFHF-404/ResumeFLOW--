@@ -19,6 +19,7 @@ export const useMobileEditorDrawer = ({
     const [isOpen, setIsOpen] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
     const timerRef = useRef<number | null>(null);
+    const cancelOpenFrameRef = useRef<(() => void) | null>(null);
 
     const clearDrawerTimer = useCallback(() => {
         if (timerRef.current !== null) {
@@ -27,28 +28,37 @@ export const useMobileEditorDrawer = ({
         }
     }, []);
 
+    const clearOpenFrame = useCallback(() => {
+        cancelOpenFrameRef.current?.();
+        cancelOpenFrameRef.current = null;
+    }, []);
+
     const open = useCallback(() => {
         clearDrawerTimer();
+        clearOpenFrame();
         setIsOpen(true);
-        waitForNextFrame(() => {
+        cancelOpenFrameRef.current = waitForNextFrame(() => {
+            cancelOpenFrameRef.current = null;
             setIsVisible(true);
         });
-    }, [clearDrawerTimer]);
+    }, [clearDrawerTimer, clearOpenFrame]);
 
     const dismissImmediately = useCallback(() => {
         clearDrawerTimer();
+        clearOpenFrame();
         setIsVisible(false);
         setIsOpen(false);
-    }, [clearDrawerTimer]);
+    }, [clearDrawerTimer, clearOpenFrame]);
 
     const close = useCallback(() => {
+        clearOpenFrame();
         setIsVisible(false);
         clearDrawerTimer();
         timerRef.current = window.setTimeout(() => {
             setIsOpen(false);
             timerRef.current = null;
         }, MOBILE_EDITOR_DRAWER_ANIMATION_MS);
-    }, [clearDrawerTimer]);
+    }, [clearDrawerTimer, clearOpenFrame]);
 
     useEffect(() => {
         if (mobileDrawerOpenRequest <= 0 || typeof window === 'undefined') {
@@ -96,8 +106,9 @@ export const useMobileEditorDrawer = ({
     useEffect(() => {
         return () => {
             clearDrawerTimer();
+            clearOpenFrame();
         };
-    }, [clearDrawerTimer]);
+    }, [clearDrawerTimer, clearOpenFrame]);
 
     return {
         isOpen,
