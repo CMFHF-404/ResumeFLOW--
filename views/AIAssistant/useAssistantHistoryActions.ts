@@ -1,9 +1,11 @@
-import { useCallback, useState, type Dispatch, type MouseEvent, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useLayoutEffect, useState, type Dispatch, type MouseEvent, type MutableRefObject, type SetStateAction } from 'react';
 
 import { aiService, type AssistantEntryContext, type AssistantMode, type AssistantMessage, type AssistantSelectedResume, type AssistantSession, type AssistantSkillId } from '../../services/aiService';
 import { clearPendingAssistantManualSaveDraft } from '../assistantManualSaveStorage';
 import type { AssistantLaunchRequest } from './types';
 import { mergeAssistantSessions, sortSessionsByUpdatedAt } from './sessionUtils';
+import type { AssistantOwnerGuard, AssistantOwnerOperation } from './useAssistantOwnerGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type CreateSession = (
   context?: AssistantEntryContext,
@@ -11,6 +13,7 @@ type CreateSession = (
 ) => Promise<AssistantSession>;
 
 type UseAssistantHistoryActionsParams = {
+  ownerGuard: AssistantOwnerGuard;
   draftLaunchRequestRef: MutableRefObject<AssistantLaunchRequest | null>;
   suppressAutoSelectSessionRef: MutableRefObject<boolean>;
   selectedSessionIdRef: MutableRefObject<string | null>;
@@ -37,6 +40,7 @@ type UseAssistantHistoryActionsParams = {
 };
 
 export const useAssistantHistoryActions = ({
+  ownerGuard,
   draftLaunchRequestRef,
   suppressAutoSelectSessionRef,
   selectedSessionIdRef,
@@ -64,6 +68,11 @@ export const useAssistantHistoryActions = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
+  useLayoutEffect(() => {
+    setDeleteConfirmId(null);
+    setIsDeletingSession(false);
+  }, [ownerGuard.authUserKey]);
+
   const handleNewChat = useCallback(async (
     mode: AssistantMode = 'general',
     options?: { selectedResumeDraft?: AssistantSelectedResume | null },
@@ -80,6 +89,9 @@ export const useAssistantHistoryActions = ({
       setSelectedSessionId(session.id);
       setIsMobileHistoryOpen(false);
     } catch (createError) {
+      if (isAuthContextChangedError(createError)) {
+        return;
+      }
       console.error('[AIAssistant] Failed to create session:', createError);
       error('创建新会话失败，请稍后重试');
     }
@@ -117,6 +129,15 @@ export const useAssistantHistoryActions = ({
 
   const executeDeleteSession = useCallback(async () => {
     if (!deleteConfirmId) return;
+    let operation: AssistantOwnerOperation;
+    try {
+      operation = await ownerGuard.beginOperation();
+    } catch (captureError) {
+      if (!isAuthContextChangedError(captureError)) {
+        error('删除会话失败');
+      }
+      return;
+    }
     const deletedSession = sessionsRef.current.find((session) => session.id === deleteConfirmId) ?? null;
     const deletedDraftSelectedResume = draftSelectedResumeBySessionRef.current.get(deleteConfirmId) ?? null;
     const wasSelected = selectedSessionIdRef.current === deleteConfirmId;
@@ -135,10 +156,19 @@ export const useAssistantHistoryActions = ({
       setActiveThought('');
     }
     try {
-      await aiService.deleteAssistantSession(deleteConfirmId);
-      clearPendingAssistantManualSaveDraft({ sessionId: deleteConfirmId });
+      await aiService.deleteAssistantSession(deleteConfirmId, {
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await ownerGuard.assertOperationCurrent(operation);
+      clearPendingAssistantManualSaveDraft(operation.expectedAuthCacheKey, { sessionId: deleteConfirmId });
       success('会话已删除');
-    } catch {
+    } catch (deleteError) {
+      if (
+        isAuthContextChangedError(deleteError)
+        || !ownerGuard.isOperationCurrent(operation)
+      ) {
+        return;
+      }
       deletedSessionSeqsRef.current.delete(deleteConfirmId);
       sessionMutationSeqsRef.current.delete(deleteConfirmId);
       if (deletedDraftSelectedResume) {
@@ -153,8 +183,10 @@ export const useAssistantHistoryActions = ({
       }
       error('删除会话失败');
     } finally {
-      setIsDeletingSession(false);
-      setDeleteConfirmId(null);
+      if (ownerGuard.isOperationCurrent(operation)) {
+        setIsDeletingSession(false);
+        setDeleteConfirmId(null);
+      }
     }
   }, [
     clearComposerAttachments,
@@ -165,6 +197,7 @@ export const useAssistantHistoryActions = ({
     error,
     markMessagesMutated,
     markSessionDeleted,
+    ownerGuard,
     selectedSessionIdRef,
     sessionMutationSeqsRef,
     sessionsRef,
@@ -181,19 +214,32 @@ export const useAssistantHistoryActions = ({
     const newTitle = window.prompt('输入新的会话名称：', session.title);
     const trimmedTitle = newTitle?.trim();
     if (!trimmedTitle || trimmedTitle === session.title) return;
+    let operation: AssistantOwnerOperation | null = null;
     try {
+      operation = await ownerGuard.beginOperation();
       markSessionMutated(session.id);
-      await aiService.updateAssistantSession(session.id, { title: trimmedTitle });
+      await aiService.updateAssistantSession(
+        session.id,
+        { title: trimmedTitle },
+        { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+      );
+      await ownerGuard.assertOperationCurrent(operation);
       setSessionsState((prev) => sortSessionsByUpdatedAt(prev.map((item) => (
         item.id === session.id
           ? { ...item, title: trimmedTitle, updated_at: new Date().toISOString() }
           : item
       ))));
       success('重命名成功');
-    } catch {
+    } catch (renameError) {
+      if (
+        isAuthContextChangedError(renameError)
+        || (operation && !ownerGuard.isOperationCurrent(operation))
+      ) {
+        return;
+      }
       error('重命名失败');
     }
-  }, [error, markSessionMutated, setSessionsState, success]);
+  }, [error, markSessionMutated, ownerGuard, setSessionsState, success]);
 
   return {
     deleteConfirmId,

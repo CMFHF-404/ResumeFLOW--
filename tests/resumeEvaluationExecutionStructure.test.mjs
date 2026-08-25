@@ -44,7 +44,7 @@ test('six-dimension report uses a dedicated stream and isolated controller', () 
   assert.match(conflictRecovery, /resumeVersionConflictEpochRef\.current \+= 1/);
   assert.match(conflictRecovery, /setHasResumeVersionConflict\(true\)/);
   assert.doesNotMatch(conflictRecovery, /resumeService\.get|resumeUpdatedAtRef|setHasResumeVersionConflict\(false\)/);
-  assert.match(resumeData, /assertCanPersist: \(\) => \{\s*if \(resumeVersionConflictRef\.current\) \{\s*throw new Error/);
+  assert.match(resumeData, /assertCanPersist: \(\) => \{\s*assertSaveOwnerCurrent\(\);\s*if \(resumeVersionConflictRef\.current\) \{\s*throw new Error/);
   assert.match(resumeData, /if \(resumeVersionConflictRef\.current\) \{\s*setSaveState\('error'\);\s*throw new Error/);
   assert.match(
     resumeData,

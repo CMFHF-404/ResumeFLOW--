@@ -15,6 +15,7 @@ const markdownComponents = {
   h2: ({node, ...props}: any) => <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-4 mb-2" {...props} />,
   h3: ({node, ...props}: any) => <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-3 mb-1.5" {...props} />,
   blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-slate-200 pl-4 italic text-slate-600 my-2 whitespace-pre-wrap dark:border-slate-700 dark:text-slate-300" {...props} />,
+  img: () => null,
   code: ({node, inline, ...props}: any) => inline 
     ? <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[13px] font-mono dark:bg-slate-800 dark:text-slate-100" {...props} />
     : <code className="block bg-slate-50 border border-slate-100 text-slate-800 p-3 rounded-lg text-[13px] font-mono overflow-x-auto whitespace-pre my-2 shadow-inner dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-100" {...props} />,

@@ -1,7 +1,13 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from ..ai.runtime_budget import validate_ai_text_field
+from .assistant_storage import (
+    MAX_ASSISTANT_SESSION_TITLE_CHARS,
+    validate_session_context,
+)
 
 
 AssistantMode = Literal["general", "experience", "certification", "skill"]
@@ -15,13 +21,24 @@ AssistantApplyTargetView = Literal["experience_bank", "resume_editor"]
 
 class AssistantSessionCreate(BaseModel):
     mode: AssistantMode = "general"
-    title: Optional[str] = None
+    title: Optional[str] = Field(
+        default=None,
+        max_length=MAX_ASSISTANT_SESSION_TITLE_CHARS,
+    )
     entry_source: AssistantEntrySource = "direct"
     context_json: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("context_json", mode="before")
+    @classmethod
+    def _validate_context_json(cls, value):
+        return validate_session_context(value)
+
 
 class AssistantSessionUpdate(BaseModel):
-    title: Optional[str] = None
+    title: Optional[str] = Field(
+        default=None,
+        max_length=MAX_ASSISTANT_SESSION_TITLE_CHARS,
+    )
 
 
 class AssistantSessionRead(BaseModel):
@@ -47,6 +64,9 @@ class AssistantMessageRead(BaseModel):
 class AssistantSessionDetail(BaseModel):
     session: AssistantSessionRead
     messages: List[AssistantMessageRead]
+    truncated: bool = False
+    next_cursor: Optional[str] = None
+    storage_projection_truncated: bool = False
 
 
 class AssistantSessionStreamRequest(BaseModel):
@@ -57,6 +77,11 @@ class AssistantSessionStreamRequest(BaseModel):
     enable_thinking: bool = False
     selected_experiences: List[Dict[str, Any]] = Field(default_factory=list)
     selected_resume: Optional[Dict[str, Any]] = None
+
+    @field_validator("user_message", "display_message")
+    @classmethod
+    def _validate_primary_text(cls, value, info):
+        return validate_ai_text_field(value, info.field_name)
 
 
 class AssistantDraftApplyNavigation(BaseModel):

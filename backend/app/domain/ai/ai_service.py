@@ -7,6 +7,7 @@ from collections import OrderedDict
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ...config import load_settings
+from . import runtime_budget
 from .assistant_action_utils import (
     ASSISTANT_ACTION_INLINE_ORDERED_PATTERN,
     ASSISTANT_ACTION_INLINE_ORDERED_SPLIT_PATTERN,
@@ -147,6 +148,7 @@ SPLIT_EXPERIENCE_TEXT_CACHE_MAX_ENTRIES = 128
 SPLIT_HINT_SEPARATOR_PATTERN = re.compile(r"^\s*-{2,}\s*$")
 _SPLIT_EXPERIENCE_TEXT_CACHE: "OrderedDict[str, Dict[str, str]]" = OrderedDict()
 _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT: Dict[str, asyncio.Task[Dict[str, str]]] = {}
+_SPLIT_EXPERIENCE_TEXT_WAITERS: Dict[str, int] = {}
 
 
 def _has_thinking_stream_provider() -> bool:
@@ -211,7 +213,11 @@ def _normalize_split_experience_result(result: Dict[str, Any]) -> Dict[str, str]
 
 def clear_split_experience_text_cache() -> None:
     _SPLIT_EXPERIENCE_TEXT_CACHE.clear()
+    for task in _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.values():
+        if not task.done():
+            task.cancel()
     _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.clear()
+    _SPLIT_EXPERIENCE_TEXT_WAITERS.clear()
 
 
 def _clone_split_experience_result(result: Dict[str, str]) -> Dict[str, str]:
@@ -278,6 +284,29 @@ async def _split_experience_text_uncached(
     return _normalize_split_experience_result(result)
 
 
+async def _await_shared_split_experience_task(
+    cache_key: str,
+    task: asyncio.Task[Dict[str, str]],
+) -> Dict[str, str]:
+    _SPLIT_EXPERIENCE_TEXT_WAITERS[cache_key] = (
+        _SPLIT_EXPERIENCE_TEXT_WAITERS.get(cache_key, 0) + 1
+    )
+    try:
+        return await asyncio.shield(task)
+    finally:
+        remaining_waiters = _SPLIT_EXPERIENCE_TEXT_WAITERS.get(cache_key, 1) - 1
+        if remaining_waiters > 0:
+            _SPLIT_EXPERIENCE_TEXT_WAITERS[cache_key] = remaining_waiters
+        else:
+            _SPLIT_EXPERIENCE_TEXT_WAITERS.pop(cache_key, None)
+            if _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.get(cache_key) is task:
+                _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.pop(cache_key, None)
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+
+@runtime_budget.ai_wall_clock_limited
 async def split_experience_text(
     raw_text: str,
     category: str,
@@ -292,23 +321,18 @@ async def split_experience_text(
     if cached is not None:
         return cached
 
-    in_flight = _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.get(cache_key)
-    if in_flight is not None:
-        return _clone_split_experience_result(await asyncio.shield(in_flight))
-
-    task = asyncio.create_task(
-        _split_experience_text_uncached(raw_text, category, org, title)
-    )
-    _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT[cache_key] = task
-    try:
-        result = await asyncio.shield(task)
-    finally:
-        if _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.get(cache_key) is task:
-            _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.pop(cache_key, None)
+    task = _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT.get(cache_key)
+    if task is None:
+        task = asyncio.create_task(
+            _split_experience_text_uncached(raw_text, category, org, title)
+        )
+        _SPLIT_EXPERIENCE_TEXT_IN_FLIGHT[cache_key] = task
+    result = await _await_shared_split_experience_task(cache_key, task)
     _store_cached_split_experience_text(cache_key, result)
     return _clone_split_experience_result(result)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def polish_experience_with_thoughts(
     content: Dict[str, Any],
     target_field: Optional[str] = None,
@@ -341,14 +365,16 @@ async def polish_experience_with_thoughts(
             thought_callback=thought_callback,
         )
         return _normalize_polish_result(result, mode, has_jd_text=has_jd_text)
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         logger.warning(
             "[AI Stream] thought streaming failed for star_polish, falling back to standard polish.",
-            exc_info=True,
         )
         return await polish_experience(content, target_field, jd_text, mode, custom_prompt)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def run_assistant_turn(
     *,
     mode: str,
@@ -406,11 +432,12 @@ async def run_assistant_turn(
                     assistant_text_callback=assistant_text_callback,
                     enable_thinking=False,
                 )
+            except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+                raise
             except Exception:
                 logger.warning(
                     "[AI Stream] assistant text streaming failed for assistant_%s, falling back to standard assistant turn.",
                     mode,
-                    exc_info=True,
                 )
                 result = await _call_llm(messages, json_mode=True)
         else:
@@ -419,6 +446,7 @@ async def run_assistant_turn(
     return preserve_assistant_result_star_links(normalized, source_stars)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def run_assistant_turn_with_thoughts(
     *,
     mode: str,
@@ -490,6 +518,8 @@ async def run_assistant_turn_with_thoughts(
             thought_callback=thought_callback,
             assistant_text_callback=assistant_text_callback,
         )
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception as exc:
         logger.warning(
             (
@@ -500,7 +530,6 @@ async def run_assistant_turn_with_thoughts(
             getattr(settings, "ai_route_profile", ""),
             getattr(settings, "gemini_model", None) or getattr(settings, "ai_model", ""),
             type(exc).__name__,
-            exc_info=True,
         )
         await _emit_thought(
             thought_callback,
@@ -564,6 +593,7 @@ async def generate_boss_greeting(
     return _normalize_greeting_result(result)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def generate_boss_greeting_with_thoughts(
     jd_text: str,
     analysis_summary: str,
@@ -607,10 +637,11 @@ async def generate_boss_greeting_with_thoughts(
             budget_tokens=settings.ai_thinking_budget_boss_greeting,
             thought_callback=thought_callback,
         )
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         logger.warning(
             "[AI Stream] thought streaming failed for boss_greeting, falling back to standard generation.",
-            exc_info=True,
         )
         return await generate_boss_greeting(
             jd_text,
@@ -652,6 +683,7 @@ async def generate_personal_summary(
     return _normalize_summary_result(result)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def generate_personal_summary_with_thoughts(
     mode: str,
     profile: Optional[Dict[str, Any]] = None,
@@ -696,10 +728,11 @@ async def generate_personal_summary_with_thoughts(
             request_label="personal_summary",
             thought_callback=thought_callback,
         )
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         logger.warning(
             "[AI Stream] thought streaming failed for personal_summary, falling back to standard generation.",
-            exc_info=True,
         )
         return await generate_personal_summary(
             mode=mode,

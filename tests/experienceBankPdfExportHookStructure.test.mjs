@@ -9,7 +9,7 @@ test('ExperienceBank delegates PDF export orchestration to a focused hook', () =
   const hook = read('views/ExperienceBank/useExperienceBankPdfExport.ts');
 
   assert.match(page, /from '\.\/ExperienceBank\/useExperienceBankPdfExport'/);
-  assert.match(page, /useExperienceBankPdfExport\(\{\s*buildCurrentProfileDraftSnapshot,\s*loading,\s*updateToast,/s);
+  assert.match(page, /useExperienceBankPdfExport\(\{\s*authUserKey,\s*buildCurrentProfileDraftSnapshot,\s*loading,\s*updateToast,\s*closeToast,/s);
   assert.match(page, /const handleExportAllClick = useCallback\(\(\) => \{/);
   assert.match(page, /if \(!isAuthenticated\) \{\s*void handleSignIn\(\);\s*return;\s*\}/);
   assert.match(page, /void handleExportAll\(\)/);
@@ -22,12 +22,13 @@ test('ExperienceBank delegates PDF export orchestration to a focused hook', () =
 
   assert.match(hook, /const \[isExportingPdf, setIsExportingPdf\] = useState\(false\)/);
   assert.match(hook, /if \(isExportingPdf\) \{\s*return;\s*\}/);
-  assert.match(hook, /loadExperienceBankExportSnapshot\(\)/);
+  assert.match(hook, /loadExperienceBankExportSnapshot\(expectedAuthCacheKey\)/);
+  assert.match(hook, /captureResumeAuthCacheKey\(authUserKey \?\? undefined\)/);
   assert.match(hook, /buildCurrentProfileDraftSnapshot\(latestSnapshot\.profile\)/);
   assert.match(hook, /buildExperienceBankExportTitle\(exportDate\)/);
   assert.match(hook, /buildExperienceBankExportDateLabel\(exportDate\)/);
   assert.match(hook, /exportService\.createExperienceBankPdfDownloadLink/);
-  assert.match(hook, /downloadUrlFile\(downloadUrl, fileName\)/);
+  assert.match(hook, /downloadUrlFile\(downloadUrl, fileName, expectedAuthCacheKey\)/);
   assert.match(hook, /trackExperienceBankExported\(\{/);
   assert.match(hook, /message: 'PDF 已生成，开始下载。'/);
   assert.match(hook, /message: error instanceof Error \? error\.message : '导出失败，请稍后重试'/);

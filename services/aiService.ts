@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { type AuthOwnerOptions } from './apiClient';
 import { normalizeCurrentJDAnalysisResult, normalizeResumeEvaluation } from './aiNormalizeUtils';
 import { postStreamRequest } from './aiStreamUtils';
 import type { MatchScoreEntry } from '../types/analysis';
@@ -206,7 +206,61 @@ export interface AssistantSuggestedFollowup {
 export interface AssistantSessionDetail {
     session: AssistantSession;
     messages: AssistantMessage[];
+    truncated?: boolean;
+    next_cursor?: string | null;
+    storage_projection_truncated?: boolean;
 }
+
+export interface AssistantSessionDetailOptions extends AuthOwnerOptions {
+    limit?: number;
+    before?: string;
+}
+
+export interface AssistantSessionListPageOptions extends AuthOwnerOptions {
+    limit?: number;
+    before?: string;
+}
+
+export interface AssistantSessionListPage {
+    sessions: AssistantSession[];
+    truncated: boolean;
+    nextCursor: string | null;
+}
+
+const readAssistantResponseHeader = (headers: unknown, name: string): string | null => {
+    if (!headers || typeof headers !== 'object') {
+        return null;
+    }
+    const headerRecord = headers as Record<string, unknown> & {
+        get?: (headerName: string) => unknown;
+    };
+    const fromGetter = typeof headerRecord.get === 'function'
+        ? headerRecord.get(name)
+        : undefined;
+    const rawValue = fromGetter
+        ?? headerRecord[name]
+        ?? headerRecord[name.toLowerCase()];
+    return typeof rawValue === 'string' && rawValue.length > 0 ? rawValue : null;
+};
+
+const readAssistantNextCursorFromLink = (linkHeader: string | null): string | null => {
+    if (!linkHeader) {
+        return null;
+    }
+    const nextLink = linkHeader
+        .split(',')
+        .map((part) => part.trim())
+        .find((part) => /;\s*rel=(?:"next"|next)(?:\s*;|$)/i.test(part));
+    const href = nextLink?.match(/^<([^>]+)>/)?.[1];
+    if (!href) {
+        return null;
+    }
+    try {
+        return new URL(href, 'http://localhost').searchParams.get('before');
+    } catch {
+        return null;
+    }
+};
 
 export interface AssistantSessionCreatePayload {
     mode?: AssistantMode;
@@ -405,6 +459,7 @@ const streamAnalyzeRequest = async (
         onProgress?: (event: AnalyzeProgressEvent) => void;
         contentType?: string | null;
         signal?: AbortSignal;
+        expectedAuthCacheKey?: string;
     } = {}
 ): Promise<JDAnalysisResult> => {
     return postStreamRequest<AnalyzeStreamEvent, JDAnalysisResult>({
@@ -413,6 +468,7 @@ const streamAnalyzeRequest = async (
         contentType: options.contentType,
         onEvent: options.onEvent,
         signal: options.signal,
+        expectedAuthCacheKey: options.expectedAuthCacheKey,
         onParsedEvent: (parsed) => {
             if (parsed.type === 'progress') {
                 options.onProgress?.(parsed);
@@ -430,7 +486,8 @@ const streamAnalyzeRequest = async (
 const streamResumeEvaluationRequest = async (
     payload: EvaluateResumeParams,
     onEvent?: (event: AnalyzeStreamEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options?: AuthOwnerOptions,
 ): Promise<ResumeEvaluation> => postStreamRequest<AnalyzeStreamEvent, ResumeEvaluation>({
     path: '/api/resume-evaluation/stream',
     body: JSON.stringify({
@@ -443,6 +500,7 @@ const streamResumeEvaluationRequest = async (
     contentType: 'application/json',
     signal,
     onEvent,
+    expectedAuthCacheKey: options?.expectedAuthCacheKey,
     getFinalResult: (parsed) => {
         if (parsed.type !== 'final') {
             return null;
@@ -462,6 +520,7 @@ const streamPolishRequest = async (
     options: {
         onEvent?: (event: PolishStreamEvent) => void;
         signal?: AbortSignal;
+        expectedAuthCacheKey?: string;
     } = {}
 ): Promise<PolishExperienceResponse> => {
     return postStreamRequest<PolishStreamEvent, PolishExperienceResponse>({
@@ -470,6 +529,7 @@ const streamPolishRequest = async (
         contentType: 'application/json',
         onEvent: options.onEvent,
         signal: options.signal,
+        expectedAuthCacheKey: options.expectedAuthCacheKey,
         getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
                 return parsed.result;
@@ -483,6 +543,7 @@ const streamBossGreetingRequest = async (
     payload: Record<string, unknown>,
     options: {
         onEvent?: (event: BossGreetingStreamEvent) => void;
+        expectedAuthCacheKey?: string;
     } = {}
 ): Promise<GenerateBossGreetingResponse> => {
     const finalResult = await postStreamRequest<BossGreetingStreamEvent, GenerateBossGreetingResponse>({
@@ -490,6 +551,7 @@ const streamBossGreetingRequest = async (
         body: JSON.stringify(payload),
         contentType: 'application/json',
         onEvent: options.onEvent,
+        expectedAuthCacheKey: options.expectedAuthCacheKey,
         getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
                 return parsed.result;
@@ -507,6 +569,7 @@ const streamPersonalSummaryRequest = async (
     payload: Record<string, unknown>,
     options: {
         onEvent?: (event: PersonalSummaryStreamEvent) => void;
+        expectedAuthCacheKey?: string;
     } = {}
 ): Promise<GeneratePersonalSummaryResponse> => {
     const finalResult = await postStreamRequest<PersonalSummaryStreamEvent, GeneratePersonalSummaryResponse>({
@@ -514,6 +577,7 @@ const streamPersonalSummaryRequest = async (
         body: JSON.stringify(payload),
         contentType: 'application/json',
         onEvent: options.onEvent,
+        expectedAuthCacheKey: options.expectedAuthCacheKey,
         getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
                 return parsed.result;
@@ -533,6 +597,7 @@ const streamAssistantRequest = async (
     options: {
         onEvent?: (event: AssistantStreamEvent) => void;
         contentType?: string | null;
+        expectedAuthCacheKey?: string;
     } = {}
 ): Promise<AssistantTurnResult> => {
     return postStreamRequest<AssistantStreamEvent, AssistantTurnResult>({
@@ -540,6 +605,7 @@ const streamAssistantRequest = async (
         body,
         contentType: options.contentType,
         onEvent: options.onEvent,
+        expectedAuthCacheKey: options.expectedAuthCacheKey,
         getFinalResult: (parsed) => {
             if (parsed.type === 'final') {
                 return parsed.result;
@@ -552,11 +618,13 @@ const streamAssistantRequest = async (
 const applyAssistantMessageDraftRequest = async (
     sessionId: string,
     messageId: string,
-    options?: { skipApply?: boolean },
+    options?: { skipApply?: boolean; expectedAuthCacheKey?: string },
 ) => {
     const query = options?.skipApply ? '?skip_apply=true' : '';
     const response = await apiClient.post<AssistantMessageApplyResponse>(
-        `/api/assistant/sessions/${sessionId}/messages/${messageId}/apply${query}`
+        `/api/assistant/sessions/${sessionId}/messages/${messageId}/apply${query}`,
+        undefined,
+        { expectedAuthCacheKey: options?.expectedAuthCacheKey },
     );
     return response.data;
 };
@@ -567,7 +635,7 @@ export const aiService = {
         category: ExperienceCategory;
         org?: string;
         title?: string;
-    }) {
+    }, options?: AuthOwnerOptions) {
         const response = await apiClient.post<SplitExperienceTextResponse>(
             '/api/split-experience-text',
             {
@@ -575,12 +643,13 @@ export const aiService = {
                 category: data.category,
                 org: data.org,
                 title: data.title,
-            }
+            },
+            options
         );
         return response.data;
     },
 
-    async polishExperience(data: PolishExperiencePayload) {
+    async polishExperience(data: PolishExperiencePayload, options?: AuthOwnerOptions) {
         const { rawText, ...rest } = data.content;
         const payload = {
             content: {
@@ -595,7 +664,8 @@ export const aiService = {
         };
         const response = await apiClient.post<PolishExperienceResponse>(
             '/api/polish-text',
-            payload
+            payload,
+            options
         );
         return response.data;
     },
@@ -603,7 +673,8 @@ export const aiService = {
     async polishExperienceStream(
         data: PolishExperiencePayload,
         onEvent?: (event: PolishStreamEvent) => void,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        options?: AuthOwnerOptions,
     ) {
         const { rawText, ...rest } = data.content;
         const payload = {
@@ -617,42 +688,104 @@ export const aiService = {
             ...(data.customPrompt ? { custom_prompt: data.customPrompt } : {}),
             ...(data.entrySource ? { entry_source: data.entrySource } : {}),
         };
-        return streamPolishRequest(payload, { onEvent, signal });
+        return streamPolishRequest(payload, {
+            onEvent,
+            signal,
+            expectedAuthCacheKey: options?.expectedAuthCacheKey,
+        });
     },
 
-    async listAssistantSessions() {
-        const response = await apiClient.get<AssistantSession[]>('/api/assistant/sessions');
+    async listAssistantSessions(options?: AuthOwnerOptions) {
+        const response = await apiClient.get<AssistantSession[]>('/api/assistant/sessions', options);
         return response.data;
     },
 
-    async createAssistantSession(data: AssistantSessionCreatePayload) {
+    async listAssistantSessionsPage(options?: AssistantSessionListPageOptions): Promise<AssistantSessionListPage> {
+        const response = await apiClient.get<AssistantSession[]>(
+            '/api/assistant/sessions',
+            options
+                ? {
+                    ...(options.expectedAuthCacheKey
+                        ? { expectedAuthCacheKey: options.expectedAuthCacheKey }
+                        : {}),
+                    ...(
+                        options.limit !== undefined || options.before !== undefined
+                            ? {
+                                params: {
+                                    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+                                    ...(options.before !== undefined ? { before: options.before } : {}),
+                                },
+                            }
+                            : {}
+                    ),
+                }
+                : undefined,
+        );
+        const truncatedHeader = readAssistantResponseHeader(
+            response.headers,
+            'X-Assistant-Sessions-Truncated',
+        );
+        const cursorHeader = readAssistantResponseHeader(
+            response.headers,
+            'X-Assistant-Sessions-Next-Cursor',
+        );
+        const nextCursor = cursorHeader ?? readAssistantNextCursorFromLink(
+            readAssistantResponseHeader(response.headers, 'Link'),
+        );
+        return {
+            sessions: response.data,
+            truncated: truncatedHeader?.toLowerCase() === 'true' && nextCursor !== null,
+            nextCursor,
+        };
+    },
+
+    async createAssistantSession(data: AssistantSessionCreatePayload, options?: AuthOwnerOptions) {
         const response = await apiClient.post<AssistantSession>('/api/assistant/sessions', {
             mode: data.mode ?? 'general',
             title: data.title,
             entry_source: data.entrySource ?? 'direct',
             context_json: data.contextJson ?? {},
-        });
+        }, options);
         return response.data;
     },
 
-    async getAssistantSession(sessionId: string) {
-        const response = await apiClient.get<AssistantSessionDetail>(`/api/assistant/sessions/${sessionId}`);
+    async getAssistantSession(sessionId: string, options?: AssistantSessionDetailOptions) {
+        const response = await apiClient.get<AssistantSessionDetail>(
+            `/api/assistant/sessions/${sessionId}`,
+            options
+                ? {
+                    ...(options.expectedAuthCacheKey
+                        ? { expectedAuthCacheKey: options.expectedAuthCacheKey }
+                        : {}),
+                    ...(
+                        options.limit !== undefined || options.before !== undefined
+                            ? {
+                                params: {
+                                    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+                                    ...(options.before !== undefined ? { before: options.before } : {}),
+                                },
+                            }
+                            : {}
+                    ),
+                }
+                : undefined,
+        );
         return response.data;
     },
 
-    async deleteAssistantSession(sessionId: string) {
-        await apiClient.delete(`/api/assistant/sessions/${sessionId}`);
+    async deleteAssistantSession(sessionId: string, options?: AuthOwnerOptions) {
+        await apiClient.delete(`/api/assistant/sessions/${sessionId}`, options);
     },
 
-    async updateAssistantSession(sessionId: string, data: { title?: string }) {
-        const response = await apiClient.patch<AssistantSession>(`/api/assistant/sessions/${sessionId}`, data);
+    async updateAssistantSession(sessionId: string, data: { title?: string }, options?: AuthOwnerOptions) {
+        const response = await apiClient.patch<AssistantSession>(`/api/assistant/sessions/${sessionId}`, data, options);
         return response.data;
     },
 
     async markAssistantMessageApplied(
         sessionId: string,
         messageId: string,
-        options?: { skipApply?: boolean },
+        options?: { skipApply?: boolean; expectedAuthCacheKey?: string },
     ) {
         const response = await applyAssistantMessageDraftRequest(sessionId, messageId, options);
         return response.message;
@@ -661,7 +794,7 @@ export const aiService = {
     async applyAssistantMessageDraft(
         sessionId: string,
         messageId: string,
-        options?: { skipApply?: boolean },
+        options?: { skipApply?: boolean; expectedAuthCacheKey?: string },
     ) {
         return applyAssistantMessageDraftRequest(sessionId, messageId, options);
     },
@@ -678,7 +811,8 @@ export const aiService = {
             selectedExperiences?: AssistantSelectedExperience[];
             selectedResume?: AssistantSelectedResume | null;
         },
-        onEvent?: (event: AssistantStreamEvent) => void
+        onEvent?: (event: AssistantStreamEvent) => void,
+        options?: AuthOwnerOptions,
     ) {
         if ((payload.attachments?.length ?? 0) > 0) {
             const formData = new FormData();
@@ -703,6 +837,7 @@ export const aiService = {
             return streamAssistantRequest(sessionId, formData, {
                 onEvent,
                 contentType: null,
+                expectedAuthCacheKey: options?.expectedAuthCacheKey,
             });
         }
 
@@ -717,6 +852,7 @@ export const aiService = {
         }), {
             onEvent,
             contentType: 'application/json',
+            expectedAuthCacheKey: options?.expectedAuthCacheKey,
         });
     },
 
@@ -726,7 +862,12 @@ export const aiService = {
         prevResult,
         experienceText,
         prevExperienceText,
-    }: AnalyzeJDParams, onEvent?: (event: AnalyzeStreamEvent) => void, signal?: AbortSignal) {
+    }:
+    AnalyzeJDParams,
+    onEvent?: (event: AnalyzeStreamEvent) => void,
+    signal?: AbortSignal,
+    options?: AuthOwnerOptions,
+    ) {
         const payload = {
             text,
             resume_text: resumeText,
@@ -738,10 +879,14 @@ export const aiService = {
             onEvent,
             contentType: 'application/json',
             signal,
+            expectedAuthCacheKey: options?.expectedAuthCacheKey,
         });
     },
 
-    async generateBossGreeting(data: GenerateBossGreetingParams) {
+    async generateBossGreeting(
+        data: GenerateBossGreetingParams,
+        options?: AuthOwnerOptions,
+    ) {
         const expectedUpdatedAt = data.expectedUpdatedAt
             ?? (data.resumeId ? getKnownResumeUpdatedAt(data.resumeId) : undefined);
         const response = await apiClient.post<GenerateBossGreetingResponse>(
@@ -755,7 +900,8 @@ export const aiService = {
                 resume_id: data.resumeId,
                 signature: data.signature,
                 expected_updated_at: expectedUpdatedAt,
-            }
+            },
+            { expectedAuthCacheKey: options?.expectedAuthCacheKey },
         );
         if (data.resumeId) {
             recordKnownResumeUpdatedAt(data.resumeId, response.data.resume_updated_at);
@@ -765,7 +911,8 @@ export const aiService = {
 
     async generateBossGreetingStream(
         data: GenerateBossGreetingParams,
-        onEvent?: (event: BossGreetingStreamEvent) => void
+        onEvent?: (event: BossGreetingStreamEvent) => void,
+        options?: AuthOwnerOptions,
     ) {
         const expectedUpdatedAt = data.expectedUpdatedAt
             ?? (data.resumeId ? getKnownResumeUpdatedAt(data.resumeId) : undefined);
@@ -779,7 +926,10 @@ export const aiService = {
             signature: data.signature,
             expected_updated_at: expectedUpdatedAt,
         };
-        const result = await streamBossGreetingRequest(payload, { onEvent });
+        const result = await streamBossGreetingRequest(payload, {
+            onEvent,
+            expectedAuthCacheKey: options?.expectedAuthCacheKey,
+        });
         if (data.resumeId) {
             recordKnownResumeUpdatedAt(data.resumeId, result.resume_updated_at);
         }
@@ -788,7 +938,8 @@ export const aiService = {
 
     async generatePersonalSummaryStream(
         data: GeneratePersonalSummaryParams,
-        onEvent?: (event: PersonalSummaryStreamEvent) => void
+        onEvent?: (event: PersonalSummaryStreamEvent) => void,
+        options?: AuthOwnerOptions,
     ) {
         const payload = {
             mode: data.mode,
@@ -800,7 +951,10 @@ export const aiService = {
             skills: data.skills ?? [],
             ...(data.jdText ? { jd_text: data.jdText } : {}),
         };
-        return streamPersonalSummaryRequest(payload, { onEvent });
+        return streamPersonalSummaryRequest(payload, {
+            onEvent,
+            expectedAuthCacheKey: options?.expectedAuthCacheKey,
+        });
     },
 
     /**
@@ -814,7 +968,12 @@ export const aiService = {
         experienceText,
         prevResult,
         prevExperienceText,
-    }: AnalyzeJDWithAttachmentParams, onEvent?: (event: AnalyzeStreamEvent) => void, signal?: AbortSignal): Promise<JDAnalysisResult> {
+    }:
+    AnalyzeJDWithAttachmentParams,
+    onEvent?: (event: AnalyzeStreamEvent) => void,
+    signal?: AbortSignal,
+    options?: AuthOwnerOptions,
+    ): Promise<JDAnalysisResult> {
         const formData = new FormData();
         formData.append('file', file);
         if (jdText) {
@@ -836,14 +995,16 @@ export const aiService = {
             onEvent,
             contentType: null,
             signal,
+            expectedAuthCacheKey: options?.expectedAuthCacheKey,
         });
     },
 
     async evaluateResume(
         params: EvaluateResumeParams,
         onEvent?: (event: AnalyzeStreamEvent) => void,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        options?: AuthOwnerOptions,
     ) {
-        return streamResumeEvaluationRequest(params, onEvent, signal);
+        return streamResumeEvaluationRequest(params, onEvent, signal, options);
     },
 };

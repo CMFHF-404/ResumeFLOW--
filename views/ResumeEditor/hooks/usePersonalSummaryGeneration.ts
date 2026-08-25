@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+    useCallback,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type Dispatch,
+    type SetStateAction,
+} from 'react';
 import type { ToastConfig } from '../../../components/Toast';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 import { aiService, type PersonalSummaryStreamEvent } from '../../../services/aiService';
 import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 import { normalizeAiRichText, stripRichTextToText } from '../../../utils/richText';
@@ -8,6 +17,7 @@ import { hasMeaningfulPersonalSummary, type buildPersonalSummaryContext } from '
 type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
 
 type UsePersonalSummaryGenerationParams = {
+    authUserKey: string | null;
     resumeId: string | null;
     jdPolishContext: string;
     personalSummaryContext: ReturnType<typeof buildPersonalSummaryContext>;
@@ -24,6 +34,7 @@ type UsePersonalSummaryGenerationParams = {
 };
 
 export const usePersonalSummaryGeneration = ({
+    authUserKey,
     resumeId,
     jdPolishContext,
     personalSummaryContext,
@@ -38,6 +49,7 @@ export const usePersonalSummaryGeneration = ({
     setPersonalSummary,
     setHasPersonalSummaryOverride,
 }: UsePersonalSummaryGenerationParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
     const [isGeneratingPersonalSummary, setIsGeneratingPersonalSummary] = useState(false);
     const [isPersonalSummaryOverwriteDialogOpen, setIsPersonalSummaryOverwriteDialogOpen] = useState(false);
     const requestIdRef = useRef(0);
@@ -46,8 +58,10 @@ export const usePersonalSummaryGeneration = ({
     const latestSignatureRef = useRef('');
     const activeToastIdRef = useRef<string | null>(null);
 
-    latestResumeIdRef.current = resumeId;
-    latestSignatureRef.current = personalSummaryCurrentSignature;
+    useLayoutEffect(() => {
+        latestResumeIdRef.current = resumeId;
+        latestSignatureRef.current = personalSummaryCurrentSignature;
+    }, [personalSummaryCurrentSignature, resumeId]);
 
     const cancelPersonalSummaryGeneration = useCallback(() => {
         requestIdRef.current += 1;
@@ -59,7 +73,10 @@ export const usePersonalSummaryGeneration = ({
         setIsPersonalSummaryOverwriteDialogOpen(false);
     }, [closeToast]);
 
-    useEffect(() => cancelPersonalSummaryGeneration, [cancelPersonalSummaryGeneration, resumeId]);
+    useLayoutEffect(() => {
+        cancelPersonalSummaryGeneration();
+        return cancelPersonalSummaryGeneration;
+    }, [authUserKey, cancelPersonalSummaryGeneration, resumeId]);
 
     const handlePersonalSummaryChange = useCallback((value: string) => {
         draftVersionRef.current += 1;
@@ -89,22 +106,31 @@ export const usePersonalSummaryGeneration = ({
             return;
         }
 
-        const toastId = showToastLoading('正在生成个人评价...');
-        activeToastIdRef.current = toastId;
         const requestedResumeId = resumeId;
         const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
         const requestId = requestIdRef.current + 1;
         requestIdRef.current = requestId;
         const draftVersionAtStart = draftVersionRef.current;
         const requestedSignature = personalSummaryCurrentSignature;
-        const isRequestCurrent = () => requestIdRef.current === requestId;
+        let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
+        let toastId: string | null = null;
+        const isRequestCurrent = () => (
+            requestIdRef.current === requestId
+            && Boolean(operation && ownerGuard.isOperationCurrent(operation))
+        );
         const releaseActiveToast = () => {
-            if (activeToastIdRef.current === toastId) {
+            if (toastId && activeToastIdRef.current === toastId) {
                 activeToastIdRef.current = null;
             }
         };
         setIsGeneratingPersonalSummary(true);
         try {
+            operation = await ownerGuard.beginOperation();
+            if (requestIdRef.current !== requestId) {
+                return;
+            }
+            toastId = showToastLoading('正在生成个人评价...');
+            activeToastIdRef.current = toastId;
             const response = await aiService.generatePersonalSummaryStream(
                 {
                     mode: 'resume',
@@ -133,8 +159,10 @@ export const usePersonalSummaryGeneration = ({
                         type: 'ai_thinking',
                         duration: 0,
                     });
-                }
+                },
+                { expectedAuthCacheKey: operation.expectedAuthCacheKey },
             );
+            await ownerGuard.assertOperationCurrent(operation);
             if (
                 !isResumeRequestCurrent()
                 || !isRequestCurrent()
@@ -159,17 +187,25 @@ export const usePersonalSummaryGeneration = ({
             });
             releaseActiveToast();
         } catch (error) {
-            if (!isResumeRequestCurrent() || !isRequestCurrent()) {
-                closeToast(toastId);
+            if (
+                isAuthContextChangedError(error)
+                || !isResumeRequestCurrent()
+                || !isRequestCurrent()
+            ) {
+                if (toastId) {
+                    closeToast(toastId);
+                }
                 releaseActiveToast();
                 return;
             }
             console.error('[ResumeEditor] 生成个人评价失败:', error);
-            updateToast(toastId, {
+            if (toastId) {
+                updateToast(toastId, {
                 message: error instanceof Error ? error.message : '个人评价生成失败，请稍后重试',
                 type: 'error',
                 duration: 3500,
-            });
+                });
+            }
             releaseActiveToast();
         } finally {
             if (isRequestCurrent()) {
@@ -184,6 +220,7 @@ export const usePersonalSummaryGeneration = ({
         jdPolishContext,
         personalSummaryContext,
         personalSummaryCurrentSignature,
+        ownerGuard,
         resumeId,
         showToastError,
         showToastLoading,

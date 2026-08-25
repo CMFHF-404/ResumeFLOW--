@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
@@ -29,7 +30,9 @@ const importResumeService = async (api) => {
               patch: (...args) => call('patch', ...args),
               delete: (...args) => call('delete', ...args),
             };
-            export const getAuthCacheKey = () => Promise.resolve('test-user');
+            export const getAuthCacheKey = () => Promise.resolve(
+              globalThis.__resumeServiceApiMock.getAuthCacheKey?.() ?? 'test-user'
+            );
             export default apiClient;
           `,
           loader: 'js',
@@ -56,6 +59,63 @@ const resume = (updatedAt) => ({
   title: 'Resume',
   created_at: '2026-08-08T00:00:00.000Z',
   updated_at: updatedAt,
+});
+
+test('create pins request dispatch and response cache updates to the captured owner', async () => {
+  const delayedCreate = deferred();
+  const postCalls = [];
+  let activeOwner = 'owner-a';
+  const { resumeService, ResumeAuthContextChangedError } = await importResumeService({
+    getAuthCacheKey: () => activeOwner,
+    get: async () => ({ data: [] }),
+    patch: async () => ({ data: resume('2026-08-08T00:00:01.000Z') }),
+    post: (...args) => {
+      postCalls.push(args);
+      return delayedCreate.promise;
+    },
+    delete: async () => undefined,
+  });
+
+  const pendingCreate = resumeService.create(
+    { title: 'Owner A resume', config: {} },
+    { expectedAuthCacheKey: 'owner-a' },
+  );
+  await Promise.resolve();
+  activeOwner = 'owner-b';
+  delayedCreate.resolve({ data: resume('2026-08-08T00:00:01.000Z') });
+
+  await assert.rejects(pendingCreate, ResumeAuthContextChangedError);
+  assert.deepEqual(postCalls[0][2], { expectedAuthCacheKey: 'owner-a' });
+});
+
+test('list pins dispatch and cache commit to the captured owner', async () => {
+  const delayedList = deferred();
+  const getCalls = [];
+  let activeOwner = 'owner-a';
+  const { resumeService, ResumeAuthContextChangedError } = await importResumeService({
+    getAuthCacheKey: () => activeOwner,
+    get: (...args) => {
+      getCalls.push(args);
+      return getCalls.length === 1
+        ? delayedList.promise
+        : Promise.resolve({ data: [resume('2026-08-08T00:00:02.000Z')] });
+    },
+    patch: async () => ({ data: resume('2026-08-08T00:00:01.000Z') }),
+    post: async () => ({ data: resume('2026-08-08T00:00:01.000Z') }),
+    delete: async () => undefined,
+  });
+
+  const pendingList = resumeService.list({ expectedAuthCacheKey: 'owner-a' });
+  await Promise.resolve();
+  activeOwner = 'owner-b';
+  delayedList.resolve({ data: [resume('2026-08-08T00:00:01.000Z')] });
+
+  await assert.rejects(pendingList, ResumeAuthContextChangedError);
+  assert.deepEqual(getCalls[0][1], { expectedAuthCacheKey: 'owner-a' });
+
+  activeOwner = 'owner-a';
+  await resumeService.list({ expectedAuthCacheKey: 'owner-a' });
+  assert.equal(getCalls.length, 2, 'the stale response must not populate the owner cache');
 });
 
 test('a delayed GET cannot roll the mutation token back', async () => {
@@ -151,4 +211,20 @@ test('waitForResumeMutations follows work appended while it is draining', async 
   second.resolve({ data: resume('2026-08-08T00:00:03.000Z') });
   await Promise.all([mutationB, draining]);
   assert.equal(drained, true);
+});
+
+test('resume context loading settles even when owner capture or a later assertion fails', () => {
+  const source = readFileSync('hooks/useResumeData.ts', 'utf8');
+  assert.match(
+    source,
+    /expectedAuthCacheKey = await captureResumeAuthCacheKey\(authUserKey\);[\s\S]*?catch \(error\) \{\s*setIsLoadingResume\(false\);\s*setIsLoadingExperiences\(false\);/,
+  );
+  assert.match(
+    source,
+    /finally \{\s*setIsLoadingResume\(false\);\s*setIsLoadingExperiences\(false\);\s*\}/,
+  );
+  assert.doesNotMatch(
+    source,
+    /finally \{\s*if \(!authContextChanged\)/,
+  );
 });

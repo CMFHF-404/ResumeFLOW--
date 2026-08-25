@@ -1,5 +1,9 @@
 import {
     useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
     useState,
     type Dispatch,
     type SetStateAction,
@@ -46,6 +50,7 @@ import {
     useExperienceState,
     useSkillState,
 } from './experienceActionHandlers/useExperienceActionState';
+import { useAuthOwnerOperationGuard } from './useAuthOwnerOperationGuard';
 
 export type {
     CertificationDomain,
@@ -65,13 +70,17 @@ export type {
 } from './experienceActionHandlers/types';
 
 type UseExperienceActionsOptions = {
+    authUserKey: string | null;
     resumeId: string | null;
     jdText: string;
     toast: ToastApi;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
     onExperienceDraftPersisted?: (draftMasterId: string, savedMasterId: string) => void;
     onExperienceAiPolishPrepared?: (masterId: string) => void;
-    onExperienceSaveSuccess?: (masterId: string) => Promise<void>;
+    onExperienceSaveSuccess?: (
+        masterId: string,
+        options: { expectedAuthCacheKey: string },
+    ) => Promise<void>;
     onExperienceEditDiscarded?: (masterId: string | null) => void;
     experience: ExperienceDomain;
     education: EducationDomain;
@@ -166,6 +175,26 @@ type UseExperienceActionsResult = {
 
 export const useExperienceActions = (options: UseExperienceActionsOptions): UseExperienceActionsResult => {
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+    const ownerGuard = useAuthOwnerOperationGuard(options.authUserKey);
+    const activeLoadingToastIdsRef = useRef<Set<string>>(new Set());
+    const trackedToast = useMemo<ToastApi>(() => ({
+        ...options.toast,
+        loading: (message) => {
+            const id = options.toast.loading(message);
+            activeLoadingToastIdsRef.current.add(id);
+            return id;
+        },
+        updateToast: (id, updates) => {
+            if (updates.type && updates.type !== 'loading' && updates.type !== 'ai_thinking') {
+                activeLoadingToastIdsRef.current.delete(id);
+            }
+            options.toast.updateToast(id, updates);
+        },
+        closeToast: (id) => {
+            activeLoadingToastIdsRef.current.delete(id);
+            options.toast.closeToast(id);
+        },
+    }), [options.toast]);
 
     const openDeleteConfirm = useCallback((payload: ConfirmDialogState) => {
         setConfirmDialog(payload);
@@ -179,6 +208,32 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
     const educationState = useEducationState();
     const certificationState = useCertificationState();
     const skillState = useSkillState();
+
+    useLayoutEffect(() => {
+        for (const id of activeLoadingToastIdsRef.current) {
+            options.toast.closeToast(id);
+        }
+        activeLoadingToastIdsRef.current.clear();
+        setConfirmDialog(null);
+        experienceState.setIsSavingExperience(false);
+        experienceState.setIsAddingExperience(false);
+        experienceState.setIsPolishing(false);
+        experienceState.setDeletingExperienceIds(new Set());
+        educationState.setIsSavingEducation(false);
+        educationState.setDeletingEducationIds(new Set());
+        certificationState.setIsSavingCertification(false);
+        certificationState.setDeletingCertificationIds(new Set());
+        skillState.setIsSavingSkill(false);
+        skillState.setDeletingSkillIds(new Set());
+        skillState.setDeletingSkillCategories(new Set());
+    }, [options.authUserKey]);
+
+    useEffect(() => () => {
+        for (const id of activeLoadingToastIdsRef.current) {
+            options.toast.closeToast(id);
+        }
+        activeLoadingToastIdsRef.current.clear();
+    }, [options.toast]);
 
     const draftHandlers = createExperienceDraftLifecycleHandlers(
         options.experience,
@@ -197,11 +252,12 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
     const saveHandlers = createExperienceSaveHandlers(
         options.resumeId,
         options.jdText,
-        options.toast,
+        trackedToast,
         options.experience,
         options.helpers,
         options.defaults,
         experienceState,
+        ownerGuard,
         updateHelpers,
         draftHandlers,
         options.applyResumeDetail,
@@ -215,6 +271,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         editHandlers,
         draftHandlers,
         options.draftPrefixes,
+        ownerGuard,
         openDeleteConfirm,
         options.confirmCopy
     );
@@ -225,6 +282,7 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         options.helpers,
         educationState,
         options.draftPrefixes,
+        ownerGuard,
         options.confirmCopy,
         openDeleteConfirm
     );
@@ -236,7 +294,8 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         options.draftPrefixes,
         options.confirmCopy,
         openDeleteConfirm,
-        options.jdMatch
+        options.jdMatch,
+        ownerGuard,
     );
 
     const skillHandlers = createSkillHandlers(
@@ -246,7 +305,8 @@ export const useExperienceActions = (options: UseExperienceActionsOptions): UseE
         options.defaults,
         options.confirmCopy,
         openDeleteConfirm,
-        options.jdMatch
+        options.jdMatch,
+        ownerGuard,
     );
 
     const handleConfirmDelete = useCallback(() => {

@@ -16,6 +16,11 @@ import {
   type FeedbackContactType,
 } from '../constants/feedback';
 import { feedbackService, type FeedbackFormData } from '../services/feedbackService';
+import {
+  assertAuthCacheKey,
+  captureAuthCacheKey,
+  isAuthContextChangedError,
+} from '../services/apiClient';
 
 export type FeedbackContext = {
   view: string;
@@ -26,6 +31,7 @@ export type FeedbackContext = {
 
 type FeedbackModalProps = {
   isOpen: boolean;
+  authUserKey: string | null;
   context: FeedbackContext;
   onClose: () => void;
 };
@@ -344,7 +350,12 @@ const FeedbackActions: React.FC<{
 // 主组件
 // ---------------------------------------------------------------------------
 
-const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, context, onClose }) => {
+const FeedbackModal: React.FC<FeedbackModalProps> = ({
+  isOpen,
+  authUserKey,
+  context,
+  onClose,
+}) => {
   const [formState, setFormState] = useState<FeedbackFormState>(DEFAULT_STATE);
   const [imagePreviews, setImagePreviews] = useState<ImagePreview[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -352,6 +363,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, context, onClose 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const isOpenRef = useRef(isOpen);
+  const committedAuthUserKeyRef = useRef(authUserKey);
   const submitGuardRef = useRef(0);
   const latestPreviewsRef = useRef<ImagePreview[]>([]);
 
@@ -394,6 +406,15 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, context, onClose 
       setIsSuccess(false);
     }
   }, [isOpen]);
+
+  React.useLayoutEffect(() => {
+    if (committedAuthUserKeyRef.current !== authUserKey) {
+      committedAuthUserKeyRef.current = authUserKey;
+      submitGuardRef.current += 1;
+      setIsSubmitting(false);
+      setIsSuccess(false);
+    }
+  }, [authUserKey]);
 
   useEffect(() => {
     if (!isSuccess) return;
@@ -462,15 +483,28 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, context, onClose 
     submitGuardRef.current = submitId;
     setIsSubmitting(true);
     setError(null);
+    let expectedAuthCacheKey: string | null = null;
 
     try {
+      expectedAuthCacheKey = await captureAuthCacheKey(authUserKey ?? undefined);
+      if (
+        !isOpenRef.current
+        || submitGuardRef.current !== submitId
+        || committedAuthUserKeyRef.current !== expectedAuthCacheKey
+      ) return;
       const { formData, images } = buildFormData(formState, context);
-      await feedbackService.create(formData, images);
-      if (!isOpenRef.current || submitGuardRef.current !== submitId) return;
+      await feedbackService.create(formData, images, { expectedAuthCacheKey });
+      await assertAuthCacheKey(expectedAuthCacheKey);
+      if (
+        !isOpenRef.current
+        || submitGuardRef.current !== submitId
+        || committedAuthUserKeyRef.current !== expectedAuthCacheKey
+      ) return;
       setIsSuccess(true);
     } catch (submitError) {
-      console.error('[FeedbackModal] submit failed', submitError);
+      if (isAuthContextChangedError(submitError)) return;
       if (!isOpenRef.current || submitGuardRef.current !== submitId) return;
+      console.error('[FeedbackModal] submit failed', submitError);
       setError('提交失败，请稍后重试');
     } finally {
       if (!isOpenRef.current || submitGuardRef.current !== submitId) return;

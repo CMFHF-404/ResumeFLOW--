@@ -16,6 +16,12 @@ _set_required_env_defaults()
 sys.path.append(str(Path(__file__).parent))
 
 from app.domain.parser import semantic_duplicate_detection  # noqa: E402
+from app.domain.ai.runtime_budget import (  # noqa: E402
+    AiRuntimeBudgetExceeded,
+    AiRuntimeTimeoutError,
+    AiStreamConsumerError,
+    AiUsageAccountingError,
+)
 from app.domain.parser.schemas import (  # noqa: E402
     DuplicateMatch,
     ParsedExperienceItem,
@@ -170,6 +176,32 @@ class ParserSemanticDuplicateDetectionTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertFalse(result.duplicate.is_duplicate)
+
+    async def test_runtime_budget_errors_never_fall_back_to_rule_result(self) -> None:
+        for runtime_error in (
+            AiRuntimeTimeoutError,
+            AiRuntimeBudgetExceeded,
+            AiUsageAccountingError,
+            AiStreamConsumerError,
+        ):
+            with self.subTest(runtime_error=runtime_error.__name__):
+                with patch.object(
+                    semantic_duplicate_detection,
+                    "settings",
+                    self._settings(),
+                ):
+                    with patch.object(
+                        semantic_duplicate_detection,
+                        "call_llm_json",
+                        new_callable=AsyncMock,
+                        side_effect=runtime_error(runtime_error.public_message),
+                    ):
+                        with self.assertRaises(runtime_error):
+                            await semantic_duplicate_detection.apply_semantic_duplicate_flags(
+                                [_parsed_item("parsed-runtime")],
+                                [_existing_entry("exp-runtime")],
+                                request_id="req-runtime-terminal",
+                            )
 
     async def test_disabled_setting_skips_semantic_dedupe(self) -> None:
         item = _parsed_item("parsed-1")

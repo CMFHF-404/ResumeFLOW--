@@ -19,9 +19,12 @@ import {
   sortSessionsByUpdatedAt,
 } from './sessionUtils';
 import type { AssistantApplyDraftHandler, AssistantLaunchRequest } from './types';
+import type { AssistantOwnerGuard, AssistantOwnerOperation } from './useAssistantOwnerGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type UseAssistantSessionControllerParams = {
   isAuthenticated: boolean;
+  ownerGuard: AssistantOwnerGuard;
   clearComposerAttachments: () => void;
   clearSelectedExperiences: () => void;
   clearSelectedResume: () => void;
@@ -38,6 +41,7 @@ type UseAssistantSessionControllerParams = {
 
 export const useAssistantSessionController = ({
   isAuthenticated,
+  ownerGuard,
   clearComposerAttachments,
   clearSelectedExperiences,
   clearSelectedResume,
@@ -145,9 +149,20 @@ export const useAssistantSessionController = ({
     isLoadingSessions,
     isLoadingDetail,
     loadSessions,
+    hasEarlierSessions,
+    isLoadingEarlierSessions,
+    earlierSessionsError,
+    loadEarlierSessions,
     loadSessionDetail,
+    historySessionId,
+    hasEarlierMessages,
+    isLoadingEarlierMessages,
+    earlierMessagesError,
+    storageProjectionTruncated,
+    loadEarlierMessages,
   } = useAssistantSessionLoading({
     isAuthenticated,
+    ownerGuard,
     sessionsRef,
     selectedSessionIdRef,
     suppressAutoSelectSessionRef,
@@ -284,6 +299,15 @@ export const useAssistantSessionController = ({
   ]);
 
   const cleanupSupersededSession = useCallback(async (sessionId: string) => {
+    let operation: AssistantOwnerOperation;
+    try {
+      operation = await ownerGuard.beginOperation();
+    } catch (error) {
+      if (!isAuthContextChangedError(error)) {
+        console.warn('[AIAssistant] Failed to capture cleanup owner:', error);
+      }
+      return;
+    }
     applyHandlerMapRef.current.delete(sessionId);
     callbackOnlySessionIdsRef.current.delete(sessionId);
     draftSelectedResumeBySessionRef.current.delete(sessionId);
@@ -303,9 +327,17 @@ export const useAssistantSessionController = ({
       setInputValue('');
     }
     try {
-      await aiService.deleteAssistantSession(sessionId);
+      await aiService.deleteAssistantSession(sessionId, {
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await ownerGuard.assertOperationCurrent(operation);
     } catch (cleanupError) {
-      console.warn('[AIAssistant] Failed to cleanup superseded launch session:', cleanupError);
+      if (
+        !isAuthContextChangedError(cleanupError)
+        && ownerGuard.isOperationCurrent(operation)
+      ) {
+        console.warn('[AIAssistant] Failed to cleanup superseded launch session:', cleanupError);
+      }
     }
   }, [
     clearComposerAttachments,
@@ -313,6 +345,7 @@ export const useAssistantSessionController = ({
     clearSelectedResume,
     markMessagesMutated,
     markSessionDeleted,
+    ownerGuard,
     setActiveThought,
     setInputValue,
     setSessionsState,
@@ -327,13 +360,21 @@ export const useAssistantSessionController = ({
       ...(context?.contextJson ?? {}),
       ...(options?.callbackOnly ? { assistantApplyMode: 'manual_save' } : {}),
     };
-    return aiService.createAssistantSession({
+    const operation = await ownerGuard.beginOperation();
+    const created = await aiService.createAssistantSession({
       mode,
       title: context?.title,
       entrySource: context?.entrySource ?? 'direct',
       contextJson,
+    }, {
+      expectedAuthCacheKey: operation.expectedAuthCacheKey,
     });
-  }, []);
+    await ownerGuard.assertOperationCurrent(operation);
+    if (created.user_id !== operation.expectedAuthCacheKey) {
+      throw new Error('Assistant session owner mismatch');
+    }
+    return created;
+  }, [ownerGuard]);
 
   const handleCreateSession = useCallback(async (
     context?: AssistantEntryContext,
@@ -382,7 +423,18 @@ export const useAssistantSessionController = ({
     setAppliedMessageIds,
     isLoadingSessions,
     isLoadingDetail,
+    hasEarlierSessions,
+    isLoadingEarlierSessions,
+    earlierSessionsError,
+    loadEarlierSessions,
     loadSessionDetail,
+    hasEarlierMessages: historySessionId === selectedSessionId && hasEarlierMessages,
+    isLoadingEarlierMessages: historySessionId === selectedSessionId && isLoadingEarlierMessages,
+    earlierMessagesError: historySessionId === selectedSessionId ? earlierMessagesError : null,
+    storageProjectionTruncated: (
+      historySessionId === selectedSessionId && storageProjectionTruncated
+    ),
+    loadEarlierMessages,
     selectedSessionIdRef,
     sessionsRef,
     suppressAutoSelectSessionRef,

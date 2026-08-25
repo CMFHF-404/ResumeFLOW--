@@ -1,6 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Wrench, ChevronDown } from 'lucide-react';
 import { skillsService, UserSkill } from '../services/skillsService';
+import {
+    assertAuthCacheKey,
+    AuthContextChangedError,
+    isAuthContextChangedError,
+} from '../services/apiClient';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { runDedupedRefresh } from './experienceUtils';
 import SkillCategoryCard, { SkillCategoryCardData } from './SkillCategoryCard';
@@ -56,25 +61,42 @@ interface SkillsSectionProps {
         error: (message: string, duration?: number) => string;
         loading: (message: string) => string;
         updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
+        closeToast?: (id: string) => void;
     };
     isAuthenticated?: boolean;
+    authUserKey?: string | null;
     onRequireAuth?: () => void | Promise<void>;
+}
+
+interface SkillsOwnerOperation {
+    expectedAuthCacheKey: string;
+    generation: number;
 }
 
 const SkillsSection: React.FC<SkillsSectionProps> = ({
     refreshSignal,
     toast,
     isAuthenticated = true,
+    authUserKey = null,
     onRequireAuth = () => undefined,
 }) => {
-    const { error, loading, updateToast } = toast;
+    const { error, loading, updateToast, closeToast } = toast;
 
     // Data State
     const [skills, setSkills] = useState<UserSkill[]>([]);
     const [extraCategories, setExtraCategories] = useState<string[]>([]); // New empty categories
     const [isLoading, setIsLoading] = useState(isAuthenticated);
-    const hasLoadedRef = useRef(false);
+    const [skillsOwnerKey, setSkillsOwnerKey] = useState<string | null>(null);
+    const loadedOwnerKeyRef = useRef<string | null>(null);
     const refreshInFlightRef = useRef<Promise<UserSkill[]> | null>(null);
+    const ownerGenerationRef = useRef(0);
+    const activeLoadingToastIdsRef = useRef<Set<string>>(new Set());
+    const resolvedOwnerKey = isAuthenticated
+        && authUserKey
+        && authUserKey !== 'anonymous'
+        ? authUserKey
+        : null;
+    const committedOwnerKeyRef = useRef<string | null>(resolvedOwnerKey);
 
     // Card State (Key = Category Name)
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -91,53 +113,172 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
     const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     // Derived
-    const groupedSkills = useMemo(() => buildGroupedSkills(skills), [skills]);
-    const categoryOrder = useMemo(() => buildSkillCategoryOrder(skills, extraCategories), [skills, extraCategories]);
+    const isVisibleOwner = !!resolvedOwnerKey && skillsOwnerKey === resolvedOwnerKey;
+    const visibleSkills = isVisibleOwner ? skills : [];
+    const visibleExtraCategories = isVisibleOwner ? extraCategories : [];
+    const visibleIsLoading = !!resolvedOwnerKey && !isVisibleOwner ? true : isLoading;
+    const groupedSkills = useMemo(() => buildGroupedSkills(visibleSkills), [visibleSkills]);
+    const categoryOrder = useMemo(
+        () => buildSkillCategoryOrder(visibleSkills, visibleExtraCategories),
+        [visibleExtraCategories, visibleSkills]
+    );
 
-    const refreshSkills = useCallback(async () => {
-        if (!isAuthenticated) {
+    const closeLoadingToast = useCallback((toastId: string) => {
+        if (closeToast) {
+            closeToast(toastId);
+        } else {
+            updateToast(toastId, { duration: 1 });
+        }
+        activeLoadingToastIdsRef.current.delete(toastId);
+    }, [closeToast, updateToast]);
+
+    const closeAllLoadingToasts = useCallback(() => {
+        for (const toastId of [...activeLoadingToastIdsRef.current]) {
+            closeLoadingToast(toastId);
+        }
+    }, [closeLoadingToast]);
+    const closeAllLoadingToastsRef = useRef(closeAllLoadingToasts);
+
+    useLayoutEffect(() => {
+        closeAllLoadingToastsRef.current = closeAllLoadingToasts;
+    }, [closeAllLoadingToasts]);
+
+    useLayoutEffect(() => {
+        if (committedOwnerKeyRef.current === resolvedOwnerKey) return;
+        committedOwnerKeyRef.current = resolvedOwnerKey;
+        ownerGenerationRef.current += 1;
+        refreshInFlightRef.current = null;
+        loadedOwnerKeyRef.current = null;
+        closeAllLoadingToasts();
+    }, [closeAllLoadingToasts, resolvedOwnerKey]);
+
+    const beginOwnerOperation = useCallback((): SkillsOwnerOperation | null => {
+        if (!resolvedOwnerKey) return null;
+        return {
+            expectedAuthCacheKey: resolvedOwnerKey,
+            generation: ownerGenerationRef.current,
+        };
+    }, [resolvedOwnerKey]);
+
+    const assertOwnerOperationCurrent = useCallback(async (operation: SkillsOwnerOperation) => {
+        const assertRenderedOwner = () => {
+            if (
+                operation.generation !== ownerGenerationRef.current
+                || operation.expectedAuthCacheKey !== committedOwnerKeyRef.current
+            ) {
+                throw new AuthContextChangedError();
+            }
+        };
+        assertRenderedOwner();
+        await assertAuthCacheKey(operation.expectedAuthCacheKey);
+        assertRenderedOwner();
+    }, []);
+
+    const runOwnedMutation = useCallback(async <T,>(
+        operation: SkillsOwnerOperation,
+        mutation: () => Promise<T>,
+    ): Promise<T> => {
+        await assertOwnerOperationCurrent(operation);
+        const result = await mutation();
+        await assertOwnerOperationCurrent(operation);
+        return result;
+    }, [assertOwnerOperationCurrent]);
+
+    const refreshSkills = useCallback(async (existingOperation?: SkillsOwnerOperation) => {
+        const operation = existingOperation ?? beginOwnerOperation();
+        if (!operation) {
             setSkills([]);
             setExtraCategories([]);
+            setSkillsOwnerKey(null);
             setIsLoading(false);
             return [];
         }
         return runDedupedRefresh(refreshInFlightRef, async () => {
-            const data = await skillsService.list({ force: true });
+            await assertOwnerOperationCurrent(operation);
+            const data = await skillsService.list({
+                force: true,
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await assertOwnerOperationCurrent(operation);
             setSkills(data);
+            setSkillsOwnerKey(operation.expectedAuthCacheKey);
             return data;
         });
-    }, [isAuthenticated]);
+    }, [assertOwnerOperationCurrent, beginOwnerOperation]);
 
     useEffect(() => {
-        if (!isAuthenticated) {
-            hasLoadedRef.current = false;
+        if (!resolvedOwnerKey) {
+            loadedOwnerKeyRef.current = null;
             setSkills([]);
             setExtraCategories([]);
+            setSkillsOwnerKey(null);
             setIsLoading(false);
             return;
         }
+        const operation: SkillsOwnerOperation = {
+            expectedAuthCacheKey: resolvedOwnerKey,
+            generation: ownerGenerationRef.current,
+        };
+        let cancelled = false;
+
+        setSkills([]);
+        setExtraCategories([]);
+        setSkillsOwnerKey(resolvedOwnerKey);
+        setExpandedCategories(new Set<string>());
+        setCollapsingCategories(new Set<string>());
+        setCategoryData(new Map<string, SkillCategoryCardData>());
+        setOriginalCategoryData(new Map<string, SkillCategoryCardData>());
+        setModifiedCategories(new Set<string>());
+        setSavingCategories(new Set<string>());
+        setDeletingCategory(null);
+
         const loadSkills = async () => {
-            if (hasLoadedRef.current) return;
+            if (loadedOwnerKeyRef.current === resolvedOwnerKey) return;
             try {
                 setIsLoading(true);
-                hasLoadedRef.current = true;
-                const data = await skillsService.list();
+                loadedOwnerKeyRef.current = resolvedOwnerKey;
+                await assertOwnerOperationCurrent(operation);
+                const data = await skillsService.list({
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await assertOwnerOperationCurrent(operation);
+                if (cancelled) return;
                 setSkills(data);
+                setSkillsOwnerKey(operation.expectedAuthCacheKey);
             } catch (err) {
-                console.error('Failed to load skills:', err);
-                hasLoadedRef.current = false;
+                if (!isAuthContextChangedError(err)) {
+                    console.error('Failed to load skills:', err);
+                }
+                if (!cancelled && ownerGenerationRef.current === operation.generation) {
+                    loadedOwnerKeyRef.current = null;
+                }
             } finally {
-                setIsLoading(false);
+                if (!cancelled && ownerGenerationRef.current === operation.generation) {
+                    setIsLoading(false);
+                }
             }
         };
-        loadSkills();
-    }, [isAuthenticated]);
+        void loadSkills();
+        return () => {
+            cancelled = true;
+        };
+    }, [assertOwnerOperationCurrent, resolvedOwnerKey]);
+
+    useEffect(() => () => {
+        ownerGenerationRef.current += 1;
+        refreshInFlightRef.current = null;
+        closeAllLoadingToastsRef.current();
+    }, []);
 
     useEffect(() => {
-        if (refreshSignal && isAuthenticated) {
-            refreshSkills().catch(err => console.error('Refresh failed', err));
+        if (refreshSignal && resolvedOwnerKey) {
+            refreshSkills().catch(err => {
+                if (!isAuthContextChangedError(err)) {
+                    console.error('Refresh failed', err);
+                }
+            });
         }
-    }, [isAuthenticated, refreshSignal, refreshSkills]);
+    }, [refreshSignal, refreshSkills, resolvedOwnerKey]);
 
 
     // Helpers
@@ -205,7 +346,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
     const isCategoryNameTaken = (name: string, excludeCategory: string) => {
         const key = normalizeCategoryKey(name);
         const excludeKey = normalizeCategoryKey(excludeCategory);
-        const candidates = [...Object.keys(groupedSkills), ...extraCategories];
+        const candidates = [...Object.keys(groupedSkills), ...visibleExtraCategories];
         return candidates.some((candidate) => {
             const candidateKey = normalizeCategoryKey(candidate);
             return candidateKey === key && candidateKey !== excludeKey;
@@ -217,11 +358,21 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
             void onRequireAuth();
             return true;
         }
-        return false;
-    }, [isAuthenticated, onRequireAuth]);
+        return !resolvedOwnerKey || skillsOwnerKey !== resolvedOwnerKey || isLoading;
+    }, [isAuthenticated, isLoading, onRequireAuth, resolvedOwnerKey, skillsOwnerKey]);
 
-    const handleCreateCategory = () => {
+    const handleCreateCategory = async () => {
         if (requireAuth()) return;
+        const operation = beginOwnerOperation();
+        if (!operation) return;
+        try {
+            await assertOwnerOperationCurrent(operation);
+        } catch (err) {
+            if (!isAuthContextChangedError(err)) {
+                console.error(err);
+            }
+            return;
+        }
         const newName = "新分类"; // simple duplicate check needed?
         let uniqueName = newName;
         let count = 1;
@@ -239,6 +390,16 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
 
     const handleSave = async (originalCategoryName: string) => {
         if (requireAuth()) return;
+        const operation = beginOwnerOperation();
+        if (!operation) return;
+        try {
+            await assertOwnerOperationCurrent(operation);
+        } catch (err) {
+            if (!isAuthContextChangedError(err)) {
+                console.error(err);
+            }
+            return;
+        }
         const data = categoryData.get(originalCategoryName);
         if (!data) return;
         const newName = data.name.trim();
@@ -255,6 +416,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
 
         setSavingCategories(prev => new Set(prev).add(originalCategoryName));
         const toastId = loading(SKILL_TOAST_MESSAGES.saveLoading);
+        activeLoadingToastIdsRef.current.add(toastId);
 
         try {
             const originalSkills = groupedSkills[originalCategoryName] || [];
@@ -272,26 +434,42 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
 
             const promises: Promise<any>[] = [];
 
-            toDelete.forEach(s => promises.push(skillsService.delete(s.id)));
+            toDelete.forEach(s => promises.push(runOwnedMutation(
+                operation,
+                () => skillsService.delete(s.id, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                })
+            )));
 
             const categoryPayload = normalizeCategoryKey(newName) === normalizeCategoryKey(DEFAULT_SKILL_CATEGORY) ? undefined : newName;
 
-            toCreate.forEach(name => promises.push(skillsService.create({ name, category: categoryPayload })));
+            toCreate.forEach(name => promises.push(runOwnedMutation(
+                operation,
+                () => skillsService.create(
+                    { name, category: categoryPayload },
+                    { expectedAuthCacheKey: operation.expectedAuthCacheKey }
+                )
+            )));
 
             if (renameNeeded) {
-                remainingSkills.forEach(s => promises.push(skillsService.update(s.id, { category: newName })));
+                remainingSkills.forEach(s => promises.push(runOwnedMutation(
+                    operation,
+                    () => skillsService.update(
+                        s.id,
+                        { category: newName },
+                        { expectedAuthCacheKey: operation.expectedAuthCacheKey }
+                    )
+                )));
             }
 
             await Promise.all(promises);
+            await assertOwnerOperationCurrent(operation);
+            await refreshSkills(operation);
+            await assertOwnerOperationCurrent(operation);
 
-            // Cleanup local state
             if (extraCategories.includes(originalCategoryName) && renameNeeded) {
                 setExtraCategories(prev => prev.filter(c => c !== originalCategoryName).concat(newName));
-            } else if (extraCategories.includes(originalCategoryName) && !renameNeeded) {
-                // Keep as is
             }
-
-            await refreshSkills();
 
             // Keep "取消" behavior consistent by updating the baseline snapshot after a successful save.
             const savedSnapshot: SkillCategoryCardData = { name: newName, skills: nextSkills };
@@ -299,6 +477,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
             setOriginalCategoryData(prev => new Map(prev).set(originalCategoryName, JSON.parse(JSON.stringify(savedSnapshot))));
 
             updateToast(toastId, { message: SKILL_TOAST_MESSAGES.saveSuccess, type: 'success', duration: 2000 });
+            activeLoadingToastIdsRef.current.delete(toastId);
             setModifiedCategories(prev => {
                 const next = new Set(prev);
                 next.delete(originalCategoryName);
@@ -308,14 +487,31 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
             // But actually, after refresh, the list re-renders with NEW keys.
 
         } catch (err) {
-            console.error(err);
-            updateToast(toastId, { message: SKILL_TOAST_MESSAGES.saveError, type: 'error', duration: 3000 });
+            if (isAuthContextChangedError(err)) {
+                closeLoadingToast(toastId);
+            } else {
+                console.error(err);
+                if (
+                    operation.generation === ownerGenerationRef.current
+                    && operation.expectedAuthCacheKey === committedOwnerKeyRef.current
+                ) {
+                    updateToast(toastId, { message: SKILL_TOAST_MESSAGES.saveError, type: 'error', duration: 3000 });
+                    activeLoadingToastIdsRef.current.delete(toastId);
+                } else {
+                    closeLoadingToast(toastId);
+                }
+            }
         } finally {
-            setSavingCategories(prev => {
-                const next = new Set(prev);
-                next.delete(originalCategoryName);
-                return next;
-            });
+            if (
+                operation.generation === ownerGenerationRef.current
+                && operation.expectedAuthCacheKey === committedOwnerKeyRef.current
+            ) {
+                setSavingCategories(prev => {
+                    const next = new Set(prev);
+                    next.delete(originalCategoryName);
+                    return next;
+                });
+            }
         }
     };
 
@@ -335,24 +531,54 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
     const handleDeleteCategory = async () => {
         if (requireAuth()) return;
         if (!deletingCategory) return;
+        const operation = beginOwnerOperation();
+        if (!operation) return;
+        try {
+            await assertOwnerOperationCurrent(operation);
+        } catch (err) {
+            if (!isAuthContextChangedError(err)) {
+                console.error(err);
+            }
+            return;
+        }
         const category = deletingCategory;
         setDeletingCategory(null);
 
         const toastId = loading(SKILL_TOAST_MESSAGES.deleteLoading);
+        activeLoadingToastIdsRef.current.add(toastId);
         try {
             const skillsToDelete = groupedSkills[category] || [];
-            await Promise.all(skillsToDelete.map(s => skillsService.delete(s.id)));
+            await Promise.all(skillsToDelete.map(s => runOwnedMutation(
+                operation,
+                () => skillsService.delete(s.id, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                })
+            )));
+            await assertOwnerOperationCurrent(operation);
+            await refreshSkills(operation);
+            await assertOwnerOperationCurrent(operation);
 
             if (extraCategories.includes(category)) {
                 setExtraCategories(prev => prev.filter(c => c !== category));
             }
-
-            await refreshSkills();
             updateToast(toastId, { message: SKILL_TOAST_MESSAGES.deleteSuccess, type: 'success', duration: 2000 });
+            activeLoadingToastIdsRef.current.delete(toastId);
 
         } catch (err) {
-            console.error(err);
-            updateToast(toastId, { message: SKILL_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
+            if (isAuthContextChangedError(err)) {
+                closeLoadingToast(toastId);
+            } else {
+                console.error(err);
+                if (
+                    operation.generation === ownerGenerationRef.current
+                    && operation.expectedAuthCacheKey === committedOwnerKeyRef.current
+                ) {
+                    updateToast(toastId, { message: SKILL_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
+                    activeLoadingToastIdsRef.current.delete(toastId);
+                } else {
+                    closeLoadingToast(toastId);
+                }
+            }
         }
     };
 
@@ -376,7 +602,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
                     <span className="text-sm font-normal text-gray-400 ml-2">Skills</span>
                 </h2>
                 <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    {isLoading ? '加载中...' : `${categoryOrder.length} categories`}
+                    {visibleIsLoading ? '加载中...' : `${categoryOrder.length} categories`}
                 </span>
             </div>
 
@@ -384,7 +610,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
                 <>
                     <button
                         onClick={handleCreateCategory}
-                        disabled={isLoading}
+                        disabled={visibleIsLoading}
                         className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-rose-600 hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-rose-600 transition-colors">
@@ -421,7 +647,7 @@ const SkillsSection: React.FC<SkillsSectionProps> = ({
             )}
 
             <ConfirmDialog
-                isOpen={!!deletingCategory}
+                isOpen={isVisibleOwner && !!deletingCategory}
                 title="确认删除"
                 description={<>确定要删除该分类及其所有技能吗？<br />此操作无法撤销。</>}
                 onConfirm={handleDeleteCategory}

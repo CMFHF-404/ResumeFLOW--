@@ -86,17 +86,16 @@ const setExportErrorState = (message: string) => {
 
 const buildInitialExportState = () => {
   if (typeof window === 'undefined') {
-    return { exportId: '', token: '' };
+    return { exportId: '' };
   }
   const query = new URLSearchParams(window.location.search);
   return {
     exportId: query.get('exportId') || '',
-    token: query.get('token') || '',
   };
 };
 
 const ResumePdfExportPage: React.FC = () => {
-  const [{ exportId, token }] = React.useState(buildInitialExportState);
+  const [{ exportId }] = React.useState(buildInitialExportState);
   const [snapshot, setSnapshot] = React.useState<ResumePdfRenderSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -128,7 +127,7 @@ const ResumePdfExportPage: React.FC = () => {
     let cancelled = false;
 
     const loadSnapshot = async () => {
-      if (!exportId || !token) {
+      if (!exportId) {
         const nextError = '缺少导出参数，请重新发起导出。';
         if (!cancelled) {
           setError(nextError);
@@ -144,7 +143,7 @@ const ResumePdfExportPage: React.FC = () => {
       clearExportErrorState();
 
       try {
-        const response = await exportService.getRenderSnapshot(exportId, token);
+        const response = await exportService.getRenderSnapshot(exportId);
         if (cancelled) {
           return;
         }
@@ -173,7 +172,7 @@ const ResumePdfExportPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [exportId, token]);
+  }, [exportId]);
 
   React.useEffect(() => {
     if (!snapshot || isLoading || error || !previewContentRef.current) {

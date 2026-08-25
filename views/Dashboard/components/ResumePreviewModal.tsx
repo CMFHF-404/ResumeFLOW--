@@ -12,6 +12,7 @@ import {
 export type ResumePreviewModalProps = {
     isOpen: boolean;
     resumeId: string | null;
+    authUserKey: string | null;
     resumeName?: string;
     onClose: () => void;
 };
@@ -22,13 +23,17 @@ const buildPreviewTitle = (resumeName?: string) => {
     return resumeName ? `${DEFAULT_TITLE} - ${resumeName}` : DEFAULT_TITLE;
 };
 
-const useResumePreviewState = (isOpen: boolean, resumeId: string | null) => {
+const useResumePreviewState = (
+    isOpen: boolean,
+    resumeId: string | null,
+    authUserKey: string | null,
+) => {
     const [previewSnapshot, setPreviewSnapshot] = useState<DashboardResumePreviewSnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!isOpen || !resumeId) {
+        if (!isOpen || !resumeId || !authUserKey) {
             setPreviewSnapshot(null);
             setIsLoading(false);
             setError(null);
@@ -36,12 +41,16 @@ const useResumePreviewState = (isOpen: boolean, resumeId: string | null) => {
         }
         let cancelled = false;
         const currentResumeId = resumeId;
+        const expectedAuthCacheKey = authUserKey;
         const loadPreview = async () => {
             setIsLoading(true);
             setError(null);
             setPreviewSnapshot(null);
             try {
-                const snapshot = await loadDashboardResumePreviewSnapshot(currentResumeId);
+                const snapshot = await loadDashboardResumePreviewSnapshot(
+                    currentResumeId,
+                    expectedAuthCacheKey,
+                );
                 if (cancelled) {
                     return;
                 }
@@ -61,7 +70,7 @@ const useResumePreviewState = (isOpen: boolean, resumeId: string | null) => {
         return () => {
             cancelled = true;
         };
-    }, [isOpen, resumeId]);
+    }, [authUserKey, isOpen, resumeId]);
 
     return { previewSnapshot, isLoading, error };
 };
@@ -132,10 +141,15 @@ const PreviewBody: React.FC<PreviewBodyProps> = ({ isLoading, error, previewProp
 const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
     isOpen,
     resumeId,
+    authUserKey,
     resumeName,
     onClose,
 }) => {
-    const { previewSnapshot, isLoading, error } = useResumePreviewState(isOpen, resumeId);
+    const { previewSnapshot, isLoading, error } = useResumePreviewState(
+        isOpen,
+        resumeId,
+        authUserKey,
+    );
     const previewState =
         previewSnapshot && resumeId && previewSnapshot.resumeId === resumeId
             ? previewSnapshot.state

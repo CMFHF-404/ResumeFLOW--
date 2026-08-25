@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { type AuthOwnerOptions } from './apiClient';
 
 /** 反馈表单的纯数据字段（不含文件） */
 export interface FeedbackFormData {
@@ -40,10 +40,16 @@ const buildFeedbackFormData = (
 };
 
 export const feedbackService = {
-  async create(formData: FeedbackFormData, images: File[] = []) {
+  async create(
+    formData: FeedbackFormData,
+    images: File[] = [],
+    options?: AuthOwnerOptions,
+  ) {
     const fd = buildFeedbackFormData(formData, images);
     // 交给浏览器自动补齐 multipart boundary，避免后端无法解析表单。
-    const response = await apiClient.post<FeedbackResponse>('/feedback', fd);
+    const response = await apiClient.post<FeedbackResponse>('/feedback', fd, {
+      expectedAuthCacheKey: options?.expectedAuthCacheKey,
+    });
     return response.data;
   },
 };

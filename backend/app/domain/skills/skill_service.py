@@ -14,13 +14,23 @@ class NotFoundError(Exception):
     pass
 
 
-async def list_user_skills(session: AsyncSession, user_id: str) -> List[tuple]:
+async def list_user_skills(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    limit: Optional[int] = None,
+) -> List[tuple]:
     """获取用户的技能列表(包含技能详情)"""
     query = (
         select(UserSkill, Skill)
         .join(Skill, UserSkill.skill_id == Skill.id)
         .where(UserSkill.user_id == user_id)
     )
+    if limit is not None:
+        query = query.order_by(
+            Skill.name.asc(),
+            UserSkill.id.asc(),
+        ).limit(max(int(limit), 0))
     result = await session.execute(query)
     return list(result.all())
 

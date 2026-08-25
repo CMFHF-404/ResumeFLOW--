@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List
 from fastapi import HTTPException
 from starlette.status import HTTP_404_NOT_FOUND
 
+from ...config import build_public_api_url, load_settings
 from .schemas import (
     AgentPolishOption,
     AgentPolishOptionsResponse,
@@ -392,14 +393,15 @@ def _recommendation(score: int) -> str:
         return "review"
     return "skip"
 
-def _absolute_url(request: Any, path: str) -> str:
-    if path.startswith("http://") or path.startswith("https://"):
-        return path
-    try:
-        base = f"{request.url.scheme}://{request.url.netloc}"
-    except Exception:
-        return path
-    return f"{base}{path}"
+def _absolute_url(_request: Any, path: str) -> str:
+    """Build API-key download URLs from trusted deployment configuration only.
+
+    Request URL and forwarded-host headers are client-controlled unless a
+    trusted proxy explicitly normalizes them. Do not derive an externally
+    returned URL from either source. ``public_api_origin`` is validated when
+    settings load and may carry an API mount prefix such as ``/api``.
+    """
+    return build_public_api_url(load_settings().public_api_origin, path)
 
 def _entry_reasons(entries: Any, minimum_score: int) -> List[str]:
     if not isinstance(entries, list):

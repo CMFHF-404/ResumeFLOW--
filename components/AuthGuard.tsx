@@ -16,10 +16,11 @@ import {
 import { trackLoginStart } from '../utils/analyticsTracker';
 
 interface AuthGuardProps {
+    authUserKey: string | null;
     children: ReactNode;
 }
 
-export default function AuthGuard({ children }: AuthGuardProps) {
+export default function AuthGuard({ authUserKey, children }: AuthGuardProps) {
     const {
         isAuthenticated,
         isLoading,
@@ -127,7 +128,8 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     }, [hasTokenGetter, isAuthenticated]);
 
     const shouldShowLoading =
-        (isLoading && !hasAuthenticatedOnce) || (isAuthenticated && !isTokenReady);
+        (isLoading && !hasAuthenticatedOnce)
+        || (isAuthenticated && (!isTokenReady || !authUserKey));
 
     if (shouldShowLoading) {
         return (

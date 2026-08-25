@@ -33,7 +33,7 @@ import {
   TOP_PADDING_SLIDER_MAX,
   formatOptionNumberLabel,
 } from '../layoutUtils';
-import type { ResumeTemplatePresetMap } from '../../resumeTemplateStorage';
+import type { ResumeTemplatePresetMap } from '../../../services/resumeTemplateStorage';
 import EditorSidebar, { EditingSuggestionNav, type EditorSidebarProps } from './EditorSidebar';
 import ExperienceTab from './ExperienceTab';
 import type { ResumeEditorLayoutAdjustPanelProps } from './ResumeEditorLayoutAdjustPanel';

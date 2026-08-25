@@ -31,9 +31,31 @@ class _FakeStreamResponse:
     def __init__(self, lines):
         self._lines = lines
 
-    async def aiter_lines(self):
+        self.closed = False
+
+    async def aiter_bytes(self, chunk_size=None):
         for line in self._lines:
-            yield line
+            data = f"{line}\n".encode("utf-8")
+            resolved_chunk_size = chunk_size or len(data) or 1
+            for index in range(0, len(data), resolved_chunk_size):
+                yield data[index : index + resolved_chunk_size]
+
+    async def aclose(self):
+        self.closed = True
+
+
+class _FakeRawStreamResponse:
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+        self.closed = False
+
+    async def aiter_bytes(self, chunk_size=None):
+        del chunk_size
+        for chunk in self._chunks:
+            yield chunk
+
+    async def aclose(self):
+        self.closed = True
 
 
 async def _collect_payloads(iterator):
@@ -244,11 +266,37 @@ class SharedSSEEventTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ai_payloads, [])
         self.assertEqual(parser_payloads, [])
-        self.assertIn("[AI Stream] invalid SSE payload: not-json", ai_logs.output[0])
+        self.assertIn("[AI Stream] invalid SSE payload: bytes=8 sha256=", ai_logs.output[0])
+        self.assertNotIn("not-json", ai_logs.output[0])
         self.assertIn(
-            "[ResumeParse] invalid Gemini SSE payload: not-json",
+            "[ResumeParse] invalid Gemini SSE payload: bytes=8 sha256=",
             parser_logs.output[0],
         )
+        self.assertNotIn("not-json", parser_logs.output[0])
+
+    async def test_shared_iterator_handles_utf8_and_crlf_split_across_raw_chunks(self) -> None:
+        encoded_value = "你好".encode("utf-8")
+        response = _FakeRawStreamResponse(
+            [
+                b'data: {"value":"' + encoded_value[:2],
+                encoded_value[2:4],
+                encoded_value[4:] + b'"}\r',
+                b"\n\r",
+                b"\n",
+            ]
+        )
+
+        payloads = await _collect_payloads(
+            sse_events.iter_sse_json_payloads(
+                response,
+                logger=llm_transport.logger,
+                invalid_payload_message="invalid: %s",
+                invalid_trailing_payload_message="invalid trailing: %s",
+            )
+        )
+
+        self.assertEqual(payloads, [{"value": "你好"}])
+        self.assertTrue(response.closed)
 
     async def test_shared_iterator_preserves_done_at_eof_without_parsing_it(self) -> None:
         response = _FakeStreamResponse(["data: [DONE]"])

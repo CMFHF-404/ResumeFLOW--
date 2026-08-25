@@ -10,6 +10,8 @@ import type {
     SkillDomain,
     SkillState,
 } from './types';
+import type { AuthOwnerOperation, AuthOwnerOperationGuard } from '../useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type SkillDraftHandlers = {
     beginCreateSkillType: () => void;
@@ -49,7 +51,7 @@ type SkillHelperContext = {
     findSkillMeta: (id: string) => { id: string; name: string; category: string } | null;
     buildSkillDraft: (meta?: { id?: string; name?: string; category?: string }) => SkillEditDraft;
     getSkillIdsByCategory: (groupName: string) => string[];
-    refreshSkillState: (options?: { selectId?: string }) => Promise<void>;
+    refreshSkillState: (options?: { selectId?: string; operation?: AuthOwnerOperation }) => Promise<void>;
     resetRenamingCategory: () => void;
 };
 
@@ -58,7 +60,8 @@ const createSkillHelperContext = (
     helpers: ExperienceHelpers,
     state: SkillState,
     defaults: ExperienceDefaults,
-    matchScore: MatchScoreDomain
+    matchScore: MatchScoreDomain,
+    ownerGuard: AuthOwnerOperationGuard,
 ): SkillHelperContext => {
     const findSkillMeta = (id: string) => {
         for (const group of domain.groups) {
@@ -89,8 +92,13 @@ const createSkillHelperContext = (
         return group ? group.skills.map((skill) => skill.id) : [];
     };
 
-    const refreshSkillState = async (options?: { selectId?: string }) => {
-        const items = await skillsService.list({ force: true });
+    const refreshSkillState = async (options?: { selectId?: string; operation?: AuthOwnerOperation }) => {
+        const operation = options?.operation ?? await ownerGuard.beginOperation();
+        const items = await skillsService.list({
+            force: true,
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await ownerGuard.assertOperationCurrent(operation);
         domain.setGroups(helpers.buildSkillGroups(items));
         const validIds = new Set(items.map((skill) => skill.id));
         domain.setSelectedIds((prev) => {
@@ -191,7 +199,8 @@ const createSkillSaveHandlers = (
     state: SkillState,
     defaults: ExperienceDefaults,
     helperContext: SkillHelperContext,
-    draftHandlers: SkillDraftHandlers
+    draftHandlers: SkillDraftHandlers,
+    ownerGuard: AuthOwnerOperationGuard,
 ): SkillSaveHandlers => {
     const buildSkillPayload = (draft: SkillEditDraft) => ({
         name: draft.name.trim() || defaults.skillName,
@@ -202,21 +211,33 @@ const createSkillSaveHandlers = (
         if (!state.skillDraft || state.isSavingSkill) {
             return;
         }
-        state.setIsSavingSkill(true);
+        let operation: AuthOwnerOperation | null = null;
         try {
+            operation = await ownerGuard.beginOperation();
+            state.setIsSavingSkill(true);
             const payload = buildSkillPayload(state.skillDraft);
             if (state.editingSkillId) {
-                await skillsService.update(state.editingSkillId, payload);
-                await helperContext.refreshSkillState();
+                await skillsService.update(state.editingSkillId, payload, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
+                await helperContext.refreshSkillState({ operation });
             } else {
-                const record = await skillsService.create(payload);
-                await helperContext.refreshSkillState({ selectId: record.id });
+                const record = await skillsService.create(payload, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
+                await helperContext.refreshSkillState({ selectId: record.id, operation });
             }
             draftHandlers.cancelSkillEdit();
         } catch (error) {
-            console.error('[ResumeEditor] 保存技能失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 保存技能失败:', error);
+            }
         } finally {
-            state.setIsSavingSkill(false);
+            if (!operation || ownerGuard.isOperationCurrent(operation)) {
+                state.setIsSavingSkill(false);
+            }
         }
     };
 
@@ -225,7 +246,8 @@ const createSkillSaveHandlers = (
 
 const createSkillRenameHandlers = (
     domain: SkillDomain,
-    helperContext: SkillHelperContext
+    helperContext: SkillHelperContext,
+    ownerGuard: AuthOwnerOperationGuard,
 ): SkillRenameHandlers => {
     const handleRenameCategory = async (oldName: string, newName: string) => {
         const trimmedNewName = newName.trim();
@@ -235,15 +257,23 @@ const createSkillRenameHandlers = (
         }
 
         try {
+            const operation = await ownerGuard.beginOperation();
             const skillsInGroup = domain.groups.find((g) => g.name === oldName)?.skills || [];
             await Promise.all(
                 skillsInGroup.map((skill) =>
-                    skillsService.update(skill.id, { category: trimmedNewName })
+                    skillsService.update(
+                        skill.id,
+                        { category: trimmedNewName },
+                        { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+                    )
                 )
             );
-            await helperContext.refreshSkillState();
+            await ownerGuard.assertOperationCurrent(operation);
+            await helperContext.refreshSkillState({ operation });
         } catch (error) {
-            console.error('[ResumeEditor] 重命名分类失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 重命名分类失败:', error);
+            }
         } finally {
             helperContext.resetRenamingCategory();
         }
@@ -258,7 +288,8 @@ const createSkillDeleteHandlers = (
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
     helperContext: SkillHelperContext,
-    draftHandlers: SkillDraftHandlers
+    draftHandlers: SkillDraftHandlers,
+    ownerGuard: AuthOwnerOperationGuard,
 ): SkillDeleteHandlers => {
     const requestDeleteSkill = (id: string) => {
         if (state.deletingSkillIds.has(id)) {
@@ -298,6 +329,7 @@ const createSkillDeleteHandlers = (
                 state.deletingSkillCategories,
                 state.setDeletingSkillCategories,
                 async () => {
+                    const operation = await ownerGuard.beginOperation();
                     if (state.renamingCategoryTarget === categoryName) {
                         helperContext.resetRenamingCategory();
                     }
@@ -307,12 +339,17 @@ const createSkillDeleteHandlers = (
                     if (state.skillDraftContext?.groupName === categoryName) {
                         draftHandlers.cancelSkillEdit();
                     }
-                    await Promise.all(skillIds.map((id) => skillsService.delete(id)));
-                    await helperContext.refreshSkillState();
+                    await Promise.all(skillIds.map((id) => skillsService.delete(id, {
+                        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                    })));
+                    await ownerGuard.assertOperationCurrent(operation);
+                    await helperContext.refreshSkillState({ operation });
                 }
             );
         } catch (error) {
-            console.error('[ResumeEditor] 删除技能分类失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 删除技能分类失败:', error);
+            }
         }
     };
 
@@ -322,14 +359,20 @@ const createSkillDeleteHandlers = (
         }
         try {
             await runWithFlag(id, state.deletingSkillIds, state.setDeletingSkillIds, async () => {
-                await skillsService.delete(id);
-                await helperContext.refreshSkillState();
+                const operation = await ownerGuard.beginOperation();
+                await skillsService.delete(id, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
+                await helperContext.refreshSkillState({ operation });
                 if (state.editingSkillId === id) {
                     draftHandlers.cancelSkillEdit();
                 }
             });
         } catch (error) {
-            console.error('[ResumeEditor] 删除技能失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 删除技能失败:', error);
+            }
         }
     };
 
@@ -387,19 +430,21 @@ export const createSkillHandlers = (
     defaults: ExperienceDefaults,
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
-    matchScore: MatchScoreDomain
+    matchScore: MatchScoreDomain,
+    ownerGuard: AuthOwnerOperationGuard,
 ): SkillHandlers => {
-    const helperContext = createSkillHelperContext(domain, helpers, state, defaults, matchScore);
+    const helperContext = createSkillHelperContext(domain, helpers, state, defaults, matchScore, ownerGuard);
     const draftHandlers = createSkillDraftHandlers(state, helperContext);
-    const saveHandlers = createSkillSaveHandlers(state, defaults, helperContext, draftHandlers);
-    const renameHandlers = createSkillRenameHandlers(domain, helperContext);
+    const saveHandlers = createSkillSaveHandlers(state, defaults, helperContext, draftHandlers, ownerGuard);
+    const renameHandlers = createSkillRenameHandlers(domain, helperContext, ownerGuard);
     const deleteHandlers = createSkillDeleteHandlers(
         domain,
         state,
         confirmCopy,
         openDeleteConfirm,
         helperContext,
-        draftHandlers
+        draftHandlers,
+        ownerGuard,
     );
     const selectionHandlers = createSkillSelectionHandlers(domain, helperContext);
 

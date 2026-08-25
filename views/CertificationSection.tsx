@@ -1,6 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { Award, Plus, ChevronDown } from 'lucide-react';
 import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
+import {
+    assertAuthCacheKey,
+    AuthContextChangedError,
+    isAuthContextChangedError,
+} from '../services/apiClient';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { convertDateToISO, getTodayLocalISODate, parseYearMonthValue, runDedupedRefresh } from './experienceUtils';
 import CertificationCard, { CertificationCardData } from './CertificationCard';
@@ -39,28 +44,68 @@ type ToastApi = {
     error: (message: string, duration?: number) => string;
     loading: (message: string) => string;
     updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
+    closeToast?: (id: string) => void;
 };
 
 interface CertificationSectionProps {
     refreshSignal?: number;
     toast: ToastApi;
+    authUserKey?: string | null;
     isAuthenticated?: boolean;
     onRequireAuth?: () => void | Promise<void>;
 }
 
+type CertificationOwnerOperation = {
+    expectedAuthCacheKey: string;
+    generation: number;
+};
+
 const CertificationSection: React.FC<CertificationSectionProps> = ({
     refreshSignal,
     toast,
+    authUserKey = null,
     isAuthenticated = true,
     onRequireAuth = () => undefined,
 }) => {
-    const { success, error, loading, updateToast } = toast;
+    const { success, error, loading, updateToast, closeToast } = toast;
+    const normalizedAuthUserKey = authUserKey?.trim() || null;
+    const isOwnerResolved = (
+        isAuthenticated
+        && !!normalizedAuthUserKey
+        && normalizedAuthUserKey !== 'anonymous'
+    );
+    const currentOwnerKey = isOwnerResolved ? normalizedAuthUserKey : null;
 
     // State
     const [certifications, setCertifications] = useState<CertificationRecord[]>([]);
-    const [isLoading, setIsLoading] = useState(isAuthenticated);
-    const hasLoadedRef = useRef(false);
+    const [isLoading, setIsLoading] = useState(isOwnerResolved);
+    const [listOwnerKey, setListOwnerKey] = useState<string | null>(currentOwnerKey);
     const refreshInFlightRef = useRef<Promise<CertificationRecord[]> | null>(null);
+    const ownerGenerationRef = useRef(0);
+    const committedOwnerKeyRef = useRef<string | null>(currentOwnerKey);
+    const activeLoadingToastIdsRef = useRef<Set<string>>(new Set());
+
+    useLayoutEffect(() => {
+        if (committedOwnerKeyRef.current === currentOwnerKey) {
+            return;
+        }
+        activeLoadingToastIdsRef.current.forEach((toastId) => {
+            if (closeToast) {
+                closeToast(toastId);
+            } else {
+                updateToast(toastId, { duration: 1 });
+            }
+        });
+        activeLoadingToastIdsRef.current.clear();
+        committedOwnerKeyRef.current = currentOwnerKey;
+        ownerGenerationRef.current += 1;
+        refreshInFlightRef.current = null;
+    }, [closeToast, currentOwnerKey, updateToast]);
+
+    const visibleCertifications = listOwnerKey === currentOwnerKey ? certifications : [];
+    const visibleIsLoading = isOwnerResolved && listOwnerKey !== currentOwnerKey
+        ? true
+        : isLoading;
 
     // Card State
     const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -73,75 +118,185 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
     // Creation/Deletion
     const [isCreating, setIsCreating] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const deletingOwnerKeyRef = useRef<string | null>(null);
 
     // Refs for scrolling
     const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
+    const beginOwnerOperation = useCallback((): CertificationOwnerOperation | null => {
+        if (!currentOwnerKey) {
+            return null;
+        }
+        return {
+            expectedAuthCacheKey: currentOwnerKey,
+            generation: ownerGenerationRef.current,
+        };
+    }, [currentOwnerKey]);
+
+    const isOwnerOperationCurrent = useCallback((operation: CertificationOwnerOperation) => (
+        operation.generation === ownerGenerationRef.current
+        && operation.expectedAuthCacheKey === committedOwnerKeyRef.current
+    ), []);
+
+    const assertOwnerOperationCurrent = useCallback(async (
+        operation: CertificationOwnerOperation,
+    ) => {
+        if (!isOwnerOperationCurrent(operation)) {
+            throw new AuthContextChangedError();
+        }
+        await assertAuthCacheKey(operation.expectedAuthCacheKey);
+        if (!isOwnerOperationCurrent(operation)) {
+            throw new AuthContextChangedError();
+        }
+    }, [isOwnerOperationCurrent]);
+
+    const shouldIgnoreOwnerError = useCallback((
+        operation: CertificationOwnerOperation,
+        caughtError: unknown,
+    ) => (
+        isAuthContextChangedError(caughtError)
+        || !isOwnerOperationCurrent(operation)
+    ), [isOwnerOperationCurrent]);
+
+    const dismissStaleLoadingToast = useCallback((toastId: string | null) => {
+        if (!toastId) return;
+        if (!activeLoadingToastIdsRef.current.delete(toastId)) return;
+        if (closeToast) {
+            closeToast(toastId);
+            return;
+        }
+        // Compatibility fallback for legacy callers; the owner-aware caller passes closeToast.
+        updateToast(toastId, { duration: 1 });
+    }, [closeToast, updateToast]);
+
     const refreshCertifications = useCallback(async () => {
-        if (!isAuthenticated) {
+        const operation = beginOwnerOperation();
+        if (!operation) {
             setCertifications([]);
+            setListOwnerKey(null);
             setIsLoading(false);
             return [];
         }
         return runDedupedRefresh(refreshInFlightRef, async () => {
-            const data = await certificationsService.list({ force: true });
+            await assertOwnerOperationCurrent(operation);
+            const data = await certificationsService.list({
+                force: true,
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await assertOwnerOperationCurrent(operation);
             setCertifications(data);
+            setListOwnerKey(operation.expectedAuthCacheKey);
             return data;
         });
-    }, [isAuthenticated]);
+    }, [assertOwnerOperationCurrent, beginOwnerOperation]);
 
     // Initial Load
     useEffect(() => {
-        if (!isAuthenticated) {
-            hasLoadedRef.current = false;
-            setCertifications([]);
+        const operation = beginOwnerOperation();
+        setCertifications([]);
+        setListOwnerKey(operation?.expectedAuthCacheKey ?? null);
+        setExpandedCards(new Set());
+        setCollapsingCards(new Set());
+        setCardData(new Map());
+        setOriginalCardData(new Map());
+        setModifiedCards(new Set());
+        setSavingCards(new Set());
+        setIsCreating(false);
+        setDeletingId(null);
+        deletingOwnerKeyRef.current = null;
+        cardRefs.current.clear();
+
+        if (!operation) {
             setIsLoading(false);
-            return;
+            return undefined;
         }
+
+        let cancelled = false;
         const loadCertifications = async () => {
-            if (hasLoadedRef.current) return;
+            let shouldFinalizeLoading = false;
             try {
+                await assertOwnerOperationCurrent(operation);
+                if (cancelled) return;
                 setIsLoading(true);
-                hasLoadedRef.current = true;
-                const data = await certificationsService.list();
+                const data = await certificationsService.list({
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await assertOwnerOperationCurrent(operation);
+                if (cancelled) return;
                 setCertifications(data);
-            } catch (err) {
-                console.error('Failed to load certifications:', err);
-                hasLoadedRef.current = false;
+                setListOwnerKey(operation.expectedAuthCacheKey);
+                shouldFinalizeLoading = true;
+            } catch (caughtError) {
+                if (!cancelled && !shouldIgnoreOwnerError(operation, caughtError)) {
+                    try {
+                        await assertOwnerOperationCurrent(operation);
+                        shouldFinalizeLoading = true;
+                    } catch (ownerError) {
+                        if (!shouldIgnoreOwnerError(operation, ownerError)) {
+                            console.error('Failed to verify certification owner:', ownerError);
+                        }
+                        return;
+                    }
+                    console.error('Failed to load certifications:', caughtError);
+                }
             } finally {
-                setIsLoading(false);
+                if (
+                    shouldFinalizeLoading
+                    && !cancelled
+                    && isOwnerOperationCurrent(operation)
+                ) {
+                    setIsLoading(false);
+                }
             }
         };
-        loadCertifications();
-    }, [isAuthenticated]);
+        void loadCertifications();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        assertOwnerOperationCurrent,
+        beginOwnerOperation,
+        isOwnerOperationCurrent,
+        shouldIgnoreOwnerError,
+    ]);
 
     // External Refresh
     useEffect(() => {
-        if (refreshSignal && isAuthenticated) {
-            refreshCertifications().catch(err => console.error('Refresh failed', err));
+        if (refreshSignal && isOwnerResolved) {
+            refreshCertifications().catch((caughtError) => {
+                if (!isAuthContextChangedError(caughtError)) {
+                    console.error('Refresh failed', caughtError);
+                }
+            });
         }
-    }, [isAuthenticated, refreshSignal, refreshCertifications]);
+    }, [isOwnerResolved, refreshSignal, refreshCertifications]);
 
     const sortedCertifications = useMemo(() => {
-        return [...certifications].sort((a, b) => {
+        return [...visibleCertifications].sort((a, b) => {
             const dateA = a.issue_date;
             const dateB = b.issue_date;
             const valA = parseYearMonthValue(dateA) ?? -1;
             const valB = parseYearMonthValue(dateB) ?? -1;
             return valB - valA;
         });
-    }, [certifications]);
+    }, [visibleCertifications]);
 
     // Card Helpers
     const ensureCardState = (id: string, seedData?: CertificationCardData) => {
         if (cardData.has(id)) return;
-        const item = seedData ? null : certifications.find(c => c.id === id);
+        const item = seedData ? null : visibleCertifications.find(c => c.id === id);
         const data = seedData || (item ? buildCertificationCardData(item) : { name: '', issuer: '', date: '' });
         setCardData(prev => new Map(prev).set(id, data));
         setOriginalCardData(prev => new Map(prev).set(id, cloneCertificationCardData(data)));
     };
 
     const toggleCard = (id: string, seedData?: CertificationCardData) => {
+        const generation = ownerGenerationRef.current;
+        const ownerKey = committedOwnerKeyRef.current;
+        const isToggleCurrent = () => (
+            generation === ownerGenerationRef.current
+            && ownerKey === committedOwnerKeyRef.current
+        );
         setExpandedCards(prev => {
             const next = new Set(prev);
             if (next.has(id)) {
@@ -149,6 +304,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                 setCollapsingCards(c => new Set(c).add(id));
                 next.delete(id);
                 setTimeout(() => {
+                    if (!isToggleCurrent()) return;
                     setCollapsingCards(c => {
                         const updated = new Set(c);
                         updated.delete(id);
@@ -156,6 +312,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                     });
                     // Scroll center
                     setTimeout(() => {
+                        if (!isToggleCurrent()) return;
                         cardRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }, 50);
                 }, 300);
@@ -164,6 +321,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                 next.add(id);
                 ensureCardState(id, seedData);
                 setTimeout(() => {
+                    if (!isToggleCurrent()) return;
                     cardRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }, 100);
             }
@@ -215,27 +373,37 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
             void onRequireAuth();
             return true;
         }
-        return false;
-    }, [isAuthenticated, onRequireAuth]);
+        return !isOwnerResolved;
+    }, [isAuthenticated, isOwnerResolved, onRequireAuth]);
 
     // Actions
     const handleAdd = async () => {
         if (requireAuth()) return;
         if (isCreating) return;
+        const operation = beginOwnerOperation();
+        if (!operation) return;
         let toastId: string | null = null;
+        let didStartCreating = false;
         try {
+            await assertOwnerOperationCurrent(operation);
             setIsCreating(true);
+            didStartCreating = true;
             toastId = loading(CERT_TOAST_MESSAGES.createLoading);
+            if (toastId) activeLoadingToastIdsRef.current.add(toastId);
 
             const newCert = await certificationsService.create({
                 name: CERT_DEFAULT_NAME,
                 issuer: CERT_DEFAULT_ISSUER,
                 issue_date: getTodayLocalISODate(),
                 description: buildCertificationMetaDescription(0),
+            }, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
             });
+            await assertOwnerOperationCurrent(operation);
 
             const initialData = buildCertificationCardData(newCert);
             setCertifications(prev => [newCert, ...prev]);
+            setListOwnerKey(operation.expectedAuthCacheKey);
 
             // Initialize card state
             setCardData(prev => new Map(prev).set(newCert.id, initialData));
@@ -248,20 +416,42 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
 
             toggleCard(newCert.id, initialData);
 
-            if (toastId) updateToast(toastId, { message: CERT_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
+            if (toastId) {
+                activeLoadingToastIdsRef.current.delete(toastId);
+                updateToast(toastId, { message: CERT_TOAST_MESSAGES.createSuccess, type: 'success', duration: 3000 });
+            }
             else success(CERT_TOAST_MESSAGES.createSuccess);
 
-        } catch (err) {
-            console.error('Failed to create cert:', err);
-            if (toastId) updateToast(toastId, { message: CERT_TOAST_MESSAGES.createError, type: 'error', duration: 3000 });
+        } catch (caughtError) {
+            if (shouldIgnoreOwnerError(operation, caughtError)) {
+                dismissStaleLoadingToast(toastId);
+                return;
+            }
+            console.error('Failed to create cert:', caughtError);
+            if (toastId) {
+                activeLoadingToastIdsRef.current.delete(toastId);
+                updateToast(toastId, { message: CERT_TOAST_MESSAGES.createError, type: 'error', duration: 3000 });
+            }
             else error(CERT_TOAST_MESSAGES.createError);
         } finally {
-            setIsCreating(false);
+            if (didStartCreating && isOwnerOperationCurrent(operation)) {
+                setIsCreating(false);
+            }
         }
     };
 
     const handleSave = async (id: string) => {
         if (requireAuth()) return;
+        const operation = beginOwnerOperation();
+        if (!operation) return;
+        try {
+            await assertOwnerOperationCurrent(operation);
+        } catch (caughtError) {
+            if (shouldIgnoreOwnerError(operation, caughtError)) return;
+            console.error('Failed to verify certification owner:', caughtError);
+            error(CERT_TOAST_MESSAGES.saveError);
+            return;
+        }
         const data = cardData.get(id);
         if (!data) return;
 
@@ -280,6 +470,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
         try {
             setSavingCards(prev => new Set(prev).add(id));
             toastId = loading(CERT_TOAST_MESSAGES.saveLoading);
+            if (toastId) activeLoadingToastIdsRef.current.add(toastId);
 
             // Preserve existing description/matchRate
             const existing = certifications.find(c => c.id === id);
@@ -290,7 +481,10 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                 issuer: data.issuer,
                 issue_date: issueDate,
                 description,
+            }, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
             });
+            await assertOwnerOperationCurrent(operation);
 
             // Update local list
             setCertifications(prev => prev.map(c => {
@@ -311,52 +505,98 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                 return next;
             });
 
-            if (toastId) updateToast(toastId, { message: CERT_TOAST_MESSAGES.saveSuccess, type: 'success', duration: 2000 });
+            if (toastId) {
+                activeLoadingToastIdsRef.current.delete(toastId);
+                updateToast(toastId, { message: CERT_TOAST_MESSAGES.saveSuccess, type: 'success', duration: 2000 });
+            }
             else success(CERT_TOAST_MESSAGES.saveSuccess);
 
             toggleCard(id); // Collapse on save
 
-        } catch (err) {
-            console.error('Failed to save cert:', err);
-            if (toastId) updateToast(toastId, { message: CERT_TOAST_MESSAGES.saveError, type: 'error', duration: 3000 });
+        } catch (caughtError) {
+            if (shouldIgnoreOwnerError(operation, caughtError)) {
+                dismissStaleLoadingToast(toastId);
+                return;
+            }
+            console.error('Failed to save cert:', caughtError);
+            if (toastId) {
+                activeLoadingToastIdsRef.current.delete(toastId);
+                updateToast(toastId, { message: CERT_TOAST_MESSAGES.saveError, type: 'error', duration: 3000 });
+            }
             else error(CERT_TOAST_MESSAGES.saveError);
         } finally {
-            setSavingCards(prev => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
+            if (isOwnerOperationCurrent(operation)) {
+                setSavingCards(prev => {
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                });
+            }
+        }
+    };
+
+    const handleRequestDelete = async (id: string) => {
+        if (requireAuth()) return;
+        const operation = beginOwnerOperation();
+        if (!operation) return;
+        try {
+            await assertOwnerOperationCurrent(operation);
+            deletingOwnerKeyRef.current = operation.expectedAuthCacheKey;
+            setDeletingId(id);
+        } catch (caughtError) {
+            if (!shouldIgnoreOwnerError(operation, caughtError)) {
+                console.error('Failed to verify certification owner:', caughtError);
+            }
         }
     };
 
     const handleDelete = async () => {
         if (requireAuth()) return;
-        if (!deletingId) return;
+        const operation = beginOwnerOperation();
+        if (
+            !operation
+            || !deletingId
+            || deletingOwnerKeyRef.current !== operation.expectedAuthCacheKey
+        ) return;
         const id = deletingId;
         let toastId: string | null = null;
         try {
+            await assertOwnerOperationCurrent(operation);
             setDeletingId(null);
-
-            // Optimistic update
-            setCertifications(prev => prev.filter(c => c.id !== id));
+            deletingOwnerKeyRef.current = null;
 
             toastId = loading(CERT_TOAST_MESSAGES.deleteLoading);
-            await certificationsService.delete(id);
+            if (toastId) activeLoadingToastIdsRef.current.add(toastId);
+            await certificationsService.delete(id, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await assertOwnerOperationCurrent(operation);
 
-            if (toastId) updateToast(toastId, { message: CERT_TOAST_MESSAGES.deleteSuccess, type: 'success', duration: 2000 });
+            setCertifications(prev => prev.filter(c => c.id !== id));
+
+            if (toastId) {
+                activeLoadingToastIdsRef.current.delete(toastId);
+                updateToast(toastId, { message: CERT_TOAST_MESSAGES.deleteSuccess, type: 'success', duration: 2000 });
+            }
             else success(CERT_TOAST_MESSAGES.deleteSuccess);
 
-        } catch (err) {
-            console.error('Failed to delete cert:', err);
-            if (toastId) updateToast(toastId, { message: CERT_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
-            else error(CERT_TOAST_MESSAGES.deleteError);
-            try {
-                await refreshCertifications(); // Revert
-            } catch (refreshErr) {
-                console.error('Failed to refresh certifications after delete failure:', refreshErr);
+        } catch (caughtError) {
+            if (shouldIgnoreOwnerError(operation, caughtError)) {
+                dismissStaleLoadingToast(toastId);
+                return;
             }
+            console.error('Failed to delete cert:', caughtError);
+            if (toastId) {
+                activeLoadingToastIdsRef.current.delete(toastId);
+                updateToast(toastId, { message: CERT_TOAST_MESSAGES.deleteError, type: 'error', duration: 3000 });
+            }
+            else error(CERT_TOAST_MESSAGES.deleteError);
         }
     };
+
+    const visibleDeletingId = deletingOwnerKeyRef.current === currentOwnerKey
+        ? deletingId
+        : null;
 
     // Collapse State
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -378,7 +618,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                     <span className="text-sm font-normal text-gray-400 ml-2">Certifications</span>
                 </h2>
                 <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    {isLoading ? '加载中...' : `${certifications.length} items`}
+                    {visibleIsLoading ? '加载中...' : `${visibleCertifications.length} items`}
                 </span>
             </div>
 
@@ -386,7 +626,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                 <>
                     <button
                         onClick={handleAdd}
-                        disabled={isLoading || isCreating}
+                        disabled={visibleIsLoading || isCreating || (isAuthenticated && !isOwnerResolved)}
                         className="w-full group border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-gray-500 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <div className="p-1 rounded-full bg-gray-200 dark:bg-gray-800 group-hover:bg-white group-hover:text-amber-600 transition-colors">
@@ -407,10 +647,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                                         isModified={modifiedCards.has(id)}
                                         isSaving={savingCards.has(id)}
                                         onToggle={() => toggleCard(id)}
-                                        onDelete={() => {
-                                            if (requireAuth()) return;
-                                            setDeletingId(id);
-                                        }}
+                                        onDelete={() => { void handleRequestDelete(id); }}
                                         onSave={() => handleSave(id)}
                                         onCancel={() => handleCancelEdit(id)}
                                         onFieldChange={(field, value) => updateCardField(id, field, value)}
@@ -423,11 +660,14 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
             )}
 
             <ConfirmDialog
-                isOpen={!!deletingId}
+                isOpen={!!visibleDeletingId}
                 title="确认删除"
                 description="确定要删除这条证书资质吗？此操作无法撤销。"
                 onConfirm={handleDelete}
-                onCancel={() => setDeletingId(null)}
+                onCancel={() => {
+                    deletingOwnerKeyRef.current = null;
+                    setDeletingId(null);
+                }}
             />
         </section>
     );

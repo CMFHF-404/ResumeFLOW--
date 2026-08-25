@@ -37,11 +37,13 @@ test('GlobalSidebar exposes token quota ring and quota menu entry', () => {
 
 test('TokenQuotaModal renders summary, charts, usage detail, payment, and order actions', () => {
   const modal = read('components/TokenQuotaModal.tsx');
+  const charts = read('components/TokenQuotaCharts.tsx');
 
   assert.match(modal, /TokenQuotaModal/);
   assert.match(modal, /usageByDay/);
   assert.match(modal, /usageByEntrypoint/);
-  assert.match(modal, /svg/);
+  assert.match(modal, /TokenQuotaCharts/);
+  assert.match(charts, /svg/);
   assert.match(modal, /isUnlimitedQuota/);
   assert.match(modal, /unlimited_expires_at/);
   assert.match(modal, /∞/);
@@ -61,11 +63,11 @@ test('TokenQuotaModal renders summary, charts, usage detail, payment, and order 
 });
 
 test('TokenQuotaModal keeps the usage analysis title on one line and hides chart tabs on desktop', () => {
-  const modal = read('components/TokenQuotaModal.tsx');
+  const charts = read('components/TokenQuotaCharts.tsx');
 
-  assert.match(modal, /<h3 className="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b[^"]*">用量分析<\/h3>/);
-  assert.match(modal, /<span className="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b[^"]*\bmd:hidden\b[^"]*">用量分析<\/span>/);
-  assert.match(modal, /<div className="[^"]*\binline-flex\b[^"]*\bmd:hidden\b[^"]*">/);
+  assert.match(charts, /<h3 className="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b[^"]*">用量分析<\/h3>/);
+  assert.match(charts, /<span className="[^"]*\bshrink-0\b[^"]*\bwhitespace-nowrap\b[^"]*\bmd:hidden\b[^"]*">用量分析<\/span>/);
+  assert.match(charts, /<div className="[^"]*\binline-flex\b[^"]*\bmd:hidden\b[^"]*">/);
 });
 
 test('billingService uses the billing, redemption, and Yifut payment API surface', () => {
@@ -88,7 +90,8 @@ test('billingService uses the billing, redemption, and Yifut payment API surface
   assert.match(service, /expected_catalog_version: expectedCatalogVersion/);
   assert.match(service, /PAYMENT_REQUEST_TIMEOUT_MS = 15_000/);
   assert.match(service, /signal: options\?\.signal/);
-  assert.match(service, /getSummary\(options\?: \{ force\?: boolean; signal\?: AbortSignal \}\)/);
+  assert.match(service, /getSummary\(options\?: PaymentRequestOptions & \{ force\?: boolean \}\)/);
+  assert.match(service, /type PaymentRequestOptions = AuthOwnerOptions/);
   assert.match(service, /getUsage\(limit = 50, options\?: PaymentRequestOptions\)/);
   assert.ok((service.match(/timeout: PAYMENT_REQUEST_TIMEOUT_MS/g) ?? []).length >= 8);
   assert.match(service, /cancelled_at/);
@@ -100,6 +103,7 @@ test('billingService uses the billing, redemption, and Yifut payment API surface
   assert.match(service, /redeemCode/);
   assert.match(service, /redeemCode\(code: string, options\?: PaymentRequestOptions\)/);
   assert.match(service, /expectedAuthCacheKey: ownerKey/);
+  assert.ok((service.match(/expectedAuthCacheKey: options\?\.expectedAuthCacheKey/g) ?? []).length >= 8);
   assert.match(service, /is_unlimited: boolean/);
   assert.match(service, /unlimited_expires_at\?: string \| null/);
   assert.match(service, /unlimited_plan_name\?: string \| null/);

@@ -1,40 +1,16 @@
 import axios from 'axios';
-import apiClient, { getAuthCacheKey } from './apiClient';
+import apiClient, {
+    assertAuthCacheKey,
+    AuthContextChangedError,
+    captureAuthCacheKey,
+    isAuthContextChangedError,
+    type AuthOwnerOptions,
+} from './apiClient';
 import { normalizeAvatarImageToSquare } from './avatarImage';
 import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
+import type { Profile, ProfileUpdate } from '../types/profile';
 
-export interface Profile {
-    user_id: string;
-    full_name?: string;
-    title?: string;
-    summary?: string;
-    location?: string;
-    phone?: string;
-    email?: string;
-    social_links?: Record<string, any>;
-    links?: ProfileLink[];
-    extra_json?: Record<string, any>;
-    updated_at: string;
-}
-
-export interface ProfileLink {
-    label: string;
-    url: string;
-    position?: number;
-}
-
-export interface ProfileUpdate {
-    full_name?: string;
-    title?: string;
-    summary?: string;
-    location?: string;
-    phone?: string;
-    email?: string;
-    social_links?: Record<string, any>;
-    extra_json?: Record<string, any>;
-    links?: ProfileLink[];
-    expected_updated_at?: string;
-}
+export type { Profile, ProfileLink, ProfileUpdate } from '../types/profile';
 
 // 缓存 + in-flight 去重，避免视图频繁挂载导致 /profile 请求风暴
 let cachedProfile: Profile | null = null;
@@ -110,6 +86,9 @@ const normalizeAndPersistProfileAvatar = async (profile: Profile): Promise<Profi
                 }
                 return response.data;
             } catch (error) {
+                if (isAuthContextChangedError(error)) {
+                    throw error;
+                }
                 if (attempt !== 0 || !ownerKeyAtStart || !isProfileUpdateConflict(error)) {
                     return candidateProfile;
                 }
@@ -123,7 +102,10 @@ const normalizeAndPersistProfileAvatar = async (profile: Profile): Promise<Profi
                     }
                     cachedProfile = latestProfile;
                     candidateProfile = latestProfile;
-                } catch {
+                } catch (latestProfileError) {
+                    if (isAuthContextChangedError(latestProfileError)) {
+                        throw latestProfileError;
+                    }
                     return cachedProfile ?? candidateProfile;
                 }
             }
@@ -157,8 +139,8 @@ export const profileService = {
         return cachedProfile;
     },
 
-    async peekProfileForCurrentUser() {
-        const cacheOwnerKey = await getAuthCacheKey();
+    async peekProfileForCurrentUser(options?: AuthOwnerOptions) {
+        const cacheOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
         if (profileCacheOwnerKey !== cacheOwnerKey) {
             clearProfileCache();
             profileCacheOwnerKey = cacheOwnerKey;
@@ -166,8 +148,8 @@ export const profileService = {
         return cachedProfile;
     },
 
-    async getProfile(options?: { force?: boolean }) {
-        const cacheOwnerKey = await getAuthCacheKey();
+    async getProfile(options?: { force?: boolean; expectedAuthCacheKey?: string }) {
+        const cacheOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
         if (profileCacheOwnerKey !== cacheOwnerKey) {
             clearProfileCache();
             profileCacheOwnerKey = cacheOwnerKey;
@@ -183,12 +165,13 @@ export const profileService = {
         const requestPromise = requestProfile(cacheOwnerKey);
         const guardedPromise = (async () => {
             const data = await requestPromise;
-            const activeAuthCacheKey = await getAuthCacheKey();
+            await assertAuthCacheKey(cacheOwnerKey);
             if (
-                activeAuthCacheKey !== cacheOwnerKey
-                || profileCacheOwnerKey !== cacheOwnerKey
+                profileCacheOwnerKey !== cacheOwnerKey
             ) {
-                throw new Error('Authentication context changed while loading profile');
+                throw new AuthContextChangedError(
+                    'Authentication context changed while loading profile'
+                );
             }
             if (cacheRevision === requestRevision) {
                 cachedProfile = data;
@@ -206,24 +189,34 @@ export const profileService = {
         }
     },
 
-    async updateProfile(data: ProfileUpdate) {
+    async updateProfile(
+        data: ProfileUpdate,
+        options?: { expectedAuthCacheKey?: string },
+    ) {
+        const expectedOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
         const ownerKeyAtStart = profileCacheOwnerKey;
         const pendingAvatarNormalization = inFlightAvatarNormalization;
         cacheRevision += 1;
         if (pendingAvatarNormalization) {
             await pendingAvatarNormalization;
         }
-        const activeOwnerKey = await getAuthCacheKey();
-        if (ownerKeyAtStart && ownerKeyAtStart !== activeOwnerKey) {
-            throw new Error('Authentication context changed before profile update');
+        await assertAuthCacheKey(expectedOwnerKey);
+        const activeOwnerKey = expectedOwnerKey;
+        if (
+            ownerKeyAtStart && ownerKeyAtStart !== activeOwnerKey
+        ) {
+            throw new AuthContextChangedError(
+                'Authentication context changed before profile update'
+            );
         }
         if (profileCacheOwnerKey !== activeOwnerKey) {
             clearProfileCache();
             profileCacheOwnerKey = activeOwnerKey;
         }
         const response = await apiClient.patch<Profile>('/profile', data, {
-            expectedAuthCacheKey: activeOwnerKey,
+            expectedAuthCacheKey: expectedOwnerKey,
         });
+        await assertAuthCacheKey(expectedOwnerKey);
         if (profileCacheOwnerKey === activeOwnerKey) {
             cachedProfile = response.data;
             bumpResumePreviewDataRevision();

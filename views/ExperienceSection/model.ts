@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type { ExperienceCardData, StarFieldKey } from '../ExperienceCard';
 import { aiService } from '../../services/aiService';
@@ -27,6 +27,8 @@ import { useExperienceCreate, useExperienceDelete, useExperienceSave } from './e
 import { useExperienceList, useSortedExperiences } from './experienceListHooks';
 import { usePolishActions } from './polishActions';
 import type { CardPolishMode, ExperienceSectionModel, ExperienceSectionProps } from './types';
+import { useAuthOwnerOperationGuard } from '../../hooks/useAuthOwnerOperationGuard';
+import { AuthContextChangedError, isAuthContextChangedError } from '../../services/apiClient';
 
 const MAX_SPLIT_EXPERIENCE_CACHE_ENTRIES = 24;
 
@@ -137,15 +139,53 @@ export const useExperienceSectionModel = ({
   emptyTitleError,
   titleRequired = true,
   toast,
+  authUserKey,
   isAuthenticated,
   onRequireAuth,
   onLaunchAssistant,
   focusRequest,
 }: ExperienceSectionProps): ExperienceSectionModel => {
+  const ownerGuard = useAuthOwnerOperationGuard(authUserKey ?? null);
+  const activeLoadingToastIdsRef = useRef<Set<string>>(new Set());
+  const trackedToast = useMemo(() => ({
+    ...toast,
+    loading: (message: string) => {
+      const id = toast.loading(message);
+      activeLoadingToastIdsRef.current.add(id);
+      return id;
+    },
+    updateToast: (id: string, updates: Parameters<typeof toast.updateToast>[1]) => {
+      if (updates.type && updates.type !== 'loading' && updates.type !== 'ai_thinking') {
+        activeLoadingToastIdsRef.current.delete(id);
+      }
+      toast.updateToast(id, updates);
+    },
+    closeToast: (id: string) => {
+      activeLoadingToastIdsRef.current.delete(id);
+      toast.closeToast?.(id);
+    },
+  }), [toast]);
+
+  useLayoutEffect(() => {
+    for (const id of activeLoadingToastIdsRef.current) {
+      toast.closeToast?.(id);
+    }
+    activeLoadingToastIdsRef.current.clear();
+  }, [authUserKey, toast]);
+
+  useEffect(() => () => {
+    for (const id of activeLoadingToastIdsRef.current) {
+      toast.closeToast?.(id);
+    }
+    activeLoadingToastIdsRef.current.clear();
+  }, [toast]);
+
   const { experiences, setExperiences, isLoading, refreshExperiences } = useExperienceList(
     category,
     refreshSignal,
-    isAuthenticated
+    isAuthenticated,
+    authUserKey,
+    ownerGuard,
   );
   const { setCardRef, scrollToCard, highlightCard } = useCardRefs();
   const store = useCardDataStore();
@@ -213,14 +253,14 @@ export const useExperienceSectionModel = ({
     return saved ?? latestSavedDraftsRef.current.get(cardId) ?? null;
   }, [clearDraftSaveTimer]);
   const { isCreating, handleAddNew } = useExperienceCreate({
-    category, defaultOrg, toast, setExperiences,
+    category, defaultOrg, toast: trackedToast, setExperiences,
     setCardData: store.setCardData,
     setOriginalCardData: store.setOriginalCardData,
     setModifiedCards: store.setModifiedCards,
     setExpandedCards: expansion.setExpandedCards,
   });
   const deleteActions = useExperienceDelete({
-    category, cardData: store.cardData, toast, refreshExperiences, highlightCard, setExperiences,
+    ownerGuard, category, cardData: store.cardData, toast: trackedToast, refreshExperiences, highlightCard, setExperiences,
     removeCardState,
     removeCardExpansion: expansion.removeCardExpansion,
     onBeforeRemoveLocal: discardDraftAutosave,
@@ -240,8 +280,9 @@ export const useExperienceSectionModel = ({
     clearStarSnapshot,
     clearPreviewState,
   } = usePolishActions({
+    ownerGuard,
     cardData: store.cardData,
-    toast,
+    toast: trackedToast,
     updateCardField,
     updateCardData,
     updateCardStar,
@@ -252,7 +293,7 @@ export const useExperienceSectionModel = ({
     clearPendingAiPolishApply,
   });
   const { savingCardId, handleSaveCard: saveExperienceCard } = useExperienceSave({
-    category, cardData: store.cardData, emptyTitleError, titleRequired, toast, refreshExperiences,
+    ownerGuard, category, cardData: store.cardData, emptyTitleError, titleRequired, toast: trackedToast, refreshExperiences,
     toggleCard: expansion.toggleCard, clearPreviewState, hasPendingAiPolishApply, clearPendingAiPolishApply, setExperiences,
     setCardData: store.setCardData,
     setOriginalCardData: store.setOriginalCardData,
@@ -312,13 +353,27 @@ export const useExperienceSectionModel = ({
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authUserKey) {
       return;
     }
     let cancelled = false;
-    experienceDraftService.list(category)
+    let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
+    void ownerGuard.beginOperation()
+      .then((capturedOperation) => {
+        operation = capturedOperation;
+        return experienceDraftService.list(category, {
+          expectedAuthCacheKey: capturedOperation.expectedAuthCacheKey,
+        });
+      })
+      .then(async (drafts) => {
+        if (!operation) {
+          return;
+        }
+        await ownerGuard.assertOperationCurrent(operation);
+        return drafts;
+      })
       .then((drafts) => {
-        if (cancelled || drafts.length === 0) {
+        if (!drafts || cancelled || drafts.length === 0) {
           return;
         }
         const draftItems: ExperienceListItem[] = drafts.map((draft) => ({
@@ -366,16 +421,20 @@ export const useExperienceSectionModel = ({
         });
       })
       .catch((error) => {
-        console.error(`[ExperienceSection] 加载${category}草稿失败:`, error);
+        if (!isAuthContextChangedError(error)) {
+          console.error(`[ExperienceSection] 加载${category}草稿失败:`, error);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [
     category,
+    authUserKey,
     defaultOrg,
     expansion.setExpandedCards,
     isAuthenticated,
+    ownerGuard,
     setExperiences,
     store.setCardData,
     store.setModifiedCards,
@@ -423,17 +482,22 @@ export const useExperienceSectionModel = ({
       const previousSave = draftSaveQueueRef.current.get(cardId) ?? Promise.resolve();
       const saveRequest = previousSave
         .catch(() => null)
-        .then(() => {
+        .then(async () => {
           if (invalidatedDraftSaveCardsRef.current.has(cardId)) {
             return null;
           }
-          return experienceDraftService.upsert({
+          const operation = await ownerGuard.beginOperation();
+          const saved = await experienceDraftService.upsert({
             category,
             clientDraftKey,
             mode: latest.editMode,
             simpleText: latest.simpleText || '',
             cardData: latest,
+          }, {
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
           });
+          await ownerGuard.assertOperationCurrent(operation);
+          return saved;
         })
         .then((saved) => {
           if (!saved) {
@@ -457,6 +521,9 @@ export const useExperienceSectionModel = ({
           return saved;
         })
         .catch((error) => {
+          if (isAuthContextChangedError(error)) {
+            return null;
+          }
           console.error(`[ExperienceSection] 保存${category}草稿失败:`, error);
           setDraftStatus(cardId, 'error');
           return null;
@@ -473,7 +540,7 @@ export const useExperienceSectionModel = ({
       draftSaveQueueRef.current.set(cardId, saveRequest);
     }, 700);
     draftSaveTimersRef.current.set(cardId, timer);
-  }, [category, isAuthenticated, setDraftStatus, store.setCardData]);
+  }, [category, isAuthenticated, ownerGuard, setDraftStatus, store.setCardData]);
 
   const handleFieldChange = useCallback(
     (cardId: string, field: string, value: string | string[]) => {
@@ -544,13 +611,16 @@ export const useExperienceSectionModel = ({
         if (cachedSplit) {
           nextStar = cachedSplit;
         } else {
+          let splitOperation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
           try {
+            splitOperation = await ownerGuard.beginOperation();
             const aiResult = await aiService.splitExperienceText({
               rawText: data.simpleText || '',
               category,
               org: data.org,
               title: data.title,
-            });
+            }, { expectedAuthCacheKey: splitOperation.expectedAuthCacheKey });
+            await ownerGuard.assertOperationCurrent(splitOperation);
             if (validateSplitCoverage(data.simpleText || '', aiResult)) {
               nextStar = aiResult;
               rememberSplitExperienceResult(splitExperienceCacheRef.current, splitCacheKey, aiResult);
@@ -558,6 +628,12 @@ export const useExperienceSectionModel = ({
               toast.error('AI 拆分可能遗漏内容，已全部放入 A 部分，请手动调整', 3000);
             }
           } catch (error) {
+            if (
+              isAuthContextChangedError(error)
+              || (splitOperation && !ownerGuard.isOperationCurrent(splitOperation))
+            ) {
+              throw new AuthContextChangedError();
+            }
             console.error('[ExperienceSection] AI 拆分经历失败:', error);
             toast.error('AI 拆分失败，已全部放入 A 部分，请手动调整', 3000);
           }
@@ -570,13 +646,17 @@ export const useExperienceSectionModel = ({
       };
       updateCardData(cardId, nextData);
       scheduleDraftSave(cardId, nextData);
+    } catch (error) {
+      if (!isAuthContextChangedError(error)) {
+        throw error;
+      }
     } finally {
       if (previewingCardIdRef.current === cardId) {
         previewingCardIdRef.current = null;
       }
       setPreviewingCardId((current) => current === cardId ? null : current);
     }
-  }, [category, previewingCardId, requireAuth, savingCardId, scheduleDraftSave, store.cardData, toast, updateCardData]);
+  }, [category, ownerGuard, previewingCardId, requireAuth, savingCardId, scheduleDraftSave, store.cardData, toast, updateCardData]);
 
   const handleCancel = useCallback(async (cardId: string) => {
     if (requireAuth()) {
@@ -586,14 +666,26 @@ export const useExperienceSectionModel = ({
     clearPreviewState(cardId);
     if (isTempId(cardId) || cardId.startsWith('draft_')) {
       const currentData = store.cardData.get(cardId);
+      let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
       try {
+        operation = await ownerGuard.beginOperation();
         const discardedDraft = await discardDraftAutosave(cardId);
+        await ownerGuard.assertOperationCurrent(operation);
         const draftId = discardedDraft?.id ?? currentData?.draftId;
         if (draftId) {
-          await experienceDraftService.delete(draftId);
+          await experienceDraftService.delete(draftId, {
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
+          });
+          await ownerGuard.assertOperationCurrent(operation);
         }
         latestSavedDraftsRef.current.delete(cardId);
       } catch (error) {
+        if (
+          isAuthContextChangedError(error)
+          || (operation && !ownerGuard.isOperationCurrent(operation))
+        ) {
+          return;
+        }
         console.error('[ExperienceSection] 删除草稿失败:', error);
         toast.error('草稿删除失败，请重试', 3000);
         return;
@@ -618,7 +710,7 @@ export const useExperienceSectionModel = ({
     } else {
       resetCard(cardId);
     }
-  }, [clearPendingAiPolishApply, clearPreviewState, discardDraftAutosave, expansion, requireAuth, resetCard, setExperiences, store, toast]);
+  }, [clearPendingAiPolishApply, clearPreviewState, discardDraftAutosave, expansion, ownerGuard, requireAuth, resetCard, setExperiences, store, toast]);
 
   const handleAdd = useCallback(() => {
     if (requireAuth()) {

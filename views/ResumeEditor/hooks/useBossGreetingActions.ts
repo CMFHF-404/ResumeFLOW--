@@ -1,5 +1,13 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import {
+    useCallback,
+    useLayoutEffect,
+    type Dispatch,
+    type MutableRefObject,
+    type SetStateAction,
+} from 'react';
 import type { ToastConfig } from '../../../components/Toast';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 import { aiService, type BossGreetingStreamEvent, type JDAnalysisResult } from '../../../services/aiService';
 import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
 import {
@@ -27,6 +35,7 @@ type BossGreetingUiState = {
 };
 
 type UseBossGreetingActionsParams = {
+    authUserKey: string | null;
     resumeId: string | null;
     analysisResult: JDAnalysisResult | null;
     bossGreeting: string;
@@ -56,6 +65,7 @@ type UseBossGreetingActionsParams = {
 };
 
 export const useBossGreetingActions = ({
+    authUserKey,
     resumeId,
     analysisResult,
     bossGreeting,
@@ -83,6 +93,23 @@ export const useBossGreetingActions = ({
     showToastSuccess,
     updateToast,
 }: UseBossGreetingActionsParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
+
+    useLayoutEffect(() => {
+        bossGreetingRequestIdRef.current += 1;
+        setIsGeneratingBossGreeting(false);
+        if (activeBossGreetingToastIdRef.current) {
+            closeToast(activeBossGreetingToastIdRef.current);
+            activeBossGreetingToastIdRef.current = null;
+        }
+    }, [
+        activeBossGreetingToastIdRef,
+        authUserKey,
+        bossGreetingRequestIdRef,
+        closeToast,
+        setIsGeneratingBossGreeting,
+    ]);
+
     const generateBossGreeting = useCallback(async (options?: { forceRefresh?: boolean }) => {
         const forceRefresh = options?.forceRefresh ?? false;
         const bossGreetingSource: BossGreetingSource = forceRefresh ? 'refresh' : 'generate';
@@ -122,7 +149,11 @@ export const useBossGreetingActions = ({
         const isResumeRequestCurrent = () => latestResumeIdRef.current === requestedResumeId;
         const requestId = bossGreetingRequestIdRef.current + 1;
         bossGreetingRequestIdRef.current = requestId;
-        const isBossGreetingRequestCurrent = () => bossGreetingRequestIdRef.current === requestId;
+        let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
+        const isBossGreetingRequestCurrent = () => (
+            bossGreetingRequestIdRef.current === requestId
+            && Boolean(operation && ownerGuard.isOperationCurrent(operation))
+        );
         setIsGeneratingBossGreeting(true);
         const toastId = showToastLoading(BOSS_GREETING_TOAST_MESSAGES.loading);
         activeBossGreetingToastIdRef.current = toastId;
@@ -132,9 +163,16 @@ export const useBossGreetingActions = ({
             }
         };
         try {
+            operation = await ownerGuard.beginOperation();
+            if (bossGreetingRequestIdRef.current !== requestId) {
+                closeToast(toastId);
+                releaseActiveBossGreetingToast();
+                return;
+            }
             const effectiveResult = (!analysisResult || isOutdated)
                 ? await handleAnalyzeWithAutoName()
                 : analysisResult;
+            await ownerGuard.assertOperationCurrent(operation);
             if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
                 closeToast(toastId);
                 releaseActiveBossGreetingToast();
@@ -183,8 +221,10 @@ export const useBossGreetingActions = ({
                         type: 'ai_thinking',
                         duration: 0,
                     });
-                }
+                },
+                { expectedAuthCacheKey: operation.expectedAuthCacheKey },
             );
+            await ownerGuard.assertOperationCurrent(operation);
             const nextGreeting = response.greeting.trim();
             if (!nextGreeting) {
                 throw new Error('empty_greeting');
@@ -228,7 +268,11 @@ export const useBossGreetingActions = ({
             });
             releaseActiveBossGreetingToast();
         } catch (error) {
-            if (!isResumeRequestCurrent() || !isBossGreetingRequestCurrent()) {
+            if (
+                isAuthContextChangedError(error)
+                || !isResumeRequestCurrent()
+                || !isBossGreetingRequestCurrent()
+            ) {
                 closeToast(toastId);
                 releaseActiveBossGreetingToast();
                 return;
@@ -267,6 +311,7 @@ export const useBossGreetingActions = ({
         latestBossGreetingAnalysisOutdatedRef,
         latestBossGreetingSignatureRef,
         latestResumeIdRef,
+        ownerGuard,
         pendingPersistedBossGreetingRef,
         resumeId,
         selectedResumeSnapshotText,

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.domain.ai import ai_router, jd_analysis_service, prompts, resume_evaluation_service
+from app.domain.ai.public_errors import AiProviderPayloadError
 from app.domain.ai.response_normalizers import (
     _extract_skill_ids,
 )
@@ -31,7 +32,9 @@ TEST_FACT_METADATA = [
 
 class JDAnalysisRouterErrorMappingTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_final_analysis_maps_to_bad_gateway(self):
-        operation = AsyncMock(side_effect=ValueError("invalid repaired schema"))
+        operation = AsyncMock(
+            side_effect=AiProviderPayloadError("invalid repaired schema")
+        )
 
         with self.assertRaises(HTTPException) as context:
             await ai_router._resolve_jd_analysis_response(operation())
@@ -44,15 +47,12 @@ class JDAnalysisRouterErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             HTTPException(status_code=504, detail="deep report timed out")
         )
 
-        self.assertEqual(
-            event,
-            {
-                "type": "error",
-                "message": "deep report timed out",
-                "statusCode": 504,
-                "retryable": True,
-            },
-        )
+        self.assertEqual(event["type"], "error")
+        self.assertEqual(event["code"], "http_error")
+        self.assertEqual(event["message"], "deep report timed out")
+        self.assertEqual(event["statusCode"], 504)
+        self.assertTrue(event["retryable"])
+        self.assertRegex(event["requestId"], r"^[0-9a-f]{32}$")
 
 
 def _subscores_for_total(spec, total, evidence_id="E001"):

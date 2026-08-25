@@ -25,6 +25,10 @@ type AssistantHistoryPanelProps = {
   onSelectMobileSession: (sessionId: string) => void;
   onRenameSession: (event: MouseEvent, session: AssistantHistorySession) => void;
   onDeleteSession: (event: MouseEvent, sessionId: string) => void;
+  hasEarlierSessions: boolean;
+  isLoadingEarlierSessions: boolean;
+  earlierSessionsError: string | null;
+  onLoadEarlierSessions: () => void;
 };
 
 type SessionListProps = {
@@ -34,6 +38,10 @@ type SessionListProps = {
   onSelectSession: (sessionId: string) => void;
   onRenameSession: (event: MouseEvent, session: AssistantHistorySession) => void;
   onDeleteSession: (event: MouseEvent, sessionId: string) => void;
+  hasEarlierSessions: boolean;
+  isLoadingEarlierSessions: boolean;
+  earlierSessionsError: string | null;
+  onLoadEarlierSessions: () => void;
 };
 
 const HistoryEmptyState = () => (
@@ -49,8 +57,12 @@ const AssistantHistorySessionList: React.FC<SessionListProps> = ({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
+  hasEarlierSessions,
+  isLoadingEarlierSessions,
+  earlierSessionsError,
+  onLoadEarlierSessions,
 }) => {
-  if (sessions.length === 0) {
+  if (sessions.length === 0 && !hasEarlierSessions) {
     return <HistoryEmptyState />;
   }
 
@@ -109,6 +121,25 @@ const AssistantHistorySessionList: React.FC<SessionListProps> = ({
           </div>
         );
       })}
+      {hasEarlierSessions ? (
+        <div className="pt-2 text-center">
+          {earlierSessionsError ? (
+            <p className="mb-2 text-xs text-amber-300" role="status">{earlierSessionsError}</p>
+          ) : null}
+          <button
+            type="button"
+            onClick={onLoadEarlierSessions}
+            disabled={isLoadingEarlierSessions}
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-white/12 bg-white/6 px-3 text-xs font-medium text-slate-200 transition hover:bg-white/12 disabled:cursor-wait disabled:opacity-60"
+          >
+            {isLoadingEarlierSessions
+              ? '正在加载更早会话...'
+              : earlierSessionsError
+                ? '重试加载更早会话'
+                : '加载更早会话'}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -125,6 +156,10 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
   onSelectMobileSession,
   onRenameSession,
   onDeleteSession,
+  hasEarlierSessions,
+  isLoadingEarlierSessions,
+  earlierSessionsError,
+  onLoadEarlierSessions,
 }) => (
   <>
     <aside
@@ -187,6 +222,10 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
               onSelectSession={onSelectDesktopSession}
               onRenameSession={onRenameSession}
               onDeleteSession={onDeleteSession}
+              hasEarlierSessions={hasEarlierSessions}
+              isLoadingEarlierSessions={isLoadingEarlierSessions}
+              earlierSessionsError={earlierSessionsError}
+              onLoadEarlierSessions={onLoadEarlierSessions}
             />
           </div>
         </>
@@ -241,6 +280,10 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
             onSelectSession={onSelectMobileSession}
             onRenameSession={onRenameSession}
             onDeleteSession={onDeleteSession}
+            hasEarlierSessions={hasEarlierSessions}
+            isLoadingEarlierSessions={isLoadingEarlierSessions}
+            earlierSessionsError={earlierSessionsError}
+            onLoadEarlierSessions={onLoadEarlierSessions}
           />
         </div>
       </aside>

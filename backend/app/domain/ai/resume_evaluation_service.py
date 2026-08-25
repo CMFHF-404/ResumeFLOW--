@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from starlette.status import HTTP_504_GATEWAY_TIMEOUT
 
 from .llm_transport import LANE_DEFAULT, _call_llm, _emit_thought
+from .public_errors import AiProviderPayloadError
+from .response_diagnostics import safe_body_log_summary
 from .prompts import RESUME_EVALUATION, RESUME_EVALUATION_ISSUE_REPAIR
 from .resume_evaluation import (
     DIMENSION_NAMES,
@@ -132,7 +134,7 @@ def _build_full_resume_evaluation_input(
 def _fact_metadata_for_input(evaluation_input: Dict[str, Any]) -> List[Dict[str, Any]]:
     raw = evaluation_input.get("fact_metadata")
     if not isinstance(raw, list):
-        raise ValueError("full_resume fact_metadata must be an array")
+        raise AiProviderPayloadError("full_resume fact_metadata must be an array")
     return raw
 
 
@@ -163,12 +165,14 @@ def _normalize_response(
     ):
         result = result[0]
     if not isinstance(result, dict):
-        raise ValueError("resume evaluation result must be an object")
+        raise AiProviderPayloadError("resume evaluation result must be an object")
     raw_evaluation = result.get("resumeEvaluation")
     if raw_evaluation is None:
         raw_evaluation = result.get("resume_evaluation")
     if not isinstance(raw_evaluation, dict):
-        raise ValueError("resume evaluation result is missing resumeEvaluation")
+        raise AiProviderPayloadError(
+            "resume evaluation result is missing resumeEvaluation"
+        )
     normalized_raw = dict(raw_evaluation)
     if jd_available and canonical_jd_match is not None:
         normalized_raw["jdMatch"] = canonical_jd_match
@@ -316,7 +320,9 @@ def _compact_issue_repair_payload(
 ) -> Dict[str, Any]:
     evaluation = _raw_resume_evaluation(result)
     if evaluation is None:
-        raise ValueError("cross-primary issue repair requires a resumeEvaluation object")
+        raise AiProviderPayloadError(
+            "cross-primary issue repair requires a resumeEvaluation object"
+        )
     dimension_summaries: List[Dict[str, Any]] = []
     summarized_dimensions: set[str] = set()
     raw_dimensions = evaluation.get("dimensions")
@@ -448,47 +454,69 @@ def _apply_cross_primary_issue_repair(
 ) -> Dict[str, Any]:
     evaluation = _raw_resume_evaluation(result)
     if evaluation is None:
-        raise ValueError("cross-primary issue repair requires a resumeEvaluation object")
+        raise AiProviderPayloadError(
+            "cross-primary issue repair requires a resumeEvaluation object"
+        )
     if not isinstance(repair_result, dict) or set(repair_result) != {"issueRepair"}:
-        raise ValueError("issue repair result must contain exactly one issueRepair object")
+        raise AiProviderPayloadError(
+            "issue repair result must contain exactly one issueRepair object"
+        )
     issue_repair = repair_result.get("issueRepair")
     if not isinstance(issue_repair, dict) or set(issue_repair) != {
         "issues",
         "dimensionIssueIds",
         "topPriorities",
     }:
-        raise ValueError("issueRepair must contain issues, dimensionIssueIds, and topPriorities")
+        raise AiProviderPayloadError(
+            "issueRepair must contain issues, dimensionIssueIds, and topPriorities"
+        )
     issues = issue_repair.get("issues")
     priorities = issue_repair.get("topPriorities")
     dimension_issue_ids = issue_repair.get("dimensionIssueIds")
     if not isinstance(issues, list) or not all(isinstance(item, dict) for item in issues):
-        raise ValueError("issueRepair.issues must be an array of objects")
+        raise AiProviderPayloadError(
+            "issueRepair.issues must be an array of objects"
+        )
     if not isinstance(priorities, list) or not all(isinstance(item, dict) for item in priorities):
-        raise ValueError("issueRepair.topPriorities must be an array of objects")
+        raise AiProviderPayloadError(
+            "issueRepair.topPriorities must be an array of objects"
+        )
     if not isinstance(dimension_issue_ids, dict) or set(dimension_issue_ids) != set(DIMENSION_NAMES):
-        raise ValueError("issueRepair.dimensionIssueIds must contain all six fixed dimensions")
+        raise AiProviderPayloadError(
+            "issueRepair.dimensionIssueIds must contain all six fixed dimensions"
+        )
     for dimension_name, issue_ids in dimension_issue_ids.items():
         if not isinstance(issue_ids, list) or not all(isinstance(item, str) for item in issue_ids):
-            raise ValueError(f"issueRepair.dimensionIssueIds.{dimension_name} must be an array of strings")
+            raise AiProviderPayloadError(
+                f"issueRepair.dimensionIssueIds.{dimension_name} must be an array of strings"
+            )
 
     repaired_evaluation = copy.deepcopy(evaluation)
     raw_dimensions = repaired_evaluation.get("dimensions")
     if not isinstance(raw_dimensions, list):
-        raise ValueError("resumeEvaluation.dimensions must be an array")
+        raise AiProviderPayloadError("resumeEvaluation.dimensions must be an array")
     updated_dimensions: set[str] = set()
     for raw_dimension in raw_dimensions:
         if not isinstance(raw_dimension, dict):
-            raise ValueError("resumeEvaluation.dimensions entries must be objects")
+            raise AiProviderPayloadError(
+                "resumeEvaluation.dimensions entries must be objects"
+            )
         raw_name = raw_dimension.get("dimension")
         if not isinstance(raw_name, str):
-            raise ValueError("resumeEvaluation dimension names must be strings")
+            raise AiProviderPayloadError(
+                "resumeEvaluation dimension names must be strings"
+            )
         name = _DIMENSION_ALIASES.get(raw_name, raw_name)
         if name not in DIMENSION_NAMES or name in updated_dimensions:
-            raise ValueError("resumeEvaluation.dimensions must contain six unique fixed dimensions")
+            raise AiProviderPayloadError(
+                "resumeEvaluation.dimensions must contain six unique fixed dimensions"
+            )
         raw_dimension["issues"] = copy.deepcopy(dimension_issue_ids[name])
         updated_dimensions.add(name)
     if updated_dimensions != set(DIMENSION_NAMES):
-        raise ValueError("resumeEvaluation.dimensions must contain all six fixed dimensions")
+        raise AiProviderPayloadError(
+            "resumeEvaluation.dimensions must contain all six fixed dimensions"
+        )
     repaired_evaluation["issues"] = copy.deepcopy(issues)
     repaired_evaluation["topPriorities"] = copy.deepcopy(priorities)
     return {"resumeEvaluation": repaired_evaluation}
@@ -510,8 +538,9 @@ async def _finalize_with_one_repair(
         )
     except ValueError as first_error:
         logger.warning(
-            "Resume evaluation validation failed; requesting one compact repair: %s",
-            first_error,
+            "Resume evaluation validation failed; requesting one compact repair: error_type=%s error_meta=%s",
+            type(first_error).__name__,
+            safe_body_log_summary(str(first_error)),
         )
         if str(first_error).startswith(_CROSS_PRIMARY_ISSUE_ERROR_PREFIX):
             issue_repair = await _repair_cross_primary_issues(
@@ -521,7 +550,7 @@ async def _finalize_with_one_repair(
             try:
                 repaired = _apply_cross_primary_issue_repair(result, issue_repair)
             except ValueError as repair_error:
-                raise ValueError(
+                raise AiProviderPayloadError(
                     f"Invalid resume evaluation structure after one repair attempt: {repair_error}"
                 ) from repair_error
         else:
@@ -540,7 +569,7 @@ async def _finalize_with_one_repair(
                 canonical_jd_match=canonical_jd_match,
             )
         except ValueError as repair_error:
-            raise ValueError(
+            raise AiProviderPayloadError(
                 f"Invalid resume evaluation structure after one repair attempt: {repair_error}"
             ) from repair_error
 

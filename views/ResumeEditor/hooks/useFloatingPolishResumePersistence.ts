@@ -8,8 +8,11 @@ import type { ExperienceListItem } from '../../../services/experienceService';
 import { mergeStarFieldsWithSource } from '../../../utils/resumeHelpers';
 import { buildResumeExperienceMap, resolveExperienceDatePayload } from '../helpers';
 import type { FloatingExperiencePolishSessionItem } from './useFloatingExperiencePolishSession';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { AuthContextChangedError } from '../../../services/apiClient';
 
 type UseFloatingPolishResumePersistenceParams = {
+    authUserKey: string | null;
     resumeId: string | null;
     resumeExperienceMap: Map<string, ResumeExperienceItem>;
     experienceSourceMap: Map<string, ExperienceListItem>;
@@ -18,16 +21,23 @@ type UseFloatingPolishResumePersistenceParams = {
 };
 
 export const useFloatingPolishResumePersistence = ({
+    authUserKey,
     resumeId,
     resumeExperienceMap,
     experienceSourceMap,
     applyResumeDetail,
     setResumeExperienceMap,
 }: UseFloatingPolishResumePersistenceParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
     const ensureFloatingPolishResumeLink = useCallback(async (
         masterId: string,
-        versionId?: string
+        versionId?: string,
+        options?: { expectedAuthCacheKey: string },
     ) => {
+        const operation = await ownerGuard.beginOperation();
+        if (options && options.expectedAuthCacheKey !== operation.expectedAuthCacheKey) {
+            throw new AuthContextChangedError();
+        }
         if (!resumeId) {
             return null;
         }
@@ -45,16 +55,22 @@ export const useFloatingPolishResumePersistence = ({
                     experience_version_id: versionId,
                 },
             ],
-        });
+        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         const nextMap = buildResumeExperienceMap(detail);
         applyResumeDetail(detail);
         setResumeExperienceMap(nextMap);
         return nextMap.get(masterId)?.id ?? null;
-    }, [applyResumeDetail, resumeExperienceMap, resumeId, setResumeExperienceMap]);
+    }, [applyResumeDetail, ownerGuard, resumeExperienceMap, resumeId, setResumeExperienceMap]);
 
     const ensureFloatingPolishResumeLinks = useCallback(async (
-        sessionItems: FloatingExperiencePolishSessionItem[]
+        sessionItems: FloatingExperiencePolishSessionItem[],
+        options?: { expectedAuthCacheKey: string },
     ) => {
+        const operation = await ownerGuard.beginOperation();
+        if (options && options.expectedAuthCacheKey !== operation.expectedAuthCacheKey) {
+            throw new AuthContextChangedError();
+        }
         if (!resumeId) {
             throw new Error('当前简历不存在');
         }
@@ -69,6 +85,7 @@ export const useFloatingPolishResumePersistence = ({
             }
         });
         if (!pendingAddMap.size) {
+            await ownerGuard.assertOperationCurrent(operation);
             return {
                 nextMap: resumeExperienceMap,
                 addedLinkIds: [] as string[],
@@ -80,7 +97,8 @@ export const useFloatingPolishResumePersistence = ({
                 op: 'add',
                 experience_version_id: versionId,
             })),
-        });
+        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         const nextMap = buildResumeExperienceMap(detail);
         const addedLinkIds = Array.from(pendingAddMap.keys())
             .map((targetId) => nextMap.get(targetId)?.id ?? null)
@@ -91,9 +109,16 @@ export const useFloatingPolishResumePersistence = ({
             nextMap,
             addedLinkIds,
         };
-    }, [applyResumeDetail, resumeExperienceMap, resumeId, setResumeExperienceMap]);
+    }, [applyResumeDetail, ownerGuard, resumeExperienceMap, resumeId, setResumeExperienceMap]);
 
-    const rollbackFloatingPolishResumeLinks = useCallback(async (linkIds: string[]) => {
+    const rollbackFloatingPolishResumeLinks = useCallback(async (
+        linkIds: string[],
+        options?: { expectedAuthCacheKey: string },
+    ) => {
+        const operation = await ownerGuard.beginOperation();
+        if (options && options.expectedAuthCacheKey !== operation.expectedAuthCacheKey) {
+            throw new AuthContextChangedError();
+        }
         if (!resumeId || !linkIds.length) {
             return;
         }
@@ -102,11 +127,12 @@ export const useFloatingPolishResumePersistence = ({
                 op: 'remove',
                 resume_experience_id: linkId,
             })),
-        });
+        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         const nextMap = buildResumeExperienceMap(detail);
         applyResumeDetail(detail);
         setResumeExperienceMap(nextMap);
-    }, [applyResumeDetail, resumeId, setResumeExperienceMap]);
+    }, [applyResumeDetail, ownerGuard, resumeId, setResumeExperienceMap]);
 
     const buildExperiencePolishOverrideOperation = useCallback((
         sessionItem: FloatingExperiencePolishSessionItem,

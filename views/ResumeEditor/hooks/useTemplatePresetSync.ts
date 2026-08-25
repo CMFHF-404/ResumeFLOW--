@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { resolveAuthUserKeyFromActiveSession } from '../../../services/apiClient';
+import { useCallback, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 import { profileService, type Profile } from '../../../services/profileService';
 import {
     loadResumeTemplatePresetMap,
     syncResumeTemplatePresetsFromProfile,
     type ResumeTemplatePresetMap,
-} from '../../resumeTemplateStorage';
+} from '../../../services/resumeTemplateStorage';
 
 const TEMPLATE_PRESET_SYNC_TIMEOUT_MS = 1500;
 
@@ -37,12 +37,14 @@ export const useTemplatePresetSync = (
         requestedAuthUserKey: string | null | undefined,
         currentProfile?: Profile | null
     ) => {
-        const ownerId = currentProfile?.user_id
-            ?? requestedAuthUserKey
-            ?? await resolveAuthUserKeyFromActiveSession();
+        const expectedAuthCacheKey = requestedAuthUserKey ?? null;
+        const ownerId = currentProfile?.user_id ?? expectedAuthCacheKey;
         if (
-            templatePresetRequestIdRef.current !== requestId
-            || latestAuthUserKeyRef.current !== (requestedAuthUserKey ?? null)
+            !expectedAuthCacheKey
+            || !ownerId
+            || ownerId !== expectedAuthCacheKey
+            || templatePresetRequestIdRef.current !== requestId
+            || latestAuthUserKeyRef.current !== expectedAuthCacheKey
         ) {
             return;
         }
@@ -58,7 +60,7 @@ export const useTemplatePresetSync = (
 
     const unlockTemplatePresetMapWithLocalFallback = useCallback((requestedAuthUserKey?: string | null) => {
         const ownerId = requestedAuthUserKey ?? null;
-        if (!ownerId) {
+        if (!ownerId || latestAuthUserKeyRef.current !== ownerId) {
             return;
         }
         setTemplatePresetMap(loadResumeTemplatePresetMap(ownerId));
@@ -68,51 +70,75 @@ export const useTemplatePresetSync = (
     }, []);
 
     const refreshTemplatePresetMapForCurrentUser = useCallback((requestedAuthUserKey?: string | null) => {
+        const expectedAuthCacheKey = requestedAuthUserKey ?? authUserKey;
+        if (!expectedAuthCacheKey || expectedAuthCacheKey !== authUserKey) {
+            return;
+        }
         const requestId = ++templatePresetRequestIdRef.current;
         setIsTemplatePresetMapReady(false);
         setIsTemplatePresetFallbackAvailable(false);
-        setTemplatePresetFallbackOwnerKey(requestedAuthUserKey ?? null);
+        setTemplatePresetFallbackOwnerKey(expectedAuthCacheKey);
         const profilePromise = profileService
-            .getProfile({ force: true })
-            .catch(() => profileService.peekProfileForCurrentUser());
+            .getProfile({ force: true, expectedAuthCacheKey })
+            .catch((error) => {
+                if (isAuthContextChangedError(error)) {
+                    throw error;
+                }
+                return profileService.peekProfileForCurrentUser({ expectedAuthCacheKey });
+            });
         let timeoutId: number | null = null;
         if (typeof window !== 'undefined') {
-            timeoutId = window.setTimeout(async () => {
-                const ownerId = requestedAuthUserKey ?? await resolveAuthUserKeyFromActiveSession();
+            timeoutId = window.setTimeout(() => {
                 if (
                     templatePresetCompletedRequestIdRef.current === requestId
                     || templatePresetRequestIdRef.current !== requestId
-                    || latestAuthUserKeyRef.current !== (requestedAuthUserKey ?? null)
+                    || latestAuthUserKeyRef.current !== expectedAuthCacheKey
                 ) {
                     return;
                 }
-                setTemplatePresetFallbackOwnerKey(ownerId ?? null);
-                setIsTemplatePresetFallbackAvailable(Boolean(ownerId));
+                setTemplatePresetFallbackOwnerKey(expectedAuthCacheKey);
+                setIsTemplatePresetFallbackAvailable(true);
             }, TEMPLATE_PRESET_SYNC_TIMEOUT_MS);
         }
         void profilePromise.then((currentProfile) => {
             if (timeoutId !== null && typeof window !== 'undefined') {
                 window.clearTimeout(timeoutId);
             }
-            void applyTemplatePresetMapForCurrentUser(requestId, requestedAuthUserKey, currentProfile);
+            void applyTemplatePresetMapForCurrentUser(requestId, expectedAuthCacheKey, currentProfile);
+        }).catch((error) => {
+            if (timeoutId !== null && typeof window !== 'undefined') {
+                window.clearTimeout(timeoutId);
+            }
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 同步简历模板偏好失败:', error);
+            }
         });
-    }, [applyTemplatePresetMapForCurrentUser]);
+    }, [applyTemplatePresetMapForCurrentUser, authUserKey]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         latestAuthUserKeyRef.current = authUserKey;
         const requestId = ++templatePresetRequestIdRef.current;
         setTemplatePresetMap(loadResumeTemplatePresetMap(authUserKey));
         setIsTemplatePresetMapReady(false);
         setIsTemplatePresetFallbackAvailable(false);
         setTemplatePresetFallbackOwnerKey(authUserKey ?? null);
+        if (!authUserKey) {
+            return;
+        }
         let cancelled = false;
         let timeoutId: number | null = null;
         const profilePromise = profileService
-            .getProfile({ force: true })
-            .catch(() => profileService.peekProfileForCurrentUser());
+            .getProfile({ force: true, expectedAuthCacheKey: authUserKey })
+            .catch((error) => {
+                if (isAuthContextChangedError(error)) {
+                    throw error;
+                }
+                return profileService.peekProfileForCurrentUser({
+                    expectedAuthCacheKey: authUserKey,
+                });
+            });
         if (typeof window !== 'undefined') {
-            timeoutId = window.setTimeout(async () => {
-                const ownerId = authUserKey ?? await resolveAuthUserKeyFromActiveSession();
+            timeoutId = window.setTimeout(() => {
                 if (
                     templatePresetCompletedRequestIdRef.current === requestId
                     || templatePresetRequestIdRef.current !== requestId
@@ -121,8 +147,8 @@ export const useTemplatePresetSync = (
                 ) {
                     return;
                 }
-                setTemplatePresetFallbackOwnerKey(ownerId ?? null);
-                setIsTemplatePresetFallbackAvailable(Boolean(ownerId));
+                setTemplatePresetFallbackOwnerKey(authUserKey);
+                setIsTemplatePresetFallbackAvailable(true);
             }, TEMPLATE_PRESET_SYNC_TIMEOUT_MS);
         }
         void profilePromise.then((currentProfile) => {
@@ -133,6 +159,10 @@ export const useTemplatePresetSync = (
                 return;
             }
             void applyTemplatePresetMapForCurrentUser(requestId, authUserKey, currentProfile);
+        }).catch((error) => {
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 加载简历模板偏好失败:', error);
+            }
         });
         return () => {
             cancelled = true;

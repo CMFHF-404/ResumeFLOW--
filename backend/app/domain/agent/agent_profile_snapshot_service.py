@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
+from ..export.image_data_url import normalize_avatar_data_url_or_empty
 from ..export.schemas import ResumeEditorProfileSnapshot, ResumePdfRenderSnapshot
 from .agent_option_helpers import AGENT_RESUME_TEMPLATE_OPTIONS
 
@@ -175,7 +176,9 @@ def _profile_snapshot(
         "linkedin",
         _social_link_url(social_links.get("linkedin")),
     )
-    avatar_data_url = _string_field(config, "avatarDataUrl", base.get("avatar_data_url"))
+    avatar_data_url = normalize_avatar_data_url_or_empty(
+        _string_field(config, "avatarDataUrl", base.get("avatar_data_url"))
+    )
     summary = personal_summary
     if summary is None:
         summary = _string_field(config, "summary", base.get("summary"))

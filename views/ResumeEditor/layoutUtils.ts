@@ -1,7 +1,9 @@
 import type {
     ResumeEditorConfig,
     SectionSpacingKey,
+    SmartPageLayout,
 } from '../../types/resume';
+export type { SmartPageLayout } from '../../types/resume';
 import {
     A4_HEIGHT_MM,
     FONT_SIZE_DEFAULT,
@@ -107,14 +109,6 @@ export const FONT_SIZE_OPTIONS = FONT_SIZE_OPTION_VALUES.map((value) => ({
     value,
     label: `${formatOptionNumberLabel(value, 1)} px`,
 }));
-
-export type SmartPageLayout = {
-    topPaddingPx: number;
-    sectionSpacingKey: SectionSpacingKey;
-    itemSpacingEm: number;
-    lineHeight: number;
-    fontSize: number;
-};
 
 export type LayoutSnapshot = SmartPageLayout & {
     isSmartPageApplied: boolean;

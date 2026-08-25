@@ -16,6 +16,7 @@ import {
 } from '../experiencePolishCoordinatorUtils';
 
 export const useResumeEditorExperiencePolishCoordinator = ({
+    authUserKey,
     resumeId,
     isLoadingExperiences,
     experienceItems,
@@ -41,6 +42,7 @@ export const useResumeEditorExperiencePolishCoordinator = ({
     setResumeExperienceMap,
 }: any) => {
     useResumeEditorManualSaveDrafts({
+        authUserKey,
         resumeId,
         isLoadingExperiences,
         experienceItems,
@@ -66,6 +68,7 @@ export const useResumeEditorExperiencePolishCoordinator = ({
     });
 
     const editingActions = useEditingExperiencePolishActions({
+        authUserKey,
         editingDraft: experience.editingDraft,
         setEditingDraft: experience.setEditingDraft,
         polishMode: polishControls.experiencePolishMode,
@@ -87,6 +90,7 @@ export const useResumeEditorExperiencePolishCoordinator = ({
     });
 
     const floatingActions = useFloatingExperiencePolishActions({
+        authUserKey,
         activeFloatingPolishExperienceId: floatingSession.activeFloatingPolishExperienceId,
         experienceItems,
         selectedExpIds,
@@ -124,6 +128,7 @@ export const useResumeEditorExperiencePolishCoordinator = ({
     }, [floatingSession]);
 
     const persistence = useFloatingPolishResumePersistence({
+        authUserKey,
         resumeId,
         resumeExperienceMap,
         experienceSourceMap,
@@ -132,6 +137,7 @@ export const useResumeEditorExperiencePolishCoordinator = ({
     });
 
     const confirmActions = useFloatingExperiencePolishConfirmActions({
+        authUserKey,
         resumeId,
         singleFloatingPolishPreview: floatingSession.singleFloatingPolishPreview,
         batchFloatingPolishPreview: floatingSession.batchFloatingPolishPreview,
@@ -149,6 +155,7 @@ export const useResumeEditorExperiencePolishCoordinator = ({
         setPendingPolishAutoAnalyzeSeq: polishControls.setPendingPolishAutoAnalyzeSeq,
         showToastLoading,
         updateToast,
+        closeToast,
     });
 
     const handleOpenBatchPolishToolbar = useCallback(() => {

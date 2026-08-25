@@ -1,7 +1,7 @@
-import type { Certification } from '../services/certificationsService';
-import type { ExperienceListItem } from '../services/experienceService';
-import type { Profile } from '../services/profileService';
-import type { UserSkill } from '../services/skillsService';
+import type { Certification } from './certification';
+import type { ExperienceListItem } from './experience';
+import type { Profile } from './profile';
+import type { UserSkill } from './skill';
 
 export type ExperienceBankPdfRenderSnapshot = {
   profile: Profile | null;

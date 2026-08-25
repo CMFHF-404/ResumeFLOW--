@@ -1,4 +1,12 @@
-import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
+import {
+    useCallback,
+    useLayoutEffect,
+    useRef,
+    type Dispatch,
+    type SetStateAction,
+} from 'react';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 import {
     resumeService,
     type Resume as ResumeRecord,
@@ -11,6 +19,7 @@ import {
 } from '../autoNameUtils';
 
 type UseResumeNameUpdateParams = {
+    authUserKey: string | null;
     resumeId: string | null;
     resumeName: string;
     resumeDetail: ResumeDetail | null;
@@ -22,6 +31,7 @@ type UseResumeNameUpdateParams = {
 };
 
 export const useResumeNameUpdate = ({
+    authUserKey,
     resumeId,
     resumeName,
     resumeDetail,
@@ -31,7 +41,14 @@ export const useResumeNameUpdate = ({
     showToastError,
     showToastSuccess,
 }: UseResumeNameUpdateParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
     const isUpdatingResumeNameRef = useRef(false);
+    const activeUpdateRef = useRef<symbol | null>(null);
+
+    useLayoutEffect(() => {
+        activeUpdateRef.current = null;
+        isUpdatingResumeNameRef.current = false;
+    }, [authUserKey]);
 
     const applyResumeNameUpdate = useCallback(
         async (nextName: string, options?: { silent?: boolean }) => {
@@ -43,13 +60,29 @@ export const useResumeNameUpdate = ({
                 return;
             }
             const previousName = resumeName;
-            setResumeName(normalized);
             if (!resumeId) {
+                setResumeName(normalized);
                 return;
             }
+            const requestId = Symbol('update-resume-name');
+            activeUpdateRef.current = requestId;
             isUpdatingResumeNameRef.current = true;
+            let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
             try {
-                const updated = await resumeService.update(resumeId, { title: normalized });
+                operation = await ownerGuard.beginOperation();
+                if (activeUpdateRef.current !== requestId) {
+                    return;
+                }
+                setResumeName(normalized);
+                const updated = await resumeService.update(
+                    resumeId,
+                    { title: normalized },
+                    { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+                );
+                await ownerGuard.assertOperationCurrent(operation);
+                if (activeUpdateRef.current !== requestId) {
+                    return;
+                }
                 const updatedTitle = normalizeResumeTitle(updated.title || normalized);
                 setResumeName(updatedTitle || UNTITLED_RESUME_TITLE);
                 if (resumeDetail) {
@@ -67,17 +100,28 @@ export const useResumeNameUpdate = ({
                     showToastSuccess('简历名称已更新');
                 }
             } catch (error) {
-                console.error('[ResumeEditor] 更新简历名称失败:', error);
-                setResumeName(previousName);
-                if (!options?.silent) {
-                    showToastError('简历名称更新失败');
+                if (
+                    !isAuthContextChangedError(error)
+                    && operation
+                    && ownerGuard.isOperationCurrent(operation)
+                    && activeUpdateRef.current === requestId
+                ) {
+                    console.error('[ResumeEditor] 更新简历名称失败:', error);
+                    setResumeName(previousName);
+                    if (!options?.silent) {
+                        showToastError('简历名称更新失败');
+                    }
                 }
             } finally {
-                isUpdatingResumeNameRef.current = false;
+                if (activeUpdateRef.current === requestId) {
+                    activeUpdateRef.current = null;
+                    isUpdatingResumeNameRef.current = false;
+                }
             }
         },
         [
             applyResumeDetail,
+            ownerGuard,
             resumeDetail,
             resumeId,
             resumeName,

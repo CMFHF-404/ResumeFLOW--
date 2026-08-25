@@ -49,6 +49,16 @@ assert payload == {
     "experiences": {"work": [], "project": [], "education": []},
     "certifications": [],
     "skills": [],
+    "_meta": {
+        "boundedSnapshot": True,
+        "experiences": {
+            "work": {"loadedCount": 0, "returnedCount": 0, "truncated": False},
+            "project": {"loadedCount": 0, "returnedCount": 0, "truncated": False},
+            "education": {"loadedCount": 0, "returnedCount": 0, "truncated": False},
+        },
+        "certifications": {"loadedCount": 0, "returnedCount": 0, "truncated": False},
+        "skills": {"loadedCount": 0, "returnedCount": 0, "truncated": False},
+    },
 }
 assert "app.domain.assistant.assistant_router" not in sys.modules
 """

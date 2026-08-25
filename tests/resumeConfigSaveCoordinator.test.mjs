@@ -364,7 +364,7 @@ test('save acknowledgements snapshot mutable authorities before the React state 
   const setterIndex = callback.indexOf('state.setResumeDetail');
 
   assert.ok(setterIndex > 0);
-  assert.ok(callback.indexOf('loadJDAnalysisCache(_resumeId)') < setterIndex);
+  assert.ok(callback.indexOf('loadJDAnalysisCache(options.authUserKey, _resumeId)') < setterIndex);
   assert.ok(callback.indexOf('normalizeJDAnalysisPersistence(') < setterIndex);
   assert.ok(callback.indexOf('latestEffectiveConfigSnapshotRef.current') < setterIndex);
   const mergeCall = callback.match(

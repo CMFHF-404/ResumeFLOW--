@@ -8,7 +8,7 @@ import { experienceService } from '../../services/experienceService';
 import { certificationsService } from '../../services/certificationsService';
 import { skillsService } from '../../services/skillsService';
 import { profileService } from '../../services/profileService';
-import { resumeService } from '../../services/resumeService';
+import { assertResumeAuthContext, resumeService } from '../../services/resumeService';
 import {
     DEFAULT_RESUME_TEMPLATE_ID,
     normalizeResumeTemplateId,
@@ -260,7 +260,9 @@ export const buildDashboardResumePreviewState = (
     };
 };
 
-export const loadDashboardResumePreviewGlobalData = async (): Promise<DashboardResumePreviewGlobalData> => {
+export const loadDashboardResumePreviewGlobalData = async (
+    expectedAuthCacheKey: string,
+): Promise<DashboardResumePreviewGlobalData> => {
     const [
         profileData,
         experiences,
@@ -268,15 +270,19 @@ export const loadDashboardResumePreviewGlobalData = async (): Promise<DashboardR
         certifications,
         skills,
     ] = await Promise.all([
-        profileService.getProfile().catch(() => null),
+        profileService.getProfile({ expectedAuthCacheKey }).catch(async () => {
+            await assertResumeAuthContext(expectedAuthCacheKey);
+            return null;
+        }),
         Promise.all([
-            experienceService.list('work'),
-            experienceService.list('project'),
+            experienceService.list('work', { expectedAuthCacheKey }),
+            experienceService.list('project', { expectedAuthCacheKey }),
         ]).then((items) => items.flat()),
-        experienceService.list('education'),
-        certificationsService.list(),
-        skillsService.list(),
+        experienceService.list('education', { expectedAuthCacheKey }),
+        certificationsService.list({ expectedAuthCacheKey }),
+        skillsService.list({ expectedAuthCacheKey }),
     ]);
+    await assertResumeAuthContext(expectedAuthCacheKey);
 
     return {
         profileData,
@@ -289,12 +295,14 @@ export const loadDashboardResumePreviewGlobalData = async (): Promise<DashboardR
 
 export const loadDashboardResumePreviewSnapshot = async (
     resumeId: string,
-    globalData?: DashboardResumePreviewGlobalData
+    expectedAuthCacheKey: string,
+    globalData?: DashboardResumePreviewGlobalData,
 ): Promise<DashboardResumePreviewSnapshot> => {
     const [detail, resolvedGlobalData] = await Promise.all([
-        resumeService.get(resumeId),
-        globalData ? Promise.resolve(globalData) : loadDashboardResumePreviewGlobalData(),
+        resumeService.get(resumeId, { expectedAuthCacheKey }),
+        globalData ? Promise.resolve(globalData) : loadDashboardResumePreviewGlobalData(expectedAuthCacheKey),
     ]);
+    await assertResumeAuthContext(expectedAuthCacheKey);
 
     return {
         resumeId,

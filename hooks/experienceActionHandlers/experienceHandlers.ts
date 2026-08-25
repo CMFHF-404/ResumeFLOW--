@@ -39,6 +39,8 @@ import type {
     ExperienceState,
     ToastApi,
 } from './types';
+import type { AuthOwnerOperation, AuthOwnerOperationGuard } from '../useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 const JD_POLISH_TOAST_MESSAGES = {
     loading: '正在基于 JD 润色...',
@@ -334,7 +336,9 @@ const syncExperienceToMaster = async (
     resolveExperienceDatePayload: ExperienceHelpers['resolveExperienceDatePayload'],
     mergeStarFieldsWithSource: ExperienceHelpers['mergeStarFieldsWithSource'],
     resumeMap: ExperienceDomain['resumeMap'],
-    applyResumeDetail: (detail: ResumeDetail | null) => void
+    applyResumeDetail: (detail: ResumeDetail | null) => void,
+    ownerGuard: AuthOwnerOperationGuard,
+    operation: AuthOwnerOperation,
 ) => {
     const source = sourceMap.get(masterId);
     if (!source) {
@@ -356,7 +360,12 @@ const syncExperienceToMaster = async (
         mergeStarFieldsWithSource,
         { hasStarOverride }
     );
-    const detail: ExperienceDetail = await experienceService.update(masterId, { version: payload });
+    const detail: ExperienceDetail = await experienceService.update(
+        masterId,
+        { version: payload },
+        { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+    );
+    await ownerGuard.assertOperationCurrent(operation);
     const updatedVersion = detail.latest_version || source.latest_version;
     const resumeLink = resumeMap.get(masterId);
     if (resumeId && resumeLink?.id && updatedVersion?.id) {
@@ -377,7 +386,8 @@ const syncExperienceToMaster = async (
                     overrides_json: {},
                 },
             ],
-        });
+        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         applyResumeDetail(resumeDetail);
     }
     setSourceMap((prev) =>
@@ -395,7 +405,9 @@ const ensureResumeLink = async (
     versionId: string | undefined,
     resumeMap: ExperienceDomain['resumeMap'],
     applyResumeDetail: (detail: ResumeDetail | null) => void,
-    buildResumeExperienceMap: ExperienceHelpers['buildResumeExperienceMap']
+    buildResumeExperienceMap: ExperienceHelpers['buildResumeExperienceMap'],
+    ownerGuard: AuthOwnerOperationGuard,
+    operation: AuthOwnerOperation,
 ) => {
     if (!resumeId) {
         return null;
@@ -414,7 +426,8 @@ const ensureResumeLink = async (
                 experience_version_id: versionId,
             },
         ],
-    });
+    }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+    await ownerGuard.assertOperationCurrent(operation);
     applyResumeDetail(detail);
     const nextMap = buildResumeExperienceMap(detail);
     return nextMap.get(masterId)?.id ?? null;
@@ -470,7 +483,9 @@ const saveExperienceOverride = async (
     domain: ExperienceDomain,
     helpers: ExperienceHelpers,
     applyResumeDetail: (detail: ResumeDetail | null) => void,
-    updateHelpers: ExperienceUpdateHelpers
+    updateHelpers: ExperienceUpdateHelpers,
+    ownerGuard: AuthOwnerOperationGuard,
+    operation: AuthOwnerOperation,
 ) => {
     const targetItem = domain.items.find((item) => item.id === masterId);
     const resumeItem = domain.resumeMap.get(masterId);
@@ -491,7 +506,9 @@ const saveExperienceOverride = async (
         targetItem?.experienceVersionId,
         domain.resumeMap,
         applyResumeDetail,
-        helpers.buildResumeExperienceMap
+        helpers.buildResumeExperienceMap,
+        ownerGuard,
+        operation,
     );
     if (!linkId || !resumeId) {
         throw new Error('无法创建简历经历关联');
@@ -510,7 +527,8 @@ const saveExperienceOverride = async (
                 overrides_json: payload.overrides,
             },
         ],
-    });
+    }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+    await ownerGuard.assertOperationCurrent(operation);
     applyResumeDetail(detail);
     updateHelpers.applyExperienceUpdate(masterId, {
         title: payload.resolvedTitle,
@@ -548,6 +566,8 @@ const runExperiencePolish = async (
     jdText: string,
     toast: ToastApi,
     helpers: ExperienceHelpers,
+    ownerGuard: AuthOwnerOperationGuard,
+    operation: AuthOwnerOperation,
     options?: ExperiencePolishOptions
 ): Promise<ExperiencePolishOutcome> => {
     const trimmedJD = jdText.trim();
@@ -572,6 +592,9 @@ const runExperiencePolish = async (
             },
             jdText: trimmedJD,
         }, (event) => {
+            if (!ownerGuard.isOperationCurrent(operation)) {
+                return;
+            }
             const resolution = resolveThoughtDisplayEvent(event);
             if (resolution?.kind !== 'model_thought') {
                 return;
@@ -581,7 +604,8 @@ const runExperiencePolish = async (
                 type: 'ai_thinking',
                 duration: 0,
             });
-        });
+        }, undefined, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         const normalizedResult: Partial<StarFields> = {
             s: typeof result.s === 'string' ? normalizeAiRichText(result.s, { allowList: false }) : undefined,
             t: typeof result.t === 'string' ? normalizeAiRichText(result.t, { allowList: false }) : undefined,
@@ -602,33 +626,43 @@ const runExperiencePolish = async (
         }
         return { status: 'discarded' };
     } catch (error) {
+        if (
+            isAuthContextChangedError(error)
+            || !ownerGuard.isOperationCurrent(operation)
+        ) {
+            throw error;
+        }
         console.error('[ResumeEditor] 基于 JD 润色失败:', error);
         hasError = true;
         return { status: 'error' };
     } finally {
-        const shouldSkipAppliedSuccessToast = action === 'applied' && options?.suppressAppliedSuccessToast;
-        const message = hasError
-            ? JD_POLISH_TOAST_MESSAGES.error
-            : action === 'applied'
-                ? JD_POLISH_TOAST_MESSAGES.success
-                : JD_POLISH_TOAST_MESSAGES.noChange;
-        const nextType = hasError ? 'error' : 'success';
-        const nextDuration = hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS;
-        if (shouldSkipAppliedSuccessToast) {
+        if (!ownerGuard.isOperationCurrent(operation)) {
             toast.closeToast(toastId);
         } else {
-            toast.updateToast(toastId, {
-                message,
-                type: nextType,
-                duration: nextDuration,
+            const shouldSkipAppliedSuccessToast = action === 'applied' && options?.suppressAppliedSuccessToast;
+            const message = hasError
+                ? JD_POLISH_TOAST_MESSAGES.error
+                : action === 'applied'
+                    ? JD_POLISH_TOAST_MESSAGES.success
+                    : JD_POLISH_TOAST_MESSAGES.noChange;
+            const nextType = hasError ? 'error' : 'success';
+            const nextDuration = hasError ? JD_POLISH_TOAST_ERROR_DURATION_MS : JD_POLISH_TOAST_DURATION_MS;
+            if (shouldSkipAppliedSuccessToast) {
+                toast.closeToast(toastId);
+            } else {
+                toast.updateToast(toastId, {
+                    message,
+                    type: nextType,
+                    duration: nextDuration,
+                });
+            }
+            trackAiPolishResult({
+                source: 'resume_editor',
+                field: 'all',
+                action,
+                durationMs: Date.now() - startTime,
             });
         }
-        trackAiPolishResult({
-            source: 'resume_editor',
-            field: 'all',
-            action,
-            durationMs: Date.now() - startTime,
-        });
     }
 };
 
@@ -640,39 +674,47 @@ export const createExperienceSaveHandlers = (
     helpers: ExperienceHelpers,
     defaults: ExperienceDefaults,
     state: ExperienceState,
+    ownerGuard: AuthOwnerOperationGuard,
     updateHelpers: ExperienceUpdateHelpers,
     draftHandlers: ExperienceDraftHandlers,
     applyResumeDetail: (detail: ResumeDetail | null) => void,
     onExperienceDraftPersisted?: (draftMasterId: string, savedMasterId: string) => void,
     onExperienceAiPolishPrepared?: (masterId: string) => void,
-    onExperienceSaveSuccess?: (masterId: string) => Promise<void>,
+    onExperienceSaveSuccess?: (
+        masterId: string,
+        options: { expectedAuthCacheKey: string },
+    ) => Promise<void>,
 ): ExperienceSaveHandlers => {
     const handleSaveExperience = async () => {
-        if (!state.editingDraft) {
+        const editingDraft = state.editingDraft;
+        if (!editingDraft) {
             return;
         }
-        state.setIsSavingExperience(true);
+        let operation: AuthOwnerOperation | null = null;
         try {
-            let savedMasterId = state.editingDraft.masterId;
-            if (state.editingDraft.isDraft) {
-                const dates = helpers.resolveExperienceDatePayload(state.editingDraft);
+            operation = await ownerGuard.beginOperation();
+            state.setIsSavingExperience(true);
+            let savedMasterId = editingDraft.masterId;
+            if (editingDraft.isDraft) {
+                const dates = helpers.resolveExperienceDatePayload(editingDraft);
                 const payload = {
-                    category: state.editingDraft.category,
+                    category: editingDraft.category,
                     version: {
-                        title:
-                            state.editingDraft.title.trim()
-                            || defaults.experienceTitleByCategory[state.editingDraft.category],
-                        org:
-                            state.editingDraft.company.trim()
-                            || defaults.experienceCompanyByCategory[state.editingDraft.category],
+                        title: editingDraft.title.trim()
+                            || defaults.experienceTitleByCategory[editingDraft.category],
+                        org: editingDraft.company.trim()
+                            || defaults.experienceCompanyByCategory[editingDraft.category],
                         start_date: dates.startDate,
                         end_date: dates.endDate,
                         is_current: dates.isCurrent,
-                        star: state.editingDraft.star,
+                        star: editingDraft.star,
                     },
                 };
-                const detail = await experienceService.create(payload);
-                draftHandlers.replaceDraftExperience(state.editingDraft.masterId, detail);
+                const detail = await experienceService.create(payload, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
+                draftHandlers.replaceDraftExperience(editingDraft.masterId, detail);
                 if (savedMasterId !== detail.master.id) {
                     onExperienceDraftPersisted?.(savedMasterId, detail.master.id);
                 }
@@ -680,52 +722,86 @@ export const createExperienceSaveHandlers = (
             } else if (state.syncToMaster) {
                 await syncExperienceToMaster(
                     resumeId,
-                    state.editingDraft.masterId,
-                    state.editingDraft,
+                    editingDraft.masterId,
+                    editingDraft,
                     domain.sourceMap,
                     domain.setSourceMap,
                     updateHelpers,
                     helpers.resolveExperienceDatePayload,
                     helpers.mergeStarFieldsWithSource,
                     domain.resumeMap,
-                    applyResumeDetail
+                    applyResumeDetail,
+                    ownerGuard,
+                    operation,
                 );
             } else {
                 await saveExperienceOverride(
                     resumeId,
-                    state.editingDraft.masterId,
-                    state.editingDraft,
+                    editingDraft.masterId,
+                    editingDraft,
                     domain,
                     helpers,
                     applyResumeDetail,
-                    updateHelpers
+                    updateHelpers,
+                    ownerGuard,
+                    operation,
                 );
             }
-            await onExperienceSaveSuccess?.(savedMasterId);
+            await onExperienceSaveSuccess?.(savedMasterId, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await ownerGuard.assertOperationCurrent(operation);
             advanceExperienceEditSession(state.editSessionRef);
             state.setEditingExpId(null);
             state.setEditingDraft(null);
         } catch (error) {
-            console.error('[ResumeEditor] 保存经历失败:', error);
+            if (
+                !isAuthContextChangedError(error)
+                && (!operation || ownerGuard.isOperationCurrent(operation))
+            ) {
+                console.error('[ResumeEditor] 保存经历失败:', error);
+            }
         } finally {
-            state.setIsSavingExperience(false);
+            if (!operation || ownerGuard.isOperationCurrent(operation)) {
+                state.setIsSavingExperience(false);
+            }
         }
     };
 
     const handlePolishWithJD = async () => {
-        if (!state.editingDraft || state.isPolishing) {
+        const editingDraft = state.editingDraft;
+        if (!editingDraft || state.isPolishing) {
             return;
         }
-        state.setIsPolishing(true);
+        let operation: AuthOwnerOperation | null = null;
         try {
-            const outcome = await runExperiencePolish(state.editingDraft, jdText, toast, helpers);
+            operation = await ownerGuard.beginOperation();
+            state.setIsPolishing(true);
+            const outcome = await runExperiencePolish(
+                editingDraft,
+                jdText,
+                toast,
+                helpers,
+                ownerGuard,
+                operation,
+            );
+            await ownerGuard.assertOperationCurrent(operation);
             if (outcome.status !== 'applied' || !outcome.nextDraft) {
                 return;
             }
             state.setEditingDraft((prev) => (prev ? outcome.nextDraft ?? prev : prev));
             onExperienceAiPolishPrepared?.(outcome.nextDraft.masterId);
+        } catch (error) {
+            if (
+                !isAuthContextChangedError(error)
+                && (!operation || ownerGuard.isOperationCurrent(operation))
+            ) {
+                console.error('[ResumeEditor] 基于 JD 润色失败:', error);
+            }
         } finally {
-            state.setIsPolishing(false);
+            if (!operation || ownerGuard.isOperationCurrent(operation)) {
+                state.setIsPolishing(false);
+            }
         }
     };
 
@@ -739,40 +815,58 @@ export const createExperienceSaveHandlers = (
         }
         const requestedEditSession = state.editSessionRef.current;
         const requestedCollectionVersion = state.collectionVersionRef.current;
-        state.setIsPolishing(true);
+        let operation: AuthOwnerOperation | null = null;
         try {
-            const outcome = await runExperiencePolish(draft, jdText, toast, helpers, {
-                suppressAppliedSuccessToast: true,
-            });
+            operation = await ownerGuard.beginOperation();
+            state.setIsPolishing(true);
+            const outcome = await runExperiencePolish(
+                draft,
+                jdText,
+                toast,
+                helpers,
+                ownerGuard,
+                operation,
+                { suppressAppliedSuccessToast: true },
+            );
+            await ownerGuard.assertOperationCurrent(operation);
             if (outcome.status !== 'applied' || !outcome.nextDraft) {
                 return false;
             }
-            if (requestedCollectionVersion !== state.collectionVersionRef.current) {
+            if (
+                requestedCollectionVersion !== state.collectionVersionRef.current
+                || requestedEditSession !== state.editSessionRef.current
+            ) {
                 return false;
             }
-            if (requestedEditSession !== state.editSessionRef.current) {
-                return false;
-            }
-            try {
-                await saveExperienceOverride(
-                    resumeId,
-                    id,
-                    outcome.nextDraft,
-                    domain,
-                    helpers,
-                    applyResumeDetail,
-                    updateHelpers
-                );
-            } catch (error) {
-                console.error('[ResumeEditor] 保存润色后的经历失败:', error);
-                toast.error(JD_POLISH_TOAST_MESSAGES.error, JD_POLISH_TOAST_ERROR_DURATION_MS);
-                return false;
-            }
+            await saveExperienceOverride(
+                resumeId,
+                id,
+                outcome.nextDraft,
+                domain,
+                helpers,
+                applyResumeDetail,
+                updateHelpers,
+                ownerGuard,
+                operation,
+            );
+            await ownerGuard.assertOperationCurrent(operation);
             trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             toast.success(JD_POLISH_TOAST_MESSAGES.success, JD_POLISH_TOAST_DURATION_MS);
             return true;
+        } catch (error) {
+            if (
+                isAuthContextChangedError(error)
+                || (operation && !ownerGuard.isOperationCurrent(operation))
+            ) {
+                return false;
+            }
+            console.error('[ResumeEditor] 保存润色后的经历失败:', error);
+            toast.error(JD_POLISH_TOAST_MESSAGES.error, JD_POLISH_TOAST_ERROR_DURATION_MS);
+            return false;
         } finally {
-            state.setIsPolishing(false);
+            if (!operation || ownerGuard.isOperationCurrent(operation)) {
+                state.setIsPolishing(false);
+            }
         }
     };
 
@@ -794,6 +888,7 @@ export const createExperienceDeleteHandlers = (
     editHandlers: ExperienceEditHandlers,
     draftHandlers: ExperienceDraftHandlers,
     prefixes: DraftPrefixes,
+    ownerGuard: AuthOwnerOperationGuard,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
     confirmCopy: ConfirmCopy
 ): ExperienceDeleteHandlers => {
@@ -822,7 +917,11 @@ export const createExperienceDeleteHandlers = (
         }
         try {
             await runWithFlag(id, state.deletingExperienceIds, state.setDeletingExperienceIds, async () => {
-                await experienceService.delete(id);
+                const operation = await ownerGuard.beginOperation();
+                await experienceService.delete(id, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
                 advanceExperienceCollectionVersion(state.collectionVersionRef);
                 domain.setItems((prev) => prev.filter((item) => item.id !== id));
                 domain.setSourceMap((prev) => deleteMapEntry(prev, id));
@@ -833,7 +932,9 @@ export const createExperienceDeleteHandlers = (
                 }
             });
         } catch (error) {
-            console.error('[ResumeEditor] 删除经历失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 删除经历失败:', error);
+            }
         }
     };
 

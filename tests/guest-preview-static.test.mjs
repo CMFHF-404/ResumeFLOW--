@@ -43,7 +43,7 @@ test('ExperienceBank guest mode skips protected data loads and gates editing act
   assert.match(profileHook, /if \(!isAuthenticated\) \{[\s\S]*setIsLoadingProfile\(false\)[\s\S]*return;/);
   assert.match(profileHook, /if \(!isAuthenticated\) \{[\s\S]*void onRequireAuth\(\);[\s\S]*return;/);
   assert.match(experienceList, /isAuthenticated:\s*boolean/);
-  assert.match(experienceList, /if \(!isAuthenticated\) \{[\s\S]*setIsLoading\(false\)[\s\S]*return;/);
+  assert.match(experienceList, /if \(!isOwnerResolved\) \{[\s\S]*setIsLoading\(false\)[\s\S]*return;/);
   assert.match(experienceModel, /if \(!isAuthenticated\) \{[\s\S]*void onRequireAuth\(\);[\s\S]*return;/);
   assert.match(education, /isAuthenticated:\s*boolean/);
   assert.match(certs, /isAuthenticated\s*=\s*true/);

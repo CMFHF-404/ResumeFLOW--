@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import subprocess
@@ -6,7 +7,7 @@ import unittest
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 
 def _set_required_env_defaults() -> None:
@@ -17,15 +18,27 @@ def _set_required_env_defaults() -> None:
 
 _set_required_env_defaults()
 
-from fastapi import HTTPException  # noqa: E402
+import httpx  # noqa: E402
+from fastapi import FastAPI, HTTPException, Response  # noqa: E402
+from sqlalchemy.dialects import postgresql  # noqa: E402
 from sqlalchemy.exc import IntegrityError  # noqa: E402
 
-from app.models import ExperienceCategory  # noqa: E402
+from app import config as app_config  # noqa: E402
+from app.config import _normalize_public_api_origin  # noqa: E402
+from app.models import AgentApiKey, ExperienceCategory, ExportRenderSnapshot  # noqa: E402
+from app.domain.resume.models import Resume  # noqa: E402
 from app.runtime_schema.agent_api_tables import AGENT_API_TABLE_STATEMENTS  # noqa: E402
 from app.domain.export.schemas import CertificationViewSnapshot, SkillGroupViewSnapshot  # noqa: E402
+from app.domain.ai.runtime_budget import (  # noqa: E402
+    AiRuntimeBudget,
+    AiRuntimeBudgetExceeded,
+    AiRuntimeTimeoutError,
+    run_with_total_timeout,
+)
 from app.domain.agent import (  # noqa: E402
     agent_auto_assembly_service,
     agent_key_service,
+    agent_option_helpers,
     agent_pdf_helpers,
     agent_pdf_trim_service,
     agent_profile_snapshot_service,
@@ -38,6 +51,7 @@ from app.domain.export.browser_pdf_service import (  # noqa: E402
     BrowserPdfRenderError,
     BrowserPdfRenderTimeoutError,
 )
+from app.domain.export import download_contract  # noqa: E402
 from app.domain.resume.resume_schema import ResumeExperienceItem, ResumeExperienceMerged  # noqa: E402
 
 
@@ -74,6 +88,14 @@ class _FakeSession:
         self.added.append(item)
 
 
+class _NoopAsyncContext:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
 class AgentKeyServiceBoundaryTests(unittest.TestCase):
     def test_agent_service_reexports_key_service_hash_helpers(self) -> None:
         key = "rfag_boundary-test"
@@ -87,11 +109,239 @@ class AgentKeyServiceBoundaryTests(unittest.TestCase):
             "_key_prefix",
             "_to_api_key_read",
             "_list_active_agent_api_keys",
-            "_created_from_reusable_api_key",
             "_recover_agent_api_key_conflict",
             "_to_plugin_config_read",
         ):
             self.assertIs(getattr(agent_service, name), getattr(agent_key_service, name))
+
+
+class AgentRequestBodyBudgetTests(unittest.IsolatedAsyncioTestCase):
+    MAX_BODY_BYTES = 8 * 1024 * 1024
+
+    @staticmethod
+    def _analysis_response() -> agent_router.AgentJobAnalysisResponse:
+        return agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_后端工程师_90",
+        )
+
+    def _build_app(self) -> FastAPI:
+        app = FastAPI()
+        app.include_router(agent_router.router)
+        app.dependency_overrides[agent_router.get_session] = lambda: object()
+        app.dependency_overrides[agent_router.get_agent_user] = lambda: (
+            agent_router.AgentAuthenticatedUser(id="user-1")
+        )
+        return app
+
+    async def _post_analyze(self, *, content=None, json_payload=None, headers=None):
+        app = self._build_app()
+        budget = AiRuntimeBudget(max_request_body_bytes=self.MAX_BODY_BYTES)
+        with (
+            patch(
+                "app.domain.ai.runtime_budget.get_ai_runtime_budget",
+                return_value=budget,
+            ),
+            patch.object(
+                agent_router.billing_service,
+                "ai_billing_context",
+                return_value=_NoopAsyncContext(),
+            ),
+            patch.object(
+                agent_router.billing_service,
+                "ensure_current_quota",
+                AsyncMock(),
+            ),
+            patch.object(
+                agent_router,
+                "build_agent_job_analysis_or_raise",
+                AsyncMock(return_value=self._analysis_response()),
+            ),
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+            ) as client:
+                return await client.post(
+                    "/agent/v1/jobs/analyze",
+                    content=content,
+                    json=json_payload,
+                    headers=headers,
+                )
+
+    async def test_agent_rejects_declared_nine_mib_body_before_parsing(self) -> None:
+        response = await self._post_analyze(
+            content=b"{}",
+            headers={
+                "content-type": "application/json",
+                "content-length": str(9 * 1024 * 1024),
+            },
+        )
+
+        self.assertEqual(response.status_code, 413)
+
+    async def test_agent_rejects_chunked_unknown_padding_over_eight_mib(self) -> None:
+        async def chunks():
+            yield (
+                b'{"job_title":"Backend Engineer","company_name":"Example",'
+                b'"jd_text":"Python","job_url":"https://example.test/job",'
+                b'"padding":"'
+            )
+            for _ in range(9):
+                yield b"x" * (1024 * 1024)
+            yield b'"}'
+
+        response = await self._post_analyze(
+            content=chunks(),
+            headers={"content-type": "application/json"},
+        )
+
+        self.assertEqual(response.status_code, 413)
+
+    async def test_agent_accepts_normal_json_body(self) -> None:
+        response = await self._post_analyze(
+            json_payload={
+                "job_title": "Backend Engineer",
+                "company_name": "Example",
+                "jd_text": "Python FastAPI",
+                "job_url": "https://example.test/job",
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["match_percentage"], 90)
+
+
+class AgentDownloadUrlOriginTests(unittest.TestCase):
+    def _request(self, *, host: str, forwarded_host: str | None = None) -> SimpleNamespace:
+        headers = {"host": host}
+        if forwarded_host is not None:
+            headers["x-forwarded-host"] = forwarded_host
+        return SimpleNamespace(
+            url=SimpleNamespace(scheme="http", netloc=host),
+            headers=headers,
+        )
+
+    def test_download_url_ignores_attacker_controlled_host(self) -> None:
+        request = self._request(host="attacker.invalid")
+        with patch.object(
+            agent_option_helpers,
+            "load_settings",
+            return_value=SimpleNamespace(public_api_origin="https://api.resumeflow.example/api"),
+        ):
+            result = agent_option_helpers._absolute_url(
+                request,
+                "/agent/v1/exports/resume-pdf/snapshot-1",
+            )
+
+        self.assertEqual(
+            result,
+            "https://api.resumeflow.example/api/agent/v1/exports/resume-pdf/snapshot-1",
+        )
+
+    def test_download_url_ignores_forwarded_host(self) -> None:
+        request = self._request(
+            host="api.resumeflow.example",
+            forwarded_host="attacker.invalid",
+        )
+        with patch.object(
+            agent_option_helpers,
+            "load_settings",
+            return_value=SimpleNamespace(public_api_origin="https://api.resumeflow.example"),
+        ):
+            result = agent_option_helpers._absolute_url(
+                request,
+                "/agent/v1/exports/resume-pdf/snapshot-1",
+            )
+
+        self.assertEqual(
+            result,
+            "https://api.resumeflow.example/agent/v1/exports/resume-pdf/snapshot-1",
+        )
+
+    def test_download_url_preserves_public_api_base_path_without_double_slash(self) -> None:
+        request = self._request(host="attacker.invalid")
+        for origin, expected in (
+            (
+                "https://api.resumeflow.example/api",
+                "https://api.resumeflow.example/api/agent/v1/exports/resume-pdf/snapshot-1",
+            ),
+            (
+                "https://api.resumeflow.example/api/",
+                "https://api.resumeflow.example/api/agent/v1/exports/resume-pdf/snapshot-1",
+            ),
+        ):
+            with self.subTest(origin=origin), patch.object(
+                agent_option_helpers,
+                "load_settings",
+                return_value=SimpleNamespace(public_api_origin=origin),
+            ):
+                result = agent_option_helpers._absolute_url(
+                    request,
+                    "/agent/v1/exports/resume-pdf/snapshot-1",
+                )
+            self.assertEqual(result, expected)
+
+    def test_download_url_keeps_path_encoding_intact(self) -> None:
+        request = self._request(host="attacker.invalid")
+        with patch.object(
+            agent_option_helpers,
+            "load_settings",
+            return_value=SimpleNamespace(public_api_origin="https://api.resumeflow.example/api"),
+        ):
+            result = agent_option_helpers._absolute_url(
+                request,
+                "/agent/v1/exports/resume-pdf/snapshot%20with%20space",
+            )
+
+        self.assertEqual(
+            result,
+            "https://api.resumeflow.example/api/agent/v1/exports/resume-pdf/snapshot%20with%20space",
+        )
+
+    def test_public_api_origin_allows_only_safe_optional_base_path(self) -> None:
+        self.assertEqual(
+            _normalize_public_api_origin("https://api.resumeflow.example/api/"),
+            "https://api.resumeflow.example/api",
+        )
+        self.assertEqual(
+            _normalize_public_api_origin("http://localhost:8000"),
+            "http://localhost:8000",
+        )
+
+        for unsafe_value in (
+            "http://api.resumeflow.example/api",
+            "https://attacker.invalid@api.resumeflow.example/api",
+            "https://api.resumeflow.example/api?next=attacker",
+            "https://api.resumeflow.example/api#fragment",
+            "https://api.resumeflow.example/api//v1",
+            "https://api.resumeflow.example/api//",
+            "https://api.resumeflow.example/api/../private",
+            "https://api.resumeflow.example/%2fprivate",
+        ):
+            with self.subTest(value=unsafe_value):
+                with self.assertRaisesRegex(RuntimeError, "PUBLIC_API_ORIGIN"):
+                    _normalize_public_api_origin(unsafe_value)
+
+    def test_settings_load_normalizes_public_api_origin_base_path(self) -> None:
+        previous_settings = app_config._settings
+        try:
+            with patch.dict(
+                os.environ,
+                {"PUBLIC_API_ORIGIN": "https://api.resumeflow.example/api/"},
+            ):
+                app_config._settings = None
+                self.assertEqual(
+                    app_config.load_settings().public_api_origin,
+                    "https://api.resumeflow.example/api",
+                )
+        finally:
+            app_config._settings = previous_settings
 
 
 class AgentPdfFitServiceBoundaryTests(unittest.TestCase):
@@ -153,6 +403,222 @@ class AgentPdfFitPatchCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         mocked_trim_plan.assert_called_once()
+
+    async def test_page_measurement_deletes_its_snapshot_after_render_failure(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="failure",
+            profile=agent_service.ResumeEditorProfileSnapshot(),
+            lineHeight=1.4,
+            fontSize=13,
+            listSpacingValue="0.3em",
+            bulletSpacingValue="0.15em",
+            topPaddingPx=42,
+            sectionSpacingClass="mb-3",
+            listSpacingClass="space-y-2",
+        )
+        snapshot_id = uuid.uuid4()
+        with (
+            patch.object(
+                agent_service,
+                "create_render_snapshot",
+                AsyncMock(return_value=(SimpleNamespace(id=snapshot_id), "token")),
+            ),
+            patch.object(
+                agent_service,
+                "render_resume_pdf",
+                AsyncMock(side_effect=RuntimeError("render failed")),
+            ),
+            patch.object(
+                agent_service,
+                "delete_temporary_render_snapshot",
+                AsyncMock(return_value=True),
+            ) as cleanup,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "render failed"):
+                await agent_service._render_snapshot_page_count(
+                    SimpleNamespace(),
+                    "user-1",
+                    snapshot,
+                )
+
+        cleanup.assert_awaited_once_with(
+            ANY,
+            str(snapshot_id),
+            "user-1",
+        )
+
+    async def test_cancelled_page_measurement_waits_for_snapshot_cleanup(self) -> None:
+        snapshot = agent_service.ResumePdfRenderSnapshot(
+            resumeName="cancelled",
+            profile=agent_service.ResumeEditorProfileSnapshot(),
+            lineHeight=1.4,
+            fontSize=13,
+            listSpacingValue="0.3em",
+            bulletSpacingValue="0.15em",
+            topPaddingPx=42,
+            sectionSpacingClass="mb-3",
+            listSpacingClass="space-y-2",
+        )
+        render_started = asyncio.Event()
+        cleanup_finished = asyncio.Event()
+
+        async def render(*_args):
+            render_started.set()
+            await asyncio.Event().wait()
+
+        async def cleanup(*_args, **_kwargs):
+            await asyncio.sleep(0.01)
+            cleanup_finished.set()
+            return True
+
+        with (
+            patch.object(
+                agent_service,
+                "create_render_snapshot",
+                AsyncMock(return_value=(SimpleNamespace(id=uuid.uuid4()), "token")),
+            ),
+            patch.object(agent_service, "render_resume_pdf", side_effect=render),
+            patch.object(
+                agent_service,
+                "delete_temporary_render_snapshot",
+                side_effect=cleanup,
+            ),
+        ):
+            task = asyncio.create_task(agent_service._render_snapshot_page_count(
+                SimpleNamespace(),
+                "user-1",
+                snapshot,
+            ))
+            await render_started.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertTrue(cleanup_finished.is_set())
+
+
+class AgentGenerationIdempotencyTests(unittest.IsolatedAsyncioTestCase):
+    class _ScalarResult:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+    def _payload(self):
+        return agent_router.AgentJobGenerateRequest(
+            job_title="产品实习",
+            company_name="示例公司",
+            jd_text="产品 JD",
+            job_url="https://example.com/jobs/1",
+        )
+
+    def test_context_is_owner_scoped_and_request_stable(self) -> None:
+        payload = self._payload()
+        first = agent_service.build_agent_idempotency_context(
+            "user-1", "retry-key", payload, "legacy-v1"
+        )
+        repeated = agent_service.build_agent_idempotency_context(
+            "user-1", "retry-key", payload, "legacy-v1"
+        )
+        other_owner = agent_service.build_agent_idempotency_context(
+            "user-2", "retry-key", payload, "legacy-v1"
+        )
+        other_mode = agent_service.build_agent_idempotency_context(
+            "user-1", "retry-key", payload, "authenticated-v2"
+        )
+
+        self.assertEqual(first, repeated)
+        self.assertNotEqual(first.key_hash, other_owner.key_hash)
+        self.assertNotEqual(first.request_hash, other_mode.request_hash)
+
+    def test_header_parser_rejects_duplicates_controls_and_whitespace(self) -> None:
+        request_for = lambda values: SimpleNamespace(
+            headers=SimpleNamespace(getlist=lambda _name: values)
+        )
+        self.assertEqual(
+            agent_router._read_idempotency_key(request_for(["retry-key"])),
+            "retry-key",
+        )
+        self.assertIsNone(agent_router._read_idempotency_key(request_for([])))
+        for values in (["a", "b"], [""], [" padded "], ["line\nbreak"]):
+            with self.subTest(values=values):
+                with self.assertRaises(HTTPException) as context:
+                    agent_router._read_idempotency_key(request_for(values))
+                self.assertEqual(context.exception.status_code, 400)
+
+    async def test_completed_generation_reuses_its_resume_and_live_snapshot(self) -> None:
+        context = agent_service.AgentIdempotencyContext(
+            key_hash="key-hash",
+            request_hash="request-hash",
+        )
+        snapshot_id = uuid.uuid4()
+        generated = Resume(
+            user_id="user-1",
+            title="Generated",
+            config={
+                "agentJob": {
+                    "idempotency": {
+                        "keyHash": context.key_hash,
+                        "requestHash": context.request_hash,
+                        "snapshotId": str(snapshot_id),
+                        "fileName": "generated.pdf",
+                    }
+                }
+            },
+        )
+        snapshot = ExportRenderSnapshot(
+            id=snapshot_id,
+            user_id="user-1",
+            payload_json={},
+            expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        )
+        session = SimpleNamespace(execute=AsyncMock(side_effect=[
+            self._ScalarResult(generated),
+            self._ScalarResult(snapshot),
+        ]))
+
+        with patch.object(
+            agent_service,
+            "build_render_snapshot_token",
+            return_value="signed-token",
+        ):
+            result = await agent_service._load_idempotent_agent_generation(
+                session,
+                "user-1",
+                context,
+            )
+
+        self.assertIs(result[0], generated)
+        self.assertEqual(result[1].id, snapshot_id)
+        self.assertEqual(result[2], "signed-token")
+        self.assertEqual(result[3], "generated.pdf")
+
+    async def test_reused_key_with_different_request_fails_before_snapshot_lookup(self) -> None:
+        generated = Resume(
+            user_id="user-1",
+            title="Generated",
+            config={
+                "agentJob": {
+                    "idempotency": {
+                        "keyHash": "key-hash",
+                        "requestHash": "original-request",
+                    }
+                }
+            },
+        )
+        session = SimpleNamespace(execute=AsyncMock(return_value=self._ScalarResult(generated)))
+
+        with self.assertRaises(agent_service.AgentIdempotencyConflictError):
+            await agent_service._load_idempotent_agent_generation(
+                session,
+                "user-1",
+                agent_service.AgentIdempotencyContext(
+                    key_hash="key-hash",
+                    request_hash="different-request",
+                ),
+            )
+        self.assertEqual(session.execute.await_count, 1)
 
 
 class AgentGeneratedResumeConfigBoundaryTests(unittest.TestCase):
@@ -884,7 +1350,71 @@ class AgentPluginConfigTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
-    async def test_create_key_stores_plaintext_for_reuse_until_refresh(self) -> None:
+    async def test_agent_auth_rejects_oversized_header_before_hash_lookup(self) -> None:
+        with (
+            patch.object(agent_router, "authenticate_agent_api_key", new=AsyncMock()) as authenticate,
+            self.assertRaises(HTTPException) as context,
+        ):
+            await agent_router.get_agent_user(
+                authorization="Bearer "
+                + "x" * agent_router.MAX_AUTHORIZATION_HEADER_CHARACTERS,
+                session=SimpleNamespace(),
+            )
+
+        self.assertEqual(context.exception.status_code, 401)
+        authenticate.assert_not_awaited()
+
+    def test_create_schema_distinguishes_omitted_and_explicit_expected_active_key(self) -> None:
+        legacy = agent_router.AgentApiKeyCreate(name="Agent", rotate=True)
+        explicit_empty = agent_router.AgentApiKeyCreate(
+            name="Agent",
+            rotate=True,
+            expected_active_key_id=None,
+        )
+        explicit_id = agent_router.AgentApiKeyCreate(
+            name="Agent",
+            rotate=True,
+            expected_active_key_id="key-1",
+        )
+
+        self.assertNotIn("expected_active_key_id", legacy.model_fields_set)
+        self.assertIn("expected_active_key_id", explicit_empty.model_fields_set)
+        self.assertEqual(explicit_id.expected_active_key_id, "key-1")
+
+    async def test_create_route_forwards_cas_only_when_field_is_explicit(self) -> None:
+        created = agent_key_service.CreatedAgentApiKey(
+            plaintext_key="rfag_created-secret",
+            read=agent_router.AgentApiKeyRead(
+                id="key-new",
+                name="Agent",
+                key_prefix="rfag_create",
+                created_at=datetime(2026, 5, 6, tzinfo=timezone.utc),
+            ),
+        )
+        create = AsyncMock(return_value=created)
+        with patch.object(agent_router, "create_agent_api_key", create):
+            await agent_router.create_agent_key(
+                agent_router.AgentApiKeyCreate(name="Agent", rotate=True),
+                session=SimpleNamespace(),
+                current_user=SimpleNamespace(id="user-1"),
+            )
+            await agent_router.create_agent_key(
+                agent_router.AgentApiKeyCreate(
+                    name="Agent",
+                    rotate=True,
+                    expected_active_key_id=None,
+                ),
+                session=SimpleNamespace(),
+                current_user=SimpleNamespace(id="user-1"),
+            )
+
+        legacy_call, cas_call = create.await_args_list
+        self.assertFalse(legacy_call.kwargs["enforce_expected_active_key"])
+        self.assertIsNone(legacy_call.kwargs["expected_active_key_id"])
+        self.assertTrue(cas_call.kwargs["enforce_expected_active_key"])
+        self.assertIsNone(cas_call.kwargs["expected_active_key_id"])
+
+    async def test_create_key_stores_only_hash_and_returns_plaintext_once(self) -> None:
         session = _FakeSession([_ExecuteResult(all_values=[])])
 
         result = await agent_service.create_agent_api_key(
@@ -900,13 +1430,20 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored.user_id, "user-1")
         self.assertEqual(stored.key_prefix, result.read.key_prefix)
         self.assertNotEqual(stored.key_hash, result.plaintext_key)
-        self.assertEqual(stored.key_plaintext, result.plaintext_key)
+        self.assertNotIn("key_plaintext", AgentApiKey.model_fields)
+        self.assertFalse(hasattr(stored, "key_plaintext"))
         self.assertEqual(result.read.key, result.plaintext_key)
+        response = agent_router.AgentApiKeyCreateResponse(
+            key=result.plaintext_key,
+            api_key=result.read,
+        ).model_dump()
+        self.assertEqual(response["key"], result.plaintext_key)
+        self.assertEqual(response["api_key"]["key"], result.plaintext_key)
         self.assertTrue(agent_service.verify_agent_api_key_hash(result.plaintext_key, stored.key_hash))
         session.commit.assert_awaited_once()
         session.refresh.assert_awaited_once_with(stored)
 
-    async def test_create_key_returns_existing_active_key_without_refresh(self) -> None:
+    async def test_create_key_requires_refresh_for_existing_active_key(self) -> None:
         record = SimpleNamespace(
             id="key-1",
             user_id="user-1",
@@ -920,10 +1457,10 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         session = _FakeSession([_ExecuteResult(all_values=[record])])
 
-        result = await agent_service.create_agent_api_key(session, "user-1", "Agent")
+        with self.assertRaises(HTTPException) as context:
+            await agent_service.create_agent_api_key(session, "user-1", "Agent")
 
-        self.assertEqual(result.plaintext_key, "rfag_abc-secret")
-        self.assertEqual(result.read.key, "rfag_abc-secret")
+        self.assertEqual(context.exception.status_code, 409)
         self.assertEqual(session.added, [])
         session.commit.assert_not_awaited()
 
@@ -949,7 +1486,7 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.added, [])
         session.commit.assert_not_awaited()
 
-    async def test_create_key_recovers_from_active_key_unique_conflict(self) -> None:
+    async def test_create_key_conflict_never_returns_concurrent_key(self) -> None:
         winning_record = SimpleNamespace(
             id="key-1",
             user_id="user-1",
@@ -969,10 +1506,11 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
             side_effect=IntegrityError("insert agent_api_keys", {}, Exception("duplicate active key"))
         )
 
-        result = await agent_service.create_agent_api_key(session, "user-1", "Agent")
+        with self.assertRaises(HTTPException) as context:
+            await agent_service.create_agent_api_key(session, "user-1", "Agent")
 
-        self.assertEqual(result.plaintext_key, "rfag_win-secret")
-        self.assertEqual(result.read.key, "rfag_win-secret")
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertNotIn("rfag_win-secret", str(context.exception.detail))
         session.rollback.assert_awaited_once()
 
     async def test_create_key_refresh_revokes_existing_and_creates_new_key(self) -> None:
@@ -992,14 +1530,145 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await agent_service.create_agent_api_key(session, "user-1", "Agent", rotate=True)
 
         self.assertIsNotNone(record.revoked_at)
-        self.assertIsNone(record.key_plaintext)
         self.assertEqual(len(session.added), 2)
         self.assertIs(session.added[0], record)
         self.assertNotEqual(result.plaintext_key, "rfag_old-secret")
-        self.assertEqual(session.added[1].key_plaintext, result.plaintext_key)
+        self.assertFalse(hasattr(session.added[1], "key_plaintext"))
+        self.assertEqual(result.read.key, result.plaintext_key)
         session.commit.assert_awaited_once()
 
-    async def test_list_keys_returns_current_users_stored_plaintext_key(self) -> None:
+    async def test_cas_rotate_rejects_stale_expected_active_key_before_revocation(self) -> None:
+        active = SimpleNamespace(
+            id="key-new",
+            user_id="user-1",
+            name="Agent",
+            key_prefix="rfag_new",
+            key_hash=agent_service.hash_agent_api_key("rfag_new-secret"),
+            created_at=datetime(2026, 5, 6, tzinfo=timezone.utc),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        session = _FakeSession([
+            _ExecuteResult(first="user-1"),
+            _ExecuteResult(all_values=[active]),
+        ])
+
+        with self.assertRaises(HTTPException) as context:
+            await agent_service.create_agent_api_key(
+                session,
+                "user-1",
+                "Agent",
+                rotate=True,
+                expected_active_key_id="key-old",
+                enforce_expected_active_key=True,
+            )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertEqual(
+            context.exception.detail,
+            agent_key_service.AGENT_API_KEY_ACTIVE_CHANGED_DETAIL,
+        )
+        self.assertIsNone(active.revoked_at)
+        self.assertEqual(session.added, [])
+        session.rollback.assert_awaited_once()
+        lock_statement = session.execute.await_args_list[0].args[0]
+        self.assertIsNotNone(lock_statement._for_update_arg)
+        self.assertNotIn("advisory", str(lock_statement).lower())
+        compiled_lock = str(
+            lock_statement.compile(dialect=postgresql.dialect())
+        ).upper()
+        self.assertIn("FOR NO KEY UPDATE", compiled_lock)
+        self.assertNotIn(" FOR UPDATE", compiled_lock)
+
+    async def test_concurrent_cas_rotates_from_same_old_key_only_once(self) -> None:
+        active = SimpleNamespace(
+            id="key-old",
+            user_id="user-1",
+            name="Agent",
+            key_prefix="rfag_old",
+            key_hash=agent_service.hash_agent_api_key("rfag_old-secret"),
+            created_at=datetime(2026, 5, 6, tzinfo=timezone.utc),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        shared = {"active": active}
+        user_lock = asyncio.Lock()
+
+        async def lock_user(session, _user_id):
+            await user_lock.acquire()
+            session.holds_user_lock = True
+
+        async def list_active(_session, _user_id):
+            return [shared["active"]] if shared["active"].revoked_at is None else []
+
+        def make_session():
+            session = _FakeSession()
+            session.holds_user_lock = False
+
+            async def commit():
+                created = next(
+                    (item for item in reversed(session.added) if isinstance(item, AgentApiKey)),
+                    None,
+                )
+                if created is not None:
+                    shared["active"] = created
+                await asyncio.sleep(0)
+                if session.holds_user_lock:
+                    session.holds_user_lock = False
+                    user_lock.release()
+
+            async def rollback():
+                if session.holds_user_lock:
+                    session.holds_user_lock = False
+                    user_lock.release()
+
+            session.commit = AsyncMock(side_effect=commit)
+            session.rollback = AsyncMock(side_effect=rollback)
+            return session
+
+        first_session = make_session()
+        second_session = make_session()
+        with (
+            patch.object(agent_key_service, "_lock_agent_api_key_user", side_effect=lock_user),
+            patch.object(agent_key_service, "_list_active_agent_api_keys", side_effect=list_active),
+            patch.object(
+                agent_key_service,
+                "_new_plaintext_key",
+                side_effect=("rfag_first-secret", "rfag_second-secret"),
+            ),
+        ):
+            results = await asyncio.gather(
+                agent_service.create_agent_api_key(
+                    first_session,
+                    "user-1",
+                    "Agent",
+                    rotate=True,
+                    expected_active_key_id="key-old",
+                    enforce_expected_active_key=True,
+                ),
+                agent_service.create_agent_api_key(
+                    second_session,
+                    "user-1",
+                    "Agent",
+                    rotate=True,
+                    expected_active_key_id="key-old",
+                    enforce_expected_active_key=True,
+                ),
+                return_exceptions=True,
+            )
+
+        successes = [result for result in results if not isinstance(result, Exception)]
+        conflicts = [result for result in results if isinstance(result, HTTPException)]
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0].status_code, 409)
+        self.assertEqual(
+            conflicts[0].detail,
+            agent_key_service.AGENT_API_KEY_ACTIVE_CHANGED_DETAIL,
+        )
+        self.assertNotEqual(str(shared["active"].id), "key-old")
+
+    async def test_list_keys_never_returns_active_legacy_plaintext_key(self) -> None:
         record = SimpleNamespace(
             id="key-1",
             name="Agent",
@@ -1013,7 +1682,7 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
 
         result = await agent_service.list_agent_api_keys(session, "user-1")
 
-        self.assertEqual(result[0].key, "rfag_abc-secret")
+        self.assertIsNone(result[0].key)
 
     async def test_list_keys_never_returns_revoked_plaintext_key(self) -> None:
         revoked_record = SimpleNamespace(
@@ -1190,18 +1859,16 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_verify_key_rejects_revoked_or_wrong_key(self) -> None:
         key = "rfag_test-secret"
-        revoked_record = SimpleNamespace(
-            user_id="user-1",
-            key_hash=agent_service.hash_agent_api_key(key),
-            revoked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
-            last_used_at=None,
-        )
-        session = _FakeSession([_ExecuteResult(first=revoked_record)])
+        session = _FakeSession([_ExecuteResult(all_values=[])])
 
         with self.assertRaises(HTTPException) as revoked_error:
             await agent_service.authenticate_agent_api_key(session, key)
 
         self.assertEqual(revoked_error.exception.status_code, 401)
+        self.assertIn(
+            "agent_api_keys.revoked_at IS NULL",
+            str(session.execute.await_args.args[0]),
+        )
 
         active_record = SimpleNamespace(
             user_id="user-1",
@@ -1209,12 +1876,63 @@ class AgentApiKeyServiceTests(unittest.IsolatedAsyncioTestCase):
             revoked_at=None,
             last_used_at=None,
         )
-        session = _FakeSession([_ExecuteResult(first=active_record)])
+        session = _FakeSession([_ExecuteResult(all_values=[active_record])])
 
         with self.assertRaises(HTTPException) as wrong_key_error:
             await agent_service.authenticate_agent_api_key(session, key)
 
         self.assertEqual(wrong_key_error.exception.status_code, 401)
+
+    async def test_verify_key_checks_every_active_prefix_collision_candidate(self) -> None:
+        key = "rfag_same-prefix-valid-secret"
+        collision = SimpleNamespace(
+            user_id="wrong-user",
+            key_hash=agent_service.hash_agent_api_key("rfag_same-prefix-other-secret"),
+            revoked_at=None,
+            last_used_at=None,
+        )
+        matching = SimpleNamespace(
+            user_id="right-user",
+            key_hash=agent_service.hash_agent_api_key(key),
+            revoked_at=None,
+            last_used_at=None,
+        )
+        session = _FakeSession([_ExecuteResult(all_values=[collision, matching])])
+
+        with patch.object(
+            agent_key_service,
+            "verify_agent_api_key_hash",
+            wraps=agent_key_service.verify_agent_api_key_hash,
+        ) as verify:
+            result = await agent_service.authenticate_agent_api_key(session, key)
+
+        self.assertEqual(result.id, "right-user")
+        self.assertEqual(verify.call_count, 2)
+        self.assertIsNotNone(matching.last_used_at)
+        session.commit.assert_awaited_once()
+
+    async def test_verify_key_rejects_ambiguous_duplicate_hashes(self) -> None:
+        key = "rfag_duplicate-secret"
+        duplicate_hash = agent_service.hash_agent_api_key(key)
+        first = SimpleNamespace(
+            user_id="first-user",
+            key_hash=duplicate_hash,
+            revoked_at=None,
+            last_used_at=None,
+        )
+        second = SimpleNamespace(
+            user_id="second-user",
+            key_hash=duplicate_hash,
+            revoked_at=None,
+            last_used_at=None,
+        )
+        session = _FakeSession([_ExecuteResult(all_values=[first, second])])
+
+        with self.assertRaises(HTTPException) as context:
+            await agent_service.authenticate_agent_api_key(session, key)
+
+        self.assertEqual(context.exception.status_code, 401)
+        session.commit.assert_not_awaited()
 
 
 class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
@@ -1249,6 +1967,116 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self) -> None:
         self.resume_evaluation_patcher.stop()
         self.final_jd_analysis_patcher.stop()
+
+    async def test_agent_pdf_download_reuses_agent_api_key_owner(self) -> None:
+        expected_response = SimpleNamespace(body=b"%PDF-agent")
+        renderer = AsyncMock(return_value=expected_response)
+
+        with patch.object(
+            agent_router,
+            "render_owned_snapshot_pdf_download_response",
+            renderer,
+        ), patch.object(
+            agent_router,
+            "get_agent_user",
+            AsyncMock(return_value=agent_router.AgentAuthenticatedUser(id="user-1")),
+        ):
+            result = await agent_router.download_agent_resume_pdf(
+                request=SimpleNamespace(
+                    query_params=SimpleNamespace(getlist=lambda _name: []),
+                ),
+                snapshot_id="snapshot-1",
+                token=None,
+                fileName=None,
+                file_name="agent-file.pdf",
+                authorization="Bearer agent-key",
+                session=SimpleNamespace(),
+            )
+
+        self.assertIs(result, expected_response)
+        self.assertEqual(renderer.await_args.args[0], "snapshot-1")
+        self.assertEqual(renderer.await_args.args[1], "user-1")
+        self.assertEqual(renderer.await_args.args[4], "agent-file.pdf")
+
+    def test_agent_pdf_download_openapi_reuses_export_filename_limits(self) -> None:
+        app = FastAPI()
+        app.include_router(agent_router.router)
+        parameters = app.openapi()["paths"][
+            "/agent/v1/exports/resume-pdf/{snapshot_id}"
+        ]["get"]["parameters"]
+        by_name = {item["name"]: item for item in parameters}
+
+        def string_schema(parameter_name):
+            return next(
+                schema
+                for schema in by_name[parameter_name]["schema"]["anyOf"]
+                if schema.get("type") == "string"
+            )
+
+        self.assertEqual(
+            string_schema("fileName")["maxLength"],
+            download_contract.MAX_EXPORT_FILE_NAME_CHARACTERS,
+        )
+        self.assertEqual(
+            string_schema("X-ResumeFlow-File-Name")["maxLength"],
+            download_contract.MAX_EXPORT_FILE_NAME_ENCODED_CHARACTERS,
+        )
+
+    async def test_agent_pdf_download_validates_filename_query_and_header_boundaries(self) -> None:
+        app = FastAPI()
+        app.include_router(agent_router.router)
+        app.dependency_overrides[agent_router.get_session] = lambda: object()
+        renderer = AsyncMock(return_value=agent_router.Response(content=b"%PDF-agent"))
+
+        with patch.object(
+            agent_router,
+            "render_legacy_snapshot_pdf_download_response",
+            renderer,
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+            ) as client:
+                accepted_query = await client.get(
+                    "/agent/v1/exports/resume-pdf/snapshot-1",
+                    params={
+                        "token": "legacy-token",
+                        "fileName": "q" * download_contract.MAX_EXPORT_FILE_NAME_CHARACTERS,
+                    },
+                )
+                rejected_query = await client.get(
+                    "/agent/v1/exports/resume-pdf/snapshot-1",
+                    params={
+                        "token": "legacy-token",
+                        "fileName": "q"
+                        * (download_contract.MAX_EXPORT_FILE_NAME_CHARACTERS + 1),
+                    },
+                )
+                accepted_header = await client.get(
+                    "/agent/v1/exports/resume-pdf/snapshot-1",
+                    params={"token": "legacy-token"},
+                    headers={
+                        "X-ResumeFlow-File-Name": "h"
+                        * download_contract.MAX_EXPORT_FILE_NAME_ENCODED_CHARACTERS,
+                    },
+                )
+                rejected_header = await client.get(
+                    "/agent/v1/exports/resume-pdf/snapshot-1",
+                    params={"token": "legacy-token"},
+                    headers={
+                        "X-ResumeFlow-File-Name": "h"
+                        * (
+                            download_contract.MAX_EXPORT_FILE_NAME_ENCODED_CHARACTERS
+                            + 1
+                        ),
+                    },
+                )
+
+        self.assertEqual(accepted_query.status_code, 200)
+        self.assertEqual(rejected_query.status_code, 422)
+        self.assertEqual(accepted_header.status_code, 200)
+        self.assertEqual(rejected_header.status_code, 422)
+        self.assertEqual(renderer.await_count, 2)
 
     async def test_initial_deep_analysis_uses_validated_snake_case_match_score(self) -> None:
         payload = agent_router.AgentJobRequest(
@@ -1451,7 +2279,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             suggested_folder_name="某科技_AI 产品实习_81",
         )
         pdf = agent_router.AgentResumePdf(
-            download_url="/exports/download/resume-pdf/export-1?token=abc",
+            download_url="/agent/v1/exports/resume-pdf/export-1",
             file_name="某科技_AI 产品实习_81.pdf",
         )
 
@@ -1459,11 +2287,24 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             response=analysis,
             raw_result={"experienceMatches": []},
         )
+        route_response = Response()
         with patch.object(agent_router, "build_agent_job_analysis_detail", AsyncMock(return_value=analysis_build)):
-            with patch.object(agent_router, "build_agent_resume_pdf", AsyncMock(return_value=pdf)):
+            with patch.object(
+                agent_router,
+                "build_agent_resume_pdf",
+                AsyncMock(return_value=pdf),
+            ) as build_pdf:
                 result = await agent_router.generate_agent_job_resume(
                     payload,
-                    request=SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                    request=SimpleNamespace(
+                        url=SimpleNamespace(scheme="http", netloc="testserver"),
+                        headers=SimpleNamespace(
+                            getlist=lambda name: ["authenticated-v2"]
+                            if name == "X-ResumeFlow-Export-Mode"
+                            else []
+                        ),
+                    ),
+                    response=route_response,
                     session=SimpleNamespace(),
                     agent_user=SimpleNamespace(id="user-1"),
                 )
@@ -1480,6 +2321,10 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.job_metadata.jd_match_percentage, 81)
         self.assertEqual(result.job_metadata.resume_quality_percentage, 91)
         self.assertEqual(result.job_metadata.score_version, "resume_flow_v1")
+        self.assertEqual(build_pdf.await_args.kwargs["export_mode"], "authenticated-v2")
+        self.assertEqual(route_response.headers["cache-control"], "no-store")
+        self.assertEqual(route_response.headers["pragma"], "no-cache")
+        self.assertEqual(route_response.headers["referrer-policy"], "no-referrer")
 
     async def test_generate_endpoint_maps_pdf_render_errors(self) -> None:
         payload = agent_router.AgentJobGenerateRequest(
@@ -1523,6 +2368,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                                 await agent_router.generate_agent_job_resume(
                                     payload,
                                     request=SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                    response=Response(),
                                     session=SimpleNamespace(),
                                     agent_user=SimpleNamespace(id="user-1"),
                                 )
@@ -1565,6 +2411,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                     await agent_router.generate_agent_job_resume(
                         payload,
                         request=SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                        response=Response(),
                         session=SimpleNamespace(),
                         agent_user=SimpleNamespace(id="user-1"),
                     )
@@ -1854,6 +2701,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(persist.await_args.kwargs["analysis"], analysis)
         self.assertTrue(persist.await_args.kwargs["include_resume_evaluation"])
         self.assertTrue(persist.await_args.kwargs["evaluation_signature"])
+        self.assertFalse(persist.await_args.kwargs["commit"])
         self.assertEqual(pdf.file_name, "84_示例公司_产品实习.pdf")
 
     async def test_agent_analysis_uses_selected_resume_items(self) -> None:
@@ -2187,6 +3035,37 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "定制摘要")
         self.assertEqual(mocked.await_args.kwargs["polish_level"], "强匹配")
 
+    async def test_personal_summary_propagates_terminal_ai_runtime_errors(self) -> None:
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        bank = {"profile": None, "experiences": [], "certifications": [], "skills": []}
+        options = agent_service.AgentGenerateOptions(
+            template_id="modern-slate",
+            polish_before_output=True,
+            polish_level="适度润色",
+            force_one_page=True,
+        )
+
+        for runtime_error in (AiRuntimeTimeoutError, AiRuntimeBudgetExceeded):
+            with self.subTest(runtime_error=runtime_error.__name__):
+                with patch.object(
+                    agent_service,
+                    "generate_personal_summary",
+                    AsyncMock(
+                        side_effect=runtime_error(runtime_error.public_message)
+                    ),
+                ):
+                    with self.assertRaises(runtime_error):
+                        await agent_service._build_personal_summary(
+                            bank,
+                            payload,
+                            options,
+                        )
+
     async def test_star_polish_maps_strong_match_level_to_ai_mode(self) -> None:
         payload = agent_router.AgentJobGenerateRequest(
             job_title="前端实习",
@@ -2243,6 +3122,325 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             await agent_service._polish_snapshot_experiences(snapshot, payload, options)
 
         self.assertEqual(mocked.await_args.kwargs["mode"], "strong_match")
+
+    async def test_star_polish_stops_after_first_terminal_ai_runtime_error(self) -> None:
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        options = agent_service.AgentGenerateOptions(
+            template_id="modern-slate",
+            polish_before_output=True,
+            polish_level="适度润色",
+            force_one_page=True,
+        )
+
+        def snapshot_with_two_items():
+            return agent_service.ResumePdfRenderSnapshot(
+                resumeName="示例公司_前端实习_90",
+                profile=agent_service.ResumeEditorProfileSnapshot(name="张三"),
+                lineHeight=1.6,
+                fontSize=16,
+                listSpacingValue="1em",
+                bulletSpacingValue="1em",
+                topPaddingPx=75.59,
+                sectionSpacingClass="mb-6",
+                listSpacingClass="space-y-2",
+                sectionOrder=[],
+                selectedWorkItems=[
+                    agent_service.ResumeExperienceViewSnapshot(
+                        id=f"master-{index}",
+                        title=f"经历 {index}",
+                        company="示例公司",
+                        date="",
+                        star=agent_service.StarFields(s="背景", t="任务", a="行动", r="结果"),
+                        category="work",
+                    )
+                    for index in (1, 2)
+                ],
+                selectedProjectItems=[],
+                educations=[],
+            )
+
+        for runtime_error in (AiRuntimeTimeoutError, AiRuntimeBudgetExceeded):
+            with self.subTest(runtime_error=runtime_error.__name__):
+                polish_mock = AsyncMock(
+                    side_effect=runtime_error(runtime_error.public_message)
+                )
+                with patch.object(agent_service, "polish_experience", polish_mock):
+                    with self.assertRaises(runtime_error):
+                        await agent_service._polish_snapshot_experiences(
+                            snapshot_with_two_items(),
+                            payload,
+                            options,
+                        )
+                self.assertEqual(polish_mock.await_count, 1)
+
+    async def test_agent_ai_boundary_maps_terminal_runtime_errors_to_504_and_413(self) -> None:
+        payload = agent_router.AgentJobRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        expected_statuses = {
+            AiRuntimeTimeoutError: 504,
+            AiRuntimeBudgetExceeded: 413,
+        }
+        for runtime_error, expected_status in expected_statuses.items():
+            with self.subTest(runtime_error=runtime_error.__name__):
+                with patch.object(
+                    agent_router,
+                    "build_agent_job_analysis_detail",
+                    AsyncMock(
+                        side_effect=runtime_error(runtime_error.public_message)
+                    ),
+                ):
+                    with self.assertRaises(HTTPException) as context:
+                        await agent_router.build_agent_job_analysis_detail_or_raise(
+                            SimpleNamespace(),
+                            "user-1",
+                            payload,
+                        )
+                self.assertEqual(context.exception.status_code, expected_status)
+                self.assertEqual(
+                    context.exception.detail,
+                    runtime_error.public_message,
+                )
+
+    async def test_agent_pdf_pipeline_shares_one_deadline_across_summary_and_polish(self) -> None:
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_前端实习_90",
+        )
+        options = agent_service.AgentGenerateOptions(
+            template_id="modern-slate",
+            polish_before_output=True,
+            polish_level="适度润色",
+            force_one_page=False,
+        )
+        resume = SimpleNamespace(id="resume-1", config={})
+        bank = {"profile": None, "experiences": [], "certifications": [], "skills": []}
+        polish_started = asyncio.Event()
+        polish_cancelled = asyncio.Event()
+
+        async def _summary(*_args, **_kwargs):
+            await asyncio.sleep(0.01)
+            return "summary"
+
+        async def _blocked_polish(*_args, **_kwargs):
+            polish_started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                polish_cancelled.set()
+
+        with (
+            patch.object(
+                agent_service,
+                "resolve_agent_generate_options",
+                AsyncMock(return_value=options),
+            ),
+            patch.object(
+                agent_service,
+                "resolve_agent_resume_detail",
+                AsyncMock(return_value=(resume, [])),
+            ),
+            patch.object(
+                agent_service,
+                "_load_agent_bank",
+                AsyncMock(return_value=bank),
+            ),
+            patch.object(
+                agent_service,
+                "_load_resume_item_categories",
+                AsyncMock(return_value={}),
+            ),
+            patch.object(
+                agent_service,
+                "_build_personal_summary",
+                AsyncMock(side_effect=_summary),
+            ),
+            patch.object(
+                agent_service,
+                "_build_resume_pdf_snapshot",
+                return_value=SimpleNamespace(),
+            ),
+            patch.object(
+                agent_service,
+                "_polish_snapshot_experiences",
+                AsyncMock(side_effect=_blocked_polish),
+            ),
+            patch(
+                "app.domain.ai.runtime_budget.get_ai_runtime_budget",
+                return_value=AiRuntimeBudget(stream_total_timeout_seconds=0.04),
+            ),
+        ):
+            with self.assertRaises(AiRuntimeTimeoutError):
+                await agent_service.build_agent_resume_pdf(
+                    SimpleNamespace(),
+                    SimpleNamespace(),
+                    "user-1",
+                    payload,
+                    analysis,
+                )
+
+        self.assertTrue(polish_started.is_set())
+        self.assertTrue(polish_cancelled.is_set())
+
+    async def test_agent_analysis_shares_deadline_across_match_and_evaluation(self) -> None:
+        payload = agent_router.AgentJobRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+            include_resume_evaluation=True,
+        )
+        evaluation_started = asyncio.Event()
+        evaluation_cancelled = asyncio.Event()
+
+        async def _match(*_args, **_kwargs):
+            return {"matchPercentage": 90}
+
+        async def _evaluation(*_args, **_kwargs):
+            evaluation_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                evaluation_cancelled.set()
+
+        with (
+            patch.object(
+                agent_service,
+                "resolve_agent_resume_detail",
+                AsyncMock(return_value=(SimpleNamespace(id="resume-1"), [])),
+            ),
+            patch.object(
+                agent_service,
+                "_load_agent_bank",
+                AsyncMock(return_value={}),
+            ),
+            patch.object(
+                agent_service,
+                "_load_resume_item_categories",
+                AsyncMock(return_value={}),
+            ),
+            patch.object(
+                agent_service,
+                "build_resume_analysis_text",
+                AsyncMock(return_value="resume text"),
+            ),
+            patch.object(agent_service, "analyze_jd", side_effect=_match),
+            patch.object(
+                agent_service,
+                "analyze_resume_evaluation",
+                side_effect=_evaluation,
+            ),
+            patch(
+                "app.domain.ai.runtime_budget.get_ai_runtime_budget",
+                return_value=AiRuntimeBudget(stream_total_timeout_seconds=0.5),
+            ),
+        ):
+            analysis_task = asyncio.create_task(
+                agent_service.build_agent_job_analysis_detail(
+                    SimpleNamespace(),
+                    "user-1",
+                    payload,
+                )
+            )
+            await asyncio.wait_for(evaluation_started.wait(), timeout=2)
+            with self.assertRaises(AiRuntimeTimeoutError):
+                await analysis_task
+
+        self.assertTrue(evaluation_cancelled.is_set())
+
+    async def test_agent_generate_route_shares_deadline_across_analysis_and_pdf(self) -> None:
+        payload = agent_router.AgentJobGenerateRequest(
+            job_title="前端实习",
+            company_name="示例公司",
+            jd_text="React TypeScript",
+            job_url="https://example.com/jobs/1",
+        )
+        analysis = agent_router.AgentJobAnalysisResponse(
+            match_percentage=90,
+            evaluation="匹配",
+            strengths=[],
+            gaps=[],
+            missing_keywords=[],
+            recommendation="generate",
+            suggested_folder_name="示例公司_前端实习_90",
+        )
+        analysis_build = agent_service.AgentJobAnalysisBuild(
+            response=analysis,
+            raw_result={"matchPercentage": 90},
+        )
+        pdf_started = asyncio.Event()
+        pdf_cancelled = asyncio.Event()
+
+        async def _analysis(*_args, **_kwargs):
+            await run_with_total_timeout(asyncio.sleep(0.05))
+            return analysis_build
+
+        async def _pdf(*_args, **_kwargs):
+            pdf_started.set()
+            try:
+                await run_with_total_timeout(asyncio.sleep(0.3))
+            finally:
+                pdf_cancelled.set()
+
+        app = FastAPI()
+        app.include_router(agent_router.router)
+        app.dependency_overrides[agent_router.get_session] = lambda: object()
+        app.dependency_overrides[agent_router.get_agent_user] = lambda: (
+            agent_router.AgentAuthenticatedUser(id="user-1")
+        )
+        with (
+            patch.object(
+                agent_router.billing_service,
+                "ai_billing_context",
+                return_value=_NoopAsyncContext(),
+            ),
+            patch.object(
+                agent_router.billing_service,
+                "ensure_current_quota",
+                AsyncMock(),
+            ),
+            patch.object(
+                agent_router,
+                "build_agent_job_analysis_detail_or_raise",
+                side_effect=_analysis,
+            ),
+            patch.object(agent_router, "build_agent_resume_pdf", side_effect=_pdf),
+            patch(
+                "app.domain.ai.runtime_budget.get_ai_runtime_budget",
+                return_value=AiRuntimeBudget(stream_total_timeout_seconds=0.2),
+            ),
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+                base_url="http://testserver",
+            ) as client:
+                response = await client.post(
+                    "/agent/v1/jobs/generate",
+                    json=payload.model_dump(mode="json"),
+                )
+
+        self.assertEqual(response.status_code, 504)
+        self.assertTrue(pdf_started.is_set())
+        self.assertTrue(pdf_cancelled.is_set())
 
     async def test_personal_summary_orders_selected_experiences_by_match_score(self) -> None:
         resume = SimpleNamespace(
@@ -3359,38 +4557,46 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
                         ) as mocked_snapshot:
                             with patch.object(
                                 agent_service,
-                                "render_resume_pdf",
-                                AsyncMock(return_value=b"%PDF-test"),
-                                create=True,
-                            ) as mocked_render:
+                                "delete_temporary_render_snapshot",
+                                AsyncMock(return_value=True),
+                            ) as mocked_delete:
                                 with patch.object(
                                     agent_service,
-                                    "_pdf_page_count",
-                                    side_effect=[2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1],
+                                    "render_resume_pdf",
+                                    AsyncMock(return_value=b"%PDF-test"),
                                     create=True,
-                                ):
+                                ) as mocked_render:
                                     with patch.object(
                                         agent_service,
-                                        "_persist_agent_generated_resume",
-                                        AsyncMock(return_value=SimpleNamespace(id="generated-resume-1", title="岗位简历")),
+                                        "_pdf_page_count",
+                                        side_effect=[2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1],
+                                        create=True,
                                     ):
-                                        result = await agent_service.build_agent_resume_pdf(
-                                            SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
-                                            SimpleNamespace(),
-                                            "user-1",
-                                            payload,
-                                            analysis,
-                                            analysis_result=analysis_result,
-                                        )
+                                        with patch.object(
+                                            agent_service,
+                                            "_persist_agent_generated_resume",
+                                            AsyncMock(return_value=SimpleNamespace(id="generated-resume-1", title="岗位简历")),
+                                        ):
+                                            result = await agent_service.build_agent_resume_pdf(
+                                                SimpleNamespace(url=SimpleNamespace(scheme="http", netloc="testserver")),
+                                                SimpleNamespace(),
+                                                "user-1",
+                                                payload,
+                                                analysis,
+                                                analysis_result=analysis_result,
+                                            )
 
         measured_snapshots = [call.args[2] for call in mocked_snapshot.await_args_list[:-1]]
         final_snapshot = mocked_snapshot.await_args_list[-1].args[2]
         self.assertEqual(mocked_render.await_count, 11)
+        self.assertEqual(mocked_delete.await_count, 11)
         self.assertEqual(len(measured_snapshots[0].selectedSkillGroups[0].skills), 1)
         self.assertEqual(measured_snapshots[2].selectedSkillGroups, [])
         self.assertEqual([item.id for item in measured_snapshots[4].sortedCertifications], [])
         self.assertEqual([item.id for item in final_snapshot.selectedWorkItems], ["master-1", "master-2"])
-        self.assertIn("/exports/download/resume-pdf/snapshot-11?", result.download_url)
+        self.assertIn("/agent/v1/exports/resume-pdf/snapshot-11", result.download_url)
+        self.assertIn("?token=token-11&fileName=", result.download_url)
+        self.assertIn(".pdf", result.download_url)
 
     async def test_agent_generation_polishes_selected_experience_content(self) -> None:
         resume = SimpleNamespace(
@@ -4287,6 +5493,11 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
 
     def test_agent_pdf_snapshot_uses_global_profile_avatar(self) -> None:
         resume = SimpleNamespace(id="resume-1", title="主简历", target_role="前端", config={})
+        avatar_data_url = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/"
+            "AAX+Av4N70a4AAAAAElFTkSuQmCC"
+        )
         profile = SimpleNamespace(
             full_name="张三",
             title="前端",
@@ -4295,7 +5506,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
             email="",
             phone="",
             social_links={},
-            extra_json={"avatar_data_url": "data:image/png;base64,avatar"},
+            extra_json={"avatar_data_url": avatar_data_url},
         )
         payload = agent_router.AgentJobGenerateRequest(
             job_title="前端实习",
@@ -4316,7 +5527,7 @@ class AgentJobEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         snapshot = agent_service._build_resume_pdf_snapshot(resume, bank, payload, analysis, "")
 
-        self.assertEqual(snapshot.profile.avatarDataUrl, "data:image/png;base64,avatar")
+        self.assertEqual(snapshot.profile.avatarDataUrl, avatar_data_url)
 
     def test_agent_pdf_snapshot_preserves_empty_local_profile_overrides(self) -> None:
         resume = SimpleNamespace(

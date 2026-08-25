@@ -20,11 +20,14 @@ test('profile save persists target_role and updates editor and Dashboard resume 
   const editor = read('views/ResumeEditor/index.tsx');
   const dashboardSync = read('views/ResumeEditor/hooks/useDashboardResumeSync.ts');
 
-  assert.match(actions, /resumeService\.update\(resumeId, \{\s*target_role: normalizedTargetRole/);
-  assert.match(actions, /else \{\s*await flushResumeConfig\(\);\s*\}/);
+  assert.match(actions, /resumeService\.update\(\s*resumeId,\s*\{ target_role: normalizedTargetRole \},\s*\{ expectedAuthCacheKey: operation\.expectedAuthCacheKey \}/);
+  assert.match(actions, /else \{\s*await flushResumeConfig\(\);\s*await ownerGuard\.assertOperationCurrent\(operation\);\s*\}/);
   assert.match(actions, /applyResumeDetail\(/);
   assert.match(actions, /updateDashboardCache\(updatedResume\)/);
-  assert.match(dashboardSync, /replaceDashboardResumeFromServer\(cachedResumes, updated\)/);
+  assert.match(
+    dashboardSync,
+    /replaceDashboardResumeFromServer\(cachedResumes, updated, authUserKey\)/,
+  );
   assert.match(editor, /targetRole,\s*setTargetRole/);
   assert.match(editor, /updateDashboardCache,\s*flushResumeConfig,/);
   assert.match(editor, /profileTabProps: \{[\s\S]*?targetRole,[\s\S]*?setTargetRole/);
@@ -32,7 +35,7 @@ test('profile save persists target_role and updates editor and Dashboard resume 
   const saveAction = actions.slice(actions.indexOf('const handleSaveProfile'));
   const globalProfileSaveIndex = saveAction.indexOf('profileService.updateProfile');
   const versionDrainIndex = saveAction.indexOf('await waitForResumeMutations(resumeId)');
-  const versionRefreshIndex = saveAction.indexOf('await resumeService.get(resumeId)');
+  const versionRefreshIndex = saveAction.indexOf('await resumeService.get(resumeId, {');
   const configSaveIndex = saveAction.indexOf('await flushResumeConfig()');
   assert.ok(
     globalProfileSaveIndex >= 0
@@ -44,14 +47,14 @@ test('profile save persists target_role and updates editor and Dashboard resume 
     actions,
     /profileSyncMode === PROFILE_SYNC_MODES\.global\s*&& originalProfileSyncMode === PROFILE_SYNC_MODES\.global\s*&& resumeId/
   );
-  assert.match(actions, /latestResumeDetail = await resumeService\.get\(resumeId\);\s*applyResumeDetail\(latestResumeDetail\);/);
+  assert.match(actions, /latestResumeDetail = await resumeService\.get\(resumeId, \{[\s\S]*expectedAuthCacheKey[\s\S]*await ownerGuard\.assertOperationCurrent\(operation\);\s*applyResumeDetail\(latestResumeDetail\);/);
   assert.ok(
     versionRefreshIndex < configSaveIndex,
     'local and sync-mode transition saves should use the config flush fallback branch'
   );
   assert.ok(
-    versionRefreshIndex < saveAction.indexOf('resumeService.update(resumeId')
-      && configSaveIndex < saveAction.indexOf('resumeService.update(resumeId'),
+    versionRefreshIndex < saveAction.indexOf('resumeService.update(\n                    resumeId')
+      && configSaveIndex < saveAction.indexOf('resumeService.update(\n                    resumeId'),
     'both resume preparation branches should finish before target_role persistence can conflict'
   );
   assert.match(actions, /个人信息已保存，但简历同步设置保存失败/);

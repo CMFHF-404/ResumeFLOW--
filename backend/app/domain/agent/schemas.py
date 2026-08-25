@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+
+from ..ai.runtime_budget import validate_ai_text_field
 
 
 DEFAULT_AGENT_TEMPLATE_ID = "modern-slate"
@@ -27,13 +29,26 @@ class AgentPluginConfigUpdate(BaseModel):
 class AgentApiKeyCreate(BaseModel):
     name: str = Field(default="Agent", min_length=1, max_length=80)
     rotate: bool = False
+    expected_active_key_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Optimistic active-key precondition. Omit for legacy behavior; send "
+            "null to require no active key or an id to require that exact active key."
+        ),
+    )
 
 
 class AgentApiKeyRead(BaseModel):
     id: str
     name: str
     key_prefix: str
-    key: Optional[str] = None
+    # Deprecated compatibility field. It is populated only in the nested key
+    # record of the create response; list/read responses always return null.
+    key: Optional[str] = Field(
+        default=None,
+        description="One-time create secret; null in list/read responses.",
+    )
     created_at: datetime
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
@@ -94,6 +109,12 @@ class AgentJobRequest(BaseModel):
     source: Optional[str] = Field(default=None, max_length=80)
     resume_id: Optional[str] = None
     include_resume_evaluation: bool = False
+
+    @field_validator("jd_text")
+    @classmethod
+    def _validate_jd_text_budget(cls, value: str) -> str:
+        validated = validate_ai_text_field(value, "jd_text")
+        return validated or ""
 
 
 class AgentJobGenerateRequest(AgentJobRequest):

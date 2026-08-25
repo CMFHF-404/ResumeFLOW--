@@ -37,8 +37,9 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(editor, /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{/);
   assert.match(editor, /setIsJDAnalysisDetailsSidebarOpen\(true\)/);
   const openDetailsHandler = editor.match(
-    /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[analysisResult\]\);/
+    /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[analysisResult, captureMobileAnalysisReturnFocus\]\);/
   )?.[0] ?? '';
+  assert.match(openDetailsHandler, /captureMobileAnalysisReturnFocus\(\)/);
   assert.doesNotMatch(openDetailsHandler, /setIsAssistantSidebarOpen\(false\)/);
   assert.doesNotMatch(editor, /handleReturnToAssistantSidebar/);
   const closeDetailsHandler = editor.match(
@@ -120,6 +121,7 @@ test('analysis details hide every JD-specific section when the live JD context i
 test('mobile editor exposes the shared report in a full-height dialog and uses JD-match percentage units', () => {
   const editor = read('views/ResumeEditor/index.tsx');
   const mobile = read('views/ResumeEditor/components/MobileEditorHeader.tsx');
+  const dialogHook = read('views/ResumeEditor/hooks/useMobileJDAnalysisDialog.ts');
 
   assert.match(mobile, /onOpenAnalysisDetails\?: \(\) => void/);
   assert.match(mobile, /JD 匹配/);
@@ -130,22 +132,27 @@ test('mobile editor exposes the shared report in a full-height dialog and uses J
   assert.match(editor, /role="dialog"/);
   assert.match(editor, /aria-label="分析报告"/);
   assert.match(editor, /ref=\{mobileAnalysisDialogRef\}/);
-  assert.match(editor, /const MOBILE_ANALYSIS_MEDIA_QUERY = '\(max-width: 767px\)'/);
-  assert.match(editor, /mediaQuery\.addEventListener\('change', syncViewport\)/);
-  assert.match(editor, /mediaQuery\.removeEventListener\('change', syncViewport\)/);
-  assert.match(editor, /!isMobileAnalysisViewport/);
+  assert.match(editor, /import \{ useMobileJDAnalysisDialog \} from '\.\/hooks\/useMobileJDAnalysisDialog'/);
+  assert.match(editor, /useMobileJDAnalysisDialog\(\{[\s\S]*isOpen: isJDAnalysisDetailsSidebarOpen,[\s\S]*onClose: handleCloseJDAnalysisDetailsSidebar,/);
+  assert.match(editor, /captureReturnFocus: captureMobileAnalysisReturnFocus/);
   assert.match(editor, /jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport \? \(/);
-  assert.match(editor, /event\.key === 'Escape'/);
-  assert.match(editor, /element\.inert = true/);
-  assert.match(editor, /document\.body\.style\.overflow = 'hidden'/);
-  assert.match(editor, /returnFocusElement\.focus\(\)/);
-  assert.match(editor, /returnFocusElement\.getClientRects\(\)\.length > 0/);
   assert.match(editor, /h-\[calc\(100dvh-2rem\)\]/);
   assert.match(editor, /md:hidden/);
   assert.match(editor, /onOpenAnalysisDetails=\{analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
+  assert.doesNotMatch(editor, /document\.body\.style\.overflow = 'hidden'/);
+
+  assert.match(dialogHook, /export const MOBILE_ANALYSIS_MEDIA_QUERY = '\(max-width: 767px\)'/);
+  assert.match(dialogHook, /mediaQuery\.addEventListener\('change', syncViewport\)/);
+  assert.match(dialogHook, /mediaQuery\.removeEventListener\('change', syncViewport\)/);
+  assert.match(dialogHook, /!isOpen \|\| !isMobileAnalysisViewport/);
+  assert.match(dialogHook, /event\.key === 'Escape'/);
+  assert.match(dialogHook, /element\.inert = true/);
+  assert.match(dialogHook, /document\.body\.style\.overflow = 'hidden'/);
+  assert.match(dialogHook, /returnFocusElement\.focus\(\)/);
+  assert.match(dialogHook, /returnFocusElement\.getClientRects\(\)\.length > 0/);
 });
 
-test('JD analysis panel uses supported Tailwind CDN utilities', () => {
+test('JD analysis panel uses supported compiled Tailwind utilities', () => {
   const panel = read('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const unsupportedUtilityClasses = [
     'text-red-650',

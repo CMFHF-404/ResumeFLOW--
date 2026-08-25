@@ -3,7 +3,7 @@ import type { ResumeJDAnalysis } from '../types/resume';
 import {
     buildJDAnalysisPersistenceFingerprint,
     type JDAnalysisCacheRecord,
-} from '../views/jdAnalysisStorage';
+} from '../services/jdAnalysisStorage';
 
 type ResumeSaveResultMergeOptions = {
     savedConfigSignature: string;

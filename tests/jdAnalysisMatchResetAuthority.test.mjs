@@ -73,7 +73,7 @@ test('all four full-reset triggers delegate to resetAllMatchState', () => {
   );
   assert.match(
     source,
-    /useEffect\(\(\) => \{\s*if \(!resumeId\) \{\s*return;\s*\}[\s\S]*?resetJDAnalysisState\(\{[\s\S]*?resetPersistedJDAnalysis: true,[\s\S]*?\}, \[resetJDAnalysisState, resumeId\]\);/,
+    /useEffect\(\(\) => \{\s*if \(isAnalysisStateCurrent\) \{\s*return;\s*\}[\s\S]*?invalidateAnalysisRun\(\);[\s\S]*?resetJDAnalysisState\(\{[\s\S]*?resetPersistedJDAnalysis: true,[\s\S]*?setAnalysisStateIdentity\(analysisIdentity\);/,
   );
   assert.match(
     updateAnalysis,

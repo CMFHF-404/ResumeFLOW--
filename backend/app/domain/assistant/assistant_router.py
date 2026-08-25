@@ -5,7 +5,7 @@ import re
 from typing import Any, Dict
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlmodel import select
@@ -18,6 +18,13 @@ from ...models import AIAssistantImageBlob
 from ...utils.ndjson import ndjson_line as _ndjson_line
 from ..billing import billing_service
 from ..ai import jd_attachment_service
+from ..ai.runtime_budget import (
+    BoundedAiRequestBodyRoute,
+    build_public_stream_error_event,
+    create_bounded_event_queue,
+    finish_event_queue,
+    new_ai_request_id,
+)
 from ..ai.ai_service import (
     _normalize_selected_experiences,
     _normalize_selected_resume,
@@ -47,15 +54,24 @@ from .assistant_context_service import (
 )
 from .assistant_service import (
     InvalidMessageError,
+    MAX_ASSISTANT_DETAIL_MESSAGES,
+    _encode_session_cursor,
     NotFoundError,
     create_session,
     delete_session,
-    get_session_detail,
+    get_session_detail_page,
     get_session as get_assistant_session,
     list_sessions,
+    list_turn_history,
     mark_message_applied,
     persist_assistant_turn,
     update_session,
+)
+from .assistant_storage import (
+    AssistantStorageQuotaExceeded,
+    MAX_ASSISTANT_ATTACHMENT_BYTES,
+    MAX_ASSISTANT_FILES_PER_TURN,
+    MAX_USER_ASSISTANT_SESSIONS,
 )
 from .schemas import (
     AssistantMessageApplyRead,
@@ -67,11 +83,53 @@ from .schemas import (
     AssistantSessionUpdate,
 )
 
-router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+router = APIRouter(
+    prefix="/api/assistant",
+    tags=["assistant"],
+    route_class=BoundedAiRequestBodyRoute,
+)
 logger = logging.getLogger("uvicorn.error")
-MAX_ASSISTANT_ATTACHMENT_BYTES = 5 * 1024 * 1024
 MAX_ASSISTANT_ATTACHMENT_TEXT_CHARS = 12_000
 MAX_ASSISTANT_ATTACHMENT_EXCERPT_CHARS = 1_200
+
+
+def _assistant_stream_error_event(
+    exc: Exception,
+    *,
+    preserve_value_error: bool = False,
+) -> Dict[str, Any]:
+    request_id = new_ai_request_id()
+    known_exceptions = (
+        NotFoundError,
+        InvalidMessageError,
+        ExperienceNotFoundError,
+        AssistantStorageQuotaExceeded,
+    )
+    if preserve_value_error:
+        known_exceptions = (*known_exceptions, ValueError)
+    if isinstance(exc, known_exceptions):
+        logger.warning(
+            "Assistant stream failed request_id=%s error_type=%s",
+            request_id,
+            type(exc).__name__,
+        )
+    else:
+        logger.error(
+            "Assistant stream crashed request_id=%s error_type=%s",
+            request_id,
+            type(exc).__name__,
+        )
+    event = build_public_stream_error_event(
+        exc,
+        request_id=request_id,
+        preserve_value_error=preserve_value_error,
+        preserve_exceptions=known_exceptions,
+    )
+    if isinstance(exc, AssistantStorageQuotaExceeded):
+        event["code"] = "assistant_storage_quota_exceeded"
+    return event
+
+
 def _to_session_read(session) -> AssistantSessionRead:
     return AssistantSessionRead(
         id=str(session.id),
@@ -269,13 +327,28 @@ async def _parse_stream_payload(
     attachment_files: list[UploadFile] = []
 
     if "multipart/form-data" in content_type:
-        form = await request.form()
+        form = await request.form(
+            max_files=MAX_ASSISTANT_FILES_PER_TURN + 1,
+            max_fields=1_000,
+            max_part_size=MAX_ASSISTANT_ATTACHMENT_BYTES,
+        )
         raw_candidates = []
         if hasattr(form, "getlist"):
             raw_candidates.extend(form.getlist("files"))
         if not raw_candidates:
             raw_candidates.append(form.get("file"))
-        for candidate in raw_candidates:
+        file_candidates = [
+            candidate
+            for candidate in raw_candidates
+            if getattr(candidate, "filename", None)
+            and hasattr(candidate, "read")
+        ]
+        if len(file_candidates) > MAX_ASSISTANT_FILES_PER_TURN:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"每次最多上传 {MAX_ASSISTANT_FILES_PER_TURN} 个附件。",
+            )
+        for candidate in file_candidates:
             if isinstance(candidate, UploadFile) and candidate.filename:
                 attachment_files.append(candidate)
             elif hasattr(candidate, "filename") and hasattr(candidate, "read") and getattr(candidate, "filename", None):
@@ -331,27 +404,6 @@ async def _parse_stream_payload(
     ):
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="请输入消息、选择简历或上传附件后再发送。")
     return payload, attachment_files
-
-
-async def _persist_image_blob(
-    session: AsyncSession,
-    *,
-    session_id: UUID,
-    mime_type: str,
-    image_b64: str,
-) -> str:
-    cleaned_payload = image_b64.strip()
-    if not cleaned_payload:
-        return ""
-
-    blob = AIAssistantImageBlob(
-        session_id=session_id,
-        mime_type=mime_type.strip(),
-        payload_base64=cleaned_payload,
-    )
-    session.add(blob)
-    await session.flush()
-    return str(blob.id)
 
 
 def _build_history_messages(messages: list) -> list[Dict[str, Any]]:
@@ -435,14 +487,7 @@ async def _build_attachment_payload(
         prompt_payload["mimeType"] = attachment.mime_type or (file.content_type or "")
         prompt_payload["imageB64"] = image_b64
         persisted_payload["mimeType"] = prompt_payload["mimeType"]
-        blob_id = await _persist_image_blob(
-            session,
-            session_id=assistant_session_id,
-            mime_type=prompt_payload["mimeType"],
-            image_b64=image_b64,
-        )
-        if blob_id:
-            persisted_payload["imageBlobId"] = blob_id
+        persisted_payload["imageB64"] = image_b64
         return prompt_payload, persisted_payload
 
     full_text_content = (attachment.text or "").strip()
@@ -506,11 +551,40 @@ async def _prepare_attachment_result(file: UploadFile) -> Any:
 
 @router.get("/sessions", response_model=list[AssistantSessionRead])
 async def list_assistant_sessions(
+    response: Response,
+    limit: int = Query(
+        default=MAX_USER_ASSISTANT_SESSIONS,
+        ge=1,
+        le=MAX_USER_ASSISTANT_SESSIONS,
+    ),
+    before: str | None = Query(default=None, max_length=512),
     session: AsyncSession = Depends(get_db_session),
     current_user=Depends(get_current_user),
 ):
-    rows = await list_sessions(session, current_user.id)
-    return [_to_session_read(row) for row in rows]
+    try:
+        rows = await list_sessions(
+            session,
+            current_user.id,
+            limit=limit + 1,
+            before_cursor=before,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="会话分页游标无效。",
+        ) from exc
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+    response.headers["X-Assistant-Sessions-Truncated"] = (
+        "true" if has_more else "false"
+    )
+    if has_more and page_rows:
+        next_cursor = _encode_session_cursor(page_rows[-1])
+        response.headers["X-Assistant-Sessions-Next-Cursor"] = next_cursor
+        response.headers["Link"] = (
+            f'</api/assistant/sessions?limit={limit}&before={next_cursor}>; rel="next"'
+        )
+    return [_to_session_read(row) for row in page_rows]
 
 
 @router.post("/sessions", response_model=AssistantSessionRead)
@@ -526,20 +600,36 @@ async def create_assistant_session(
 @router.get("/sessions/{session_id}", response_model=AssistantSessionDetail)
 async def get_assistant_session_detail(
     session_id: UUID,
+    limit: int = Query(
+        default=MAX_ASSISTANT_DETAIL_MESSAGES,
+        ge=1,
+        le=MAX_ASSISTANT_DETAIL_MESSAGES,
+    ),
+    before: str | None = Query(default=None, max_length=512),
     session: AsyncSession = Depends(get_db_session),
     current_user=Depends(get_current_user),
 ):
     try:
-        assistant_session, messages = await get_session_detail(
+        page = await get_session_detail_page(
             session,
             current_user.id,
             session_id,
+            limit=limit,
+            before_cursor=before,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="消息分页游标无效。",
+        ) from exc
     return AssistantSessionDetail(
-        session=_to_session_read(assistant_session),
-        messages=[_to_message_read(message) for message in messages],
+        session=_to_session_read(page.assistant_session),
+        messages=[_to_message_read(message) for message in page.messages],
+        truncated=page.truncated,
+        next_cursor=page.next_cursor,
+        storage_projection_truncated=page.storage_projection_truncated,
     )
 
 
@@ -615,6 +705,8 @@ async def mark_assistant_message_applied(
             exc,
         )
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except AssistantStorageQuotaExceeded:
+        raise
     except Exception as exc:
         logger.exception(
             "Assistant draft apply crashed: user_id=%s session_id=%s message_id=%s skip_apply=%s",
@@ -659,7 +751,7 @@ async def stream_assistant_session_turn(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
         assistant_thinking_summaries: list[str] = []
 
         def record_assistant_thinking(event: Dict[str, Any]) -> None:
@@ -694,7 +786,11 @@ async def stream_assistant_session_turn(
                     release_request_lease_on_exit=False,
                 ):
                     assistant_session = await get_assistant_session(session, current_user.id, session_id)
-                    messages = (await get_session_detail(session, current_user.id, session_id))[1]
+                    messages = await list_turn_history(
+                        session,
+                        assistant_session_id=assistant_session.id,
+                        user_message=payload.user_message,
+                    )
                     attachment_payloads: list[Dict[str, Any]] = []
                     persisted_attachments: list[Dict[str, Any]] = []
                     prepared_attachments: list[Any] = []
@@ -775,11 +871,18 @@ async def stream_assistant_session_turn(
                 await emit({"type": "progress", "node": "persist_result", "title": "保存会话记录"})
                 await emit({"type": "final", "result": result})
             except NotFoundError as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_assistant_stream_error_event(exc))
+            except ValueError as exc:
+                await emit(
+                    _assistant_stream_error_event(
+                        exc,
+                        preserve_value_error=True,
+                    )
+                )
             except Exception as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_assistant_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_turn())
         try:

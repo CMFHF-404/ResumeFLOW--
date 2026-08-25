@@ -1,11 +1,8 @@
 import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLogto } from '@logto/react';
 import AuthGuard from './components/AuthGuard';
-import FeedbackModal from './components/FeedbackModal';
-import AgentApiPluginConfigModal from './components/AgentApiPluginConfigModal';
 import GlobalSidebar from './components/GlobalSidebar';
 import QuotaPurchasePrompt from './components/QuotaPurchasePrompt';
-import TokenQuotaModal from './components/TokenQuotaModal';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest, AssistantOpenSessionRequest } from './views/AIAssistant/types';
 import Callback from './views/Callback';
@@ -18,7 +15,7 @@ import {
   trackPageView,
 } from './utils/analyticsTracker';
 import { resumeService, type Resume as ResumeRecord } from './services/resumeService';
-import { profileService } from './services/profileService';
+import { profileService, type Profile } from './services/profileService';
 import { experienceService } from './services/experienceService';
 import { billingService, type TokenQuotaSummary } from './services/billingService';
 import {
@@ -27,20 +24,47 @@ import {
 } from './services/quotaPurchasePrompt';
 import type { AssistantDraftApplyNavigation } from './services/aiService';
 import { devLog } from './services/devLogger';
-import { clearActiveResumeId, setActiveResumeId } from './views/resumeStorage';
+import {
+  clearActiveResumeId,
+  clearLegacyActiveResumeId,
+  setActiveResumeId,
+} from './services/resumeStorage';
 import {
   readStoredAuthUserKey,
   useAuthUserKey,
   writeStoredAuthUserKey,
 } from './hooks/useAuthUserKey';
 import { replaceDashboardResumeFromServer } from './utils/dashboardResumeMapper';
+import {
+  clearJDAnalysisCachesForOwner,
+  clearLegacyJDAnalysisCaches,
+} from './services/jdAnalysisStorage';
+import {
+  clearLegacyAssistantManualSaveDrafts,
+  clearPendingAssistantManualSaveDraftsForOwner,
+} from './views/assistantManualSaveStorage';
+import {
+  bindOwnerScopedValue,
+  readOwnerScopedValue,
+  type OwnerScopedValue,
+} from './utils/ownerScopedValue';
+import { readAuthSessionSnapshot } from './services/authTokenProvider';
 
 const VIEW_STORAGE_KEY = 'yuanzijianli.currentView';
+
+const clearOwnerScopedSensitiveLocalState = (ownerKey: string | null | undefined) => {
+  clearActiveResumeId(ownerKey);
+  clearJDAnalysisCachesForOwner(ownerKey);
+  clearPendingAssistantManualSaveDraftsForOwner(ownerKey);
+};
 
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const ExperienceBank = lazy(() => import('./views/ExperienceBank'));
 const ResumeEditor = lazy(() => import('./views/ResumeEditor'));
 const AIAssistant = lazy(() => import('./views/AIAssistant'));
+const FeedbackModal = lazy(() => import('./components/FeedbackModal'));
+const AgentApiPluginConfigModal = lazy(() => import('./components/AgentApiPluginConfigModal'));
+const TokenQuotaModal = lazy(() => import('./components/TokenQuotaModal'));
 
 type ExperienceFocusRequest = {
   requestId: number;
@@ -92,7 +116,7 @@ const App: React.FC = () => {
   const [cachedResumesOwnerKey, setCachedResumesOwnerKey] = useState<string | null>(null);
 
   // 经历库数据缓存，存储个人资料、工作经历、教育背景等
-  const [profileCache, setProfileCache] = useState<any>(null);
+  const [profileCache, setProfileCache] = useState<OwnerScopedValue<Profile> | null>(null);
 
   // 标记是否需要在ExperienceBank中自动打开简历上传弹窗
   const [shouldOpenResumeUpload, setShouldOpenResumeUpload] = useState(false);
@@ -101,7 +125,7 @@ const App: React.FC = () => {
   const [isTokenQuotaOpen, setIsTokenQuotaOpen] = useState(false);
   const [tokenQuotaInitialView, setTokenQuotaInitialView] = useState<'overview' | 'purchase'>('overview');
   const [tokenQuotaReturnFocusElement, setTokenQuotaReturnFocusElement] = useState<HTMLElement | null>(null);
-  const [quotaSummary, setQuotaSummary] = useState<TokenQuotaSummary | null>(null);
+  const [quotaSummaryCache, setQuotaSummaryCache] = useState<OwnerScopedValue<TokenQuotaSummary> | null>(null);
   const [quotaPurchasePromptMessage, setQuotaPurchasePromptMessage] = useState<string | null>(null);
   const [returnedPaymentOrderId, setReturnedPaymentOrderId] = useState<string | null>(() => {
     return new URLSearchParams(window.location.search).get('payment_order');
@@ -133,7 +157,6 @@ const App: React.FC = () => {
     profileService.clearProfileCache();
     experienceService.clearListCache();
     billingService.clearBillingCache();
-    clearActiveResumeId();
 
     setCachedResumes([]);
     setCachedResumesOwnerKey(null);
@@ -144,7 +167,7 @@ const App: React.FC = () => {
     setIsTokenQuotaOpen(false);
     setTokenQuotaInitialView('overview');
     setTokenQuotaReturnFocusElement(null);
-    setQuotaSummary(null);
+    setQuotaSummaryCache(null);
     setQuotaPurchasePromptMessage(null);
     setReturnedPaymentOrderId(null);
     setAssistantLaunchRequest(null);
@@ -229,7 +252,7 @@ const App: React.FC = () => {
 
   const handleJumpToResumeEditor = useCallback((resumeId?: string, targetId?: string) => {
     if (resumeId) {
-      setActiveResumeId(resumeId);
+      setActiveResumeId(authUserKey, resumeId);
     }
     if (targetId) {
       focusRequestIdRef.current += 1;
@@ -241,7 +264,7 @@ const App: React.FC = () => {
     setEditorMobileDrawerOpenRequest((current) => current + 1);
     setCurrentView(ViewState.EDITOR);
     localStorage.setItem(VIEW_STORAGE_KEY, ViewState.EDITOR);
-  }, []);
+  }, [authUserKey]);
 
   const handleJumpToExperienceBank = useCallback((category?: AssistantDraftApplyNavigation['category'], targetId?: string) => {
     experienceService.clearListCache();
@@ -286,6 +309,7 @@ const App: React.FC = () => {
         (storedKey && storedKey !== authUserKey) ||
         (previousKey && previousKey !== authUserKey);
       if (shouldReset) {
+        clearOwnerScopedSensitiveLocalState(previousKey ?? storedKey);
         authVisitAwaitingResetRef.current = true;
         resetUserScopedState();
       } else {
@@ -298,15 +322,30 @@ const App: React.FC = () => {
     }
 
     if (!previousKey) {
+      const storedKey = readStoredAuthUserKey();
+      if (!isAuthLoading && !isAuthenticated && storedKey) {
+        clearOwnerScopedSensitiveLocalState(storedKey);
+        resetUserScopedState();
+        authVisitSourceRef.current = 'session_restore';
+        authVisitAwaitingResetRef.current = false;
+        writeStoredAuthUserKey(null);
+      }
       return;
     }
 
+    clearOwnerScopedSensitiveLocalState(previousKey);
     resetUserScopedState();
     authUserKeyRef.current = null;
     authVisitSourceRef.current = 'session_restore';
     authVisitAwaitingResetRef.current = false;
     writeStoredAuthUserKey(null);
-  }, [authUserKey, resetUserScopedState]);
+  }, [authUserKey, isAuthenticated, isAuthLoading, resetUserScopedState]);
+
+  useEffect(() => {
+    clearLegacyActiveResumeId();
+    clearLegacyJDAnalysisCaches();
+    clearLegacyAssistantManualSaveDrafts();
+  }, []);
 
   useEffect(() => {
     if (!authUserKey) {
@@ -326,21 +365,53 @@ const App: React.FC = () => {
 
   // 处理简历数据更新的回调
   const handleResumesUpdate = useCallback((resumes: Resume[]) => {
+    if (!authUserKey || readAuthSessionSnapshot().ownerKey !== authUserKey) {
+      return;
+    }
     devLog('[App] 更新全局简历缓存，共', resumes.length, '份简历');
     setCachedResumes(resumes);
-    setCachedResumesOwnerKey(authUserKey ?? null);
+    setCachedResumesOwnerKey(authUserKey);
   }, [authUserKey]);
 
   const handleResumeRecordUpdate = useCallback((updated: ResumeRecord) => {
-    setCachedResumes((current) => replaceDashboardResumeFromServer(current, updated));
-    setCachedResumesOwnerKey(authUserKey ?? null);
+    if (!authUserKey || readAuthSessionSnapshot().ownerKey !== authUserKey) {
+      return;
+    }
+    setCachedResumes((current) => replaceDashboardResumeFromServer(current, updated, authUserKey));
+    setCachedResumesOwnerKey(authUserKey);
   }, [authUserKey]);
 
   // 处理经历库数据更新的回调
-  const handleProfileUpdate = useCallback((data: any) => {
+  const handleProfileUpdate = useCallback((data: Profile) => {
+    if (!authUserKey || readAuthSessionSnapshot().ownerKey !== authUserKey) {
+      return;
+    }
+    const scopedProfile = bindOwnerScopedValue(
+      authUserKey,
+      authUserKey,
+      data.user_id,
+      data,
+    );
+    if (!scopedProfile) {
+      return;
+    }
     devLog('[App] 更新经历库缓存');
-    setProfileCache(data);
-  }, []);
+    setProfileCache(scopedProfile);
+  }, [authUserKey]);
+  const handleQuotaSummaryChange = useCallback((summary: TokenQuotaSummary) => {
+    if (!authUserKey || readAuthSessionSnapshot().ownerKey !== authUserKey) {
+      return;
+    }
+    const scopedSummary = bindOwnerScopedValue(
+      authUserKey,
+      authUserKey,
+      summary.user_id,
+      summary,
+    );
+    if (scopedSummary) {
+      setQuotaSummaryCache(scopedSummary);
+    }
+  }, [authUserKey]);
   const handleOpenFeedback = useCallback(() => {
     setIsFeedbackOpen(true);
   }, []);
@@ -403,15 +474,30 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!authUserKey || !isAuthenticated) {
-      setQuotaSummary(null);
+      setQuotaSummaryCache(null);
       billingService.clearBillingCache();
       return;
     }
+    const expectedOwnerKey = authUserKey;
+    setQuotaSummaryCache((current) => (
+      current?.ownerKey === expectedOwnerKey ? current : null
+    ));
     let cancelled = false;
-    billingService.getSummary({ force: true })
+    billingService.getSummary({
+      force: true,
+      expectedAuthCacheKey: expectedOwnerKey,
+    })
       .then((summary) => {
         if (!cancelled) {
-          setQuotaSummary(summary);
+          const scopedSummary = bindOwnerScopedValue(
+            expectedOwnerKey,
+            readAuthSessionSnapshot().ownerKey,
+            summary.user_id,
+            summary,
+          );
+          if (scopedSummary) {
+            setQuotaSummaryCache(scopedSummary);
+          }
         }
       })
       .catch((error) => {
@@ -421,6 +507,9 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, [authUserKey, isAuthenticated]);
+
+  const visibleProfileCache = readOwnerScopedValue(authUserKey, profileCache);
+  const visibleQuotaSummary = readOwnerScopedValue(authUserKey, quotaSummaryCache);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -451,7 +540,8 @@ const App: React.FC = () => {
       case ViewState.EXPERIENCE_BANK:
         return (
           <ExperienceBank
-            cachedProfile={profileCache}
+            authUserKey={authUserKey}
+            cachedProfile={visibleProfileCache}
             isAuthenticated={isAuthenticated}
             onRequireAuth={handleRequireAuth}
             onProfileUpdate={handleProfileUpdate}
@@ -484,6 +574,7 @@ const App: React.FC = () => {
       case ViewState.AI_ASSISTANT:
         return (
           <AIAssistant
+            authUserKey={authUserKey}
             pendingLaunchRequest={assistantLaunchRequest}
             pendingOpenSessionRequest={assistantOpenSessionRequest}
             onConsumeLaunchRequest={handleConsumeAssistantLaunchRequest}
@@ -512,14 +603,14 @@ const App: React.FC = () => {
   const viewScopeKey = authUserKey ?? 'anonymous';
 
   return (
-    <AuthGuard>
+    <AuthGuard authUserKey={authUserKey}>
       <div key={viewScopeKey} className="flex h-[100dvh] min-h-[100dvh] w-full flex-col md:h-screen md:min-h-screen md:flex-row">
         <GlobalSidebar
           currentView={currentView}
           setView={handleSetView}
           onOpenFeedback={handleOpenFeedback}
           onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
-          quotaSummary={quotaSummary}
+          quotaSummary={visibleQuotaSummary}
           onOpenTokenQuota={handleOpenTokenQuota}
           onOpenTokenPurchase={handleOpenTokenPurchase}
         />
@@ -537,25 +628,40 @@ const App: React.FC = () => {
             onDismiss={() => setQuotaPurchasePromptMessage(null)}
           />
         )}
-        <FeedbackModal
-          isOpen={isFeedbackOpen}
-          context={feedbackContext}
-          onClose={handleCloseFeedback}
-        />
-        <AgentApiPluginConfigModal
-          isOpen={isAgentPluginConfigOpen}
-          onClose={handleCloseAgentPluginConfig}
-        />
-        <TokenQuotaModal
-          isOpen={isTokenQuotaOpen}
-          onClose={handleCloseTokenQuota}
-          summary={quotaSummary}
-          onSummaryChange={setQuotaSummary}
-          initialView={tokenQuotaInitialView}
-          returnFocusElement={tokenQuotaReturnFocusElement}
-          returnedPaymentOrderId={returnedPaymentOrderId}
-          onPaymentOrderHandled={handlePaymentOrderHandled}
-        />
+        {isFeedbackOpen ? (
+          <Suspense fallback={null}>
+            <FeedbackModal
+              isOpen
+              authUserKey={authUserKey}
+              context={feedbackContext}
+              onClose={handleCloseFeedback}
+            />
+          </Suspense>
+        ) : null}
+        {isAgentPluginConfigOpen ? (
+          <Suspense fallback={null}>
+            <AgentApiPluginConfigModal
+              isOpen
+              authUserKey={authUserKey}
+              onClose={handleCloseAgentPluginConfig}
+            />
+          </Suspense>
+        ) : null}
+        {isTokenQuotaOpen ? (
+          <Suspense fallback={null}>
+            <TokenQuotaModal
+              isOpen
+              authUserKey={authUserKey}
+              onClose={handleCloseTokenQuota}
+              summary={visibleQuotaSummary}
+              onSummaryChange={handleQuotaSummaryChange}
+              initialView={tokenQuotaInitialView}
+              returnFocusElement={tokenQuotaReturnFocusElement}
+              returnedPaymentOrderId={returnedPaymentOrderId}
+              onPaymentOrderHandled={handlePaymentOrderHandled}
+            />
+          </Suspense>
+        ) : null}
       </div>
     </AuthGuard>
   );

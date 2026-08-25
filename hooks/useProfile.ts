@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLogto } from '@logto/react';
 import { profileService, type Profile } from '../services/profileService';
-import { syncResumeTemplatePresetsFromProfile } from '../views/resumeTemplateStorage';
+import { syncResumeTemplatePresetsFromProfile } from '../services/resumeTemplateStorage';
+import { useAuthUserKey } from './useAuthUserKey';
+import { createProfileLoadGuard, type ProfileLoadRequest } from './profileLoadGuard';
 
 const LOAD_PROFILE_ERROR_MESSAGE = '加载用户资料失败';
 
@@ -12,75 +14,127 @@ type UseProfileResult = {
   refresh: (options?: { force?: boolean }) => Promise<Profile | null>;
 };
 
+type ProfileViewState = {
+  ownerKey: string | null;
+  profile: Profile | null;
+  isLoading: boolean;
+  error: string | null;
+};
+
+const createEmptyProfileViewState = (ownerKey: string | null): ProfileViewState => ({
+  ownerKey,
+  profile: null,
+  isLoading: false,
+  error: null,
+});
+
 export const useProfile = (): UseProfileResult => {
   const { isAuthenticated } = useLogto();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const hasRequestedRef = useRef(false);
+  const authUserKey = useAuthUserKey();
+  const activeOwnerKey = isAuthenticated ? authUserKey : null;
+  const [viewState, setViewState] = useState<ProfileViewState>(() => (
+    createEmptyProfileViewState(null)
+  ));
+  const loadGuardRef = useRef(createProfileLoadGuard());
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      loadGuardRef.current.invalidate();
     };
   }, []);
 
-  const applyState = (updater: () => void) => {
-    if (isMountedRef.current) {
-      updater();
+  const applyRequestState = useCallback((
+    request: ProfileLoadRequest,
+    updater: (current: ProfileViewState) => ProfileViewState,
+  ) => {
+    if (!isMountedRef.current || !loadGuardRef.current.isCurrent(request)) {
+      return;
     }
-  };
+    setViewState((current) => (
+      current.ownerKey === request.ownerKey ? updater(current) : current
+    ));
+  }, []);
 
-  const refresh = useCallback(async (options?: { force?: boolean }) => {
-    if (!isAuthenticated) {
-      applyState(() => {
-        setProfile(null);
-        setError(null);
-      });
+  const loadProfileForOwner = useCallback(async (
+    requestedOwnerKey: string,
+    options?: { force?: boolean },
+  ) => {
+    const request = loadGuardRef.current.beginRequest(requestedOwnerKey);
+    if (!request || !isMountedRef.current) {
       return null;
     }
 
-    applyState(() => {
-      setIsLoading(true);
-      setError(null);
-    });
+    setViewState((current) => (
+      current.ownerKey === requestedOwnerKey
+        ? { ...current, isLoading: true, error: null }
+        : {
+            ...createEmptyProfileViewState(requestedOwnerKey),
+            isLoading: true,
+          }
+    ));
     try {
-      const data = await profileService.getProfile(options);
-      syncResumeTemplatePresetsFromProfile(data.extra_json, data.user_id);
-      applyState(() => {
-        setProfile(data);
+      const data = await profileService.getProfile({
+        ...options,
+        expectedAuthCacheKey: requestedOwnerKey,
       });
+      if (!isMountedRef.current || !loadGuardRef.current.isCurrent(request)) {
+        return null;
+      }
+      syncResumeTemplatePresetsFromProfile(data.extra_json, data.user_id);
+      applyRequestState(request, (current) => ({
+        ...current,
+        profile: data,
+      }));
       return data;
     } catch (err) {
+      if (!isMountedRef.current || !loadGuardRef.current.isCurrent(request)) {
+        return null;
+      }
       console.error('[Profile] 加载用户资料失败:', err);
-      applyState(() => {
-        setError(LOAD_PROFILE_ERROR_MESSAGE);
-      });
+      applyRequestState(request, (current) => ({
+        ...current,
+        error: LOAD_PROFILE_ERROR_MESSAGE,
+      }));
       return null;
     } finally {
-      applyState(() => {
-        setIsLoading(false);
-      });
+      applyRequestState(request, (current) => ({
+        ...current,
+        isLoading: false,
+      }));
     }
-  }, [isAuthenticated]);
+  }, [applyRequestState]);
+
+  const refresh = useCallback(async (options?: { force?: boolean }) => {
+    if (!activeOwnerKey) {
+      loadGuardRef.current.transitionOwner(null);
+      if (isMountedRef.current) {
+        setViewState(createEmptyProfileViewState(null));
+      }
+      return null;
+    }
+    return loadProfileForOwner(activeOwnerKey, options);
+  }, [activeOwnerKey, loadProfileForOwner]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      hasRequestedRef.current = false;
+    loadGuardRef.current.transitionOwner(activeOwnerKey);
+    setViewState(createEmptyProfileViewState(activeOwnerKey));
+    if (!activeOwnerKey) {
       return;
     }
-    if (hasRequestedRef.current) {
-      return;
-    }
-    hasRequestedRef.current = true;
-    void refresh();
-  }, [isAuthenticated, refresh]);
+    void loadProfileForOwner(activeOwnerKey);
+  }, [activeOwnerKey, loadProfileForOwner]);
+
+  const isViewStateCurrent = Boolean(
+    activeOwnerKey && viewState.ownerKey === activeOwnerKey
+  );
 
   return {
-    profile,
-    isLoading,
-    error,
+    profile: isViewStateCurrent ? viewState.profile : null,
+    isLoading: isViewStateCurrent ? viewState.isLoading : false,
+    error: isViewStateCurrent ? viewState.error : null,
     refresh,
   };
 };

@@ -130,6 +130,7 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
 
   assert.equal(
     resolveDashboardResumeEvaluationScoreForResume(
+      'owner-1',
       'resume-1',
       { jdAnalysis: persisted },
       targetRoleSignature
@@ -137,25 +138,26 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
     86
   );
   assert.equal(
-    resolveDashboardResumeEvaluationScoreForResume('resume-1', {
+    resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, isOutdated: true },
     }, targetRoleSignature),
     null
   );
   assert.equal(
-    resolveDashboardResumeEvaluationScoreForResume('resume-1', {
+    resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, isOutdated: true, evaluationIsOutdated: false },
     }, targetRoleSignature),
     86
   );
   assert.equal(
-    resolveDashboardResumeEvaluationScoreForResume('resume-1', {
+    resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, evaluationIsOutdated: true },
     }, targetRoleSignature),
     null
   );
   assert.equal(
     resolveDashboardResumeEvaluationScoreForResume(
+      'owner-1',
       'resume-1',
       { jdAnalysis: persisted },
       buildDashboardTargetRoleSignature('增长产品经理')
@@ -163,13 +165,13 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
     null
   );
   assert.equal(
-    resolveDashboardResumeEvaluationScoreForResume('resume-1', {
+    resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, evaluationSignature: undefined },
     }),
     null
   );
   assert.equal(
-    resolveDashboardResumeEvaluationScoreForResume('resume-1', {
+    resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, targetRoleSignature: undefined },
     }),
     null
@@ -216,7 +218,7 @@ test('replacing a Dashboard cache entry after target-role save clears an evaluat
     updated_at: '2026-08-09T00:00:00.000Z',
   };
 
-  const [replaced] = replaceDashboardResumeFromServer([current], updated);
+  const [replaced] = replaceDashboardResumeFromServer([current], updated, 'owner-1');
 
   assert.equal(replaced.targetRole, updatedRole);
   assert.equal(replaced.evaluationScore, null);
@@ -245,7 +247,7 @@ test('dashboard hides an explicitly stale JD match rate', async () => {
     updatedAt: '2026-08-08T00:00:00.000Z',
   };
 
-  assert.equal(resolveDashboardResumeMatchRate('resume-1', { jdAnalysis: persisted }), 0);
+  assert.equal(resolveDashboardResumeMatchRate('owner-1', 'resume-1', { jdAnalysis: persisted }), 0);
 });
 
 test('mergeEvaluationScoresIntoResumes applies current evaluation scores and preserves unchanged array identity', async () => {
@@ -255,8 +257,8 @@ test('mergeEvaluationScoresIntoResumes applies current evaluation scores and pre
     resume({ id: 'b', matchRate: 20, evaluationScore: 20, status: 'final' }),
   ];
 
-  const unchanged = mergeEvaluationScoresIntoResumes(items, () => undefined);
-  const changed = mergeEvaluationScoresIntoResumes(items, (id) => (id === 'a' ? 82 : undefined));
+  const unchanged = mergeEvaluationScoresIntoResumes(items, 'owner-1', () => undefined);
+  const changed = mergeEvaluationScoresIntoResumes(items, 'owner-1', (_ownerKey, id) => (id === 'a' ? 82 : undefined));
 
   assert.equal(unchanged, items);
   assert.notEqual(changed, items);
@@ -270,7 +272,7 @@ test('mergeMatchRatesIntoResumes applies local JD match rates without requiring 
   const { mergeMatchRatesIntoResumes } = await importDashboardUtils();
   const items = [resume({ id: 'a', matchRate: 0, evaluationScore: null, status: 'draft' })];
 
-  const changed = mergeMatchRatesIntoResumes(items, () => 82);
+  const changed = mergeMatchRatesIntoResumes(items, 'owner-1', () => 82);
 
   assert.equal(changed[0].matchRate, 82);
   assert.equal(changed[0].evaluationScore, null);
@@ -281,7 +283,7 @@ test('mergeEvaluationScoresIntoResumes clears a cached score when local analysis
   const { mergeEvaluationScoresIntoResumes } = await importDashboardUtils();
   const items = [resume({ evaluationScore: 72, status: 'final' })];
 
-  const changed = mergeEvaluationScoresIntoResumes(items, () => null);
+  const changed = mergeEvaluationScoresIntoResumes(items, 'owner-1', () => null);
 
   assert.equal(changed[0].evaluationScore, null);
   assert.equal(changed[0].status, 'draft');
@@ -305,7 +307,7 @@ test('dashboard rejects a pending local score when its backend base fingerprint 
     inputMode: 'text',
     updatedAt: '2026-08-08T00:00:00.000Z',
   };
-  storage.set('yuanzijianli.jdAnalysisCache:resume-1', JSON.stringify({
+  storage.set('yuanzijianli.jdAnalysisCache:owner-1:resume-1', JSON.stringify({
     payload: persisted,
     pendingSync: true,
     basePersistedFingerprint: 'older-backend-fingerprint',
@@ -314,6 +316,7 @@ test('dashboard rejects a pending local score when its backend base fingerprint 
 
   assert.equal(
     resolveDashboardResumeLocalEvaluationScore(
+      'owner-1',
       'resume-1',
       'current-backend-fingerprint',
       '{"targetRole":"PM"}'
@@ -340,7 +343,7 @@ test('dashboard accepts a pending local score only when it is based on the curre
     inputMode: 'text',
     updatedAt: '2026-08-08T00:00:00.000Z',
   };
-  storage.set('yuanzijianli.jdAnalysisCache:resume-1', JSON.stringify({
+  storage.set('yuanzijianli.jdAnalysisCache:owner-1:resume-1', JSON.stringify({
     payload: persisted,
     pendingSync: true,
     basePersistedFingerprint: 'current-backend-fingerprint',
@@ -349,6 +352,7 @@ test('dashboard accepts a pending local score only when it is based on the curre
 
   assert.equal(
     resolveDashboardResumeLocalEvaluationScore(
+      'owner-1',
       'resume-1',
       'current-backend-fingerprint',
       '{"targetRole":"PM"}'

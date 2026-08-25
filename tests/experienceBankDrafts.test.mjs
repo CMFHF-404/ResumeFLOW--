@@ -123,15 +123,15 @@ test('draft cards are deleted through the draft service instead of the formal ex
 
   assert.match(
     source,
-    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*experienceDraftService\.delete\(draftId\)[\s\S]*return;[\s\S]*\}/
+    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*experienceDraftService\.delete\(draftId, \{[\s\S]*expectedAuthCacheKey[\s\S]*return;[\s\S]*\}/
   );
-  assert.match(source, /await experienceService\.delete\(cardId\);/);
+  assert.match(source, /await experienceService\.delete\(cardId, \{[\s\S]*expectedAuthCacheKey/);
 });
 
 test('formalized draft creation waits for draft cleanup and surfaces cleanup failure', () => {
   const source = read('views/ExperienceSection/experienceActions.ts');
 
-  assert.match(source, /await experienceDraftService\.delete\(data\.draftId\)/);
+  assert.match(source, /await experienceDraftService\.delete\(data\.draftId, \{[\s\S]*expectedAuthCacheKey/);
   assert.match(source, /草稿清理失败/);
   assert.doesNotMatch(source, /experienceDraftService\.delete\(data\.draftId\)\.catch/);
 });
@@ -268,7 +268,7 @@ test('draft autosaves for the same card are serialized to avoid stale overwrites
 
   assert.match(source, /draftSaveQueueRef/);
   assert.match(source, /const previousSave = draftSaveQueueRef\.current\.get\(cardId\) \?\? Promise\.resolve\(\)/);
-  assert.match(source, /previousSave[\s\S]*\.then\(\(\) => \{[\s\S]*experienceDraftService\.upsert/);
+  assert.match(source, /previousSave[\s\S]*\.then\(async \(\) => \{[\s\S]*experienceDraftService\.upsert/);
   assert.match(source, /draftSaveQueueRef\.current\.set\(cardId, saveRequest\)/);
 });
 
@@ -287,7 +287,7 @@ test('discarding draft cards invalidates queued autosaves before they can recrea
   assert.match(actionsSource, /const draftId = discardedDraft\?\.id \?\? cardData\.get\(cardId\)\?\.draftId/);
   assert.match(
     actionsSource,
-    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*const draftId = discardedDraft\?\.id \?\? cardData\.get\(cardId\)\?\.draftId[\s\S]*experienceDraftService\.delete\(draftId\)[\s\S]*return;[\s\S]*\}/
+    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*const draftId = discardedDraft\?\.id \?\? cardData\.get\(cardId\)\?\.draftId[\s\S]*experienceDraftService\.delete\(draftId, \{[\s\S]*expectedAuthCacheKey[\s\S]*return;[\s\S]*\}/
   );
 });
 
@@ -297,11 +297,11 @@ test('canceling unsaved draft cards keeps local state when server draft deletion
   assert.match(source, /const handleCancel = useCallback\(async \(cardId: string\) => \{/);
   assert.match(
     source,
-    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*await discardDraftAutosave\(cardId\)[\s\S]*await experienceDraftService\.delete\(draftId\)[\s\S]*catch \(error\) \{[\s\S]*toast\.error\(['"]草稿删除失败，请重试['"]/
+    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*await discardDraftAutosave\(cardId\)[\s\S]*await experienceDraftService\.delete\(draftId, \{[\s\S]*catch \(error\) \{[\s\S]*toast\.error\(['"]草稿删除失败，请重试['"]/
   );
   assert.match(
     source,
-    /toast\.error\(['"]草稿删除失败，请重试['"][\s\S]*return;[\s\S]*setExperiences\(prev => prev\.filter/
+    /toast\.error\(['"]草稿删除失败，请重试['"], 3000\)[\s\S]*return;[\s\S]*setExperiences\(prev => prev\.filter/
   );
 });
 
@@ -376,7 +376,7 @@ test('confirm delete waits for draft delete before removing local draft cards', 
 
   assert.match(
     source,
-    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*const draftId = discardedDraft\?\.id \?\? cardData\.get\(cardId\)\?\.draftId[\s\S]*await experienceDraftService\.delete\(draftId\)[\s\S]*setExperiences\(\(prev\) => prev\.filter/
+    /if \(isTempId\(cardId\) \|\| cardId\.startsWith\(['"]draft_['"]\)\) \{[\s\S]*const draftId = discardedDraft\?\.id \?\? cardData\.get\(cardId\)\?\.draftId[\s\S]*await experienceDraftService\.delete\(draftId, \{[\s\S]*setExperiences\(\(prev\) => prev\.filter/
   );
   assert.doesNotMatch(
     source,

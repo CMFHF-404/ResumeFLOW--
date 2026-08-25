@@ -197,7 +197,7 @@ test('Dashboard preview thumbnails define a loaded-state fade-in animation', () 
 test('Dashboard preview cache clears failed shared data loads before retrying', () => {
   const previewHook = read('views/Dashboard/useDashboardResumePreviewCache.ts');
 
-  assert.match(previewHook, /const request = loadDashboardResumePreviewGlobalData\(\)[\s\S]*?\.catch\(\(error\) => \{/);
+  assert.match(previewHook, /const request = loadDashboardResumePreviewGlobalData\(expectedAuthCacheKey\)[\s\S]*?\.catch\(\(error\) => \{/);
   assert.match(previewHook, /if \(globalDataPromiseRef\.current === request\) \{[\s\S]*?globalDataPromiseRef\.current = null;/);
   assert.match(previewHook, /throw error;/);
 });

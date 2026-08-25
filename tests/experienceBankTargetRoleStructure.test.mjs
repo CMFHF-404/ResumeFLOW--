@@ -33,10 +33,14 @@ test('Experience Bank shows the active resume target role before the profile lin
 test('Experience Bank loads and saves target_role through the active resume', () => {
   const hook = read('views/ExperienceBank/useExperienceBankProfile.ts');
 
-  assert.match(hook, /getActiveResumeId\(\)/);
-  assert.match(hook, /resumeService\.get\(resumeId\)/);
+  assert.match(hook, /const expectedAuthCacheKey = authUserKey/);
+  assert.match(hook, /getActiveResumeId\(expectedAuthCacheKey\)/);
+  assert.match(hook, /resumeService\.list\(\{[\s\S]*?expectedAuthCacheKey/);
+  assert.match(hook, /if \(!await canCommit\(\)\) return;[\s\S]*?setActiveResumeId\(expectedAuthCacheKey/);
+  assert.match(hook, /resumeService\.get\(resumeId, \{\s*expectedAuthCacheKey/);
   assert.match(hook, /detail\.resume\.target_role/);
   assert.match(hook, /updateResumeTargetRoleWithConflictRetry\(\s*activeResumeId,\s*normalizedTargetRole/);
+  assert.match(hook, /expectedAuthCacheKey: operation\.expectedAuthCacheKey/);
   assert.match(hook, /setTargetRole\(originalTargetRole\)/);
   assert.match(hook, /onResumeUpdateRef\.current\?\.\(updatedResume\)/);
 

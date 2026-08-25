@@ -14,7 +14,7 @@ import {
     savePreferredResumeTemplateId,
     saveResumeTemplatePreset,
     type ResumeTemplatePresetMap,
-} from '../../resumeTemplateStorage';
+} from '../../../services/resumeTemplateStorage';
 import type { SmartPageLayout } from '../layoutUtils';
 
 type TemplatePresetInput = {
@@ -27,6 +27,7 @@ type TemplatePresetInput = {
 };
 
 type UseTemplatePresetActionsParams = {
+    authUserKey: string | null;
     isTemplatePresetMapReady: boolean;
     templatePresetMap: ResumeTemplatePresetMap;
     resumeTemplateId: ResumeTemplateId;
@@ -48,6 +49,7 @@ type UseTemplatePresetActionsParams = {
 };
 
 export const useTemplatePresetActions = ({
+    authUserKey,
     isTemplatePresetMapReady,
     templatePresetMap,
     resumeTemplateId,
@@ -72,7 +74,7 @@ export const useTemplatePresetActions = ({
             showToastInfo('正在同步模板预设，请稍后再试');
             return;
         }
-        savePreferredResumeTemplateId(templateId);
+        savePreferredResumeTemplateId(templateId, authUserKey);
         if (templateId === resumeTemplateId) {
             setIsTemplateSelectorOpen(false);
             return;
@@ -110,6 +112,7 @@ export const useTemplatePresetActions = ({
         }
         setIsTemplateSelectorOpen(false);
     }, [
+        authUserKey,
         experienceListMarkerStyle,
         isTemplatePresetMapReady,
         onApplyTemplateLayoutDefaults,
@@ -135,7 +138,7 @@ export const useTemplatePresetActions = ({
                     ...preset,
                     themeColorPresetId: resolveDefaultResumeThemeColorPresetId(preset.templateId),
                 };
-            const savedPreset = await saveResumeTemplatePreset(normalizedPreset);
+            const savedPreset = await saveResumeTemplatePreset(normalizedPreset, authUserKey);
             setTemplatePresetMap((prev) => ({
                 ...prev,
                 [savedPreset.templateId]: savedPreset,
@@ -153,6 +156,7 @@ export const useTemplatePresetActions = ({
             throw error;
         }
     }, [
+        authUserKey,
         resumeTemplateId,
         setExperienceListMarkerStyle,
         setSectionOrder,

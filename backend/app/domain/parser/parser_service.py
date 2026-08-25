@@ -25,6 +25,11 @@ from ..ai.llm_transport import (
     LANE_RESUME_PARSE,
     _stream_gemini_json_response as _stream_thinking_json_response,
 )
+from ..ai.runtime_budget import (
+    AiStreamConsumerError,
+    TERMINAL_AI_RUNTIME_ERRORS,
+    ai_wall_clock_limited,
+)
 from ..ai.streaming_policy import (
     has_qwen_thinking_provider,
     has_thinking_stream_provider,
@@ -49,6 +54,7 @@ from .duplicate_detection import (
     _similarity,
     apply_duplicate_flags,
 )
+from .errors import ResumeInputError, ResumeUpstreamPayloadError
 from .document_text import (
     MAX_ATTACHMENT_BYTES,
     MAX_RESUME_TEXT_CHARS,
@@ -66,7 +72,7 @@ from .document_text import (
     _resolve_file_kind,
     _resolve_file_kind_from_metadata,
     _resolve_file_mime,
-    extract_resume_text,
+    extract_resume_text_bounded,
     extract_text,
 )
 from . import thinking_transport
@@ -409,9 +415,14 @@ async def _emit_thought(
 ) -> None:
     if not thought_callback:
         return
-    result = thought_callback(payload)
-    if inspect.isawaitable(result):
-        await result
+    try:
+        result = thought_callback(payload)
+        if inspect.isawaitable(result):
+            await result
+    except TERMINAL_AI_RUNTIME_ERRORS:
+        raise
+    except Exception as exc:
+        raise AiStreamConsumerError(AiStreamConsumerError.public_message) from exc
 
 
 def _build_gemini_headers() -> Dict[str, str]:
@@ -531,26 +542,30 @@ async def _call_resume_llm(
 def _parse_structured_response_text(text: str) -> Dict[str, Any]:
     cleaned = text.strip()
     if not cleaned:
-        raise ValueError("模型返回内容为空。")
+        raise ResumeUpstreamPayloadError("模型返回内容为空。")
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError:
         start = cleaned.find("{")
         end = cleaned.rfind("}")
         if start < 0 or end <= start:
-            raise ValueError("模型返回的结构化内容不是合法 JSON。")
+            raise ResumeUpstreamPayloadError(
+                "模型返回的结构化内容不是合法 JSON。"
+            )
         try:
             parsed = json.loads(cleaned[start : end + 1])
         except json.JSONDecodeError as exc:
-            raise ValueError("模型返回的结构化内容不是合法 JSON。") from exc
+            raise ResumeUpstreamPayloadError(
+                "模型返回的结构化内容不是合法 JSON。"
+            ) from exc
     if not isinstance(parsed, dict):
-        raise ValueError("模型返回的结构化内容格式不正确。")
+        raise ResumeUpstreamPayloadError("模型返回的结构化内容格式不正确。")
     return parsed
 
 
 def _normalize_parse_result(result: Any) -> Dict[str, Any]:
     if not isinstance(result, dict):
-        raise ValueError("模型返回的结果格式不正确。")
+        raise ResumeUpstreamPayloadError("模型返回的结果格式不正确。")
     return result
 
 
@@ -612,6 +627,8 @@ async def _merge_with_llm(
             "ai_merge_call",
             {"input_length": len(payload)},
         )
+    except TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         return draft
     if not isinstance(result, dict):
@@ -635,6 +652,7 @@ async def _parse_resume_single(
     return _normalize_parse_result(result)
 
 
+@ai_wall_clock_limited
 async def _parse_resume_chunked(
     text: str, request_id: Optional[str]
 ) -> Dict[str, Any]:
@@ -655,15 +673,26 @@ async def _parse_resume_chunked(
                         "input_length": len(chunk),
                     },
                 )
+        except TERMINAL_AI_RUNTIME_ERRORS:
+            raise
         except Exception:
             return None
         if not isinstance(result, dict):
             return None
         return index, result
 
-    chunk_outputs = await asyncio.gather(
-        *(parse_chunk(index, chunk) for index, chunk in enumerate(chunks))
-    )
+    chunk_tasks = [
+        asyncio.create_task(parse_chunk(index, chunk))
+        for index, chunk in enumerate(chunks)
+    ]
+    try:
+        chunk_outputs = await asyncio.gather(*chunk_tasks)
+    except BaseException:
+        for task in chunk_tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        raise
     chunk_results = [
         result
         for _index, result in sorted(
@@ -690,7 +719,7 @@ async def _parse_resume_cached(
     should_store_cache: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     if not file_data:
-        raise ValueError("文件为空，无法解析。")
+        raise ResumeInputError("文件为空，无法解析。")
     _ensure_attachment_size_limit(file_data)
 
     cache_key = _build_parse_cache_key(
@@ -712,7 +741,7 @@ async def _parse_resume_cached(
         {"type": "progress", "node": "extract_text", "title": "提取简历正文"},
     )
     cleaned = _prepare_resume_text(
-        extract_resume_text(
+        await extract_resume_text_bounded(
             file_data=file_data,
             filename=filename,
             file_mime_type=file_mime_type,
@@ -722,7 +751,7 @@ async def _parse_resume_cached(
     )
 
     if not cleaned:
-        raise ValueError(UNREADABLE_RESUME_TEXT_ERROR)
+        raise ResumeInputError(UNREADABLE_RESUME_TEXT_ERROR)
 
     result = await parse_cleaned(cleaned)
     if should_store_cache is None or should_store_cache():
@@ -772,6 +801,7 @@ async def _parse_resume_from_text(
     return _normalize_parse_result(result)
 
 
+@ai_wall_clock_limited
 async def parse_resume(
     file_data: bytes,
     filename: str,
@@ -797,6 +827,7 @@ async def parse_resume(
     )
 
 
+@ai_wall_clock_limited
 async def parse_resume_with_thoughts(
     file_data: bytes,
     filename: str,
@@ -830,12 +861,13 @@ async def parse_resume_with_thoughts(
                 request_id=request_id,
                 thought_callback=thought_callback,
             )
+        except TERMINAL_AI_RUNTIME_ERRORS:
+            raise
         except Exception as exc:
             logger.warning(
-                "[ResumeParse] thinking stream fallback request_id=%s error_type=%s error=%s",
+                "[ResumeParse] thinking stream fallback request_id=%s error_type=%s",
                 request_id,
                 type(exc).__name__,
-                str(exc),
             )
             await _emit_thought(thought_callback, {"type": "thought_reset"})
             return await _parse_resume_from_text(

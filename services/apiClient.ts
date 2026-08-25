@@ -1,5 +1,10 @@
 import axios from 'axios';
-import { requestAuthToken } from './authTokenProvider';
+import {
+    isAuthSessionSnapshotCurrent,
+    readAuthSessionSnapshot,
+    requestAuthToken,
+    type AuthSessionSnapshot,
+} from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
 import { devLog } from './devLogger';
 import { readAuthUserKeyFromToken } from './apiClientAuth';
@@ -11,12 +16,42 @@ import {
 declare module 'axios' {
     interface AxiosRequestConfig<D = any> {
         expectedAuthCacheKey?: string;
+        authCacheKeyAtDispatch?: string;
+        authSessionEpochAtDispatch?: number;
+        authSessionOwnerAtDispatch?: string | null;
     }
 }
 
-let authTokenRequestInFlight: Promise<string | null> | null = null;
+export interface AuthOwnerOptions {
+    expectedAuthCacheKey?: string;
+}
+
+interface AuthTokenRequestEntry {
+    generation: number;
+    sessionAtStart: AuthSessionSnapshot;
+    promise: Promise<ResolvedAuthToken>;
+}
+
+interface ResolvedAuthToken {
+    token: string | null;
+    session: AuthSessionSnapshot;
+}
+
+const authTokenRequestsInFlight = new Map<string, AuthTokenRequestEntry>();
+let authTokenRequestGeneration = 0;
 const AUTH_TOKEN_REQUEST_TIMEOUT_MS = 10_000;
 const AUTH_TOKEN_REQUEST_TIMEOUT_MESSAGE = '获取登录状态超时，请刷新页面或重新登录后重试。';
+
+export class AuthContextChangedError extends Error {
+    constructor(message = 'Authentication context changed during operation') {
+        super(message);
+        this.name = 'AuthContextChangedError';
+    }
+}
+
+export const isAuthContextChangedError = (error: unknown): error is AuthContextChangedError => (
+    error instanceof Error && error.name === 'AuthContextChangedError'
+);
 
 const withAuthTokenRequestTimeout = async <T,>(
     promise: Promise<T>,
@@ -37,34 +72,107 @@ const withAuthTokenRequestTimeout = async <T,>(
     }
 };
 
-const resolveAuthTokenFromActiveSession = async (): Promise<string | null> => {
-    const inFlightRequest = authTokenRequestInFlight;
-    if (inFlightRequest) {
-        return withAuthTokenRequestTimeout(inFlightRequest);
+const assertTokenOwner = (token: string | null, expectedAuthCacheKey?: string) => {
+    if (!expectedAuthCacheKey) {
+        return;
+    }
+    const tokenOwnerKey = readAuthUserKeyFromToken(token) ?? token ?? 'anonymous';
+    if (tokenOwnerKey !== expectedAuthCacheKey) {
+        throw new AuthContextChangedError(
+            'Authentication context changed before request dispatch'
+        );
+    }
+};
+
+const assertResolvedTokenSession = (
+    resolved: ResolvedAuthToken,
+    sessionAtStart: AuthSessionSnapshot,
+    expectedAuthCacheKey?: string,
+) => {
+    if (!isAuthSessionSnapshotCurrent(resolved.session)) {
+        throw new AuthContextChangedError();
+    }
+    const initializedExpectedOwner = (
+        sessionAtStart.ownerKey === null
+        && !!expectedAuthCacheKey
+        && resolved.session.ownerKey === expectedAuthCacheKey
+    );
+    const initializedUnboundSession = (
+        sessionAtStart.ownerKey === null
+        && !expectedAuthCacheKey
+    );
+    if (
+        !initializedExpectedOwner
+        && !initializedUnboundSession
+        && (
+            sessionAtStart.epoch !== resolved.session.epoch
+            || sessionAtStart.ownerKey !== resolved.session.ownerKey
+        )
+    ) {
+        throw new AuthContextChangedError();
+    }
+    assertTokenOwner(resolved.token, expectedAuthCacheKey);
+};
+
+const resolveAuthTokenWithSession = async (
+    expectedAuthCacheKey?: string,
+): Promise<ResolvedAuthToken> => {
+    const sessionAtStart = readAuthSessionSnapshot();
+    if (expectedAuthCacheKey) {
+        const inFlightRequest = authTokenRequestsInFlight.get(expectedAuthCacheKey);
+        if (
+            inFlightRequest
+            && inFlightRequest.sessionAtStart.epoch === sessionAtStart.epoch
+            && inFlightRequest.sessionAtStart.ownerKey === sessionAtStart.ownerKey
+        ) {
+            const resolved = await withAuthTokenRequestTimeout(inFlightRequest.promise);
+            assertResolvedTokenSession(
+                resolved,
+                inFlightRequest.sessionAtStart,
+                expectedAuthCacheKey,
+            );
+            return resolved;
+        }
     }
 
     const requestPromise = (async () => {
         const providerToken = await requestAuthToken();
-        return providerToken ?? null;
+        return {
+            token: providerToken ?? null,
+            session: readAuthSessionSnapshot(),
+        };
     })();
 
-    authTokenRequestInFlight = requestPromise;
+    const generation = authTokenRequestGeneration + 1;
+    authTokenRequestGeneration = generation;
+    if (expectedAuthCacheKey) {
+        authTokenRequestsInFlight.set(expectedAuthCacheKey, {
+            generation,
+            sessionAtStart,
+            promise: requestPromise,
+        });
+    }
 
     try {
-        return await withAuthTokenRequestTimeout(requestPromise);
+        const resolved = await withAuthTokenRequestTimeout(requestPromise);
+        assertResolvedTokenSession(resolved, sessionAtStart, expectedAuthCacheKey);
+        return resolved;
     } finally {
-        if (authTokenRequestInFlight === requestPromise) {
-            authTokenRequestInFlight = null;
+        if (
+            expectedAuthCacheKey
+            && authTokenRequestsInFlight.get(expectedAuthCacheKey)?.generation === generation
+        ) {
+            authTokenRequestsInFlight.delete(expectedAuthCacheKey);
         }
     }
 };
 
-const resolveAuthToken = async (): Promise<string | null> => {
-    return resolveAuthTokenFromActiveSession();
+const resolveAuthToken = async (expectedAuthCacheKey?: string): Promise<string | null> => {
+    return (await resolveAuthTokenWithSession(expectedAuthCacheKey)).token;
 };
 
 export const resolveAuthUserKeyFromActiveSession = async (): Promise<string | null> => {
-    const token = await resolveAuthTokenFromActiveSession();
+    const token = await resolveAuthToken();
     return readAuthUserKeyFromToken(token);
 };
 
@@ -84,8 +192,10 @@ const isWriteMethod = (method?: string) => {
     return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod);
 };
 
-export const getAuthorizationHeader = async (): Promise<string | null> => {
-    const token = await resolveAuthToken();
+export const getAuthorizationHeader = async (
+    expectedAuthCacheKey?: string,
+): Promise<string | null> => {
+    const token = await resolveAuthToken(expectedAuthCacheKey);
     if (!token) {
         return null;
     }
@@ -100,8 +210,44 @@ const apiClient = axios.create({
 });
 
 export const getAuthCacheKey = async (): Promise<string> => {
+    const establishedOwnerKey = readAuthSessionSnapshot().ownerKey;
+    if (establishedOwnerKey !== null) {
+        return establishedOwnerKey;
+    }
     const token = await resolveAuthToken();
-    return readAuthUserKeyFromToken(token) ?? token ?? 'anonymous';
+    return (
+        readAuthSessionSnapshot().ownerKey
+        ?? readAuthUserKeyFromToken(token)
+        ?? token
+        ?? 'anonymous'
+    );
+};
+
+export const assertAuthCacheKey = async (expectedAuthCacheKey: string): Promise<void> => {
+    const session = readAuthSessionSnapshot();
+    if (session.ownerKey !== null) {
+        if (session.ownerKey !== expectedAuthCacheKey) {
+            throw new AuthContextChangedError();
+        }
+        return;
+    }
+    await resolveAuthToken(expectedAuthCacheKey);
+};
+
+export const captureAuthCacheKey = async (
+    expectedAuthCacheKey?: string,
+): Promise<string> => {
+    const activeSessionOwnerKey = readAuthSessionSnapshot().ownerKey;
+    const capturedAuthCacheKey = (
+        expectedAuthCacheKey
+        ?? activeSessionOwnerKey
+        ?? await getAuthCacheKey()
+    );
+    if (!capturedAuthCacheKey || capturedAuthCacheKey === 'anonymous') {
+        throw new AuthContextChangedError();
+    }
+    await assertAuthCacheKey(capturedAuthCacheKey);
+    return capturedAuthCacheKey;
 };
 
 // 请求拦截器:自动添加JWT Token
@@ -112,7 +258,10 @@ apiClient.interceptors.request.use(
             config.headers.delete('Content-Type');
         }
 
-        const token = await resolveAuthToken();
+        const resolvedAuthToken = await resolveAuthTokenWithSession(
+            config.expectedAuthCacheKey
+        );
+        const token = resolvedAuthToken.token;
         devLog(`[API Client] ID token found: ${!!token}`);
 
         const activeAuthCacheKey = readAuthUserKeyFromToken(token) ?? token ?? 'anonymous';
@@ -120,8 +269,13 @@ apiClient.interceptors.request.use(
             config.expectedAuthCacheKey
             && config.expectedAuthCacheKey !== activeAuthCacheKey
         ) {
-            return Promise.reject(new Error('Authentication context changed before request dispatch'));
+            return Promise.reject(
+                new AuthContextChangedError('Authentication context changed before request dispatch')
+            );
         }
+        config.authCacheKeyAtDispatch = config.expectedAuthCacheKey ?? activeAuthCacheKey;
+        config.authSessionEpochAtDispatch = resolvedAuthToken.session.epoch;
+        config.authSessionOwnerAtDispatch = resolvedAuthToken.session.ownerKey;
 
         const shouldRequireLogin = isWriteMethod(config.method);
 
@@ -144,8 +298,28 @@ apiClient.interceptors.request.use(
 
 // 响应拦截器:处理401错误
 apiClient.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        if (
+            typeof response.config?.authSessionEpochAtDispatch === 'number'
+            && !isAuthSessionSnapshotCurrent({
+                epoch: response.config.authSessionEpochAtDispatch,
+                ownerKey: response.config.authSessionOwnerAtDispatch ?? null,
+            })
+        ) {
+            return Promise.reject(new AuthContextChangedError());
+        }
+        return response;
+    },
     (error) => {
+        if (
+            typeof error.config?.authSessionEpochAtDispatch === 'number'
+            && !isAuthSessionSnapshotCurrent({
+                epoch: error.config.authSessionEpochAtDispatch,
+                ownerKey: error.config.authSessionOwnerAtDispatch ?? null,
+            })
+        ) {
+            return Promise.reject(new AuthContextChangedError());
+        }
         if (error.response?.status === 401) {
             console.error('Authentication failed, redirecting to login...');
             dispatchLoginRequired(

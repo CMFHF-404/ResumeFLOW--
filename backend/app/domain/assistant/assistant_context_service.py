@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict
@@ -19,6 +20,10 @@ MAX_BANK_CERT_DESCRIPTION_CHARS = 300
 MAX_BANK_STAR_FIELD_CHARS = 500
 MAX_BANK_TEXT_LENGTH = 300
 BANK_CONTEXT_FETCH_BATCH_SIZE = 500
+MAX_BANK_EXPERIENCE_ITEMS = 64
+MAX_BANK_CERTIFICATION_ITEMS = 64
+MAX_BANK_SKILL_ITEMS = 128
+MAX_BANK_CONTEXT_BYTES = 768 * 1024
 
 
 @dataclass(frozen=True)
@@ -104,9 +109,12 @@ def _project_experiences(experience_rows: list[tuple[Any, Any]]) -> Dict[str, li
         "project": [],
         "education": [],
     }
+    projected_count = 0
     for master, latest_version in experience_rows:
         if master.is_archived or latest_version is None:
             continue
+        if projected_count >= MAX_BANK_EXPERIENCE_ITEMS:
+            break
         payload: Dict[str, Any] = {
             "masterId": str(master.id),
             "isCurrent": bool(latest_version.is_current),
@@ -129,12 +137,13 @@ def _project_experiences(experience_rows: list[tuple[Any, Any]]) -> Dict[str, li
         if star_snapshot:
             payload["star"] = star_snapshot
         grouped[master.category.value].append(payload)
+        projected_count += 1
     return grouped
 
 
 def _project_certifications(certifications: list[Any]) -> list[Dict[str, Any]]:
     payloads: list[Dict[str, Any]] = []
-    for cert in certifications:
+    for cert in certifications[:MAX_BANK_CERTIFICATION_ITEMS]:
         item: Dict[str, Any] = {"id": str(cert.id)}
         for source_key, target_key in (
             ("name", "name"),
@@ -159,7 +168,7 @@ def _project_certifications(certifications: list[Any]) -> list[Dict[str, Any]]:
 
 def _project_skills(skills: list[tuple[Any, Any]]) -> list[Dict[str, Any]]:
     payloads: list[Dict[str, Any]] = []
-    for user_skill, skill in skills:
+    for user_skill, skill in skills[:MAX_BANK_SKILL_ITEMS]:
         normalized_name = _normalize_bank_text(skill.name, MAX_BANK_TEXT_LENGTH)
         if not normalized_name:
             continue
@@ -176,6 +185,66 @@ def _project_skills(skills: list[tuple[Any, Any]]) -> list[Dict[str, Any]]:
     return payloads
 
 
+def _compact_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _refresh_bank_context_metadata(context: Dict[str, Any]) -> None:
+    metadata = context["_meta"]
+    for category, items in context["experiences"].items():
+        category_metadata = metadata["experiences"][category]
+        category_metadata["returnedCount"] = len(items)
+        category_metadata["truncated"] = (
+            category_metadata["loadedCount"] > len(items)
+        )
+    for key in ("certifications", "skills"):
+        item_metadata = metadata[key]
+        item_metadata["returnedCount"] = len(context[key])
+        item_metadata["truncated"] = item_metadata["loadedCount"] > len(context[key])
+
+
+def _truncate_bank_context_to_byte_limit(
+    context: Dict[str, Any],
+    *,
+    max_bytes: int = MAX_BANK_CONTEXT_BYTES,
+) -> Dict[str, Any]:
+    current_bytes = len(_compact_json_bytes(context))
+    if current_bytes <= max_bytes:
+        return context
+
+    experiences = context["experiences"]
+    trim_lists = (
+        context["skills"],
+        context["certifications"],
+        experiences["education"],
+        experiences["project"],
+        experiences["work"],
+    )
+    while current_bytes > max_bytes:
+        removed_any = False
+        for items in trim_lists:
+            if current_bytes <= max_bytes:
+                break
+            if not items:
+                continue
+            removed = items.pop()
+            current_bytes -= len(_compact_json_bytes(removed))
+            if items:
+                current_bytes -= 1
+            removed_any = True
+        if not removed_any:
+            break
+
+    if current_bytes > max_bytes:
+        context["profile"] = {}
+    _refresh_bank_context_metadata(context)
+    return context
+
+
 def project_bank_context(
     *,
     profile: Any | None,
@@ -183,12 +252,46 @@ def project_bank_context(
     certifications: list[Any],
     skills: list[tuple[Any, Any]],
 ) -> Dict[str, Any]:
-    return {
+    loaded_experience_counts = {
+        "work": 0,
+        "project": 0,
+        "education": 0,
+    }
+    for master, latest_version in experience_rows:
+        if getattr(master, "is_archived", False) or latest_version is None:
+            continue
+        category = getattr(getattr(master, "category", None), "value", None)
+        if category in loaded_experience_counts:
+            loaded_experience_counts[category] += 1
+    context = {
         "profile": _project_profile(profile),
         "experiences": _project_experiences(experience_rows),
         "certifications": _project_certifications(certifications),
         "skills": _project_skills(skills),
+        "_meta": {
+            "boundedSnapshot": True,
+            "experiences": {
+                category: {
+                    "loadedCount": loaded_count,
+                    "returnedCount": 0,
+                    "truncated": False,
+                }
+                for category, loaded_count in loaded_experience_counts.items()
+            },
+            "certifications": {
+                "loadedCount": len(certifications),
+                "returnedCount": 0,
+                "truncated": False,
+            },
+            "skills": {
+                "loadedCount": len(skills),
+                "returnedCount": 0,
+                "truncated": False,
+            },
+        },
     }
+    _refresh_bank_context_metadata(context)
+    return _truncate_bank_context_to_byte_limit(context)
 
 
 async def build_bank_context(
@@ -201,24 +304,36 @@ async def build_bank_context(
     profile = await sources.get_profile_if_exists(session, user_id)
     experience_rows: list[tuple[Any, Any]] = []
     offset = 0
-    while True:
+    page_size = max(int(fetch_batch_size), 1)
+    experience_probe_limit = MAX_BANK_EXPERIENCE_ITEMS + 1
+    while len(experience_rows) < experience_probe_limit:
+        remaining = experience_probe_limit - len(experience_rows)
+        request_limit = min(page_size, remaining)
         batch = await sources.list_experiences(
             session,
             user_id,
             None,
             None,
-            fetch_batch_size,
+            request_limit,
             offset,
             include_archived=False,
         )
         if not batch:
             break
         experience_rows.extend(batch)
-        if len(batch) < fetch_batch_size:
+        if len(batch) < request_limit:
             break
-        offset += fetch_batch_size
-    certifications = await sources.list_certifications(session, user_id)
-    skills = await sources.list_user_skills(session, user_id)
+        offset += request_limit
+    certifications = await sources.list_certifications(
+        session,
+        user_id,
+        limit=MAX_BANK_CERTIFICATION_ITEMS + 1,
+    )
+    skills = await sources.list_user_skills(
+        session,
+        user_id,
+        limit=MAX_BANK_SKILL_ITEMS + 1,
+    )
 
     return project_bank_context(
         profile=profile,

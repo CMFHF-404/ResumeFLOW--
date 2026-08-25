@@ -36,6 +36,7 @@ export type UsePaymentOrdersControllerResult = {
 
 export const usePaymentOrdersController = (
   onOrderObserved: (order: PaymentOrder) => void,
+  authUserKey: string | null,
 ): UsePaymentOrdersControllerResult => {
   const controllerRef = React.useRef<PaymentOrderRequestController | null>(null);
   if (controllerRef.current === null) {
@@ -43,7 +44,9 @@ export const usePaymentOrdersController = (
   }
   const controller = controllerRef.current;
   const onOrderObservedRef = React.useRef(onOrderObserved);
-  onOrderObservedRef.current = onOrderObserved;
+  React.useLayoutEffect(() => {
+    onOrderObservedRef.current = onOrderObserved;
+  }, [onOrderObserved]);
 
   const [orders, setOrders] = React.useState<PaymentOrder[]>([]);
   const [ordersHasMore, setOrdersHasMore] = React.useState(false);
@@ -80,7 +83,7 @@ export const usePaymentOrdersController = (
     fetchPage: (limit, cursor, signal) => billingService.listPaymentOrders(
       limit,
       cursor,
-      { signal },
+      { signal, expectedAuthCacheKey: authUserKey ?? undefined },
     ),
     onStart: (mode) => {
       mode === 'append' ? setIsLoadingMoreOrders(true) : setIsLoadingOrders(true);
@@ -113,7 +116,7 @@ export const usePaymentOrdersController = (
         setIsLoadingOrders(false);
       }
     },
-  }), [controller]);
+  }), [authUserKey, controller]);
 
   const beginOrderAction = React.useCallback(() => {
     const request = controller.beginAction();

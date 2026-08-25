@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type Dispatch,
+    type MutableRefObject,
+    type SetStateAction,
+} from 'react';
 import type { ToastConfig } from '../../../components/Toast';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 import { aiService, type PolishMode } from '../../../services/aiService';
 import type { ExperienceEditDraft, PolishPreviewState } from '../../../types/resume';
 import {
@@ -30,6 +41,7 @@ const isAbortError = (error: unknown) => (
 );
 
 type UseEditingExperiencePolishActionsParams = {
+    authUserKey: string | null;
     editingDraft: ExperienceEditDraft | null;
     setEditingDraft: Dispatch<SetStateAction<ExperienceEditDraft | null>>;
     setIsRunning: Dispatch<SetStateAction<boolean>>;
@@ -51,6 +63,7 @@ type UseEditingExperiencePolishActionsParams = {
 };
 
 export const useEditingExperiencePolishActions = ({
+    authUserKey,
     editingDraft,
     setEditingDraft,
     setIsRunning,
@@ -70,11 +83,23 @@ export const useEditingExperiencePolishActions = ({
     showToastSuccess,
     closeToast,
 }: UseEditingExperiencePolishActionsParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
     const [editingThinkingText, setEditingThinkingText] = useState('');
     const editingAbortControllerRef = useRef<AbortController | null>(null);
+    const activeRequestRef = useRef<symbol | null>(null);
+
+    useLayoutEffect(() => {
+        activeRequestRef.current = null;
+        editingAbortControllerRef.current?.abort();
+        editingAbortControllerRef.current = null;
+        isRunningRef.current = false;
+        setIsRunning(false);
+        setEditingThinkingText('');
+    }, [authUserKey, isRunningRef, setIsRunning]);
 
     useEffect(() => {
         return () => {
+            activeRequestRef.current = null;
             if (editingAbortControllerRef.current) {
                 editingAbortControllerRef.current.abort();
             }
@@ -82,20 +107,20 @@ export const useEditingExperiencePolishActions = ({
     }, []);
 
     const handleStopEditing = useCallback(() => {
+        activeRequestRef.current = null;
         if (editingAbortControllerRef.current) {
             editingAbortControllerRef.current.abort();
             editingAbortControllerRef.current = null;
         }
+        isRunningRef.current = false;
         setIsRunning(false);
         setEditingThinkingText('');
-    }, [setIsRunning]);
+    }, [isRunningRef, setIsRunning]);
 
     const handleRunEditingExperiencePolish = useCallback(async () => {
         if (!editingDraft || isRunningRef.current) {
             return;
         }
-        editingAbortControllerRef.current = new AbortController();
-        setEditingThinkingText('');
         const trimmedJd = jdPolishContext.trim();
         if (!trimmedJd) {
             showToastError('请先填写 JD 再润色');
@@ -108,10 +133,20 @@ export const useEditingExperiencePolishActions = ({
         let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
+        const requestId = Symbol('editing-experience-polish');
+        const abortController = new AbortController();
+        activeRequestRef.current = requestId;
+        editingAbortControllerRef.current = abortController;
+        isRunningRef.current = true;
+        setIsRunning(true);
+        setEditingThinkingText('');
+        let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
 
         try {
-            isRunningRef.current = true;
-            setIsRunning(true);
+            operation = await ownerGuard.beginOperation();
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
             trackAiPolishStart({ source: 'resume_editor', field: 'all' });
             const draft = editingDraft;
             const result = await aiService.polishExperienceStream({
@@ -127,10 +162,21 @@ export const useEditingExperiencePolishActions = ({
                 entrySource: 'resume_editor',
             }, (event) => {
                 const resolution = resolveThoughtDisplayEvent(event);
-                if (resolution?.kind === 'model_thought') {
+                if (
+                    resolution?.kind === 'model_thought'
+                    && activeRequestRef.current === requestId
+                    && operation
+                    && ownerGuard.isOperationCurrent(operation)
+                ) {
                     setEditingThinkingText(resolution.text);
                 }
-            }, editingAbortControllerRef.current?.signal);
+            }, abortController.signal, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await ownerGuard.assertOperationCurrent(operation);
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
 
             if (shouldAskBeforeSmartCompletionRewrite(polishMode, result)) {
                 requestedSmartCompletion = true;
@@ -148,18 +194,31 @@ export const useEditingExperiencePolishActions = ({
                 pendingAiPolishApplyRef.current.add(draft.masterId);
             }
         } catch (error) {
-            if (isAbortError(error)) {
+            if (
+                isAbortError(error)
+                || isAuthContextChangedError(error)
+                || !operation
+                || !ownerGuard.isOperationCurrent(operation)
+                || activeRequestRef.current !== requestId
+            ) {
                 wasAborted = true;
                 return;
             }
             hasError = true;
             console.error('[ResumeEditor] 编辑态 AI 润色失败:', error);
         } finally {
-            if (wasAborted) {
-                isRunningRef.current = false;
-                setIsRunning(false);
-                setEditingThinkingText('');
-                editingAbortControllerRef.current = null;
+            const isCurrentRequest = activeRequestRef.current === requestId;
+            const isCurrentOwner = Boolean(operation && ownerGuard.isOperationCurrent(operation));
+            if (wasAborted || !isCurrentRequest || !isCurrentOwner) {
+                if (isCurrentRequest) {
+                    activeRequestRef.current = null;
+                    isRunningRef.current = false;
+                    setIsRunning(false);
+                    setEditingThinkingText('');
+                    if (editingAbortControllerRef.current === abortController) {
+                        editingAbortControllerRef.current = null;
+                    }
+                }
                 return;
             }
             const message = hasError
@@ -182,10 +241,13 @@ export const useEditingExperiencePolishActions = ({
                 action,
                 durationMs: Date.now() - startTime,
             });
+            activeRequestRef.current = null;
             isRunningRef.current = false;
             setIsRunning(false);
             setEditingThinkingText('');
-            editingAbortControllerRef.current = null;
+            if (editingAbortControllerRef.current === abortController) {
+                editingAbortControllerRef.current = null;
+            }
         }
     }, [
         customPrompt,
@@ -193,6 +255,7 @@ export const useEditingExperiencePolishActions = ({
         isRunningRef,
         jdCapabilityPolishContext,
         jdPolishContext,
+        ownerGuard,
         pendingAiPolishApplyRef,
         polishMode,
         setEditingDraft,

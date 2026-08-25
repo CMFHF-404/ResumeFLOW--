@@ -214,20 +214,47 @@ ALTER TABLE feedback
 ALTER TABLE feedback
     ADD COLUMN IF NOT EXISTS image_base64_list TEXT[] NOT NULL DEFAULT '{}';
 
-CREATE TABLE IF NOT EXISTS agent_api_keys (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    key_prefix TEXT NOT NULL,
-    key_hash TEXT NOT NULL,
-    key_plaintext TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_used_at TIMESTAMPTZ,
-    revoked_at TIMESTAMPTZ
-);
+-- Acquire the cross-process lock before touching either shared table. Keeping
+-- the whole Phase-A decision in one statement also supports schema runners
+-- that commit each top-level statement independently.
+DO $agent_api_key_plaintext_phase_b_runtime_guard$
+BEGIN
+    PERFORM pg_advisory_xact_lock(5928497734025232972);
+    CREATE TABLE IF NOT EXISTS runtime_schema_migration_markers (
+        marker TEXT PRIMARY KEY,
+        completed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS agent_api_keys (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ
+    );
+    IF NOT EXISTS (
+        SELECT 1
+        FROM runtime_schema_migration_markers
+        WHERE marker = 'agent_api_keys.key_plaintext_phase_b'
+    ) THEN
+        ALTER TABLE agent_api_keys
+            ADD COLUMN IF NOT EXISTS key_plaintext TEXT;
+    END IF;
+END;
+$agent_api_key_plaintext_phase_b_runtime_guard$;
 
-ALTER TABLE agent_api_keys
-    ADD COLUMN IF NOT EXISTS key_plaintext TEXT;
+-- Agent API key migration Phase A (rolling-deploy compatibility): the new
+-- application writes only key_hash, but this legacy column and any existing
+-- values must remain available while an old instance could still be serving
+-- traffic or be rolled back. Remove the rejected pre-release scrub trigger if
+-- it reached an environment: it would turn an old writer's INSERT into NULL.
+-- After every old writer is drained, run the separately gated Phase-B migration
+-- to scrub the values and drop the column.
+DROP TRIGGER IF EXISTS trg_agent_api_keys_discard_plaintext
+    ON agent_api_keys;
+DROP FUNCTION IF EXISTS discard_agent_api_key_plaintext();
 
 WITH ranked_active_keys AS (
     SELECT
@@ -241,8 +268,7 @@ WITH ranked_active_keys AS (
 )
 UPDATE agent_api_keys AS key
 SET
-    revoked_at = now(),
-    key_plaintext = NULL
+    revoked_at = now()
 FROM ranked_active_keys
 WHERE key.id = ranked_active_keys.id
   AND ranked_active_keys.active_rank > 1;
@@ -706,8 +732,18 @@ CREATE TABLE IF NOT EXISTS export_render_snapshots (
     payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    consumed_at TIMESTAMPTZ
+    consumed_at TIMESTAMPTZ,
+    render_claim_id UUID,
+    render_claim_expires_at TIMESTAMPTZ,
+    rendered_pdf BYTEA,
+    rendered_pdf_expires_at TIMESTAMPTZ
 );
+
+ALTER TABLE export_render_snapshots
+    ADD COLUMN IF NOT EXISTS render_claim_id UUID,
+    ADD COLUMN IF NOT EXISTS render_claim_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS rendered_pdf BYTEA,
+    ADD COLUMN IF NOT EXISTS rendered_pdf_expires_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS ai_assistant_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -718,7 +754,10 @@ CREATE TABLE IF NOT EXISTS ai_assistant_sessions (
     context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     latest_preview JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_ai_assistant_sessions_title_length CHECK (char_length(title) <= 200),
+    CONSTRAINT ck_ai_assistant_sessions_context_object CHECK (jsonb_typeof(context_json) = 'object'),
+    CONSTRAINT ck_ai_assistant_sessions_context_size CHECK (octet_length(context_json::text) <= 262144)
 );
 
 CREATE TABLE IF NOT EXISTS ai_assistant_messages (
@@ -727,7 +766,9 @@ CREATE TABLE IF NOT EXISTS ai_assistant_messages (
     role TEXT NOT NULL,
     message_type TEXT NOT NULL,
     content_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_ai_assistant_messages_content_object CHECK (jsonb_typeof(content_json) = 'object'),
+    CONSTRAINT ck_ai_assistant_messages_content_size CHECK (octet_length(content_json::text) <= 8388608)
 );
 
 CREATE TABLE IF NOT EXISTS ai_assistant_image_blobs (
@@ -735,7 +776,9 @@ CREATE TABLE IF NOT EXISTS ai_assistant_image_blobs (
     session_id UUID NOT NULL REFERENCES ai_assistant_sessions(id) ON DELETE CASCADE,
     mime_type TEXT NOT NULL DEFAULT '',
     payload_base64 TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_ai_assistant_image_blobs_mime_length CHECK (char_length(mime_type) <= 255),
+    CONSTRAINT ck_ai_assistant_image_blobs_payload_size CHECK (octet_length(payload_base64) <= 6990508)
 );
 
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
@@ -768,6 +811,12 @@ CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_user_id ON export_render_snapshots(user_id);
 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_expires_at ON export_render_snapshots(expires_at);
+CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_render_claim_expires_at
+    ON export_render_snapshots(render_claim_expires_at)
+    WHERE render_claim_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_rendered_pdf_expires_at
+    ON export_render_snapshots(rendered_pdf_expires_at)
+    WHERE rendered_pdf IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_user_id ON ai_assistant_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_assistant_sessions_updated_at ON ai_assistant_sessions(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_assistant_messages_session_id ON ai_assistant_messages(session_id, created_at);

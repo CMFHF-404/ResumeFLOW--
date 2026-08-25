@@ -78,6 +78,7 @@ const buildEmptyStateAssistantRequest = (): AssistantLaunchRequest => ({
 });
 
 interface ExperienceBankProps {
+  authUserKey?: string | null;
   isAuthenticated: boolean;
   onRequireAuth: () => void | Promise<void>;
   cachedProfile?: Profile;
@@ -91,6 +92,7 @@ interface ExperienceBankProps {
 }
 
 const ExperienceBank: React.FC<ExperienceBankProps> = ({
+  authUserKey = null,
   isAuthenticated,
   onRequireAuth,
   cachedProfile,
@@ -172,33 +174,43 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const { toasts, success, error: toastError, info, loading, updateToast, closeToast } = useToast();
   const [experienceRefreshSignal, setExperienceRefreshSignal] = useState(0);
   const [workExperienceCount, setWorkExperienceCount] = useState<number | null>(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authUserKey) {
       return 0;
     }
-    const cached = experienceService.peekList('work');
+    const cached = experienceService.peekList('work', {
+      expectedAuthCacheKey: authUserKey,
+    });
     return cached ? cached.length : null;
   });
   const [projectExperienceCount, setProjectExperienceCount] = useState<number | null>(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authUserKey) {
       return 0;
     }
-    const cached = experienceService.peekList('project');
+    const cached = experienceService.peekList('project', {
+      expectedAuthCacheKey: authUserKey,
+    });
     return cached ? cached.length : null;
   });
   const [educationExperienceCount, setEducationExperienceCount] = useState<number | null>(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authUserKey) {
       return 0;
     }
-    const cached = experienceService.peekList('education');
+    const cached = experienceService.peekList('education', {
+      expectedAuthCacheKey: authUserKey,
+    });
     return cached ? cached.length : null;
   });
 
   const toastApi = useMemo(
-    () => ({ success, error: toastError, info, loading, updateToast }),
-    [success, toastError, info, loading, updateToast]
+    () => ({ success, error: toastError, info, loading, updateToast, closeToast }),
+    [success, toastError, info, loading, updateToast, closeToast]
   );
 
-  const education = useEducationManager(toastApi, { isAuthenticated, onRequireAuth: handleSignIn });
+  const education = useEducationManager(toastApi, {
+    authUserKey,
+    isAuthenticated,
+    onRequireAuth: handleSignIn,
+  });
   const { refreshEducation } = education;
   const effectiveFocusRequest = assistantFocusRequest
     && (!focusRequest || assistantFocusRequest.requestId >= focusRequest.requestId)
@@ -278,6 +290,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     handleAvatarDelete,
     handleCropCancel,
   } = useExperienceBankProfile({
+    authUserKey,
     isAuthenticated,
     onRequireAuth: handleSignIn,
     cachedProfile,
@@ -298,9 +311,11 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
     isExportingPdf,
     handleExportAll,
   } = useExperienceBankPdfExport({
+    authUserKey,
     buildCurrentProfileDraftSnapshot,
     loading,
     updateToast,
+    closeToast,
   });
 
   const handleExportAllClick = useCallback(() => {
@@ -760,6 +775,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             defaultTitle="新职位"
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
+            authUserKey={authUserKey}
             isAuthenticated={isAuthenticated}
             onRequireAuth={handleSignIn}
             onLaunchAssistant={handleLaunchExperienceBankAssistant}
@@ -787,6 +803,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             defaultTitle="新角色"
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
+            authUserKey={authUserKey}
             isAuthenticated={isAuthenticated}
             onRequireAuth={handleSignIn}
             themeColor="indigo"
@@ -805,6 +822,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
             isAuthenticated={isAuthenticated}
+            authUserKey={authUserKey}
             onRequireAuth={handleSignIn}
           />
 
@@ -812,6 +830,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
             refreshSignal={experienceRefreshSignal}
             toast={toastApi}
             isAuthenticated={isAuthenticated}
+            authUserKey={authUserKey}
             onRequireAuth={handleSignIn}
           />
 
@@ -820,6 +839,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
       <ResumeUploadModal
         isOpen={isResumeModalOpen}
+        authUserKey={authUserKey}
         onClose={() => setIsResumeModalOpen(false)}
         onImported={handleResumeImported}
         profileSnapshot={{
@@ -861,6 +881,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
           {isAssistantSidebarOpen ? (
             <AIAssistant
               surface="sidebar"
+              authUserKey={authUserKey}
               pendingLaunchRequest={assistantSidebarLaunchRequest}
               onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
               onClose={handleCloseAssistantSidebar}

@@ -1,7 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ToastConfig } from '../../components/Toast';
 import { aiService, type GeneratePersonalSummaryParams } from '../../services/aiService';
+import {
+  assertAuthCacheKey,
+  AuthContextChangedError,
+  isAuthContextChangedError,
+} from '../../services/apiClient';
 import type { Profile } from '../../services/profileService';
 import type { ExperienceBankPdfRenderSnapshot } from '../../types/experienceBankExport';
 import { resolveThoughtDisplayEvent } from '../../utils/aiThought';
@@ -12,13 +17,14 @@ type LoadingToastFn = (message: string) => string;
 type UpdateToastFn = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
 
 type UseExperienceBankSummaryGenerationParams = {
+  authUserKey: string | null;
   isLoadingProfile: boolean;
   isEditingProfile: boolean;
   hasHydratedProfileRef: MutableRefObject<boolean>;
   setIsEditingProfile: Dispatch<SetStateAction<boolean>>;
   setSummary: Dispatch<SetStateAction<string>>;
-  loadExportSnapshot: () => Promise<ExperienceBankPdfRenderSnapshot>;
-  loadValidationSnapshot: () => Promise<ExperienceBankPdfRenderSnapshot | null>;
+  loadExportSnapshot: (expectedAuthCacheKey: string) => Promise<ExperienceBankPdfRenderSnapshot>;
+  loadValidationSnapshot: (expectedAuthCacheKey: string) => Promise<ExperienceBankPdfRenderSnapshot | null>;
   buildSummaryPayload: (
     profile: Profile | null,
     snapshot: ExperienceBankPdfRenderSnapshot,
@@ -41,6 +47,7 @@ const snapshotHasSummarySourceContent = (snapshot: ExperienceBankPdfRenderSnapsh
 );
 
 export const useExperienceBankSummaryGeneration = ({
+  authUserKey,
   isLoadingProfile,
   isEditingProfile,
   hasHydratedProfileRef,
@@ -61,6 +68,7 @@ export const useExperienceBankSummaryGeneration = ({
   const summaryGenerationRequestIdRef = useRef(0);
   const summaryDraftVersionRef = useRef(0);
   const activeSummaryToastIdRef = useRef<string | null>(null);
+  const committedOwnerRef = useRef(authUserKey);
 
   const cancelSummaryGeneration = useCallback((options?: { bumpDraftVersion?: boolean }) => {
     summaryGenerationRequestIdRef.current += 1;
@@ -74,16 +82,37 @@ export const useExperienceBankSummaryGeneration = ({
     }
   }, [closeToast]);
 
+  useLayoutEffect(() => {
+    if (committedOwnerRef.current === authUserKey) {
+      return;
+    }
+    committedOwnerRef.current = authUserKey;
+    cancelSummaryGeneration({ bumpDraftVersion: true });
+  }, [authUserKey, cancelSummaryGeneration]);
+
   const handleGenerateSummary = useCallback(async () => {
-    if (isGeneratingSummary || isLoadingProfile) {
+    if (!authUserKey || isGeneratingSummary || isLoadingProfile) {
       return;
     }
 
+    const expectedAuthCacheKey = authUserKey;
     setIsGeneratingSummary(true);
     const requestId = summaryGenerationRequestIdRef.current + 1;
     summaryGenerationRequestIdRef.current = requestId;
     const draftVersionAtStart = summaryDraftVersionRef.current;
-    const isCurrentSummaryRequest = () => summaryGenerationRequestIdRef.current === requestId;
+    const isCurrentSummaryRequest = () => (
+      summaryGenerationRequestIdRef.current === requestId
+      && committedOwnerRef.current === expectedAuthCacheKey
+    );
+    const assertCurrentSummaryRequest = async () => {
+      if (!isCurrentSummaryRequest()) {
+        throw new AuthContextChangedError();
+      }
+      await assertAuthCacheKey(expectedAuthCacheKey);
+      if (!isCurrentSummaryRequest()) {
+        throw new AuthContextChangedError();
+      }
+    };
     let toastId: string | null = null;
     const releaseActiveSummaryToast = () => {
       if (toastId && activeSummaryToastIdRef.current === toastId) {
@@ -91,7 +120,9 @@ export const useExperienceBankSummaryGeneration = ({
       }
     };
     try {
-      const latestSnapshot = await loadExportSnapshot();
+      await assertCurrentSummaryRequest();
+      const latestSnapshot = await loadExportSnapshot(expectedAuthCacheKey);
+      await assertCurrentSummaryRequest();
       if (
         !isCurrentSummaryRequest()
         || summaryDraftVersionRef.current !== draftVersionAtStart
@@ -121,16 +152,22 @@ export const useExperienceBankSummaryGeneration = ({
       const requestPayload = buildSummaryPayload(profileSnapshot, latestSnapshot);
       const requestSignature = JSON.stringify(requestPayload);
 
-      const response = await aiService.generatePersonalSummaryStream(requestPayload, (event) => {
-        const resolution = resolveThoughtDisplayEvent(event);
-        if (toastId && resolution?.kind === 'model_thought' && isCurrentSummaryRequest()) {
-          updateToast(toastId, {
-            message: resolution.text,
-            type: 'ai_thinking',
-            duration: 0,
-          });
-        }
-      });
+      await assertCurrentSummaryRequest();
+      const response = await aiService.generatePersonalSummaryStream(
+        requestPayload,
+        (event) => {
+          const resolution = resolveThoughtDisplayEvent(event);
+          if (toastId && resolution?.kind === 'model_thought' && isCurrentSummaryRequest()) {
+            updateToast(toastId, {
+              message: resolution.text,
+              type: 'ai_thinking',
+              duration: 0,
+            });
+          }
+        },
+        { expectedAuthCacheKey },
+      );
+      await assertCurrentSummaryRequest();
 
       if (
         !isCurrentSummaryRequest()
@@ -142,7 +179,8 @@ export const useExperienceBankSummaryGeneration = ({
         releaseActiveSummaryToast();
         return;
       }
-      const currentSnapshot = await loadValidationSnapshot();
+      const currentSnapshot = await loadValidationSnapshot(expectedAuthCacheKey);
+      await assertCurrentSummaryRequest();
       if (!currentSnapshot) {
         if (toastId) {
           closeToast(toastId);
@@ -165,6 +203,7 @@ export const useExperienceBankSummaryGeneration = ({
         releaseActiveSummaryToast();
         return;
       }
+      await assertCurrentSummaryRequest();
       markSummaryDraftTouched();
       setSummary(stripRichTextToText(response.summary).trim());
       if (toastId) {
@@ -177,6 +216,13 @@ export const useExperienceBankSummaryGeneration = ({
       releaseActiveSummaryToast();
     } catch (error) {
       if (!isCurrentSummaryRequest()) {
+        if (toastId) {
+          closeToast(toastId);
+        }
+        releaseActiveSummaryToast();
+        return;
+      }
+      if (isAuthContextChangedError(error)) {
         if (toastId) {
           closeToast(toastId);
         }
@@ -200,6 +246,7 @@ export const useExperienceBankSummaryGeneration = ({
       }
     }
   }, [
+    authUserKey,
     buildCurrentProfileDraftSnapshot,
     buildSummaryPayload,
     closeToast,

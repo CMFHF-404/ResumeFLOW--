@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LogtoProvider, LogtoConfig, UserScope } from '@logto/react';
+import './styles/tailwind.css';
 import App from './App';
 import ExperienceBankPdfExportPage from './views/ExperienceBankPdfExportPage';
 import ResumePdfExportPage from './views/ResumePdfExportPage';

@@ -75,6 +75,8 @@ const LINE_BULLET_LAYOUT_REFRESH_DELAYS_MS = [80, 320];
 const DEFAULT_LINK_PROTOCOL = 'https://';
 const LINK_URL_PLACEHOLDER = '请输入链接地址';
 const LINK_TEXT_PLACEHOLDER = '请输入链接文字（可选）';
+const NEW_LINK_INSERTION_ATTRIBUTE = 'data-rich-text-new-link';
+const NEW_LINK_INSERTION_PLACEHOLDER = '\u2060';
 const SPACE_KEY = ' ';
 const ENTER_KEY = 'Enter';
 const NON_BREAKING_SPACE_PATTERN = /[\u00a0\u3000]/g;
@@ -495,6 +497,63 @@ const updateLinkElement = (link: HTMLAnchorElement, href: string, label: string,
     if (shouldUpdateText && label) {
         link.textContent = label;
     }
+};
+
+export const insertLinkAtRange = (
+    editor: HTMLDivElement,
+    range: Range,
+    href: string,
+    fallbackLabel: string
+) => {
+    if (!isNodeWithinEditor(range.commonAncestorContainer, editor)) {
+        return null;
+    }
+
+    const wasCollapsed = range.collapsed;
+    if (!wasCollapsed) {
+        const selection = restoreSelectionRange(range);
+        if (!selection || !document.execCommand('createLink', false, href)) {
+            return null;
+        }
+        const createdLink = resolveLinkFromSelection(selection, editor);
+        if (createdLink) {
+            updateLinkElement(createdLink, href, fallbackLabel, false);
+        }
+        return createdLink;
+    }
+
+    const selection = restoreSelectionRange(range);
+    const placeholderLink = document.createElement('a');
+    placeholderLink.setAttribute(NEW_LINK_INSERTION_ATTRIBUTE, '');
+    placeholderLink.textContent = NEW_LINK_INSERTION_PLACEHOLDER;
+    const suppressIntermediateInput = (event: Event) => event.stopImmediatePropagation();
+    editor.addEventListener('input', suppressIntermediateInput, true);
+    let insertedPlaceholder = false;
+    try {
+        insertedPlaceholder = Boolean(
+            selection && document.execCommand('insertHTML', false, placeholderLink.outerHTML)
+        );
+    } finally {
+        editor.removeEventListener('input', suppressIntermediateInput, true);
+    }
+    let link = insertedPlaceholder
+        ? editor.querySelector<HTMLAnchorElement>(`a[${NEW_LINK_INSERTION_ATTRIBUTE}]`)
+        : null;
+    if (!link) {
+        link = document.createElement('a');
+        range.insertNode(link);
+    }
+    link.removeAttribute(NEW_LINK_INSERTION_ATTRIBUTE);
+    updateLinkElement(link, href, fallbackLabel, true);
+
+    if (selection) {
+        const nextRange = document.createRange();
+        nextRange.setStartAfter(link);
+        nextRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+    }
+    return link;
 };
 
 const RichTextToolbar: React.FC<{
@@ -1419,13 +1478,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         if (existingLink && editor.contains(existingLink)) {
             const shouldUpdateText = Boolean(inputText) && inputText !== existingText.trim();
             updateLinkElement(existingLink, href, label, shouldUpdateText);
-        } else {
-            const selection = restoreSelectionRange(range);
-            if (selection && selection.toString()) {
-                document.execCommand('createLink', false, href);
-            } else {
-                document.execCommand('insertHTML', false, `<a href="${href}">${escapeHtml(label)}</a>`);
-            }
+        } else if (range) {
+            insertLinkAtRange(editor, range, href, label);
         }
         const updated = sanitizeRichTextHtml(editor.innerHTML);
         onChange(updated);

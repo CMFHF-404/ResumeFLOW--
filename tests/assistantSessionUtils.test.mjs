@@ -132,6 +132,49 @@ test('mergeAssistantSessions lets incoming sessions win and sorts by updated tim
   assert.equal(result[0].title, 'Updated');
 });
 
+test('reads only non-empty opaque message cursors', async () => {
+  const { readAssistantSessionNextCursor } = await importAssistantSessionUtils();
+
+  assert.equal(readAssistantSessionNextCursor({ next_cursor: 'opaque/cursor+1' }), 'opaque/cursor+1');
+  assert.equal(readAssistantSessionNextCursor({ next_cursor: '' }), null);
+  assert.equal(readAssistantSessionNextCursor({ next_cursor: 42 }), null);
+});
+
+test('prepends earlier messages once while preserving both page orders', async () => {
+  const { mergeEarlierAssistantMessages } = await importAssistantSessionUtils();
+  const message = (id) => ({ id });
+
+  const result = mergeEarlierAssistantMessages(
+    [message('current-1'), message('current-1'), message('current-2')],
+    [message('earlier-1'), message('earlier-1'), message('current-1'), message('earlier-2')],
+  );
+
+  assert.deepEqual(result.map((item) => item.id), [
+    'earlier-1',
+    'earlier-2',
+    'current-1',
+    'current-2',
+  ]);
+});
+
+test('older session pages cannot overwrite locally changed or deleted sessions', async () => {
+  const { mergeEarlierAssistantSessions } = await importAssistantSessionUtils();
+  const current = buildSession('current', '2026-06-03T00:05:00Z', 'Current');
+  const staleUpdated = buildSession('updated', '2026-06-03T00:04:00Z', 'Stale update');
+  const staleDeleted = buildSession('deleted', '2026-06-03T00:03:00Z', 'Stale deleted');
+  const safeEarlier = buildSession('earlier', '2026-06-03T00:01:00Z', 'Earlier');
+
+  const result = mergeEarlierAssistantSessions(
+    [current],
+    [staleUpdated, staleDeleted, safeEarlier],
+    10,
+    new Map([['updated', 11]]),
+    new Map([['deleted', 12]]),
+  );
+
+  assert.deepEqual(result.map((session) => session.id), ['current', 'earlier']);
+});
+
 test('matches legacy education previews against normalized experience draft cards', async () => {
   const { isSameDraftCard } = await importAssistantSessionUtils();
 

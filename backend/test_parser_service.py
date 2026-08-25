@@ -17,20 +17,35 @@ def _set_required_env_defaults() -> None:
 _set_required_env_defaults()
 sys.path.append(str(Path(__file__).parent))
 
-from app.domain.parser import parser_service  # noqa: E402
+from app.domain.parser import parser_service, thinking_transport  # noqa: E402
+from app.domain.ai.runtime_budget import (  # noqa: E402
+    AiRuntimeBudget,
+    AiRuntimeBudgetExceeded,
+    AiRuntimeTimeoutError,
+    AiStreamConsumerError,
+    AiUsageAccountingError,
+)
 
 
 class _FakeStreamResponse:
     def __init__(self, lines):
         self.headers = {"content-type": "text/event-stream"}
         self._lines = lines
+        self.status_code = 200
+        self.closed = False
 
     def raise_for_status(self) -> None:
         return None
 
-    async def aiter_lines(self):
+    async def aiter_bytes(self, chunk_size=None):
         for line in self._lines:
-            yield line
+            data = f"{line}\n".encode("utf-8")
+            resolved_chunk_size = chunk_size or len(data) or 1
+            for index in range(0, len(data), resolved_chunk_size):
+                yield data[index : index + resolved_chunk_size]
+
+    async def aclose(self):
+        self.closed = True
 
 
 class _FakeStreamContext:
@@ -41,6 +56,7 @@ class _FakeStreamContext:
         return self._response
 
     async def __aexit__(self, exc_type, exc, tb):
+        await self._response.aclose()
         return False
 
 
@@ -62,6 +78,89 @@ class _FakeAsyncClient:
 
 
 class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_parse_resume_with_thoughts_propagates_runtime_budget_errors(self) -> None:
+        parser_service.clear_parse_cache()
+        for runtime_error in (
+            AiRuntimeTimeoutError,
+            AiRuntimeBudgetExceeded,
+            AiUsageAccountingError,
+            AiStreamConsumerError,
+        ):
+            with self.subTest(runtime_error=runtime_error.__name__):
+                with patch.object(
+                    parser_service,
+                    "extract_resume_text_bounded",
+                    new_callable=AsyncMock,
+                    return_value=(
+                        "简历正文 包含足够多的候选人经历文本，涵盖工作经历、项目经历、教育背景和技能。"
+                    ),
+                ):
+                    with patch.object(
+                        parser_service,
+                        "_has_thinking_stream_provider",
+                        return_value=True,
+                    ):
+                        with patch.object(
+                            parser_service,
+                            "_stream_resume_thinking_parse",
+                            new_callable=AsyncMock,
+                            side_effect=runtime_error(runtime_error.public_message),
+                        ):
+                            with patch.object(
+                                parser_service,
+                                "_parse_resume_from_text",
+                                new_callable=AsyncMock,
+                            ) as standard_parse:
+                                with self.assertRaises(runtime_error):
+                                    await parser_service.parse_resume_with_thoughts(
+                                        b"%PDF-1.4 terminal runtime error",
+                                        "resume.pdf",
+                                        "application/pdf",
+                                        request_id=f"req-{runtime_error.code}",
+                                    )
+
+                standard_parse.assert_not_awaited()
+
+    async def test_optional_parser_ai_fallbacks_propagate_runtime_budget_errors(self) -> None:
+        for runtime_error in (
+            AiRuntimeTimeoutError,
+            AiRuntimeBudgetExceeded,
+            AiUsageAccountingError,
+            AiStreamConsumerError,
+        ):
+            with self.subTest(runtime_error=runtime_error.__name__, stage="merge"):
+                with patch.object(
+                    parser_service,
+                    "_call_resume_llm",
+                    new_callable=AsyncMock,
+                    side_effect=runtime_error(runtime_error.public_message),
+                ):
+                    with self.assertRaises(runtime_error):
+                        await parser_service._merge_with_llm(
+                            {"work_experiences": []},
+                            "req-merge-runtime",
+                        )
+
+            with self.subTest(runtime_error=runtime_error.__name__, stage="chunk"):
+                with (
+                    patch.object(
+                        parser_service,
+                        "_split_resume_text",
+                        return_value=["resume chunk"],
+                    ),
+                    patch.object(
+                        parser_service,
+                        "_call_resume_llm",
+                        new_callable=AsyncMock,
+                        side_effect=runtime_error(runtime_error.public_message),
+                    ),
+                ):
+                    with self.assertRaises(runtime_error):
+                        await parser_service._parse_resume_chunked(
+                            "resume chunk",
+                            "req-chunk-runtime",
+                        )
+
     async def test_parse_resume_reuses_cached_result_for_same_file(self) -> None:
         payload = {
             "work_experiences": [
@@ -74,7 +173,8 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         parser_service.clear_parse_cache()
         with patch.object(
             parser_service,
-            "extract_resume_text",
+            "extract_resume_text_bounded",
+            new_callable=AsyncMock,
             return_value="简历正文 包含足够多的候选人经历文本\nKept verbatim action details",
         ) as extract_text:
             with patch.object(
@@ -98,7 +198,7 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(first, second)
         self.assertIsNot(first, second)
-        extract_text.assert_called_once()
+        extract_text.assert_awaited_once()
         parse_from_text.assert_awaited_once()
 
     async def test_parse_resume_with_thoughts_does_not_cache_standard_fallback(self) -> None:
@@ -116,7 +216,8 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         parser_service.clear_parse_cache()
         with patch.object(
             parser_service,
-            "extract_resume_text",
+            "extract_resume_text_bounded",
+            new_callable=AsyncMock,
             return_value="简历正文 包含足够多的候选人经历文本\nThinking retry details",
         ) as extract_text:
             fallback_settings = SimpleNamespace(
@@ -174,7 +275,8 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         parser_service.clear_parse_cache()
         with patch.object(
             parser_service,
-            "extract_resume_text",
+            "extract_resume_text_bounded",
+            new_callable=AsyncMock,
             return_value="简历正文 包含足够多的候选人经历文本\nQwen thinking details",
         ):
             qwen_settings = SimpleNamespace(
@@ -387,7 +489,12 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["work_experiences"]), 3)
 
     async def test_parse_resume_rejects_unreadable_text_without_attachment_ai(self) -> None:
-        with patch.object(parser_service, "extract_resume_text", return_value=" \n !!! "):
+        with patch.object(
+            parser_service,
+            "extract_resume_text_bounded",
+            new_callable=AsyncMock,
+            return_value=" \n !!! ",
+        ):
             with patch.object(
                 parser_service,
                 "_call_resume_llm",
@@ -404,7 +511,12 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         llm_call.assert_not_called()
 
     async def test_parse_resume_with_thoughts_rejects_unreadable_text_without_attachment_ai(self) -> None:
-        with patch.object(parser_service, "extract_resume_text", return_value=" \n !!! "):
+        with patch.object(
+            parser_service,
+            "extract_resume_text_bounded",
+            new_callable=AsyncMock,
+            return_value=" \n !!! ",
+        ):
             with patch.object(
                 parser_service,
                 "_call_resume_llm",
@@ -521,6 +633,78 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fake_client.timeout.read, 300)
         self.assertEqual(len(fake_client.stream_calls), 1)
 
+    async def test_stream_resume_thinking_parse_records_gemini_usage(self) -> None:
+        structured_payload = {
+            "personal_info": {},
+            "work_experiences": [],
+            "project_experiences": [],
+            "education": [],
+            "certifications": [],
+            "skills": [],
+        }
+        response = _FakeStreamResponse(
+            [
+                "data: "
+                + json.dumps(
+                    {
+                        "usageMetadata": {
+                            "promptTokenCount": 10,
+                            "candidatesTokenCount": 5,
+                            "totalTokenCount": 15,
+                        },
+                        "candidates": [
+                            {
+                                "content": {
+                                    "parts": [
+                                        {
+                                            "text": json.dumps(
+                                                structured_payload,
+                                                ensure_ascii=False,
+                                            )
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_settings = SimpleNamespace(
+            ai_timeout_seconds=300,
+            gemini_model="gemini-2.5-flash",
+        )
+        fake_client = _FakeAsyncClient(response=response, timeout=None)
+        usage_mock = AsyncMock()
+
+        with (
+            patch.object(parser_service, "settings", fake_settings),
+            patch.object(parser_service.httpx, "AsyncClient", return_value=fake_client),
+            patch.object(parser_service, "_build_gemini_headers", return_value={}),
+            patch.object(
+                parser_service,
+                "_build_gemini_stream_url",
+                return_value="https://example.com/v1beta/models/demo:streamGenerateContent?alt=sse",
+            ),
+            patch.object(thinking_transport, "emit_usage_payload", usage_mock),
+        ):
+            result = await parser_service._stream_resume_thinking_parse(
+                cleaned_text="候选人简历内容",
+                request_id="req-usage",
+                thought_callback=None,
+            )
+
+        self.assertEqual(result, structured_payload)
+        usage = usage_mock.await_args.args[1]
+        self.assertEqual(usage["prompt_tokens"], 10)
+        self.assertEqual(usage["completion_tokens"], 5)
+        self.assertEqual(usage["total_tokens"], 15)
+        self.assertEqual(usage["request_label"], "resume_parse")
+
     async def test_stream_resume_thinking_parse_times_out_when_no_payload_arrives(self) -> None:
         response = _FakeStreamResponse([])
         fake_settings = SimpleNamespace(
@@ -561,15 +745,136 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
                                 "THOUGHT_PAYLOAD_TIMEOUT_SECONDS",
                                 0.01,
                             ):
-                                with self.assertRaisesRegex(
-                                    ValueError,
-                                    "长时间未收到新的解析流数据",
-                                ):
+                                with self.assertRaises(AiRuntimeTimeoutError):
                                     await parser_service._stream_resume_thinking_parse(
                                         cleaned_text="候选人简历内容",
                                         request_id="req-timeout",
                                         thought_callback=None,
                                     )
+
+    async def test_stream_resume_thinking_parse_uses_one_absolute_payload_deadline(self) -> None:
+        response = _FakeStreamResponse([])
+        fake_settings = SimpleNamespace(
+            ai_timeout_seconds=300,
+            gemini_model="gemini-2.5-flash",
+        )
+        fake_client = _FakeAsyncClient(response=response, timeout=None)
+
+        async def _slow_but_active_payloads(_response):
+            for index in range(4):
+                await asyncio.sleep(0.008)
+                yield {"candidates": [{"content": {"parts": [{"thought": True, "text": str(index)}]}}]}
+
+        with (
+            patch.object(parser_service, "settings", fake_settings),
+            patch.object(parser_service.httpx, "AsyncClient", return_value=fake_client),
+            patch.object(parser_service, "_build_gemini_headers", return_value={}),
+            patch.object(
+                parser_service,
+                "_build_gemini_stream_url",
+                return_value="https://example.com/v1beta/models/demo:streamGenerateContent?alt=sse",
+            ),
+            patch.object(
+                parser_service,
+                "_iter_sse_json_payloads",
+                side_effect=_slow_but_active_payloads,
+            ),
+            patch.object(
+                parser_service,
+                "THOUGHT_PAYLOAD_TIMEOUT_SECONDS",
+                0.02,
+            ),
+        ):
+            with self.assertRaises(AiRuntimeTimeoutError):
+                await parser_service._stream_resume_thinking_parse(
+                    cleaned_text="候选人简历内容",
+                    request_id="req-total-timeout",
+                    thought_callback=AsyncMock(),
+                )
+
+    async def test_stream_resume_thinking_parse_timeout_covers_blocked_callback(self) -> None:
+        response = _FakeStreamResponse([])
+        fake_settings = SimpleNamespace(
+            ai_timeout_seconds=300,
+            gemini_model="gemini-2.5-flash",
+        )
+        fake_client = _FakeAsyncClient(response=response, timeout=None)
+        callback_cancelled = asyncio.Event()
+
+        async def _one_thought(_response):
+            yield {
+                "candidates": [
+                    {"content": {"parts": [{"thought": True, "text": "thinking"}]}}
+                ]
+            }
+
+        async def _blocked_callback(_callback, _payload):
+            try:
+                await asyncio.Future()
+            finally:
+                callback_cancelled.set()
+
+        with (
+            patch.object(parser_service, "settings", fake_settings),
+            patch.object(parser_service.httpx, "AsyncClient", return_value=fake_client),
+            patch.object(parser_service, "_build_gemini_headers", return_value={}),
+            patch.object(
+                parser_service,
+                "_build_gemini_stream_url",
+                return_value="https://example.com/v1beta/models/demo:streamGenerateContent?alt=sse",
+            ),
+            patch.object(
+                parser_service,
+                "_iter_sse_json_payloads",
+                side_effect=_one_thought,
+            ),
+            patch.object(parser_service, "_emit_thought", side_effect=_blocked_callback),
+            patch(
+                "app.domain.ai.runtime_budget.get_ai_runtime_budget",
+                return_value=AiRuntimeBudget(stream_total_timeout_seconds=0.02),
+            ),
+        ):
+            with self.assertRaises(AiRuntimeTimeoutError):
+                await parser_service._stream_resume_thinking_parse(
+                    cleaned_text="候选人简历内容",
+                    request_id="req-callback-timeout",
+                    thought_callback=AsyncMock(),
+                )
+
+        self.assertTrue(callback_cancelled.is_set())
+        self.assertTrue(response.closed)
+
+    async def test_terminal_chunk_failure_cancels_parallel_chunk_requests(self) -> None:
+        slow_started = asyncio.Event()
+        slow_cancelled = asyncio.Event()
+        call_index = 0
+
+        async def _call_chunk(*_args, **_kwargs):
+            nonlocal call_index
+            index = call_index
+            call_index += 1
+            if index == 0:
+                await slow_started.wait()
+                raise AiRuntimeBudgetExceeded(
+                    AiRuntimeBudgetExceeded.public_message
+                )
+            slow_started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                slow_cancelled.set()
+
+        with (
+            patch.object(parser_service, "_split_resume_text", return_value=["one", "two"]),
+            patch.object(parser_service, "_call_resume_llm", side_effect=_call_chunk),
+        ):
+            with self.assertRaises(AiRuntimeBudgetExceeded):
+                await parser_service._parse_resume_chunked(
+                    "chunked resume",
+                    "req-terminal-chunk",
+                )
+
+        self.assertTrue(slow_cancelled.is_set())
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ class _FakeJsonResponse:
         self.request = None
         self.text = text
         self.status_code = 200
+        self.closed = False
 
     def raise_for_status(self) -> None:
         return None
@@ -44,6 +45,19 @@ class _FakeJsonResponse:
 
     async def aread(self):
         return self.text.encode("utf-8")
+
+    async def aiter_bytes(self, chunk_size=None):
+        body = (
+            self.text.encode("utf-8")
+            if self.text
+            else json.dumps(self._payload, ensure_ascii=False).encode("utf-8")
+        )
+        resolved_chunk_size = chunk_size or len(body) or 1
+        for index in range(0, len(body), resolved_chunk_size):
+            yield body[index : index + resolved_chunk_size]
+
+    async def aclose(self):
+        self.closed = True
 
 
 class _FakePostClient:
@@ -62,6 +76,11 @@ class _FakePostClient:
         self.posts.append((args, kwargs))
         return self.response
 
+    def stream(self, *args, **kwargs):
+        normalized_args = args[1:] if args and args[0] == "POST" else args
+        self.posts.append((normalized_args, kwargs))
+        return _FakeStreamContext(self.response)
+
 
 class _FakeStreamResponse:
     def __init__(self, lines):
@@ -70,9 +89,17 @@ class _FakeStreamResponse:
         self.request = None
         self.status_code = 200
         self.text = ""
+        self.closed = False
 
     def raise_for_status(self) -> None:
         return None
+
+    async def aiter_bytes(self, chunk_size=None):
+        for line in self._lines:
+            data = f"{line}\n".encode("utf-8")
+            resolved_chunk_size = chunk_size or len(data) or 1
+            for index in range(0, len(data), resolved_chunk_size):
+                yield data[index : index + resolved_chunk_size]
 
     async def aiter_lines(self):
         for line in self._lines:
@@ -80,6 +107,9 @@ class _FakeStreamResponse:
 
     async def aread(self):
         return self.text.encode("utf-8")
+
+    async def aclose(self):
+        self.closed = True
 
 
 class _FakeStreamContext:
@@ -90,6 +120,9 @@ class _FakeStreamContext:
         return self._response
 
     async def __aexit__(self, exc_type, exc, tb):
+        close = getattr(self._response, "aclose", None)
+        if close is not None:
+            await close()
         return False
 
 
@@ -1593,7 +1626,11 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                         "_stream_gemini_json_response_legacy",
                         new=AsyncMock(side_effect=RuntimeError("gemini failed")),
                     ):
-                        with patch.object(llm_transport, "_emit_failed_usage", failed_usage):
+                        with patch.object(
+                            llm_transport,
+                            "_emit_failed_usage_best_effort",
+                            failed_usage,
+                        ):
                             with self.assertRaisesRegex(RuntimeError, "gemini failed"):
                                 await llm_transport._stream_gemini_json_response(
                                     system_prompt="严格输出 JSON",
@@ -1634,7 +1671,11 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                     "_stream_qwen_json_response",
                     new=AsyncMock(side_effect=RuntimeError("chat failed")),
                 ):
-                    with patch.object(llm_transport, "_emit_failed_usage", failed_usage):
+                    with patch.object(
+                        llm_transport,
+                        "_emit_failed_usage_best_effort",
+                        failed_usage,
+                    ):
                         with self.assertRaisesRegex(RuntimeError, "chat failed"):
                             await llm_transport._stream_gemini_json_response(
                                 system_prompt="严格输出 JSON",
@@ -2094,6 +2135,112 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(first, second)
         call_mock.assert_awaited_once()
+
+    async def test_split_experience_text_cancels_orphaned_upstream_on_last_waiter_cancel(self) -> None:
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def blocked_result(_messages, json_mode=True):
+            del json_mode
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                cancelled.set()
+
+        call_mock = AsyncMock(side_effect=blocked_result)
+        with patch.object(ai_service, "_call_llm", call_mock):
+            request = asyncio.create_task(
+                ai_service.split_experience_text("取消文本", "work")
+            )
+            await started.wait()
+            request.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await request
+
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(ai_service._SPLIT_EXPERIENCE_TEXT_IN_FLIGHT, {})
+        self.assertEqual(ai_service._SPLIT_EXPERIENCE_TEXT_WAITERS, {})
+        call_mock.assert_awaited_once()
+
+    async def test_split_experience_text_keeps_shared_upstream_for_remaining_waiter(self) -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def shared_result(_messages, json_mode=True):
+            del json_mode
+            started.set()
+            try:
+                await release.wait()
+                return {"s": "共享情境", "t": "", "a": "", "r": ""}
+            finally:
+                cancelled.set()
+
+        call_mock = AsyncMock(side_effect=shared_result)
+        with patch.object(ai_service, "_call_llm", call_mock):
+            first = asyncio.create_task(
+                ai_service.split_experience_text("共享文本", "work")
+            )
+            await started.wait()
+            second = asyncio.create_task(
+                ai_service.split_experience_text("共享文本", "work")
+            )
+            await asyncio.sleep(0)
+            first.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await first
+            self.assertFalse(cancelled.is_set())
+            release.set()
+            result = await second
+
+        self.assertEqual(result["s"], "共享情境")
+        self.assertTrue(cancelled.is_set())
+        call_mock.assert_awaited_once()
+
+    async def test_split_experience_text_does_not_join_task_during_cancel_cleanup(self) -> None:
+        first_started = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        call_count = 0
+
+        async def result_with_slow_cancel(_messages, json_mode=True):
+            nonlocal call_count
+            del json_mode
+            call_count += 1
+            if call_count == 1:
+                first_started.set()
+                try:
+                    await asyncio.Future()
+                except asyncio.CancelledError:
+                    cleanup_started.set()
+                    await release_cleanup.wait()
+                    raise
+            return {"s": "新请求", "t": "", "a": "", "r": ""}
+
+        with patch.object(
+            ai_service,
+            "_call_llm",
+            AsyncMock(side_effect=result_with_slow_cancel),
+        ):
+            first = asyncio.create_task(
+                ai_service.split_experience_text("取消交接文本", "work")
+            )
+            await first_started.wait()
+            first.cancel()
+            await cleanup_started.wait()
+
+            second = await asyncio.wait_for(
+                ai_service.split_experience_text("取消交接文本", "work"),
+                timeout=1,
+            )
+            release_cleanup.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await first
+
+        self.assertEqual(second["s"], "新请求")
+        self.assertEqual(call_count, 2)
+        self.assertEqual(ai_service._SPLIT_EXPERIENCE_TEXT_IN_FLIGHT, {})
 
     async def test_boss_greeting_bypasses_thinking_when_budget_is_zero(self) -> None:
         fake_settings = SimpleNamespace(

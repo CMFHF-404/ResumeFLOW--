@@ -7,16 +7,21 @@ import { readContextString } from './sessionContextUtils';
 import type { AssistantDraftMessageItem } from './sessionUtils';
 
 type DraftJumpHandlerParams = {
+  authUserKey: string | null | undefined;
   item: Omit<AssistantDraftMessageItem, 'onJumpToEditor' | 'onViewAppliedDraft'>;
   selectedSession: AssistantSession | null;
   onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
   markManualSaveMessage: (messageId: string) => void;
-  writePendingManualSaveDraft?: (draft: PendingAssistantManualSaveDraft) => void;
+  writePendingManualSaveDraft?: (
+    ownerKey: string | null | undefined,
+    draft: PendingAssistantManualSaveDraft,
+  ) => void;
   notifyError: (message: string) => void;
   now?: () => number;
 };
 
 type AttachDraftJumpHandlersParams = {
+  authUserKey: string | null | undefined;
   selectedSession: AssistantSession | null;
   onJumpToResumeEditor?: (resumeId?: string, targetId?: string) => void;
   onJumpToExperienceBank?: (category?: AssistantDraftApplyNavigation['category'], targetId?: string) => void;
@@ -32,6 +37,7 @@ type AppliedDraftNavigationHandlerParams = {
 };
 
 export const createDraftJumpHandler = ({
+  authUserKey,
   item,
   selectedSession,
   onJumpToResumeEditor,
@@ -55,7 +61,7 @@ export const createDraftJumpHandler = ({
           createdAt: now(),
         });
         if (pendingManualSaveDraft) {
-          writePendingManualSaveDraft(pendingManualSaveDraft);
+          writePendingManualSaveDraft(authUserKey, pendingManualSaveDraft);
           markManualSaveMessage(message.id);
         }
         onJumpToResumeEditor?.(resumeId ?? undefined);

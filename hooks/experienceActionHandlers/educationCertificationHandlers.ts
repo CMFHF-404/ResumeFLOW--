@@ -28,6 +28,8 @@ import type {
     ExperienceHelpers,
     MatchScoreDomain,
 } from './types';
+import type { AuthOwnerOperation, AuthOwnerOperationGuard } from '../useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type EducationDraftHandlers = {
     beginCreateEducation: () => void;
@@ -129,7 +131,8 @@ const createEducationSaveHandlers = (
     helpers: ExperienceHelpers,
     state: EducationState,
     prefixes: DraftPrefixes,
-    draftHandlers: EducationDraftHandlers
+    draftHandlers: EducationDraftHandlers,
+    ownerGuard: AuthOwnerOperationGuard,
 ): EducationSaveHandlers => {
     const applyEducationDetail = (
         detail: ExperienceDetail,
@@ -163,22 +166,30 @@ const createEducationSaveHandlers = (
         if (!state.educationDraft || state.isSavingEducation) {
             return;
         }
-        state.setIsSavingEducation(true);
+        let operation: AuthOwnerOperation | null = null;
         try {
+            operation = await ownerGuard.beginOperation();
+            state.setIsSavingEducation(true);
             if (state.editingEducationId && !isDraftId(state.editingEducationId, prefixes.education)) {
                 const source = domain.sourceMap.get(state.editingEducationId);
                 if (!source) {
                     throw new Error('缺少教育经历源数据');
                 }
                 const payload = helpers.buildEducationVersionPayload(source, state.educationDraft);
-                const detail = await experienceService.update(state.editingEducationId, { version: payload });
+                const detail = await experienceService.update(
+                    state.editingEducationId,
+                    { version: payload },
+                    { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+                );
+                await ownerGuard.assertOperationCurrent(operation);
                 applyEducationDetail(detail, { select: false });
             } else {
                 const payload = helpers.buildEducationVersionPayload(null, state.educationDraft);
                 const detail = await experienceService.create({
                     category: 'education',
                     version: payload,
-                });
+                }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+                await ownerGuard.assertOperationCurrent(operation);
                 const shouldSelect = state.editingEducationId
                     ? domain.selectedIds.has(state.editingEducationId)
                     : true;
@@ -189,9 +200,13 @@ const createEducationSaveHandlers = (
             }
             draftHandlers.cancelEducationEdit();
         } catch (error) {
-            console.error('[ResumeEditor] 保存教育经历失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 保存教育经历失败:', error);
+            }
         } finally {
-            state.setIsSavingEducation(false);
+            if (!operation || ownerGuard.isOperationCurrent(operation)) {
+                state.setIsSavingEducation(false);
+            }
         }
     };
 
@@ -204,7 +219,8 @@ const createEducationDeleteHandlers = (
     prefixes: DraftPrefixes,
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
-    draftHandlers: EducationDraftHandlers
+    draftHandlers: EducationDraftHandlers,
+    ownerGuard: AuthOwnerOperationGuard,
 ): EducationDeleteHandlers => {
     const requestDeleteEducation = (id: string) => {
         if (state.deletingEducationIds.has(id)) {
@@ -233,7 +249,11 @@ const createEducationDeleteHandlers = (
         }
         try {
             await runWithFlag(id, state.deletingEducationIds, state.setDeletingEducationIds, async () => {
-                await experienceService.delete(id);
+                const operation = await ownerGuard.beginOperation();
+                await experienceService.delete(id, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
                 domain.setItems((prev) => prev.filter((item) => item.id !== id));
                 domain.setSourceMap((prev) => deleteMapEntry(prev, id));
                 domain.setSelectedIds((prev) => removeFromSet(prev, id));
@@ -242,7 +262,9 @@ const createEducationDeleteHandlers = (
                 }
             });
         } catch (error) {
-            console.error('[ResumeEditor] 删除教育经历失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 删除教育经历失败:', error);
+            }
         }
     };
 
@@ -268,18 +290,20 @@ export const createEducationHandlers = (
     helpers: ExperienceHelpers,
     state: EducationState,
     prefixes: DraftPrefixes,
+    ownerGuard: AuthOwnerOperationGuard,
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void
 ): EducationHandlers => {
     const draftHandlers = createEducationDraftHandlers(domain, helpers, state, prefixes);
-    const saveHandlers = createEducationSaveHandlers(domain, helpers, state, prefixes, draftHandlers);
+    const saveHandlers = createEducationSaveHandlers(domain, helpers, state, prefixes, draftHandlers, ownerGuard);
     const deleteHandlers = createEducationDeleteHandlers(
         domain,
         state,
         prefixes,
         confirmCopy,
         openDeleteConfirm,
-        draftHandlers
+        draftHandlers,
+        ownerGuard,
     );
     const selectionHandlers = createEducationSelectionHandlers(domain);
 
@@ -375,7 +399,8 @@ const createCertificationSaveHandlers = (
     helpers: ExperienceHelpers,
     state: CertificationState,
     prefixes: DraftPrefixes,
-    draftHandlers: CertificationDraftHandlers
+    draftHandlers: CertificationDraftHandlers,
+    ownerGuard: AuthOwnerOperationGuard,
 ): CertificationSaveHandlers => {
     const applyCertificationUpdate = (
         record: CertificationRecord,
@@ -410,17 +435,27 @@ const createCertificationSaveHandlers = (
         if (!state.certificationDraft || state.isSavingCertification) {
             return;
         }
-        state.setIsSavingCertification(true);
+        let operation: AuthOwnerOperation | null = null;
         try {
+            operation = await ownerGuard.beginOperation();
+            state.setIsSavingCertification(true);
             const payload = helpers.buildCertificationPayload(state.certificationDraft);
             const isDraft = state.editingCertificationId
                 ? isDraftId(state.editingCertificationId, prefixes.certification)
                 : true;
             if (state.editingCertificationId && !isDraft) {
-                const record = await certificationsService.update(state.editingCertificationId, payload);
+                const record = await certificationsService.update(
+                    state.editingCertificationId,
+                    payload,
+                    { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+                );
+                await ownerGuard.assertOperationCurrent(operation);
                 applyCertificationUpdate(record, { select: false });
             } else {
-                const record = await certificationsService.create(payload);
+                const record = await certificationsService.create(payload, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
                 applyCertificationUpdate(record, {
                     select: true,
                     replacedId: isDraft ? state.editingCertificationId ?? undefined : undefined,
@@ -428,9 +463,13 @@ const createCertificationSaveHandlers = (
             }
             draftHandlers.cancelCertificationEdit();
         } catch (error) {
-            console.error('[ResumeEditor] 保存证书失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 保存证书失败:', error);
+            }
         } finally {
-            state.setIsSavingCertification(false);
+            if (!operation || ownerGuard.isOperationCurrent(operation)) {
+                state.setIsSavingCertification(false);
+            }
         }
     };
 
@@ -443,7 +482,8 @@ const createCertificationDeleteHandlers = (
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
     matchScore: MatchScoreDomain,
-    draftHandlers: CertificationDraftHandlers
+    draftHandlers: CertificationDraftHandlers,
+    ownerGuard: AuthOwnerOperationGuard,
 ): CertificationDeleteHandlers => {
     const requestDeleteCertification = (id: string) => {
         if (state.deletingCertificationIds.has(id)) {
@@ -463,7 +503,11 @@ const createCertificationDeleteHandlers = (
         }
         try {
             await runWithFlag(id, state.deletingCertificationIds, state.setDeletingCertificationIds, async () => {
-                await certificationsService.delete(id);
+                const operation = await ownerGuard.beginOperation();
+                await certificationsService.delete(id, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
                 domain.setItems((prev) => prev.filter((item) => item.id !== id));
                 domain.setSourceMap((prev) => deleteMapEntry(prev, id));
                 domain.setSelectedIds((prev) => removeFromSet(prev, id));
@@ -482,7 +526,9 @@ const createCertificationDeleteHandlers = (
                 }
             });
         } catch (error) {
-            console.error('[ResumeEditor] 删除证书失败:', error);
+            if (!isAuthContextChangedError(error)) {
+                console.error('[ResumeEditor] 删除证书失败:', error);
+            }
         }
     };
 
@@ -510,17 +556,19 @@ export const createCertificationHandlers = (
     prefixes: DraftPrefixes,
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
-    matchScore: MatchScoreDomain
+    matchScore: MatchScoreDomain,
+    ownerGuard: AuthOwnerOperationGuard,
 ): CertificationHandlers => {
     const draftHandlers = createCertificationDraftHandlers(domain, helpers, state, prefixes);
-    const saveHandlers = createCertificationSaveHandlers(domain, helpers, state, prefixes, draftHandlers);
+    const saveHandlers = createCertificationSaveHandlers(domain, helpers, state, prefixes, draftHandlers, ownerGuard);
     const deleteHandlers = createCertificationDeleteHandlers(
         domain,
         state,
         confirmCopy,
         openDeleteConfirm,
         matchScore,
-        draftHandlers
+        draftHandlers,
+        ownerGuard,
     );
     const selectionHandlers = createCertificationSelectionHandlers(domain);
 

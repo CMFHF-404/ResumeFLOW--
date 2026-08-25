@@ -64,7 +64,27 @@ const loadProfileServiceWithMocks = async () => {
           }));
           buildContext.onLoad({ filter: /^api-client-stub$/, namespace: 'stub' }, () => ({
             contents: `
-              export const getAuthCacheKey = async () => globalThis.__profileAuthKey;
+              export class AuthContextChangedError extends Error {
+                constructor(message = 'Authentication context changed during operation') {
+                  super(message);
+                  this.name = 'AuthContextChangedError';
+                }
+              }
+              export const isAuthContextChangedError = (error) => (
+                error?.name === 'AuthContextChangedError'
+              );
+              export const captureAuthCacheKey = async (expected) => {
+                const owner = expected ?? globalThis.__profileAuthKey;
+                if (owner !== globalThis.__profileAuthKey) {
+                  throw new AuthContextChangedError('Authentication context changed before profile update');
+                }
+                return owner;
+              };
+              export const assertAuthCacheKey = async (expected) => {
+                if (expected !== globalThis.__profileAuthKey) {
+                  throw new AuthContextChangedError();
+                }
+              };
               export default {
                 get: (...args) => globalThis.__profileGet(...args),
                 patch: (...args) => globalThis.__profilePatch(...args),
@@ -149,13 +169,91 @@ test('legacy profile avatars are center-cropped once and persisted for every pre
 test('profile writes are rejected when the authenticated account changes before dispatch', () => {
   const apiClientSource = read('services/apiClient.ts');
   const profileServiceSource = read('services/profileService.ts');
+  const templateStorageSource = read('services/resumeTemplateStorage.ts');
 
   assert.match(apiClientSource, /config\.expectedAuthCacheKey !== activeAuthCacheKey/);
   assert.match(apiClientSource, /Authentication context changed before request dispatch/);
-  assert.match(profileServiceSource, /expectedAuthCacheKey: activeOwnerKey/);
+  assert.match(profileServiceSource, /const expectedOwnerKey = await captureAuthCacheKey\(options\?\.expectedAuthCacheKey\)/);
+  assert.match(profileServiceSource, /await assertAuthCacheKey\(expectedOwnerKey\)/);
+  assert.match(profileServiceSource, /expectedAuthCacheKey: expectedOwnerKey/);
   assert.match(profileServiceSource, /const pendingAvatarNormalization = inFlightAvatarNormalization/);
   assert.match(profileServiceSource, /ownerKeyAtStart !== activeOwnerKey/);
   assert.match(profileServiceSource, /await pendingAvatarNormalization/);
+  assert.match(
+    templateStorageSource,
+    /getProfile\(\{\s*force: true,\s*expectedAuthCacheKey: ownerId,\s*\}\)/,
+  );
+  assert.match(
+    templateStorageSource,
+    /updateProfile\([\s\S]*?\{ expectedAuthCacheKey: ownerId \}\s*\)/,
+  );
+});
+
+test('a completed account A profile read cannot continue into an account B patch', async (t) => {
+  const accountAProfile = {
+    user_id: 'user-a',
+    extra_json: { private_note: 'account-a-only' },
+    updated_at: '2026-08-24T10:00:00Z',
+  };
+  let accountBProfile = {
+    user_id: 'user-b',
+    extra_json: { private_note: 'account-b-only' },
+    updated_at: '2026-08-24T10:01:00Z',
+  };
+  const patchCalls = [];
+  globalThis.__profileAuthKey = 'user-a';
+  globalThis.__profilePreviewRevisionBumps = 0;
+  globalThis.__normalizeProfileAvatar = async (source) => source;
+  globalThis.__profileGet = async (_url, config) => ({
+    data: config?.expectedAuthCacheKey === 'user-a'
+      ? accountAProfile
+      : accountBProfile,
+  });
+  globalThis.__profilePatch = async (_url, payload, config) => {
+    patchCalls.push({ payload, config });
+    accountBProfile = {
+      ...accountBProfile,
+      extra_json: payload.extra_json,
+    };
+    return { data: accountBProfile };
+  };
+  t.after(() => {
+    for (const key of [
+      '__profileAuthKey',
+      '__profilePreviewRevisionBumps',
+      '__normalizeProfileAvatar',
+      '__profileGet',
+      '__profilePatch',
+    ]) {
+      delete globalThis[key];
+    }
+  });
+
+  const { profileService } = await loadProfileServiceWithMocks();
+  const loadedAccountA = await profileService.getProfile({
+    force: true,
+    expectedAuthCacheKey: 'user-a',
+  });
+  assert.equal(loadedAccountA.user_id, 'user-a');
+
+  // Match the logout/account-switch path that clears A's cache before B is active.
+  profileService.clearProfileCache();
+  globalThis.__profileAuthKey = 'user-b';
+  await assert.rejects(
+    profileService.updateProfile(
+      {
+        extra_json: {
+          ...loadedAccountA.extra_json,
+          resumeTemplatePresets: { 'modern-slate': { themeColorPresetId: 'rose' } },
+        },
+      },
+      { expectedAuthCacheKey: 'user-a' },
+    ),
+    /Authentication context changed before profile update/,
+  );
+
+  assert.equal(patchCalls.length, 0);
+  assert.deepEqual(accountBProfile.extra_json, { private_note: 'account-b-only' });
 });
 
 test('a late profile response from the previous account is discarded before avatar migration', async (t) => {
@@ -213,7 +311,7 @@ test('a late profile response from the previous account is discarded before avat
 
   await assert.rejects(
     accountARead,
-    /Authentication context changed while loading profile/,
+    /Authentication context changed/,
   );
   assert.equal(patchCalls.length, 0);
 

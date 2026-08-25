@@ -1,4 +1,8 @@
-import apiClient, { getAuthCacheKey } from './apiClient';
+import apiClient, {
+  assertAuthCacheKey,
+  captureAuthCacheKey,
+  type AuthOwnerOptions,
+} from './apiClient';
 
 export interface TokenQuotaSummary {
   user_id: string;
@@ -110,7 +114,7 @@ export interface PaymentPurchaseContext {
   latest_order: PaymentOrder | null;
 }
 
-type PaymentRequestOptions = {
+type PaymentRequestOptions = AuthOwnerOptions & {
   signal?: AbortSignal;
 };
 
@@ -134,8 +138,8 @@ export const clearBillingCache = () => {
   quotaSummaryInFlight = null;
 };
 
-const ensureBillingCacheOwner = async () => {
-  const ownerKey = await getAuthCacheKey();
+const ensureBillingCacheOwner = async (expectedAuthCacheKey?: string) => {
+  const ownerKey = await captureAuthCacheKey(expectedAuthCacheKey);
   if (
     (quotaSummaryCacheOwnerKey !== null && quotaSummaryCacheOwnerKey !== ownerKey)
     || (quotaSummaryCache !== null && quotaSummaryCache.ownerKey !== ownerKey)
@@ -151,12 +155,13 @@ export const billingService = {
     const response = await apiClient.get<BillingProductsResponse>('/api/billing/products', {
       signal: options?.signal,
       timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+      expectedAuthCacheKey: options?.expectedAuthCacheKey,
     });
     return response.data;
   },
 
-  async getSummary(options?: { force?: boolean; signal?: AbortSignal }): Promise<TokenQuotaSummary> {
-    const ownerKey = await ensureBillingCacheOwner();
+  async getSummary(options?: PaymentRequestOptions & { force?: boolean }): Promise<TokenQuotaSummary> {
+    const ownerKey = await ensureBillingCacheOwner(options?.expectedAuthCacheKey);
     const now = Date.now();
     if (!options?.force && isSummaryFresh(now) && quotaSummaryCache) {
       return quotaSummaryCache.data;
@@ -171,13 +176,13 @@ export const billingService = {
       .get<TokenQuotaSummary>('/api/billing/summary', {
         signal: options?.signal,
         timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: ownerKey,
       })
       .then(async (response) => {
-        const currentOwnerKey = await getAuthCacheKey();
+        await assertAuthCacheKey(ownerKey);
         if (
           quotaSummaryCacheGeneration === requestCacheGeneration
           && quotaSummaryCacheOwnerKey === ownerKey
-          && currentOwnerKey === ownerKey
         ) {
           quotaSummaryCache = { ownerKey, data: response.data, fetchedAt: Date.now() };
         }
@@ -198,12 +203,13 @@ export const billingService = {
       params: { limit },
       signal: options?.signal,
       timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+      expectedAuthCacheKey: options?.expectedAuthCacheKey,
     });
     return response.data;
   },
 
   async redeemCode(code: string, options?: PaymentRequestOptions): Promise<TokenRedemptionResponse> {
-    const ownerKey = await getAuthCacheKey();
+    const ownerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
     const response = await apiClient.post<TokenRedemptionResponse>(
       '/api/billing/redemptions',
       { code },
@@ -213,11 +219,7 @@ export const billingService = {
         timeout: PAYMENT_REQUEST_TIMEOUT_MS,
       },
     );
-    const currentOwnerKey = await getAuthCacheKey();
-    if (currentOwnerKey !== ownerKey) {
-      clearBillingCache();
-      throw new Error('Authentication context changed during redemption');
-    }
+    await assertAuthCacheKey(ownerKey);
     clearBillingCache();
     quotaSummaryCacheOwnerKey = ownerKey;
     quotaSummaryCache = { ownerKey, data: response.data.summary, fetchedAt: Date.now() };
@@ -242,6 +244,7 @@ export const billingService = {
         headers: { 'Idempotency-Key': idempotencyKey },
         signal: options?.signal,
         timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: options?.expectedAuthCacheKey,
       },
     );
     return response.data;
@@ -252,7 +255,11 @@ export const billingService = {
     const response = await apiClient.post<PaymentCheckoutForm>(
       `/api/billing/payment-orders/${encodedOrderId}/checkout`,
       undefined,
-      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+      {
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: options?.expectedAuthCacheKey,
+      },
     );
     return response.data;
   },
@@ -260,7 +267,11 @@ export const billingService = {
   async getPaymentPurchaseContext(options?: PaymentRequestOptions): Promise<PaymentPurchaseContext> {
     const response = await apiClient.get<PaymentPurchaseContext>(
       '/api/billing/payment-orders/purchase-context',
-      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+      {
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: options?.expectedAuthCacheKey,
+      },
     );
     return response.data;
   },
@@ -269,7 +280,11 @@ export const billingService = {
     const encodedOrderId = encodeURIComponent(orderId);
     const response = await apiClient.get<PaymentOrder>(
       `/api/billing/payment-orders/${encodedOrderId}`,
-      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+      {
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: options?.expectedAuthCacheKey,
+      },
     );
     return response.data;
   },
@@ -279,6 +294,7 @@ export const billingService = {
       params: { limit, ...(cursor ? { cursor } : {}) },
       signal: options?.signal,
       timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+      expectedAuthCacheKey: options?.expectedAuthCacheKey,
     });
     return response.data;
   },
@@ -288,7 +304,11 @@ export const billingService = {
     const response = await apiClient.post<PaymentOrder>(
       `/api/billing/payment-orders/${encodedOrderId}/cancel`,
       undefined,
-      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+      {
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: options?.expectedAuthCacheKey,
+      },
     );
     return response.data;
   },
@@ -298,7 +318,11 @@ export const billingService = {
     const response = await apiClient.post<PaymentOrder>(
       `/api/billing/payment-orders/${encodedOrderId}/sync`,
       undefined,
-      { signal: options?.signal, timeout: PAYMENT_REQUEST_TIMEOUT_MS },
+      {
+        signal: options?.signal,
+        timeout: PAYMENT_REQUEST_TIMEOUT_MS,
+        expectedAuthCacheKey: options?.expectedAuthCacheKey,
+      },
     );
     return response.data;
   },

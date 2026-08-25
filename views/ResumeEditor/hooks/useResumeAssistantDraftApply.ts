@@ -33,8 +33,10 @@ import {
     findExistingSkillForAssistantDraft,
     type AssistantSkillDraftPayload,
 } from '../assistantSkillDraftUtils';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
 
 type UseResumeAssistantDraftApplyParams = {
+    authUserKey: string | null;
     resumeId: string | null;
     educationSourceMap: Map<string, ExperienceListItem>;
     setEducationSourceMap: Dispatch<SetStateAction<Map<string, ExperienceListItem>>>;
@@ -48,10 +50,15 @@ type UseResumeAssistantDraftApplyParams = {
     setSelectedExpIds: Dispatch<SetStateAction<Set<string>>>;
     setResumeExperienceMap: (nextMap: Map<string, ResumeExperienceItem>) => void;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
-    ensureFloatingPolishResumeLink: (masterId: string, versionId?: string) => Promise<string | null>;
+    ensureFloatingPolishResumeLink: (
+        masterId: string,
+        versionId?: string,
+        options?: { expectedAuthCacheKey: string },
+    ) => Promise<string | null>;
 };
 
 export const useResumeAssistantDraftApply = ({
+    authUserKey,
     resumeId,
     educationSourceMap,
     setEducationSourceMap,
@@ -67,6 +74,7 @@ export const useResumeAssistantDraftApply = ({
     applyResumeDetail,
     ensureFloatingPolishResumeLink,
 }: UseResumeAssistantDraftApplyParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
     const applyEducationAssistantDetail = useCallback((
         detail: ExperienceDetail,
         options?: { replacedId?: string }
@@ -106,8 +114,12 @@ export const useResumeAssistantDraftApply = ({
 
     return useCallback(async (
         draftCard: AssistantDraftCard,
-        _meta: AssistantDraftApplyMeta
+        meta: AssistantDraftApplyMeta
     ) => {
+        const operation = await ownerGuard.beginOperation();
+        if (meta.expectedAuthCacheKey !== operation.expectedAuthCacheKey) {
+            return false;
+        }
         const normalizedDraftCard = normalizeAssistantDraftCard(draftCard);
 
         if (normalizedDraftCard.type === 'certification') {
@@ -119,8 +131,13 @@ export const useResumeAssistantDraftApply = ({
                 credential_id: normalizedDraftCard.data.credentialId.trim() || undefined,
                 credential_url: normalizedDraftCard.data.credentialUrl.trim() || undefined,
                 description: normalizedDraftCard.data.description.trim() || undefined,
+            }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+            await ownerGuard.assertOperationCurrent(operation);
+            const nextCertifications = await certificationsService.list({
+                force: true,
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
             });
-            const nextCertifications = await certificationsService.list({ force: true });
+            await ownerGuard.assertOperationCurrent(operation);
             setCertifications(nextCertifications.map(buildCertificationView).sort(compareCertificationByDateDesc));
             setCertificationSourceMap(new Map(nextCertifications.map((item) => [item.id, item])));
             setSelectedCertIds((prev) => {
@@ -152,7 +169,11 @@ export const useResumeAssistantDraftApply = ({
             if (skillPayloads.length === 0) {
                 throw new Error('缺少技能名称，无法录入技能组');
             }
-            const existingSkills = await skillsService.list({ force: true });
+            const existingSkills = await skillsService.list({
+                force: true,
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await ownerGuard.assertOperationCurrent(operation);
             const appliedSkills = await Promise.all(
                 skillPayloads.map((payload) => {
                     const existing = findExistingSkillForAssistantDraft(existingSkills, payload);
@@ -160,15 +181,20 @@ export const useResumeAssistantDraftApply = ({
                         return skillsService.update(existing.id, {
                             name: payload.name,
                             category: payload.category,
-                        });
+                        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
                     }
                     return skillsService.create({
                         name: payload.name,
                         category: payload.category,
-                    });
+                    }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
                 })
             );
-            const nextSkills = await skillsService.list({ force: true });
+            await ownerGuard.assertOperationCurrent(operation);
+            const nextSkills = await skillsService.list({
+                force: true,
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await ownerGuard.assertOperationCurrent(operation);
             setSkillGroups(buildSkillGroups(nextSkills));
             setSelectedSkillIds((prev) => {
                 const next = new Set(prev);
@@ -194,11 +220,16 @@ export const useResumeAssistantDraftApply = ({
                 : null;
             const payload = buildEducationVersionPayload(sourceItem, educationDraft);
             const detail = targetMasterId
-                ? await experienceService.update(targetMasterId, { version: payload })
+                ? await experienceService.update(
+                    targetMasterId,
+                    { version: payload },
+                    { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+                )
                 : await experienceService.create({
                     category: 'education',
                     version: payload,
-                });
+                }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+            await ownerGuard.assertOperationCurrent(operation);
             applyEducationAssistantDetail(detail);
             return true;
         }
@@ -215,10 +246,14 @@ export const useResumeAssistantDraftApply = ({
         const resolveTargetLinkId = async () => {
             const targetMasterId = normalizedDraftCard.data.targetMasterId?.trim();
             if (targetMasterId) {
-                const targetDetail = await experienceService.get(targetMasterId);
+                const targetDetail = await experienceService.get(targetMasterId, {
+                    expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                });
+                await ownerGuard.assertOperationCurrent(operation);
                 const linkId = await ensureFloatingPolishResumeLink(
                     targetMasterId,
-                    targetDetail.latest_version?.id
+                    targetDetail.latest_version?.id,
+                    { expectedAuthCacheKey: operation.expectedAuthCacheKey },
                 );
                 if (!linkId) {
                     throw new Error('无法创建目标经历与当前简历的关联');
@@ -229,11 +264,13 @@ export const useResumeAssistantDraftApply = ({
             const created = await experienceService.create({
                 category: normalizedDraftCard.data.category,
                 version: buildAssistantExperienceCreateVersionPayload(normalizedDraftCard.data, title),
-            });
+            }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+            await ownerGuard.assertOperationCurrent(operation);
             const createdMasterId = created.master.id;
             const linkId = await ensureFloatingPolishResumeLink(
                 createdMasterId,
-                created.latest_version?.id
+                created.latest_version?.id,
+                { expectedAuthCacheKey: operation.expectedAuthCacheKey },
             );
             if (!linkId) {
                 throw new Error('无法将新经历添加到当前简历');
@@ -250,7 +287,8 @@ export const useResumeAssistantDraftApply = ({
                     ...buildAssistantExperienceAssemblyOverride(normalizedDraftCard.data, title),
                 },
             ],
-        });
+        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         const nextMap = buildResumeExperienceMap(detail);
         applyResumeDetail(detail);
         setResumeExperienceMap(nextMap);
@@ -273,6 +311,7 @@ export const useResumeAssistantDraftApply = ({
         applyResumeDetail,
         educationSourceMap,
         ensureFloatingPolishResumeLink,
+        ownerGuard,
         resumeId,
         setCertificationSourceMap,
         setCertifications,

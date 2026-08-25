@@ -1,9 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { experienceService } from '../../services/experienceService';
 import { certificationsService } from '../../services/certificationsService';
 import type { Certification } from '../../services/certificationsService';
 import { skillsService, type UserSkill } from '../../services/skillsService';
+import {
+  assertAuthCacheKey,
+  AuthContextChangedError,
+  captureAuthCacheKey,
+  isAuthContextChangedError,
+} from '../../services/apiClient';
 import {
   type ParsedExperienceItem,
   type ParsedPersonalInfo,
@@ -69,6 +75,7 @@ export type ToastHandlers = {
   info: (message: string, duration?: number) => void;
   loading: (message: string) => string;
   updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error'; duration?: number }) => void;
+  closeToast?: (id: string) => void;
 };
 
 const createTimeoutError = () => {
@@ -357,7 +364,8 @@ export const useResumeParsing = (
     existingCertifications?: Certification[]
   ) => void,
   applyParsedSkills: (items: ParsedSkillGroup[], existingSkills?: UserSkill[]) => void,
-  toast: ToastHandlers
+  toast: ToastHandlers,
+  authUserKey?: string | null,
 ) => {
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<ParseStage>('idle');
@@ -369,6 +377,7 @@ export const useResumeParsing = (
   const parseErrorCountRef = useRef(0);
   const activeParseControllerRef = useRef<AbortController | null>(null);
   const parseRunIdRef = useRef(0);
+  const committedOwnerRef = useRef(authUserKey ?? null);
 
   const clearLongParseNotice = useCallback(() => {
     if (longParseNoticeTimerRef.current) {
@@ -397,6 +406,33 @@ export const useResumeParsing = (
     setThinkingNodes(buildEmptyThinkingNodes());
   }, [cancelActiveParse, clearLongParseNotice]);
 
+  useLayoutEffect(() => {
+    const nextOwner = authUserKey ?? null;
+    if (committedOwnerRef.current === nextOwner) {
+      return;
+    }
+    committedOwnerRef.current = nextOwner;
+    parseRunIdRef.current += 1;
+    cancelActiveParse();
+    clearLongParseNotice();
+    setFile(null);
+    setStage('idle');
+    setErrorMessage(null);
+    setThinkingNodes(buildEmptyThinkingNodes());
+    applyParsedItems([]);
+    applyParsedPersonalInfo(undefined);
+    applyParsedCertifications([]);
+    applyParsedSkills([]);
+  }, [
+    applyParsedCertifications,
+    applyParsedItems,
+    applyParsedPersonalInfo,
+    applyParsedSkills,
+    authUserKey,
+    cancelActiveParse,
+    clearLongParseNotice,
+  ]);
+
   const scheduleLongParseNotice = useCallback(() => {
     clearLongParseNotice();
     longParseNoticeTimerRef.current = setTimeout(() => {
@@ -405,19 +441,29 @@ export const useResumeParsing = (
     }, LONG_PARSE_NOTICE_DELAY_MS);
   }, [clearLongParseNotice, toast]);
 
-  const fetchExistingSkills = useCallback(async () => {
+  const fetchExistingSkills = useCallback(async (expectedAuthCacheKey: string) => {
     try {
-      return await skillsService.list({ force: true });
+      const skills = await skillsService.list({ force: true, expectedAuthCacheKey });
+      await assertAuthCacheKey(expectedAuthCacheKey);
+      return skills;
     } catch (error) {
+      if (isAuthContextChangedError(error)) {
+        throw error;
+      }
       console.error('[ResumeUploadModal] Failed to fetch skills for dedupe:', error);
       return [];
     }
   }, []);
 
-  const fetchExistingCertifications = useCallback(async () => {
+  const fetchExistingCertifications = useCallback(async (expectedAuthCacheKey: string) => {
     try {
-      return await certificationsService.list({ force: true });
+      const certifications = await certificationsService.list({ force: true, expectedAuthCacheKey });
+      await assertAuthCacheKey(expectedAuthCacheKey);
+      return certifications;
     } catch (error) {
+      if (isAuthContextChangedError(error)) {
+        throw error;
+      }
       console.error('[ResumeUploadModal] Failed to fetch certifications for dedupe:', error);
       return [];
     }
@@ -444,12 +490,25 @@ export const useResumeParsing = (
       parseRunIdRef.current = currentRunId;
       const abortController = new AbortController();
       let didTimeout = false;
+      let expectedAuthCacheKey: string | null = null;
       const isCurrentParseRun = () =>
         parseRunIdRef.current === currentRunId
-        && activeParseControllerRef.current === abortController;
+        && activeParseControllerRef.current === abortController
+        && committedOwnerRef.current === expectedAuthCacheKey;
+      const assertCurrentParseRun = async () => {
+        if (!isCurrentParseRun() || !expectedAuthCacheKey) {
+          throw new AuthContextChangedError();
+        }
+        await assertAuthCacheKey(expectedAuthCacheKey);
+        if (!isCurrentParseRun()) {
+          throw new AuthContextChangedError();
+        }
+      };
 
       try {
         activeParseControllerRef.current = abortController;
+        expectedAuthCacheKey = await captureAuthCacheKey(authUserKey ?? undefined);
+        await assertCurrentParseRun();
         await sleep(STAGE_TRANSITION_DELAY_MS);
         if (!isCurrentParseRun()) {
           return;
@@ -476,7 +535,7 @@ export const useResumeParsing = (
               }
             },
             abortController.signal,
-            { enableThinking }
+            { enableThinking, expectedAuthCacheKey }
           ),
           PARSE_TIMEOUT_MS,
           () => {
@@ -496,15 +555,13 @@ export const useResumeParsing = (
         if (!isCurrentParseRun()) {
           return;
         }
+        const [existingCertifications, existingSkills] = await Promise.all([
+          fetchExistingCertifications(expectedAuthCacheKey),
+          fetchExistingSkills(expectedAuthCacheKey),
+        ]);
+        await assertCurrentParseRun();
         applyParsedItems(response.items || []);
         applyParsedPersonalInfo(response.personal_info);
-        const [existingCertifications, existingSkills] = await Promise.all([
-          fetchExistingCertifications(),
-          fetchExistingSkills(),
-        ]);
-        if (!isCurrentParseRun()) {
-          return;
-        }
         applyParsedCertifications(response.certifications || [], existingCertifications);
         applyParsedSkills(response.skills || [], existingSkills);
         setThinkingNodes((prev) => completeThinkingNodes(prev));
@@ -513,6 +570,9 @@ export const useResumeParsing = (
         parseErrorCountRef.current = 0;
       } catch (error) {
         if (parseRunIdRef.current !== currentRunId) {
+          return;
+        }
+        if (isAuthContextChangedError(error)) {
           return;
         }
         if (isAbortLikeError(error) && !didTimeout) {
@@ -546,6 +606,7 @@ export const useResumeParsing = (
       fetchExistingSkills,
       fetchExistingCertifications,
       enableThinking,
+      authUserKey,
       scheduleLongParseNotice,
       toast,
     ]
@@ -595,10 +656,39 @@ export const useResumeImport = (
   selectedSkillTags: ParsedSkillTagView[],
   personalInfoSelection: ParsedPersonalInfoSelection,
   toast: ToastHandlers,
-  onImported: () => Promise<void> | void,
-  onClose: () => void
+  onImported: (options: { expectedAuthCacheKey: string }) => Promise<void> | void,
+  onClose: () => void,
+  authUserKey?: string | null,
 ) => {
   const [isImporting, setIsImporting] = useState(false);
+  const importGenerationRef = useRef(0);
+  const activeImportToastIdRef = useRef<string | null>(null);
+  const committedOwnerRef = useRef(authUserKey ?? null);
+
+  const cancelImport = useCallback(() => {
+    importGenerationRef.current += 1;
+    if (activeImportToastIdRef.current) {
+      toast.closeToast?.(activeImportToastIdRef.current);
+      activeImportToastIdRef.current = null;
+    }
+    setIsImporting(false);
+  }, [toast]);
+
+  useLayoutEffect(() => {
+    const nextOwner = authUserKey ?? null;
+    if (committedOwnerRef.current !== nextOwner) {
+      committedOwnerRef.current = nextOwner;
+      cancelImport();
+    }
+  }, [authUserKey, cancelImport]);
+
+  useEffect(() => () => {
+    importGenerationRef.current += 1;
+    if (activeImportToastIdRef.current) {
+      toast.closeToast?.(activeImportToastIdRef.current);
+      activeImportToastIdRef.current = null;
+    }
+  }, [toast]);
 
   const handleImport = useCallback(async () => {
     const personalInfoSelectedCount = countSelectedPersonalInfo(personalInfoSelection);
@@ -613,23 +703,51 @@ export const useResumeImport = (
     }
 
     let toastId: string | null = null;
+    const generation = importGenerationRef.current + 1;
+    importGenerationRef.current = generation;
+    let expectedAuthCacheKey: string | null = null;
+    const isCurrentGeneration = () => (
+      importGenerationRef.current === generation
+      && committedOwnerRef.current === expectedAuthCacheKey
+    );
+    const assertImportCurrent = async () => {
+      if (!isCurrentGeneration() || !expectedAuthCacheKey) {
+        throw new AuthContextChangedError();
+      }
+      await assertAuthCacheKey(expectedAuthCacheKey);
+      if (!isCurrentGeneration()) {
+        throw new AuthContextChangedError();
+      }
+    };
     try {
+      expectedAuthCacheKey = await captureAuthCacheKey(authUserKey ?? undefined);
+      await assertImportCurrent();
       setIsImporting(true);
       toastId = toast.loading('正在导入选择的内容...');
+      activeImportToastIdRef.current = toastId;
       let experienceCount = 0;
       let certificationCount = 0;
       let skillCount = 0;
       const unavailableModules: string[] = [];
       for (const item of selectedItems) {
+        await assertImportCurrent();
         await experienceService.create({
           category: item.category,
           version: normalizeImportVersion(item.version),
+        }, {
+          expectedAuthCacheKey,
         });
+        await assertImportCurrent();
         experienceCount += 1;
       }
       let certificationPayloads: Awaited<ReturnType<typeof buildCertificationImportPayloads>> = [];
       try {
-        certificationPayloads = await buildCertificationImportPayloads(selectedCertifications);
+        await assertImportCurrent();
+        certificationPayloads = await buildCertificationImportPayloads(
+          selectedCertifications,
+          { expectedAuthCacheKey },
+        );
+        await assertImportCurrent();
       } catch (error) {
         if (isHttpNotFoundError(error)) {
           unavailableModules.push('证书');
@@ -640,7 +758,12 @@ export const useResumeImport = (
       }
       let skillPayloads: Awaited<ReturnType<typeof buildSkillImportPayloads>> = [];
       try {
-        skillPayloads = await buildSkillImportPayloads(selectedSkillTags);
+        await assertImportCurrent();
+        skillPayloads = await buildSkillImportPayloads(
+          selectedSkillTags,
+          { expectedAuthCacheKey },
+        );
+        await assertImportCurrent();
       } catch (error) {
         if (isHttpNotFoundError(error)) {
           unavailableModules.push('技能');
@@ -651,7 +774,9 @@ export const useResumeImport = (
       }
       for (const payload of certificationPayloads) {
         try {
-          await certificationsService.create(payload);
+          await assertImportCurrent();
+          await certificationsService.create(payload, { expectedAuthCacheKey });
+          await assertImportCurrent();
         } catch (error) {
           if (isHttpNotFoundError(error)) {
             if (!unavailableModules.includes('证书')) {
@@ -666,7 +791,9 @@ export const useResumeImport = (
       }
       for (const payload of skillPayloads) {
         try {
-          await skillsService.create(payload);
+          await assertImportCurrent();
+          await skillsService.create(payload, { expectedAuthCacheKey });
+          await assertImportCurrent();
         } catch (error) {
           if (isHttpNotFoundError(error)) {
             if (!unavailableModules.includes('技能')) {
@@ -696,12 +823,16 @@ export const useResumeImport = (
         summaryParts.push(`${unavailableModules.join('、')}模块暂不可用，已自动跳过`);
       }
       const summary = summaryParts.length ? summaryParts.join(' / ') : '没有新内容可导入';
+      await assertImportCurrent();
       if (toastId) {
         toast.updateToast(toastId, {
           message: summary,
           type: 'success',
           duration: 2500,
         });
+        if (activeImportToastIdRef.current === toastId) {
+          activeImportToastIdRef.current = null;
+        }
       } else {
         toast.success(summary);
       }
@@ -712,9 +843,20 @@ export const useResumeImport = (
         personalInfoCount: personalInfoSelectedCount,
         totalSelected,
       });
-      await onImported();
+      await assertImportCurrent();
+      await onImported({ expectedAuthCacheKey });
+      await assertImportCurrent();
       onClose();
     } catch (error) {
+      if (isAuthContextChangedError(error) || !isCurrentGeneration()) {
+        if (toastId) {
+          toast.closeToast?.(toastId);
+        }
+        if (activeImportToastIdRef.current === toastId) {
+          activeImportToastIdRef.current = null;
+        }
+        return;
+      }
       console.error('[ResumeUploadModal] Import failed:', error);
       if (toastId) {
         toast.updateToast(toastId, {
@@ -722,15 +864,21 @@ export const useResumeImport = (
           type: 'error',
           duration: 3000,
         });
+        if (activeImportToastIdRef.current === toastId) {
+          activeImportToastIdRef.current = null;
+        }
       } else {
         toast.error('导入失败，请稍后重试');
       }
     } finally {
-      setIsImporting(false);
+      if (isCurrentGeneration()) {
+        setIsImporting(false);
+      }
     }
   }, [
     onClose,
     onImported,
+    authUserKey,
     selectedItems,
     selectedCertifications,
     selectedSkillTags,
@@ -738,6 +886,6 @@ export const useResumeImport = (
     toast,
   ]);
 
-  return { isImporting, handleImport };
+  return { isImporting, handleImport, cancelImport };
 };
 

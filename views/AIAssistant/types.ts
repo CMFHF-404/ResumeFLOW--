@@ -9,6 +9,7 @@ import type {
 export type AssistantDraftApplyMeta = {
   sessionId: string;
   messageId: string;
+  expectedAuthCacheKey: string;
   persistApplied: () => Promise<AssistantMessage>;
 };
 

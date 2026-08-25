@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import json
 import logging
@@ -7,28 +8,44 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException
-from starlette.status import HTTP_503_SERVICE_UNAVAILABLE, HTTP_504_GATEWAY_TIMEOUT
+from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 
 from ...config import (
     derive_qwen_responses_base_url as _derive_qwen_responses_base_url,
     load_settings,
 )
+from .assistant_text_stream import (
+    AssistantTextCallback,
+    _AssistantTextDeltaTracker,
+    _decode_json_string_prefix as _decode_json_string_prefix,
+    _emit_assistant_text as _emit_assistant_text,
+    _extract_assistant_text_prefix as _extract_assistant_text_prefix,
+    _find_json_field_value_start as _find_json_field_value_start,
+)
+from .public_errors import AiProviderPayloadError, AiProviderUnavailableError
+from . import runtime_budget
 from .response_normalizers import _parse_json_content, _parse_json_content_candidates
+from .response_diagnostics import response_body_log_metadata
 from .sse_events import iter_sse_json_payloads
+from .upstream_response import UPSTREAM_ACCEPT_ENCODING, read_bounded_response_body
 from .streaming_policy import (
-    AI_ROUTE_PROFILE_GEMINI,
-    AI_ROUTE_PROFILE_HYBRID,
     AI_ROUTE_PROFILE_QWEN,
     has_qwen_thinking_provider,
     is_qwen_model as _is_qwen_model,
     resolve_route_profile,
 )
-from .usage_bridge import UsageCallback, emit_usage_payload
+from .usage_bridge import (
+    UsageCallback,
+    emit_usage_callback,
+    emit_usage_payload,
+    record_usage_payload_best_effort,
+    record_usage_payload_resilient,
+    usage_cleanup_timeout_seconds,
+)
 
 settings = load_settings()
 logger = logging.getLogger(__name__)
 
-MAX_ERROR_BODY_LOG_LENGTH = 2000
 GEMINI_HIDDEN_THOUGHT_STATUS_SUMMARY = "深度思考已启用，但当前模型通道未返回可展示的思考摘要"
 AI_CONNECT_TIMEOUT_SECONDS = 10.0
 AI_POOL_TIMEOUT_SECONDS = 10.0
@@ -36,8 +53,8 @@ GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 GEMINI_POOL_TIMEOUT_SECONDS = 10.0
 QWEN_THOUGHT_SUMMARY_MAX_LENGTH = 80
 QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH = 32
+AI_USAGE_TOKEN_COUNT_MAX = 100_000_000
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
-AssistantTextCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 LANE_DEFAULT = "default"
 LANE_TOOL_CALL = "tool_call"
 LANE_THINKING = "thinking"
@@ -106,15 +123,29 @@ class AIRoute:
     transport: str
 
 
+class ToolCallingUnsupportedError(RuntimeError):
+    pass
+
+
 def _extract_content(response_data: Dict[str, Any]) -> str:
     choices = response_data.get("choices") or []
     if not choices:
-        raise ValueError("LLM response missing choices")
+        raise AiProviderPayloadError("LLM response missing choices")
     message = choices[0].get("message") or {}
     content = message.get("content")
     if not content:
-        raise ValueError("LLM response missing content")
+        raise AiProviderPayloadError("LLM response missing content")
     return content
+
+
+def _decode_provider_json_body(body: bytes) -> Dict[str, Any]:
+    try:
+        payload = json.loads(body)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AiProviderPayloadError("AI provider returned invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise AiProviderPayloadError("AI provider returned a non-object payload")
+    return payload
 
 
 def _route_profile() -> str:
@@ -224,11 +255,14 @@ def _resolve_provider_fallback_route(
     return candidate
 
 
-def _provider_access_unavailable_error(response: httpx.Response) -> bool:
+def _provider_access_unavailable_error(
+    response: httpx.Response,
+    body: bytes | None = None,
+) -> bool:
     if response.status_code not in {400, 401, 403}:
         return False
     try:
-        payload = response.json()
+        payload = json.loads(body) if body is not None else response.json()
     except Exception:
         payload = None
     code_candidates: List[Any] = []
@@ -264,6 +298,47 @@ def _provider_access_unavailable_error(response: httpx.Response) -> bool:
     )
 
 
+def _provider_rejects_tool_calling(body: bytes) -> bool:
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    error = payload.get("error")
+    candidates = [payload, error] if isinstance(error, dict) else [payload]
+    codes = {
+        re.sub(r"[^a-z0-9]", "", str(candidate.get(key) or "").casefold())
+        for candidate in candidates
+        for key in ("code", "type", "error_code")
+    }
+    if codes & {
+        "functioncallingunsupported",
+        "toolcallingunsupported",
+        "unsupportedfunctioncalling",
+        "unsupportedtools",
+        "unsupportedtoolchoice",
+    }:
+        return True
+    messages = " ".join(
+        str(candidate.get(key) or "").casefold()
+        for candidate in candidates
+        for key in ("message", "error_message")
+    )
+    mentions_tool_calling = "tool" in messages or "function call" in messages
+    explicitly_unsupported = any(
+        marker in messages
+        for marker in (
+            "does not support",
+            "not support",
+            "not available",
+            "unavailable",
+            "unsupported",
+        )
+    )
+    return mentions_tool_calling and explicitly_unsupported
+
+
 def _should_use_qwen_thinking() -> bool:
     return has_qwen_thinking_provider(
         settings,
@@ -274,6 +349,12 @@ def _should_use_qwen_thinking() -> bool:
 
 def _prepare_chat_completion_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     request_payload = {**payload}
+    output_cap = runtime_budget.get_ai_runtime_budget().max_output_tokens
+    try:
+        requested_output_tokens = int(request_payload.get("max_tokens", output_cap))
+    except (TypeError, ValueError):
+        requested_output_tokens = output_cap
+    request_payload["max_tokens"] = max(1, min(requested_output_tokens, output_cap))
     if (
         _is_qwen_model(str(request_payload.get("model") or ""))
         and not request_payload.get("stream")
@@ -561,6 +642,7 @@ def _build_headers(api_key: Optional[str] = None) -> Dict[str, str]:
     return {
         "Authorization": f"Bearer {resolved_api_key}",
         "Content-Type": "application/json",
+        "Accept-Encoding": UPSTREAM_ACCEPT_ENCODING,
     }
 
 
@@ -571,6 +653,7 @@ def _build_gemini_headers() -> Dict[str, str]:
     return {
         "x-goog-api-key": api_key,
         "Content-Type": "application/json",
+        "Accept-Encoding": UPSTREAM_ACCEPT_ENCODING,
     }
 
 
@@ -594,24 +677,32 @@ def _build_gemini_generate_url(route: AIRoute) -> str:
     return f"{base_url}/models/{route.model}:generateContent"
 
 
-def _safe_response_text(response: httpx.Response) -> str:
-    try:
-        text = response.text
-    except Exception:
-        return "<failed to read response text>"
-    trimmed = text.strip()
-    if len(trimmed) > MAX_ERROR_BODY_LOG_LENGTH:
-        return f"{trimmed[:MAX_ERROR_BODY_LOG_LENGTH]}...<truncated>"
-    return trimmed
-
-
-def _log_http_error(response: httpx.Response) -> None:
+def _log_http_error(response: httpx.Response, body: bytes | None = None) -> None:
+    content_type, body_bytes, body_sha256 = response_body_log_metadata(response, body)
     logger.error(
-        "AI request failed: status=%s url=%s body=%s",
+        "AI request failed: status=%s url=%s content_type=%s body_bytes=%s body_sha256=%s",
         response.status_code,
         str(response.request.url) if response.request else "<unknown>",
-        _safe_response_text(response),
+        content_type,
+        body_bytes,
+        body_sha256,
     )
+
+
+async def _read_stream_response_log_metadata(
+    response: httpx.Response,
+) -> tuple[str, int | str, str]:
+    body = await read_bounded_response_body(response)
+    return response_body_log_metadata(response, body)
+
+
+async def _read_http_error_log_metadata(
+    response: httpx.Response,
+) -> tuple[str, int | str, str] | None:
+    if int(getattr(response, "status_code", 200)) < 300:
+        return None
+    body = await read_bounded_response_body(response)
+    return response_body_log_metadata(response, body)
 
 
 def _log_http_success(response: httpx.Response, model: str, message_count: int) -> None:
@@ -650,154 +741,38 @@ async def _emit_thought(
 ) -> None:
     if not thought_callback:
         return
-    result = thought_callback(payload)
-    if inspect.isawaitable(result):
-        await result
-
-
-async def _emit_assistant_text(
-    assistant_text_callback: AssistantTextCallback,
-    payload: Dict[str, Any],
-) -> None:
-    if not assistant_text_callback:
-        return
-    result = assistant_text_callback(payload)
-    if inspect.isawaitable(result):
-        await result
-
-
-def _decode_json_string_prefix(
-    text: str,
-    start: int,
-) -> tuple[str, bool, int]:
-    if start >= len(text) or text[start] != '"':
-        return "", False, start
-    index = start + 1
-    last_safe_index = index
-    escaped = False
-    while index < len(text):
-        char = text[index]
-        if escaped:
-            if char == "u":
-                unicode_end = index + 5
-                if unicode_end > len(text):
-                    break
-                if not all(
-                    item in "0123456789abcdefABCDEF"
-                    for item in text[index + 1 : unicode_end]
-                ):
-                    break
-                index = unicode_end
-            else:
-                index += 1
-            escaped = False
-            last_safe_index = index
-            continue
-        if char == "\\":
-            escaped = True
-            index += 1
-            continue
-        if char == '"':
-            try:
-                return json.loads(text[start : index + 1]), True, index + 1
-            except json.JSONDecodeError:
-                return "", False, start
-        if ord(char) < 0x20:
-            break
-        index += 1
-        last_safe_index = index
-
-    if last_safe_index <= start + 1:
-        return "", False, last_safe_index
     try:
-        decoded = json.loads(f"{text[start:last_safe_index]}\"")
-    except json.JSONDecodeError:
-        return "", False, last_safe_index
-    if decoded and 0xD800 <= ord(decoded[-1]) <= 0xDBFF:
-        decoded = decoded[:-1]
-    return decoded, False, last_safe_index
-
-
-def _find_json_field_value_start(text: str, field_name: str) -> int | None:
-    index = 0
-    while index < len(text):
-        if text[index] != '"':
-            index += 1
-            continue
-        value, closed, end_index = _decode_json_string_prefix(text, index)
-        if not closed:
-            return None
-        index = end_index
-        if value != field_name:
-            continue
-        while index < len(text) and text[index].isspace():
-            index += 1
-        if index >= len(text) or text[index] != ":":
-            continue
-        index += 1
-        while index < len(text) and text[index].isspace():
-            index += 1
-        return index
-    return None
-
-
-def _extract_assistant_text_prefix(text: str) -> str | None:
-    value_start = _find_json_field_value_start(text, "assistantText")
-    if value_start is None or value_start >= len(text) or text[value_start] != '"':
-        return None
-    value, _, _ = _decode_json_string_prefix(text, value_start)
-    return value
-
-
-class _AssistantTextDeltaTracker:
-    def __init__(self, callback: AssistantTextCallback = None):
-        self._callback = callback
-        self._buffer = ""
-        self._last_text = ""
-        self._started = False
-
-    def _events_for_chunk(self, raw_chunk: str) -> list[Dict[str, Any]]:
-        if not raw_chunk:
-            return []
-        self._buffer = f"{self._buffer}{raw_chunk}"
-        text = _extract_assistant_text_prefix(self._buffer)
-        if text is None:
-            return []
-
-        events: list[Dict[str, Any]] = []
-        if not self._started:
-            self._started = True
-            events.append({"type": "assistant_text_reset"})
-
-        if text.startswith(self._last_text):
-            delta = text[len(self._last_text) :]
-        else:
-            events.append({"type": "assistant_text_reset"})
-            delta = text
-        if delta:
-            events.append({"type": "assistant_delta", "delta": delta})
-        self._last_text = text
-        return events
-
-    def update(self, raw_chunk: str) -> list[Dict[str, Any]]:
-        events = self._events_for_chunk(raw_chunk)
-        if self._callback:
-            for event in events:
-                result = self._callback(event)
-                if inspect.isawaitable(result):
-                    raise RuntimeError("Use emit_update for async assistant text callbacks.")
-        return events
-
-    async def emit_update(self, raw_chunk: str) -> None:
-        for event in self._events_for_chunk(raw_chunk):
-            await _emit_assistant_text(self._callback, event)
+        result = thought_callback(payload)
+        if inspect.isawaitable(result):
+            await result
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
+    except Exception as exc:
+        raise runtime_budget.AiStreamConsumerError(
+            runtime_budget.AiStreamConsumerError.public_message
+        ) from exc
 
 
 def _safe_int(value: Any) -> int:
+    if isinstance(value, bool):
+        raise runtime_budget.AiUsagePayloadError(
+            runtime_budget.AiUsagePayloadError.public_message
+        )
     try:
-        return max(int(value or 0), 0)
-    except (TypeError, ValueError):
-        return 0
+        normalized = int(value or 0)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise runtime_budget.AiUsagePayloadError(
+            runtime_budget.AiUsagePayloadError.public_message
+        ) from exc
+    if isinstance(value, float) and not value.is_integer():
+        raise runtime_budget.AiUsagePayloadError(
+            runtime_budget.AiUsagePayloadError.public_message
+        )
+    if normalized < 0 or normalized > AI_USAGE_TOKEN_COUNT_MAX:
+        raise runtime_budget.AiUsagePayloadError(
+            runtime_budget.AiUsagePayloadError.public_message
+        )
+    return normalized
 
 
 def _provider_from_base_url(base_url: str, model: Optional[str] = None) -> str:
@@ -834,6 +809,12 @@ def _normalize_usage_numbers(usage: Any) -> Dict[str, int]:
     )
     if total_tokens <= 0:
         total_tokens = prompt_tokens + completion_tokens
+    else:
+        total_tokens = max(total_tokens, prompt_tokens + completion_tokens)
+    if total_tokens > AI_USAGE_TOKEN_COUNT_MAX:
+        raise runtime_budget.AiUsagePayloadError(
+            runtime_budget.AiUsagePayloadError.public_message
+        )
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -926,6 +907,174 @@ async def _emit_failed_usage(
     )
 
 
+async def _emit_failed_usage_best_effort(
+    usage_callback: UsageCallback,
+    *,
+    provider: str,
+    model: str,
+    request_label: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    try:
+        payload = _build_usage_payload(
+            {},
+            provider=provider,
+            model=model,
+            request_label=request_label,
+            status="failed",
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.error(
+            "AI failed-usage accounting also failed error_type=%s",
+            type(exc).__name__,
+        )
+        return
+    try:
+        async with asyncio.timeout(usage_cleanup_timeout_seconds()):
+            await _emit_usage_payload(usage_callback, payload)
+    except Exception as exc:
+        logger.error(
+            "AI failed-usage accounting also failed error_type=%s",
+            type(exc).__name__,
+        )
+
+
+@dataclass
+class _UsageAttempt:
+    usage_callback: UsageCallback
+    provider: str
+    model: str
+    request_label: str
+    transport: str
+    final_usage_started: bool = False
+    failed_usage_started: bool = False
+
+    def begin_final_usage(self) -> None:
+        self.final_usage_started = True
+
+    async def fail_once(
+        self,
+        error: BaseException,
+        *,
+        error_type: str | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        try:
+            setattr(error, "_ai_usage_attempt_recorded", True)
+        except Exception:
+            pass
+        if self.final_usage_started or self.failed_usage_started:
+            return
+        self.failed_usage_started = True
+        failure_metadata: Dict[str, Any] = {
+            "transport": self.transport,
+            "error": error_type or type(error).__name__,
+        }
+        if metadata:
+            failure_metadata.update(metadata)
+        await _emit_failed_usage_best_effort(
+            self.usage_callback,
+            provider=self.provider,
+            model=self.model,
+            request_label=self.request_label,
+            metadata=failure_metadata,
+        )
+
+
+def _build_known_stream_usage_payload(
+    usage: Dict[str, Any],
+    *,
+    provider: str,
+    model: str,
+    request_label: str,
+    transport: str,
+    cleanup: bool,
+) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {"transport": transport}
+    if cleanup:
+        metadata["finalized_during_cleanup"] = True
+    return _build_usage_payload(
+        usage,
+        provider=provider,
+        model=model,
+        request_label=request_label,
+        metadata=metadata,
+    )
+
+
+async def _record_known_stream_usage_best_effort(
+    usage: Dict[str, Any] | None,
+    *,
+    provider: str,
+    model: str,
+    request_label: str,
+    transport: str,
+) -> None:
+    if not isinstance(usage, dict):
+        return
+    try:
+        payload = _build_known_stream_usage_payload(
+            usage,
+            provider=provider,
+            model=model,
+            request_label=request_label,
+            transport=transport,
+            cleanup=True,
+        )
+    except Exception as exc:
+        logger.error(
+            "AI cleanup usage payload rejected error_type=%s",
+            type(exc).__name__,
+        )
+        return
+    await record_usage_payload_best_effort(payload)
+
+
+async def _record_final_stream_usage(
+    usage: Dict[str, Any],
+    *,
+    provider: str,
+    model: str,
+    request_label: str,
+    transport: str,
+) -> None:
+    await record_usage_payload_resilient(
+        _build_known_stream_usage_payload(
+            usage,
+            provider=provider,
+            model=model,
+            request_label=request_label,
+            transport=transport,
+            cleanup=False,
+        )
+    )
+
+
+def _gemini_payload_has_final_usage(payload: Dict[str, Any]) -> bool:
+    if not isinstance(payload.get("usageMetadata"), dict):
+        return False
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return True
+    return any(
+        isinstance(candidate, dict) and bool(candidate.get("finishReason"))
+        for candidate in candidates
+    )
+
+
+def _qwen_chat_payload_has_final_usage(payload: Dict[str, Any]) -> bool:
+    if not isinstance(payload.get("usage"), dict):
+        return False
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return True
+    return any(
+        isinstance(choice, dict) and choice.get("finish_reason") is not None
+        for choice in choices
+    )
+
+
 async def _iter_sse_json_payloads(response: httpx.Response):
     async for payload in iter_sse_json_payloads(
         response,
@@ -950,6 +1099,7 @@ def _build_gemini_generation_config(
 ) -> Dict[str, Any]:
     config: Dict[str, Any] = {
         "temperature": 0.2,
+        "maxOutputTokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
     }
     if include_thoughts:
         config["thinkingConfig"] = {
@@ -1166,7 +1316,11 @@ def _build_gemini_generate_body(
         normalized_thinking_level is not None
         and model_name.startswith("gemini-3")
     )
-    generation_config: Dict[str, Any] = {}
+
+
+    generation_config: Dict[str, Any] = {
+        "maxOutputTokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
+    }
     if scoped_gemini3_thinking:
         generation_config["thinkingConfig"] = {
             "thinkingLevel": normalized_thinking_level,
@@ -1212,7 +1366,7 @@ def _build_gemini_function_declarations(
 def _extract_gemini_content(response_data: Dict[str, Any]) -> str:
     candidates = response_data.get("candidates") or []
     if not candidates:
-        raise ValueError("Gemini response missing candidates")
+        raise AiProviderPayloadError("Gemini response missing candidates")
     parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
     text_parts = [
         part.get("text")
@@ -1221,7 +1375,7 @@ def _extract_gemini_content(response_data: Dict[str, Any]) -> str:
     ]
     content = "".join(text_parts).strip()
     if not content:
-        raise ValueError("Gemini response missing content")
+        raise AiProviderPayloadError("Gemini response missing content")
     return content
 
 
@@ -1254,6 +1408,7 @@ def _extract_gemini_tool_calls(response_data: Dict[str, Any]) -> List[Dict[str, 
     return tool_calls
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _call_gemini_generate_content(
     messages: List[Dict[str, Any]],
     *,
@@ -1274,41 +1429,51 @@ async def _call_gemini_generate_content(
         model=route.model,
         gemini_thinking_level=gemini_thinking_level,
     )
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider=route.provider,
+        model=route.model,
+        request_label=request_label,
+        transport=route.transport,
+    )
     try:
         async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
-            response = await client.post(
+            async with client.stream(
+                "POST",
                 url,
                 headers={
                     "x-goog-api-key": route.api_key or "",
                     "Content-Type": "application/json",
+                    "Accept-Encoding": UPSTREAM_ACCEPT_ENCODING,
                 },
                 json=payload,
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError:
-                _log_http_error(response)
-                await _emit_failed_usage(
+            ) as response:
+                body = await read_bounded_response_body(response)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    _log_http_error(response, body)
+                    await usage_attempt.fail_once(
+                        exc,
+                        error_type="http_status",
+                        metadata={"http_status": response.status_code},
+                    )
+                    raise
+                data = _decode_provider_json_body(body)
+                _log_http_success(response, route.model, len(messages))
+                usage_attempt.begin_final_usage()
+                await _emit_usage_from_response(
                     usage_callback,
+                    data,
                     provider=route.provider,
                     model=route.model,
                     request_label=request_label,
-                    metadata={
-                        "transport": route.transport,
-                        "http_status": response.status_code,
-                    },
+                    metadata={"transport": route.transport},
                 )
-                raise
-            data = response.json()
-            _log_http_success(response, route.model, len(messages))
-            await _emit_usage_from_response(
-                usage_callback,
-                data,
-                provider=route.provider,
-                model=route.model,
-                request_label=request_label,
-                metadata={"transport": route.transport},
-            )
+        content = _extract_gemini_content(data)
+        if json_mode:
+            return _parse_json_content(content)
+        return {"content": content}
     except httpx.TimeoutException as exc:
         logger.error(
             "Gemini request timed out: url=%s model=%s messages=%s read_timeout=%ss",
@@ -1317,27 +1482,22 @@ async def _call_gemini_generate_content(
             len(messages),
             settings.ai_timeout_seconds,
         )
-        await _emit_failed_usage(
-            usage_callback,
-            provider=route.provider,
-            model=route.model,
-            request_label=request_label,
-            metadata={"transport": route.transport, "error": "timeout"},
-        )
-        raise HTTPException(
-            status_code=HTTP_504_GATEWAY_TIMEOUT,
-            detail=(
-                "AI analysis timed out. The request took too long to finish; "
-                "please try again later."
-            ),
+        await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
         ) from exc
+    except asyncio.CancelledError as exc:
+        await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        await usage_attempt.fail_once(exc)
+        raise
 
-    content = _extract_gemini_content(data)
-    if json_mode:
-        return _parse_json_content(content)
-    return {"content": content}
 
-
+@runtime_budget.ai_wall_clock_limited
 async def _post_gemini_chat_completion(
     payload: Dict[str, Any],
     *,
@@ -1356,72 +1516,81 @@ async def _post_gemini_chat_completion(
         tools=payload.get("tools") or [],
         model=route.model,
     )
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider=route.provider,
+        model=route.model,
+        request_label=request_label,
+        transport=route.transport,
+    )
     try:
         async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
-            response = await client.post(
+            async with client.stream(
+                "POST",
                 url,
                 headers={
                     "x-goog-api-key": route.api_key,
                     "Content-Type": "application/json",
+                    "Accept-Encoding": UPSTREAM_ACCEPT_ENCODING,
                 },
                 json=request_body,
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError:
-                _log_http_error(response)
-                await _emit_failed_usage(
+            ) as response:
+                body = await read_bounded_response_body(response)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    _log_http_error(response, body)
+                    await usage_attempt.fail_once(
+                        exc,
+                        error_type="http_status",
+                        metadata={"http_status": response.status_code},
+                    )
+                    if payload.get("tools") and _provider_rejects_tool_calling(body):
+                        raise ToolCallingUnsupportedError(
+                            "Configured AI provider does not support tool calling."
+                        )
+                    raise
+                data = _decode_provider_json_body(body)
+                _log_http_success(response, route.model, len(payload.get("messages") or []))
+                usage_attempt.begin_final_usage()
+                await _emit_usage_from_response(
                     usage_callback,
+                    data,
                     provider=route.provider,
                     model=route.model,
                     request_label=request_label,
-                    metadata={
-                        "transport": route.transport,
-                        "http_status": response.status_code,
-                    },
+                    metadata={"transport": route.transport},
                 )
-                raise
-            data = response.json()
-            _log_http_success(response, route.model, len(payload.get("messages") or []))
-            await _emit_usage_from_response(
-                usage_callback,
-                data,
-                provider=route.provider,
-                model=route.model,
-                request_label=request_label,
-                metadata={"transport": route.transport},
-            )
-    except httpx.TimeoutException as exc:
-        await _emit_failed_usage(
-            usage_callback,
-            provider=route.provider,
-            model=route.model,
-            request_label=request_label,
-            metadata={"transport": route.transport, "error": "timeout"},
-        )
-        raise HTTPException(
-            status_code=HTTP_504_GATEWAY_TIMEOUT,
-            detail=(
-                "AI analysis timed out. The request took too long to finish; "
-                "please try again later."
-            ),
-        ) from exc
-
-    tool_calls = _extract_gemini_tool_calls(data)
-    if tool_calls:
-        return {"choices": [{"message": {"role": "assistant", "tool_calls": tool_calls}}]}
-    return {
-        "choices": [
-            {
-                "message": {
-                    "role": "assistant",
-                    "content": _extract_gemini_content(data),
+        tool_calls = _extract_gemini_tool_calls(data)
+        if tool_calls:
+            return {"choices": [{"message": {"role": "assistant", "tool_calls": tool_calls}}]}
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": _extract_gemini_content(data),
+                    }
                 }
-            }
-        ]
-    }
+            ]
+        }
+    except httpx.TimeoutException as exc:
+        await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
+        ) from exc
+    except asyncio.CancelledError as exc:
+        await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        await usage_attempt.fail_once(exc)
+        raise
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _stream_gemini_json_response_legacy(
     *,
     system_prompt: str,
@@ -1447,8 +1616,18 @@ async def _stream_gemini_json_response_legacy(
     answer_snapshots: List[str] = []
     assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
     final_usage: Dict[str, Any] | None = None
+    usage_persistence_started = False
+    usage_persisted = False
     emitted_thought_text = False
     saw_hidden_thought_signature = False
+    http_error_metadata: tuple[str, int | str, str] | None = None
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider="gemini",
+        model=model,
+        request_label=request_label,
+        transport="gemini_stream_generate_content",
+    )
 
     try:
         async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
@@ -1458,22 +1637,40 @@ async def _stream_gemini_json_response_legacy(
                 headers=_build_gemini_headers(),
                 json=request_body,
             ) as response:
+                http_error_metadata = await _read_http_error_log_metadata(response)
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
                 if "text/event-stream" not in content_type:
-                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
+                    _, body_bytes, body_sha256 = (
+                        await _read_stream_response_log_metadata(response)
+                    )
                     logger.error(
-                        "[AI Stream] unexpected Gemini content-type label=%s content_type=%s body=%s",
+                        "[AI Stream] unexpected Gemini content-type label=%s content_type=%s body_bytes=%s body_sha256=%s",
                         request_label,
                         content_type,
-                        body_preview,
+                        body_bytes,
+                        body_sha256,
                     )
-                    raise ValueError(
+                    raise AiProviderPayloadError(
                         "备用思考通道返回了非流式响应，请检查服务地址配置。"
                     )
                 async for payload in _iter_sse_json_payloads(response):
                     if isinstance(payload.get("usageMetadata"), dict):
                         final_usage = payload["usageMetadata"]
+                        if (
+                            not usage_persistence_started
+                            and _gemini_payload_has_final_usage(payload)
+                        ):
+                            usage_attempt.begin_final_usage()
+                            usage_persistence_started = True
+                            await _record_final_stream_usage(
+                                final_usage,
+                                provider="gemini",
+                                model=model,
+                                request_label=request_label,
+                                transport="gemini_stream_generate_content",
+                            )
+                            usage_persisted = True
                     candidates = payload.get("candidates") or []
                     if not candidates:
                         continue
@@ -1498,24 +1695,96 @@ async def _stream_gemini_json_response_legacy(
                     if event_answer_parts:
                         answer_snapshots.append("".join(event_answer_parts))
     except httpx.HTTPStatusError as exc:
-        try:
-            await exc.response.aread()
-            error_text = exc.response.text[:1000]
-        except Exception:
-            error_text = "Failed to read response body."
+        content_type, body_bytes, body_sha256 = http_error_metadata or (
+            response_body_log_metadata(exc.response)
+        )
         logger.error(
-            "[AI Stream] Gemini request failed label=%s status=%s body=%s",
+            "[AI Stream] Gemini request failed label=%s status=%s content_type=%s body_bytes=%s body_sha256=%s",
             request_label,
             exc.response.status_code,
-            error_text,
+            content_type,
+            body_bytes,
+            body_sha256,
         )
-        raise ValueError(error_message) from exc
+        await usage_attempt.fail_once(
+            exc,
+            error_type="http_status",
+            metadata={"http_status": exc.response.status_code},
+        )
+        translated_error = AiProviderUnavailableError(error_message)
+        await usage_attempt.fail_once(translated_error)
+        raise translated_error from exc
     except httpx.TimeoutException as exc:
-        raise ValueError(error_message) from exc
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="gemini",
+                model=model,
+                request_label=request_label,
+                transport="gemini_stream_generate_content",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
+        ) from exc
+    except asyncio.CancelledError as exc:
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="gemini",
+                model=model,
+                request_label=request_label,
+                transport="gemini_stream_generate_content",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="gemini",
+                model=model,
+                request_label=request_label,
+                transport="gemini_stream_generate_content",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="gemini",
+                model=model,
+                request_label=request_label,
+                transport="gemini_stream_generate_content",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc)
+        raise
 
     answer_text = "".join(answer_parts).strip()
+    usage_attempt.begin_final_usage()
+    usage_payload = _build_usage_payload(
+        final_usage or {},
+        provider="gemini",
+        model=model,
+        request_label=request_label,
+        status="success" if final_usage else "usage_missing",
+        metadata={"transport": "gemini_stream_generate_content"},
+    )
+    if usage_persisted:
+        await emit_usage_callback(usage_callback, usage_payload)
+    else:
+        await _emit_usage_payload(usage_callback, usage_payload)
     if not answer_text:
-        raise ValueError("备用思考通道未返回可解析的结构化结果。")
+        raise AiProviderPayloadError("备用思考通道未返回可解析的结构化结果。")
     if enable_thinking and saw_hidden_thought_signature and not emitted_thought_text:
         await _emit_thought(
             thought_callback,
@@ -1525,17 +1794,6 @@ async def _stream_gemini_json_response_legacy(
                 "summary": GEMINI_HIDDEN_THOUGHT_STATUS_SUMMARY,
             },
         )
-    await _emit_usage_payload(
-        usage_callback,
-        _build_usage_payload(
-            final_usage or {},
-            provider="gemini",
-            model=model,
-            request_label=request_label,
-            status="success" if final_usage else "usage_missing",
-            metadata={"transport": "gemini_stream_generate_content"},
-        ),
-    )
     parse_candidates: List[str] = [answer_text]
     if answer_snapshots:
         parse_candidates.append(answer_snapshots[-1])
@@ -1547,6 +1805,7 @@ async def _stream_gemini_json_response_legacy(
     return _parse_json_content_candidates(parse_candidates)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _stream_qwen_responses_json_response(
     *,
     system_prompt: str,
@@ -1568,6 +1827,7 @@ async def _stream_qwen_responses_json_response(
         "temperature": 0.2,
         "stream": True,
         "enable_thinking": enable_thinking,
+        "max_output_tokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
     }
 
     answer_parts: List[str] = []
@@ -1577,6 +1837,16 @@ async def _stream_qwen_responses_json_response(
     last_thought_summary = ""
     url = _build_qwen_responses_url()
     completed_usage: Dict[str, Any] | None = None
+    usage_persistence_started = False
+    usage_persisted = False
+    http_error_metadata: tuple[str, int | str, str] | None = None
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider="dashscope",
+        model=model,
+        request_label=request_label,
+        transport="responses_stream",
+    )
 
     async def emit_summary(raw_text: str) -> None:
         nonlocal last_thought_summary
@@ -1604,17 +1874,23 @@ async def _stream_qwen_responses_json_response(
                 headers=_build_headers(),
                 json=payload,
             ) as response:
+                http_error_metadata = await _read_http_error_log_metadata(response)
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
                 if "text/event-stream" not in content_type:
-                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
+                    _, body_bytes, body_sha256 = (
+                        await _read_stream_response_log_metadata(response)
+                    )
                     logger.error(
-                        "[AI Stream] unexpected Qwen Responses content-type label=%s content_type=%s body=%s",
+                        "[AI Stream] unexpected Qwen Responses content-type label=%s content_type=%s body_bytes=%s body_sha256=%s",
                         request_label,
                         content_type,
-                        body_preview,
+                        body_bytes,
+                        body_sha256,
                     )
-                    raise ValueError("Qwen Responses 返回了非流式响应，请检查 AI_RESPONSES_BASE_URL 配置。")
+                    raise AiProviderPayloadError(
+                        "Qwen Responses 返回了非流式响应，请检查 AI_RESPONSES_BASE_URL 配置。"
+                    )
 
                 async for stream_payload in _iter_sse_json_payloads(response):
                     event_type = stream_payload.get("type")
@@ -1659,12 +1935,24 @@ async def _stream_qwen_responses_json_response(
                             continue
 
                     if event_type == "response.completed":
-                        await flush_summary_buffer()
                         response_payload = stream_payload.get("response")
                         if isinstance(response_payload, dict):
                             usage = response_payload.get("usage")
                             if isinstance(usage, dict):
                                 completed_usage = usage
+                                if not usage_persistence_started:
+                                    usage_attempt.begin_final_usage()
+                                    usage_persistence_started = True
+                                    await _record_final_stream_usage(
+                                        completed_usage,
+                                        provider="dashscope",
+                                        model=model,
+                                        request_label=request_label,
+                                        transport="responses_stream",
+                                    )
+                                    usage_persisted = True
+                        await flush_summary_buffer()
+                        if isinstance(response_payload, dict):
                             output = response_payload.get("output")
                             if isinstance(output, list):
                                 for item in output:
@@ -1686,35 +1974,96 @@ async def _stream_qwen_responses_json_response(
 
                 await flush_summary_buffer()
     except httpx.HTTPStatusError as exc:
-        try:
-            await exc.response.aread()
-            error_text = exc.response.text[:1000]
-        except Exception:
-            error_text = "Failed to read response body."
+        content_type, body_bytes, body_sha256 = http_error_metadata or (
+            response_body_log_metadata(exc.response)
+        )
         logger.error(
-            "[AI Stream] Qwen Responses request failed label=%s status=%s body=%s",
+            "[AI Stream] Qwen Responses request failed label=%s status=%s content_type=%s body_bytes=%s body_sha256=%s",
             request_label,
             exc.response.status_code,
-            error_text,
+            content_type,
+            body_bytes,
+            body_sha256,
         )
-        raise ValueError(error_message) from exc
+        await usage_attempt.fail_once(
+            exc,
+            error_type="http_status",
+            metadata={"http_status": exc.response.status_code},
+        )
+        translated_error = AiProviderUnavailableError(error_message)
+        await usage_attempt.fail_once(translated_error)
+        raise translated_error from exc
     except httpx.TimeoutException as exc:
-        raise ValueError(error_message) from exc
+        if completed_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                completed_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="responses_stream",
+            )
+        elif completed_usage is None:
+            await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
+        ) from exc
+    except asyncio.CancelledError as exc:
+        if completed_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                completed_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="responses_stream",
+            )
+        elif completed_usage is None:
+            await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        if completed_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                completed_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="responses_stream",
+            )
+        elif completed_usage is None:
+            await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        if completed_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                completed_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="responses_stream",
+            )
+        elif completed_usage is None:
+            await usage_attempt.fail_once(exc)
+        raise
 
     answer_text = "".join(answer_parts).strip()
-    if not answer_text:
-        raise ValueError("Qwen Responses 未返回可解析的结构化结果。")
-    await _emit_usage_payload(
-        usage_callback,
-        _build_usage_payload(
-            completed_usage or {},
-            provider="dashscope",
-            model=model,
-            request_label=request_label,
-            status="success" if completed_usage else "usage_missing",
-            metadata={"transport": "responses_stream"},
-        ),
+    usage_attempt.begin_final_usage()
+    usage_payload = _build_usage_payload(
+        completed_usage or {},
+        provider="dashscope",
+        model=model,
+        request_label=request_label,
+        status="success" if completed_usage else "usage_missing",
+        metadata={"transport": "responses_stream"},
     )
+    if usage_persisted:
+        await emit_usage_callback(usage_callback, usage_payload)
+    else:
+        await _emit_usage_payload(usage_callback, usage_payload)
+    if not answer_text:
+        raise AiProviderPayloadError("Qwen Responses 未返回可解析的结构化结果。")
     parse_candidates: List[str] = [answer_text]
     if answer_snapshots:
         parse_candidates.append(answer_snapshots[-1])
@@ -1726,6 +2075,7 @@ async def _stream_qwen_responses_json_response(
     return _parse_json_content_candidates(parse_candidates)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _stream_qwen_json_response(
     *,
     system_prompt: str,
@@ -1749,6 +2099,7 @@ async def _stream_qwen_json_response(
         "stream": True,
         "stream_options": {"include_usage": True},
         "enable_thinking": enable_thinking,
+        "max_tokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
     }
     if enable_thinking and budget_tokens is not None:
         payload["thinking_budget"] = int(budget_tokens)
@@ -1760,6 +2111,16 @@ async def _stream_qwen_json_response(
     thought_buffer = ""
     last_thought_summary = ""
     final_usage: Dict[str, Any] | None = None
+    usage_persistence_started = False
+    usage_persisted = False
+    http_error_metadata: tuple[str, int | str, str] | None = None
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider="dashscope",
+        model=model,
+        request_label=request_label,
+        transport="chat_stream",
+    )
 
     try:
         async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
@@ -1769,21 +2130,41 @@ async def _stream_qwen_json_response(
                 headers=_build_headers(),
                 json=payload,
             ) as response:
+                http_error_metadata = await _read_http_error_log_metadata(response)
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
                 if "text/event-stream" not in content_type:
-                    body_preview = (await response.aread()).decode("utf-8", errors="ignore")[:800]
+                    _, body_bytes, body_sha256 = (
+                        await _read_stream_response_log_metadata(response)
+                    )
                     logger.error(
-                        "[AI Stream] unexpected Qwen content-type label=%s content_type=%s body=%s",
+                        "[AI Stream] unexpected Qwen content-type label=%s content_type=%s body_bytes=%s body_sha256=%s",
                         request_label,
                         content_type,
-                        body_preview,
+                        body_bytes,
+                        body_sha256,
                     )
-                    raise ValueError("Qwen 返回了非流式响应，请检查 AI_BASE_URL 是否为兼容模式地址。")
+                    raise AiProviderPayloadError(
+                        "Qwen 返回了非流式响应，请检查 AI_BASE_URL 是否为兼容模式地址。"
+                    )
                 async for stream_payload in _iter_sse_json_payloads(response):
                     usage = stream_payload.get("usage")
                     if isinstance(usage, dict):
                         final_usage = usage
+                        if (
+                            not usage_persistence_started
+                            and _qwen_chat_payload_has_final_usage(stream_payload)
+                        ):
+                            usage_attempt.begin_final_usage()
+                            usage_persistence_started = True
+                            await _record_final_stream_usage(
+                                final_usage,
+                                provider="dashscope",
+                                model=model,
+                                request_label=request_label,
+                                transport="chat_stream",
+                            )
+                            usage_persisted = True
                     choices = stream_payload.get("choices") or []
                     if not choices:
                         continue
@@ -1817,35 +2198,96 @@ async def _stream_qwen_json_response(
                             {"type": "thought", "summary": thought_summary},
                         )
     except httpx.HTTPStatusError as exc:
-        try:
-            await exc.response.aread()
-            error_text = exc.response.text[:1000]
-        except Exception:
-            error_text = "Failed to read response body."
+        content_type, body_bytes, body_sha256 = http_error_metadata or (
+            response_body_log_metadata(exc.response)
+        )
         logger.error(
-            "[AI Stream] Qwen request failed label=%s status=%s body=%s",
+            "[AI Stream] Qwen request failed label=%s status=%s content_type=%s body_bytes=%s body_sha256=%s",
             request_label,
             exc.response.status_code,
-            error_text,
+            content_type,
+            body_bytes,
+            body_sha256,
         )
-        raise ValueError(error_message) from exc
+        await usage_attempt.fail_once(
+            exc,
+            error_type="http_status",
+            metadata={"http_status": exc.response.status_code},
+        )
+        translated_error = AiProviderUnavailableError(error_message)
+        await usage_attempt.fail_once(translated_error)
+        raise translated_error from exc
     except httpx.TimeoutException as exc:
-        raise ValueError(error_message) from exc
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="chat_stream",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
+        ) from exc
+    except asyncio.CancelledError as exc:
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="chat_stream",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="chat_stream",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                final_usage,
+                provider="dashscope",
+                model=model,
+                request_label=request_label,
+                transport="chat_stream",
+            )
+        elif final_usage is None:
+            await usage_attempt.fail_once(exc)
+        raise
 
     answer_text = "".join(answer_parts).strip()
-    if not answer_text:
-        raise ValueError("Qwen 未返回可解析的结构化结果。")
-    await _emit_usage_payload(
-        usage_callback,
-        _build_usage_payload(
-            final_usage or {},
-            provider="dashscope",
-            model=model,
-            request_label=request_label,
-            status="success" if final_usage else "usage_missing",
-            metadata={"transport": "chat_stream"},
-        ),
+    usage_attempt.begin_final_usage()
+    usage_payload = _build_usage_payload(
+        final_usage or {},
+        provider="dashscope",
+        model=model,
+        request_label=request_label,
+        status="success" if final_usage else "usage_missing",
+        metadata={"transport": "chat_stream"},
     )
+    if usage_persisted:
+        await emit_usage_callback(usage_callback, usage_payload)
+    else:
+        await _emit_usage_payload(usage_callback, usage_payload)
+    if not answer_text:
+        raise AiProviderPayloadError("Qwen 未返回可解析的结构化结果。")
     parse_candidates: List[str] = [answer_text]
     if answer_snapshots:
         parse_candidates.append(answer_snapshots[-1])
@@ -1857,6 +2299,7 @@ async def _stream_qwen_json_response(
     return _parse_json_content_candidates(parse_candidates)
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _stream_gemini_json_response(
     *,
     system_prompt: str,
@@ -1875,7 +2318,9 @@ async def _stream_gemini_json_response(
         error: Exception,
         route: AIRoute = stream_route,
     ) -> None:
-        await _emit_failed_usage(
+        if getattr(error, "_ai_usage_attempt_recorded", False):
+            return
+        await _emit_failed_usage_best_effort(
             usage_callback,
             provider=route.provider,
             model=route.model,
@@ -1898,11 +2343,12 @@ async def _stream_gemini_json_response(
                 enable_thinking=enable_thinking,
                 usage_callback=usage_callback,
             )
+        except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+            raise
         except Exception:
             logger.warning(
                 "[AI Stream] Qwen Responses thought streaming failed for %s.",
                 request_label,
-                exc_info=True,
             )
             await _emit_thought(thought_callback, {"type": "thought_reset"})
             try:
@@ -1917,11 +2363,12 @@ async def _stream_gemini_json_response(
                     enable_thinking=enable_thinking,
                     usage_callback=usage_callback,
                 )
+            except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+                raise
             except Exception as qwen_chat_error:
                 logger.warning(
                     "[AI Stream] Qwen Chat Completions thought streaming failed for %s.",
                     request_label,
-                    exc_info=True,
                 )
                 await _emit_thought(thought_callback, {"type": "thought_reset"})
                 if getattr(settings, "gemini_api_key", None):
@@ -1937,6 +2384,8 @@ async def _stream_gemini_json_response(
                             enable_thinking=enable_thinking,
                             usage_callback=usage_callback,
                         )
+                    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+                        raise
                     except Exception as gemini_error:
                         await record_stream_failure(
                             gemini_error,
@@ -1959,11 +2408,12 @@ async def _stream_gemini_json_response(
                 enable_thinking=False,
                 usage_callback=usage_callback,
             )
+        except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+            raise
         except Exception as qwen_chat_error:
             logger.warning(
                 "[AI Stream] Qwen Chat Completions text streaming failed for %s.",
                 request_label,
-                exc_info=True,
             )
             if not getattr(settings, "gemini_api_key", None):
                 await record_stream_failure(qwen_chat_error)
@@ -1981,11 +2431,14 @@ async def _stream_gemini_json_response(
             enable_thinking=enable_thinking,
             usage_callback=usage_callback,
         )
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception as gemini_error:
         await record_stream_failure(gemini_error, _resolve_gemini_route())
         raise
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _call_llm(
     messages: List[Dict[str, Any]],
     json_mode: bool = True,
@@ -2014,57 +2467,65 @@ async def _call_llm(
         "temperature": 0.3,
     })
     url = f"{route.base_url.rstrip('/')}/chat/completions"
+    should_retry_fallback = False
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider=route.provider,
+        model=payload["model"],
+        request_label=request_label,
+        transport=route.transport,
+    )
     try:
         async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
-            response = await client.post(url, headers=_build_headers(route.api_key), json=payload)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                _log_http_error(response)
-                await _emit_failed_usage(
-                    usage_callback,
-                    provider=route.provider,
-                    model=payload["model"],
-                    request_label=request_label,
-                    metadata={
-                        "transport": route.transport,
-                        "http_status": response.status_code,
-                    },
-                )
-                if lane == LANE_RESUME_PARSE and _provider_access_unavailable_error(response):
-                    fallback_route = _resolve_provider_fallback_route(route, lane=lane)
-                    if fallback_route is None:
-                        raise HTTPException(
-                            status_code=HTTP_503_SERVICE_UNAVAILABLE,
-                            detail=(
-                                "The configured resume-analysis AI provider account or access is unavailable, "
-                                "and no fallback AI route is configured."
-                            ),
-                        ) from exc
-                    logger.warning(
-                        "Resume-parse provider unavailable; retrying configured fallback provider: primary=%s fallback=%s",
-                        route.provider,
-                        fallback_route.provider,
+            async with client.stream(
+                "POST",
+                url,
+                headers=_build_headers(route.api_key),
+                json=payload,
+            ) as response:
+                body = await read_bounded_response_body(response)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    _log_http_error(response, body)
+                    await usage_attempt.fail_once(
+                        exc,
+                        error_type="http_status",
+                        metadata={"http_status": response.status_code},
                     )
-                    return await _call_llm(
-                        messages,
-                        json_mode=json_mode,
-                        usage_callback=usage_callback,
+                    if lane == LANE_RESUME_PARSE and _provider_access_unavailable_error(
+                        response,
+                        body,
+                    ):
+                        fallback_route = _resolve_provider_fallback_route(route, lane=lane)
+                        if fallback_route is None:
+                            raise HTTPException(
+                                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                                detail=(
+                                    "The configured resume-analysis AI provider account or access is unavailable, "
+                                    "and no fallback AI route is configured."
+                                ),
+                            ) from exc
+                        should_retry_fallback = True
+                    else:
+                        raise
+                else:
+                    data = _decode_provider_json_body(body)
+                    _log_http_success(response, payload["model"], len(messages))
+                    usage_attempt.begin_final_usage()
+                    await _emit_usage_from_response(
+                        usage_callback,
+                        data,
+                        provider=route.provider,
+                        model=payload["model"],
                         request_label=request_label,
-                        lane=LANE_DEFAULT,
-                        gemini_thinking_level=gemini_thinking_level,
+                        metadata={"transport": route.transport},
                     )
-                raise
-            data = response.json()
-            _log_http_success(response, payload["model"], len(messages))
-            await _emit_usage_from_response(
-                usage_callback,
-                data,
-                provider=route.provider,
-                model=payload["model"],
-                request_label=request_label,
-                metadata={"transport": route.transport},
-            )
+        if not should_retry_fallback:
+            content = _extract_content(data)
+            if json_mode:
+                return _parse_json_content(content)
+            return {"content": content}
     except httpx.TimeoutException as exc:
         logger.error(
             "AI request timed out: url=%s model=%s messages=%s read_timeout=%ss",
@@ -2073,26 +2534,38 @@ async def _call_llm(
             len(messages),
             settings.ai_timeout_seconds,
         )
-        await _emit_failed_usage(
-            usage_callback,
-            provider=route.provider,
-            model=payload["model"],
-            request_label=request_label,
-            metadata={"transport": route.transport, "error": "timeout"},
-        )
-        raise HTTPException(
-            status_code=HTTP_504_GATEWAY_TIMEOUT,
-            detail=(
-                "AI analysis timed out. The request took too long to finish; "
-                "please try again later."
-            ),
+        await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
         ) from exc
-    content = _extract_content(data)
-    if json_mode:
-        return _parse_json_content(content)
-    return {"content": content}
+    except asyncio.CancelledError as exc:
+        await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        await usage_attempt.fail_once(exc)
+        raise
+    if should_retry_fallback:
+        fallback_route = _resolve_provider_fallback_route(route, lane=lane)
+        logger.warning(
+            "Resume-parse provider unavailable; retrying configured fallback provider: primary=%s fallback=%s",
+            route.provider,
+            fallback_route.provider if fallback_route is not None else "<none>",
+        )
+        return await _call_llm(
+            messages,
+            json_mode=json_mode,
+            usage_callback=usage_callback,
+            request_label=request_label,
+            lane=LANE_DEFAULT,
+            gemini_thinking_level=gemini_thinking_level,
+        )
+    raise AssertionError("unreachable AI route state")
 
 
+@runtime_budget.ai_wall_clock_limited
 async def _post_chat_completion(
     payload: Dict[str, Any],
     *,
@@ -2115,31 +2588,59 @@ async def _post_chat_completion(
     request_payload = _prepare_chat_completion_payload(payload)
     request_payload["model"] = route.model
     url = f"{route.base_url.rstrip('/')}/chat/completions"
-    async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
-        response = await client.post(url, headers=_build_headers(route.api_key), json=request_payload)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError:
-            _log_http_error(response)
-            await _emit_failed_usage(
-                usage_callback,
-                provider=route.provider,
-                model=str(request_payload.get("model") or settings.ai_model),
-                request_label=str(request_payload.get("request_label") or request_label),
-                metadata={
-                    "transport": route.transport,
-                    "http_status": response.status_code,
-                },
-            )
-            raise
-        data = response.json()
-        _log_http_success(response, request_payload["model"], len(request_payload.get("messages") or []))
-        await _emit_usage_from_response(
-            usage_callback,
-            data,
-            provider=route.provider,
-            model=str(request_payload.get("model") or settings.ai_model),
-            request_label=str(request_payload.get("request_label") or request_label),
-            metadata={"transport": route.transport},
-        )
-        return data
+    usage_attempt = _UsageAttempt(
+        usage_callback=usage_callback,
+        provider=route.provider,
+        model=str(request_payload.get("model") or settings.ai_model),
+        request_label=str(request_payload.get("request_label") or request_label),
+        transport=route.transport,
+    )
+    try:
+        async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
+            async with client.stream(
+                "POST",
+                url,
+                headers=_build_headers(route.api_key),
+                json=request_payload,
+            ) as response:
+                body = await read_bounded_response_body(response)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    _log_http_error(response, body)
+                    await usage_attempt.fail_once(
+                        exc,
+                        error_type="http_status",
+                        metadata={"http_status": response.status_code},
+                    )
+                    if request_payload.get("tools") and _provider_rejects_tool_calling(body):
+                        raise ToolCallingUnsupportedError(
+                            "Configured AI provider does not support tool calling."
+                        )
+                    raise
+                data = _decode_provider_json_body(body)
+                _log_http_success(response, request_payload["model"], len(request_payload.get("messages") or []))
+                usage_attempt.begin_final_usage()
+                await _emit_usage_from_response(
+                    usage_callback,
+                    data,
+                    provider=route.provider,
+                    model=str(request_payload.get("model") or settings.ai_model),
+                    request_label=str(request_payload.get("request_label") or request_label),
+                    metadata={"transport": route.transport},
+                )
+                return data
+    except httpx.TimeoutException as exc:
+        await usage_attempt.fail_once(exc, error_type="timeout")
+        raise runtime_budget.AiRuntimeTimeoutError(
+            runtime_budget.AiRuntimeTimeoutError.public_message
+        ) from exc
+    except asyncio.CancelledError as exc:
+        await usage_attempt.fail_once(exc, error_type="cancelled")
+        raise
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
+        await usage_attempt.fail_once(exc)
+        raise
+    except Exception as exc:
+        await usage_attempt.fail_once(exc)
+        raise

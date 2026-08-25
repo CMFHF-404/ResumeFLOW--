@@ -18,6 +18,7 @@ type ResumeEditorManualDraftExperienceController = {
 };
 
 type UseResumeEditorManualSaveDraftsParams = {
+    authUserKey: string | null | undefined;
     resumeId?: string;
     isLoadingExperiences: boolean;
     experienceItems: ResumeExperienceView[];
@@ -78,6 +79,7 @@ export function resolveResumeEditorManualSaveDraftAction({
 }
 
 export function useResumeEditorManualSaveDrafts({
+    authUserKey,
     resumeId,
     isLoadingExperiences,
     experienceItems,
@@ -96,7 +98,7 @@ export function useResumeEditorManualSaveDrafts({
             pendingManualSaveDraft,
             staleManualSaveDrafts,
         } = selectResumeEditorManualSaveDrafts(
-            readPendingAssistantManualSaveDrafts({ resumeId }),
+            readPendingAssistantManualSaveDrafts(authUserKey, { resumeId }),
             experienceItems
         );
         if (!pendingManualSaveDraft && staleManualSaveDrafts.length === 0) {
@@ -105,7 +107,7 @@ export function useResumeEditorManualSaveDrafts({
             return;
         }
         staleManualSaveDrafts.forEach((draft) => {
-            clearPendingAssistantManualSaveDraft({
+            clearPendingAssistantManualSaveDraft(authUserKey, {
                 sessionId: draft.sessionId,
                 messageId: draft.messageId,
             });
@@ -139,6 +141,7 @@ export function useResumeEditorManualSaveDrafts({
             return applyAssistantExperienceDraftToEditingDraft(prev, pendingManualSaveDraft.draft);
         });
     }, [
+        authUserKey,
         activeManualSaveDraftRef,
         appliedManualSaveDraftKeyRef,
         experience,

@@ -52,16 +52,7 @@ export const EXPERIENCE_CATEGORY_ORDER: Array<ResumeExperienceView['category']> 
     'project',
 ];
 
-export const DEFAULT_SECTION_ORDER = [
-    'summary',
-    'education',
-    'work',
-    'project',
-    'certifications',
-    'skills',
-] as const;
-
-export const RESUME_SECTION_IDS = new Set<string>(DEFAULT_SECTION_ORDER);
+export { DEFAULT_SECTION_ORDER, RESUME_SECTION_IDS } from '../../constants/resumeSections';
 
 export const SIDEBAR_WIDTH_CLASS = 'w-[600px]';
 export const JD_PANEL_BOTTOM_SPACING_CLASS = 'mb-3';
@@ -153,13 +144,7 @@ export const AUTO_ASSEMBLY_TOAST_MESSAGES = {
     skipped: '当前无法完成一键组装，请稍后重试',
     error: '一键组装失败，请稍后重试',
 } as const;
-export const JD_ANALYSIS_PROGRESS_NODE_TITLES = {
-    prepare_context: "准备分析上下文...",
-    request_ai: "AI 正在思考中...",
-    merge_result: "整理 AI 输出...",
-    apply_score: "计算简历评分...",
-    persist_result: "输出最终结果...",
-} as const;
+export { JD_ANALYSIS_PROGRESS_NODE_TITLES } from '../../constants/jdAnalysis';
 
 export const JD_ANALYSIS_TOAST_MESSAGES = {
     loading: '正在生成简历评分...',

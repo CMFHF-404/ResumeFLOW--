@@ -43,7 +43,10 @@ test('frontend image renders the nginx template with the private backend upstrea
     dockerfile,
     /ARG BACKEND_UPSTREAM=resumeflow-botism\.zeabur\.internal:8000/,
   );
-  assert.match(dockerfile, /NGINX_ENVSUBST_FILTER=BACKEND_UPSTREAM/);
+  assert.match(
+    dockerfile,
+    /NGINX_ENVSUBST_FILTER='BACKEND_UPSTREAM\|VITE_API_BASE_URL\|VITE_LOGTO_ENDPOINT\|YIFUT_BASE_URL'/,
+  );
   assert.match(
     dockerfile,
     /COPY nginx\.conf \/etc\/nginx\/templates\/default\.conf\.template/,

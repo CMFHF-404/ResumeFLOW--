@@ -1,4 +1,4 @@
-import { useCallback, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useLayoutEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 
 import {
   aiService,
@@ -22,6 +22,8 @@ import {
   type AssistantSendPayload,
   type AssistantTextStreamState,
 } from './messageSendUtils';
+import type { AssistantOwnerGuard, AssistantOwnerOperation } from './useAssistantOwnerGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 const ASSISTANT_SEND_ERROR_FALLBACK = 'AI 助理回复失败，请稍后重试';
 
@@ -36,6 +38,7 @@ const resolveAssistantSendErrorMessage = (sendError: unknown) => {
 };
 
 type UseAssistantMessageSendingParams = {
+  ownerGuard: AssistantOwnerGuard;
   selectedSessionIdRef: MutableRefObject<string | null>;
   setMessages: Dispatch<SetStateAction<AssistantMessage[]>>;
   setInputValue: Dispatch<SetStateAction<string>>;
@@ -54,6 +57,7 @@ type UseAssistantMessageSendingParams = {
 };
 
 export const useAssistantMessageSending = ({
+  ownerGuard,
   selectedSessionIdRef,
   setMessages,
   setInputValue,
@@ -73,6 +77,10 @@ export const useAssistantMessageSending = ({
   const [sendingCount, setSendingCount] = useState(0);
   const isSending = sendingCount > 0;
 
+  useLayoutEffect(() => {
+    setSendingCount(0);
+  }, [ownerGuard.authUserKey]);
+
   const sendMessage = useCallback(async (
     sessionId: string,
     payload: AssistantSendPayload,
@@ -81,6 +89,18 @@ export const useAssistantMessageSending = ({
   ) => {
     const preparedPayload = prepareAssistantSendPayload(payload);
     if (!preparedPayload) {
+      return;
+    }
+    let operation: AssistantOwnerOperation;
+    try {
+      operation = await ownerGuard.beginOperation();
+    } catch (captureError) {
+      if (isAuthContextChangedError(captureError)) {
+        return;
+      }
+      throw captureError;
+    }
+    if (options?.shouldAbort?.()) {
       return;
     }
     const {
@@ -131,7 +151,10 @@ export const useAssistantMessageSending = ({
           selectedResume: selectedResumeItem,
         },
         (event: AssistantStreamEvent) => {
-          if (selectedSessionIdRef.current !== sessionId) {
+          if (
+            selectedSessionIdRef.current !== sessionId
+            || !ownerGuard.isOperationCurrent(operation)
+          ) {
             return;
           }
           if (event.type === 'assistant_delta' || event.type === 'assistant_text_reset') {
@@ -160,7 +183,9 @@ export const useAssistantMessageSending = ({
             setActiveThought(thoughtStreamState.activeThought);
           }
         },
+        { expectedAuthCacheKey: operation.expectedAuthCacheKey },
       );
+      await ownerGuard.assertOperationCurrent(operation);
       if (options?.shouldAbort?.()) {
         return;
       }
@@ -195,6 +220,12 @@ export const useAssistantMessageSending = ({
         void loadSessionDetail(sessionId);
       }
     } catch (sendError) {
+      if (
+        isAuthContextChangedError(sendError)
+        || !ownerGuard.isOperationCurrent(operation)
+      ) {
+        return;
+      }
       console.error('[AIAssistant] Failed to send message:', sendError);
       if (selectedSessionIdRef.current === sessionId) {
         const temporaryMessageId = assistantTextStreamState.temporaryMessageId;
@@ -223,6 +254,7 @@ export const useAssistantMessageSending = ({
     error,
     loadSessionDetail,
     markMessagesMutated,
+    ownerGuard,
     persistDraftSelectedResume,
     persistSessionSnapshot,
     restoreComposerAttachmentsIfEmpty,

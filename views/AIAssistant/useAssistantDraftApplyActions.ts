@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useLayoutEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 
 import {
   aiService,
@@ -28,8 +28,11 @@ import {
   readContextString,
 } from './sessionContextUtils';
 import type { AssistantApplyDraftHandler } from './types';
+import type { AssistantOwnerGuard, AssistantOwnerOperation } from './useAssistantOwnerGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type UseAssistantDraftApplyActionsParams = {
+  ownerGuard: AssistantOwnerGuard;
   selectedSession: AssistantSession | null;
   applyingMessageIds: Set<string>;
   appliedMessageIds: Set<string>;
@@ -49,6 +52,7 @@ type UseAssistantDraftApplyActionsParams = {
 };
 
 export const useAssistantDraftApplyActions = ({
+  ownerGuard,
   selectedSession,
   applyingMessageIds,
   appliedMessageIds,
@@ -66,6 +70,10 @@ export const useAssistantDraftApplyActions = ({
   success,
   error,
 }: UseAssistantDraftApplyActionsParams) => {
+  useLayoutEffect(() => {
+    setApplyingMessageIds(new Set());
+  }, [ownerGuard.authUserKey, setApplyingMessageIds]);
+
   const handleApplyDraft = useCallback(async (messageId: string, card: AssistantDraftCard) => {
     if (!selectedSession) {
       return;
@@ -89,6 +97,19 @@ export const useAssistantDraftApplyActions = ({
       && selectedSession.entry_source === 'resume_editor'
     );
 
+    let operation: AssistantOwnerOperation;
+    try {
+      operation = await ownerGuard.beginOperation();
+      if (selectedSession.user_id !== operation.expectedAuthCacheKey) {
+        throw new Error('Assistant session owner mismatch');
+      }
+    } catch (captureError) {
+      if (!isAuthContextChangedError(captureError)) {
+        error('草稿录入失败：登录状态异常', 6000);
+      }
+      return;
+    }
+
     setApplyingMessageIds((prev) => new Set(prev).add(messageId));
     try {
       let applied = false;
@@ -106,12 +127,17 @@ export const useAssistantDraftApplyActions = ({
         applied = await applyHandler(normalizedCard, {
           sessionId: selectedSession.id,
           messageId,
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
           persistApplied: () => aiService.markAssistantMessageApplied(
             selectedSession.id,
             messageId,
-            callbackOnly ? { skipApply: true } : undefined,
+            {
+              skipApply: callbackOnly,
+              expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            },
           ),
         });
+        await ownerGuard.assertOperationCurrent(operation);
         handledByCustomApply = applied;
         if (applied && callbackOnly) {
           shouldPersistAppliedMarker = false;
@@ -128,10 +154,16 @@ export const useAssistantDraftApplyActions = ({
           throw new Error('缺少简历上下文，无法确认这张经历卡片');
         }
 
-        let detail = await resumeService.get(resumeId);
+        let detail = await resumeService.get(resumeId, {
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await ownerGuard.assertOperationCurrent(operation);
         let resumeItem = detail.experiences.find((item) => item.experience.master_experience_id === masterId);
         if (!resumeItem) {
-          const experienceDetail = await experienceService.get(masterId);
+          const experienceDetail = await experienceService.get(masterId, {
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
+          });
+          await ownerGuard.assertOperationCurrent(operation);
           const latestVersionId = experienceDetail.latest_version?.id;
           if (!latestVersionId) {
             throw new Error('缺少经历版本信息，无法确认录入');
@@ -143,7 +175,8 @@ export const useAssistantDraftApplyActions = ({
                 experience_version_id: latestVersionId,
               },
             ],
-          });
+          }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+          await ownerGuard.assertOperationCurrent(operation);
           resumeItem = detail.experiences.find((item) => item.experience.master_experience_id === masterId);
         }
         if (!resumeItem) {
@@ -158,10 +191,14 @@ export const useAssistantDraftApplyActions = ({
               ...buildResumeExperienceOverrideOperation(normalizedCard.data),
             },
           ],
-        });
+        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         applied = true;
       } else if (!handledByCustomApply && normalizedCard.type === 'experience' && selectedSession.entry_source === 'experience_bank') {
-        appliedResponse = await aiService.applyAssistantMessageDraft(selectedSession.id, messageId);
+        appliedResponse = await aiService.applyAssistantMessageDraft(selectedSession.id, messageId, {
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await ownerGuard.assertOperationCurrent(operation);
         appliedMessage = appliedResponse.message;
         experienceService.clearListCache();
         applied = true;
@@ -169,7 +206,10 @@ export const useAssistantDraftApplyActions = ({
         error('这个草稿需要在原编辑上下文中确认，请从对应入口重新打开会话。');
         return;
       } else if (!handledByCustomApply) {
-        appliedResponse = await aiService.applyAssistantMessageDraft(selectedSession.id, messageId);
+        appliedResponse = await aiService.applyAssistantMessageDraft(selectedSession.id, messageId, {
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await ownerGuard.assertOperationCurrent(operation);
         appliedMessage = appliedResponse.message;
         applied = true;
       }
@@ -192,7 +232,7 @@ export const useAssistantDraftApplyActions = ({
               createdAt: Date.now(),
             });
             if (pendingManualSaveDraft) {
-              writePendingAssistantManualSaveDraft(pendingManualSaveDraft);
+              writePendingAssistantManualSaveDraft(operation.expectedAuthCacheKey, pendingManualSaveDraft);
             }
             setManualSaveMessageIds((prev) => new Set(prev).add(messageId));
             success('草稿已同步到编辑区，请前往编辑区保存');
@@ -204,8 +244,11 @@ export const useAssistantDraftApplyActions = ({
         const updatedResponse = appliedResponse ?? (
           appliedMessage
             ? { message: appliedMessage, navigation: null }
-            : await aiService.applyAssistantMessageDraft(selectedSession.id, messageId)
+            : await aiService.applyAssistantMessageDraft(selectedSession.id, messageId, {
+              expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            })
         );
+        await ownerGuard.assertOperationCurrent(operation);
         const updatedMessage = updatedResponse.message;
         if (updatedResponse.navigation?.targetView === 'experience_bank') {
           experienceService.clearListCache();
@@ -234,6 +277,12 @@ export const useAssistantDraftApplyActions = ({
         success('草稿已确认录入');
       }
     } catch (applyError) {
+      if (
+        isAuthContextChangedError(applyError)
+        || !ownerGuard.isOperationCurrent(operation)
+      ) {
+        return;
+      }
       const applyErrorDetails = extractApplyErrorDetails(applyError);
       console.error('[AIAssistant] Failed to apply draft:', {
         sessionId: selectedSession.id,
@@ -252,11 +301,13 @@ export const useAssistantDraftApplyActions = ({
       }, applyError);
       error(`草稿录入失败：${applyErrorDetails.userMessage}`, 6000);
     } finally {
-      setApplyingMessageIds((prev) => {
-        const next = new Set(prev);
-        next.delete(messageId);
-        return next;
-      });
+      if (ownerGuard.isOperationCurrent(operation)) {
+        setApplyingMessageIds((prev) => {
+          const next = new Set(prev);
+          next.delete(messageId);
+          return next;
+        });
+      }
     }
   }, [
     appliedMessageIds,
@@ -268,6 +319,7 @@ export const useAssistantDraftApplyActions = ({
     markMessagesMutated,
     markSessionMutated,
     onAppliedDraftNavigation,
+    ownerGuard,
     selectedSession,
     setAppliedMessageIds,
     setApplyingMessageIds,

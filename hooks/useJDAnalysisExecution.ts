@@ -77,6 +77,7 @@ export type JDAnalysisExecutionParams = {
   now?: () => number;
   logError?: (...args: unknown[]) => void;
   signal?: AbortSignal;
+  expectedAuthCacheKey?: string;
   shouldContinue?: () => boolean;
   canApplyAnalysisResult?: () => boolean;
 };
@@ -86,6 +87,13 @@ const isAbortError = (error: unknown) => (
   && error !== null
   && "name" in error
   && (error as { name?: unknown }).name === "AbortError"
+);
+
+const isAuthContextChangedError = (error: unknown) => (
+  typeof error === "object"
+  && error !== null
+  && "name" in error
+  && (error as { name?: unknown }).name === "AuthContextChangedError"
 );
 
 export const runJDAnalysisExecution = async ({
@@ -114,6 +122,7 @@ export const runJDAnalysisExecution = async ({
   now = Date.now,
   logError = console.error,
   signal,
+  expectedAuthCacheKey,
   shouldContinue = () => true,
   canApplyAnalysisResult = () => true,
 }: JDAnalysisExecutionParams): Promise<JDAnalyzeOutcome> => {
@@ -145,6 +154,7 @@ export const runJDAnalysisExecution = async ({
       onEvent,
       service,
       signal,
+      expectedAuthCacheKey,
     });
     if (!shouldContinue()) {
       return { status: "aborted" };
@@ -219,7 +229,7 @@ export const runJDAnalysisExecution = async ({
     }
     return { status: "success", result: finalResult };
   } catch (error) {
-    if (isAbortError(error)) {
+    if (isAbortError(error) || isAuthContextChangedError(error)) {
       return { status: "aborted" };
     }
     logError("Failed to analyze JD", error);
