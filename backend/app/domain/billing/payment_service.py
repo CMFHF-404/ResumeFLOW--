@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ...config import Settings, load_settings
+from ...config import Settings, build_public_api_url, load_settings
 from ...models import (
     PaymentOrder,
     PaymentOrderIdempotencyAlias,
@@ -1105,8 +1105,9 @@ async def create_checkout(
             "out_trade_no": order.merchant_order_no,
             "name": order.product_name,
             "money": f"{Decimal(order.amount_fen) / Decimal(100):.2f}",
-            "notify_url": (
-                f"{settings.public_api_origin}/api/billing/payments/yifut/notify"
+            "notify_url": build_public_api_url(
+                settings.public_api_origin,
+                "/api/billing/payments/yifut/notify",
             ),
             "return_url": return_url,
             "fee_mode": "0",

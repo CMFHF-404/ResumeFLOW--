@@ -3,6 +3,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from .public_errors import AiProviderPayloadError
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MATCH_SCORE = 0
@@ -53,28 +55,35 @@ def _extract_json_payload(text: str) -> str:
 def _parse_json_content(text: str) -> Dict[str, Any]:
     payload = _extract_json_payload(text)
     try:
-        return json.loads(payload)
+        parsed = json.loads(payload)
     except json.JSONDecodeError as exc:
         logger.error("JSON Parse Error: %s", exc)
         logger.error("Raw Text Summary: %s", _summarize_text(text))
         logger.error("Extracted Payload Summary: %s", _summarize_text(payload))
-        raise ValueError(f"Invalid JSON returned by model: {exc}") from exc
+        raise AiProviderPayloadError(
+            f"Invalid JSON returned by model: {exc}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise AiProviderPayloadError("Invalid JSON returned by model: expected object")
+    return parsed
 
 
 def _parse_json_content_candidates(candidates: List[str]) -> Dict[str, Any]:
-    last_error: ValueError | None = None
+    last_error: AiProviderPayloadError | None = None
     for candidate in candidates:
         cleaned = candidate.strip()
         if not cleaned:
             continue
         try:
             return _parse_json_content(cleaned)
-        except ValueError as exc:
+        except AiProviderPayloadError as exc:
             last_error = exc
             continue
     if last_error is not None:
         raise last_error
-    raise ValueError("Invalid JSON returned by model: empty streamed response")
+    raise AiProviderPayloadError(
+        "Invalid JSON returned by model: empty streamed response"
+    )
 
 
 def _safe_parse_resume_payload(resume_text: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -165,7 +174,7 @@ def _normalize_jd_analysis_result(
     result: Dict[str, Any],
 ) -> Dict[str, Any]:
     if not isinstance(result, dict):
-        raise ValueError("JD analysis result must be an object")
+        raise AiProviderPayloadError("JD analysis result must be an object")
     normalized = dict(result)
     extracted_jd_text = normalized.get("extractedJdText")
     if not isinstance(extracted_jd_text, str):

@@ -9,6 +9,7 @@ export type ToastApi = {
   error: (message: string, duration?: number) => string;
   loading: (message: string) => string;
   updateToast: (id: string, updates: { message?: string; type?: 'success' | 'error' | 'loading' | 'ai_thinking'; duration?: number }) => void;
+  closeToast?: (id: string) => void;
 };
 
 export type ExperienceSectionProps = {
@@ -25,6 +26,7 @@ export type ExperienceSectionProps = {
   defaultTitle: string;
   refreshSignal?: number;
   toast: ToastApi;
+  authUserKey?: string | null;
   isAuthenticated: boolean;
   onRequireAuth: () => void | Promise<void>;
   themeColor?: string;

@@ -1,6 +1,7 @@
 import {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -9,7 +10,7 @@ import {
     type SetStateAction,
 } from 'react';
 import { useDebounce } from '../components/hooks/useDebounce';
-import { resolveAuthUserKeyFromActiveSession } from '../services/apiClient';
+import { isAuthContextChangedError } from '../services/apiClient';
 import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
 import { experienceService, ExperienceListItem } from '../services/experienceService';
 import { profileService, Profile } from '../services/profileService';
@@ -17,12 +18,15 @@ import {
     loadJDAnalysisCache,
     normalizeJDAnalysisPersistence,
     selectPreferredPersistedJDAnalysis,
-} from '../views/jdAnalysisStorage';
+} from '../services/jdAnalysisStorage';
 import {
     resumeService,
     ResumeDetail,
     ResumeExperienceItem,
     Resume,
+    ResumeAuthContextChangedError,
+    assertResumeAuthContext,
+    captureResumeAuthCacheKey,
     subscribeToResumeVersionConflicts,
     waitForResumeMutations,
 } from '../services/resumeService';
@@ -31,7 +35,7 @@ import { UNTITLED_RESUME_TITLE } from '../constants/resumeConstants';
 import {
     buildPreferredResumeCreateConfig,
     syncResumeTemplatePresetsFromProfile,
-} from '../views/resumeTemplateStorage';
+} from '../services/resumeTemplateStorage';
 import {
     useCertificationStateApplier,
     useEducationStateApplier,
@@ -50,7 +54,8 @@ import type {
     CertificationView,
     SkillGroupView,
 } from '../types/resume';
-import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from '../views/resumeStorage';
+import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from '../services/resumeStorage';
+import { readAuthSessionSnapshot } from '../services/authTokenProvider';
 import {
     createResumeConfigSaveCoordinator,
     type ResumeConfigSaveOptions,
@@ -176,11 +181,18 @@ type SaveResumeConfig = (
     options?: ResumeConfigSaveOptions
 ) => Promise<void>;
 
-const resolveCachedResume = async (cachedId: string): Promise<CachedResumeResolveResult> => {
+const resolveCachedResume = async (
+    cachedId: string,
+    expectedAuthCacheKey: string
+): Promise<CachedResumeResolveResult> => {
     try {
-        const detail = await resumeService.get(cachedId);
+        const detail = await resumeService.get(cachedId, { expectedAuthCacheKey });
+        await assertResumeAuthContext(expectedAuthCacheKey);
         return { status: 'ok', detail };
     } catch (error) {
+        if (error instanceof ResumeAuthContextChangedError || isAuthContextChangedError(error)) {
+            throw error;
+        }
         const status =
             typeof error === 'object' && error
                 ? (error as { response?: { status?: number } }).response?.status
@@ -194,44 +206,63 @@ const resolveCachedResume = async (cachedId: string): Promise<CachedResumeResolv
 
 const ensureActiveResumeId = async (
     resumes: Resume[],
-    authUserKey?: string | null
+    expectedAuthCacheKey: string
 ): Promise<string> => {
+    await assertResumeAuthContext(expectedAuthCacheKey);
     if (resumes.length > 0) {
-        setActiveResumeId(resumes[0].id);
+        setActiveResumeId(expectedAuthCacheKey, resumes[0].id);
         return resumes[0].id;
     }
-    const profile = await profileService.getProfile().catch(() => profileService.peekProfileForCurrentUser());
-    const ownerId = profile?.user_id ?? authUserKey ?? await resolveAuthUserKeyFromActiveSession();
-    const created = await resumeService.create({
+    let profile: Profile | null = null;
+    try {
+        profile = await profileService.getProfile({
+            expectedAuthCacheKey,
+        });
+    } catch (error) {
+        await assertResumeAuthContext(expectedAuthCacheKey);
+        profile = await profileService.peekProfileForCurrentUser({ expectedAuthCacheKey });
+        await assertResumeAuthContext(expectedAuthCacheKey);
+    }
+    const createPayload = {
         title: UNTITLED_RESUME_TITLE,
         config: buildPreferredResumeCreateConfig(
             profile?.extra_json,
-            ownerId
+            profile?.user_id ?? expectedAuthCacheKey
         ),
-    });
-    setActiveResumeId(created.id);
+    };
+    await assertResumeAuthContext(expectedAuthCacheKey);
+    const created = await resumeService.create(createPayload, { expectedAuthCacheKey });
+    await assertResumeAuthContext(expectedAuthCacheKey);
+    setActiveResumeId(expectedAuthCacheKey, created.id);
     return created.id;
 };
 
 const resolveActiveResumeContext = async (
     authUserKey?: string | null
 ): Promise<ActiveResumeContext> => {
-    const cachedId = getActiveResumeId();
+    const expectedAuthCacheKey = await captureResumeAuthCacheKey(authUserKey);
+    const cachedId = getActiveResumeId(expectedAuthCacheKey);
     if (cachedId) {
-        const cached = await resolveCachedResume(cachedId);
+        const cached = await resolveCachedResume(cachedId, expectedAuthCacheKey);
         if (cached.status === 'ok') {
             return { id: cachedId, detail: cached.detail };
         }
         if (cached.status === 'missing') {
-            clearActiveResumeId();
-            const resumes = await resumeService.list({ force: true });
-            const id = await ensureActiveResumeId(resumes, authUserKey);
+            await assertResumeAuthContext(expectedAuthCacheKey);
+            clearActiveResumeId(expectedAuthCacheKey);
+            const resumes = await resumeService.list({
+                force: true,
+                expectedAuthCacheKey,
+            });
+            await assertResumeAuthContext(expectedAuthCacheKey);
+            const id = await ensureActiveResumeId(resumes, expectedAuthCacheKey);
             return { id, detail: null };
         }
         return { id: cachedId, detail: null };
     }
-    const resumes = await resumeService.list();
-    const id = await ensureActiveResumeId(resumes, authUserKey);
+    const resumes = await resumeService.list({ expectedAuthCacheKey });
+    await assertResumeAuthContext(expectedAuthCacheKey);
+    const id = await ensureActiveResumeId(resumes, expectedAuthCacheKey);
     return { id, detail: null };
 };
 
@@ -245,26 +276,35 @@ const resolveRequestedResumeContext = async (
     return resolveActiveResumeContext(authUserKey);
 };
 
-const fetchExperiences = async () => {
+const fetchExperiences = async (expectedAuthCacheKey: string) => {
     const [workItems, projectItems] = await Promise.all([
-        experienceService.listAll('work'),
-        experienceService.listAll('project'),
+        experienceService.listAll('work', { expectedAuthCacheKey }),
+        experienceService.listAll('project', { expectedAuthCacheKey }),
     ]);
     return [...workItems, ...projectItems];
 };
 
-const fetchEducationExperiences = async () => experienceService.listAll('education');
-const fetchCertifications = async () => certificationsService.list();
-const fetchSkills = async () => skillsService.list();
+const fetchEducationExperiences = async (expectedAuthCacheKey: string) => (
+    experienceService.listAll('education', { expectedAuthCacheKey })
+);
+const fetchCertifications = async (expectedAuthCacheKey: string) => (
+    certificationsService.list({ expectedAuthCacheKey })
+);
+const fetchSkills = async (expectedAuthCacheKey: string) => (
+    skillsService.list({ expectedAuthCacheKey })
+);
 
-const readCachedExperiences = async () => {
-    const cachedAll = await experienceService.peekCompleteListForCurrentUser(undefined, { allowStale: true });
+const readCachedExperiences = async (expectedAuthCacheKey: string) => {
+    const cachedAll = await experienceService.peekCompleteListForCurrentUser(undefined, {
+        allowStale: true,
+        expectedAuthCacheKey,
+    });
     if (cachedAll !== null) {
         return cachedAll;
     }
     const [cachedWork, cachedProject] = await Promise.all([
-        experienceService.peekCompleteListForCurrentUser('work', { allowStale: true }),
-        experienceService.peekCompleteListForCurrentUser('project', { allowStale: true }),
+        experienceService.peekCompleteListForCurrentUser('work', { allowStale: true, expectedAuthCacheKey }),
+        experienceService.peekCompleteListForCurrentUser('project', { allowStale: true, expectedAuthCacheKey }),
     ]);
     if (cachedWork === null || cachedProject === null) {
         return null;
@@ -275,16 +315,16 @@ const readCachedExperiences = async () => {
     ];
 };
 
-const readCachedEducationExperiences = async () => (
-    experienceService.peekCompleteListForCurrentUser('education', { allowStale: true })
+const readCachedEducationExperiences = async (expectedAuthCacheKey: string) => (
+    experienceService.peekCompleteListForCurrentUser('education', { allowStale: true, expectedAuthCacheKey })
 );
 
-const readCachedCertifications = async () => (
-    certificationsService.peekListForCurrentUser({ allowStale: true })
+const readCachedCertifications = async (expectedAuthCacheKey: string) => (
+    certificationsService.peekListForCurrentUser({ allowStale: true, expectedAuthCacheKey })
 );
 
-const readCachedSkills = async () => (
-    skillsService.peekListForCurrentUser({ allowStale: true })
+const readCachedSkills = async (expectedAuthCacheKey: string) => (
+    skillsService.peekListForCurrentUser({ allowStale: true, expectedAuthCacheKey })
 );
 
 const loadWithFallback = async <T,>(
@@ -315,7 +355,8 @@ const buildEffectiveConfigSnapshot = (
     configSnapshot: ResumeEditorConfig,
     persistedJDAnalysisSnapshot: ResumeEditorConfig['jdAnalysis'] | null | undefined,
     resumeId: string | null,
-    resumeDetail: ResumeDetail | null
+    resumeDetail: ResumeDetail | null,
+    authUserKey?: string | null,
 ): ResumeEditorConfig => {
     if (persistedJDAnalysisSnapshot !== undefined) {
         return configSnapshot;
@@ -325,7 +366,7 @@ const buildEffectiveConfigSnapshot = (
     );
     const selectedPersistedJDAnalysis = selectPreferredPersistedJDAnalysis(
         backendPersistedJDAnalysis,
-        resumeId ? loadJDAnalysisCache(resumeId) : null
+        resumeId ? loadJDAnalysisCache(authUserKey, resumeId) : null
     )?.payload;
     if (!selectedPersistedJDAnalysis) {
         return configSnapshot;
@@ -364,9 +405,23 @@ const useResumeContextLoader = (
     const reloadQueueRef = useRef<Promise<void>>(Promise.resolve());
     const performReloadResumeContext = useCallback(
         async (requestedId?: string | null): Promise<ReloadResumeContextResult> => {
+            let expectedAuthCacheKey: string;
+            try {
+                expectedAuthCacheKey = await captureResumeAuthCacheKey(authUserKey);
+            } catch (error) {
+                setIsLoadingResume(false);
+                setIsLoadingExperiences(false);
+                return {
+                    status: 'failed',
+                    reason: 'load_error',
+                    requestedId: requestedId ?? null,
+                    error,
+                };
+            }
             const previousHydrated = hasHydratedConfigRef.current;
             const previousSaveState = latestSaveStateRef.current;
             const previousLastSavedAt = latestLastSavedAtRef.current;
+            let authContextChanged = false;
             setIsLoadingResume(true);
             setIsLoadingExperiences(true);
             hasHydratedConfigRef.current = false;
@@ -375,10 +430,12 @@ const useResumeContextLoader = (
             setLastSavedAt(null);
             try {
                 await waitForPendingResumeSaves();
+                await assertResumeAuthContext(expectedAuthCacheKey);
                 const { id: activeId, detail: cachedDetail } = await resolveRequestedResumeContext(
                     requestedId,
-                    authUserKey
+                    expectedAuthCacheKey
                 );
+                await assertResumeAuthContext(expectedAuthCacheKey);
                 if (!activeId) {
                     return {
                         status: 'failed',
@@ -394,13 +451,33 @@ const useResumeContextLoader = (
                     certifications,
                     skills,
                 ] = await Promise.all([
-                    cachedDetail ?? resumeService.get(activeId),
-                    profileService.getProfile().catch(() => null),
-                    loadWithFallback('经历列表', fetchExperiences, readCachedExperiences),
-                    loadWithFallback('教育经历列表', fetchEducationExperiences, readCachedEducationExperiences),
-                    loadWithFallback('证书列表', fetchCertifications, readCachedCertifications),
-                    loadWithFallback('技能列表', fetchSkills, readCachedSkills),
+                    cachedDetail ?? resumeService.get(activeId, { expectedAuthCacheKey }),
+                    profileService.getProfile({ expectedAuthCacheKey }).catch(async () => {
+                        await assertResumeAuthContext(expectedAuthCacheKey);
+                        return null;
+                    }),
+                    loadWithFallback(
+                        '经历列表',
+                        () => fetchExperiences(expectedAuthCacheKey),
+                        () => readCachedExperiences(expectedAuthCacheKey)
+                    ),
+                    loadWithFallback(
+                        '教育经历列表',
+                        () => fetchEducationExperiences(expectedAuthCacheKey),
+                        () => readCachedEducationExperiences(expectedAuthCacheKey)
+                    ),
+                    loadWithFallback(
+                        '证书列表',
+                        () => fetchCertifications(expectedAuthCacheKey),
+                        () => readCachedCertifications(expectedAuthCacheKey)
+                    ),
+                    loadWithFallback(
+                        '技能列表',
+                        () => fetchSkills(expectedAuthCacheKey),
+                        () => readCachedSkills(expectedAuthCacheKey)
+                    ),
                 ]);
+                await assertResumeAuthContext(expectedAuthCacheKey);
                 syncResumeTemplatePresetsFromProfile(profileData?.extra_json, profileData?.user_id);
                 const config = (detail?.resume?.config || {}) as ResumeEditorConfig;
                 const resolvedProfileSyncMode = resolveProfileSyncMode(config, profileData || undefined);
@@ -411,7 +488,7 @@ const useResumeContextLoader = (
                 applyCertificationState(certifications, config);
                 applySkillState(skills, config);
                 updateLastSavedRef(lastSavedConfigRef, JSON.stringify(config));
-                setActiveResumeId(activeId);
+                setActiveResumeId(expectedAuthCacheKey, activeId);
                 setResumeId(activeId);
                 setSaveState('saved');
                 hasHydratedConfigRef.current = true;
@@ -425,12 +502,14 @@ const useResumeContextLoader = (
                 };
             } catch (error) {
                 console.error('[ResumeEditor] 加载简历上下文失败:', error);
-                if (previousHydrated) {
+                authContextChanged = error instanceof ResumeAuthContextChangedError
+                    || isAuthContextChangedError(error);
+                if (!authContextChanged && previousHydrated) {
                     hasHydratedConfigRef.current = true;
                     shouldWaitForDebouncedConfigRef.current = false;
                     setSaveState(previousSaveState);
                     setLastSavedAt(previousLastSavedAt);
-                } else {
+                } else if (!authContextChanged) {
                     setSaveState('error');
                 }
                 return {
@@ -687,8 +766,10 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         },
         [state.activeResumeIdRef]
     );
-    state.activeResumeIdRef.current = state.resumeId;
-    state.resumeUpdatedAtRef.current = state.resumeDetail?.resume.updated_at;
+    useLayoutEffect(() => {
+        state.activeResumeIdRef.current = state.resumeId;
+        state.resumeUpdatedAtRef.current = state.resumeDetail?.resume.updated_at;
+    }, [state.activeResumeIdRef, state.resumeDetail, state.resumeId, state.resumeUpdatedAtRef]);
     useEffect(() => {
         state.latestSaveStateRef.current = state.saveState;
         state.latestLastSavedAtRef.current = state.lastSavedAt;
@@ -740,17 +821,21 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
             options.configSnapshot,
             options.persistedJDAnalysisSnapshot,
             state.resumeId,
-            state.resumeDetail
+            state.resumeDetail,
+            options.authUserKey,
         ),
         [
             options.configSnapshot,
             options.persistedJDAnalysisSnapshot,
             state.resumeId,
             state.resumeDetail,
+            options.authUserKey,
         ]
     );
     const latestEffectiveConfigSnapshotRef = useRef(effectiveConfigSnapshot);
-    latestEffectiveConfigSnapshotRef.current = effectiveConfigSnapshot;
+    useLayoutEffect(() => {
+        latestEffectiveConfigSnapshotRef.current = effectiveConfigSnapshot;
+    }, [effectiveConfigSnapshot]);
     useEffect(() => {
         if (hasResumeVersionConflict) {
             state.suppressedAutoSaveSignatureRef.current = JSON.stringify(
@@ -777,12 +862,23 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         });
     }, [state.resumeId, state.setSaveState, state.suppressedAutoSaveSignatureRef]);
     const saveCoordinator = useMemo(
-        () => createResumeConfigSaveCoordinator<ResumeEditorConfig, Resume>({
+        () => {
+            const expectedAuthCacheKey = options.authUserKey;
+            const assertSaveOwnerCurrent = () => {
+                if (
+                    !expectedAuthCacheKey
+                    || readAuthSessionSnapshot().ownerKey !== expectedAuthCacheKey
+                ) {
+                    throw new ResumeAuthContextChangedError();
+                }
+            };
+            return createResumeConfigSaveCoordinator<ResumeEditorConfig, Resume>({
             getResumeId: () => state.activeResumeIdRef.current,
             getExpectedUpdatedAt: () => state.resumeUpdatedAtRef.current,
             getLastSavedSignature: () => state.lastSavedConfigRef.current,
             isHydrated: () => state.hasHydratedConfigRef.current,
             assertCanPersist: () => {
+                assertSaveOwnerCurrent();
                 if (resumeVersionConflictRef.current) {
                     throw new Error('Resume version conflict requires an explicit reload.');
                 }
@@ -792,11 +888,13 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
                 {
                     config,
                     expected_updated_at: expectedUpdatedAt,
-                }
+                },
+                { expectedAuthCacheKey: expectedAuthCacheKey ?? undefined },
             ),
             onSaveStart: () => state.setSaveState('saving'),
             onSaveSuccess: (_resumeId, updatedResume, configSignature) => {
-                const pendingJDAnalysisCache = loadJDAnalysisCache(_resumeId);
+                assertSaveOwnerCurrent();
+                const pendingJDAnalysisCache = loadJDAnalysisCache(options.authUserKey, _resumeId);
                 const savedJDAnalysis = normalizeJDAnalysisPersistence(
                     (updatedResume.config as ResumeEditorConfig | undefined)?.jdAnalysis
                 );
@@ -818,8 +916,10 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
                 state.setSaveState('saved');
                 state.setLastSavedAt(new Date().toLocaleTimeString());
             },
-        }),
+            });
+        },
         [
+            options.authUserKey,
             state.activeResumeIdRef,
             state.hasHydratedConfigRef,
             state.lastSavedConfigRef,
@@ -829,7 +929,9 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
             state.setSaveState,
         ]
     );
-    pendingResumeSaveDrainRef.current = saveCoordinator.drain;
+    useLayoutEffect(() => {
+        pendingResumeSaveDrainRef.current = saveCoordinator.drain;
+    }, [saveCoordinator]);
     const saveResumeConfig = saveCoordinator.save;
     useResumeAutoSave(
         state.resumeId,

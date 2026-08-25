@@ -36,6 +36,35 @@ export const assertAssistantSessionDetailResponse = (value: AssistantSessionDeta
   return value;
 };
 
+export const readAssistantSessionNextCursor = (detail: AssistantSessionDetail): string | null => (
+  typeof detail.next_cursor === 'string' && detail.next_cursor.length > 0
+    ? detail.next_cursor
+    : null
+);
+
+export const mergeEarlierAssistantMessages = (
+  current: AssistantMessage[],
+  earlier: AssistantMessage[],
+): AssistantMessage[] => {
+  const currentIds = new Set<string>();
+  const dedupedCurrent = current.filter((message) => {
+    if (currentIds.has(message.id)) {
+      return false;
+    }
+    currentIds.add(message.id);
+    return true;
+  });
+  const earlierIds = new Set<string>();
+  const dedupedEarlier = earlier.filter((message) => {
+    if (currentIds.has(message.id) || earlierIds.has(message.id)) {
+      return false;
+    }
+    earlierIds.add(message.id);
+    return true;
+  });
+  return [...dedupedEarlier, ...dedupedCurrent];
+};
+
 export const isDraftMessageApplied = (message: AssistantMessage) => {
   if (message.message_type !== 'draft_card') {
     return false;
@@ -129,6 +158,21 @@ export const mergeAssistantSessions = (
     next.set(session.id, session);
   });
   return sortSessionsByUpdatedAt(Array.from(next.values()));
+};
+
+export const mergeEarlierAssistantSessions = (
+  current: AssistantSession[],
+  incoming: AssistantSession[],
+  mutationSeqAtStart: number,
+  sessionMutationSeqs: Map<string, number>,
+  deletedSessionSeqs: Map<string, number>,
+) => {
+  const acceptedIncoming = incoming.filter((session) => {
+    const localMutationSeq = sessionMutationSeqs.get(session.id) ?? 0;
+    const deletedSeq = deletedSessionSeqs.get(session.id) ?? 0;
+    return deletedSeq <= mutationSeqAtStart && localMutationSeq <= mutationSeqAtStart;
+  });
+  return mergeAssistantSessions(current, acceptedIncoming);
 };
 
 export const reconcileAssistantSessions = (

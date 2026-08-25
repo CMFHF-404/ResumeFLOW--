@@ -1,12 +1,15 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { useAuthOwnerOperationGuard } from "./useAuthOwnerOperationGuard";
+import { isAuthContextChangedError } from "../services/apiClient";
 import {
   aiService,
   type JDAnalysisResult,
@@ -19,11 +22,11 @@ import {
   resolveLocalJDAnalysisWriteBase,
   saveJDAnalysisCache,
   selectPreferredPersistedJDAnalysis,
-} from "../views/jdAnalysisStorage";
+} from "../services/jdAnalysisStorage";
 import { diffJDItemSignatures } from "../utils/resumeHelpers";
 import { resolveThoughtDisplayEvent } from "../utils/aiThought";
 import { createJDAttachmentSelectionController } from "../utils/jdAttachment";
-import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../views/ResumeEditor/constants";
+import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../constants/jdAnalysis";
 import type {
   JDAnalysisContext,
   JDAnalysisItemSignatures,
@@ -173,6 +176,7 @@ export const useJDAnalysis = ({
   isLoadingExperiences,
   authUserKey,
 }: UseJDAnalysisOptions): UseJDAnalysisResult => {
+  const ownerGuard = useAuthOwnerOperationGuard(authUserKey ?? null);
   const [jdText, setJdText] = useState(DEFAULT_JD_TEXT);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const jdFileRef = useRef<File | null>(null);
@@ -196,9 +200,13 @@ export const useJDAnalysis = ({
   const analysisRunIdRef = useRef(0);
   const activeAnalysisRunIdRef = useRef(0);
   const activeResumeIdRef = useRef(resumeId);
-  const previousResumeIdRef = useRef(resumeId);
+  const analysisIdentity = useMemo(() => canonicalStringify({
+    owner: authUserKey ?? null,
+    resumeId: resumeId ?? null,
+  }), [authUserKey, resumeId]);
+  const [analysisStateIdentity, setAnalysisStateIdentity] = useState(analysisIdentity);
+  const activeAnalysisIdentityRef = useRef(analysisIdentity);
   const analyzeRequestRef = useRef<Promise<JDAnalyzeOutcome> | null>(null);
-  activeResumeIdRef.current = resumeId;
   const [isJDCollapsed, setIsJDCollapsed] = useState(false);
   const [analysisContext, setAnalysisContext] =
     useState<JDAnalysisContext | null>(null);
@@ -237,7 +245,12 @@ export const useJDAnalysis = ({
     targetRole,
   ]);
   const evaluationInputRef = useRef(evaluationInput);
-  evaluationInputRef.current = evaluationInput;
+
+  useLayoutEffect(() => {
+    activeResumeIdRef.current = resumeId;
+    activeAnalysisIdentityRef.current = analysisIdentity;
+    evaluationInputRef.current = evaluationInput;
+  }, [analysisIdentity, evaluationInput, resumeId]);
   const evaluationSnapshot = useMemo(
     () => buildAnalyzePayload(
       experienceItems,
@@ -300,24 +313,24 @@ export const useJDAnalysis = ({
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     jdFileRef.current = jdFile;
   }, [jdFile]);
 
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     experienceItemsRef.current = experienceItems;
   }, [experienceItems]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     certificationsRef.current = certifications;
   }, [certifications]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     skillGroupsRef.current = skillGroups;
   }, [skillGroups]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     jdTextRef.current = jdText;
   }, [jdText]);
 
@@ -351,11 +364,19 @@ export const useJDAnalysis = ({
     jdInputSignature,
     resume: evaluationSnapshot,
   }), [evaluationSnapshot, jdInputSignature]);
-  evaluationSignatureRef.current = evaluationSignature;
-  analysisResultRef.current = analysisResult;
-  analysisContextRef.current = analysisContext;
-  persistedJDAnalysisRef.current = persistedJDAnalysis;
-  persistedJDAnalysisConfigRef.current = persistedJDAnalysisConfig;
+  useLayoutEffect(() => {
+    evaluationSignatureRef.current = evaluationSignature;
+    analysisResultRef.current = analysisResult;
+    analysisContextRef.current = analysisContext;
+    persistedJDAnalysisRef.current = persistedJDAnalysis;
+    persistedJDAnalysisConfigRef.current = persistedJDAnalysisConfig;
+  }, [
+    analysisContext,
+    analysisResult,
+    evaluationSignature,
+    persistedJDAnalysis,
+    persistedJDAnalysisConfig,
+  ]);
 
   const isOutdated = useMemo(() => resolveJDAnalysisOutdated({
     analysisResult,
@@ -370,19 +391,26 @@ export const useJDAnalysis = ({
     || persistedJDAnalysis?.evaluationIsOutdated === true
   ), [analysisContext?.evaluationSignature, analysisResult?.resumeEvaluation?.evaluationVersion, evaluationSignature, persistedJDAnalysis?.evaluationIsOutdated]);
   const hasMissingAttachmentContext = Boolean(restoredAttachmentContext && !jdFile);
+  const isAnalysisStateCurrent = analysisStateIdentity === analysisIdentity;
 
   const resolveLocalAnalysisWriteBase = useCallback((
     currentPersisted: ResumeJDAnalysis | null | undefined,
   ): string | null | undefined => {
+    if (
+      !isAnalysisStateCurrent
+      || activeAnalysisIdentityRef.current !== analysisIdentity
+    ) {
+      return undefined;
+    }
     const backendPersisted = normalizeJDAnalysisPersistence(
       persistedJDAnalysisConfigRef.current
     );
     return resolveLocalJDAnalysisWriteBase(
       backendPersisted,
-      resumeId ? loadJDAnalysisCache(resumeId) : null,
+      resumeId ? loadJDAnalysisCache(authUserKey, resumeId) : null,
       currentPersisted,
     );
-  }, [resumeId]);
+  }, [analysisIdentity, authUserKey, isAnalysisStateCurrent, resumeId]);
 
   const canApplyAnalysisResult = useCallback(() => (
     resolveLocalAnalysisWriteBase(persistedJDAnalysisRef.current) !== undefined
@@ -391,6 +419,7 @@ export const useJDAnalysis = ({
   useEffect(() => {
     if (
       !resumeId
+      || !isAnalysisStateCurrent
       || !persistedJDAnalysis
       || (
         persistedJDAnalysis.isOutdated === isOutdated
@@ -412,12 +441,14 @@ export const useJDAnalysis = ({
     };
     persistedJDAnalysisRef.current = nextPersistedJDAnalysis;
     setPersistedJDAnalysis(nextPersistedJDAnalysis);
-    saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
+    saveJDAnalysisCache(authUserKey, resumeId, nextPersistedJDAnalysis, {
       pendingSync: true,
       basePersistedFingerprint,
     });
   }, [
+    authUserKey,
     isEvaluationOutdated,
+    isAnalysisStateCurrent,
     isOutdated,
     persistedJDAnalysis,
     persistedJDAnalysisConfig,
@@ -533,11 +564,12 @@ export const useJDAnalysis = ({
         setAttachmentExtractedText(null);
       }
       if (options?.clearCache && resumeId) {
-        clearJDAnalysisCache(resumeId);
+        clearJDAnalysisCache(authUserKey, resumeId);
       }
     },
     [
       clearJdFile,
+      authUserKey,
       resetAllMatchState,
       resumeId,
     ]
@@ -563,15 +595,6 @@ export const useJDAnalysis = ({
   ]);
 
   useEffect(() => {
-    if (previousResumeIdRef.current === resumeId) {
-      return;
-    }
-    previousResumeIdRef.current = resumeId;
-    invalidatePendingJdFileSelection();
-    invalidateAnalysisRun();
-  }, [invalidateAnalysisRun, invalidatePendingJdFileSelection, resumeId]);
-
-  useEffect(() => {
     return () => {
       invalidatePendingJdFileSelection();
       invalidateAnalysisRun({ clearUi: false });
@@ -579,28 +602,38 @@ export const useJDAnalysis = ({
   }, [invalidateAnalysisRun, invalidatePendingJdFileSelection]);
 
   useEffect(() => {
-    if (!resumeId) {
+    if (isAnalysisStateCurrent) {
       return;
     }
     hasLoadedJdCacheRef.current = false;
+    invalidatePendingJdFileSelection();
+    invalidateAnalysisRun();
     resetJDAnalysisState({
       resetJdText: true,
       resetJdFile: true,
       clearCache: false,
       resetPersistedJDAnalysis: true,
     });
-  }, [resetJDAnalysisState, resumeId]);
+    setAnalysisStateIdentity(analysisIdentity);
+  }, [
+    analysisIdentity,
+    invalidateAnalysisRun,
+    invalidatePendingJdFileSelection,
+    isAnalysisStateCurrent,
+    resetJDAnalysisState,
+  ]);
 
   useEffect(() => {
     if (
       !resumeId
+      || !isAnalysisStateCurrent
       || isLoadingResume
       || isLoadingExperiences
       || hasLoadedJdCacheRef.current
     ) {
       return;
     }
-    const cached = loadJDAnalysisCache(resumeId);
+    const cached = loadJDAnalysisCache(authUserKey, resumeId);
     const backendPersisted = normalizeJDAnalysisPersistence(
       persistedJDAnalysisConfig
     );
@@ -613,28 +646,34 @@ export const useJDAnalysis = ({
       const normalizedPersisted = applyPersistedAnalysisState(
         preferredPersistedState.payload
       );
-      saveJDAnalysisCache(resumeId, normalizedPersisted, {
+      saveJDAnalysisCache(authUserKey, resumeId, normalizedPersisted, {
         pendingSync: preferredPersistedState.shouldKeepLocalPendingSync,
         basePersistedFingerprint:
           preferredPersistedState.basePersistedFingerprint,
       });
     } else if (cached && !cached.pendingSync) {
-      clearJDAnalysisCache(resumeId);
+      clearJDAnalysisCache(authUserKey, resumeId);
       setPersistedJDAnalysis(null);
     } else {
       setPersistedJDAnalysis(null);
     }
     hasLoadedJdCacheRef.current = true;
   }, [
+    authUserKey,
     isLoadingExperiences,
     isLoadingResume,
+    isAnalysisStateCurrent,
     applyPersistedAnalysisState,
     persistedJDAnalysisConfig,
     resumeId,
   ]);
 
   useEffect(() => {
-    if (!resumeId || !hasLoadedJdCacheRef.current) {
+    if (
+      !resumeId
+      || !isAnalysisStateCurrent
+      || !hasLoadedJdCacheRef.current
+    ) {
       return;
     }
     const backendPersisted = normalizeJDAnalysisPersistence(
@@ -642,7 +681,7 @@ export const useJDAnalysis = ({
     );
     const reconciliation = selectPreferredPersistedJDAnalysis(
       backendPersisted,
-      loadJDAnalysisCache(resumeId)
+      loadJDAnalysisCache(authUserKey, resumeId)
     );
     if (reconciliation.kind === "keep_pending_local") {
       return;
@@ -654,7 +693,7 @@ export const useJDAnalysis = ({
         persistedJDAnalysisRef.current = null;
         setPersistedJDAnalysis(null);
       }
-      clearJDAnalysisCache(resumeId);
+      clearJDAnalysisCache(authUserKey, resumeId);
       return;
     }
     let reconciledPayload = normalizePersistedAnalysisForState(
@@ -665,13 +704,15 @@ export const useJDAnalysis = ({
       invalidateAnalysisRun();
       reconciledPayload = applyPersistedAnalysisState(reconciliation.payload);
     }
-    saveJDAnalysisCache(resumeId, reconciledPayload, {
+    saveJDAnalysisCache(authUserKey, resumeId, reconciledPayload, {
       pendingSync: false,
       basePersistedFingerprint: reconciliation.basePersistedFingerprint,
     });
   }, [
     applyPersistedAnalysisState,
+    authUserKey,
     invalidateAnalysisRun,
+    isAnalysisStateCurrent,
     persistedJDAnalysis,
     persistedJDAnalysisConfig,
     resetJDAnalysisState,
@@ -822,13 +863,14 @@ export const useJDAnalysis = ({
         resetAllMatchState();
       }
       if (resumeId) {
-        saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
+        saveJDAnalysisCache(authUserKey, resumeId, nextPersistedJDAnalysis, {
           pendingSync: true,
           basePersistedFingerprint,
         });
       }
     },
     [
+      authUserKey,
       resetAllMatchState,
       resolveLocalAnalysisWriteBase,
       resumeId,
@@ -879,13 +921,13 @@ export const useJDAnalysis = ({
       return nextContext;
     });
     if (resumeId) {
-      saveJDAnalysisCache(resumeId, nextPersistedJDAnalysis, {
+      saveJDAnalysisCache(authUserKey, resumeId, nextPersistedJDAnalysis, {
         pendingSync: true,
         basePersistedFingerprint,
       });
     }
     return true;
-  }, [resolveLocalAnalysisWriteBase, resumeId, targetRoleSignature]);
+  }, [authUserKey, resolveLocalAnalysisWriteBase, resumeId, targetRoleSignature]);
 
   const getAnalysisSnapshot = useCallback(() => {
     const analysisPayload = buildAnalyzePayload(
@@ -1006,6 +1048,15 @@ export const useJDAnalysis = ({
         onEvent?: JDAnalyzeStreamHandler;
       }
     ): Promise<JDAnalyzeOutcome> => {
+      let ownerOperation: Awaited<ReturnType<typeof ownerGuard.beginOperation>>;
+      try {
+        ownerOperation = await ownerGuard.beginOperation();
+      } catch (error) {
+        if (!isAuthContextChangedError(error)) {
+          console.error("Failed to capture JD analysis owner", error);
+        }
+        return { status: "aborted" };
+      }
       const runId = analysisRunIdRef.current + 1;
       analysisRunIdRef.current = runId;
       activeAnalysisRunIdRef.current = runId;
@@ -1014,7 +1065,11 @@ export const useJDAnalysis = ({
       setThinkingText("");
       let hasThoughtTitle = false;
       const setIsAnalyzingForRun = (value: boolean) => {
-        if (activeAnalysisRunIdRef.current !== runId) {
+        if (
+          activeAnalysisRunIdRef.current !== runId
+          || activeAnalysisIdentityRef.current !== analysisIdentity
+          || !ownerGuard.isOperationCurrent(ownerOperation)
+        ) {
           return;
         }
         setIsAnalyzing(value);
@@ -1046,7 +1101,11 @@ export const useJDAnalysis = ({
         setDebugInfo,
         onProgress: options?.onProgress,
         onEvent: (event) => {
-          if (activeAnalysisRunIdRef.current !== runId) {
+          if (
+            activeAnalysisRunIdRef.current !== runId
+            || activeAnalysisIdentityRef.current !== analysisIdentity
+            || !ownerGuard.isOperationCurrent(ownerOperation)
+          ) {
             return;
           }
           const resolution = resolveThoughtDisplayEvent(event, {
@@ -1071,9 +1130,12 @@ export const useJDAnalysis = ({
           options?.onEvent?.(event);
         },
         signal: controller.signal,
+        expectedAuthCacheKey: ownerOperation.expectedAuthCacheKey,
         shouldContinue: () => (
           activeAnalysisRunIdRef.current === runId
           && activeResumeIdRef.current === resumeId
+          && activeAnalysisIdentityRef.current === analysisIdentity
+          && ownerGuard.isOperationCurrent(ownerOperation)
         ),
         canApplyAnalysisResult,
       });
@@ -1081,6 +1143,7 @@ export const useJDAnalysis = ({
     },
     [
       analysisContext,
+      analysisIdentity,
       analysisResult,
       applyMatchScoresForResult,
       buildAnalyzeSnapshot,
@@ -1092,6 +1155,7 @@ export const useJDAnalysis = ({
       updateAnalyzeDiffState,
       updateAnalysisState,
       authUserKey,
+      ownerGuard,
     ]
   );
 

@@ -1,39 +1,20 @@
-import apiClient, { getAuthCacheKey } from './apiClient';
+import apiClient, {
+    assertAuthCacheKey,
+    captureAuthCacheKey,
+    type AuthOwnerOptions,
+} from './apiClient';
 import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
+import type {
+    Certification,
+    CertificationCreatePayload,
+    CertificationUpdatePayload,
+} from '../types/certification';
 
-export interface Certification {
-    id: string;
-    user_id: string;
-    name: string;
-    issuer?: string;
-    issue_date?: string | null;
-    expiry_date?: string | null;
-    credential_id?: string;
-    credential_url?: string;
-    description?: string;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface CertificationCreatePayload {
-    name: string;
-    issuer?: string;
-    issue_date?: string | null;
-    expiry_date?: string | null;
-    credential_id?: string;
-    credential_url?: string;
-    description?: string;
-}
-
-export interface CertificationUpdatePayload {
-    name?: string;
-    issuer?: string;
-    issue_date?: string | null;
-    expiry_date?: string | null;
-    credential_id?: string;
-    credential_url?: string;
-    description?: string;
-}
+export type {
+    Certification,
+    CertificationCreatePayload,
+    CertificationUpdatePayload,
+} from '../types/certification';
 
 const CERTIFICATIONS_CACHE_TTL_MS = 10_000;
 
@@ -47,8 +28,10 @@ const isCertificationsCacheFresh = (now: number) => {
     return !!cachedCertifications && now - cachedCertificationsAt < CERTIFICATIONS_CACHE_TTL_MS;
 };
 
-const requestCertifications = async (): Promise<Certification[]> => {
-    const response = await apiClient.get<Certification[]>('/certifications');
+const requestCertifications = async (expectedAuthCacheKey: string): Promise<Certification[]> => {
+    const response = await apiClient.get<Certification[]>('/certifications', {
+        expectedAuthCacheKey,
+    });
     return response.data;
 };
 
@@ -70,12 +53,13 @@ const clearCertificationsCache = () => {
     inFlightCertificationsRequest = null;
 };
 
-const ensureCertificationsCacheOwner = async () => {
-    const cacheOwnerKey = await getAuthCacheKey();
+const ensureCertificationsCacheOwner = async (expectedAuthCacheKey?: string) => {
+    const cacheOwnerKey = await captureAuthCacheKey(expectedAuthCacheKey);
     if (certificationsCacheOwnerKey !== cacheOwnerKey) {
         clearCertificationsCache();
         certificationsCacheOwnerKey = cacheOwnerKey;
     }
+    return cacheOwnerKey;
 };
 
 export const certificationsService = {
@@ -83,13 +67,17 @@ export const certificationsService = {
         return getCachedCertifications(options);
     },
 
-    async peekListForCurrentUser(options?: { allowStale?: boolean }) {
-        await ensureCertificationsCacheOwner();
+    async peekListForCurrentUser(
+        options?: { allowStale?: boolean; expectedAuthCacheKey?: string }
+    ) {
+        await ensureCertificationsCacheOwner(options?.expectedAuthCacheKey);
         return getCachedCertifications(options);
     },
 
-    async list(options?: { force?: boolean }) {
-        await ensureCertificationsCacheOwner();
+    async list(options?: { force?: boolean; expectedAuthCacheKey?: string }) {
+        const requestOwnerKey = await ensureCertificationsCacheOwner(
+            options?.expectedAuthCacheKey
+        );
         const shouldUseCache = !options?.force;
         const now = Date.now();
         if (shouldUseCache && isCertificationsCacheFresh(now) && cachedCertifications) {
@@ -99,9 +87,10 @@ export const certificationsService = {
             return inFlightCertificationsRequest;
         }
         const requestRevision = certificationsCacheRevision;
-        const requestPromise = requestCertifications();
+        const requestPromise = requestCertifications(requestOwnerKey);
         const guardedPromise = (async () => {
             const data = await requestPromise;
+            await assertAuthCacheKey(requestOwnerKey);
             if (certificationsCacheRevision === requestRevision) {
                 cachedCertifications = data;
                 cachedCertificationsAt = Date.now();
@@ -119,27 +108,43 @@ export const certificationsService = {
         }
     },
 
-    async create(data: CertificationCreatePayload) {
-        const response = await apiClient.post<Certification>('/certifications', data);
+    async create(data: CertificationCreatePayload, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.post<Certification>('/certifications', data, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         clearCertificationsCache();
         bumpResumePreviewDataRevision();
         return response.data;
     },
 
-    async get(id: string) {
-        const response = await apiClient.get<Certification>(`/certifications/${id}`);
+    async get(id: string, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.get<Certification>(`/certifications/${id}`, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         return response.data;
     },
 
-    async update(id: string, data: CertificationUpdatePayload) {
-        const response = await apiClient.patch<Certification>(`/certifications/${id}`, data);
+    async update(id: string, data: CertificationUpdatePayload, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.patch<Certification>(`/certifications/${id}`, data, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         clearCertificationsCache();
         bumpResumePreviewDataRevision();
         return response.data;
     },
 
-    async delete(id: string) {
-        await apiClient.delete(`/certifications/${id}`);
+    async delete(id: string, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        await apiClient.delete(`/certifications/${id}`, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         clearCertificationsCache();
         bumpResumePreviewDataRevision();
     },

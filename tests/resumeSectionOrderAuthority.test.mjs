@@ -6,7 +6,7 @@ import { build } from 'esbuild';
 
 const importSectionOrder = async () => {
   const result = await build({
-    entryPoints: ['views/ResumeEditor/sectionOrder.ts'],
+    entryPoints: ['utils/resumeSectionOrder.ts'],
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -35,10 +35,14 @@ test('section order authority filters unknowns, removes duplicates, and restores
 
 test('editor helpers preserve their export while template storage imports the authority', () => {
   const helpers = readFileSync('views/ResumeEditor/helpers.ts', 'utf8');
-  const storage = readFileSync('views/resumeTemplateStorage.ts', 'utf8');
+  const storage = readFileSync('services/resumeTemplateStorage.ts', 'utf8');
+  const legacySectionOrder = readFileSync('views/ResumeEditor/sectionOrder.ts', 'utf8');
+  const legacyStorage = readFileSync('views/resumeTemplateStorage.ts', 'utf8');
 
   assert.match(helpers, /export \{ normalizeSectionOrder \} from '\.\/sectionOrder';/);
-  assert.match(storage, /import \{ normalizeSectionOrder \} from '\.\/ResumeEditor\/sectionOrder';/);
+  assert.match(storage, /import \{ normalizeSectionOrder \} from '\.\.\/utils\/resumeSectionOrder';/);
+  assert.match(legacySectionOrder, /export \* from '\.\.\/\.\.\/utils\/resumeSectionOrder';/);
+  assert.match(legacyStorage, /export \* from '\.\.\/services\/resumeTemplateStorage';/);
   assert.doesNotMatch(helpers, /(?:export )?const normalizeSectionOrder\s*=/);
   assert.doesNotMatch(storage, /(?:export )?const normalizeSectionOrder\s*=/);
 });

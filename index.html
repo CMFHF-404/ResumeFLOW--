@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>原子简历</title>
-    <!-- Umami Analytics -->
-    <script defer src="%VITE_UMAMI_HOST%/script.js" data-website-id="%VITE_UMAMI_WEBSITE_ID%" data-auto-track="false"></script>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
     <style>
         @font-face {
             font-family: 'Inter';
@@ -630,40 +627,6 @@
             background: linear-gradient(135deg, #059669 0%, #0D9488 50%, #134E4A 100%) !important;
         }
     </style>
-    <script>
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        primary: "#0F766E",
-                        "primary-dark": "#115E59",
-                        "background-light": "#F9FAFB",
-                        "background-dark": "#111827",
-                        "surface-light": "#FFFFFF",
-                        "surface-dark": "#1F2937",
-                        "border-light": "#E5E7EB",
-                        "border-dark": "#374151",
-                    },
-                    fontFamily: {
-                        display: ["Noto Sans SC", "Inter", "sans-serif"],
-                        body: ["Noto Sans SC", "Inter", "sans-serif"],
-                    },
-                },
-            },
-        };
-    </script>
-    <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0"
-  }
-}
-</script>
   </head>
 
 <body class="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 h-screen">

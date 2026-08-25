@@ -1,10 +1,10 @@
-import apiClient, { getApiBaseUrl } from './apiClient';
+import apiClient, { getApiBaseUrl, type AuthOwnerOptions } from './apiClient';
 
 export type AgentApiKey = {
   id: string;
   name: string;
   key_prefix: string;
-  key?: string | null;
+  key?: null;
   created_at: string;
   last_used_at?: string | null;
   revoked_at?: string | null;
@@ -14,6 +14,24 @@ export type CreateAgentApiKeyResponse = {
   key: string;
   api_key: AgentApiKey;
 };
+
+type AgentApiKeyWire = Omit<AgentApiKey, 'key'> & {
+  key?: string | null;
+};
+
+type CreateAgentApiKeyWireResponse = {
+  key: string;
+  api_key: AgentApiKeyWire;
+};
+
+export interface CreateAgentApiKeyOptions extends AuthOwnerOptions {
+  expectedActiveKeyId?: string | null;
+}
+
+const stripNestedAgentApiKeySecret = ({
+  key: _nestedSecret,
+  ...apiKey
+}: AgentApiKeyWire): AgentApiKey => apiKey;
 
 export type AgentPluginConfig = {
   selected_template_id: string;
@@ -37,27 +55,50 @@ export const resolveAgentApiBaseUrl = () => {
 };
 
 export const agentService = {
-  async getPluginConfig(): Promise<AgentPluginConfig> {
-    const response = await apiClient.get<AgentPluginConfig>('/agent/config');
+  async getPluginConfig(options?: AuthOwnerOptions): Promise<AgentPluginConfig> {
+    const response = await apiClient.get<AgentPluginConfig>('/agent/config', options);
     return response.data;
   },
 
-  async savePluginConfig(config: AgentPluginConfig): Promise<AgentPluginConfig> {
-    const response = await apiClient.put<AgentPluginConfig>('/agent/config', config);
+  async savePluginConfig(
+    config: AgentPluginConfig,
+    options?: AuthOwnerOptions,
+  ): Promise<AgentPluginConfig> {
+    const response = await apiClient.put<AgentPluginConfig>('/agent/config', config, options);
     return response.data;
   },
 
-  async listApiKeys(): Promise<AgentApiKey[]> {
-    const response = await apiClient.get<AgentApiKey[]>('/agent/api-keys');
-    return response.data;
+  async listApiKeys(options?: AuthOwnerOptions): Promise<AgentApiKey[]> {
+    const response = await apiClient.get<AgentApiKeyWire[]>('/agent/api-keys', options);
+    return response.data.map(stripNestedAgentApiKeySecret);
   },
 
-  async createApiKey(name: string, rotate = false): Promise<CreateAgentApiKeyResponse> {
-    const response = await apiClient.post<CreateAgentApiKeyResponse>('/agent/api-keys', { name, rotate });
-    return response.data;
+  async createApiKey(
+    name: string,
+    rotate = false,
+    options?: CreateAgentApiKeyOptions,
+  ): Promise<CreateAgentApiKeyResponse> {
+    const payload = {
+      name,
+      rotate,
+      ...(options && Object.hasOwn(options, 'expectedActiveKeyId')
+        ? { expected_active_key_id: options.expectedActiveKeyId ?? null }
+        : {}),
+    };
+    const response = await apiClient.post<CreateAgentApiKeyWireResponse>(
+      '/agent/api-keys',
+      payload,
+      options?.expectedAuthCacheKey
+        ? { expectedAuthCacheKey: options.expectedAuthCacheKey }
+        : undefined,
+    );
+    return {
+      key: response.data.key,
+      api_key: stripNestedAgentApiKeySecret(response.data.api_key),
+    };
   },
 
-  async revokeApiKey(id: string): Promise<void> {
-    await apiClient.delete(`/agent/api-keys/${encodeURIComponent(id)}`);
+  async revokeApiKey(id: string, options?: AuthOwnerOptions): Promise<void> {
+    await apiClient.delete(`/agent/api-keys/${encodeURIComponent(id)}`, options);
   },
 };

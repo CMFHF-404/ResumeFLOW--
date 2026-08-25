@@ -14,7 +14,7 @@ test('JD analysis streams Gemini thoughts into the inline thinking area', () => 
   );
   assert.match(
     source,
-    /import \{ JD_ANALYSIS_PROGRESS_NODE_TITLES \} from "\.\.\/views\/ResumeEditor\/constants";/,
+    /import \{ JD_ANALYSIS_PROGRESS_NODE_TITLES \} from "\.\.\/constants\/jdAnalysis";/,
     'JD analysis thinking area should reuse the existing progress node labels',
   );
   assert.match(

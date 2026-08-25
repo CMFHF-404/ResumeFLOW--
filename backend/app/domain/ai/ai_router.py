@@ -1,12 +1,13 @@
 import asyncio
 from datetime import datetime
+import logging
 from typing import Any, Awaitable, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlmodel.ext.asyncio.session import AsyncSession
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_502_BAD_GATEWAY
+from starlette.status import HTTP_400_BAD_REQUEST
 
 from ...database import get_session
 from ...dependencies import get_current_user
@@ -34,34 +35,74 @@ from .ai_service import (
     split_experience_text,
 )
 from . import jd_attachment_service
+from .public_errors import resolve_ai_public_response
+from .runtime_budget import (
+    BoundedAiRequestBodyRoute,
+    build_public_stream_error_event,
+    create_bounded_event_queue,
+    finish_event_queue,
+    new_ai_request_id,
+    validate_ai_text_field,
+)
 
-router = APIRouter(prefix="/api", tags=["ai"])
+router = APIRouter(
+    prefix="/api",
+    tags=["ai"],
+    route_class=BoundedAiRequestBodyRoute,
+)
+logger = logging.getLogger(__name__)
 
 
 async def _resolve_jd_analysis_response(
     operation: Awaitable[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    try:
-        return await operation
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="AI analysis returned an invalid response. Please retry.",
-        ) from exc
+    return await resolve_ai_public_response(operation)
 
-def _stream_error_event(exc: Exception) -> Dict[str, Any]:
-    if isinstance(exc, HTTPException):
-        message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-        return {
-            "type": "error",
-            "message": message,
-            "statusCode": exc.status_code,
-            "retryable": exc.status_code == 504,
-        }
-    return {"type": "error", "message": str(exc)}
+def _stream_error_event(
+    exc: Exception,
+    request_id: str | None = None,
+    *,
+    preserve_value_error: bool = False,
+) -> Dict[str, Any]:
+    resolved_request_id = request_id or new_ai_request_id()
+    known_exceptions = (
+        HTTPException,
+        NotFoundError,
+        ConcurrencyConflictError,
+    )
+    if preserve_value_error:
+        known_exceptions = (*known_exceptions, ValueError)
+    if isinstance(exc, known_exceptions):
+        logger.warning(
+            "AI stream request failed request_id=%s error_type=%s",
+            resolved_request_id,
+            type(exc).__name__,
+        )
+    else:
+        logger.error(
+            "AI stream request crashed request_id=%s error_type=%s",
+            resolved_request_id,
+            type(exc).__name__,
+        )
+    return build_public_stream_error_event(
+        exc,
+        request_id=resolved_request_id,
+        preserve_value_error=preserve_value_error,
+        preserve_exceptions=known_exceptions,
+    )
 
 
-class AnalyzeJDRequest(BaseModel):
+class _AiTextBudgetRequest(BaseModel):
+    @model_validator(mode="after")
+    def _validate_direct_text_fields(self):
+        for field_name in type(self).model_fields:
+            value = getattr(self, field_name, None)
+            if isinstance(value, str):
+                validate_ai_text_field(value, field_name)
+        return self
+
+
+class AnalyzeJDRequest(_AiTextBudgetRequest):
     text: str
     resume_text: Optional[str] = None
     prev_result: Optional[Dict[str, Any]] = None
@@ -69,13 +110,13 @@ class AnalyzeJDRequest(BaseModel):
     prev_experience_text: Optional[str] = None
 
 
-class ResumeEvaluationRequest(BaseModel):
+class ResumeEvaluationRequest(_AiTextBudgetRequest):
     text: str = ""
     resume_text: str
     jd_match_percentage: Optional[int] = Field(default=None, ge=0, le=100)
 
 
-class PolishTextRequest(BaseModel):
+class PolishTextRequest(_AiTextBudgetRequest):
     content: Dict[str, Any]
     target_field: Optional[str] = None
     jd_text: Optional[str] = None
@@ -84,18 +125,18 @@ class PolishTextRequest(BaseModel):
     entry_source: Optional[str] = None
 
 
-class SplitExperienceTextRequest(BaseModel):
+class SplitExperienceTextRequest(_AiTextBudgetRequest):
     raw_text: str
     category: str
     org: Optional[str] = None
     title: Optional[str] = None
 
 
-class GenerateTagsRequest(BaseModel):
+class GenerateTagsRequest(_AiTextBudgetRequest):
     text: str
 
 
-class GenerateBossGreetingRequest(BaseModel):
+class GenerateBossGreetingRequest(_AiTextBudgetRequest):
     jd_text: str
     analysis_summary: str
     job_title: Optional[str] = None
@@ -106,7 +147,7 @@ class GenerateBossGreetingRequest(BaseModel):
     expected_updated_at: Optional[datetime] = None
 
 
-class GeneratePersonalSummaryRequest(BaseModel):
+class GeneratePersonalSummaryRequest(_AiTextBudgetRequest):
     mode: str
     profile: Optional[Dict[str, Any]] = None
     work_experiences: Optional[list[Dict[str, Any]]] = None
@@ -115,6 +156,11 @@ class GeneratePersonalSummaryRequest(BaseModel):
     certifications: Optional[list[Dict[str, Any]]] = None
     skills: Optional[list[Dict[str, Any]]] = None
     jd_text: Optional[str] = None
+
+
+def _validate_form_text_fields(**values: str | None) -> None:
+    for field_name, value in values.items():
+        validate_ai_text_field(value, field_name)
 
 
 @router.post("/analyze-jd", response_model=Dict[str, Any])
@@ -154,7 +200,7 @@ async def analyze_jd_stream_endpoint(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
 
         async def emit(payload: Dict[str, Any]) -> None:
             await queue.put(payload)
@@ -183,10 +229,12 @@ async def analyze_jd_stream_endpoint(
                 await emit({"type": "progress", "node": "apply_score", "title": "生成 JD 匹配分与建议"})
                 await emit({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
                 await emit({"type": "final", "result": result})
+            except ValueError as exc:
+                await emit(_stream_error_event(exc, preserve_value_error=True))
             except Exception as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_analysis())
         try:
@@ -243,7 +291,7 @@ async def resume_evaluation_stream_endpoint(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
 
         async def emit(event: Dict[str, Any]) -> None:
             await queue.put(event)
@@ -268,10 +316,12 @@ async def resume_evaluation_stream_endpoint(
                     )
                 await emit({"type": "progress", "node": "validate_report", "title": "校验六维报告"})
                 await emit({"type": "final", "result": result})
+            except ValueError as exc:
+                await emit(_stream_error_event(exc, preserve_value_error=True))
             except Exception as exc:
                 await emit(_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_evaluation())
         try:
@@ -304,6 +354,13 @@ async def analyze_jd_attachment_stream_endpoint(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
+    _validate_form_text_fields(
+        jd_text=jd_text,
+        resume_text=resume_text,
+        experience_text=experience_text,
+        prev_result=prev_result,
+        prev_experience_text=prev_experience_text,
+    )
     request_lease = await billing_service.begin_ai_request(
         session,
         current_user.id,
@@ -311,7 +368,7 @@ async def analyze_jd_attachment_stream_endpoint(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
 
         async def emit(payload: Dict[str, Any]) -> None:
             await queue.put(payload)
@@ -379,11 +436,11 @@ async def analyze_jd_attachment_stream_endpoint(
                 await emit({"type": "progress", "node": "persist_result", "title": "完成结果输出"})
                 await emit({"type": "final", "result": result})
             except ValueError as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc, preserve_value_error=True))
             except Exception as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_analysis())
         try:
@@ -418,12 +475,14 @@ async def polish_text_endpoint(
         metadata={"route": "/api/polish-text"},
     ):
         await billing_service.ensure_current_quota()
-        return await polish_experience(
-            payload.content,
-            payload.target_field,
-            payload.jd_text,
-            payload.mode,
-            payload.custom_prompt,
+        return await resolve_ai_public_response(
+            polish_experience(
+                payload.content,
+                payload.target_field,
+                payload.jd_text,
+                payload.mode,
+                payload.custom_prompt,
+            )
         )
 
 
@@ -440,11 +499,13 @@ async def split_experience_text_endpoint(
         metadata={"route": "/api/split-experience-text"},
     ):
         await billing_service.ensure_current_quota()
-        return await split_experience_text(
-            payload.raw_text,
-            payload.category,
-            payload.org,
-            payload.title,
+        return await resolve_ai_public_response(
+            split_experience_text(
+                payload.raw_text,
+                payload.category,
+                payload.org,
+                payload.title,
+            )
         )
 
 
@@ -461,7 +522,7 @@ async def polish_text_stream_endpoint(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
 
         async def emit(event: Dict[str, Any]) -> None:
             await queue.put(event)
@@ -488,10 +549,12 @@ async def polish_text_stream_endpoint(
                     )
                 await emit({"type": "progress", "node": "persist_result", "title": "整理润色结果"})
                 await emit({"type": "final", "result": result})
+            except ValueError as exc:
+                await emit(_stream_error_event(exc, preserve_value_error=True))
             except Exception as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_polish())
         try:
@@ -526,7 +589,7 @@ async def generate_tags_endpoint(
         metadata={"route": "/api/generate-tags"},
     ):
         await billing_service.ensure_current_quota()
-        return await generate_tags(payload.text)
+        return await resolve_ai_public_response(generate_tags(payload.text))
 
 
 @router.post("/generate-boss-greeting", response_model=Dict[str, Any])
@@ -542,12 +605,14 @@ async def generate_boss_greeting_endpoint(
         metadata={"route": "/api/generate-boss-greeting"},
     ):
         await billing_service.ensure_current_quota()
-        result = await generate_boss_greeting(
-            payload.jd_text,
-            payload.analysis_summary,
-            payload.job_title,
-            payload.company,
-            payload.resume_text,
+        result = await resolve_ai_public_response(
+            generate_boss_greeting(
+                payload.jd_text,
+                payload.analysis_summary,
+                payload.job_title,
+                payload.company,
+                payload.resume_text,
+            )
         )
     if payload.resume_id and result.get("greeting"):
         try:
@@ -580,7 +645,7 @@ async def generate_boss_greeting_stream_endpoint(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
 
         async def emit(event: Dict[str, Any]) -> None:
             await queue.put(event)
@@ -618,13 +683,15 @@ async def generate_boss_greeting_stream_endpoint(
                 await emit({"type": "progress", "node": "persist_result", "title": "整理 BOSS 招呼语结果"})
                 await emit({"type": "final", "result": result})
             except NotFoundError as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
             except ConcurrencyConflictError as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
+            except ValueError as exc:
+                await emit(_stream_error_event(exc, preserve_value_error=True))
             except Exception as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_generate())
         try:
@@ -659,15 +726,17 @@ async def generate_personal_summary_endpoint(
         metadata={"route": "/api/generate-personal-summary"},
     ):
         await billing_service.ensure_current_quota()
-        return await generate_personal_summary(
-            mode=payload.mode,
-            profile=payload.profile,
-            work_experiences=payload.work_experiences,
-            project_experiences=payload.project_experiences,
-            education_experiences=payload.education_experiences,
-            certifications=payload.certifications,
-            skills=payload.skills,
-            jd_text=payload.jd_text,
+        return await resolve_ai_public_response(
+            generate_personal_summary(
+                mode=payload.mode,
+                profile=payload.profile,
+                work_experiences=payload.work_experiences,
+                project_experiences=payload.project_experiences,
+                education_experiences=payload.education_experiences,
+                certifications=payload.certifications,
+                skills=payload.skills,
+                jd_text=payload.jd_text,
+            )
         )
 
 
@@ -684,7 +753,7 @@ async def generate_personal_summary_stream_endpoint(
     )
 
     async def event_stream():
-        queue: asyncio.Queue[Dict[str, Any] | None] = asyncio.Queue()
+        queue = create_bounded_event_queue()
 
         async def emit(event: Dict[str, Any]) -> None:
             await queue.put(event)
@@ -714,10 +783,12 @@ async def generate_personal_summary_stream_endpoint(
                     )
                 await emit({"type": "progress", "node": "persist_result", "title": "整理个人评价结果"})
                 await emit({"type": "final", "result": result})
+            except ValueError as exc:
+                await emit(_stream_error_event(exc, preserve_value_error=True))
             except Exception as exc:
-                await emit({"type": "error", "message": str(exc)})
+                await emit(_stream_error_event(exc))
             finally:
-                await queue.put(None)
+                await finish_event_queue(queue)
 
         producer = asyncio.create_task(run_generate())
         try:
@@ -755,6 +826,13 @@ async def analyze_jd_attachment_endpoint(
     - 图像（jpg/png/webp）→ vision 路径，模型直接解读图像
     - PDF/DOCX → 文本提取后走现有分析路径
     """
+    _validate_form_text_fields(
+        jd_text=jd_text,
+        resume_text=resume_text,
+        experience_text=experience_text,
+        prev_result=prev_result,
+        prev_experience_text=prev_experience_text,
+    )
     try:
         attachment = await jd_attachment_service.extract_jd_from_attachment(file)
     except ValueError as exc:

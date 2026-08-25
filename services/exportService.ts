@@ -1,5 +1,5 @@
-import axios from 'axios';
-import apiClient from './apiClient';
+import axios, { type AxiosResponse } from 'axios';
+import apiClient, { getAuthCacheKey } from './apiClient';
 import type { ResumePdfRenderSnapshot } from '../types/resume';
 import type { ExperienceBankPdfRenderSnapshot } from '../types/experienceBankExport';
 
@@ -15,6 +15,17 @@ type ExportDownloadLinkResponse = {
   downloadUrl: string;
   fileName: string;
 };
+
+export type ExportAuthOptions = {
+  expectedAuthCacheKey?: string;
+};
+
+export class ExportAuthContextChangedError extends Error {
+  constructor() {
+    super('Authentication context changed during export');
+    this.name = 'ExportAuthContextChangedError';
+  }
+}
 
 const FALLBACK_EXPORT_ERROR_MESSAGE = 'PDF 导出准备失败，请稍后重试。';
 const FALLBACK_SNAPSHOT_ERROR_MESSAGE = '导出快照加载失败，请重新发起导出。';
@@ -116,12 +127,44 @@ const normalizeAxiosError = async (
   throw new Error(parsedMessage || error.message || fallbackMessage);
 };
 
+const assertExportAuthContext = async (expectedAuthCacheKey?: string) => {
+  if (expectedAuthCacheKey && await getAuthCacheKey() !== expectedAuthCacheKey) {
+    throw new ExportAuthContextChangedError();
+  }
+};
+
+const getRenderSnapshotResponse = async <T>(
+  path: string,
+  token?: string,
+  options?: ExportAuthOptions,
+) => {
+  await assertExportAuthContext(options?.expectedAuthCacheKey);
+  let response: AxiosResponse<T>;
+  if (token) {
+    // Explicit legacy callers retain the original query-token contract. Use a
+    // bare Axios request so apiClient's Logto interceptor cannot add a second,
+    // conflicting Authorization credential.
+    response = await axios.get<T>(path, {
+      baseURL: apiClient.defaults.baseURL,
+      params: { token },
+    });
+  } else {
+    response = await apiClient.get<T>(path, options?.expectedAuthCacheKey
+      ? { expectedAuthCacheKey: options.expectedAuthCacheKey }
+      : undefined);
+  }
+  await assertExportAuthContext(options?.expectedAuthCacheKey);
+  return response;
+};
+
 export const exportService = {
   async createResumePdfDownloadLink(
     snapshot: ResumePdfRenderSnapshot,
-    fileName?: string
+    fileName?: string,
+    options?: ExportAuthOptions,
   ): Promise<ExportDownloadLinkResponse> {
     try {
+      await assertExportAuthContext(options?.expectedAuthCacheKey);
       const body = stringifyAsciiSafeJson({ snapshot, fileName });
       const response = await apiClient.post<ExportDownloadLinkResponse>(
         '/exports/resume-pdf-link',
@@ -129,9 +172,14 @@ export const exportService = {
         {
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
+            'X-ResumeFlow-Export-Mode': 'authenticated-v2',
           },
+          ...(options?.expectedAuthCacheKey
+            ? { expectedAuthCacheKey: options.expectedAuthCacheKey }
+            : {}),
         }
       );
+      await assertExportAuthContext(options?.expectedAuthCacheKey);
       return response.data;
     } catch (error) {
       await normalizeAxiosError(error, FALLBACK_EXPORT_ERROR_MESSAGE);
@@ -140,12 +188,14 @@ export const exportService = {
 
   async getRenderSnapshot(
     exportId: string,
-    token: string
+    token?: string,
+    options?: ExportAuthOptions,
   ): Promise<ResumeRenderSnapshotResponse> {
     try {
-      const response = await apiClient.get<ResumeRenderSnapshotResponse>(
+      const response = await getRenderSnapshotResponse<ResumeRenderSnapshotResponse>(
         `/exports/render-snapshots/${encodeURIComponent(exportId)}`,
-        { params: { token } }
+        token,
+        options,
       );
       return response.data;
     } catch (error) {
@@ -155,9 +205,11 @@ export const exportService = {
 
   async createExperienceBankPdfDownloadLink(
     snapshot: ExperienceBankPdfRenderSnapshot,
-    fileName?: string
+    fileName?: string,
+    options?: ExportAuthOptions,
   ): Promise<ExportDownloadLinkResponse> {
     try {
+      await assertExportAuthContext(options?.expectedAuthCacheKey);
       const body = stringifyAsciiSafeJson({ snapshot, fileName });
       const response = await apiClient.post<ExportDownloadLinkResponse>(
         '/exports/experience-bank-pdf-link',
@@ -165,9 +217,14 @@ export const exportService = {
         {
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
+            'X-ResumeFlow-Export-Mode': 'authenticated-v2',
           },
+          ...(options?.expectedAuthCacheKey
+            ? { expectedAuthCacheKey: options.expectedAuthCacheKey }
+            : {}),
         }
       );
+      await assertExportAuthContext(options?.expectedAuthCacheKey);
       return response.data;
     } catch (error) {
       await normalizeAxiosError(error, FALLBACK_EXPORT_ERROR_MESSAGE);
@@ -176,12 +233,14 @@ export const exportService = {
 
   async getExperienceBankRenderSnapshot(
     exportId: string,
-    token: string
+    token?: string,
+    options?: ExportAuthOptions,
   ): Promise<ExperienceBankRenderSnapshotResponse> {
     try {
-      const response = await apiClient.get<ExperienceBankRenderSnapshotResponse>(
+      const response = await getRenderSnapshotResponse<ExperienceBankRenderSnapshotResponse>(
         `/exports/experience-bank-render-snapshots/${encodeURIComponent(exportId)}`,
-        { params: { token } }
+        token,
+        options,
       );
       return response.data;
     } catch (error) {

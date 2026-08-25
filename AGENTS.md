@@ -45,6 +45,9 @@
 - Assistant sidebar and selected-resume context checks commonly use `node --test tests/assistantSidebarStructure.test.mjs tests/assistantSkillPresetPanelStructure.test.mjs tests/assistantResumeSelectionUtils.test.mjs tests/assistantContextRailRender.test.mjs tests/assistantSidebarContextPersistence.test.mjs`.
 - Resume factory desktop sidebar checks commonly use `node --test tests/resumeEditorDesktopWorkspaceStructure.test.mjs tests/resumeEditorToolbarStructure.test.mjs tests/jdAnalysisDetailsSidebarStructure.test.mjs`.
 - JD match-state, persistence, request-runner, and evaluation changes commonly use `node --test tests/jdAnalysisPersistenceUtils.test.mjs tests/jdAnalysisRequestRunner.test.mjs tests/jdAnalysisResultAssemblyUtils.test.mjs tests/jdAnalysisRunStateUtils.test.mjs tests/resumeEvaluationExecutionStructure.test.mjs tests/resumeEvaluationNormalize.test.mjs tests/resumeEvaluationReport.test.mjs tests/resumeEvaluationSnapshot.test.mjs`.
+- JD analysis execution changes also use `node --test tests/jdAnalysisExecution.test.mjs`.
+- Payment checkout and order-controller changes commonly use `node --test tests/paymentCheckoutSubmissionController.test.mjs tests/paymentOrderListLoader.test.mjs tests/paymentOrderRequestController.test.mjs`.
+- Resume-save coordination and preview/editor interaction changes commonly use `node --test tests/resumeConfigSaveCoordinator.test.mjs tests/resumePreviewSectionRenderPlan.test.mjs tests/resumeEditorExperienceFocusRequest.test.mjs tests/resumeEditorMobileDrawerStructure.test.mjs`.
 - Resume-template catalog, thumbnail assets, and preview changes commonly use `node --test tests/resumeTemplateDeepHireCatalog.test.mjs tests/resumeTemplatePreviewAssets.test.mjs tests/resumeEditorDesktopWorkspaceStructure.test.mjs`.
 - DeepHire changes that affect Agent template options also use `python -m unittest test_agent_api` from `backend/`.
 - Rich text editor clipboard/caret checks commonly use `node --test tests/richTextEditorCaret.test.mjs`; API auth timeout checks commonly use `node --test tests/apiClientAuthTimeout.test.mjs`.
@@ -57,6 +60,8 @@
   - `python verify_timeout.py`
 - Backend tests are `unittest`-style files under `backend/`. Prefer `python -m unittest <module>` from `backend/` for targeted runs, for example `python -m unittest test_assistant_features` or `python -m unittest test_parser_service`.
 - Agent and AI backend checks commonly use `python -m unittest test_agent_api` and `python -m unittest test_ai_service` from `backend/`.
+- Agent runtime-schema changes commonly use `python -m unittest test_agent_api test_agent_api_runtime_schema test_runtime_schema` from `backend/`.
+- AI transport or parser changes commonly use `python -m unittest test_ai_service test_parser_service` from `backend/`.
 - Backend startup imports and auth import-boundary changes commonly use `python -m unittest test_auth_import_boundaries test_startup_imports` from `backend/`.
 - Account and experience draft backend checks commonly use `python -m unittest test_account_verification_cooldown` and `python -m unittest test_experience_drafts` from `backend/`.
 - Profile updates with optimistic-concurrency handling commonly use `python -m unittest test_profile_update_concurrency` from `backend/`.

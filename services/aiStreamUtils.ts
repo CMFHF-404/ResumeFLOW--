@@ -1,4 +1,12 @@
-import { getAuthorizationHeader } from './apiClient';
+import {
+    AuthContextChangedError,
+    getAuthorizationHeader,
+    type AuthOwnerOptions,
+} from './apiClient';
+import {
+    isAuthSessionSnapshotCurrent,
+    readAuthSessionSnapshot,
+} from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
 import { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
 import {
@@ -45,9 +53,12 @@ export const ensureStreamResponseOk = async (response: Response) => {
     throw new Error(message || `AI stream request failed: ${response.status}`);
 };
 
-const createStreamHeaders = async (contentType?: string | null) => {
+const createStreamHeaders = async (
+    contentType?: string | null,
+    expectedAuthCacheKey?: string,
+) => {
     const headers = new Headers();
-    const authHeader = await getAuthorizationHeader();
+    const authHeader = await getAuthorizationHeader(expectedAuthCacheKey);
     if (!authHeader) {
         dispatchLoginRequired('write-operation');
         throw new Error('Authentication required for write operation');
@@ -67,6 +78,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     onParsedEvent,
     getFinalResult,
     signal,
+    expectedAuthCacheKey,
 }: {
     path: string;
     body: BodyInit;
@@ -75,8 +87,18 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     onParsedEvent?: (event: TEvent) => void;
     getFinalResult: (event: TEvent) => TResult | null;
     signal?: AbortSignal;
-}): Promise<TResult> => {
-    const headers = await createStreamHeaders(contentType);
+} & AuthOwnerOptions): Promise<TResult> => {
+    const headers = await createStreamHeaders(contentType, expectedAuthCacheKey);
+    const dispatchSession = readAuthSessionSnapshot();
+    const assertStreamSessionCurrent = () => {
+        if (
+            !isAuthSessionSnapshotCurrent(dispatchSession)
+            || (expectedAuthCacheKey && dispatchSession.ownerKey !== expectedAuthCacheKey)
+        ) {
+            throw new AuthContextChangedError();
+        }
+    };
+    assertStreamSessionCurrent();
 
     const response = await fetch(resolveApiUrl(path), {
         method: 'POST',
@@ -85,6 +107,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
         signal,
     });
 
+    assertStreamSessionCurrent();
     await ensureStreamResponseOk(response);
     if (!response.body) {
         throw new Error('AI stream response body is empty');
@@ -97,6 +120,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
 
     while (true) {
         const { done, value } = await reader.read();
+        assertStreamSessionCurrent();
         if (done) {
             break;
         }
@@ -106,6 +130,7 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
         buffer = hasTrailingNewline ? '' : lines.pop() ?? '';
 
         for (const line of lines) {
+            assertStreamSessionCurrent();
             let parsed: TEvent;
             try {
                 parsed = JSON.parse(line) as TEvent;
@@ -128,5 +153,6 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     if (!finalResult) {
         throw new Error('AI stream did not return final result');
     }
+    assertStreamSessionCurrent();
     return finalResult;
 };

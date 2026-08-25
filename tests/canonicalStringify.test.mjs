@@ -48,17 +48,19 @@ test('JD signature compatibility export and persistence fingerprint share the au
   };
   const authority = await importBundledModule('utils/canonicalStringify.ts');
   const signatures = await importBundledModule('hooks/jdAnalysisSignatureUtils.ts');
-  const storage = await importBundledModule('views/jdAnalysisStorage.ts');
+  const storage = await importBundledModule('services/jdAnalysisStorage.ts');
+  const legacyStorage = await importBundledModule('views/jdAnalysisStorage.ts');
   const expected = authority.canonicalStringify(value);
 
   assert.equal(signatures.canonicalStringify(value), expected);
   assert.equal(storage.buildJDAnalysisPersistenceFingerprint(value), expected);
+  assert.equal(legacyStorage.buildJDAnalysisPersistenceFingerprint(value), expected);
 });
 
 test('fingerprint consumers import the leaf authority instead of defining local variants', () => {
   const consumers = [
     ['hooks/jdAnalysisSignatureUtils.ts', '../utils/canonicalStringify'],
-    ['views/jdAnalysisStorage.ts', '../utils/canonicalStringify'],
+    ['services/jdAnalysisStorage.ts', '../utils/canonicalStringify'],
     ['utils/assistantResumeContext.ts', './canonicalStringify'],
   ];
 

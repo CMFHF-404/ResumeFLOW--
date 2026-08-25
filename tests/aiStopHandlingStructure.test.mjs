@@ -44,7 +44,7 @@ test('editing polish abort keeps the stopped toast from being overwritten', () =
 
   assert.match(body, /let\s+wasAborted\s*=\s*false/);
   assert.match(body, /wasAborted\s*=\s*true/);
-  assert.match(body, /if\s*\(\s*wasAborted\s*\)\s*\{[\s\S]*?return;/);
+  assert.match(body, /if\s*\(\s*wasAborted\s*\|\|[\s\S]*?\)\s*\{[\s\S]*?return;/);
 });
 
 test('floating polish abort keeps stopped toasts from being overwritten', () => {
@@ -55,7 +55,7 @@ test('floating polish abort keeps stopped toasts from being overwritten', () => 
   for (const body of [singleBody, batchBody]) {
     assert.match(body, /let\s+wasAborted\s*=\s*false/);
     assert.match(body, /wasAborted\s*=\s*true/);
-    assert.match(body, /if\s*\(\s*wasAborted\s*\)\s*\{[\s\S]*?return;/);
+    assert.match(body, /if\s*\(\s*wasAborted\s*\|\|[\s\S]*?\)\s*\{[\s\S]*?return;/);
   }
 });
 
@@ -63,7 +63,7 @@ test('batch polish creates a fresh abort controller and treats aborted settlemen
   const source = readSource('views/ResumeEditor/hooks/useFloatingExperiencePolishActions.ts');
   const batchBody = bodyOf(source, 'handleRunBatchExperiencePolish');
 
-  assert.match(batchBody, /floatingAbortControllerRef\.current\s*=\s*new\s+AbortController\(\)/);
+  assert.match(batchBody, /const abortController = new AbortController\(\);[\s\S]*floatingAbortControllerRef\.current = abortController/);
   assert.match(batchBody, /abortedIds/);
   assert.match(batchBody, /isAbortError\(/);
 });
@@ -222,23 +222,31 @@ test('JD analysis stop invalidates stale runs before they can clear a newer run'
   assert.match(runBody, /const runId = analysisRunIdRef\.current \+ 1;/);
   assert.match(runBody, /activeAnalysisRunIdRef\.current = runId;/);
   assert.match(runBody, /const setIsAnalyzingForRun = \(value: boolean\) => \{/);
-  assert.match(runBody, /if \(activeAnalysisRunIdRef\.current !== runId\) \{/);
+  assert.match(
+    runBody,
+    /if \(\s*activeAnalysisRunIdRef\.current !== runId\s*\|\| activeAnalysisIdentityRef\.current !== analysisIdentity\s*\|\| !ownerGuard\.isOperationCurrent\(ownerOperation\)\s*\) \{/,
+  );
+  assert.match(runBody, /expectedAuthCacheKey: ownerOperation\.expectedAuthCacheKey/);
   assert.match(runBody, /setIsAnalyzing: setIsAnalyzingForRun/);
 });
 
-test('JD analysis invalidates active work when the selected resume changes', () => {
+test('JD analysis invalidates active work when its owner or selected resume changes', () => {
   const source = readSource('hooks/useJDAnalysis.ts');
   const invalidateBody = bodyOf(source, 'invalidateAnalysisRun');
 
   assert.match(source, /const activeResumeIdRef = useRef\(resumeId\);/);
-  assert.match(source, /previousResumeIdRef\.current === resumeId/);
-  assert.match(source, /previousResumeIdRef\.current = resumeId;[\s\S]*invalidateAnalysisRun\(\);/);
+  assert.match(source, /owner: authUserKey \?\? null,[\s\S]*resumeId: resumeId \?\? null/);
+  assert.match(source, /const activeAnalysisIdentityRef = useRef\(analysisIdentity\);/);
+  assert.match(
+    source,
+    /if \(isAnalysisStateCurrent\) \{\s*return;\s*\}[\s\S]*invalidateAnalysisRun\(\);[\s\S]*setAnalysisStateIdentity\(analysisIdentity\);/,
+  );
   assert.match(invalidateBody, /activeAnalysisRunIdRef\.current = 0;/);
   assert.match(invalidateBody, /analyzeRequestRef\.current = null;/);
   assert.match(invalidateBody, /abortControllerRef\.current\.abort\(\);/);
   assert.match(
     source,
-    /shouldContinue: \(\) => \([\s\S]*activeResumeIdRef\.current === resumeId[\s\S]*\)/,
+    /shouldContinue: \(\) => \([\s\S]*activeResumeIdRef\.current === resumeId[\s\S]*activeAnalysisIdentityRef\.current === analysisIdentity[\s\S]*\)/,
   );
 });
 

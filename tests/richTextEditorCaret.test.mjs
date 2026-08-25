@@ -161,6 +161,19 @@ test('clipboard paste uses native insertion so browser undo can revert the paste
   assert.doesNotMatch(clipboardInsertBlock, /range\.insertNode\(/);
 });
 
+test('new links never interpolate URL or label text into insertHTML', () => {
+  const richTextEditorSource = source();
+  const linkInsertBlock = richTextEditorSource.match(
+    /export const insertLinkAtRange = [\s\S]*?\n\};/
+  )?.[0] ?? '';
+
+  assert.match(linkInsertBlock, /document\.createElement\('a'\)/);
+  assert.match(linkInsertBlock, /placeholderLink\.setAttribute\(NEW_LINK_INSERTION_ATTRIBUTE, ''\)/);
+  assert.match(linkInsertBlock, /updateLinkElement\(link, href, fallbackLabel, true\)/);
+  assert.doesNotMatch(linkInsertBlock, /`<a[^`]*\$\{(?:href|fallbackLabel)\}/);
+  assert.doesNotMatch(linkInsertBlock, /insertHTML[^\n]*(?:href|fallbackLabel)/);
+});
+
 test('rich text sanitizer recognizes clipboard inline font styles', async () => {
   const { resolveRichTextInlineStyleTags } = await importRichTextUtilsModule();
 

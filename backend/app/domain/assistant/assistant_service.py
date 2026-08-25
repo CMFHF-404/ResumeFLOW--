@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import logging
-from datetime import timezone
+import base64
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, desc
+from sqlalchemy import Text, and_, case, cast, delete, desc, func, or_
+from sqlalchemy.orm import defer
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -32,9 +38,42 @@ from ..ai.ai_service import (
 from ..certifications.schemas import CertificationCreate
 from ..experience.schemas import ExperienceCreate, ExperienceVersionPayload
 from .schemas import AssistantSessionCreate, AssistantSessionUpdate
+from .assistant_storage import (
+    MAX_ASSISTANT_MESSAGE_CONTENT_BYTES,
+    MAX_ASSISTANT_SESSION_CONTEXT_BYTES,
+    MAX_ASSISTANT_SESSION_MESSAGES,
+    MAX_ASSISTANT_SESSION_MESSAGE_BYTES,
+    MAX_ASSISTANT_SESSION_TITLE_CHARS,
+    MAX_USER_ASSISTANT_SESSIONS,
+    commit_assistant_storage,
+    ensure_user_storage_capacity,
+    fit_message_optional_text,
+    _dialect_name,
+    lock_user_storage_writer,
+    normalize_image_blob_payload,
+    normalize_image_mime_type,
+    normalize_session_title,
+    storage_json_utf8_size,
+    validate_message_content,
+    validate_session_context,
+)
 
 
 logger = logging.getLogger("uvicorn.error")
+
+MAX_ASSISTANT_TURN_HISTORY_MESSAGES = 16
+MAX_ASSISTANT_TURN_ATTACHMENT_MESSAGE_CANDIDATES = 3
+MAX_ASSISTANT_TURN_HISTORY_ITEM_BYTES = 512 * 1024
+MAX_ASSISTANT_TURN_HISTORY_TOTAL_BYTES = 4 * 1024 * 1024
+MAX_ASSISTANT_DETAIL_MESSAGES = MAX_ASSISTANT_SESSION_MESSAGES
+MAX_ASSISTANT_DETAIL_TOTAL_BYTES = MAX_ASSISTANT_SESSION_MESSAGE_BYTES
+
+
+def _stored_json_length(column: Any, dialect: str):
+    serialized = cast(column, Text)
+    if dialect == "postgresql":
+        return func.octet_length(serialized)
+    return func.length(serialized)
 
 
 class NotFoundError(Exception):
@@ -617,13 +656,135 @@ async def _apply_experience_bank_draft_card(
 async def list_sessions(
     session: AsyncSession,
     user_id: str,
+    *,
+    limit: int = MAX_USER_ASSISTANT_SESSIONS,
+    before_cursor: str | None = None,
 ) -> List[AIAssistantSession]:
+    bounded_limit = max(1, min(int(limit), MAX_USER_ASSISTANT_SESSIONS + 1))
+    before = _decode_session_cursor(before_cursor)
+    session_filters = [AIAssistantSession.user_id == user_id]
+    if before is not None:
+        before_updated_at, before_id = before
+        session_filters.append(
+            or_(
+                AIAssistantSession.updated_at < before_updated_at,
+                and_(
+                    AIAssistantSession.updated_at == before_updated_at,
+                    AIAssistantSession.id < before_id,
+                ),
+            )
+        )
+    dialect = _dialect_name(session)
+    if dialect is not None:
+        context_length = _stored_json_length(
+            AIAssistantSession.context_json,
+            dialect,
+        )
+        preview_length = _stored_json_length(
+            AIAssistantSession.latest_preview,
+            dialect,
+        )
+        empty_json = (
+            func.jsonb_build_object()
+            if dialect == "postgresql"
+            else func.json_object()
+        )
+        bounded_title = (
+            func.left(
+                AIAssistantSession.title,
+                MAX_ASSISTANT_SESSION_TITLE_CHARS,
+            )
+            if dialect == "postgresql"
+            else func.substr(
+                AIAssistantSession.title,
+                1,
+                MAX_ASSISTANT_SESSION_TITLE_CHARS,
+            )
+        )
+        rows = (
+            await session.execute(
+                select(
+                    AIAssistantSession.id,
+                    AIAssistantSession.user_id,
+                    bounded_title.label("title"),
+                    AIAssistantSession.mode,
+                    AIAssistantSession.entry_source,
+                    case(
+                        (
+                            context_length <= MAX_ASSISTANT_SESSION_CONTEXT_BYTES,
+                            AIAssistantSession.context_json,
+                        ),
+                        else_=empty_json,
+                    ).label("context_json"),
+                    (context_length <= MAX_ASSISTANT_SESSION_CONTEXT_BYTES).label(
+                        "context_within_limit"
+                    ),
+                    case(
+                        (
+                            preview_length <= MAX_ASSISTANT_MESSAGE_CONTENT_BYTES,
+                            AIAssistantSession.latest_preview,
+                        ),
+                        else_=empty_json,
+                    ).label("latest_preview"),
+                    AIAssistantSession.created_at,
+                    AIAssistantSession.updated_at,
+                )
+                .where(*session_filters)
+                .order_by(
+                    AIAssistantSession.updated_at.desc(),
+                    AIAssistantSession.id.desc(),
+                )
+                .limit(bounded_limit)
+            )
+        ).all()
+        return [
+            SimpleNamespace(
+                id=row.id,
+                user_id=row.user_id,
+                title=row.title,
+                mode=row.mode,
+                entry_source=row.entry_source,
+                context_json=(
+                    row.context_json
+                    if row.context_within_limit
+                    else {"_meta": {"storageProjectionTruncated": True}}
+                ),
+                latest_preview=row.latest_preview or {},
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
     result = await session.execute(
         select(AIAssistantSession)
-        .where(AIAssistantSession.user_id == user_id)
-        .order_by(AIAssistantSession.updated_at.desc())
+        .where(*session_filters)
+        .order_by(
+            AIAssistantSession.updated_at.desc(),
+            AIAssistantSession.id.desc(),
+        )
+        .limit(bounded_limit)
     )
     return list(result.scalars().all())
+
+
+def _encode_session_cursor(assistant_session: Any) -> str:
+    raw = f"{assistant_session.updated_at.isoformat()}|{assistant_session.id}".encode(
+        "utf-8"
+    )
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_session_cursor(value: str | None) -> tuple[datetime, UUID] | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        encoded = value.strip()
+        padding = "=" * (-len(encoded) % 4)
+        raw = base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+        updated_at_text, session_id_text = raw.rsplit("|", 1)
+        return datetime.fromisoformat(updated_at_text), UUID(session_id_text)
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("Invalid assistant session cursor") from exc
 
 
 async def create_session(
@@ -631,15 +792,29 @@ async def create_session(
     user_id: str,
     payload: AssistantSessionCreate,
 ) -> AIAssistantSession:
+    resolved_title = (
+        normalize_session_title(payload.title)
+        if isinstance(payload.title, str) and payload.title.strip()
+        else _build_default_title(payload.mode)
+    )
+    context_json = validate_session_context(payload.context_json)
+    await ensure_user_storage_capacity(
+        session,
+        user_id=user_id,
+        projected_sessions=1,
+        projected_session_json_bytes=(
+            storage_json_utf8_size(context_json) + storage_json_utf8_size({})
+        ),
+    )
     assistant_session = AIAssistantSession(
         user_id=user_id,
-        title=payload.title or _build_default_title(payload.mode),
+        title=resolved_title,
         mode=payload.mode,
         entry_source=payload.entry_source,
-        context_json=payload.context_json,
+        context_json=context_json,
     )
     session.add(assistant_session)
-    await session.commit()
+    await commit_assistant_storage(session)
     await session.refresh(assistant_session)
     return assistant_session
 
@@ -650,16 +825,302 @@ async def update_session(
     session_id: UUID,
     payload: AssistantSessionUpdate,
 ) -> AIAssistantSession:
+    await lock_user_storage_writer(session, user_id=user_id)
     assistant_session = await get_session(session, user_id, session_id)
     if payload.title is not None:
         normalized_title = payload.title.strip()
         if normalized_title:
-            assistant_session.title = normalized_title
+            assistant_session.title = normalize_session_title(normalized_title)
     assistant_session.updated_at = utc_now()
     session.add(assistant_session)
-    await session.commit()
+    await commit_assistant_storage(session)
     await session.refresh(assistant_session)
     return assistant_session
+
+
+def _message_storage_length(dialect: str):
+    return _stored_json_length(AIAssistantMessage.content_json, dialect)
+
+
+async def _list_bounded_messages(
+    session: AsyncSession,
+    *,
+    assistant_session_id: UUID,
+    max_messages: int,
+    max_total_bytes: int,
+    max_item_bytes: int,
+    attachment_candidates_only: bool = False,
+    before: tuple[datetime, UUID] | None = None,
+    extra_filter: Any | None = None,
+) -> List[AIAssistantMessage]:
+    dialect = _dialect_name(session)
+    if dialect is None:
+        query = (
+            select(AIAssistantMessage)
+            .where(AIAssistantMessage.session_id == assistant_session_id)
+            .order_by(
+                AIAssistantMessage.created_at.desc(),
+                AIAssistantMessage.id.desc(),
+            )
+            .limit(max_messages)
+        )
+        if before is not None:
+            before_created_at, before_id = before
+            query = query.where(
+                or_(
+                    AIAssistantMessage.created_at < before_created_at,
+                    and_(
+                        AIAssistantMessage.created_at == before_created_at,
+                        AIAssistantMessage.id < before_id,
+                    ),
+                )
+            )
+        if extra_filter is not None:
+            query = query.where(extra_filter)
+        result = await session.execute(query)
+        return list(reversed(list(result.scalars().all())))
+
+    storage_length = _message_storage_length(dialect)
+    ordering = (
+        AIAssistantMessage.created_at.desc(),
+        AIAssistantMessage.id.desc(),
+    )
+    filters = [
+        AIAssistantMessage.session_id == assistant_session_id,
+        storage_length <= max_item_bytes,
+    ]
+    if before is not None:
+        before_created_at, before_id = before
+        filters.append(
+            or_(
+                AIAssistantMessage.created_at < before_created_at,
+                and_(
+                    AIAssistantMessage.created_at == before_created_at,
+                    AIAssistantMessage.id < before_id,
+                ),
+            )
+        )
+    if extra_filter is not None:
+        filters.append(extra_filter)
+    if attachment_candidates_only:
+        if dialect == "postgresql":
+            has_attachment = or_(
+                AIAssistantMessage.content_json.op("?")("attachment"),
+                AIAssistantMessage.content_json.op("?")("attachments"),
+            )
+        else:
+            has_attachment = or_(
+                func.json_type(
+                    AIAssistantMessage.content_json,
+                    "$.attachment",
+                ).is_not(None),
+                func.json_type(
+                    AIAssistantMessage.content_json,
+                    "$.attachments",
+                ).is_not(None),
+            )
+        filters.extend(
+            [
+                AIAssistantMessage.role == "user",
+                has_attachment,
+            ]
+        )
+    ranked = (
+        select(
+            AIAssistantMessage.id.label("message_id"),
+            func.row_number().over(order_by=ordering).label("message_rank"),
+            func.sum(storage_length).over(order_by=ordering).label(
+                "cumulative_bytes"
+            ),
+        )
+        .where(*filters)
+        .subquery()
+    )
+    result = await session.execute(
+        select(AIAssistantMessage)
+        .join(ranked, ranked.c.message_id == AIAssistantMessage.id)
+        .where(
+            ranked.c.message_rank <= max_messages,
+            ranked.c.cumulative_bytes <= max_total_bytes,
+        )
+        .order_by(
+            AIAssistantMessage.created_at.asc(),
+            AIAssistantMessage.id.asc(),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def list_turn_history(
+    session: AsyncSession,
+    *,
+    assistant_session_id: UUID,
+    user_message: str = "",
+) -> List[AIAssistantMessage]:
+    recent_messages = await _list_bounded_messages(
+        session,
+        assistant_session_id=assistant_session_id,
+        max_messages=MAX_ASSISTANT_TURN_HISTORY_MESSAGES,
+        max_total_bytes=MAX_ASSISTANT_TURN_HISTORY_TOTAL_BYTES,
+        max_item_bytes=MAX_ASSISTANT_TURN_HISTORY_ITEM_BYTES,
+    )
+    attachment_candidates = await _list_bounded_messages(
+        session,
+        assistant_session_id=assistant_session_id,
+        max_messages=MAX_ASSISTANT_TURN_ATTACHMENT_MESSAGE_CANDIDATES,
+        max_total_bytes=(
+            MAX_ASSISTANT_TURN_ATTACHMENT_MESSAGE_CANDIDATES
+            * MAX_ASSISTANT_TURN_HISTORY_ITEM_BYTES
+        ),
+        max_item_bytes=MAX_ASSISTANT_TURN_HISTORY_ITEM_BYTES,
+        attachment_candidates_only=True,
+    )
+    explicit_names = re.findall(
+        r"[^\s\"'<>]{1,180}\.(?:png|jpe?g|webp|gif|pdf|docx?)",
+        user_message,
+        flags=re.IGNORECASE,
+    )[:MAX_ASSISTANT_TURN_ATTACHMENT_MESSAGE_CANDIDATES]
+    explicit_candidates: List[AIAssistantMessage] = []
+    if explicit_names:
+        serialized_content = cast(AIAssistantMessage.content_json, Text)
+
+        def escaped_pattern(name: str) -> str:
+            escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            return f"%{escaped}%"
+
+        explicit_candidates = await _list_bounded_messages(
+            session,
+            assistant_session_id=assistant_session_id,
+            max_messages=MAX_ASSISTANT_TURN_ATTACHMENT_MESSAGE_CANDIDATES,
+            max_total_bytes=(
+                MAX_ASSISTANT_TURN_ATTACHMENT_MESSAGE_CANDIDATES
+                * MAX_ASSISTANT_TURN_HISTORY_ITEM_BYTES
+            ),
+            max_item_bytes=MAX_ASSISTANT_TURN_HISTORY_ITEM_BYTES,
+            attachment_candidates_only=True,
+            extra_filter=or_(
+                *(
+                    serialized_content.ilike(
+                        escaped_pattern(name),
+                        escape="\\",
+                    )
+                    for name in explicit_names
+                )
+            ),
+        )
+    by_id = {
+        message.id: message
+        for message in (
+            *recent_messages,
+            *attachment_candidates,
+            *explicit_candidates,
+        )
+    }
+    return sorted(
+        by_id.values(),
+        key=lambda message: (message.created_at, message.id),
+    )
+
+
+@dataclass(frozen=True)
+class AssistantSessionMessagePage:
+    assistant_session: AIAssistantSession
+    messages: List[AIAssistantMessage]
+    truncated: bool
+    next_cursor: str | None
+    storage_projection_truncated: bool
+
+
+def _encode_message_cursor(message: AIAssistantMessage) -> str:
+    raw = f"{message.created_at.isoformat()}|{message.id}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_message_cursor(value: str | None) -> tuple[datetime, UUID] | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        encoded = value.strip()
+        padding = "=" * (-len(encoded) % 4)
+        raw = base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+        created_at_text, message_id_text = raw.rsplit("|", 1)
+        created_at = datetime.fromisoformat(created_at_text)
+        message_id = UUID(message_id_text)
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("Invalid assistant message cursor") from exc
+    return created_at, message_id
+
+
+def _older_message_filter(before: tuple[datetime, UUID]):
+    before_created_at, before_id = before
+    return or_(
+        AIAssistantMessage.created_at < before_created_at,
+        and_(
+            AIAssistantMessage.created_at == before_created_at,
+            AIAssistantMessage.id < before_id,
+        ),
+    )
+
+
+async def get_session_detail_page(
+    session: AsyncSession,
+    user_id: str,
+    session_id: UUID,
+    *,
+    limit: int = MAX_ASSISTANT_DETAIL_MESSAGES,
+    before_cursor: str | None = None,
+) -> AssistantSessionMessagePage:
+    bounded_limit = max(1, min(int(limit), MAX_ASSISTANT_DETAIL_MESSAGES))
+    before = _decode_message_cursor(before_cursor)
+    assistant_session = await get_session(session, user_id, session_id)
+    messages = await _list_bounded_messages(
+        session,
+        assistant_session_id=assistant_session.id,
+        max_messages=bounded_limit,
+        max_total_bytes=MAX_ASSISTANT_DETAIL_TOTAL_BYTES,
+        max_item_bytes=MAX_ASSISTANT_MESSAGE_CONTENT_BYTES,
+        before=before,
+    )
+    dialect = _dialect_name(session)
+    has_more = False
+    storage_projection_truncated = False
+    if dialect is not None:
+        storage_length = _message_storage_length(dialect)
+        page_boundary = (
+            (messages[0].created_at, messages[0].id)
+            if messages
+            else before
+        )
+        if page_boundary is not None:
+            has_more = (
+                await session.execute(
+                    select(AIAssistantMessage.id)
+                    .where(
+                        AIAssistantMessage.session_id == assistant_session.id,
+                        storage_length <= MAX_ASSISTANT_MESSAGE_CONTENT_BYTES,
+                        _older_message_filter(page_boundary),
+                    )
+                    .limit(1)
+                )
+            ).first() is not None
+        storage_projection_truncated = (
+            await session.execute(
+                select(AIAssistantMessage.id)
+                .where(
+                    AIAssistantMessage.session_id == assistant_session.id,
+                    storage_length > MAX_ASSISTANT_MESSAGE_CONTENT_BYTES,
+                )
+                .limit(1)
+            )
+        ).first() is not None
+
+    return AssistantSessionMessagePage(
+        assistant_session=assistant_session,
+        messages=messages,
+        truncated=has_more or storage_projection_truncated,
+        next_cursor=_encode_message_cursor(messages[0]) if has_more and messages else None,
+        storage_projection_truncated=storage_projection_truncated,
+    )
 
 
 async def get_session_detail(
@@ -667,13 +1128,8 @@ async def get_session_detail(
     user_id: str,
     session_id: UUID,
 ) -> tuple[AIAssistantSession, List[AIAssistantMessage]]:
-    assistant_session = await get_session(session, user_id, session_id)
-    result = await session.execute(
-        select(AIAssistantMessage)
-        .where(AIAssistantMessage.session_id == assistant_session.id)
-        .order_by(AIAssistantMessage.created_at.asc())
-    )
-    return assistant_session, list(result.scalars().all())
+    page = await get_session_detail_page(session, user_id, session_id)
+    return page.assistant_session, page.messages
 
 
 async def get_session(
@@ -681,6 +1137,81 @@ async def get_session(
     user_id: str,
     session_id: UUID,
 ) -> AIAssistantSession:
+    dialect = _dialect_name(session)
+    if dialect is not None:
+        result = await session.execute(
+            select(AIAssistantSession)
+            .options(
+                defer(AIAssistantSession.context_json),
+                defer(AIAssistantSession.latest_preview),
+            )
+            .where(
+                AIAssistantSession.id == session_id,
+                AIAssistantSession.user_id == user_id,
+            )
+        )
+        assistant_session = result.scalars().one_or_none()
+        if not assistant_session:
+            raise NotFoundError(f"Assistant session {session_id} not found")
+
+        context_length = _stored_json_length(
+            AIAssistantSession.context_json,
+            dialect,
+        )
+        preview_length = _stored_json_length(
+            AIAssistantSession.latest_preview,
+            dialect,
+        )
+        empty_json = (
+            func.jsonb_build_object()
+            if dialect == "postgresql"
+            else func.json_object()
+        )
+        projection = (
+            await session.execute(
+                select(
+                    case(
+                        (
+                            context_length <= MAX_ASSISTANT_SESSION_CONTEXT_BYTES,
+                            AIAssistantSession.context_json,
+                        ),
+                        else_=empty_json,
+                    ).label("context_json"),
+                    (context_length <= MAX_ASSISTANT_SESSION_CONTEXT_BYTES).label(
+                        "context_within_limit"
+                    ),
+                    case(
+                        (
+                            preview_length <= MAX_ASSISTANT_MESSAGE_CONTENT_BYTES,
+                            AIAssistantSession.latest_preview,
+                        ),
+                        else_=empty_json,
+                    ).label("latest_preview"),
+                ).where(
+                    AIAssistantSession.id == session_id,
+                    AIAssistantSession.user_id == user_id,
+                )
+            )
+        ).one()
+        bounded_context = (
+            projection.context_json
+            if projection.context_within_limit
+            else {"_meta": {"storageProjectionTruncated": True}}
+        )
+        set_committed_value(assistant_session, "context_json", bounded_context)
+        set_committed_value(
+            assistant_session,
+            "latest_preview",
+            projection.latest_preview or {},
+        )
+        if len(assistant_session.title) > MAX_ASSISTANT_SESSION_TITLE_CHARS:
+            set_committed_value(
+                assistant_session,
+                "title",
+                assistant_session.title[:MAX_ASSISTANT_SESSION_TITLE_CHARS],
+            )
+        return assistant_session
+
     result = await session.execute(
         select(AIAssistantSession).where(
             AIAssistantSession.id == session_id,
@@ -698,14 +1229,26 @@ async def delete_session(
     user_id: str,
     session_id: UUID,
 ) -> None:
-    assistant_session = await get_session(session, user_id, session_id)
+    await lock_user_storage_writer(session, user_id=user_id)
+    owned_id = (
+        await session.execute(
+            select(AIAssistantSession.id).where(
+                AIAssistantSession.id == session_id,
+                AIAssistantSession.user_id == user_id,
+            )
+        )
+    ).scalars().one_or_none()
+    if owned_id is None:
+        raise NotFoundError(f"Assistant session {session_id} not found")
     await session.execute(
-        delete(AIAssistantImageBlob).where(AIAssistantImageBlob.session_id == assistant_session.id)
+        delete(AIAssistantImageBlob).where(AIAssistantImageBlob.session_id == owned_id)
     )
     await session.execute(
-        delete(AIAssistantMessage).where(AIAssistantMessage.session_id == assistant_session.id)
+        delete(AIAssistantMessage).where(AIAssistantMessage.session_id == owned_id)
     )
-    await session.delete(assistant_session)
+    await session.execute(
+        delete(AIAssistantSession).where(AIAssistantSession.id == owned_id)
+    )
     await session.commit()
 
 
@@ -716,14 +1259,22 @@ async def mark_message_applied(
     message_id: UUID,
     skip_apply: bool = False,
 ) -> AIAssistantMessage:
+    await lock_user_storage_writer(session, user_id=user_id)
     assistant_session = await get_session(session, user_id, session_id)
     context_json = assistant_session.context_json or {}
     context_master_id = _read_context_string(context_json, "masterId")
-    result = await session.execute(
-        select(AIAssistantMessage).where(
-            AIAssistantMessage.id == message_id,
-            AIAssistantMessage.session_id == assistant_session.id,
+    message_filters = [
+        AIAssistantMessage.id == message_id,
+        AIAssistantMessage.session_id == assistant_session.id,
+    ]
+    dialect = _dialect_name(session)
+    if dialect is not None:
+        message_filters.append(
+            _message_storage_length(dialect)
+            <= MAX_ASSISTANT_MESSAGE_CONTENT_BYTES
         )
+    result = await session.execute(
+        select(AIAssistantMessage).where(*message_filters)
     )
     message = result.scalars().one_or_none()
     if not message:
@@ -823,12 +1374,32 @@ async def mark_message_applied(
     next_content["applied_at"] = utc_now().astimezone(timezone.utc).isoformat()
     if apply_navigation:
         next_content["apply_navigation"] = apply_navigation
-    message.content_json = next_content
+    validated_next_content = validate_message_content(next_content)
+    message_growth = max(
+        0,
+        storage_json_utf8_size(validated_next_content)
+        - storage_json_utf8_size(previous_content),
+    )
+    preview_growth = 0
+    if _latest_preview_matches_message(assistant_session.latest_preview, previous_content):
+        preview_growth = max(
+            0,
+            storage_json_utf8_size(validated_next_content)
+            - storage_json_utf8_size(assistant_session.latest_preview),
+        )
+    await ensure_user_storage_capacity(
+        session,
+        user_id=user_id,
+        assistant_session_id=assistant_session.id,
+        projected_session_json_bytes=preview_growth,
+        projected_message_bytes=message_growth,
+    )
+    message.content_json = validated_next_content
     session.add(message)
     if _latest_preview_matches_message(assistant_session.latest_preview, previous_content):
         assistant_session.latest_preview = next_content
         session.add(assistant_session)
-    await session.commit()
+    await commit_assistant_storage(session)
     await session.refresh(message)
     return message
 
@@ -841,16 +1412,26 @@ async def append_message(
     message_type: str,
     content_json: dict,
 ) -> AIAssistantMessage:
+    normalized_content = validate_message_content(content_json)
+    user_id = getattr(assistant_session, "user_id", None)
+    if isinstance(user_id, str) and user_id:
+        await ensure_user_storage_capacity(
+            session,
+            user_id=user_id,
+            assistant_session_id=assistant_session.id,
+            projected_messages=1,
+            projected_message_bytes=storage_json_utf8_size(normalized_content),
+        )
     message = AIAssistantMessage(
         session_id=assistant_session.id,
         role=role,
         message_type=message_type,
-        content_json=content_json,
+        content_json=normalized_content,
     )
     session.add(message)
     assistant_session.updated_at = utc_now()
     session.add(assistant_session)
-    await session.commit()
+    await commit_assistant_storage(session)
     await session.refresh(message)
     await session.refresh(assistant_session)
     return message
@@ -882,11 +1463,29 @@ async def persist_assistant_turn(
     }
     if user_skill_id:
         user_content_json["skill_id"] = user_skill_id
-    normalized_attachments = [
-        preview
-        for preview in (_sanitize_attachment_preview(attachment) for attachment in (user_attachments or []))
-        if preview
-    ]
+    normalized_attachments: list[dict] = []
+    image_blobs: list[AIAssistantImageBlob] = []
+    image_blob_bytes = 0
+    for attachment in user_attachments or []:
+        preview = _sanitize_attachment_preview(attachment)
+        if preview is None:
+            continue
+        if isinstance(attachment, dict) and "imageB64" in attachment:
+            cleaned_payload, encoded_size = normalize_image_blob_payload(
+                attachment.get("imageB64")
+            )
+            normalized_mime_type, mime_size = normalize_image_mime_type(
+                attachment.get("mimeType") or ""
+            )
+            blob = AIAssistantImageBlob(
+                session_id=assistant_session.id,
+                mime_type=normalized_mime_type,
+                payload_base64=cleaned_payload,
+            )
+            preview["imageBlobId"] = str(blob.id)
+            image_blobs.append(blob)
+            image_blob_bytes += encoded_size + mime_size
+        normalized_attachments.append(preview)
     if normalized_attachments:
         user_content_json["attachment"] = normalized_attachments[0]
         if len(normalized_attachments) > 1:
@@ -914,20 +1513,33 @@ async def persist_assistant_turn(
             session_id=assistant_session.id,
             role="user",
             message_type="user_text",
-            content_json=user_content_json,
+            content_json=validate_message_content(user_content_json),
         )
     )
+    assistant_content_json = {
+        "text": assistant_text,
+        **(
+            {"thinking": normalized_assistant_thinking}
+            if normalized_assistant_thinking
+            else {}
+        ),
+        **({"skill_id": user_skill_id} if user_skill_id else {}),
+        **(
+            {"suggestedFollowups": suggested_followups}
+            if suggested_followups
+            else {}
+        ),
+    }
     created_messages.append(
         AIAssistantMessage(
             session_id=assistant_session.id,
             role="assistant",
             message_type="assistant_text",
-            content_json={
-                "text": assistant_text,
-                **({"thinking": normalized_assistant_thinking} if normalized_assistant_thinking else {}),
-                **({"skill_id": user_skill_id} if user_skill_id else {}),
-                **({"suggestedFollowups": suggested_followups} if suggested_followups else {}),
-            },
+            content_json=fit_message_optional_text(
+                assistant_content_json,
+                field_name="thinking",
+                truncated_flag="thinkingTruncated",
+            ),
         )
     )
     if draft_card:
@@ -936,19 +1548,49 @@ async def persist_assistant_turn(
                 session_id=assistant_session.id,
                 role="assistant",
                 message_type="draft_card",
-                content_json=draft_card,
+                content_json=validate_message_content(draft_card),
             )
         )
-        assistant_session.latest_preview = draft_card
+        next_latest_preview = validate_message_content(draft_card)
     else:
-        assistant_session.latest_preview = {}
-    if title:
-        assistant_session.title = title
+        next_latest_preview = {}
+
+    resolved_title = None
+    if isinstance(title, str) and title.strip():
+        resolved_title = normalize_session_title(title)
+
+    user_id = getattr(assistant_session, "user_id", None)
+    if isinstance(user_id, str) and user_id:
+        previous_preview = getattr(assistant_session, "latest_preview", None) or {}
+        projected_preview_growth = max(
+            0,
+            storage_json_utf8_size(next_latest_preview)
+            - storage_json_utf8_size(previous_preview),
+        )
+        await ensure_user_storage_capacity(
+            session,
+            user_id=user_id,
+            assistant_session_id=assistant_session.id,
+            projected_session_json_bytes=projected_preview_growth,
+            projected_messages=len(created_messages),
+            projected_message_bytes=sum(
+                storage_json_utf8_size(message.content_json)
+                for message in created_messages
+            ),
+            projected_image_blobs=len(image_blobs),
+            projected_image_blob_bytes=image_blob_bytes,
+        )
+
+    assistant_session.latest_preview = next_latest_preview
+    if resolved_title is not None:
+        assistant_session.title = resolved_title
     assistant_session.updated_at = utc_now()
     session.add(assistant_session)
+    for blob in image_blobs:
+        session.add(blob)
     for message in created_messages:
         session.add(message)
-    await session.commit()
+    await commit_assistant_storage(session)
     for message in created_messages:
         await session.refresh(message)
     await session.refresh(assistant_session)

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
@@ -100,6 +100,7 @@ import type { ResumeFactorySidebarProps, ResumeFactoryTab } from './components/R
 import buildExperiencePolishToolbars from './components/ExperiencePolishToolbars';
 import type { AssistantLaunchRequest } from '../AIAssistant/types';
 import { useMobileEditorDrawer } from './hooks/useMobileEditorDrawer';
+import { useMobileJDAnalysisDialog } from './hooks/useMobileJDAnalysisDialog';
 import { useResumePdfExport } from './hooks/useResumePdfExport';
 import { useResumeEditorNavigationHandlers } from './hooks/useResumeEditorNavigationHandlers';
 import { useDashboardResumeSync } from './hooks/useDashboardResumeSync';
@@ -170,8 +171,6 @@ const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'highlight',
     'custom',
 ];
-const MOBILE_ANALYSIS_MEDIA_QUERY = '(max-width: 767px)';
-
 const ResumeEditor: React.FC<ResumeEditorProps> = ({
     cachedResumes = [],
     cachedResumesOwnerKey = null,
@@ -285,12 +284,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
     const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
     const [isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen] = useState(false);
-    const [isMobileAnalysisViewport, setIsMobileAnalysisViewport] = useState(() => (
-        typeof window !== 'undefined'
-        && window.matchMedia(MOBILE_ANALYSIS_MEDIA_QUERY).matches
-    ));
-    const mobileAnalysisDialogRef = useRef<HTMLDivElement>(null);
-    const mobileAnalysisReturnFocusRef = useRef<HTMLElement | null>(null);
     const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
     const assistantSidebarLaunchRequestIdRef = useRef(0);
     const {
@@ -513,6 +506,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsBossGreetingVisible,
     });
     const buildCommittedResumeConfigSnapshot = useCommittedResumeConfigSnapshot({
+        authUserKey,
         resumeId,
         resumeDetail,
         persistedJDAnalysisSnapshot,
@@ -618,6 +612,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         generateEvaluation,
         stopEvaluation,
     } = useResumeEvaluation({
+        authUserKey,
         resumeId,
         jdText,
         jdAnalysisResult: analysisResult,
@@ -657,6 +652,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         pendingAssistantApplyRef,
         trackedPendingAssistantApplyRef,
     } = usePendingExperienceApplyState({
+        authUserKey,
         resumeId,
         showToastError,
     });
@@ -670,6 +666,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         skill,
         selection,
     } = useExperienceActions({
+        authUserKey,
         resumeId,
         jdText: jdPolishContext,
         toast: {
@@ -833,6 +830,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         floatingThinkingText,
         handleStopFloating,
     } = useResumeEditorExperiencePolishCoordinator({
+        authUserKey,
         resumeId,
         isLoadingExperiences,
         experienceItems,
@@ -881,6 +879,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         refreshDashboardResumesFromServer,
         updateDashboardCache,
     } = useDashboardResumeSync({
+        authUserKey,
         cachedResumes,
         isCacheOwnerMatched,
         onResumesUpdate,
@@ -890,6 +889,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         canAutoNameResume,
         handleResumeNameChange,
     } = useResumeNameUpdate({
+        authUserKey,
         resumeId,
         resumeName,
         resumeDetail,
@@ -951,6 +951,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         handleSaveProfile,
         isProfileReadOnly,
     } = useProfileEditActions({
+        authUserKey,
         profile,
         setProfile,
         targetRole,
@@ -1038,6 +1039,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         handleSelectTemplate,
         handleSaveTemplatePreset,
     } = useTemplatePresetActions({
+        authUserKey,
         isTemplatePresetMapReady,
         templatePresetMap,
         resumeTemplateId,
@@ -1145,6 +1147,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         };
     }, [jdPolishContext, resumeId, resumeName, selectedResumeSnapshot]);
     const handleApplyResumeAssistantDraft = useResumeAssistantDraftApply({
+        authUserKey,
         resumeId,
         educationSourceMap,
         setEducationSourceMap,
@@ -1214,125 +1217,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resumeName,
         showToastInfo,
     ]);
+    const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
+        setIsJDAnalysisDetailsSidebarOpen(false);
+    }, []);
+    const {
+        captureReturnFocus: captureMobileAnalysisReturnFocus,
+        isMobileAnalysisViewport,
+        mobileAnalysisDialogRef,
+    } = useMobileJDAnalysisDialog({
+        isOpen: isJDAnalysisDetailsSidebarOpen,
+        onClose: handleCloseJDAnalysisDetailsSidebar,
+    });
     const handleOpenJDAnalysisDetailsSidebar = useCallback(() => {
         if (!analysisResult) {
             return;
         }
-        mobileAnalysisReturnFocusRef.current = document.activeElement instanceof HTMLElement
-            ? document.activeElement
-            : null;
+        captureMobileAnalysisReturnFocus();
         setIsJDAnalysisDetailsSidebarOpen(true);
-    }, [analysisResult]);
-    const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
-        setIsJDAnalysisDetailsSidebarOpen(false);
-    }, []);
+    }, [analysisResult, captureMobileAnalysisReturnFocus]);
     useEffect(() => {
         if (!analysisResult) {
             setIsJDAnalysisDetailsSidebarOpen(false);
         }
     }, [analysisResult]);
-    useEffect(() => {
-        const mediaQuery = window.matchMedia(MOBILE_ANALYSIS_MEDIA_QUERY);
-        const syncViewport = () => setIsMobileAnalysisViewport(mediaQuery.matches);
-        syncViewport();
-        mediaQuery.addEventListener('change', syncViewport);
-        return () => mediaQuery.removeEventListener('change', syncViewport);
-    }, []);
-    useEffect(() => {
-        if (
-            !isJDAnalysisDetailsSidebarOpen
-            || !isMobileAnalysisViewport
-        ) {
-            return;
-        }
-        const dialog = mobileAnalysisDialogRef.current;
-        if (!dialog) {
-            return;
-        }
-        const focusableSelector = [
-            'button:not([disabled])',
-            '[href]',
-            'input:not([disabled])',
-            'select:not([disabled])',
-            'textarea:not([disabled])',
-            '[tabindex]:not([tabindex="-1"])',
-        ].join(',');
-        const siblings = Array.from(dialog.parentElement?.children ?? [])
-            .filter((element): element is HTMLElement => (
-                element instanceof HTMLElement && element !== dialog
-            ));
-        const siblingStates = siblings.map((element) => ({
-            element,
-            inert: element.inert,
-            ariaHidden: element.getAttribute('aria-hidden'),
-        }));
-        siblingStates.forEach(({ element }) => {
-            element.inert = true;
-            element.setAttribute('aria-hidden', 'true');
-        });
-        const previousBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-
-        const focusDialog = () => {
-            const firstFocusable = dialog.querySelector<HTMLElement>(focusableSelector);
-            (firstFocusable ?? dialog).focus();
-        };
-        const handleDialogKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                handleCloseJDAnalysisDetailsSidebar();
-                return;
-            }
-            if (event.key !== 'Tab') {
-                return;
-            }
-            const focusableElements = Array.from(
-                dialog.querySelectorAll<HTMLElement>(focusableSelector)
-            );
-            if (!focusableElements.length) {
-                event.preventDefault();
-                dialog.focus();
-                return;
-            }
-            const firstFocusable = focusableElements[0];
-            const lastFocusable = focusableElements[focusableElements.length - 1];
-            if (event.shiftKey && document.activeElement === firstFocusable) {
-                event.preventDefault();
-                lastFocusable.focus();
-            } else if (!event.shiftKey && document.activeElement === lastFocusable) {
-                event.preventDefault();
-                firstFocusable.focus();
-            }
-        };
-
-        document.addEventListener('keydown', handleDialogKeyDown);
-        const focusTimer = window.setTimeout(focusDialog, 0);
-        return () => {
-            window.clearTimeout(focusTimer);
-            document.removeEventListener('keydown', handleDialogKeyDown);
-            document.body.style.overflow = previousBodyOverflow;
-            siblingStates.forEach(({ element, inert, ariaHidden }) => {
-                element.inert = inert;
-                if (ariaHidden === null) {
-                    element.removeAttribute('aria-hidden');
-                } else {
-                    element.setAttribute('aria-hidden', ariaHidden);
-                }
-            });
-            const returnFocusElement = mobileAnalysisReturnFocusRef.current;
-            if (
-                window.matchMedia(MOBILE_ANALYSIS_MEDIA_QUERY).matches
-                && returnFocusElement?.isConnected
-                && returnFocusElement.getClientRects().length > 0
-            ) {
-                returnFocusElement.focus();
-            }
-        };
-    }, [
-        handleCloseJDAnalysisDetailsSidebar,
-        isJDAnalysisDetailsSidebarOpen,
-        isMobileAnalysisViewport,
-    ]);
     const handleConsumeAssistantSidebarLaunchRequest = useCallback((requestId?: string) => {
         setAssistantSidebarLaunchRequest((current) => {
             if (!current) {
@@ -1445,14 +1352,23 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const isBossGreetingOutdated = Boolean(
         bossGreeting && bossGreetingSignature !== bossGreetingCurrentSignature
     );
-    latestResumeIdRef.current = resumeId;
-    latestBossGreetingSignatureRef.current = bossGreetingCurrentSignature;
-    latestBossGreetingAnalysisOutdatedRef.current = isOutdated;
-    bossGreetingUiStateRef.current = {
-        text: bossGreeting,
-        signature: bossGreetingSignature,
-        isVisible: isBossGreetingVisible,
-    };
+    useLayoutEffect(() => {
+        latestResumeIdRef.current = resumeId;
+        latestBossGreetingSignatureRef.current = bossGreetingCurrentSignature;
+        latestBossGreetingAnalysisOutdatedRef.current = isOutdated;
+        bossGreetingUiStateRef.current = {
+            text: bossGreeting,
+            signature: bossGreetingSignature,
+            isVisible: isBossGreetingVisible,
+        };
+    }, [
+        bossGreeting,
+        bossGreetingCurrentSignature,
+        bossGreetingSignature,
+        isBossGreetingVisible,
+        isOutdated,
+        resumeId,
+    ]);
     const {
         isGeneratingPersonalSummary,
         isPersonalSummaryOverwriteDialogOpen,
@@ -1461,6 +1377,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         confirmPersonalSummaryOverwrite,
         cancelPersonalSummaryOverwrite,
     } = usePersonalSummaryGeneration({
+        authUserKey,
         resumeId,
         jdPolishContext,
         personalSummaryContext,
@@ -1570,6 +1487,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         handleCollapseBossGreeting,
         handleCopyBossGreeting,
     } = useBossGreetingActions({
+        authUserKey,
         resumeId,
         analysisResult,
         bossGreeting,
@@ -1623,6 +1541,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsExportingPdf,
         showToastLoading,
         updateToast,
+        closeToast,
         resumeName,
         targetRole,
         profile: previewProfile,
@@ -2001,6 +1920,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             >
                 {isAssistantSidebarOpen ? (
                     <AIAssistant
+                        authUserKey={authUserKey}
                         surface="sidebar"
                         pendingLaunchRequest={assistantSidebarLaunchRequest}
                         liveSelectedResume={assistantSidebarSelectedResume}

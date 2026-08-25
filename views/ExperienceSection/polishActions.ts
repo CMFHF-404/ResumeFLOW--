@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { aiService, type PolishExperienceResponse } from '../../services/aiService';
 import type { PolishPreviewState } from '../../types/resume';
 import { resolveThoughtDisplayEvent } from '../../utils/aiThought';
@@ -18,6 +18,8 @@ import {
   STAR_FIELD_KEYS,
 } from './cardDataUtils';
 import type { CardPolishMode, ExperienceSectionProps, ToastApi } from './types';
+import type { AuthOwnerOperation, AuthOwnerOperationGuard } from '../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type ExperienceAiParams = {
   cardData: Map<string, ExperienceCardData>;
@@ -27,6 +29,7 @@ type ExperienceAiParams = {
 };
 
 type ExperiencePolishParams = ExperienceAiParams & {
+  ownerGuard: AuthOwnerOperationGuard;
   category: ExperienceSectionProps['category'];
   updateCardStar: (cardId: string, star: Record<StarFieldKey, string>) => void;
   onLaunchAssistant?: ExperienceSectionProps['onLaunchAssistant'];
@@ -168,6 +171,7 @@ const useStarSnapshotStore = (
 };
 
 export const usePolishActions = ({
+  ownerGuard,
   cardData,
   toast,
   updateCardField,
@@ -188,6 +192,11 @@ export const usePolishActions = ({
     cardData,
     updateCardField
   );
+
+  useLayoutEffect(() => {
+    setPolishingTargets(new Set());
+    setPreviewStates(new Map());
+  }, [ownerGuard.authUserKey]);
 
   useEffect(() => {
     cardDataRef.current = cardData;
@@ -247,19 +256,22 @@ export const usePolishActions = ({
       let action: 'applied' | 'discarded' = 'discarded';
       let toastId: string | null = null;
       let hasError = false;
+      let ownerCancelled = false;
+      let operation: AuthOwnerOperation | null = null;
       const mode = getPolishMode(cardId);
       const customPrompt = getCustomPrompt(cardId).trim();
       trackAiPolishStart({ source: POLISH_SOURCE, field: 'all', category });
       updatePolishingTarget(cardId, true);
       toastId = toast.loading(POLISH_TOAST_MESSAGES.loading);
       try {
+        operation = await ownerGuard.beginOperation();
         const response = await aiService.polishExperienceStream({
           content,
           mode,
           customPrompt: mode === 'custom' ? customPrompt : undefined,
           entrySource: 'experience_bank',
         }, (event) => {
-          if (!toastId) {
+          if (!toastId || !operation || !ownerGuard.isOperationCurrent(operation)) {
             return;
           }
           const resolution = resolveThoughtDisplayEvent(event);
@@ -267,7 +279,8 @@ export const usePolishActions = ({
             return;
           }
           toast.updateToast(toastId, { message: resolution.text, type: 'ai_thinking', duration: 0 });
-        });
+        }, undefined, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+        await ownerGuard.assertOperationCurrent(operation);
         const latestData = cardDataRef.current.get(cardId);
         if (!latestData) {
           return;
@@ -295,9 +308,25 @@ export const usePolishActions = ({
           action = 'applied';
         }
       } catch (error) {
+        if (
+          isAuthContextChangedError(error)
+          || (operation && !ownerGuard.isOperationCurrent(operation))
+        ) {
+          ownerCancelled = true;
+          if (toastId) {
+            toast.closeToast?.(toastId);
+          }
+          return;
+        }
         console.error('[ExperienceSection] AI 润色失败:', error);
         hasError = true;
       } finally {
+        if (
+          ownerCancelled
+          || (operation && !ownerGuard.isOperationCurrent(operation))
+        ) {
+          return;
+        }
         const message = hasError
           ? POLISH_TOAST_MESSAGES.error
           : action === 'applied'
@@ -328,6 +357,7 @@ export const usePolishActions = ({
       getCustomPrompt,
       getPolishMode,
       polishingTargets,
+      ownerGuard,
       storeStarSnapshots,
       toast,
       updateCardStar,

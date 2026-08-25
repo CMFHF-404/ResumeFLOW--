@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 import hashlib
+import ipaddress
 import os
 from pathlib import Path
+import re
 from typing import List, Optional
+from urllib.parse import unquote, urlsplit
 
 from dotenv import load_dotenv
 
@@ -23,6 +26,15 @@ ENV_AI_DEDUPE_ENABLED = "AI_DEDUPE_ENABLED"
 ENV_AI_DEDUPE_MODEL = "AI_DEDUPE_MODEL"
 ENV_AI_DEDUPE_MAX_CANDIDATES = "AI_DEDUPE_MAX_CANDIDATES"
 ENV_AI_TIMEOUT_SECONDS = "AI_TIMEOUT_SECONDS"
+ENV_AI_MAX_REQUEST_BODY_BYTES = "AI_MAX_REQUEST_BODY_BYTES"
+ENV_AI_MAX_TEXT_FIELD_CHARS = "AI_MAX_TEXT_FIELD_CHARS"
+ENV_AI_STREAM_MAX_EVENT_BYTES = "AI_STREAM_MAX_EVENT_BYTES"
+ENV_AI_STREAM_MAX_TOTAL_BYTES = "AI_STREAM_MAX_TOTAL_BYTES"
+ENV_AI_STREAM_MAX_EVENTS = "AI_STREAM_MAX_EVENTS"
+ENV_AI_ASSISTANT_BUFFER_MAX_CHARS = "AI_ASSISTANT_BUFFER_MAX_CHARS"
+ENV_AI_STREAM_TOTAL_TIMEOUT_SECONDS = "AI_STREAM_TOTAL_TIMEOUT_SECONDS"
+ENV_AI_STREAM_QUEUE_MAX_EVENTS = "AI_STREAM_QUEUE_MAX_EVENTS"
+ENV_AI_MAX_OUTPUT_TOKENS = "AI_MAX_OUTPUT_TOKENS"
 ENV_GEMINI_API_KEY = "GEMINI_API_KEY"
 ENV_GEMINI_BASE_URL = "GEMINI_BASE_URL"
 ENV_GEMINI_MODEL = "GEMINI_MODEL"
@@ -54,6 +66,15 @@ DEFAULT_AI_ROUTE_PROFILE = "hybrid_gemini_aifast"
 VALID_AI_ROUTE_PROFILES = {"hybrid_gemini_aifast", "gemini_primary", "qwen_primary"}
 DEFAULT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_AI_DEDUPE_MAX_CANDIDATES = 24
+DEFAULT_AI_MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
+DEFAULT_AI_MAX_TEXT_FIELD_CHARS = 200_000
+DEFAULT_AI_STREAM_MAX_EVENT_BYTES = 256 * 1024
+DEFAULT_AI_STREAM_MAX_TOTAL_BYTES = 4 * 1024 * 1024
+DEFAULT_AI_STREAM_MAX_EVENTS = 10_000
+DEFAULT_AI_ASSISTANT_BUFFER_MAX_CHARS = 1_048_576
+DEFAULT_AI_STREAM_TOTAL_TIMEOUT_SECONDS = 360
+DEFAULT_AI_STREAM_QUEUE_MAX_EVENTS = 64
+DEFAULT_AI_MAX_OUTPUT_TOKENS = 16_384
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_AI_THINKING_BUDGET_JD_ANALYSIS = 1024
@@ -69,6 +90,10 @@ DEFAULT_PUBLIC_API_ORIGIN = "http://localhost:8000"
 DEFAULT_YIFUT_BASE_URL = "https://www.yifut.com"
 DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS = 300
 DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS = 45
+MIN_EXPORT_SNAPSHOT_TTL_SECONDS = 30
+MAX_EXPORT_SNAPSHOT_TTL_SECONDS = 3600
+MIN_EXPORT_RENDER_TIMEOUT_SECONDS = 5
+MAX_EXPORT_RENDER_TIMEOUT_SECONDS = 120
 ENV_FILE_NAME = ".env"
 ASYNC_POSTGRES_SCHEME = "postgresql+asyncpg://"
 POSTGRES_SCHEMES = ("postgresql://", "postgres://")
@@ -122,6 +147,25 @@ def _get_bool_env(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _get_bounded_int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw_value = os.getenv(name)
+    try:
+        value = default if raw_value is None else int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid {name}: expected an integer") from exc
+    if value < minimum or value > maximum:
+        raise RuntimeError(
+            f"Invalid {name}: expected a value between {minimum} and {maximum}"
+        )
+    return value
+
+
 def _resolve_ai_route_profile(value: Optional[str]) -> str:
     normalized = (value or DEFAULT_AI_ROUTE_PROFILE).strip().lower()
     if normalized not in VALID_AI_ROUTE_PROFILES:
@@ -143,7 +187,179 @@ def _load_env() -> None:
 
 
 def _normalize_origin(value: str) -> str:
-    return value.rstrip("/")
+    return _normalize_deployment_http_base_url(value, ENV_FRONTEND_ORIGIN)
+
+
+def _normalize_deployment_http_base_url(value: str, env_name: str) -> str:
+    """Validate a deployment URL with an optional safe mount prefix.
+
+    Remote traffic must use HTTPS because these URLs carry authentication
+    tokens or exported resume data. Plain HTTP remains available only for a
+    strict loopback development target.
+    """
+    raw_value = value or ""
+    candidate = raw_value.strip()
+    try:
+        parsed = urlsplit(candidate)
+        parsed_port = parsed.port
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Invalid {env_name}: expected a secure HTTP(S) base URL with an optional safe path prefix"
+        ) from exc
+
+    hostname = parsed.hostname or ""
+    hostname_labels = hostname.split(".") if hostname else []
+    try:
+        parsed_ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        parsed_ip = None
+    hostname_is_valid = parsed_ip is not None or (
+        re.fullmatch(r"[A-Za-z0-9.-]+", hostname) is not None
+        and all(
+            label and not label.startswith("-") and not label.endswith("-")
+            for label in hostname_labels
+        )
+    )
+    is_loopback = hostname.lower() == "localhost" or bool(
+        parsed_ip is not None and parsed_ip.is_loopback
+    )
+    normalized_path = parsed.path.rstrip("/")
+    path_segments = [segment for segment in normalized_path.split("/") if segment]
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed_port == 0
+        or not hostname_is_valid
+        or (parsed.scheme == "http" and not is_loopback)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or candidate != raw_value
+        or re.fullmatch(r"(?:/[A-Za-z0-9._~-]+)*/?", parsed.path) is None
+        or any(segment in {".", ".."} for segment in path_segments)
+    ):
+        raise RuntimeError(
+            f"Invalid {env_name}: expected a secure HTTP(S) base URL with an optional safe path prefix"
+        )
+
+    return f"{parsed.scheme}://{parsed.netloc}{normalized_path}"
+
+
+def _normalize_public_api_origin(value: str) -> str:
+    """Validate the trusted public API base URL used in returned links."""
+    return _normalize_deployment_http_base_url(value, ENV_PUBLIC_API_ORIGIN)
+
+
+def _normalize_public_api_relative_path(path: str) -> str:
+    """Accept one unambiguous, absolute-path API route without an authority."""
+    if not isinstance(path, str):
+        raise ValueError("Expected a relative API path")
+    parsed = urlsplit(path)
+    if (
+        not path.startswith("/")
+        or path.startswith("//")
+        or parsed.scheme
+        or parsed.netloc
+        or parsed.query
+        or parsed.fragment
+        or "//" in parsed.path
+    ):
+        raise ValueError("Expected a relative API path")
+
+    segments = parsed.path.split("/")[1:]
+    for segment in segments:
+        decoded = unquote(segment)
+        if (
+            not segment
+            or re.fullmatch(r"[A-Za-z0-9._~%\-]+", segment) is None
+            or re.search(r"%(?![0-9A-Fa-f]{2})", segment) is not None
+            or decoded in {".", ".."}
+            or "/" in decoded
+            or "\\" in decoded
+        ):
+            raise ValueError("Expected a relative API path")
+    return parsed.path
+
+
+def build_public_api_url(public_api_origin: str, path: str) -> str:
+    """Join a trusted public API base URL with a route without losing its mount.
+
+    If an application is externally mounted at ``/api``, callers that already
+    name a ``/api/...`` route retain exactly one such boundary. Other routes
+    (including Agent routes) are appended below the configured mount.
+    """
+    normalized_base = _normalize_public_api_origin(public_api_origin)
+    normalized_path = _normalize_public_api_relative_path(path)
+    parsed_base = urlsplit(normalized_base)
+    base_path = parsed_base.path
+    if base_path and (
+        normalized_path == base_path
+        or normalized_path.startswith(f"{base_path}/")
+    ):
+        combined_path = normalized_path
+    elif base_path.endswith("/api") and (
+        normalized_path == "/api"
+        or normalized_path.startswith("/api/")
+    ):
+        # A gateway mount can already end at the application's /api boundary,
+        # for example ``/gateway/api``. Remove exactly that adjacent duplicate
+        # while retaining every segment before it; Agent and export routes do
+        # not begin with /api and therefore remain simple append operations.
+        combined_path = f"{base_path}{normalized_path[len('/api') :]}"
+    else:
+        combined_path = f"{base_path}{normalized_path}"
+    return f"{parsed_base.scheme}://{parsed_base.netloc}{combined_path}"
+
+
+def _require_exact_https_origin(value: str, env_name: str) -> str:
+    """Accept only a CSP-safe HTTPS origin, never a URL with path or credentials."""
+    raw_value = value or ""
+    candidate = raw_value.strip()
+    try:
+        parsed = urlsplit(candidate)
+        # Accessing port also rejects malformed or out-of-range ports.
+        parsed_port = parsed.port
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid {env_name}: expected an exact HTTPS origin") from exc
+
+    expected = f"https://{parsed.netloc}"
+    canonical_candidate = candidate[:-1] if candidate.endswith("/") else candidate
+    hostname_labels = parsed.hostname.split(".") if parsed.hostname else []
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed_port == 0
+        or re.fullmatch(r"[A-Za-z0-9.-]+", parsed.hostname) is None
+        or any(
+            not label or label.startswith("-") or label.endswith("-")
+            for label in hostname_labels
+        )
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or candidate != raw_value
+        or canonical_candidate != expected
+    ):
+        raise RuntimeError(f"Invalid {env_name}: expected an exact HTTPS origin")
+    return expected
+
+
+def _resolve_yifut_base_url(value: str, *, enabled: bool) -> str:
+    """Keep disabled deployments bootable without weakening enabled checkout.
+
+    A stale or placeholder provider URL is irrelevant while payments are
+    disabled. Enabled deployments must still fail closed before they can sign
+    or submit a checkout to an unsafe destination.
+    """
+    if enabled:
+        return _require_exact_https_origin(value, ENV_YIFUT_BASE_URL)
+    try:
+        return _require_exact_https_origin(value, ENV_YIFUT_BASE_URL)
+    except RuntimeError:
+        return DEFAULT_YIFUT_BASE_URL
 
 
 def _resolve_frontend_origin(cors_allow_origins: List[str]) -> str:
@@ -190,6 +406,15 @@ class Settings:
     ai_dedupe_model: str
     ai_dedupe_max_candidates: int
     ai_timeout_seconds: int
+    ai_max_request_body_bytes: int
+    ai_max_text_field_chars: int
+    ai_stream_max_event_bytes: int
+    ai_stream_max_total_bytes: int
+    ai_stream_max_events: int
+    ai_assistant_buffer_max_chars: int
+    ai_stream_total_timeout_seconds: int
+    ai_stream_queue_max_events: int
+    ai_max_output_tokens: int
     gemini_api_key: Optional[str]
     gemini_base_url: str
     gemini_model: str
@@ -244,6 +469,60 @@ def load_settings() -> Settings:
         os.getenv(ENV_AI_DEDUPE_MAX_CANDIDATES, DEFAULT_AI_DEDUPE_MAX_CANDIDATES)
     )
     ai_timeout_seconds = int(os.getenv(ENV_AI_TIMEOUT_SECONDS, DEFAULT_AI_TIMEOUT_SECONDS))
+    ai_max_request_body_bytes = _get_bounded_int_env(
+        ENV_AI_MAX_REQUEST_BODY_BYTES,
+        DEFAULT_AI_MAX_REQUEST_BODY_BYTES,
+        minimum=1024,
+        maximum=64 * 1024 * 1024,
+    )
+    ai_max_text_field_chars = _get_bounded_int_env(
+        ENV_AI_MAX_TEXT_FIELD_CHARS,
+        DEFAULT_AI_MAX_TEXT_FIELD_CHARS,
+        minimum=1000,
+        maximum=2_000_000,
+    )
+    ai_stream_max_event_bytes = _get_bounded_int_env(
+        ENV_AI_STREAM_MAX_EVENT_BYTES,
+        DEFAULT_AI_STREAM_MAX_EVENT_BYTES,
+        minimum=1024,
+        maximum=4 * 1024 * 1024,
+    )
+    ai_stream_max_total_bytes = _get_bounded_int_env(
+        ENV_AI_STREAM_MAX_TOTAL_BYTES,
+        DEFAULT_AI_STREAM_MAX_TOTAL_BYTES,
+        minimum=64 * 1024,
+        maximum=64 * 1024 * 1024,
+    )
+    ai_stream_max_events = _get_bounded_int_env(
+        ENV_AI_STREAM_MAX_EVENTS,
+        DEFAULT_AI_STREAM_MAX_EVENTS,
+        minimum=100,
+        maximum=100_000,
+    )
+    ai_assistant_buffer_max_chars = _get_bounded_int_env(
+        ENV_AI_ASSISTANT_BUFFER_MAX_CHARS,
+        DEFAULT_AI_ASSISTANT_BUFFER_MAX_CHARS,
+        minimum=16 * 1024,
+        maximum=16 * 1024 * 1024,
+    )
+    ai_stream_total_timeout_seconds = _get_bounded_int_env(
+        ENV_AI_STREAM_TOTAL_TIMEOUT_SECONDS,
+        DEFAULT_AI_STREAM_TOTAL_TIMEOUT_SECONDS,
+        minimum=10,
+        maximum=1800,
+    )
+    ai_stream_queue_max_events = _get_bounded_int_env(
+        ENV_AI_STREAM_QUEUE_MAX_EVENTS,
+        DEFAULT_AI_STREAM_QUEUE_MAX_EVENTS,
+        minimum=1,
+        maximum=1024,
+    )
+    ai_max_output_tokens = _get_bounded_int_env(
+        ENV_AI_MAX_OUTPUT_TOKENS,
+        DEFAULT_AI_MAX_OUTPUT_TOKENS,
+        minimum=256,
+        maximum=65_536,
+    )
     gemini_api_key = os.getenv(ENV_GEMINI_API_KEY)
     gemini_base_url = os.getenv(ENV_GEMINI_BASE_URL, DEFAULT_GEMINI_BASE_URL)
     gemini_model = os.getenv(ENV_GEMINI_MODEL, DEFAULT_GEMINI_MODEL)
@@ -275,19 +554,25 @@ def load_settings() -> Settings:
     feishu_app_id = os.getenv(ENV_FEISHU_APP_ID)
     feishu_app_secret = os.getenv(ENV_FEISHU_APP_SECRET)
     frontend_origin = _resolve_frontend_origin(cors_allow_origins)
-    public_api_origin = _normalize_origin(
+    public_api_origin = _normalize_public_api_origin(
         os.getenv(ENV_PUBLIC_API_ORIGIN, DEFAULT_PUBLIC_API_ORIGIN)
     )
-    export_snapshot_ttl_seconds = int(
-        os.getenv(ENV_EXPORT_SNAPSHOT_TTL_SECONDS, DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS)
+    export_snapshot_ttl_seconds = _get_bounded_int_env(
+        ENV_EXPORT_SNAPSHOT_TTL_SECONDS,
+        DEFAULT_EXPORT_SNAPSHOT_TTL_SECONDS,
+        minimum=MIN_EXPORT_SNAPSHOT_TTL_SECONDS,
+        maximum=MAX_EXPORT_SNAPSHOT_TTL_SECONDS,
     )
     export_token_secret = _resolve_export_token_secret(
         database_url,
         logto_issuer,
         logto_app_id,
     )
-    export_render_timeout_seconds = int(
-        os.getenv(ENV_EXPORT_RENDER_TIMEOUT_SECONDS, DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS)
+    export_render_timeout_seconds = _get_bounded_int_env(
+        ENV_EXPORT_RENDER_TIMEOUT_SECONDS,
+        DEFAULT_EXPORT_RENDER_TIMEOUT_SECONDS,
+        minimum=MIN_EXPORT_RENDER_TIMEOUT_SECONDS,
+        maximum=MAX_EXPORT_RENDER_TIMEOUT_SECONDS,
     )
     redemption_code_encryption_key = os.getenv(ENV_REDEMPTION_CODE_ENCRYPTION_KEY)
     yifut_enabled = _get_bool_env(ENV_YIFUT_ENABLED, False)
@@ -296,8 +581,9 @@ def load_settings() -> Settings:
     yifut_merchant_id = raw_yifut_merchant_id.strip() if raw_yifut_merchant_id else None
     yifut_merchant_private_key = os.getenv(ENV_YIFUT_MERCHANT_PRIVATE_KEY)
     yifut_platform_public_key = os.getenv(ENV_YIFUT_PLATFORM_PUBLIC_KEY)
-    yifut_base_url = _normalize_origin(
-        os.getenv(ENV_YIFUT_BASE_URL, DEFAULT_YIFUT_BASE_URL)
+    yifut_base_url = _resolve_yifut_base_url(
+        os.getenv(ENV_YIFUT_BASE_URL, DEFAULT_YIFUT_BASE_URL),
+        enabled=yifut_enabled,
     )
 
     _settings = Settings(
@@ -318,6 +604,15 @@ def load_settings() -> Settings:
         ai_dedupe_model=ai_dedupe_model,
         ai_dedupe_max_candidates=ai_dedupe_max_candidates,
         ai_timeout_seconds=ai_timeout_seconds,
+        ai_max_request_body_bytes=ai_max_request_body_bytes,
+        ai_max_text_field_chars=ai_max_text_field_chars,
+        ai_stream_max_event_bytes=ai_stream_max_event_bytes,
+        ai_stream_max_total_bytes=ai_stream_max_total_bytes,
+        ai_stream_max_events=ai_stream_max_events,
+        ai_assistant_buffer_max_chars=ai_assistant_buffer_max_chars,
+        ai_stream_total_timeout_seconds=ai_stream_total_timeout_seconds,
+        ai_stream_queue_max_events=ai_stream_queue_max_events,
+        ai_max_output_tokens=ai_max_output_tokens,
         gemini_api_key=gemini_api_key,
         gemini_base_url=gemini_base_url,
         gemini_model=gemini_model,

@@ -167,8 +167,8 @@ class AssistantStreamThinkingModeTests(unittest.IsolatedAsyncioTestCase):
             AsyncMock(return_value=assistant_session),
         ), patch.object(
             assistant_router,
-            "get_session_detail",
-            AsyncMock(return_value=(assistant_session, [])),
+            "list_turn_history",
+            AsyncMock(return_value=[]),
         ), patch.object(
             assistant_router,
             "_build_bank_context",
@@ -973,7 +973,11 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("useAssistantResourcePickers({", assistant_source)
         self.assertNotIn("openExperiencePicker", resource_picker_source)
         self.assertNotIn("experienceService.listAll('work')", resource_picker_source)
-        self.assertIn("resumeService.list()", resource_picker_source)
+        self.assertIn("resumeService.list({", resource_picker_source)
+        self.assertIn(
+            "expectedAuthCacheKey: operation.expectedAuthCacheKey",
+            resource_picker_source,
+        )
         self.assertIn("buildSelectedResumeFromResources", resource_picker_source)
         self.assertIn("draftLaunchRequestRef.current = {", resource_picker_source)
         self.assertIn("prefillResume: nextSelectedResume", resource_picker_source)
@@ -1077,8 +1081,12 @@ class AssistantFrontendSourceTests(unittest.TestCase):
         self.assertIn("useAssistantDraftApplyActions({", assistant_source)
         self.assertIn("assertResumeEditorDraftTargetMatches(", draft_apply_actions_source)
         self.assertIn("buildResumeEditorDraftJumpState({", draft_apply_actions_source)
-        self.assertIn("if (pendingManualSaveDraft) {\n              writePendingAssistantManualSaveDraft(pendingManualSaveDraft);", draft_apply_actions_source)
-        self.assertIn("callbackOnly ? { skipApply: true } : undefined", draft_apply_actions_source)
+        self.assertIn("if (pendingManualSaveDraft) {\n              writePendingAssistantManualSaveDraft(operation.expectedAuthCacheKey, pendingManualSaveDraft);", draft_apply_actions_source)
+        self.assertIn("skipApply: callbackOnly", draft_apply_actions_source)
+        self.assertIn(
+            "expectedAuthCacheKey: operation.expectedAuthCacheKey",
+            draft_apply_actions_source,
+        )
         self.assertIn("experienceService.clearListCache()", draft_apply_actions_source)
         self.assertIn("setAppliedMessageIds((prev) => new Set(prev).add(messageId))", draft_apply_actions_source)
         self.assertIn("markSessionMutated(selectedSession.id)", draft_apply_actions_source)
@@ -1247,12 +1255,12 @@ class AssistantFrontendSourceTests(unittest.TestCase):
 
         self.assertIn("useResumeEditorExperiencePolishCoordinator({", editor_source)
         self.assertIn("useResumeEditorManualSaveDrafts({", coordinator_source)
-        self.assertIn("readPendingAssistantManualSaveDrafts({ resumeId })", manual_draft_hook_source)
+        self.assertIn("readPendingAssistantManualSaveDrafts(authUserKey, { resumeId })", manual_draft_hook_source)
         self.assertIn(".filter((draft) => draft.source === 'resume_editor')", manual_draft_hook_source)
-        self.assertIn("clearPendingAssistantManualSaveDraft({", manual_draft_hook_source)
+        self.assertIn("clearPendingAssistantManualSaveDraft(authUserKey, {", manual_draft_hook_source)
         self.assertIn("buildPendingAssistantManualSaveDraftKey(pendingManualSaveDraft)", manual_draft_hook_source)
         self.assertIn("applyAssistantExperienceDraftToEditingDraft(prev, pendingManualSaveDraft.draft)", manual_draft_hook_source)
-        self.assertNotIn("readPendingAssistantManualSaveDrafts({ resumeId })", editor_source)
+        self.assertNotIn("readPendingAssistantManualSaveDrafts(authUserKey, { resumeId })", editor_source)
         self.assertNotIn("const [pendingManualSaveDraft, staleManualSaveDrafts]", editor_source)
 
     def test_resume_editor_transient_reset_is_in_dedicated_hook(self) -> None:
@@ -1725,8 +1733,8 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
             ):
                 with patch.object(
                     assistant_router,
-                    "get_session_detail",
-                    AsyncMock(return_value=(assistant_session, [])),
+                    "list_turn_history",
+                    AsyncMock(return_value=[]),
                 ):
                     with patch.object(
                         assistant_router,
@@ -1789,8 +1797,8 @@ class AssistantBankContextTests(unittest.IsolatedAsyncioTestCase):
             ):
                 with patch.object(
                     assistant_router,
-                    "get_session_detail",
-                    AsyncMock(return_value=(assistant_session, [])),
+                    "list_turn_history",
+                    AsyncMock(return_value=[]),
                 ):
                     with patch.object(
                         assistant_router,

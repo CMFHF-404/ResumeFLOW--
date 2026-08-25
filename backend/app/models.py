@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Text, Enum as SAEnum, UniqueConstraint, text as sa_text
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, LargeBinary, Text, Enum as SAEnum, UniqueConstraint, text as sa_text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
@@ -206,7 +206,6 @@ class AgentApiKey(SQLModel, table=True):
     name: str
     key_prefix: str = Field(index=True)
     key_hash: str = Field(sa_column=Column(Text, nullable=False))
-    key_plaintext: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
@@ -567,6 +566,22 @@ class ExportRenderSnapshot(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
     consumed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    render_claim_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), nullable=True),
+    )
+    render_claim_expires_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    rendered_pdf: Optional[bytes] = Field(
+        default=None,
+        sa_column=Column(LargeBinary, nullable=True),
+    )
+    rendered_pdf_expires_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )

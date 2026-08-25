@@ -1,6 +1,3 @@
-import asyncio
-import sys
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -21,6 +18,7 @@ from .domain.certifications.certification_router import router as certifications
 from .domain.experience import experience_router
 from .domain.experience.draft_router import router as experience_draft_router
 from .domain.export.export_router import router as export_router
+from .domain.export.snapshot_cleanup_worker import ExportSnapshotCleanupWorker
 from .domain.export.schemas import (
     ExperienceBankPdfExportRequest,
     ResumePdfExportRequest,
@@ -44,6 +42,7 @@ def build_cors_allow_credentials(allow_origins: List[str]) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     payment_expiry_worker = PaymentExpiryWorker()
+    export_snapshot_cleanup_worker = ExportSnapshotCleanupWorker()
     # 启动时：检查数据库连接
     print("Verifying database connection on startup...")
     try:
@@ -56,14 +55,18 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Stopped application startup due to database connection failure.") from e
 
     await payment_expiry_worker.start()
+    await export_snapshot_cleanup_worker.start()
     try:
         yield
     finally:
         # Always stop database maintenance before releasing the browser process.
         try:
-            await payment_expiry_worker.stop()
+            await export_snapshot_cleanup_worker.stop()
         finally:
-            await close_browser()
+            try:
+                await payment_expiry_worker.stop()
+            finally:
+                await close_browser()
 
 app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
 settings = load_settings()

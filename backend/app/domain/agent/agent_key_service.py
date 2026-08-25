@@ -13,7 +13,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 
-from ...models import AgentApiKey, AgentPluginConfig
+from ...models import AgentApiKey, AgentPluginConfig, User
 from ...utils.time_utils import utc_now
 from .schemas import (
     AgentApiKeyRead,
@@ -26,6 +26,9 @@ from .schemas import (
 
 API_KEY_PREFIX = "rfag_"
 KEY_PREFIX_LENGTH = 12
+AGENT_API_KEY_ACTIVE_CHANGED_DETAIL = (
+    "Active Agent API key changed. Refresh and retry."
+)
 
 
 @dataclass(frozen=True)
@@ -63,12 +66,16 @@ def _key_prefix(key: str) -> str:
     return key[:KEY_PREFIX_LENGTH]
 
 
-def _to_api_key_read(record: AgentApiKey) -> AgentApiKeyRead:
+def _to_api_key_read(
+    record: AgentApiKey,
+    *,
+    one_time_plaintext_key: Optional[str] = None,
+) -> AgentApiKeyRead:
     return AgentApiKeyRead(
         id=str(record.id),
         name=record.name,
         key_prefix=record.key_prefix,
-        key=getattr(record, "key_plaintext", None) if record.revoked_at is None else None,
+        key=one_time_plaintext_key,
         created_at=record.created_at,
         last_used_at=record.last_used_at,
         revoked_at=record.revoked_at,
@@ -87,11 +94,18 @@ async def _list_active_agent_api_keys(session: AsyncSession, user_id: str) -> Li
     return list(result.scalars().all())
 
 
-def _created_from_reusable_api_key(record: AgentApiKey) -> CreatedAgentApiKey:
-    return CreatedAgentApiKey(
-        plaintext_key=record.key_plaintext,
-        read=_to_api_key_read(record),
+async def _lock_agent_api_key_user(session: AsyncSession, user_id: str) -> None:
+    # A stable users row serializes active-key CAS across PostgreSQL workers.
+    # PostgreSQL FOR NO KEY UPDATE remains mutually exclusive with another CAS
+    # lock but is compatible with the KEY SHARE acquired by a legacy writer's
+    # agent_api_keys -> users foreign-key insert. This preserves the User -> key
+    # lock order without introducing a mixed-version deadlock.
+    result = await session.execute(
+        select(User.id).where(User.id == user_id).with_for_update(key_share=True)
     )
+    if result.scalars().first() is None:
+        await session.rollback()
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="User not found")
 
 
 async def _recover_agent_api_key_conflict(
@@ -99,16 +113,6 @@ async def _recover_agent_api_key_conflict(
     user_id: str,
 ) -> Optional[CreatedAgentApiKey]:
     active_records = await _list_active_agent_api_keys(session, user_id)
-    reusable = next(
-        (
-            record
-            for record in active_records
-            if getattr(record, "key_plaintext", None)
-        ),
-        None,
-    )
-    if reusable is not None:
-        return _created_from_reusable_api_key(reusable)
     if active_records:
         raise HTTPException(
             status_code=HTTP_409_CONFLICT,
@@ -182,29 +186,39 @@ async def create_agent_api_key(
     user_id: str,
     name: str,
     rotate: bool = False,
+    expected_active_key_id: Optional[str] = None,
+    enforce_expected_active_key: bool = False,
 ) -> CreatedAgentApiKey:
+    if enforce_expected_active_key:
+        await _lock_agent_api_key_user(session, user_id)
     active_records = await _list_active_agent_api_keys(session, user_id)
-    if not rotate:
-        reusable = next(
-            (
-                record
-                for record in active_records
-                if getattr(record, "key_plaintext", None)
-            ),
-            None,
+    if enforce_expected_active_key:
+        expected_id = expected_active_key_id
+        matches_expectation = (
+            (expected_id is None and not active_records)
+            or (
+                expected_id is not None
+                and len(active_records) == 1
+                and str(active_records[0].id) == expected_id
+            )
         )
-        if reusable is not None:
-            return _created_from_reusable_api_key(reusable)
-        if active_records:
+        if not matches_expectation:
+            await session.rollback()
             raise HTTPException(
                 status_code=HTTP_409_CONFLICT,
-                detail="Existing Agent API key cannot be displayed. Refresh it to create a replacement.",
+                detail=AGENT_API_KEY_ACTIVE_CHANGED_DETAIL,
             )
+    if not rotate and active_records:
+        if enforce_expected_active_key:
+            await session.rollback()
+        raise HTTPException(
+            status_code=HTTP_409_CONFLICT,
+            detail="Existing Agent API key cannot be displayed. Refresh it to create a replacement.",
+        )
 
     plaintext_key = _new_plaintext_key()
     for record in active_records:
         record.revoked_at = utc_now()
-        record.key_plaintext = None
         session.add(record)
     if active_records:
         await session.flush()
@@ -213,7 +227,6 @@ async def create_agent_api_key(
         name=name.strip() or "Agent",
         key_prefix=_key_prefix(plaintext_key),
         key_hash=hash_agent_api_key(plaintext_key),
-        key_plaintext=plaintext_key,
     )
     session.add(record)
     try:
@@ -230,7 +243,7 @@ async def create_agent_api_key(
     await session.refresh(record)
     return CreatedAgentApiKey(
         plaintext_key=plaintext_key,
-        read=_to_api_key_read(record),
+        read=_to_api_key_read(record, one_time_plaintext_key=plaintext_key),
     )
 
 
@@ -259,7 +272,6 @@ async def revoke_agent_api_key(
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Agent API key not found")
     if record.revoked_at is None:
         record.revoked_at = utc_now()
-        record.key_plaintext = None
         session.add(record)
         await session.commit()
         await session.refresh(record)
@@ -273,13 +285,20 @@ async def authenticate_agent_api_key(
     if not key or not key.startswith(API_KEY_PREFIX):
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid Agent API key")
     result = await session.execute(
-        select(AgentApiKey).where(AgentApiKey.key_prefix == _key_prefix(key))
+        select(AgentApiKey).where(
+            AgentApiKey.key_prefix == _key_prefix(key),
+            AgentApiKey.revoked_at.is_(None),
+        )
     )
-    record = result.scalars().first()
-    if not record or record.revoked_at is not None:
+    candidates = list(result.scalars().all())
+    matching_records = [
+        record
+        for record in candidates
+        if verify_agent_api_key_hash(key, record.key_hash)
+    ]
+    if len(matching_records) != 1:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid Agent API key")
-    if not verify_agent_api_key_hash(key, record.key_hash):
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid Agent API key")
+    record = matching_records[0]
     record.last_used_at = utc_now()
     session.add(record)
     await session.commit()

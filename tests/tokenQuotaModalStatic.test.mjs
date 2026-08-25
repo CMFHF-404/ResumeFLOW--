@@ -41,7 +41,7 @@ test('token quota modal hides redemption UI while keeping it connected to the se
   assert.match(modal, /clearRedemptionPresentation/);
   assert.match(modal, /const invalidateRedemptionRequest = React\.useCallback[\s\S]*redemptionRequestGenerationRef\.current \+= 1;[\s\S]*redemptionAbortControllerRef\.current\?\.abort\(\)/);
   const redemptionHandler = modal.match(/const handleRedeem = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? '';
-  assert.match(redemptionHandler, /billingService\.redeemCode\(code, \{ signal: controller\.signal \}\)/);
+  assert.match(redemptionHandler, /billingService\.redeemCode\(code, \{[\s\S]*signal: controller\.signal,[\s\S]*expectedAuthCacheKey: authUserKey \?\? undefined/);
   assert.match(redemptionHandler, /const isCurrent = \(\) => \([\s\S]*paymentRefreshLifecycleGenerationRef\.current === lifecycleGeneration[\s\S]*redemptionRequestGenerationRef\.current === requestGeneration/);
   assert.ok((redemptionHandler.match(/if \(!isCurrent\(\)\) return;/g) ?? []).length >= 2);
   assert.match(redemptionHandler, /finally \{\s*if \(isCurrent\(\)\) \{[\s\S]*setIsRedeeming\(false\)/);
@@ -156,7 +156,7 @@ test('token quota modal lists, refreshes, repeats, and cancels orders', () => {
 
   assert.match(
     ordersHook,
-    /fetchPage: \(limit, cursor, signal\) => billingService\.listPaymentOrders\([\s\S]*limit,[\s\S]*cursor,[\s\S]*\{ signal \}/,
+    /fetchPage: \(limit, cursor, signal\) => billingService\.listPaymentOrders\([\s\S]*limit,[\s\S]*cursor,[\s\S]*\{ signal, expectedAuthCacheKey: authUserKey \?\? undefined \}/,
   );
   assert.match(modal, /加载更多/);
   assert.match(modal, /暂无订单/);
@@ -182,7 +182,7 @@ test('token quota modal lists, refreshes, repeats, and cancels orders', () => {
   assert.match(modal, /case 'expired': return '已取消（超时）'/);
   assert.match(modal, /case 'expired': return '订单已过期；如仍需购买，请再次下单。';/);
   assert.match(modal, /isOrderPastDue/);
-  assert.match(modal, /usePaymentOrdersController\(clearPurchaseAttemptForTerminalOrder\)/);
+  assert.match(modal, /usePaymentOrdersController\(clearPurchaseAttemptForTerminalOrder, authUserKey\)/);
   assert.doesNotMatch(modal, /ordersRequestGenerationRef|ordersLoadRequestRef|orderActionInFlightRef/);
   assert.match(requestController, /private ordersRequestGeneration = 0/);
   assert.match(requestController, /private orderActionInFlight = false/);
@@ -222,6 +222,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   const modal = read('components/TokenQuotaModal.tsx');
   const orderUtils = read('components/tokenQuotaOrderUtils.ts');
   const submissionController = read('components/paymentCheckoutSubmissionController.ts');
+  const checkoutOrigin = read('components/paymentCheckoutOrigin.ts');
   const app = read('App.tsx');
 
   assert.match(modal, /crypto\.randomUUID/);
@@ -263,6 +264,10 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.doesNotMatch(checkoutWatchdog, /checkoutSubmissionControllerRef\.current\.invalidate\(\)/);
   assert.match(modal, /\}, 10_000\);/);
   assert.match(modal, /form\.submit\(\);\s*armCheckoutSubmitWatchdog\(order, submission\);/);
+  assert.equal((modal.match(/assertPaymentCheckoutOrigin\(checkout\.action, import\.meta\.env\.VITE_YIFUT_BASE_URL\);/g) ?? []).length, 2);
+  assert.match(modal, /checkoutError instanceof PaymentCheckoutOriginMismatchError/);
+  assert.match(checkoutOrigin, /actionUrl\.origin === expectedUrl\.origin/);
+  assert.match(checkoutOrigin, /已阻止跳转/);
   assert.match(modal, /const handlePageHide = \(\) => \{\s*checkoutSubmissionControllerRef\.current\.markPageHidden\(\);\s*clearCheckoutSubmitWatchdog\(\);/);
   assert.match(modal, /window\.addEventListener\('pagehide', handlePageHide\)/);
   assert.match(modal, /未能跳转至收银台，订单已保留。请在订单列表点击“继续支付”。/);
@@ -272,7 +277,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /checkoutSubmissionControllerRef\.current\.consumePersistedPageShow\(\)/);
   assert.match(modal, /resetCheckoutAfterExternalReturn\(\);/);
   assert.match(modal, /setCheckoutReturnSyncOrderId\(orderId\);/);
-  assert.match(modal, /billingService\.syncPaymentOrder\(orderId\)/);
+  assert.match(modal, /billingService\.syncPaymentOrder\(orderId, \{[\s\S]*expectedAuthCacheKey: authUserKey \?\? undefined/);
   assert.match(modal, /invalidateOrderLoadRequests\(\);\s*setActiveView\('orders'\);/);
   assert.equal((modal.match(/setIsCheckoutSubmitting\(true\);\s*setCheckoutForm\(checkout\);/g) ?? []).length, 2);
   assert.match(modal, /isPurchasing \|\| isCheckoutSubmitting/);
@@ -282,8 +287,8 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /paymentOrderConflictMessage\(unsettledConflict\)/);
   assert.match(modal, /const handleContinuePayment = async \(order: PaymentOrder\) => \{\s*if \(isCheckoutSubmitting\) return;/);
   assert.match(modal, /Failed to resume payment order[\s\S]*resolveUnsettledPaymentOrderConflict\(checkoutError\)/);
-  assert.match(modal, /billingService\.getPaymentOrder\(unsettledConflict\.orderId\)/);
-  assert.match(modal, /billingService\.getPaymentOrder\(unsettledConflict\.orderId\)/);
+  assert.equal((modal.match(/billingService\.getPaymentOrder\(unsettledConflict\.orderId, \{/g) ?? []).length, 2);
+  assert.ok((modal.match(/expectedAuthCacheKey: authUserKey \?\? undefined/g) ?? []).length >= 15);
   assert.match(modal, /console\.warn\('Failed to load checkout for created payment order', checkoutError\)/);
   assert.match(modal, /resolveUnsettledPaymentOrderConflict\(checkoutError\)/);
   assert.match(modal, /const handleRepeatPurchase = async \(order: PaymentOrder\) => \{[\s\S]*if \(!paymentsEnabled\)[\s\S]*products\.find\(\(candidate\) => candidate\.sku === order\.sku\)[\s\S]*clearPurchaseAttemptForTerminalOrder\(order\);[\s\S]*setActiveView\('purchase'\);\s*await handlePurchase\(product\);/);
@@ -293,7 +298,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /role="alert" aria-live="assertive"/);
   assert.match(modal, /action=\{checkoutForm\.action\}/);
   assert.match(modal, /Object\.entries\(checkoutForm\.fields\)/);
-  assert.match(modal, /syncPaymentOrder\(returnedPaymentOrderId\)/);
+  assert.match(modal, /syncPaymentOrder\(returnedPaymentOrderId, \{/);
   assert.match(modal, /finishReturnedOrder\(order, true\)/);
   assert.match(submissionController, /shouldRecoverFromWatchdog/);
   assert.match(submissionController, /consumePersistedPageShow/);
@@ -307,13 +312,13 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(quotaRefreshInvalidator, /quotaRefreshGenerationRef\.current \+= 1;[\s\S]*quotaRefreshAbortControllerRef\.current\?\.abort\(\)/);
   assert.match(quotaRefreshInvalidator, /fulfilledRefreshGenerationRef\.current \+= 1;[\s\S]*fulfilledRefreshAbortControllerRef\.current\?\.abort\(\)/);
   assert.match(quotaRefreshInvalidator, /billingService\.clearBillingCache\(\)/);
-  const regularQuotaRefresh = modal.match(/const refresh = React\.useCallback\(async[\s\S]*?\}, \[invalidateQuotaRefresh, onSummaryChange\]\);/)?.[0] ?? '';
+  const regularQuotaRefresh = modal.match(/const refresh = React\.useCallback\(async[\s\S]*?\}, \[authUserKey, invalidateQuotaRefresh, onSummaryChange\]\);/)?.[0] ?? '';
   assert.match(regularQuotaRefresh, /invalidateQuotaRefresh\(\);[\s\S]*const refreshGeneration = quotaRefreshGenerationRef\.current/);
-  assert.match(regularQuotaRefresh, /billingService\.getSummary\(\{ force: true, signal: controller\.signal \}\)/);
-  assert.match(regularQuotaRefresh, /billingService\.getUsage\(80, \{ signal: controller\.signal \}\)/);
+  assert.match(regularQuotaRefresh, /billingService\.getSummary\(\{[\s\S]*force: true,[\s\S]*signal: controller\.signal,[\s\S]*expectedAuthCacheKey/);
+  assert.match(regularQuotaRefresh, /billingService\.getUsage\(80, \{[\s\S]*signal: controller\.signal,[\s\S]*expectedAuthCacheKey/);
   assert.match(regularQuotaRefresh, /controller\.signal\.aborted[\s\S]*quotaRefreshGenerationRef\.current !== refreshGeneration[\s\S]*onSummaryChange\(nextSummary\)/);
   assert.match(modal, /const refreshFulfilledOrderData = React\.useCallback[\s\S]*?invalidateQuotaRefresh\(\);\s*setIsLoading\(false\);[\s\S]*?const refreshGeneration = fulfilledRefreshGenerationRef\.current;/);
-  assert.match(modal, /Promise\.allSettled\(\[[\s\S]*billingService\.getUsage\(80, \{ signal: controller\.signal \}\)/);
+  assert.match(modal, /Promise\.allSettled\(\[[\s\S]*billingService\.getUsage\(80, \{[\s\S]*signal: controller\.signal,[\s\S]*expectedAuthCacheKey/);
   assert.match(modal, /Payment fulfilled but post-payment refresh failed/);
   assert.match(modal, /attempts < 6/);
   assert.match(modal, /重新查询支付状态/);
@@ -324,7 +329,7 @@ test('payment checkout submits the signed server form and returned orders sync s
   assert.match(modal, /acknowledgedPaymentStateTokenRef\.current = observedPaymentStateToken/);
   assert.match(modal, /最近订单已支付或到账；如确需再次购买，请再次点击购买/);
   assert.match(modal, /createPaymentOrder\(\s*product\.sku,\s*idempotencyKey,\s*observedPaymentStateToken,\s*observedCatalogVersion,/);
-  assert.match(modal, /getPaymentPurchaseContext\(\{ signal: controller\.signal \}\)/);
+  assert.match(modal, /getPaymentPurchaseContext\(\{[\s\S]*signal: controller\.signal,[\s\S]*expectedAuthCacheKey: authUserKey \?\? undefined/);
   assert.match(orderUtils, /payment_order_state_changed/);
   assert.match(orderUtils, /payment_catalog_changed/);
   assert.match(modal, /unsettledConflict\.code === 'payment_catalog_changed'/);
@@ -343,17 +348,31 @@ test('payment checkout submits the signed server form and returned orders sync s
 });
 
 test('usage trend chart fills its card height and reserves space for date labels', () => {
-  const modal = read('components/TokenQuotaModal.tsx');
+  const charts = read('components/TokenQuotaCharts.tsx');
 
-  assert.match(modal, /const axisMax = maxVal > 0 \? maxVal \* 1\.25 : 1000;/);
-  assert.match(modal, /const labelBandHeight = usageByDay\.length >= 2 \? 18 : 0;/);
-  assert.match(modal, /const chartBottom = height - labelBandHeight - 1;/);
-  assert.match(modal, /item\.total_tokens \/ axisMax/);
-  assert.match(modal, /<svg viewBox=\{`0 0 \$\{width\} \$\{height\}`\} className="h-full w-full overflow-visible"/);
+  assert.match(charts, /const axisMax = maxVal > 0 \? maxVal \* 1\.25 : 1000;/);
+  assert.match(charts, /const labelBandHeight = usageByDay\.length >= 2 \? 18 : 0;/);
+  assert.match(charts, /const chartBottom = height - labelBandHeight - 1;/);
+  assert.match(charts, /item\.total_tokens \/ axisMax/);
+  assert.match(charts, /<svg viewBox=\{`0 0 \$\{width\} \$\{height\}`\} className="h-full w-full overflow-visible"/);
 });
 
-test('token quota modal uses supported Tailwind CDN utilities', () => {
+test('token quota modal delegates pure chart presentation to a focused child module', () => {
   const modal = read('components/TokenQuotaModal.tsx');
+  const charts = read('components/TokenQuotaCharts.tsx');
+
+  assert.match(modal, /import \{ TokenQuotaCharts \} from ['"]\.\/TokenQuotaCharts['"]/);
+  assert.match(modal, /<TokenQuotaCharts usageByDay=\{usageByDay\} usageByEntrypoint=\{usageByEntrypoint\} \/>/);
+  assert.doesNotMatch(modal, /const Usage(?:Line|Bar)Chart/);
+  assert.match(charts, /export const TokenQuotaCharts/);
+  assert.match(charts, /const UsageLineChart/);
+  assert.match(charts, /const UsageBarChart/);
+});
+
+test('token quota modal uses supported compiled Tailwind utilities', () => {
+  const modal = read('components/TokenQuotaModal.tsx');
+  const charts = read('components/TokenQuotaCharts.tsx');
+  const quotaUi = `${modal}\n${charts}`;
   const unsupportedUtilityClasses = [
     'border-gray-150',
     'text-gray-650',
@@ -374,6 +393,6 @@ test('token quota modal uses supported Tailwind CDN utilities', () => {
 
   for (const utilityClass of unsupportedUtilityClasses) {
     const pattern = new RegExp(`\\b${utilityClass.replaceAll('.', '\\.')}\\b`);
-    assert.doesNotMatch(modal, pattern, `${utilityClass} should not be used in TokenQuotaModal`);
+    assert.doesNotMatch(quotaUi, pattern, `${utilityClass} should not be used in TokenQuotaModal or TokenQuotaCharts`);
   }
 });

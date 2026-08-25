@@ -517,10 +517,13 @@ export const sanitizeRichTextHtml = (input: string) => {
     if (typeof document === 'undefined') {
         return escapeHtml(normalized).replace(/\r?\n/g, '<br>');
     }
-    const container = document.createElement('div');
-    container.innerHTML = normalized;
+    // Parse attacker-controlled markup in an inert template. Assigning it to a
+    // detached regular element is still unsafe: resource errors can dispatch
+    // inline handlers before the sanitizer has rebuilt the allow-listed tree.
+    const template = document.createElement('template');
+    template.innerHTML = normalized;
     const output = document.createElement('div');
-    sanitizeNodeList(Array.from(container.childNodes), output);
+    sanitizeNodeList(Array.from(template.content.childNodes), output);
     trimTrailingLineBreaks(output);
     return output.innerHTML;
 };

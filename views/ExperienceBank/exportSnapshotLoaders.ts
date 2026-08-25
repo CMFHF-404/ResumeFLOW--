@@ -2,9 +2,13 @@ import { certificationsService } from '../../services/certificationsService';
 import { experienceService } from '../../services/experienceService';
 import { profileService } from '../../services/profileService';
 import { skillsService } from '../../services/skillsService';
+import { assertAuthCacheKey } from '../../services/apiClient';
 import type { ExperienceBankPdfRenderSnapshot } from '../../types/experienceBankExport';
 
-export const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot> => {
+export const loadExperienceBankExportSnapshot = async (
+  expectedAuthCacheKey: string,
+): Promise<ExperienceBankPdfRenderSnapshot> => {
+  await assertAuthCacheKey(expectedAuthCacheKey);
   const [
     profile,
     workItems,
@@ -13,13 +17,14 @@ export const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBank
     certifications,
     skills,
   ] = await Promise.all([
-    profileService.getProfile({ force: true }),
-    experienceService.list('work', { force: true }),
-    experienceService.list('project', { force: true }),
-    experienceService.list('education', { force: true }),
-    certificationsService.list({ force: true }),
-    skillsService.list({ force: true }),
+    profileService.getProfile({ force: true, expectedAuthCacheKey }),
+    experienceService.list('work', { force: true, expectedAuthCacheKey }),
+    experienceService.list('project', { force: true, expectedAuthCacheKey }),
+    experienceService.list('education', { force: true, expectedAuthCacheKey }),
+    certificationsService.list({ force: true, expectedAuthCacheKey }),
+    skillsService.list({ force: true, expectedAuthCacheKey }),
   ]);
+  await assertAuthCacheKey(expectedAuthCacheKey);
 
   return {
     profile,
@@ -31,7 +36,10 @@ export const loadExperienceBankExportSnapshot = async (): Promise<ExperienceBank
   };
 };
 
-export const loadExperienceBankValidationSnapshot = async (): Promise<ExperienceBankPdfRenderSnapshot | null> => {
+export const loadExperienceBankValidationSnapshot = async (
+  expectedAuthCacheKey: string,
+): Promise<ExperienceBankPdfRenderSnapshot | null> => {
+  await assertAuthCacheKey(expectedAuthCacheKey);
   const [
     profile,
     workItems,
@@ -40,13 +48,14 @@ export const loadExperienceBankValidationSnapshot = async (): Promise<Experience
     certifications,
     skills,
   ] = await Promise.all([
-    profileService.peekProfileForCurrentUser(),
-    experienceService.peekListForCurrentUser('work', { allowStale: true }),
-    experienceService.peekListForCurrentUser('project', { allowStale: true }),
-    experienceService.peekListForCurrentUser('education', { allowStale: true }),
-    certificationsService.peekListForCurrentUser({ allowStale: true }),
-    skillsService.peekListForCurrentUser({ allowStale: true }),
+    profileService.peekProfileForCurrentUser({ expectedAuthCacheKey }),
+    experienceService.peekListForCurrentUser('work', { allowStale: true, expectedAuthCacheKey }),
+    experienceService.peekListForCurrentUser('project', { allowStale: true, expectedAuthCacheKey }),
+    experienceService.peekListForCurrentUser('education', { allowStale: true, expectedAuthCacheKey }),
+    certificationsService.peekListForCurrentUser({ allowStale: true, expectedAuthCacheKey }),
+    skillsService.peekListForCurrentUser({ allowStale: true, expectedAuthCacheKey }),
   ]);
+  await assertAuthCacheKey(expectedAuthCacheKey);
 
   if (!profile || !workItems || !projectItems || !educationItems || !certifications || !skills) {
     return null;

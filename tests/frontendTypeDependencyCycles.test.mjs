@@ -178,6 +178,21 @@ test('shared AI contracts remain a leaf within the types layer', () => {
   assert.deepEqual(outsideTypesLayer, []);
 });
 
+test('types layer does not depend on services', () => {
+  const graph = buildDependencyGraph();
+  const typesRoot = path.join(rootDir, 'types') + path.sep;
+  const servicesRoot = path.join(rootDir, 'services') + path.sep;
+  const offenders = [...graph.entries()]
+    .filter(([file, dependencies]) => (
+      file.startsWith(typesRoot)
+      && dependencies.some((dependency) => dependency.startsWith(servicesRoot))
+    ))
+    .map(([file]) => relative(file))
+    .sort();
+
+  assert.deepEqual(offenders, []);
+});
+
 test('shared frontend layers do not depend on the experience view compatibility facade', () => {
   const graph = buildDependencyGraph();
   const sharedLayerRoots = ['components', 'hooks', 'services', 'utils']

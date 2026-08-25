@@ -15,6 +15,10 @@ type AssistantSidebarHistoryDropdownProps = {
   onSelectSession: (sessionId: string) => void;
   onRenameSession: (event: MouseEvent, session: AssistantSession) => void;
   onDeleteSession: (event: MouseEvent, sessionId: string) => void;
+  hasEarlierSessions: boolean;
+  isLoadingEarlierSessions: boolean;
+  earlierSessionsError: string | null;
+  onLoadEarlierSessions: () => void;
 };
 
 export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDropdownProps> = ({
@@ -25,6 +29,10 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
   onSelectSession,
   onRenameSession,
   onDeleteSession,
+  hasEarlierSessions,
+  isLoadingEarlierSessions,
+  earlierSessionsError,
+  onLoadEarlierSessions,
 }) => (
   <>
     <button
@@ -100,6 +108,27 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
                   </div>
                 );
               })}
+              {hasEarlierSessions ? (
+                <div className="pt-1 text-center">
+                  {earlierSessionsError ? (
+                    <p className="mb-1.5 text-[11px] text-amber-600 dark:text-amber-300" role="status">
+                      {earlierSessionsError}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={onLoadEarlierSessions}
+                    disabled={isLoadingEarlierSessions}
+                    className="inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                  >
+                    {isLoadingEarlierSessions
+                      ? '正在加载更早会话...'
+                      : earlierSessionsError
+                        ? '重试加载更早会话'
+                        : '加载更早会话'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

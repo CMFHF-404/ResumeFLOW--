@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import unicodedata
 from pathlib import Path
@@ -8,12 +7,18 @@ from time import perf_counter
 from typing import Optional
 from zipfile import BadZipFile
 
-from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
 from fastapi import UploadFile
-from pypdf import PdfReader
 from pypdf.errors import PdfReadError
+from ..ai.response_diagnostics import safe_body_log_summary
 
+from .bounded_document_extractor import (
+    extract_document_text_bounded,
+    extract_document_text_sync,
+    extract_docx_text as _extract_docx_text,
+    extract_pdf_text as _extract_pdf_text,
+)
+from .errors import ResumeInputError
 from .payload_normalization import _clean_resume_text
 
 logger = logging.getLogger(__name__)
@@ -64,14 +69,14 @@ def _resolve_file_kind(file: UploadFile) -> str:
         return "pdf"
     if content_type in SUPPORTED_DOCX_TYPES or extension == ".docx":
         return "docx"
-    raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
+    raise ResumeInputError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
 
 
 def _ensure_attachment_size_limit(data: bytes) -> None:
     if len(data) <= MAX_ATTACHMENT_BYTES:
         return
     max_mb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
-    raise ValueError(
+    raise ResumeInputError(
         f"文件过大，无法直接解析。请上传不超过 {max_mb:.0f}MB 的 PDF 或 DOCX 文件。"
     )
 
@@ -92,7 +97,7 @@ def _resolve_file_kind_from_metadata(filename: str, content_type: str) -> str:
         return "pdf"
     if normalized_type in SUPPORTED_DOCX_TYPES or extension == ".docx":
         return "docx"
-    raise ValueError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
+    raise ResumeInputError("不支持的文件类型，请上传 PDF 或 DOCX 文件。")
 
 
 async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> bytes:
@@ -111,39 +116,11 @@ async def extract_text(file: UploadFile, request_id: Optional[str] = None) -> by
         },
     )
     if not data:
-        raise ValueError("文件为空，无法解析。")
+        raise ResumeInputError("文件为空，无法解析。")
     _resolve_file_kind(file)
     total_ms = (perf_counter() - total_start) * 1000
     _log_document_timing("extract_text_total", total_ms, request_id)
     return data
-
-
-def _extract_pdf_text(data: bytes) -> str:
-    reader = PdfReader(io.BytesIO(data))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n".join(pages)
-
-
-def _extract_docx_text(data: bytes) -> str:
-    doc = Document(io.BytesIO(data))
-    parts = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
-
-    def append_table_text(table) -> None:
-        for row in table.rows:
-            cells = []
-            for cell in row.cells:
-                cell_parts = [para.text.strip() for para in cell.paragraphs if para.text.strip()]
-                for nested_table in cell.tables:
-                    append_table_text(nested_table)
-                if cell_parts:
-                    cells.append("\n".join(cell_parts))
-            if cells:
-                parts.append(" | ".join(cells))
-
-    for table in doc.tables:
-        append_table_text(table)
-
-    return "\n".join(parts)
 
 
 def extract_resume_text(
@@ -153,26 +130,64 @@ def extract_resume_text(
     request_id: Optional[str] = None,
 ) -> str:
     if not file_data:
-        raise ValueError("文件为空，无法解析。")
+        raise ResumeInputError("文件为空，无法解析。")
     _ensure_attachment_size_limit(file_data)
     kind = _resolve_file_kind_from_metadata(filename, file_mime_type)
     parse_start = perf_counter()
     try:
-        if kind == "pdf":
-            text = _extract_pdf_text(file_data)
-            parse_step = "parse_pdf"
-        else:
-            text = _extract_docx_text(file_data)
-            parse_step = "parse_docx"
+        text = extract_document_text_sync(
+            file_data,
+            kind=kind,
+            max_output_chars=MAX_RESUME_TEXT_CHARS,
+            pdf_extractor=_extract_pdf_text,
+            docx_extractor=_extract_docx_text,
+        )
+        parse_step = f"parse_{kind}"
     except (PdfReadError, BadZipFile, PackageNotFoundError, ValueError) as exc:
         logger.warning(
-            "[ResumeParse] failed to extract resume text request_id=%s filename=%s kind=%s error=%s",
+            "[ResumeParse] failed to extract resume text request_id=%s filename_meta=%s kind=%s error_type=%s",
             request_id,
-            filename,
+            safe_body_log_summary(filename),
             kind,
-            str(exc),
+            type(exc).__name__,
         )
-        raise ValueError("文件无法读取，请确认文件未损坏、未加密且内容可解析。") from exc
+        raise ResumeInputError(
+            "文件无法读取，请确认文件未损坏、未加密且内容可解析。"
+        ) from exc
+    parse_ms = (perf_counter() - parse_start) * 1000
+    _log_document_timing(parse_step, parse_ms, request_id, {"text_length": len(text)})
+    return text
+
+
+async def extract_resume_text_bounded(
+    file_data: bytes,
+    filename: str,
+    file_mime_type: str,
+    request_id: Optional[str] = None,
+) -> str:
+    if not file_data:
+        raise ResumeInputError("文件为空，无法解析。")
+    _ensure_attachment_size_limit(file_data)
+    kind = _resolve_file_kind_from_metadata(filename, file_mime_type)
+    parse_start = perf_counter()
+    try:
+        text = await extract_document_text_bounded(
+            file_data,
+            kind=kind,
+            max_output_chars=MAX_RESUME_TEXT_CHARS,
+        )
+        parse_step = f"parse_{kind}"
+    except (PdfReadError, BadZipFile, PackageNotFoundError, ValueError) as exc:
+        logger.warning(
+            "[ResumeParse] failed to extract resume text request_id=%s filename_meta=%s kind=%s error_type=%s",
+            request_id,
+            safe_body_log_summary(filename),
+            kind,
+            type(exc).__name__,
+        )
+        raise ResumeInputError(
+            "文件无法读取，请确认文件未损坏、未加密且内容可解析。"
+        ) from exc
     parse_ms = (perf_counter() - parse_start) * 1000
     _log_document_timing(parse_step, parse_ms, request_id, {"text_length": len(text)})
     return text

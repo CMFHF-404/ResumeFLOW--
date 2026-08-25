@@ -61,10 +61,12 @@ const buildExperienceCard = (overrides = {}) => ({
 test('builds a manual-save jump handler that stores pending draft and jumps to resume editor', async () => {
   const { createDraftJumpHandler } = await importAssistantDraftJumpUtils();
   const writtenDrafts = [];
+  const writtenOwnerKeys = [];
   const markedMessageIds = [];
   const jumpedResumeIds = [];
 
   const handler = createDraftJumpHandler({
+    authUserKey: 'owner-1',
     item: {
       message: buildMessage(),
       card: buildExperienceCard({ targetMasterId: 'master-1' }),
@@ -73,7 +75,10 @@ test('builds a manual-save jump handler that stores pending draft and jumps to r
     selectedSession: buildSession(),
     onJumpToResumeEditor: (resumeId) => jumpedResumeIds.push(resumeId),
     markManualSaveMessage: (messageId) => markedMessageIds.push(messageId),
-    writePendingManualSaveDraft: (draft) => writtenDrafts.push(draft),
+    writePendingManualSaveDraft: (ownerKey, draft) => {
+      writtenOwnerKeys.push(ownerKey);
+      writtenDrafts.push(draft);
+    },
     notifyError: (message) => assert.fail(`unexpected error: ${message}`),
     now: () => 1780891200000,
   });
@@ -83,6 +88,7 @@ test('builds a manual-save jump handler that stores pending draft and jumps to r
 
   assert.deepEqual(jumpedResumeIds, ['resume-1']);
   assert.deepEqual(markedMessageIds, ['message-1']);
+  assert.deepEqual(writtenOwnerKeys, ['owner-1']);
   assert.equal(writtenDrafts.length, 1);
   assert.equal(writtenDrafts[0].messageId, 'message-1');
   assert.equal(writtenDrafts[0].masterId, 'master-1');
@@ -96,6 +102,7 @@ test('manual-save jump handler reports target mismatch without writing pending d
   const jumpedResumeIds = [];
 
   const handler = createDraftJumpHandler({
+    authUserKey: 'owner-1',
     item: {
       message: buildMessage(),
       card: buildExperienceCard({ targetMasterId: 'other-master' }),
@@ -104,7 +111,7 @@ test('manual-save jump handler reports target mismatch without writing pending d
     selectedSession: buildSession(),
     onJumpToResumeEditor: (resumeId) => jumpedResumeIds.push(resumeId),
     markManualSaveMessage: () => assert.fail('message should not be marked'),
-    writePendingManualSaveDraft: (draft) => writtenDrafts.push(draft),
+    writePendingManualSaveDraft: (_ownerKey, draft) => writtenDrafts.push(draft),
     notifyError: (message) => errors.push(message),
     now: () => 1780891200000,
   });
@@ -134,6 +141,7 @@ test('attaches jump handlers only to manual-save draft items', async () => {
       },
     ],
     {
+      authUserKey: 'owner-1',
       selectedSession: buildSession(),
       onJumpToResumeEditor: () => {},
       markManualSaveMessage: () => {},
@@ -160,6 +168,7 @@ test('manual non-experience jump handler falls back to resume id from session co
       isManualSaveMode: false,
     }],
     {
+      authUserKey: 'owner-1',
       selectedSession: buildSession({ context_json: { resumeId: 'resume-2' } }),
       onJumpToResumeEditor: (resumeId) => jumpedResumeIds.push(resumeId),
       markManualSaveMessage: () => assert.fail('message should not be marked'),
@@ -172,6 +181,7 @@ test('manual non-experience jump handler falls back to resume id from session co
   const manualItems = attachDraftJumpHandlers(
     [{ ...items[0], isManualSaveMode: true }],
     {
+      authUserKey: 'owner-1',
       selectedSession: buildSession({ context_json: { resumeId: 'resume-2' } }),
       onJumpToResumeEditor: (resumeId) => jumpedResumeIds.push(resumeId),
       markManualSaveMessage: () => assert.fail('message should not be marked'),

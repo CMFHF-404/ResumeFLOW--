@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useAuthOwnerOperationGuard } from "./useAuthOwnerOperationGuard";
+import { isAuthContextChangedError } from "../services/apiClient";
 import { aiService, type AnalyzeStreamEvent, type JDAnalysisResult } from "../services/aiService";
 import type { ResumeEvaluation } from "../types/ai";
 import type { ResumeEvaluationSnapshot } from "../utils/resumeEvaluationSnapshot";
 import { canonicalStringify } from "./jdAnalysisSignatureUtils";
 import { resolveThoughtDisplayEvent } from "../utils/aiThought";
-import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../views/ResumeEditor/constants";
+import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../constants/jdAnalysis";
 import { appendJDThinkingText } from "./jdAnalysisThinkingText";
 
 export type ResumeEvaluationOutcome =
@@ -13,6 +15,7 @@ export type ResumeEvaluationOutcome =
   | { status: "error" };
 
 type UseResumeEvaluationOptions = {
+  authUserKey: string | null;
   resumeId: string | null;
   jdText: string;
   jdAnalysisResult: JDAnalysisResult | null;
@@ -34,6 +37,7 @@ const isAbortError = (error: unknown) => (
  * and AbortController. It can never cancel, replace, or invalidate JD fit.
  */
 export const useResumeEvaluation = ({
+  authUserKey,
   resumeId,
   jdText,
   jdAnalysisResult,
@@ -41,13 +45,17 @@ export const useResumeEvaluation = ({
   evaluationSignature,
   persistEvaluation,
 }: UseResumeEvaluationOptions) => {
+  const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [thinkingText, setThinkingText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const runIdRef = useRef(0);
   const activeResumeIdRef = useRef(resumeId);
-  activeResumeIdRef.current = resumeId;
+
+  useLayoutEffect(() => {
+    activeResumeIdRef.current = resumeId;
+  }, [resumeId]);
 
   const stopEvaluation = useCallback(() => {
     runIdRef.current += 1;
@@ -58,10 +66,10 @@ export const useResumeEvaluation = ({
   }, []);
 
   useEffect(() => stopEvaluation, [stopEvaluation]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     stopEvaluation();
     setError(null);
-  }, [resumeId, stopEvaluation]);
+  }, [authUserKey, resumeId, stopEvaluation]);
   useEffect(() => {
     // A deep request is valid only for the exact JD + full-resume snapshot
     // it started with. Abort immediately when that signature changes.
@@ -81,8 +89,11 @@ export const useResumeEvaluation = ({
     setThinkingText("");
     setIsEvaluating(true);
     let hasThoughtTitle = false;
+    let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
     const isCurrent = () => (
-      runIdRef.current === runId && activeResumeIdRef.current === resumeId
+      runIdRef.current === runId
+      && activeResumeIdRef.current === resumeId
+      && Boolean(operation && ownerGuard.isOperationCurrent(operation))
     );
     const onEvent = (event: AnalyzeStreamEvent) => {
       if (!isCurrent()) return;
@@ -101,20 +112,29 @@ export const useResumeEvaluation = ({
       }
     };
     try {
+      operation = await ownerGuard.beginOperation();
+      if (runIdRef.current !== runId) {
+        return { status: "aborted" };
+      }
       const evaluation = await aiService.evaluateResume({
         text: jdText,
         resumeText: canonicalStringify(snapshot),
         ...(typeof jdAnalysisResult?.matchPercentage === "number"
           ? { jdMatchPercentage: jdAnalysisResult.matchPercentage }
           : {}),
-      }, onEvent, controller.signal);
+      }, onEvent, controller.signal, {
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await ownerGuard.assertOperationCurrent(operation);
       if (!isCurrent()) return { status: "aborted" };
       if (!persistEvaluation(evaluation, requestEvaluationSignature)) {
         return { status: "aborted" };
       }
       return { status: "success", evaluation };
     } catch (cause) {
-      if (isAbortError(cause)) return { status: "aborted" };
+      if (isAbortError(cause) || isAuthContextChangedError(cause)) {
+        return { status: "aborted" };
+      }
       if (isCurrent()) {
         setError(cause instanceof Error ? cause.message : "六维报告生成失败，请重试");
       }
@@ -126,7 +146,15 @@ export const useResumeEvaluation = ({
         setThinkingText("");
       }
     }
-  }, [evaluationSignature, jdAnalysisResult?.matchPercentage, jdText, persistEvaluation, resumeId, snapshot]);
+  }, [
+    evaluationSignature,
+    jdAnalysisResult?.matchPercentage,
+    jdText,
+    ownerGuard,
+    persistEvaluation,
+    resumeId,
+    snapshot,
+  ]);
 
   return {
     isEvaluating,

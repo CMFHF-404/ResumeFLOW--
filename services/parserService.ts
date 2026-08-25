@@ -1,4 +1,11 @@
-import apiClient, { getAuthorizationHeader } from './apiClient';
+import apiClient, {
+  AuthContextChangedError,
+  getAuthorizationHeader,
+} from './apiClient';
+import {
+  isAuthSessionSnapshotCurrent,
+  readAuthSessionSnapshot,
+} from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
 import {
   DEFAULT_QUOTA_PURCHASE_MESSAGE,
@@ -73,6 +80,7 @@ export interface ResumeParseResponse {
 
 export interface ResumeParseOptions {
   enableThinking?: boolean;
+  expectedAuthCacheKey?: string;
 }
 
 export type ResumeParseProgressNode =
@@ -138,11 +146,24 @@ const streamResumeParseRequest = async (
   signal?: AbortSignal,
   options: ResumeParseOptions = {}
 ): Promise<ResumeParseResponse> => {
-  const authHeader = await getAuthorizationHeader();
+  const authHeader = await getAuthorizationHeader(options.expectedAuthCacheKey);
   if (!authHeader) {
     dispatchLoginRequired('write-operation');
     throw new Error('Authentication required for write operation');
   }
+  const dispatchSession = readAuthSessionSnapshot();
+  const assertParseSessionCurrent = () => {
+    if (
+      !isAuthSessionSnapshotCurrent(dispatchSession)
+      || (
+        options.expectedAuthCacheKey
+        && dispatchSession.ownerKey !== options.expectedAuthCacheKey
+      )
+    ) {
+      throw new AuthContextChangedError();
+    }
+  };
+  assertParseSessionCurrent();
 
   const formData = new FormData();
   formData.append('file', file);
@@ -159,6 +180,7 @@ const streamResumeParseRequest = async (
     signal,
   });
 
+  assertParseSessionCurrent();
   if (!response.ok) {
     if (response.status === 401) {
       dispatchLoginRequired('unauthorized-write');
@@ -182,11 +204,13 @@ const streamResumeParseRequest = async (
 
   while (true) {
     const { done, value } = await reader.read();
+    assertParseSessionCurrent();
     buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
     const { lines, remainder } = parseNdjsonChunk(buffer, done);
     buffer = remainder;
 
     for (const line of lines) {
+      assertParseSessionCurrent();
       let parsed: ResumeParseStreamEvent;
       try {
         parsed = JSON.parse(line) as ResumeParseStreamEvent;
@@ -222,6 +246,7 @@ const streamResumeParseRequest = async (
   if (!finalResult) {
     throw new Error('Resume parse stream did not return final result');
   }
+  assertParseSessionCurrent();
   return finalResult;
 };
 
@@ -242,6 +267,7 @@ export const parserService = {
         'Content-Type': null,
       },
       signal,
+      expectedAuthCacheKey: options.expectedAuthCacheKey,
     });
     return response.data;
   },

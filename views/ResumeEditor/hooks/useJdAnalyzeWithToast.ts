@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { AnalyzeStreamEvent, JDAnalysisResult } from '../../../services/aiService';
 import { resolveAutoResumeName } from '../autoNameUtils';
 import { createJDAnalyzeWorkflowCoordinator } from '../jdAnalyzeWorkflow';
@@ -52,12 +52,14 @@ export const useJdAnalyzeWithToast = ({
         resumeId,
         resumeName,
     });
-    latestAutoNameContextRef.current = {
-        applyResumeNameUpdate,
-        canAutoNameResume,
-        resumeId,
-        resumeName,
-    };
+    useLayoutEffect(() => {
+        latestAutoNameContextRef.current = {
+            applyResumeNameUpdate,
+            canAutoNameResume,
+            resumeId,
+            resumeName,
+        };
+    }, [applyResumeNameUpdate, canAutoNameResume, resumeId, resumeName]);
 
     const applyLatestAutoName = useCallback(async (
         result: JDAnalysisResult | null,

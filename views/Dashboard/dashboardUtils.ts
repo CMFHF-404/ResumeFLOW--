@@ -6,11 +6,12 @@ import {
 import { formatRelativeTime } from '../../utils/timeUtils';
 
 type EvaluationScoreResolver = (
+  ownerKey: string | null | undefined,
   id: string,
   expectedBaseFingerprint?: string | null,
   expectedTargetRoleSignature?: string
 ) => number | undefined | null;
-type MatchRateResolver = (id: string) => number | undefined | null;
+type MatchRateResolver = (ownerKey: string | null | undefined, id: string) => number | undefined | null;
 type DashboardResumeServerUpdate = Pick<Resume, 'id'> & {
   title: string;
   updated_at: string;
@@ -168,11 +169,13 @@ export const getVisibleDashboardResumes = (
 
 export const mergeEvaluationScoresIntoResumes = (
   items: Resume[],
+  ownerKey: string | null | undefined,
   resolveLocalEvaluationScore: EvaluationScoreResolver = resolveDashboardResumeLocalEvaluationScore
 ) => {
   let changed = false;
   const next = items.map((resume) => {
     const localEvaluationScore = resolveLocalEvaluationScore(
+      ownerKey,
       resume.id,
       resume.evaluationBaseFingerprint,
       resume.evaluationTargetRoleSignature
@@ -192,11 +195,12 @@ export const mergeEvaluationScoresIntoResumes = (
 
 export const mergeMatchRatesIntoResumes = (
   items: Resume[],
+  ownerKey: string | null | undefined,
   resolveLocalMatchRate: MatchRateResolver = resolveDashboardResumeLocalMatchRate
 ) => {
   let changed = false;
   const next = items.map((resume) => {
-    const localMatchRate = resolveLocalMatchRate(resume.id);
+    const localMatchRate = resolveLocalMatchRate(ownerKey, resume.id);
     const matchRate = typeof localMatchRate === 'number' ? localMatchRate : resume.matchRate;
     const status = (matchRate > 0 || typeof resume.evaluationScore === 'number' ? 'final' : 'draft') as Resume['status'];
     if (resume.matchRate === matchRate && resume.status === status) {

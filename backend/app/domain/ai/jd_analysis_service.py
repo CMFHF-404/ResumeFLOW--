@@ -4,6 +4,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ...config import load_settings
 from .llm_transport import _call_llm, _emit_thought, _stream_gemini_json_response
+from . import runtime_budget
 from .prompts import JD_ANALYSIS, JD_ANALYSIS_IMAGE
 from .response_normalizers import (
     _ensure_skill_matches,
@@ -110,6 +111,7 @@ def _build_jd_analysis_user_parts(
     ]
 
 
+@runtime_budget.ai_wall_clock_limited
 async def analyze_jd_with_thoughts(
     text: str,
     resume_text: Optional[str] = None,
@@ -153,10 +155,11 @@ async def analyze_jd_with_thoughts(
             budget_tokens=settings.ai_thinking_budget_jd_analysis,
             thought_callback=thought_callback,
         )
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         logger.warning(
             "[AI Stream] thought streaming failed for jd_text_analysis, falling back to standard analysis.",
-            exc_info=True,
         )
         return await analyze_jd(
             text,
@@ -271,6 +274,7 @@ def _build_image_jd_user_parts(
     ]
 
 
+@runtime_budget.ai_wall_clock_limited
 async def analyze_jd_with_image_thoughts(
     image_b64: str,
     mime_type: str,
@@ -320,10 +324,11 @@ async def analyze_jd_with_image_thoughts(
             budget_tokens=settings.ai_thinking_budget_jd_analysis,
             thought_callback=thought_callback,
         )
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         logger.warning(
             "[AI Stream] thought streaming failed for jd_image_analysis, falling back to standard image analysis.",
-            exc_info=True,
         )
         return await analyze_jd_with_image(
             image_b64=image_b64,

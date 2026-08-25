@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
+import logging
 import math
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
 
 from fastapi import HTTPException
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from ...models import ExperienceCategory
+from ...models import ExperienceCategory, ExportRenderSnapshot
 from ..ai.ai_service import (
     analyze_jd,
     analyze_resume_evaluation,
     generate_personal_summary,
     polish_experience,
 )
+from ..ai.runtime_budget import TERMINAL_AI_RUNTIME_ERRORS, ai_wall_clock_limited
 from ..export.schemas import (
     CertificationViewSnapshot,
     EducationViewSnapshot,
@@ -30,7 +33,17 @@ from ..export.schemas import (
     StarFields,
 )
 from ..export.browser_pdf_service import render_resume_pdf
-from ..export.snapshot_service import create_render_snapshot
+from ..export.download_contract import (
+    EXPORT_MODE_LEGACY_V1,
+    build_versioned_download_url,
+    limit_export_file_name,
+)
+from ..export.snapshot_service import (
+    RenderSnapshotReference,
+    build_render_snapshot_token,
+    create_render_snapshot,
+    delete_temporary_render_snapshot,
+)
 from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_schema import ResumeExperienceItem
 from ..resume.resume_analysis_freshness import acquire_user_resume_analysis_lock
@@ -99,7 +112,6 @@ from .agent_key_service import (
     revoke_agent_api_key,
     upsert_agent_plugin_config,
     verify_agent_api_key_hash,
-    _created_from_reusable_api_key,
     _key_prefix,
     _list_active_agent_api_keys,
     _new_plaintext_key,
@@ -142,8 +154,147 @@ class AgentBankChangedError(Exception):
     pass
 
 
+class AgentIdempotencyConflictError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class AgentIdempotencyContext:
+    key_hash: str
+    request_hash: str
+
+
+logger = logging.getLogger(__name__)
+
+
 def _now_aware() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def build_agent_idempotency_context(
+    user_id: str,
+    key: str,
+    payload: AgentJobGenerateRequest,
+    export_mode: str,
+) -> AgentIdempotencyContext:
+    key_hash = hashlib.sha256(f"{user_id}\0{key}".encode("utf-8")).hexdigest()
+    canonical_request = json.dumps(
+        {
+            "contract": "agent-job-generate-v1",
+            "export_mode": export_mode,
+            "payload": payload.model_dump(mode="json"),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return AgentIdempotencyContext(
+        key_hash=key_hash,
+        request_hash=hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+    )
+
+
+def _idempotency_metadata(resume: Resume) -> Dict[str, Any] | None:
+    config = resume.config if isinstance(resume.config, dict) else {}
+    agent_job = config.get("agentJob") if isinstance(config.get("agentJob"), dict) else {}
+    metadata = agent_job.get("idempotency")
+    return metadata if isinstance(metadata, dict) else None
+
+
+async def _load_idempotent_agent_generation(
+    session: AsyncSession,
+    user_id: str,
+    context: AgentIdempotencyContext,
+) -> tuple[Resume, RenderSnapshotReference | None, str | None, str] | None:
+    result = await session.execute(
+        select(Resume)
+        .where(
+            Resume.user_id == user_id,
+            Resume.config["agentJob"]["idempotency"]["keyHash"].as_string()
+            == context.key_hash,
+        )
+        .order_by(Resume.created_at.desc())
+        .limit(1)
+    )
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        return None
+    metadata = _idempotency_metadata(resume) or {}
+    if metadata.get("requestHash") != context.request_hash:
+        raise AgentIdempotencyConflictError(
+            "Idempotency-Key has already been used with a different request."
+        )
+    file_name = limit_export_file_name(str(metadata.get("fileName") or "resume.pdf"))
+    try:
+        snapshot_id = uuid.UUID(str(metadata.get("snapshotId") or ""))
+    except ValueError:
+        return resume, None, None, file_name
+    snapshot_result = await session.execute(
+        select(ExportRenderSnapshot).where(
+            ExportRenderSnapshot.id == snapshot_id,
+            ExportRenderSnapshot.user_id == user_id,
+        )
+    )
+    snapshot = snapshot_result.scalar_one_or_none()
+    if snapshot is None or snapshot.consumed_at is not None:
+        return resume, None, None, file_name
+    expires_at = snapshot.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= _now_aware():
+        return resume, None, None, file_name
+    reference = RenderSnapshotReference(
+        id=snapshot.id,
+        user_id=snapshot.user_id,
+        expires_at=snapshot.expires_at,
+    )
+    return resume, reference, build_render_snapshot_token(reference), file_name
+
+
+def _attach_agent_idempotency_metadata(
+    resume: Resume,
+    context: AgentIdempotencyContext,
+    *,
+    snapshot_id: uuid.UUID,
+    file_name: str,
+) -> None:
+    config = deepcopy(resume.config) if isinstance(resume.config, dict) else {}
+    agent_job = config.get("agentJob") if isinstance(config.get("agentJob"), dict) else {}
+    config["agentJob"] = {
+        **agent_job,
+        "idempotency": {
+            "keyHash": context.key_hash,
+            "requestHash": context.request_hash,
+            "snapshotId": str(snapshot_id),
+            "fileName": file_name,
+        },
+    }
+    resume.config = config
+
+
+def _build_agent_resume_pdf_reference(
+    request: Any,
+    generated_resume_id: str,
+    generated_resume_title: str,
+    record: RenderSnapshotReference,
+    token: str,
+    *,
+    file_name: str,
+    export_mode: str,
+) -> AgentResumePdf:
+    download_path = f"/agent/v1/exports/resume-pdf/{record.id}"
+    absolute_download_path = _absolute_url(request, download_path)
+    return AgentResumePdf(
+        download_url=build_versioned_download_url(
+            absolute_download_path,
+            mode=export_mode,
+            token=token,
+            file_name=file_name,
+        ),
+        file_name=file_name,
+        generated_resume_id=generated_resume_id,
+        generated_resume_title=generated_resume_title,
+    )
 
 
 async def build_agent_job_analysis(
@@ -154,6 +305,7 @@ async def build_agent_job_analysis(
     return (await build_agent_job_analysis_detail(session, user_id, payload)).response
 
 
+@ai_wall_clock_limited
 async def build_agent_job_analysis_detail(
     session: AsyncSession,
     user_id: str,
@@ -608,6 +760,7 @@ def _agent_resume_fact_metadata(
     return facts
 
 
+@ai_wall_clock_limited
 async def build_agent_resume_pdf(
     request: Any,
     session: AsyncSession,
@@ -615,6 +768,8 @@ async def build_agent_resume_pdf(
     payload: AgentJobGenerateRequest,
     analysis: AgentJobAnalysisResponse,
     analysis_result: Optional[Dict[str, Any]] = None,
+    export_mode: str = EXPORT_MODE_LEGACY_V1,
+    idempotency_context: AgentIdempotencyContext | None = None,
 ) -> AgentResumePdf:
     options = await resolve_agent_generate_options(session, user_id, payload)
     resume, resume_items = await resolve_agent_resume_detail(session, user_id, payload.resume_id)
@@ -704,6 +859,55 @@ async def build_agent_resume_pdf(
         )
     else:
         final_evaluation_signature = None
+    file_name = limit_export_file_name(f"{analysis.suggested_folder_name}.pdf")
+    if idempotency_context is not None:
+        try:
+            idempotent = await _load_idempotent_agent_generation(
+                session,
+                user_id,
+                idempotency_context,
+            )
+        except AgentIdempotencyConflictError:
+            await session.rollback()
+            raise
+        if idempotent is not None:
+            generated_resume, existing_record, existing_token, stored_file_name = idempotent
+            file_name = stored_file_name
+            if existing_record is not None and existing_token is not None:
+                generated_resume_id = str(generated_resume.id)
+                generated_resume_title = generated_resume.title
+                await session.rollback()
+                return _build_agent_resume_pdf_reference(
+                    request,
+                    generated_resume_id,
+                    generated_resume_title,
+                    existing_record,
+                    existing_token,
+                    file_name=file_name,
+                    export_mode=export_mode,
+                )
+            replacement_snapshot_id = uuid.uuid4()
+            _attach_agent_idempotency_metadata(
+                generated_resume,
+                idempotency_context,
+                snapshot_id=replacement_snapshot_id,
+                file_name=file_name,
+            )
+            record, token = await create_render_snapshot(
+                session,
+                user_id,
+                snapshot,
+                snapshot_id=replacement_snapshot_id,
+            )
+            return _build_agent_resume_pdf_reference(
+                request,
+                str(generated_resume.id),
+                generated_resume.title,
+                record,
+                token,
+                file_name=file_name,
+                export_mode=export_mode,
+            )
     generated_resume = await _persist_agent_generated_resume(
         session,
         user_id,
@@ -722,15 +926,30 @@ async def build_agent_resume_pdf(
         evaluation_signature=final_evaluation_signature,
         analysis_is_final_snapshot=analysis_is_final_snapshot,
         persist_snapshot_star_overrides=options.polish_before_output,
+        commit=False,
     )
-    file_name = f"{analysis.suggested_folder_name}.pdf"
-    record, token = await create_render_snapshot(session, user_id, snapshot)
-    download_path = f"/exports/download/resume-pdf/{record.id}?{urlencode({'token': token, 'fileName': file_name})}"
-    return AgentResumePdf(
-        download_url=_absolute_url(request, download_path),
+    final_snapshot_id = uuid.uuid4() if idempotency_context is not None else None
+    if final_snapshot_id is not None and idempotency_context is not None:
+        _attach_agent_idempotency_metadata(
+            generated_resume,
+            idempotency_context,
+            snapshot_id=final_snapshot_id,
+            file_name=file_name,
+        )
+    record, token = await create_render_snapshot(
+        session,
+        user_id,
+        snapshot,
+        **({"snapshot_id": final_snapshot_id} if final_snapshot_id is not None else {}),
+    )
+    return _build_agent_resume_pdf_reference(
+        request,
+        str(generated_resume.id),
+        generated_resume.title,
+        record,
+        token,
         file_name=file_name,
-        generated_resume_id=str(generated_resume.id),
-        generated_resume_title=generated_resume.title,
+        export_mode=export_mode,
     )
 
 
@@ -785,6 +1004,8 @@ async def _build_personal_summary(
             jd_text=payload.jd_text,
             polish_level=options.polish_level,
         )
+    except TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception:
         return ""
     return str(result.get("summary") or result.get("content") or "").strip()
@@ -807,6 +1028,8 @@ async def _polish_snapshot_experiences(
                 jd_text=payload.jd_text,
                 mode=mode,
             )
+        except TERMINAL_AI_RUNTIME_ERRORS:
+            raise
         except Exception:
             continue
         if isinstance(result, dict):
@@ -819,9 +1042,47 @@ async def _render_snapshot_page_count(
     user_id: str,
     snapshot: ResumePdfRenderSnapshot,
 ) -> int:
-    record, token = await create_render_snapshot(session, user_id, snapshot.model_copy(deep=True))
-    pdf_bytes = await render_resume_pdf(str(record.id), token)
-    return _pdf_page_count(pdf_bytes)
+    record = None
+    primary_error: BaseException | None = None
+    try:
+        record, token = await create_render_snapshot(
+            session,
+            user_id,
+            snapshot.model_copy(deep=True),
+        )
+        pdf_bytes = await render_resume_pdf(str(record.id), token)
+        return _pdf_page_count(pdf_bytes)
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        if record is not None:
+            cleanup_task = asyncio.create_task(
+                delete_temporary_render_snapshot(
+                    session,
+                    str(record.id),
+                    user_id,
+                )
+            )
+            try:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                # The caller may be cancelled by the shared Agent deadline, but
+                # the committed measurement snapshot must still be removed
+                # before this request releases its database session.
+                try:
+                    await cleanup_task
+                except Exception:
+                    logger.exception(
+                        "Failed to delete a temporary Agent page-fit snapshot."
+                    )
+                raise
+            except Exception:
+                if primary_error is None:
+                    raise
+                logger.exception(
+                    "Failed to delete a temporary Agent page-fit snapshot."
+                )
 
 
 async def _fit_snapshot_to_one_page(
@@ -866,6 +1127,7 @@ async def _persist_agent_generated_resume(
     analysis_is_final_snapshot: bool = False,
     persist_snapshot_star_overrides: bool = False,
     bank_experience_rows: Optional[List[Tuple[Any, Any]]] = None,
+    commit: bool = True,
 ) -> Resume:
     title = f"{payload.company_name} - {payload.job_title} [Agent]"
     target_role = payload.job_title or getattr(source_resume, "target_role", None)
@@ -950,6 +1212,7 @@ async def _persist_agent_generated_resume(
         linked_master_ids.add(master_id)
         next_display_order += 1
 
-    await session.commit()
-    await session.refresh(generated)
+    if commit:
+        await session.commit()
+        await session.refresh(generated)
     return generated

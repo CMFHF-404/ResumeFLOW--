@@ -9,15 +9,21 @@ JD 附件处理服务
   extract_jd_from_attachment(file) -> JDAttachmentResult
 """
 import base64
-import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from zipfile import BadZipFile
 
 from fastapi import UploadFile
 
-from docx import Document
-from pypdf import PdfReader
+from docx.opc.exceptions import PackageNotFoundError
+from pypdf.errors import PdfReadError
+
+from ..parser.bounded_document_extractor import (
+    extract_document_text_bounded,
+    extract_docx_text as _extract_docx_text,
+    extract_pdf_text as _extract_pdf_text,
+)
 
 # ── 支持的文件类型常量 ────────────────────────────────────────────
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -42,6 +48,7 @@ _EXTENSION_TO_MIME: dict[str, str] = {
 }
 
 MIN_DOCUMENT_TEXT_LENGTH = 20
+MAX_JD_DOCUMENT_TEXT_CHARS = 50_000
 
 
 # ── 数据结构 ──────────────────────────────────────────────────────
@@ -116,23 +123,16 @@ def _encode_image_b64(data: bytes) -> str:
 
 # ── 文档处理 ──────────────────────────────────────────────────────
 
-def _extract_pdf_text(data: bytes) -> str:
-    reader = PdfReader(io.BytesIO(data))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n".join(pages)
-
-
-def _extract_docx_text(data: bytes) -> str:
-    doc = Document(io.BytesIO(data))
-    paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-    return "\n".join(paragraphs)
-
-
 def _validate_extracted_text(text: str, filename: str) -> str:
     cleaned = text.strip()
     if len(cleaned) < MIN_DOCUMENT_TEXT_LENGTH:
         raise ValueError(
             f"文件「{filename}」内容过短或无法解析，请确认 JD 文件内容完整。"
+        )
+    if len(cleaned) > MAX_JD_DOCUMENT_TEXT_CHARS:
+        raise ValueError(
+            f"文件「{filename}」提取文本过长，请缩短至 "
+            f"{MAX_JD_DOCUMENT_TEXT_CHARS} 字符以内。"
         )
     return cleaned
 
@@ -181,8 +181,12 @@ async def _process_pdf(file: UploadFile) -> JDAttachmentResult:
     data = await _read_upload_bytes(file)
     filename = file.filename or "PDF"
     try:
-        raw_text = _extract_pdf_text(data)
-    except Exception as exc:
+        raw_text = await extract_document_text_bounded(
+            data,
+            kind="pdf",
+            max_output_chars=MAX_JD_DOCUMENT_TEXT_CHARS,
+        )
+    except (PdfReadError, BadZipFile, PackageNotFoundError, ValueError) as exc:
         raise ValueError(
             f"文件「{filename}」无法解析，请确认它是未损坏且未加密的 PDF 文件。"
         ) from exc
@@ -194,8 +198,12 @@ async def _process_docx(file: UploadFile) -> JDAttachmentResult:
     data = await _read_upload_bytes(file)
     filename = file.filename or "DOCX"
     try:
-        raw_text = _extract_docx_text(data)
-    except Exception as exc:
+        raw_text = await extract_document_text_bounded(
+            data,
+            kind="docx",
+            max_output_chars=MAX_JD_DOCUMENT_TEXT_CHARS,
+        )
+    except (PdfReadError, BadZipFile, PackageNotFoundError, ValueError) as exc:
         raise ValueError(
             f"文件「{filename}」无法解析，请确认它是有效且未损坏的 DOCX 文件。"
         ) from exc

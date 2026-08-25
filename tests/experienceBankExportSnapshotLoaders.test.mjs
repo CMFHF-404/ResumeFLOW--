@@ -14,8 +14,8 @@ test('ExperienceBank delegates export snapshot loading to focused loader module'
   assert.doesNotMatch(page, /skillsService\.list/);
   assert.match(loaders, /export const loadExperienceBankExportSnapshot/);
   assert.match(loaders, /export const loadExperienceBankValidationSnapshot/);
-  assert.match(loaders, /profileService\.getProfile\(\{ force: true \}\)/);
-  assert.match(loaders, /experienceService\.list\('work', \{ force: true \}\)/);
-  assert.match(loaders, /experienceService\.peekListForCurrentUser\('education', \{ allowStale: true \}\)/);
+  assert.match(loaders, /profileService\.getProfile\(\{ force: true, expectedAuthCacheKey \}\)/);
+  assert.match(loaders, /experienceService\.list\('work', \{ force: true, expectedAuthCacheKey \}\)/);
+  assert.match(loaders, /experienceService\.peekListForCurrentUser\('education', \{ allowStale: true, expectedAuthCacheKey \}\)/);
   assert.match(loaders, /return null/);
 });

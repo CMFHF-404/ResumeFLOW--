@@ -1,11 +1,15 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { Resume, ViewState } from '../types';
 import { devLog } from '../services/devLogger';
-import { resumeService } from '../services/resumeService';
+import {
+  assertResumeAuthContext,
+  captureResumeAuthCacheKey,
+  resumeService,
+} from '../services/resumeService';
 import { useProfile } from '../hooks/useProfile';
 import { resolveDisplayName } from '../utils/profileDisplay';
-import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from './resumeStorage';
+import { clearActiveResumeId, getActiveResumeId, setActiveResumeId } from '../services/resumeStorage';
 import {
   filterSelectedDashboardResumeIds,
   getVisibleDashboardResumes,
@@ -66,6 +70,22 @@ const DELETE_VERIFY_MESSAGES = {
   syncFailed: '删除完成，但同步列表失败，请稍后重试',
 } as const;
 
+const canCommitDeleteOperation = async (
+  expectedAuthCacheKey: string,
+  requestGeneration: number,
+  generationRef: { current: number },
+) => {
+  if (generationRef.current !== requestGeneration) {
+    return false;
+  }
+  try {
+    await assertResumeAuthContext(expectedAuthCacheKey);
+  } catch {
+    return false;
+  }
+  return generationRef.current === requestGeneration;
+};
+
 const resolveStoredViewMode = (value: string | null): 'grid' | 'list' => {
   return value === 'list' ? 'list' : 'grid';
 };
@@ -104,6 +124,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const batchEditMotionTimerRef = useRef<number | null>(null);
+  const deleteRequestGenerationRef = useRef(0);
+  const committedDeleteAuthUserKeyRef = useRef(authUserKey);
+  const deleteOperationOwnerRef = useRef<string | null>(null);
+  const deleteToastIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (committedDeleteAuthUserKeyRef.current !== authUserKey) {
+      committedDeleteAuthUserKeyRef.current = authUserKey;
+      deleteRequestGenerationRef.current += 1;
+    }
+  }, [authUserKey]);
   const {
     closeDropdown,
     dropdownPos,
@@ -139,7 +170,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     onResumesUpdate,
     showToastLoading,
     updateToast,
+    closeToast,
   });
+
+  useEffect(() => {
+    if (deleteOperationOwnerRef.current !== authUserKey) {
+      setIsDeletingResume(false);
+      if (deleteToastIdRef.current) {
+        closeToast(deleteToastIdRef.current);
+        deleteToastIdRef.current = null;
+      }
+    }
+  }, [authUserKey, closeToast]);
   const resumePreviewCache = useDashboardResumePreviewCache({
     isAuthenticated,
     authUserKey,
@@ -235,7 +277,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       void handleSignIn();
       return;
     }
-    setActiveResumeId(id);
+    setActiveResumeId(authUserKey, id);
     setView(ViewState.EDITOR);
   };
 
@@ -446,22 +488,48 @@ const Dashboard: React.FC<DashboardProps> = ({
   );
 
   const handleConfirmDelete = async () => {
-    if (pendingDeleteIds.length === 0 || isDeletingResume) {
+    if (
+      pendingDeleteIds.length === 0
+      || (isDeletingResume && deleteOperationOwnerRef.current === authUserKey)
+    ) {
       return;
     }
+    if (
+      !isAuthenticated
+      || !authUserKey?.trim()
+      || authUserKey === 'anonymous'
+    ) {
+      return;
+    }
+    let expectedAuthCacheKey: string;
+    try {
+      expectedAuthCacheKey = await captureResumeAuthCacheKey(authUserKey);
+    } catch {
+      return;
+    }
+    const requestGeneration = (deleteRequestGenerationRef.current += 1);
+    deleteOperationOwnerRef.current = expectedAuthCacheKey;
     const targetIds = pendingDeleteIds;
-    const activeResumeId = getActiveResumeId();
+    const activeResumeId = getActiveResumeId(expectedAuthCacheKey);
     const toastId = showToastLoading(
       targetIds.length > 1 ? BATCH_DELETE_TOAST_MESSAGES.loading : DELETE_TOAST_MESSAGES.loading
     );
+    deleteToastIdRef.current = toastId;
     try {
       setIsDeletingResume(true);
       const deleteResults = await Promise.allSettled(
         targetIds.map(async (targetId) => {
-          await resumeService.remove(targetId);
+          await resumeService.remove(targetId, { expectedAuthCacheKey });
           return targetId;
         })
       );
+      if (!await canCommitDeleteOperation(
+        expectedAuthCacheKey,
+        requestGeneration,
+        deleteRequestGenerationRef,
+      )) {
+        return;
+      }
       const deletedIds = deleteResults.flatMap((result, index) => (
         result.status === 'fulfilled' ? [targetIds[index]] : []
       ));
@@ -474,15 +542,32 @@ const Dashboard: React.FC<DashboardProps> = ({
       setBatchDeleteTargetIds([]);
       let refreshedResumes: Resume[] | null = null;
       try {
-        refreshedResumes = await fetchDashboardResumes({ force: true });
+        refreshedResumes = await fetchDashboardResumes({
+          force: true,
+          expectedAuthCacheKey,
+        });
+        if (!await canCommitDeleteOperation(
+          expectedAuthCacheKey,
+          requestGeneration,
+          deleteRequestGenerationRef,
+        )) {
+          return;
+        }
         setResumes(refreshedResumes);
       } catch (refreshError) {
+        if (!await canCommitDeleteOperation(
+          expectedAuthCacheKey,
+          requestGeneration,
+          deleteRequestGenerationRef,
+        )) {
+          return;
+        }
         console.error('[Dashboard] 删除后刷新列表失败:', refreshError);
         if (deletedIds.length > 0) {
           setResumes((prev) => removeResumeIds(prev, deletedIds));
         }
         if (activeResumeId && deletedIds.includes(activeResumeId)) {
-          clearActiveResumeId();
+          clearActiveResumeId(expectedAuthCacheKey);
         }
         if (renameTargetId && deletedIds.includes(renameTargetId)) {
           setRenameTargetId(null);
@@ -491,6 +576,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           setPreviewTargetId(null);
         }
         setSelectedResumeIds((prev) => filterExistingResumeIds(prev, removeResumeIds(resumes, deletedIds)));
+        deleteToastIdRef.current = null;
         updateToast(toastId, {
           message: failedIds.length > 0
             ? `已删除 ${deletedIds.length} 份，${failedIds.length} 份删除失败`
@@ -508,7 +594,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       }
       const confirmedDeletedIds = targetIds.filter((id) => !remainingIds.includes(id));
       if (activeResumeId && confirmedDeletedIds.includes(activeResumeId)) {
-        clearActiveResumeId();
+        clearActiveResumeId(expectedAuthCacheKey);
       }
       if (renameTargetId && confirmedDeletedIds.includes(renameTargetId)) {
         setRenameTargetId(null);
@@ -518,6 +604,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       }
       setSelectedResumeIds((prev) => filterExistingResumeIds(prev, removeResumeIds(resumes, confirmedDeletedIds)));
       const unresolvedCount = remainingIds.length;
+      deleteToastIdRef.current = null;
       updateToast(toastId, {
         message: unresolvedCount > 0
           ? (
@@ -537,10 +624,26 @@ const Dashboard: React.FC<DashboardProps> = ({
         exitBatchEditMode();
       }
     } catch (error) {
-      console.error('[Dashboard] 删除简历失败:', error);
-      updateToast(toastId, { message: DELETE_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
+      if (await canCommitDeleteOperation(
+        expectedAuthCacheKey,
+        requestGeneration,
+        deleteRequestGenerationRef,
+      )) {
+        console.error('[Dashboard] 删除简历失败:', error);
+        deleteToastIdRef.current = null;
+        updateToast(toastId, { message: DELETE_TOAST_MESSAGES.error, type: 'error', duration: 3000 });
+      }
     } finally {
-      setIsDeletingResume(false);
+      if (await canCommitDeleteOperation(
+        expectedAuthCacheKey,
+        requestGeneration,
+        deleteRequestGenerationRef,
+      )) {
+        setIsDeletingResume(false);
+        deleteOperationOwnerRef.current = null;
+      } else {
+        closeToast(toastId);
+      }
     }
   };
 
@@ -1342,6 +1445,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       <ResumePreviewModal
         isOpen={Boolean(previewTargetId && previewTarget)}
         resumeId={previewTarget?.id ?? null}
+        authUserKey={authUserKey}
         resumeName={previewTarget?.name}
         onClose={handleClosePreview}
       />

@@ -30,6 +30,7 @@ import { useAssistantHistoryActions } from './AIAssistant/useAssistantHistoryAct
 import { useAssistantLaunchBootstrap } from './AIAssistant/useAssistantLaunchBootstrap';
 import { useAssistantMessageSending } from './AIAssistant/useAssistantMessageSending';
 import { useAssistantResourcePickers } from './AIAssistant/useAssistantResourcePickers';
+import { useAssistantOwnerGuard } from './AIAssistant/useAssistantOwnerGuard';
 import { useAssistantSelectedResumeContext } from './AIAssistant/useAssistantSelectedResumeContext';
 import { useAssistantSessionController } from './AIAssistant/useAssistantSessionController';
 import {
@@ -53,6 +54,7 @@ import type {
 } from './AIAssistant/types';
 
 type AIAssistantProps = {
+  authUserKey?: string | null;
   surface?: 'full' | 'sidebar';
   pendingLaunchRequest?: AssistantLaunchRequest | null;
   pendingOpenSessionRequest?: AssistantOpenSessionRequest | null;
@@ -76,6 +78,7 @@ const markImplicitCurrentResume = (
 );
 
 const AIAssistant: React.FC<AIAssistantProps> = ({
+  authUserKey = null,
   surface = 'full',
   pendingLaunchRequest,
   pendingOpenSessionRequest,
@@ -94,6 +97,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const isSidebarSurface = surface === 'sidebar';
   const { isAuthenticated } = useLogto();
   const { toasts, success, error, closeToast } = useToast();
+  const ownerGuard = useAssistantOwnerGuard(authUserKey);
   const implicitLiveSelectedResume = useMemo(
     () => markImplicitCurrentResume(normalizeSelectedResume(liveSelectedResume)),
     [liveSelectedResume],
@@ -175,8 +179,18 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     commitCreatedSession,
     cleanupSupersededSession,
     persistSessionSnapshot,
+    hasEarlierSessions,
+    isLoadingEarlierSessions,
+    earlierSessionsError,
+    loadEarlierSessions,
+    hasEarlierMessages,
+    isLoadingEarlierMessages,
+    earlierMessagesError,
+    storageProjectionTruncated,
+    loadEarlierMessages,
   } = useAssistantSessionController({
     isAuthenticated,
+    ownerGuard,
     clearComposerAttachments,
     clearSelectedExperiences,
     clearSelectedResume,
@@ -213,6 +227,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     attachDraftJumpHandlers(
       deriveDraftMessageItems(messages, selectedSession, callbackOnlySessionIdsRef.current),
       {
+        authUserKey,
         selectedSession,
         onJumpToResumeEditor,
         onJumpToExperienceBank,
@@ -222,7 +237,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         notifyError: (message) => error(message, 6000),
       }
     )
-  ), [callbackOnlySessionIdsRef, error, messages, onJumpToExperienceBank, onJumpToResumeEditor, selectedSession]);
+  ), [authUserKey, callbackOnlySessionIdsRef, error, messages, onJumpToExperienceBank, onJumpToResumeEditor, selectedSession]);
   const draftGroups = useMemo(
     () => groupDraftItems(draftMessageItems),
     [draftMessageItems]
@@ -241,7 +256,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const {
     pickerResumes,
     isResumePickerOpen,
-    setIsResumePickerOpen,
+    closeResumePicker,
     isLoadingPickerResumes,
     isLoadingPickerResumeDetail,
     isApplyingPickerResume,
@@ -249,6 +264,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     loadPickerResumeDetail,
     handleConfirmSelectedResume,
   } = useAssistantResourcePickers({
+    authUserKey,
     selectedSessionIdRef,
     suppressAutoSelectSessionRef,
     draftLaunchRequestRef,
@@ -286,14 +302,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       setManualSaveMessageIds(new Set());
       return;
     }
-    const pendingManualSaveDrafts = readPendingAssistantManualSaveDrafts({ sessionId: selectedSessionId });
+    const pendingManualSaveDrafts = readPendingAssistantManualSaveDrafts(authUserKey, { sessionId: selectedSessionId });
     setManualSaveMessageIds(new Set(pendingManualSaveDrafts.map((draft) => draft.messageId)));
-  }, [messages, selectedSessionId]);
+  }, [authUserKey, messages, selectedSessionId]);
 
   const {
     isSending,
     sendMessage,
   } = useAssistantMessageSending({
+    ownerGuard,
     selectedSessionIdRef,
     setMessages,
     setInputValue,
@@ -464,6 +481,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   ]);
 
   const { handleApplyDraft } = useAssistantDraftApplyActions({
+    ownerGuard,
     selectedSession,
     applyingMessageIds,
     appliedMessageIds,
@@ -492,6 +510,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     executeDeleteSession,
     handleRenameSession,
   } = useAssistantHistoryActions({
+    ownerGuard,
     draftLaunchRequestRef,
     suppressAutoSelectSessionRef,
     selectedSessionIdRef,
@@ -552,7 +571,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         isLoading={isLoadingPickerResumes}
         isLoadingDetail={isLoadingPickerResumeDetail}
         isApplying={isApplyingPickerResume}
-        onClose={() => setIsResumePickerOpen(false)}
+        onClose={closeResumePicker}
         onLoadDetail={loadPickerResumeDetail}
         onConfirm={(resumeId, experienceIds) => void handleConfirmSelectedResume(resumeId, experienceIds)}
       />
@@ -588,6 +607,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               onSelectMobileSession={handleSelectSession}
               onRenameSession={(event, session) => void handleRenameSession(event, session)}
               onDeleteSession={(event, sessionId) => void handleDeleteSession(event, sessionId)}
+              hasEarlierSessions={hasEarlierSessions}
+              isLoadingEarlierSessions={isLoadingEarlierSessions}
+              earlierSessionsError={earlierSessionsError}
+              onLoadEarlierSessions={() => void loadEarlierSessions()}
             />
           ) : null}
 
@@ -611,6 +634,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onSelectSession={handleSidebarSelectSession}
                   onRenameSession={handleRenameSession}
                   onDeleteSession={handleDeleteSession}
+                  hasEarlierSessions={hasEarlierSessions}
+                  isLoadingEarlierSessions={isLoadingEarlierSessions}
+                  earlierSessionsError={earlierSessionsError}
+                  onLoadEarlierSessions={() => void loadEarlierSessions()}
                 />
               </>
             ) : (
@@ -640,6 +667,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               isLoadingDetail={isLoadingDetail}
               activeThought={activeThought}
               isSending={isSending}
+              hasEarlierMessages={hasEarlierMessages}
+              isLoadingEarlierMessages={isLoadingEarlierMessages}
+              earlierMessagesError={earlierMessagesError}
+              storageProjectionTruncated={storageProjectionTruncated}
+              onLoadEarlierMessages={() => void loadEarlierMessages()}
             />
 
             <div

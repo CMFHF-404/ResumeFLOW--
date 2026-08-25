@@ -38,6 +38,32 @@ type ResumePdfSnapshotInput = {
   skillTagSeparator: string;
 };
 
+const MAX_AVATAR_DATA_URL_BYTES = 2 * 1024 * 1024;
+const SAFE_AVATAR_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]*={0,2})$/i;
+
+export const normalizeAvatarDataUrlForPdf = (value: string | null | undefined) => {
+  const normalized = value?.trim() ?? '';
+  if (!normalized) {
+    return '';
+  }
+  const match = normalized.match(SAFE_AVATAR_DATA_URL_PATTERN);
+  if (!match) {
+    return '';
+  }
+  const encoded = match[1];
+  const paddingLength = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  const decodedLength = Math.floor((encoded.length * 3) / 4) - paddingLength;
+  if (decodedLength <= 0 || decodedLength > MAX_AVATAR_DATA_URL_BYTES) {
+    return '';
+  }
+  try {
+    atob(encoded);
+  } catch {
+    return '';
+  }
+  return normalized;
+};
+
 const cloneExperience = (item: ResumeExperienceView) => ({
   ...item,
   star: { ...item.star },
@@ -78,7 +104,10 @@ export const buildResumePdfRenderSnapshot = ({
 }: ResumePdfSnapshotInput): ResumePdfRenderSnapshot => ({
   resumeName,
   targetRole: targetRole.trim(),
-  profile: { ...profile },
+  profile: {
+    ...profile,
+    avatarDataUrl: normalizeAvatarDataUrlForPdf(profile.avatarDataUrl),
+  },
   lineHeight: normalizeFiniteNumber(lineHeight, LINE_HEIGHT_DEFAULT),
   fontSize: normalizeFiniteNumber(fontSize, FONT_SIZE_DEFAULT),
   listSpacingValue,

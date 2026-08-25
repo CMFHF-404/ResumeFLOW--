@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { aiService } from '../../../services/aiService';
 import {
     clearPendingAssistantManualSaveDraft,
@@ -11,21 +11,34 @@ import {
 } from '../../../utils/analyticsTracker';
 import { buildPendingAssistantManualSaveDraftKey } from '../assistantDraftApplyUtils';
 import { readErrorStatus } from '../snapshotUtils';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 
 type UsePendingExperienceApplyStateParams = {
+    authUserKey: string | null | undefined;
     resumeId: string | null;
     showToastError: (message: string, duration?: number) => string;
 };
 
 export const usePendingExperienceApplyState = ({
+    authUserKey,
     resumeId,
     showToastError,
 }: UsePendingExperienceApplyStateParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey ?? null);
     const pendingAssistantApplyRef = useRef(new Map<string, AssistantDraftApplyMeta['persistApplied']>());
     const trackedPendingAssistantApplyRef = useRef(new Set<string>());
     const pendingAiPolishApplyRef = useRef(new Set<string>());
     const activeManualSaveDraftRef = useRef<PendingAssistantManualSaveDraft | null>(null);
     const appliedManualSaveDraftKeyRef = useRef<string | null>(null);
+
+    useLayoutEffect(() => {
+        pendingAssistantApplyRef.current.clear();
+        trackedPendingAssistantApplyRef.current.clear();
+        pendingAiPolishApplyRef.current.clear();
+        activeManualSaveDraftRef.current = null;
+        appliedManualSaveDraftKeyRef.current = null;
+    }, [ownerGuard.authUserKey]);
 
     const movePendingExperienceAssistantApply = useCallback((draftMasterId: string, savedMasterId: string) => {
         const pending = pendingAssistantApplyRef.current.get(draftMasterId);
@@ -52,16 +65,30 @@ export const usePendingExperienceApplyState = ({
         pendingAiPolishApplyRef.current.add(masterId);
     }, []);
 
-    const handleExperienceSaveSuccess = useCallback(async (masterId: string) => {
+    const handleExperienceSaveSuccess = useCallback(async (
+        masterId: string,
+        options: { expectedAuthCacheKey: string },
+    ) => {
+        const operation = await ownerGuard.beginOperation();
+        if (operation.expectedAuthCacheKey !== options.expectedAuthCacheKey) {
+            return;
+        }
         let hasTrackedAssistantApply = false;
         const pending = pendingAssistantApplyRef.current.get(masterId);
         if (pending) {
             const shouldTrackAssistantApply = !trackedPendingAssistantApplyRef.current.has(masterId);
             try {
                 await pending();
+                await ownerGuard.assertOperationCurrent(operation);
                 pendingAssistantApplyRef.current.delete(masterId);
                 trackedPendingAssistantApplyRef.current.delete(masterId);
             } catch (error) {
+                if (
+                    isAuthContextChangedError(error)
+                    || !ownerGuard.isOperationCurrent(operation)
+                ) {
+                    return;
+                }
                 if (shouldTrackAssistantApply) {
                     trackedPendingAssistantApplyRef.current.add(masterId);
                 }
@@ -90,9 +117,13 @@ export const usePendingExperienceApplyState = ({
                 await aiService.markAssistantMessageApplied(
                     pendingManualSaveDraft.sessionId,
                     pendingManualSaveDraft.messageId,
-                    { skipApply: true },
+                    {
+                        skipApply: true,
+                        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+                    },
                 );
-                clearPendingAssistantManualSaveDraft({
+                await ownerGuard.assertOperationCurrent(operation);
+                clearPendingAssistantManualSaveDraft(operation.expectedAuthCacheKey, {
                     sessionId: pendingManualSaveDraft.sessionId,
                     messageId: pendingManualSaveDraft.messageId,
                 });
@@ -106,9 +137,15 @@ export const usePendingExperienceApplyState = ({
                     });
                 }
             } catch (error) {
+                if (
+                    isAuthContextChangedError(error)
+                    || !ownerGuard.isOperationCurrent(operation)
+                ) {
+                    return;
+                }
                 const status = readErrorStatus(error);
                 if (status === 404) {
-                    clearPendingAssistantManualSaveDraft({
+                    clearPendingAssistantManualSaveDraft(operation.expectedAuthCacheKey, {
                         sessionId: pendingManualSaveDraft.sessionId,
                         messageId: pendingManualSaveDraft.messageId,
                     });
@@ -132,7 +169,7 @@ export const usePendingExperienceApplyState = ({
             trackAiPolishApplied({ source: 'resume_editor', field: 'all' });
             pendingAiPolishApplyRef.current.delete(masterId);
         }
-    }, [resumeId, showToastError]);
+    }, [ownerGuard, resumeId, showToastError]);
 
     const clearPendingExperienceState = useCallback((masterId: string | null) => {
         if (!masterId) {

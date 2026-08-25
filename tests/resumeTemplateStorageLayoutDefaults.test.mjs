@@ -5,7 +5,7 @@ import { test } from 'node:test';
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('template presets persist and apply layout defaults', () => {
-  const storage = read('views/resumeTemplateStorage.ts');
+  const storage = read('services/resumeTemplateStorage.ts');
   const actions = read('views/ResumeEditor/hooks/useTemplatePresetActions.ts');
   const editor = read('views/ResumeEditor/index.tsx');
 

@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: {
+      // One build-time authority feeds both the browser checkout guard and the
+      // Nginx form-action manifest; do not introduce a second payment origin.
+      'import.meta.env.VITE_YIFUT_BASE_URL': JSON.stringify(
+        env.YIFUT_BASE_URL || 'https://www.yifut.com',
+      ),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -18,8 +25,11 @@ export default defineConfig(({ mode }) => {
       sourcemap: mode === 'development',
       rollupOptions: {
         output: {
+          // React is shared by every route and large enough to obscure changes
+          // in the application entry. Keep only this truly eager runtime in a
+          // stable vendor chunk; route-only libraries remain with lazy routes.
           manualChunks: {
-            'ui-vendor': ['lucide-react', 'react-datepicker'],
+            'react-vendor': ['react', 'react-dom', 'react-dom/client'],
           },
         },
       },

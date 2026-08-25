@@ -8,6 +8,7 @@ from ...config import load_settings
 from ...models import ExperienceCategory
 from ..ai.ai_service import call_llm_json
 from ..ai.llm_transport import LANE_RESUME_PARSE
+from ..ai.runtime_budget import TERMINAL_AI_RUNTIME_ERRORS, ai_wall_clock_limited
 from .chunking import _normalize_text
 from .duplicate_detection import _build_match_signatures, _similarity
 from .schemas import DuplicateMatch, ParsedExperienceItem
@@ -199,6 +200,7 @@ def _validated_semantic_matches(
     return matches
 
 
+@ai_wall_clock_limited
 async def apply_semantic_duplicate_flags(
     items: List[ParsedExperienceItem],
     existing_entries: Iterable[Any],
@@ -229,12 +231,13 @@ async def apply_semantic_duplicate_flags(
             lane=LANE_RESUME_PARSE,
             request_label="resume_semantic_dedupe",
         )
+    except TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except Exception as exc:
         logger.warning(
-            "[ResumeParse] semantic dedupe fallback request_id=%s error_type=%s error=%s",
+            "[ResumeParse] semantic dedupe fallback request_id=%s error_type=%s",
             request_id,
             type(exc).__name__,
-            str(exc),
         )
         return items
 

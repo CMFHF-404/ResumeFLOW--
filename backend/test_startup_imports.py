@@ -5,6 +5,44 @@ import unittest
 
 
 class BackendStartupImportTests(unittest.TestCase):
+    def test_disabled_payment_with_stale_provider_url_does_not_block_startup_import(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "YIFUT_ENABLED": "false",
+                "YIFUT_BASE_URL": "not-a-valid-provider-url",
+                "FRONTEND_ORIGIN": "http://localhost:5173",
+                "PUBLIC_API_ORIGIN": "http://127.0.0.1:8000",
+            }
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from app.config import DEFAULT_YIFUT_BASE_URL, load_settings; "
+                    "assert load_settings().yifut_base_url == DEFAULT_YIFUT_BASE_URL; "
+                    "import app.main; print('disabled payment import ok')"
+                ),
+            ],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+        self.assertIn("disabled payment import ok", result.stdout)
+
     def test_main_imports_in_fresh_process_without_auth_billing_cycle(self) -> None:
         env = os.environ.copy()
         env["DATABASE_URL"] = "postgresql+asyncpg://user:password@localhost:5432/resumeflow"

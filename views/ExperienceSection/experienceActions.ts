@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import type React from 'react';
 import { experienceService, type ExperienceListItem } from '../../services/experienceService';
 import { experienceDraftService } from '../../services/experienceDraftService';
@@ -15,6 +15,8 @@ import {
 } from './cardDataUtils';
 import { POLISH_SOURCE } from './polishActions';
 import type { ExperienceSectionProps, ToastApi } from './types';
+import type { AuthOwnerOperation, AuthOwnerOperationGuard } from '../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../services/apiClient';
 
 type ExperienceCreateParams = {
   category: ExperienceSectionProps['category'];
@@ -91,6 +93,7 @@ export const useExperienceCreate = ({
 };
 
 type ExperienceSaveParams = {
+  ownerGuard: AuthOwnerOperationGuard;
   category: ExperienceSectionProps['category'];
   cardData: Map<string, ExperienceCardData>;
   emptyTitleError: string;
@@ -108,6 +111,7 @@ type ExperienceSaveParams = {
 };
 
 export const useExperienceSave = ({
+  ownerGuard,
   category,
   cardData,
   emptyTitleError,
@@ -125,10 +129,16 @@ export const useExperienceSave = ({
 }: ExperienceSaveParams) => {
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
+  useLayoutEffect(() => {
+    setSavingCardId(null);
+  }, [ownerGuard.authUserKey]);
+
   const handleSaveCard = useCallback(
     async (cardId: string, overrideData?: ExperienceCardData) => {
       let toastId: string | null = null;
+      let operation: AuthOwnerOperation | null = null;
       try {
+        operation = await ownerGuard.beginOperation();
         const data = overrideData ?? cardData.get(cardId);
         if (!data) {
           return;
@@ -148,7 +158,8 @@ export const useExperienceSave = ({
           const createdExperience = await experienceService.create({
             category,
             version: buildVersionPayload(data),
-          });
+          }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
+          await ownerGuard.assertOperationCurrent(operation);
 
           const realId = createdExperience.master.id;
 
@@ -182,8 +193,17 @@ export const useExperienceSave = ({
           }
           if (data.draftId) {
             try {
-              await experienceDraftService.delete(data.draftId);
+              await experienceDraftService.delete(data.draftId, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+              });
+              await ownerGuard.assertOperationCurrent(operation);
             } catch (error) {
+              if (
+                isAuthContextChangedError(error)
+                || !ownerGuard.isOperationCurrent(operation)
+              ) {
+                throw error;
+              }
               draftCleanupFailed = true;
               console.error('[ExperienceSection] 删除已录入草稿失败:', error);
             }
@@ -217,7 +237,12 @@ export const useExperienceSave = ({
           applyOptimisticSave(cardId, data, setOriginalCardData, setModifiedCards, setExperiences);
 
           toastId = toast.loading('正在同步...');
-          await experienceService.update(cardId, { version: buildVersionPayload(data) });
+          await experienceService.update(
+            cardId,
+            { version: buildVersionPayload(data) },
+            { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+          );
+          await ownerGuard.assertOperationCurrent(operation);
           clearPreviewState(cardId);
           if (shouldTrackAiPolishApplied) {
             trackAiPolishApplied({ source: POLISH_SOURCE, field: 'all', category });
@@ -237,10 +262,21 @@ export const useExperienceSave = ({
               syncCardFromRefresh(cardId, updatedList, setModifiedCards, setCardData, setOriginalCardData);
             })
             .catch((error) => {
-              console.error(`[ExperienceSection] 刷新${category}经历失败:`, error);
+              if (!isAuthContextChangedError(error)) {
+                console.error(`[ExperienceSection] 刷新${category}经历失败:`, error);
+              }
             });
         }
       } catch (error) {
+        if (
+          isAuthContextChangedError(error)
+          || (operation && !ownerGuard.isOperationCurrent(operation))
+        ) {
+          if (toastId) {
+            toast.closeToast?.(toastId);
+          }
+          return;
+        }
         console.error(`[ExperienceSection] 保存${category}经历失败:`, error);
         if (toastId) {
           toast.updateToast(toastId, { message: '保存失败，请重试', type: 'error', duration: 3000 });
@@ -248,16 +284,19 @@ export const useExperienceSave = ({
           toast.error('保存失败，请重试', 3000);
         }
       } finally {
-        setSavingCardId(null);
+        if (!operation || ownerGuard.isOperationCurrent(operation)) {
+          setSavingCardId(null);
+        }
       }
     },
-    [cardData, category, clearPendingAiPolishApply, clearPreviewState, emptyTitleError, hasPendingAiPolishApply, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, titleRequired, toast, toggleCard]
+    [cardData, category, clearPendingAiPolishApply, clearPreviewState, emptyTitleError, hasPendingAiPolishApply, ownerGuard, refreshExperiences, setCardData, setExperiences, setModifiedCards, setOriginalCardData, titleRequired, toast, toggleCard]
   );
 
   return { savingCardId, handleSaveCard };
 };
 
 type ExperienceDeleteParams = {
+  ownerGuard: AuthOwnerOperationGuard;
   category: ExperienceSectionProps['category'];
   cardData: Map<string, ExperienceCardData>;
   toast: ToastApi;
@@ -271,6 +310,7 @@ type ExperienceDeleteParams = {
 };
 
 export const useExperienceDelete = ({
+  ownerGuard,
   category,
   cardData,
   toast,
@@ -282,6 +322,10 @@ export const useExperienceDelete = ({
   onBeforeRemoveLocal,
 }: ExperienceDeleteParams) => {
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    setDeletingCardId(null);
+  }, [ownerGuard.authUserKey]);
 
   const requestDelete = useCallback(
     (cardId: string) => {
@@ -296,14 +340,19 @@ export const useExperienceDelete = ({
       return;
     }
     let toastId: string | null = null;
+    let operation: AuthOwnerOperation | null = null;
     const cardId = deletingCardId;
     try {
+      operation = await ownerGuard.beginOperation();
       setDeletingCardId(null);
       if (isTempId(cardId) || cardId.startsWith('draft_')) {
         const discardedDraft = await onBeforeRemoveLocal?.(cardId) ?? null;
         const draftId = discardedDraft?.id ?? cardData.get(cardId)?.draftId;
         if (draftId) {
-          await experienceDraftService.delete(draftId);
+          await experienceDraftService.delete(draftId, {
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
+          });
+          await ownerGuard.assertOperationCurrent(operation);
         }
         setExperiences((prev) => prev.filter((item) => item.master.id !== cardId));
         removeCardExpansion(cardId);
@@ -317,13 +366,25 @@ export const useExperienceDelete = ({
       removeCardState(cardId);
 
       toastId = toast.loading('正在删除...');
-      await experienceService.delete(cardId);
+      await experienceService.delete(cardId, {
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await ownerGuard.assertOperationCurrent(operation);
       if (toastId) {
         toast.updateToast(toastId, { message: '已删除', type: 'success', duration: 2000 });
       } else {
         toast.success('已删除', 2000);
       }
     } catch (error) {
+      if (
+        isAuthContextChangedError(error)
+        || (operation && !ownerGuard.isOperationCurrent(operation))
+      ) {
+        if (toastId) {
+          toast.closeToast?.(toastId);
+        }
+        return;
+      }
       console.error(`[ExperienceSection] 删除${category}经历失败:`, error);
       if (toastId) {
         toast.updateToast(toastId, { message: '删除同步失败，正在恢复列表...', type: 'error', duration: 3000 });
@@ -334,7 +395,7 @@ export const useExperienceDelete = ({
         console.error(`[ExperienceSection] 恢复${category}经历失败:`, refreshError);
       });
     }
-  }, [cardData, category, deletingCardId, onBeforeRemoveLocal, refreshExperiences, removeCardExpansion, removeCardState, setExperiences, toast]);
+  }, [cardData, category, deletingCardId, onBeforeRemoveLocal, ownerGuard, refreshExperiences, removeCardExpansion, removeCardState, setExperiences, toast]);
 
   const cancelDelete = useCallback(() => setDeletingCardId(null), []);
 

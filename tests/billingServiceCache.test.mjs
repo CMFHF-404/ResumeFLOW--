@@ -6,8 +6,8 @@ import ts from 'typescript';
 const importBillingService = async (harness) => {
   const source = readFileSync(new URL('../services/billingService.ts', import.meta.url), 'utf8');
   const injectedSource = source.replace(
-    "import apiClient, { getAuthCacheKey } from './apiClient';",
-    'const { apiClient, getAuthCacheKey } = globalThis.__billingServiceCacheTestHarness;',
+    /import apiClient, \{[\s\S]*?\} from '\.\/apiClient';/,
+    'const { apiClient, assertAuthCacheKey, captureAuthCacheKey } = globalThis.__billingServiceCacheTestHarness;',
   );
   assert.notEqual(injectedSource, source);
   const { outputText } = ts.transpileModule(injectedSource, {
@@ -39,7 +39,14 @@ test('late summary responses cannot refill cleared cache or overwrite a newer fo
   };
   const billingService = await importBillingService({
     apiClient,
-    getAuthCacheKey: async () => ownerKey,
+    captureAuthCacheKey: async (expected) => {
+      const captured = expected ?? ownerKey;
+      if (captured !== ownerKey) throw new Error('Authentication context changed');
+      return captured;
+    },
+    assertAuthCacheKey: async (expected) => {
+      if (expected !== ownerKey) throw new Error('Authentication context changed');
+    },
   });
 
   const staleAfterClear = billingService.getSummary({ force: true });
@@ -80,7 +87,7 @@ test('late summary responses cannot refill cleared cache or overwrite a newer fo
   pendingSummaryRequests[5]({ data: { user_id: 'owner-b', remaining_tokens: 600 } });
   assert.equal((await currentOwnerRefresh).remaining_tokens, 600);
   pendingSummaryRequests[4]({ data: { user_id: 'owner-a', remaining_tokens: 500 } });
-  assert.equal((await previousOwnerRefresh).remaining_tokens, 500);
+  await assert.rejects(previousOwnerRefresh, /Authentication context changed/);
   assert.equal((await billingService.getSummary()).user_id, 'owner-b');
   assert.equal(pendingSummaryRequests.length, 6);
 });
@@ -105,7 +112,14 @@ test('redemption rejects an owner change and cannot poison the new owner cache',
   };
   const billingService = await importBillingService({
     apiClient,
-    getAuthCacheKey: async () => ownerKey,
+    captureAuthCacheKey: async (expected) => {
+      const captured = expected ?? ownerKey;
+      if (captured !== ownerKey) throw new Error('Authentication context changed');
+      return captured;
+    },
+    assertAuthCacheKey: async (expected) => {
+      if (expected !== ownerKey) throw new Error('Authentication context changed');
+    },
   });
   const controller = new AbortController();
   const redemption = billingService.redeemCode('RF-TEST', { signal: controller.signal });
@@ -123,7 +137,7 @@ test('redemption rejects an owner change and cannot poison the new owner cache',
     },
   });
 
-  await assert.rejects(redemption, /Authentication context changed during redemption/);
+  await assert.rejects(redemption, /Authentication context changed/);
   assert.equal((await billingService.getSummary()).user_id, 'owner-b');
   assert.equal(summaryGets, 1);
 });

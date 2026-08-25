@@ -8,14 +8,14 @@ import {
     loadJDAnalysisCache,
     normalizeJDAnalysisPersistence,
     selectPreferredPersistedJDAnalysis,
-} from '../views/jdAnalysisStorage';
+} from '../services/jdAnalysisStorage';
 import type { ResumeEditorConfig } from '../types/resume';
 import { canonicalStringify } from './canonicalStringify';
 
 const DEFAULT_MATCH_RATE = 0;
 
-const resolvePreferredLocalJDAnalysis = (resumeId: string) => (
-    selectPreferredPersistedJDAnalysis(null, loadJDAnalysisCache(resumeId))?.payload ?? null
+const resolvePreferredLocalJDAnalysis = (ownerKey: string | null | undefined, resumeId: string) => (
+    selectPreferredPersistedJDAnalysis(null, loadJDAnalysisCache(ownerKey, resumeId))?.payload ?? null
 );
 
 export const buildDashboardTargetRoleSignature = (targetRole: string | null | undefined) => (
@@ -33,10 +33,11 @@ const hasCurrentEvaluationSignatures = (
 );
 
 const resolvePersistedJDAnalysis = (
+    ownerKey: string | null | undefined,
     resumeId: string,
     config?: ResumeRecord['config']
 ) => {
-    const localCachedJDAnalysis = loadJDAnalysisCache(resumeId);
+    const localCachedJDAnalysis = loadJDAnalysisCache(ownerKey, resumeId);
     if (config === undefined) {
         return localCachedJDAnalysis?.pendingSync === true
             ? localCachedJDAnalysis.payload
@@ -52,11 +53,12 @@ const resolvePersistedJDAnalysis = (
 };
 
 export const resolveDashboardResumeEvaluationScoreForResume = (
+    ownerKey: string | null | undefined,
     resumeId: string,
     config?: ResumeRecord['config'],
     expectedTargetRoleSignature?: string
 ) => {
-    const persistedJDAnalysis = resolvePersistedJDAnalysis(resumeId, config);
+    const persistedJDAnalysis = resolvePersistedJDAnalysis(ownerKey, resumeId, config);
     if (
         (persistedJDAnalysis?.evaluationIsOutdated ?? persistedJDAnalysis?.isOutdated) === true
         || !hasCurrentEvaluationSignatures(persistedJDAnalysis, expectedTargetRoleSignature)
@@ -67,12 +69,13 @@ export const resolveDashboardResumeEvaluationScoreForResume = (
 };
 
 export const resolveDashboardResumeMatchRate = (
+    ownerKey: string | null | undefined,
     resumeId: string,
     config?: ResumeRecord['config']
 ) => {
     const persistedJDAnalysis = config === undefined
-        ? resolvePreferredLocalJDAnalysis(resumeId)
-        : resolvePersistedJDAnalysis(resumeId, config);
+        ? resolvePreferredLocalJDAnalysis(ownerKey, resumeId)
+        : resolvePersistedJDAnalysis(ownerKey, resumeId, config);
     if (persistedJDAnalysis?.isOutdated === true) {
         return DEFAULT_MATCH_RATE;
     }
@@ -80,8 +83,11 @@ export const resolveDashboardResumeMatchRate = (
     return typeof score === 'number' ? score : DEFAULT_MATCH_RATE;
 };
 
-export const resolveDashboardResumeLocalMatchRate = (resumeId: string) => {
-    const preferredLocalJDAnalysis = resolvePreferredLocalJDAnalysis(resumeId);
+export const resolveDashboardResumeLocalMatchRate = (
+    ownerKey: string | null | undefined,
+    resumeId: string
+) => {
+    const preferredLocalJDAnalysis = resolvePreferredLocalJDAnalysis(ownerKey, resumeId);
     if (preferredLocalJDAnalysis?.isOutdated === true) {
         return null;
     }
@@ -90,11 +96,12 @@ export const resolveDashboardResumeLocalMatchRate = (resumeId: string) => {
 };
 
 export const resolveDashboardResumeLocalEvaluationScore = (
+    ownerKey: string | null | undefined,
     resumeId: string,
     expectedBaseFingerprint?: string | null,
     expectedTargetRoleSignature?: string
 ) => {
-    const localCachedJDAnalysis = loadJDAnalysisCache(resumeId);
+    const localCachedJDAnalysis = loadJDAnalysisCache(ownerKey, resumeId);
     if (
         !localCachedJDAnalysis?.pendingSync
         || expectedBaseFingerprint === undefined
@@ -116,18 +123,20 @@ export const resolveDashboardResumeLocalEvaluationScore = (
 };
 
 export const mapResumeToDashboard = (
-    resume: Pick<ResumeRecord, 'id' | 'title' | 'target_role' | 'config' | 'created_at' | 'updated_at'>
+    resume: Pick<ResumeRecord, 'id' | 'title' | 'target_role' | 'config' | 'created_at' | 'updated_at'>,
+    ownerKey: string | null | undefined,
 ): DashboardResume => {
     const evaluationTargetRoleSignature = buildDashboardTargetRoleSignature(resume.target_role);
     const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
         (resume.config as ResumeEditorConfig | undefined)?.jdAnalysis
     );
     const evaluationScore = resolveDashboardResumeEvaluationScoreForResume(
+        ownerKey,
         resume.id,
         resume.config,
         evaluationTargetRoleSignature
     );
-    const matchRate = resolveDashboardResumeMatchRate(resume.id, resume.config);
+    const matchRate = resolveDashboardResumeMatchRate(ownerKey, resume.id, resume.config);
     return {
         id: resume.id,
         name: resume.title,
@@ -148,14 +157,16 @@ export const mapResumeToDashboard = (
 };
 
 export const mapResumesToDashboard = (
-    resumes: Array<Pick<ResumeRecord, 'id' | 'title' | 'target_role' | 'config' | 'created_at' | 'updated_at'>>
-) => resumes.map(mapResumeToDashboard);
+    resumes: Array<Pick<ResumeRecord, 'id' | 'title' | 'target_role' | 'config' | 'created_at' | 'updated_at'>>,
+    ownerKey: string | null | undefined,
+) => resumes.map((resume) => mapResumeToDashboard(resume, ownerKey));
 
 export const replaceDashboardResumeFromServer = (
     resumes: DashboardResume[],
-    updated: ResumeRecord
+    updated: ResumeRecord,
+    ownerKey: string | null | undefined,
 ) => {
-    const mapped = mapResumeToDashboard(updated);
+    const mapped = mapResumeToDashboard(updated, ownerKey);
     return resumes.map((resume) => (
         resume.id === mapped.id ? mapped : resume
     ));

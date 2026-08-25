@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from sqlmodel import select
@@ -15,14 +15,21 @@ class NotFoundError(Exception):
 
 
 async def list_certifications(
-    session: AsyncSession, user_id: str
+    session: AsyncSession,
+    user_id: str,
+    *,
+    limit: Optional[int] = None,
 ) -> List[Certification]:
     """获取用户的证书列表"""
-    result = await session.execute(
-        select(Certification)
-        .where(Certification.user_id == user_id)
-        .order_by(Certification.issue_date.desc())
-    )
+    statement = select(Certification).where(Certification.user_id == user_id)
+    if limit is not None:
+        statement = statement.order_by(
+            Certification.issue_date.desc().nullslast(),
+            Certification.id.desc(),
+        ).limit(max(int(limit), 0))
+    else:
+        statement = statement.order_by(Certification.issue_date.desc())
+    result = await session.execute(statement)
     return list(result.scalars().all())
 
 

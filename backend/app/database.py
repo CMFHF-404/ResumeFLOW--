@@ -128,8 +128,23 @@ async def ensure_export_render_snapshots_table() -> None:
                     payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
                     expires_at TIMESTAMPTZ NOT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    consumed_at TIMESTAMPTZ
+                    consumed_at TIMESTAMPTZ,
+                    render_claim_id UUID,
+                    render_claim_expires_at TIMESTAMPTZ,
+                    rendered_pdf BYTEA,
+                    rendered_pdf_expires_at TIMESTAMPTZ
                 )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                ALTER TABLE export_render_snapshots
+                    ADD COLUMN IF NOT EXISTS render_claim_id UUID,
+                    ADD COLUMN IF NOT EXISTS render_claim_expires_at TIMESTAMPTZ,
+                    ADD COLUMN IF NOT EXISTS rendered_pdf BYTEA,
+                    ADD COLUMN IF NOT EXISTS rendered_pdf_expires_at TIMESTAMPTZ
                 """
             )
         )
@@ -146,6 +161,24 @@ async def ensure_export_render_snapshots_table() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_expires_at
                 ON export_render_snapshots(expires_at)
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_render_claim_expires_at
+                ON export_render_snapshots(render_claim_expires_at)
+                WHERE render_claim_id IS NOT NULL
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_export_render_snapshots_rendered_pdf_expires_at
+                ON export_render_snapshots(rendered_pdf_expires_at)
+                WHERE rendered_pdf IS NOT NULL
                 """
             )
         )
@@ -199,6 +232,79 @@ async def ensure_ai_assistant_tables() -> None:
                     payload_base64 TEXT NOT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
+                """
+            )
+        )
+        await connection.execute(
+            text(
+                """
+                DO $assistant_storage_constraints$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_sessions_title_length'
+                          AND conrelid = 'ai_assistant_sessions'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_sessions
+                            ADD CONSTRAINT ck_ai_assistant_sessions_title_length
+                            CHECK (char_length(title) <= 200) NOT VALID;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_sessions_context_object'
+                          AND conrelid = 'ai_assistant_sessions'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_sessions
+                            ADD CONSTRAINT ck_ai_assistant_sessions_context_object
+                            CHECK (jsonb_typeof(context_json) = 'object') NOT VALID;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_sessions_context_size'
+                          AND conrelid = 'ai_assistant_sessions'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_sessions
+                            ADD CONSTRAINT ck_ai_assistant_sessions_context_size
+                            CHECK (octet_length(context_json::text) <= 262144) NOT VALID;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_messages_content_object'
+                          AND conrelid = 'ai_assistant_messages'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_messages
+                            ADD CONSTRAINT ck_ai_assistant_messages_content_object
+                            CHECK (jsonb_typeof(content_json) = 'object') NOT VALID;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_messages_content_size'
+                          AND conrelid = 'ai_assistant_messages'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_messages
+                            ADD CONSTRAINT ck_ai_assistant_messages_content_size
+                            CHECK (octet_length(content_json::text) <= 8388608) NOT VALID;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_image_blobs_mime_length'
+                          AND conrelid = 'ai_assistant_image_blobs'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_image_blobs
+                            ADD CONSTRAINT ck_ai_assistant_image_blobs_mime_length
+                            CHECK (char_length(mime_type) <= 255) NOT VALID;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_ai_assistant_image_blobs_payload_size'
+                          AND conrelid = 'ai_assistant_image_blobs'::regclass
+                    ) THEN
+                        ALTER TABLE ai_assistant_image_blobs
+                            ADD CONSTRAINT ck_ai_assistant_image_blobs_payload_size
+                            CHECK (octet_length(payload_base64) <= 6990508) NOT VALID;
+                    END IF;
+                END
+                $assistant_storage_constraints$
                 """
             )
         )

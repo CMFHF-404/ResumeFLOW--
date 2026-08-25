@@ -6,6 +6,7 @@ import { useProfile } from '../hooks/useProfile';
 import { markUserSignInStarted, markUserSignOutStarted } from '../services/authFlowState';
 import { resolveAvatarInitial, resolveDisplayName } from '../utils/profileDisplay';
 import { trackLoginStart } from '../utils/analyticsTracker';
+import { formatDateTime, formatTokenAmount } from '../utils/quotaDisplay';
 import type { TokenQuotaSummary } from '../services/billingService';
 
 interface GlobalSidebarProps {
@@ -21,24 +22,6 @@ interface GlobalSidebarProps {
 const DEFAULT_PROFILE_NAME = '即刻开始';
 const DEFAULT_AVATAR_PLACEHOLDER = '?';
 const TOKEN_RING_CIRCUMFERENCE = 138;
-
-const formatTokenAmount = (value?: number | null) => {
-  const safeValue = Math.max(Number(value || 0), 0);
-  if (safeValue >= 1_000_000) {
-    return `${(safeValue / 1_000_000).toFixed(safeValue % 1_000_000 === 0 ? 0 : 1)}M`;
-  }
-  if (safeValue >= 1_000) {
-    return `${(safeValue / 1_000).toFixed(safeValue % 1_000 === 0 ? 0 : 1)}k`;
-  }
-  return safeValue.toLocaleString();
-};
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-};
 
 const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   currentView,

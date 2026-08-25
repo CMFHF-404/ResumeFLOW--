@@ -22,10 +22,12 @@ import {
 
 interface ResumeUploadModalProps {
   isOpen: boolean;
+  authUserKey?: string | null;
   onClose: () => void;
   onImported: (
     parsedPersonalInfo?: ParsedPersonalInfo,
-    personalInfoSelection?: ParsedPersonalInfoSelection
+    personalInfoSelection?: ParsedPersonalInfoSelection,
+    options?: { expectedAuthCacheKey: string },
   ) => Promise<void> | void;
   profileSnapshot?: {
     name?: string;
@@ -38,6 +40,7 @@ interface ResumeUploadModalProps {
 
 const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
   isOpen,
+  authUserKey = null,
   onClose,
   onImported,
   profileSnapshot,
@@ -145,17 +148,23 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
     applyParsedPersonalInfo,
     applyParsedCertifications,
     applyParsedSkills,
-    toast
+    toast,
+    authUserKey,
   );
-  const { isImporting, handleImport } = useResumeImport(
+  const { isImporting, handleImport, cancelImport } = useResumeImport(
     selectedItems,
     selectedCertifications,
     selectedSkillTags,
     personalInfoSelection,
     toast,
-    () => onImported(parsedPersonalInfo, personalInfoSelection),
-    onClose
+    (options) => onImported(parsedPersonalInfo, personalInfoSelection, options),
+    onClose,
+    authUserKey,
   );
+  const handleClose = useCallback(() => {
+    cancelImport();
+    onClose();
+  }, [cancelImport, onClose]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const progress = STAGE_PROGRESS[stage];
   const selectedTotalCount =
@@ -207,9 +216,10 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
   );
   useEffect(() => {
     if (!isOpen) {
+      cancelImport();
       resetAll();
     }
-  }, [isOpen, resetAll]);
+  }, [cancelImport, isOpen, resetAll]);
   const isReady = stage === 'ready';
   const shouldShowSplitLayout = !isMobile || isCompactLandscape;
   const shouldShowMobilePreview = isMobile && !isCompactLandscape && isReady;
@@ -224,7 +234,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
         <div className="absolute inset-x-0 -top-20 h-40 rounded-full bg-emerald-400/20 blur-3xl" />
         <div className="relative flex min-h-0 flex-1 flex-col p-4 sm:p-6">
           <ModalHeader
-            onClose={onClose}
+            onClose={handleClose}
             actionLabel={shouldShowMobilePreview ? '重新上传' : undefined}
             onAction={shouldShowMobilePreview ? handleResetToUpload : undefined}
             hideDescription={shouldShowMobilePreview || isCompactLandscape}
@@ -321,7 +331,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
             <div className="shrink-0">
               <ModalFooter
                 selectedCount={selectedTotalCount}
-                onClose={onClose}
+                onClose={handleClose}
                 onImport={handleImport}
                 isImporting={isImporting}
               />

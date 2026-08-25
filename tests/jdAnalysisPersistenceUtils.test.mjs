@@ -19,7 +19,7 @@ const importJDAnalysisPersistenceUtils = async () => {
 
 const importJDAnalysisStorage = async () => {
   const result = await build({
-    entryPoints: ['views/jdAnalysisStorage.ts'],
+    entryPoints: ['services/jdAnalysisStorage.ts'],
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -433,7 +433,7 @@ test('local writes allow an authoritative empty backend over a stale cache', asy
 test('live backend reconciliation invalidates active work before adopting the shared decision', () => {
   const source = readFileSync('hooks/useJDAnalysis.ts', 'utf8');
   const start = source.indexOf('const reconciliation = selectPreferredPersistedJDAnalysis');
-  const end = source.indexOf('saveJDAnalysisCache(resumeId, reconciledPayload', start);
+  const end = source.indexOf('saveJDAnalysisCache(authUserKey, resumeId, reconciledPayload', start);
   const reconciliationBlock = source.slice(start, end);
 
   assert.notEqual(start, -1);
@@ -528,4 +528,38 @@ test('keeps attachment metadata when extracted text is not promoted to JD text',
     attachmentName: 'jd.pdf',
     attachmentExtractedText: undefined,
   });
+});
+
+test('owner and resume changes invalidate stale JD analysis state before cache writes', () => {
+  const source = readFileSync('hooks/useJDAnalysis.ts', 'utf8');
+
+  assert.match(
+    source,
+    /const analysisIdentity = useMemo\(\(\) => canonicalStringify\(\{\s*owner: authUserKey \?\? null,\s*resumeId: resumeId \?\? null,/,
+  );
+  assert.match(
+    source,
+    /!isAnalysisStateCurrent\s*\|\| activeAnalysisIdentityRef\.current !== analysisIdentity\s*\) \{\s*return undefined;/,
+  );
+  assert.match(
+    source,
+    /hasLoadedJdCacheRef\.current = false;\s*invalidatePendingJdFileSelection\(\);\s*invalidateAnalysisRun\(\);[\s\S]*?setAnalysisStateIdentity\(analysisIdentity\);/,
+  );
+  assert.match(
+    source,
+    /shouldContinue: \(\) => \([\s\S]*?activeAnalysisIdentityRef\.current === analysisIdentity\s*&& ownerGuard\.isOperationCurrent\(ownerOperation\)\s*\)/,
+  );
+  assert.match(source, /expectedAuthCacheKey: ownerOperation\.expectedAuthCacheKey/);
+  assert.match(
+    source,
+    /const resolveLocalAnalysisWriteBase = useCallback[\s\S]*?\}, \[analysisIdentity, authUserKey, isAnalysisStateCurrent, resumeId\]\);/,
+  );
+
+  for (const cacheEffectDependencies of [
+    /\[\s*authUserKey,\s*isEvaluationOutdated,\s*isAnalysisStateCurrent,/,
+    /\[\s*authUserKey,\s*isLoadingExperiences,\s*isLoadingResume,\s*isAnalysisStateCurrent,/,
+    /\[\s*applyPersistedAnalysisState,\s*authUserKey,\s*invalidateAnalysisRun,\s*isAnalysisStateCurrent,/,
+  ]) {
+    assert.match(source, cacheEffectDependencies);
+  }
 });

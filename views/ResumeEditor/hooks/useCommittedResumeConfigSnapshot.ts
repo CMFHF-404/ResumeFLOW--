@@ -17,10 +17,11 @@ import {
     loadJDAnalysisCache,
     normalizeJDAnalysisPersistence,
     selectPreferredPersistedJDAnalysis,
-} from '../../jdAnalysisStorage';
+} from '../../../services/jdAnalysisStorage';
 import { buildResumeConfigSnapshot } from '../helpers';
 
 type UseCommittedResumeConfigSnapshotParams = {
+    authUserKey?: string | null;
     resumeId: string | null;
     resumeDetail: ResumeDetail | null;
     persistedJDAnalysisSnapshot: ResumeJDAnalysis | null | undefined;
@@ -53,6 +54,7 @@ type UseCommittedResumeConfigSnapshotParams = {
 };
 
 export const useCommittedResumeConfigSnapshot = ({
+    authUserKey,
     resumeId,
     resumeDetail,
     persistedJDAnalysisSnapshot,
@@ -89,9 +91,9 @@ export const useCommittedResumeConfigSnapshot = ({
         );
         return selectPreferredPersistedJDAnalysis(
             backendPersistedJDAnalysis,
-            resumeId ? loadJDAnalysisCache(resumeId) : null
+            resumeId ? loadJDAnalysisCache(authUserKey, resumeId) : null
         )?.payload ?? null;
-    }, [resumeDetail?.resume?.config?.jdAnalysis, resumeId]);
+    }, [authUserKey, resumeDetail?.resume?.config?.jdAnalysis, resumeId]);
 
     const committedPersistedJDAnalysisSnapshot =
         persistedJDAnalysisSnapshot !== undefined

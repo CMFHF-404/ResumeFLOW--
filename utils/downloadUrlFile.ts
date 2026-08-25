@@ -1,7 +1,18 @@
 import { downloadBlobFile } from './downloadBlobFile';
-import { getApiBaseUrl } from '../services/apiClient';
+import {
+  getApiBaseUrl,
+  getAuthCacheKey,
+  getAuthorizationHeader,
+} from '../services/apiClient';
 
 const FALLBACK_DOWNLOAD_ERROR_MESSAGE = 'PDF 下载失败，请稍后重试。';
+const AUTH_CONTEXT_CHANGED_MESSAGE = 'Authentication context changed during export';
+
+const assertDownloadAuthContext = async (expectedAuthCacheKey?: string) => {
+  if (expectedAuthCacheKey && await getAuthCacheKey() !== expectedAuthCacheKey) {
+    throw new Error(AUTH_CONTEXT_CHANGED_MESSAGE);
+  }
+};
 
 const extractDetailMessage = (detail: unknown): string | null => {
   if (typeof detail === 'string' && detail.trim()) {
@@ -89,21 +100,35 @@ const joinUrl = (base: string, path: string) => (
   `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
 );
 
-const parseUrl = (value: string): URL | null => {
+const hasSingleLegacyDownloadToken = (value: string) => {
   try {
-    return new URL(value);
+    const parsedUrl = new URL(value, 'https://resumeflow.invalid');
+    const tokens = parsedUrl.searchParams.getAll('token');
+    return tokens.length === 1 && Boolean(tokens[0].trim());
   } catch {
-    return null;
+    return false;
   }
 };
 
 const resolveDownloadRequestUrl = (url: string) => {
-  const parsedUrl = parseUrl(url);
-  const requestPath = parsedUrl ? `${parsedUrl.pathname}${parsedUrl.search}` : url;
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url, 'https://resumeflow.invalid');
+  } catch {
+    throw new Error('PDF 下载地址无效，请重新发起导出。');
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('PDF 下载地址无效，请重新发起导出。');
+  }
+
+  // Always discard an absolute URL's supplied origin. Export download paths are
+  // API-local capabilities; forwarding Logto credentials to an arbitrary host is
+  // never valid, even if a malformed backend response contains that host.
+  const requestPath = `${parsedUrl.pathname}${parsedUrl.search}`;
   const apiBaseUrl = getApiBaseUrl().trim();
 
   if (!apiBaseUrl) {
-    return parsedUrl ? url : requestPath;
+    return requestPath;
   }
 
   return joinUrl(apiBaseUrl, requestPath);
@@ -111,9 +136,30 @@ const resolveDownloadRequestUrl = (url: string) => {
 
 export const downloadUrlFile = async (
   url: string,
-  fallbackFileName?: string
+  fallbackFileName?: string,
+  expectedAuthCacheKey?: string,
 ): Promise<void> => {
-  const response = await fetch(resolveDownloadRequestUrl(url), { method: 'GET' });
+  await assertDownloadAuthContext(expectedAuthCacheKey);
+  const isLegacySignedDownload = hasSingleLegacyDownloadToken(url);
+  const headers = new Headers();
+  if (!isLegacySignedDownload) {
+    const authorization = await getAuthorizationHeader(expectedAuthCacheKey);
+    if (!authorization) {
+      throw new Error('登录状态已失效，请重新登录后再下载。');
+    }
+    headers.set('Authorization', authorization);
+  }
+  await assertDownloadAuthContext(expectedAuthCacheKey);
+  if (fallbackFileName && !isLegacySignedDownload) {
+    headers.set('X-ResumeFlow-File-Name', encodeURIComponent(fallbackFileName));
+  }
+  const response = await fetch(resolveDownloadRequestUrl(url), {
+    method: 'GET',
+    headers,
+    cache: 'no-store',
+  });
+
+  await assertDownloadAuthContext(expectedAuthCacheKey);
 
   if (!response.ok) {
     throw new Error(await readDownloadErrorMessage(response));
@@ -124,5 +170,6 @@ export const downloadUrlFile = async (
     fallbackFileName
   );
   const blob = await response.blob();
+  await assertDownloadAuthContext(expectedAuthCacheKey);
   downloadBlobFile(blob, fileName);
 };

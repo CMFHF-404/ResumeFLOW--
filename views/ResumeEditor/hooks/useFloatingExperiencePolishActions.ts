@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type Dispatch,
+    type MutableRefObject,
+    type SetStateAction,
+} from 'react';
 import type { ToastConfig } from '../../../components/Toast';
+import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
+import { isAuthContextChangedError } from '../../../services/apiClient';
 import { aiService, type PolishMode } from '../../../services/aiService';
 import type { ExperienceEditDraft, ResumeExperienceView } from '../../../types/resume';
 import {
@@ -31,6 +42,7 @@ const isAbortError = (error: unknown) => (
 );
 
 type UseFloatingExperiencePolishActionsParams = {
+    authUserKey: string | null;
     activeFloatingPolishExperienceId: string | null;
     experienceItems: ResumeExperienceView[];
     selectedExpIds: Set<string>;
@@ -62,6 +74,7 @@ type UseFloatingExperiencePolishActionsParams = {
 };
 
 export const useFloatingExperiencePolishActions = ({
+    authUserKey,
     activeFloatingPolishExperienceId,
     experienceItems,
     selectedExpIds,
@@ -81,32 +94,57 @@ export const useFloatingExperiencePolishActions = ({
     showToastSuccess,
     closeToast,
 }: UseFloatingExperiencePolishActionsParams) => {
+    const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
     const [floatingThinkingText, setFloatingThinkingText] = useState('');
     const floatingAbortControllerRef = useRef<AbortController | null>(null);
+    const activeRequestRef = useRef<symbol | null>(null);
+    const loadingToastRef = useRef<string | null>(null);
+
+    useLayoutEffect(() => {
+        activeRequestRef.current = null;
+        floatingAbortControllerRef.current?.abort();
+        floatingAbortControllerRef.current = null;
+        floatingExperiencePolishRunningRef.current = false;
+        setIsFloatingExperiencePolishRunning(false);
+        setFloatingThinkingText('');
+        if (loadingToastRef.current) {
+            closeToast(loadingToastRef.current);
+            loadingToastRef.current = null;
+        }
+    }, [
+        authUserKey,
+        closeToast,
+        floatingExperiencePolishRunningRef,
+        setIsFloatingExperiencePolishRunning,
+    ]);
 
     useEffect(() => {
         return () => {
+            activeRequestRef.current = null;
             if (floatingAbortControllerRef.current) {
                 floatingAbortControllerRef.current.abort();
             }
+            if (loadingToastRef.current) {
+                closeToast(loadingToastRef.current);
+                loadingToastRef.current = null;
+            }
         };
-    }, []);
+    }, [closeToast]);
 
     const handleStopFloating = useCallback(() => {
         if (floatingAbortControllerRef.current) {
             floatingAbortControllerRef.current.abort();
             floatingAbortControllerRef.current = null;
         }
+        floatingExperiencePolishRunningRef.current = false;
         setIsFloatingExperiencePolishRunning(false);
         setFloatingThinkingText('');
-    }, [setIsFloatingExperiencePolishRunning]);
+    }, [floatingExperiencePolishRunningRef, setIsFloatingExperiencePolishRunning]);
 
     const handleRunFloatingExperiencePolish = useCallback(async () => {
         if (!activeFloatingPolishExperienceId || floatingExperiencePolishRunningRef.current) {
             return;
         }
-        floatingAbortControllerRef.current = new AbortController();
-        setFloatingThinkingText('');
         const targetItem = experienceItems.find((item) => item.id === activeFloatingPolishExperienceId);
         if (!targetItem) {
             return;
@@ -124,10 +162,20 @@ export const useFloatingExperiencePolishActions = ({
         let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
+        const requestId = Symbol('floating-experience-polish');
+        const abortController = new AbortController();
+        activeRequestRef.current = requestId;
+        floatingAbortControllerRef.current = abortController;
+        floatingExperiencePolishRunningRef.current = true;
+        setIsFloatingExperiencePolishRunning(true);
+        setFloatingThinkingText('');
+        let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
 
         try {
-            floatingExperiencePolishRunningRef.current = true;
-            setIsFloatingExperiencePolishRunning(true);
+            operation = await ownerGuard.beginOperation();
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
             trackAiPolishStart({ source: 'resume_editor', field: 'all' });
             const result = await aiService.polishExperienceStream({
                 content: buildExperiencePolishPayloadContent(draft),
@@ -142,10 +190,21 @@ export const useFloatingExperiencePolishActions = ({
                 entrySource: 'resume_editor',
             }, (event) => {
                 const resolution = resolveThoughtDisplayEvent(event);
-                if (resolution?.kind === 'model_thought') {
+                if (
+                    resolution?.kind === 'model_thought'
+                    && activeRequestRef.current === requestId
+                    && operation
+                    && ownerGuard.isOperationCurrent(operation)
+                ) {
                     setFloatingThinkingText(resolution.text);
                 }
-            }, floatingAbortControllerRef.current?.signal);
+            }, abortController.signal, {
+                expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            });
+            await ownerGuard.assertOperationCurrent(operation);
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
 
             if (shouldAskBeforeSmartCompletionRewrite(floatingPolishMode, result)) {
                 setFloatingSmartCompletionPrompt((prev) => buildSmartCompletionPromptState(result, prev));
@@ -160,18 +219,30 @@ export const useFloatingExperiencePolishActions = ({
                 setFloatingSmartCompletionPrompt(null);
             }
         } catch (error) {
-            if (isAbortError(error)) {
+            if (
+                isAbortError(error)
+                || isAuthContextChangedError(error)
+                || !operation
+                || !ownerGuard.isOperationCurrent(operation)
+                || activeRequestRef.current !== requestId
+            ) {
                 wasAborted = true;
                 return;
             }
             hasError = true;
             console.error('[ResumeEditor] 浮动润色预览失败:', error);
         } finally {
-            if (wasAborted) {
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
+            if (wasAborted || !operation || !ownerGuard.isOperationCurrent(operation)) {
+                activeRequestRef.current = null;
                 floatingExperiencePolishRunningRef.current = false;
                 setIsFloatingExperiencePolishRunning(false);
                 setFloatingThinkingText('');
-                floatingAbortControllerRef.current = null;
+                if (floatingAbortControllerRef.current === abortController) {
+                    floatingAbortControllerRef.current = null;
+                }
                 return;
             }
             const message = hasError
@@ -192,10 +263,13 @@ export const useFloatingExperiencePolishActions = ({
                 action,
                 durationMs: Date.now() - startTime,
             });
+            activeRequestRef.current = null;
             floatingExperiencePolishRunningRef.current = false;
             setIsFloatingExperiencePolishRunning(false);
             setFloatingThinkingText('');
-            floatingAbortControllerRef.current = null;
+            if (floatingAbortControllerRef.current === abortController) {
+                floatingAbortControllerRef.current = null;
+            }
         }
     }, [
         activeFloatingPolishExperienceId,
@@ -208,6 +282,7 @@ export const useFloatingExperiencePolishActions = ({
         jdCapabilityPolishContext,
         jdPolishContext,
         floatingExperiencePolishRunningRef,
+        ownerGuard,
         setIsFloatingExperiencePolishRunning,
         setFloatingSmartCompletionPrompt,
         showToastError,
@@ -229,19 +304,29 @@ export const useFloatingExperiencePolishActions = ({
             return;
         }
 
-        const toastId = showToastLoading('正在批量润色中……');
         let hasError = false;
         let wasAborted = false;
         let action: 'applied' | 'discarded' = 'discarded';
         const startTime = Date.now();
         let sessionItems: FloatingExperiencePolishSessionItem[] = [];
         let failedItemCount = 0;
+        const requestId = Symbol('batch-experience-polish');
+        const abortController = new AbortController();
+        activeRequestRef.current = requestId;
+        floatingAbortControllerRef.current = abortController;
+        floatingExperiencePolishRunningRef.current = true;
+        setIsFloatingExperiencePolishRunning(true);
+        setFloatingThinkingText('');
+        let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
+        let toastId: string | null = null;
 
         try {
-            floatingAbortControllerRef.current = new AbortController();
-            setFloatingThinkingText('');
-            floatingExperiencePolishRunningRef.current = true;
-            setIsFloatingExperiencePolishRunning(true);
+            operation = await ownerGuard.beginOperation();
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
+            toastId = showToastLoading('正在批量润色中……');
+            loadingToastRef.current = toastId;
             trackAiPolishStart({ source: 'resume_editor', field: 'all' });
 
             const results = await Promise.allSettled(targetItems.map(async (item) => {
@@ -255,11 +340,17 @@ export const useFloatingExperiencePolishActions = ({
                         customPrompt: floatingPolishCustomPrompt,
                     }),
                     entrySource: 'resume_editor',
-                }, undefined, floatingAbortControllerRef.current?.signal);
+                }, undefined, abortController.signal, {
+                    expectedAuthCacheKey: operation?.expectedAuthCacheKey,
+                });
 
                 const nextDraft = buildPolishedExperienceDraft(draft, result);
                 return buildFloatingPolishSessionItem(item, nextDraft, draft);
             }));
+            await ownerGuard.assertOperationCurrent(operation);
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
 
             sessionItems = [];
             const failedIds: string[] = [];
@@ -289,6 +380,7 @@ export const useFloatingExperiencePolishActions = ({
             if (abortedIds.length > 0) {
                 wasAborted = true;
                 updateToast(toastId, { message: '已停止批量润色', type: 'info', duration: 2000 });
+                loadingToastRef.current = null;
                 return;
             }
             if (sessionItems.length > 0) {
@@ -303,6 +395,7 @@ export const useFloatingExperiencePolishActions = ({
                         type: 'error',
                         duration: 3000,
                     });
+                    loadingToastRef.current = null;
                 }
             } else if (sessionItems.length === 0 && unchangedIds.length > 0) {
                 updateToast(toastId, {
@@ -310,26 +403,57 @@ export const useFloatingExperiencePolishActions = ({
                     type: 'success',
                     duration: 2500,
                 });
+                loadingToastRef.current = null;
             }
         } catch (error) {
-            if (isAbortError(error)) {
+            if (
+                isAbortError(error)
+                && operation
+                && ownerGuard.isOperationCurrent(operation)
+                && activeRequestRef.current === requestId
+            ) {
                 wasAborted = true;
-                updateToast(toastId, { message: '已停止批量润色', type: 'info', duration: 2000 });
+                if (toastId) {
+                    updateToast(toastId, { message: '已停止批量润色', type: 'info', duration: 2000 });
+                    loadingToastRef.current = null;
+                }
+                return;
+            }
+            if (
+                isAuthContextChangedError(error)
+                || !operation
+                || !ownerGuard.isOperationCurrent(operation)
+                || activeRequestRef.current !== requestId
+            ) {
+                wasAborted = true;
+                if (toastId && loadingToastRef.current === toastId) {
+                    closeToast(toastId);
+                    loadingToastRef.current = null;
+                }
                 return;
             }
             hasError = true;
             console.error('[ResumeEditor] 批量润色失败:', error);
-            updateToast(toastId, {
-                message: '批量润色失败，请稍后重试',
-                type: 'error',
-                duration: 3000,
-            });
+            if (toastId) {
+                updateToast(toastId, {
+                    message: '批量润色失败，请稍后重试',
+                    type: 'error',
+                    duration: 3000,
+                });
+                loadingToastRef.current = null;
+            }
         } finally {
-            if (wasAborted) {
+            if (activeRequestRef.current !== requestId) {
+                return;
+            }
+            if (wasAborted || !operation || !ownerGuard.isOperationCurrent(operation)) {
+                activeRequestRef.current = null;
                 floatingExperiencePolishRunningRef.current = false;
                 setIsFloatingExperiencePolishRunning(false);
                 setFloatingThinkingText('');
-                floatingAbortControllerRef.current = null;
+                if (floatingAbortControllerRef.current === abortController) {
+                    floatingAbortControllerRef.current = null;
+                }
                 return;
             }
             if (!hasError) {
@@ -347,12 +471,16 @@ export const useFloatingExperiencePolishActions = ({
                         type: 'success',
                         duration: 2500,
                     });
+                    loadingToastRef.current = null;
                 }
             }
+            activeRequestRef.current = null;
             floatingExperiencePolishRunningRef.current = false;
             setIsFloatingExperiencePolishRunning(false);
             setFloatingThinkingText('');
-            floatingAbortControllerRef.current = null;
+            if (floatingAbortControllerRef.current === abortController) {
+                floatingAbortControllerRef.current = null;
+            }
         }
     }, [
         applyFloatingPolishPreview,
@@ -361,6 +489,8 @@ export const useFloatingExperiencePolishActions = ({
         floatingPolishCustomPrompt,
         floatingPolishMode,
         floatingExperiencePolishRunningRef,
+        closeToast,
+        ownerGuard,
         setIsFloatingExperiencePolishRunning,
         selectedExpIds,
         showToastError,

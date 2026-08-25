@@ -366,6 +366,25 @@ Response fields:
 
 Use this endpoint only after the job passes the user's threshold and hard filters. The request accepts the same fields as analyze, plus optional overrides:
 
+Existing v1 clients may omit an export-mode header. Their response keeps the
+legacy signed download URL, including `token` and `fileName` query parameters,
+so that URL can be downloaded directly without another API-key header. Updated
+clients should opt into the authenticated contract by adding:
+
+```http
+X-ResumeFlow-Export-Mode: authenticated-v2
+```
+
+Unknown or conflicting export-mode headers are rejected instead of silently
+choosing one contract.
+
+For a retryable generation attempt, send one stable `Idempotency-Key` header
+(at most 200 characters) and reuse it only with the exact same JSON payload and
+export mode. ResumeFLOW then reuses the already committed generated resume and
+download snapshot instead of creating a duplicate. Reusing the key with a
+different request returns `409 Conflict`. Do not put credentials or personal
+data in this key; the server stores only an owner-scoped hash.
+
 ```json
 {
   "job_title": "AI Product Intern",
@@ -385,7 +404,13 @@ Pass the user's selected `template_id`, `polish_before_output`, and `polish_leve
 
 Response fields include all analyze fields, plus:
 
-- `resume_pdf.download_url`: URL for downloading the generated PDF.
+- `resume_pdf.download_url`: absolute ResumeFLOW PDF URL whose host and configured
+  API base path come from server deployment configuration, never request headers.
+  In the default legacy contract, navigate to the returned signed URL exactly as
+  supplied; do not copy its token into logs, archives, screenshots, or metadata.
+  With `authenticated-v2`, the URL contains no capability query and the download
+  GET must send the same `Authorization: Bearer <API Key>` plus
+  `X-ResumeFlow-File-Name: <percent-encoded resume_pdf.file_name>`.
 - `resume_pdf.file_name`: suggested PDF file name.
 - `resume_pdf.generated_resume_id`: ResumeFLOW resume id saved under the user's account.
 - `job_link_url`: direct job URL.

@@ -2,7 +2,63 @@ import type { Dispatch, DragEvent, ReactNode, RefObject, SetStateAction } from "
 import type { JDAnalysisItemSignatures, MatchTrend } from "./analysis";
 import type { AssistantDraftCard, JDAnalysisResult, PolishMode } from "./ai";
 import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/resumeTemplates';
-import type { ResumeDetail } from "../services/resumeService";
+
+export interface Resume {
+  id: string;
+  user_id: string;
+  title: string;
+  target_role?: string;
+  config?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResumeExperienceMerged {
+  id: string;
+  master_experience_id: string;
+  version: number;
+  title: string;
+  org?: string;
+  location?: string;
+  start_date?: string;
+  end_date?: string;
+  is_current: boolean;
+  summary?: string;
+  highlights: string[];
+  star: Record<string, any>;
+}
+
+export interface ResumeExperienceItem {
+  id: string;
+  resume_id: string;
+  experience_version_id: string;
+  display_order: number;
+  overrides_json: Record<string, any>;
+  experience: ResumeExperienceMerged;
+}
+
+export interface ResumeDetail {
+  resume: Resume;
+  experiences: ResumeExperienceItem[];
+}
+
+export interface ResumeCreatePayload {
+  title: string;
+  target_role?: string;
+  config?: Record<string, any>;
+}
+
+export interface ResumeUpdatePayload {
+  title?: string;
+  target_role?: string;
+  config?: Record<string, any>;
+  expected_updated_at?: string;
+}
+
+export interface ResumeAssemblyPatchPayload {
+  operations: Array<Record<string, any>>;
+  expected_updated_at?: string;
+}
 
 export type StarFields = {
   s: string;
@@ -114,6 +170,14 @@ export type ResumeEditorProfile = {
 
 export type ProfileSyncMode = "global" | "local";
 export type SectionSpacingKey = 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12;
+
+export type SmartPageLayout = {
+  topPaddingPx: number;
+  sectionSpacingKey: SectionSpacingKey;
+  itemSpacingEm: number;
+  lineHeight: number;
+  fontSize: number;
+};
 
 export type ResumeJDAnalysis = {
   jdText: string;

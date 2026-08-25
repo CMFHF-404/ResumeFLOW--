@@ -171,9 +171,9 @@ export const useDashboardResumePreviewCache = ({
     clearDashboardResumePreviewSnapshotCache();
   }, [previewDataRevision, resetPreviewQueue, setPreviewEntries]);
 
-  const ensureGlobalData = useCallback(() => {
+  const ensureGlobalData = useCallback((expectedAuthCacheKey: string) => {
     if (!globalDataPromiseRef.current) {
-      const request = loadDashboardResumePreviewGlobalData()
+      const request = loadDashboardResumePreviewGlobalData(expectedAuthCacheKey)
         .catch((error) => {
           if (globalDataPromiseRef.current === request) {
             globalDataPromiseRef.current = null;
@@ -214,6 +214,10 @@ export const useDashboardResumePreviewCache = ({
   }, [scheduleQueueDrain]);
 
   const loadQueuedPreview = useCallback((item: DashboardResumePreviewQueueItem) => {
+    if (!authUserKey) {
+      return;
+    }
+    const expectedAuthCacheKey = authUserKey;
     const cachedSnapshot = previewSnapshotCache.get(item.cacheKey);
     if (cachedSnapshot) {
       startTransition(() => {
@@ -254,8 +258,12 @@ export const useDashboardResumePreviewCache = ({
     let request = previewInFlightRequests.get(item.cacheKey);
     if (!request) {
       request = (async () => {
-        const globalData = await ensureGlobalData();
-        return loadDashboardResumePreviewSnapshot(item.resumeId, globalData);
+        const globalData = await ensureGlobalData(expectedAuthCacheKey);
+        return loadDashboardResumePreviewSnapshot(
+          item.resumeId,
+          expectedAuthCacheKey,
+          globalData,
+        );
       })();
       previewInFlightRequests.set(item.cacheKey, request);
       const clearInFlightRequest = () => {
@@ -324,10 +332,10 @@ export const useDashboardResumePreviewCache = ({
         });
       })
       .finally(() => completePreviewQueueItem(requestGeneration));
-  }, [completePreviewQueueItem, ensureGlobalData, setPreviewEntries]);
+  }, [authUserKey, completePreviewQueueItem, ensureGlobalData, setPreviewEntries]);
 
   const drainPreviewQueue = useCallback(() => {
-    if (!mountedRef.current || !isAuthenticated) {
+    if (!mountedRef.current || !isAuthenticated || !authUserKey) {
       return;
     }
     while (
@@ -341,7 +349,7 @@ export const useDashboardResumePreviewCache = ({
       }
       loadQueuedPreview(next);
     }
-  }, [isAuthenticated, loadQueuedPreview]);
+  }, [authUserKey, isAuthenticated, loadQueuedPreview]);
 
   useEffect(() => {
     drainPreviewQueueRef.current = drainPreviewQueue;

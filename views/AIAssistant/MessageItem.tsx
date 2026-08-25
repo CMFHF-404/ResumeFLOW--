@@ -218,6 +218,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                     {...props}
                   />
                 ),
+                img: () => null,
                 code: ({ node, inline, ...props }: any) => inline
                   ? <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px] text-slate-800 dark:bg-slate-800 dark:text-slate-100" {...props} />
                   : <code className="my-2 block overflow-x-auto whitespace-pre rounded-lg border border-slate-100 bg-slate-50 p-3 font-mono text-[13px] text-slate-800 shadow-inner dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" {...props} />,

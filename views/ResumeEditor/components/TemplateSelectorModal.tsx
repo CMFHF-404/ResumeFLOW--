@@ -25,7 +25,7 @@ import {
   normalizeResumeExperienceListMarkerStyle,
   normalizeResumeSkillTagSeparator,
 } from '../../../utils/resumeCustomization';
-import type { ResumeTemplatePresetMap } from '../../resumeTemplateStorage';
+import type { ResumeTemplatePresetMap } from '../../../services/resumeTemplateStorage';
 import { DEFAULT_SECTION_ORDER } from '../constants';
 import {
   normalizeTemplateSectionOrder,

@@ -1767,6 +1767,63 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["notify_url"], "https://api.example.com/api/billing/payments/yifut/notify")
         self.assertEqual(captured["return_url"], f"https://app.example.com/?payment_order={order.id}")
 
+    async def test_checkout_notify_url_respects_public_api_mount_prefix(self) -> None:
+        for public_api_origin, expected_notify_url in (
+            (
+                "https://api.example.com/api",
+                "https://api.example.com/api/billing/payments/yifut/notify",
+            ),
+            (
+                "https://api.example.com/gateway",
+                "https://api.example.com/gateway/api/billing/payments/yifut/notify",
+            ),
+            (
+                "https://api.example.com/gateway/api",
+                "https://api.example.com/gateway/api/billing/payments/yifut/notify",
+            ),
+        ):
+            with self.subTest(public_api_origin=public_api_origin):
+                now = utc_now_aware()
+                order = PaymentOrder(
+                    user_id="user-1",
+                    merchant_order_no=f"RF-ORIGIN-{uuid.uuid4().hex}",
+                    idempotency_key=f"origin-{uuid.uuid4().hex}",
+                    sku="tokens_500k",
+                    product_name="500K Token 包",
+                    amount_fen=990,
+                    currency="CNY",
+                    benefit_type="tokens",
+                    token_amount=500_000,
+                    entitlement_snapshot_json=_snapshot_for("tokens_500k"),
+                    expires_at=now + timedelta(minutes=20),
+                )
+                session = _FakeSession([_ExecuteResult(order), _ExecuteResult(order)])
+                captured = {}
+
+                def fake_signed_fields(fields, _private_key):
+                    captured.update(fields)
+                    return {**{key: str(value) for key, value in fields.items()}, "sign_type": "RSA", "sign": "sig"}
+
+                with (
+                    patch.object(
+                        payment_service,
+                        "_require_payments_enabled",
+                        return_value=_settings(public_api_origin=public_api_origin),
+                    ),
+                    patch.object(
+                        payment_service.payment_provider,
+                        "build_signed_fields",
+                        side_effect=fake_signed_fields,
+                    ),
+                ):
+                    await payment_service.create_checkout(
+                        session,
+                        user_id="user-1",
+                        order_id=str(order.id),
+                    )
+
+                self.assertEqual(captured["notify_url"], expected_notify_url)
+
     async def test_checkout_rejects_terminal_order_without_reopening_it(self) -> None:
         now = datetime(2026, 8, 12, 4, 30, tzinfo=timezone.utc)
         order = PaymentOrder(

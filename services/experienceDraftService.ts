@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { type AuthOwnerOptions } from './apiClient';
 import type { ExperienceCategory } from './experienceService';
 import type {
   ExperienceDraftCardData,
@@ -38,22 +38,24 @@ const toApiPayload = (payload: ExperienceDraftPayload) => ({
 });
 
 export const experienceDraftService = {
-  async list(category: Extract<ExperienceCategory, 'work' | 'project'>) {
+  async list(category: Extract<ExperienceCategory, 'work' | 'project'>, options?: AuthOwnerOptions) {
     const response = await apiClient.get<ExperienceDraftRecord[]>('/api/experience-drafts', {
       params: { category },
+      expectedAuthCacheKey: options?.expectedAuthCacheKey,
     });
     return response.data;
   },
 
-  async upsert(payload: ExperienceDraftPayload) {
+  async upsert(payload: ExperienceDraftPayload, options?: AuthOwnerOptions) {
     const response = await apiClient.post<ExperienceDraftRecord>(
       '/api/experience-drafts',
-      toApiPayload(payload)
+      toApiPayload(payload),
+      options,
     );
     return response.data;
   },
 
-  async delete(id: string) {
-    await apiClient.delete(`/api/experience-drafts/${id}`);
+  async delete(id: string, options?: AuthOwnerOptions) {
+    await apiClient.delete(`/api/experience-drafts/${id}`, options);
   },
 };

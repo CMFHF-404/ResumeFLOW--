@@ -18,6 +18,7 @@ import type { ResumeEvaluationSnapshot } from "../utils/resumeEvaluationSnapshot
 import { canonicalStringify, splitAttachmentDerivedJdText } from "./jdAnalysisSignatureUtils";
 import { buildPrevResultPayload, type MatchUpdateMode } from "./jdAnalysisMatchUtils";
 import { buildResumeAISnapshot } from "../utils/resumeHelpers";
+import type { AuthOwnerOptions } from "../services/apiClient";
 
 export type JDAnalyzeProgressHandler = (node: JDAnalyzeProgressNode) => void;
 export type JDAnalyzeStreamHandler = (event: AnalyzeStreamEvent) => void;
@@ -44,12 +45,14 @@ export type JDAnalysisRequestService = {
   analyzeJD: (
     params: AnalyzeJDParams,
     onEvent?: (event: AnalyzeStreamEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options?: AuthOwnerOptions,
   ) => Promise<JDAnalysisResult>;
   analyzeJDWithAttachment: (
     params: AnalyzeJDWithAttachmentParams,
     onEvent?: (event: AnalyzeStreamEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options?: AuthOwnerOptions,
   ) => Promise<JDAnalysisResult>;
 };
 
@@ -62,6 +65,7 @@ type RunJDAnalysisRequestParams = {
   onEvent?: JDAnalyzeStreamHandler;
   service: JDAnalysisRequestService;
   signal?: AbortSignal;
+  expectedAuthCacheKey?: string;
 };
 
 export type RunJDAnalysisRequestResult = {
@@ -96,6 +100,7 @@ export const runJDAnalysisRequest = async ({
   onEvent,
   service,
   signal,
+  expectedAuthCacheKey,
 }: RunJDAnalysisRequestParams): Promise<RunJDAnalysisRequestResult> => {
   // The normal JD route remains intentionally lightweight. Full-resume
   // snapshots belong solely to the explicit six-dimension report request.
@@ -131,14 +136,14 @@ export const runJDAnalysisRequest = async ({
       experienceText: snapshot.experienceText,
       prevResult: shouldUsePrev ? prevResultPayload : undefined,
       prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-    }, handleEvent, signal)
+    }, handleEvent, signal, { expectedAuthCacheKey })
     : await service.analyzeJD({
       text: snapshot.jdText,
       resumeText,
       prevResult: shouldUsePrev ? prevResultPayload : undefined,
       experienceText: snapshot.experienceText,
       prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
-    }, handleEvent, signal);
+    }, handleEvent, signal, { expectedAuthCacheKey });
   const extractedAttachmentText = currentFile
     ? result.extractedJdText?.trim() ?? ""
     : "";

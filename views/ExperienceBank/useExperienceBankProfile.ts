@@ -1,18 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ToastConfig } from '../../components/Toast';
 import type { GeneratePersonalSummaryParams } from '../../services/aiService';
 import { devLog } from '../../services/devLogger';
 import type { ParsedPersonalInfo, ParsedPersonalInfoSelection } from '../../services/parserService';
 import { type Profile, profileService } from '../../services/profileService';
 import {
+  assertAuthCacheKey,
+  isAuthContextChangedError,
+  type AuthOwnerOptions,
+} from '../../services/apiClient';
+import {
+  assertResumeAuthContext,
   isResumeVersionConflict,
   resumeService,
   waitForResumeMutations,
   type Resume as ResumeRecord,
 } from '../../services/resumeService';
+import { isOwnerOperationCurrent } from '../../utils/ownerScopedValue';
 import type { ExperienceBankPdfRenderSnapshot } from '../../types/experienceBankExport';
 import { mergeLinkedInLink } from '../profileUtils';
-import { getActiveResumeId, setActiveResumeId } from '../resumeStorage';
+import { getActiveResumeId, setActiveResumeId } from '../../services/resumeStorage';
 import {
   buildDraftProfileSnapshot as buildProfileDraftSnapshot,
   buildProfileFormSnapshot,
@@ -21,6 +28,7 @@ import {
 } from './profileDraftUtils';
 import { useExperienceBankSummaryGeneration } from './useExperienceBankSummaryGeneration';
 import { updateResumeTargetRoleWithConflictRetry } from './targetRoleUpdate';
+import { useAuthOwnerOperationGuard } from '../../hooks/useAuthOwnerOperationGuard';
 
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const SUMMARY_PREVIEW_CHAR_LIMIT = 100;
@@ -36,14 +44,15 @@ type LoadingToastFn = (message: string) => string;
 type UpdateToastFn = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
 
 type UseExperienceBankProfileParams = {
+  authUserKey: string | null;
   isAuthenticated: boolean;
   onRequireAuth: () => void | Promise<void>;
   cachedProfile?: Profile | null;
   onProfileUpdate?: (data: Profile) => void;
   onResumeUpdate?: (data: ResumeRecord) => void;
-  refreshEducation: () => Promise<unknown>;
-  loadExportSnapshot: () => Promise<ExperienceBankPdfRenderSnapshot>;
-  loadValidationSnapshot: () => Promise<ExperienceBankPdfRenderSnapshot | null>;
+  refreshEducation: (options?: AuthOwnerOptions) => Promise<unknown>;
+  loadExportSnapshot: (expectedAuthCacheKey: string) => Promise<ExperienceBankPdfRenderSnapshot>;
+  loadValidationSnapshot: (expectedAuthCacheKey: string) => Promise<ExperienceBankPdfRenderSnapshot | null>;
   buildSummaryPayload: (
     profile: Profile | null,
     snapshot: ExperienceBankPdfRenderSnapshot,
@@ -124,6 +133,7 @@ const buildProfileSnapshot = (profile: Profile) => ({
 });
 
 export const useExperienceBankProfile = ({
+  authUserKey,
   isAuthenticated,
   onRequireAuth,
   cachedProfile,
@@ -139,6 +149,7 @@ export const useExperienceBankProfile = ({
   updateToast,
   closeToast,
 }: UseExperienceBankProfileParams) => {
+  const ownerGuard = useAuthOwnerOperationGuard(authUserKey);
   const [isLoadingProfile, setIsLoadingProfile] = useState(isAuthenticated);
   const [isLoadingTargetRole, setIsLoadingTargetRole] = useState(isAuthenticated);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -183,16 +194,24 @@ export const useExperienceBankProfile = ({
   });
   const onProfileUpdateRef = useRef(onProfileUpdate);
   const onResumeUpdateRef = useRef(onResumeUpdate);
+  const activeProfileSaveRef = useRef<symbol | null>(null);
 
-  latestDraftProfileRef.current = {
-    name,
-    email,
-    phone,
-    location,
-    link,
-    summary,
-    profileSocialLinks,
-  };
+  useLayoutEffect(() => {
+    latestDraftProfileRef.current = {
+      name,
+      email,
+      phone,
+      location,
+      link,
+      summary,
+      profileSocialLinks,
+    };
+  }, [email, link, location, name, phone, profileSocialLinks, summary]);
+
+  useLayoutEffect(() => {
+    activeProfileSaveRef.current = null;
+    setIsSavingProfile(false);
+  }, [authUserKey]);
 
   const summaryText = useMemo(() => summary.trim(), [summary]);
   const summaryPreview = useMemo(
@@ -268,33 +287,60 @@ export const useExperienceBankProfile = ({
     if (!isAuthenticated) {
       return;
     }
-    if (!cachedProfile) {
+    if (
+      !cachedProfile
+      || !authUserKey
+      || cachedProfile.user_id !== authUserKey
+    ) {
       return;
     }
     applyProfileSnapshot(cachedProfile);
     hasHydratedProfileRef.current = true;
     setIsLoadingProfile(false);
-  }, [cachedProfile, applyProfileSnapshot, isAuthenticated]);
+  }, [authUserKey, cachedProfile, applyProfileSnapshot, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authUserKey || authUserKey === 'anonymous') {
       setActiveResumeIdState(null);
       setTargetRole('');
       setOriginalTargetRole('');
-      setIsLoadingTargetRole(false);
+      setIsLoadingTargetRole(isAuthenticated);
       return;
     }
+    const expectedAuthCacheKey = authUserKey;
     let isCancelled = false;
+    const canCommit = async () => {
+      if (!isOwnerOperationCurrent(
+        isCancelled,
+        authUserKey,
+        expectedAuthCacheKey,
+      )) {
+        return false;
+      }
+      try {
+        await assertResumeAuthContext(expectedAuthCacheKey);
+      } catch {
+        return false;
+      }
+      return isOwnerOperationCurrent(
+        isCancelled,
+        authUserKey,
+        expectedAuthCacheKey,
+      );
+    };
     const loadTargetRole = async () => {
       setIsLoadingTargetRole(true);
       try {
-        let resumeId = getActiveResumeId();
+        if (!await canCommit()) return;
+        let resumeId = getActiveResumeId(expectedAuthCacheKey);
         let resolvedTargetRole = '';
         if (resumeId) {
           try {
-            const detail = await resumeService.get(resumeId);
+          const detail = await resumeService.get(resumeId, { expectedAuthCacheKey });
+            if (!await canCommit()) return;
             resolvedTargetRole = detail.resume.target_role?.trim() ?? '';
           } catch (error) {
+            if (!await canCommit()) return;
             const status = typeof error === 'object' && error
               ? (error as { response?: { status?: number } }).response?.status
               : undefined;
@@ -305,29 +351,32 @@ export const useExperienceBankProfile = ({
           }
         }
         if (!resumeId) {
-          const resumes = await resumeService.list({ force: true });
+          const resumes = await resumeService.list({
+            force: true,
+            expectedAuthCacheKey,
+          });
+          if (!await canCommit()) return;
           const firstResume = resumes[0];
           if (firstResume) {
             resumeId = firstResume.id;
             resolvedTargetRole = firstResume.target_role?.trim() ?? '';
-            setActiveResumeId(firstResume.id);
+            if (!await canCommit()) return;
+            setActiveResumeId(expectedAuthCacheKey, firstResume.id);
           }
         }
-        if (isCancelled) {
-          return;
-        }
+        if (!await canCommit()) return;
         setActiveResumeIdState(resumeId);
         setTargetRole(resolvedTargetRole);
         setOriginalTargetRole(resolvedTargetRole);
       } catch (error) {
         console.error('[ExperienceBank] 加载意向岗位失败:', error);
-        if (!isCancelled) {
+        if (await canCommit()) {
           setActiveResumeIdState(null);
           setTargetRole('');
           setOriginalTargetRole('');
         }
       } finally {
-        if (!isCancelled) {
+        if (await canCommit()) {
           setIsLoadingTargetRole(false);
         }
       }
@@ -336,15 +385,18 @@ export const useExperienceBankProfile = ({
     return () => {
       isCancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [authUserKey, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !authUserKey || authUserKey === 'anonymous') {
       hasHydratedProfileRef.current = false;
       isLoadingProfileRef.current = false;
-      setIsLoadingProfile(false);
+      setIsLoadingProfile(isAuthenticated);
       return;
     }
+    const expectedAuthCacheKey = authUserKey;
+    let isCancelled = false;
+    let resetTimer: ReturnType<typeof setTimeout> | null = null;
     const loadProfile = async () => {
       if (isLoadingProfileRef.current) {
         devLog('[ExperienceBank] 请求防抖：跳过重复请求');
@@ -357,24 +409,39 @@ export const useExperienceBankProfile = ({
           setIsLoadingProfile(true);
         }
         devLog('[ExperienceBank] 开始加载个人资料...');
-        const profile = await profileService.getProfile();
+        const profile = await profileService.getProfile({ expectedAuthCacheKey });
+        if (
+          isCancelled
+          || profile.user_id !== expectedAuthCacheKey
+        ) {
+          return;
+        }
 
         applyProfileSnapshot(profile);
         hasHydratedProfileRef.current = true;
         devLog('[ExperienceBank] 加载成功');
         onProfileUpdateRef.current?.(profile);
       } catch (error) {
-        console.error('Failed to load profile:', error);
+        if (!isCancelled) {
+          console.error('Failed to load profile:', error);
+        }
       } finally {
-        setIsLoadingProfile(false);
-        setTimeout(() => {
-          isLoadingProfileRef.current = false;
-        }, PROFILE_REQUEST_RESET_DELAY_MS);
+        if (!isCancelled) {
+          setIsLoadingProfile(false);
+          resetTimer = setTimeout(() => {
+            isLoadingProfileRef.current = false;
+          }, PROFILE_REQUEST_RESET_DELAY_MS);
+        }
       }
     };
 
     void loadProfile();
-  }, [applyProfileSnapshot, isAuthenticated]);
+    return () => {
+      isCancelled = true;
+      if (resetTimer) clearTimeout(resetTimer);
+      isLoadingProfileRef.current = false;
+    };
+  }, [applyProfileSnapshot, authUserKey, isAuthenticated]);
 
   const handleEditProfile = useCallback(() => {
     if (!isAuthenticated) {
@@ -404,6 +471,7 @@ export const useExperienceBankProfile = ({
     handleGenerateSummary: runGenerateSummary,
     handleSummaryChange,
   } = useExperienceBankSummaryGeneration({
+    authUserKey,
     isLoadingProfile,
     isEditingProfile,
     hasHydratedProfileRef,
@@ -450,9 +518,16 @@ export const useExperienceBankProfile = ({
       return;
     }
     let profileSaved = false;
+    const requestId = Symbol('experience-bank-profile-save');
+    activeProfileSaveRef.current = requestId;
+    let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
     try {
       cancelSummaryGeneration();
       setIsSavingProfile(true);
+      operation = await ownerGuard.beginOperation();
+      if (activeProfileSaveRef.current !== requestId) {
+        return;
+      }
       const nextSocialLinks = mergeLinkedInLink(profileSocialLinks, link);
       const nextExtraJson = { ...profileExtraJson };
       if (avatarDataUrl) {
@@ -460,15 +535,19 @@ export const useExperienceBankProfile = ({
       } else {
         delete nextExtraJson.avatar_data_url;
       }
-      const updated = await profileService.updateProfile({
-        full_name: name,
-        email,
-        phone,
-        location,
-        summary,
-        social_links: nextSocialLinks,
-        extra_json: nextExtraJson,
-      });
+      const updated = await profileService.updateProfile(
+        {
+          full_name: name,
+          email,
+          phone,
+          location,
+          summary,
+          social_links: nextSocialLinks,
+          extra_json: nextExtraJson,
+        },
+        { expectedAuthCacheKey: operation.expectedAuthCacheKey },
+      );
+      await ownerGuard.assertOperationCurrent(operation);
       applyProfileSnapshot(updated);
       profileSaved = true;
       onProfileUpdateRef.current?.(updated);
@@ -478,7 +557,9 @@ export const useExperienceBankProfile = ({
           activeResumeId,
           normalizedTargetRole,
           TARGET_ROLE_UPDATE_DEPENDENCIES,
+          { expectedAuthCacheKey: operation.expectedAuthCacheKey },
         );
+        await ownerGuard.assertOperationCurrent(operation);
         const savedTargetRole = updatedResume.target_role?.trim() ?? normalizedTargetRole;
         setTargetRole(savedTargetRole);
         setOriginalTargetRole(savedTargetRole);
@@ -490,12 +571,22 @@ export const useExperienceBankProfile = ({
       setIsEditingProfile(false);
       success('个人信息保存成功');
     } catch (error) {
-      console.error('Failed to save profile:', error);
-      toastError(profileSaved
-        ? '个人信息已保存，但意向岗位保存失败'
-        : '个人信息保存失败');
+      if (
+        !isAuthContextChangedError(error)
+        && operation
+        && ownerGuard.isOperationCurrent(operation)
+        && activeProfileSaveRef.current === requestId
+      ) {
+        console.error('Failed to save profile:', error);
+        toastError(profileSaved
+          ? '个人信息已保存，但意向岗位保存失败'
+          : '个人信息保存失败');
+      }
     } finally {
-      setIsSavingProfile(false);
+      if (activeProfileSaveRef.current === requestId) {
+        activeProfileSaveRef.current = null;
+        setIsSavingProfile(false);
+      }
     }
   }, [
     applyProfileSnapshot,
@@ -514,35 +605,62 @@ export const useExperienceBankProfile = ({
     toastError,
     isAuthenticated,
     onRequireAuth,
+    ownerGuard,
     originalTargetRole,
     targetRole,
   ]);
 
-  const resolveCurrentProfileSnapshot = useCallback(async () => {
-    if (!isAuthenticated) {
+  const resolveCurrentProfileSnapshot = useCallback(async (
+    expectedAuthCacheKey: string,
+  ) => {
+    if (!isAuthenticated || authUserKey !== expectedAuthCacheKey) {
       return null;
     }
+    await assertAuthCacheKey(expectedAuthCacheKey);
     if (hasHydratedProfileRef.current && !isLoadingProfile) {
       return { name, email, phone, location };
     }
     try {
-      const latestProfile = await profileService.getProfile({ force: true });
+      const latestProfile = await profileService.getProfile({
+        force: true,
+        expectedAuthCacheKey,
+      });
+      await assertAuthCacheKey(expectedAuthCacheKey);
       applyProfileSnapshot(latestProfile);
       hasHydratedProfileRef.current = true;
       return buildProfileSnapshot(latestProfile);
     } catch (error) {
+      if (isAuthContextChangedError(error)) {
+        throw error;
+      }
       console.error('[ExperienceBank] 刷新个人资料失败:', error);
       return null;
     }
-  }, [applyProfileSnapshot, email, isAuthenticated, isLoadingProfile, location, name, phone]);
+  }, [
+    applyProfileSnapshot,
+    authUserKey,
+    email,
+    isAuthenticated,
+    isLoadingProfile,
+    location,
+    name,
+    phone,
+  ]);
 
   const handleResumeImported = useCallback(async (
     parsedPersonalInfo?: ParsedPersonalInfo,
     personalInfoSelection?: ParsedPersonalInfoSelection,
+    options?: AuthOwnerOptions,
   ) => {
-    const currentProfile = await resolveCurrentProfileSnapshot();
+    const expectedAuthCacheKey = options?.expectedAuthCacheKey ?? authUserKey;
+    if (!expectedAuthCacheKey || expectedAuthCacheKey === 'anonymous') {
+      return false;
+    }
+    await assertAuthCacheKey(expectedAuthCacheKey);
+    const currentProfile = await resolveCurrentProfileSnapshot(expectedAuthCacheKey);
     if (!currentProfile) {
-      await refreshEducation();
+      await refreshEducation({ expectedAuthCacheKey });
+      await assertAuthCacheKey(expectedAuthCacheKey);
       return false;
     }
     const profilePatch = resolveNextProfilePatch(
@@ -552,16 +670,28 @@ export const useExperienceBankProfile = ({
     );
     if (profilePatch) {
       try {
-        const updatedProfile = await profileService.updateProfile(profilePatch);
+        const updatedProfile = await profileService.updateProfile(profilePatch, {
+          expectedAuthCacheKey,
+        });
+        await assertAuthCacheKey(expectedAuthCacheKey);
         applyProfileSnapshot(updatedProfile);
         onProfileUpdateRef.current?.(updatedProfile);
       } catch (error) {
+        if (isAuthContextChangedError(error)) {
+          throw error;
+        }
         console.error('[ExperienceBank] 个人信息自动回填失败:', error);
       }
     }
-    await refreshEducation();
+    await refreshEducation({ expectedAuthCacheKey });
+    await assertAuthCacheKey(expectedAuthCacheKey);
     return true;
-  }, [applyProfileSnapshot, refreshEducation, resolveCurrentProfileSnapshot]);
+  }, [
+    applyProfileSnapshot,
+    authUserKey,
+    refreshEducation,
+    resolveCurrentProfileSnapshot,
+  ]);
 
   const handleNameChange = useCallback((value: string) => {
     markProfileFieldDraftTouched('name');

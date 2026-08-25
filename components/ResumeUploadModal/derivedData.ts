@@ -231,12 +231,18 @@ export const countSelectedPersonalInfo = (selection?: ParsedPersonalInfoSelectio
   return Object.values(selection).filter(Boolean).length;
 };
 
-export const buildCertificationImportPayloads = async (items: ParsedCertificationView[]) => {
+export const buildCertificationImportPayloads = async (
+  items: ParsedCertificationView[],
+  options?: { expectedAuthCacheKey?: string },
+) => {
   const validItems = items.filter((item) => item.name?.trim());
   if (!validItems.length) {
     return [];
   }
-  const existing = await certificationsService.list({ force: true });
+  const existing = await certificationsService.list({
+    force: true,
+    expectedAuthCacheKey: options?.expectedAuthCacheKey,
+  });
   const existingSignatures = new Set(
     existing.map((cert) =>
       buildCertificationSignature({
@@ -259,12 +265,18 @@ export const buildCertificationImportPayloads = async (items: ParsedCertificatio
     }));
 };
 
-export const buildSkillImportPayloads = async (items: ParsedSkillTagView[]) => {
+export const buildSkillImportPayloads = async (
+  items: ParsedSkillTagView[],
+  options?: { expectedAuthCacheKey?: string },
+) => {
   const validItems = items.filter((item) => item.name?.trim());
   if (!validItems.length) {
     return [];
   }
-  const existing = await skillsService.list({ force: true });
+  const existing = await skillsService.list({
+    force: true,
+    expectedAuthCacheKey: options?.expectedAuthCacheKey,
+  });
   return dedupeBySignature(
     validItems,
     (item) => buildSkillSignature({ name: item.name, category: item.category })

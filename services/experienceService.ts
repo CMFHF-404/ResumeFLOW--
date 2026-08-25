@@ -1,75 +1,30 @@
-import apiClient, { getAuthCacheKey } from './apiClient';
+import apiClient, {
+    assertAuthCacheKey,
+    captureAuthCacheKey,
+    type AuthOwnerOptions,
+} from './apiClient';
 import { trackFirstExperienceCreated } from '../utils/analyticsTracker';
 import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
+import type {
+    ExperienceCategory,
+    ExperienceCreatePayload,
+    ExperienceDetail,
+    ExperienceListItem,
+    ExperienceUpdatePayload,
+} from '../types/experience';
 
-export type ExperienceCategory = 'work' | 'project' | 'education';
-
-export interface ExperienceVersion {
-    id: string;
-    title: string;
-    org?: string;
-    location?: string;
-    start_date?: string;
-    end_date?: string;
-    is_current?: boolean;
-    summary?: string;
-    highlights?: string[];
-    star?: Record<string, any>;
-}
-
-export interface ExperienceListItem {
-    master: {
-        id: string;
-        category: ExperienceCategory;
-        is_archived: boolean;
-    };
-    latest_version?: ExperienceVersion;
-}
-
-export interface ExperienceDetail {
-    master: {
-        id: string;
-        category: ExperienceCategory;
-        is_archived: boolean;
-    };
-    latest_version?: ExperienceVersion;
-    versions: ExperienceVersion[];
-}
-
-export interface ExperienceCreatePayload {
-    category: ExperienceCategory;
-    version: {
-        title: string;
-        org?: string;
-        location?: string;
-        start_date?: string;
-        end_date?: string;
-        is_current?: boolean;
-        summary?: string;
-        highlights?: string[];
-        star?: Record<string, any>;
-    };
-}
-
-export interface ExperienceUpdatePayload {
-    category?: ExperienceCategory;
-    is_archived?: boolean;
-    version?: {
-        title: string;
-        org?: string;
-        location?: string;
-        start_date?: string;
-        end_date?: string;
-        is_current?: boolean;
-        summary?: string;
-        highlights?: string[];
-        star?: Record<string, any>;
-    };
-}
+export type {
+    ExperienceCategory,
+    ExperienceCreatePayload,
+    ExperienceDetail,
+    ExperienceListItem,
+    ExperienceUpdatePayload,
+    ExperienceVersion,
+} from '../types/experience';
 
 type ExperienceListCacheKey = ExperienceCategory | 'all';
 
-interface ExperienceListOptions {
+interface ExperienceListOptions extends AuthOwnerOptions {
     force?: boolean;
 }
 
@@ -123,32 +78,43 @@ const getCachedExperienceList = (
     return filterArchivedExperiences(cached.data);
 };
 
-const ensureExperienceCacheOwner = async () => {
-    const cacheOwnerKey = await getAuthCacheKey();
+const ensureExperienceCacheOwner = async (expectedAuthCacheKey?: string) => {
+    const cacheOwnerKey = await captureAuthCacheKey(expectedAuthCacheKey);
     if (experienceListCacheOwnerKey !== cacheOwnerKey) {
         clearExperienceListCache();
         experienceListCacheOwnerKey = cacheOwnerKey;
     }
+    return cacheOwnerKey;
 };
 
 export const experienceService = {
-    peekList(category?: ExperienceCategory, options?: { allowStale?: boolean }) {
+    peekList(
+        category?: ExperienceCategory,
+        options?: { allowStale?: boolean; expectedAuthCacheKey?: string }
+    ) {
+        if (
+            !options?.expectedAuthCacheKey
+            || options.expectedAuthCacheKey === 'anonymous'
+            || experienceListCacheOwnerKey !== options.expectedAuthCacheKey
+        ) {
+            return null;
+        }
         return getCachedExperienceList(category, options);
     },
 
     async peekListForCurrentUser(
         category?: ExperienceCategory,
-        options?: { allowStale?: boolean }
+        options?: { allowStale?: boolean; expectedAuthCacheKey?: string }
     ) {
-        await ensureExperienceCacheOwner();
-        return getCachedExperienceList(category, options);
+        await ensureExperienceCacheOwner(options?.expectedAuthCacheKey);
+        return experienceService.peekList(category, options);
     },
 
     async peekCompleteListForCurrentUser(
         category?: ExperienceCategory,
-        options?: { allowStale?: boolean }
+        options?: { allowStale?: boolean; expectedAuthCacheKey?: string }
     ) {
-        await ensureExperienceCacheOwner();
+        await ensureExperienceCacheOwner(options?.expectedAuthCacheKey);
         const cached = completeExperienceListCache.get(buildExperienceListCacheKey(category));
         if (!cached) {
             return null;
@@ -160,7 +126,9 @@ export const experienceService = {
     },
 
     async list(category?: ExperienceCategory, options?: ExperienceListOptions) {
-        await ensureExperienceCacheOwner();
+        const requestOwnerKey = await ensureExperienceCacheOwner(
+            options?.expectedAuthCacheKey
+        );
         const cacheKey = buildExperienceListCacheKey(category);
         const now = Date.now();
         const shouldUseCache = !options?.force;
@@ -181,6 +149,7 @@ export const experienceService = {
         const requestPromise = apiClient
             .get<ExperienceListItem[]>('/experiences', {
                 params: category ? { category } : {},
+                expectedAuthCacheKey: requestOwnerKey,
             })
             .then((response) => filterArchivedExperiences(response.data));
 
@@ -188,6 +157,7 @@ export const experienceService = {
 
         try {
             const data = await requestPromise;
+            await assertAuthCacheKey(requestOwnerKey);
             if (experienceListCacheVersion === requestVersion) {
                 experienceListCache.set(cacheKey, { data, fetchedAt: Date.now() });
             }
@@ -199,8 +169,10 @@ export const experienceService = {
         }
     },
 
-    async listAll(category?: ExperienceCategory) {
-        await ensureExperienceCacheOwner();
+    async listAll(category?: ExperienceCategory, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await ensureExperienceCacheOwner(
+            options?.expectedAuthCacheKey
+        );
         const requestVersion = experienceListCacheVersion;
         const allItems: ExperienceListItem[] = [];
         let offset = 0;
@@ -213,7 +185,9 @@ export const experienceService = {
                     limit: EXPERIENCE_LIST_PAGE_SIZE,
                     offset,
                 },
+                expectedAuthCacheKey: requestOwnerKey,
             });
+            await assertAuthCacheKey(requestOwnerKey);
             const batch = filterArchivedExperiences(response.data);
             allItems.push(...batch);
             if (response.data.length < EXPERIENCE_LIST_PAGE_SIZE) {
@@ -222,6 +196,7 @@ export const experienceService = {
             offset += EXPERIENCE_LIST_PAGE_SIZE;
         }
 
+        await assertAuthCacheKey(requestOwnerKey);
         if (experienceListCacheVersion === requestVersion) {
             completeExperienceListCache.set(buildExperienceListCacheKey(category), {
                 data: allItems,
@@ -232,28 +207,44 @@ export const experienceService = {
         return allItems;
     },
 
-    async create(data: ExperienceCreatePayload) {
-        const response = await apiClient.post<ExperienceDetail>('/experiences', data);
+    async create(data: ExperienceCreatePayload, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.post<ExperienceDetail>('/experiences', data, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         clearExperienceListCache();
         bumpResumePreviewDataRevision();
         trackFirstExperienceCreated(data.category);
         return response.data;
     },
 
-    async get(id: string) {
-        const response = await apiClient.get<ExperienceDetail>(`/experiences/${id}`);
+    async get(id: string, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.get<ExperienceDetail>(`/experiences/${id}`, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         return response.data;
     },
 
-    async update(id: string, data: ExperienceUpdatePayload) {
-        const response = await apiClient.patch<ExperienceDetail>(`/experiences/${id}`, data);
+    async update(id: string, data: ExperienceUpdatePayload, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.patch<ExperienceDetail>(`/experiences/${id}`, data, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         clearExperienceListCache();
         bumpResumePreviewDataRevision();
         return response.data;
     },
 
-    async delete(id: string) {
-        const response = await apiClient.delete<ExperienceDetail>(`/experiences/${id}`);
+    async delete(id: string, options?: AuthOwnerOptions) {
+        const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
+        const response = await apiClient.delete<ExperienceDetail>(`/experiences/${id}`, {
+            expectedAuthCacheKey: requestOwnerKey,
+        });
+        await assertAuthCacheKey(requestOwnerKey);
         clearExperienceListCache();
         bumpResumePreviewDataRevision();
         return response.data;
