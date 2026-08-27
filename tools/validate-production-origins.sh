@@ -2,7 +2,11 @@
 set -eu
 
 fail_origin() {
-    echo "Invalid $1: expected an exact HTTPS origin" >&2
+    if [ "$1" = "VITE_API_BASE_URL" ]; then
+        echo "Invalid $1: expected /api or an exact HTTPS origin" >&2
+    else
+        echo "Invalid $1: expected an exact HTTPS origin" >&2
+    fi
     exit 1
 }
 
@@ -19,6 +23,9 @@ fail_drift() {
 validate_origin_value() {
     origin_name="$1"
     origin_value="$2"
+    if [ "$origin_name" = "VITE_API_BASE_URL" ] && [ "$origin_value" = "/api" ]; then
+        return
+    fi
     case "$origin_value" in
         https://*) ;;
         *) fail_origin "$origin_name" ;;

@@ -13,20 +13,32 @@ import { fileURLToPath } from 'node:url';
 
 import {
   requireExactHttpsOrigin,
+  requireProductionApiBaseUrl,
   serializeProductionOrigins,
   validateProductionOrigins,
 } from '../tools/validate-production-origins.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('production browser origins are exact HTTPS origins', () => {
+test('production browser endpoints accept the same-origin API mount and exact HTTPS origins', () => {
   const env = {
-    VITE_API_BASE_URL: 'https://api.example.com',
+    VITE_API_BASE_URL: '/api',
     VITE_LOGTO_ENDPOINT: 'https://tenant.logto.app',
     YIFUT_BASE_URL: 'https://payments.example.com',
   };
 
   assert.doesNotThrow(() => validateProductionOrigins(env));
+  assert.equal(requireProductionApiBaseUrl('/api'), '/api');
+  assert.equal(
+    requireProductionApiBaseUrl('https://api.example.com'),
+    'https://api.example.com',
+  );
+  for (const invalid of ['/api/', 'api', '//api', '/api;connect-src *']) {
+    assert.throws(
+      () => requireProductionApiBaseUrl(invalid),
+      /exact HTTPS origin/,
+    );
+  }
   for (const invalid of [
     'http://api.example.com',
     'https://api.example.com/path',
@@ -69,7 +81,7 @@ test('Nginx entrypoint rejects invalid or drifted runtime origins before envsubs
   const manifestPath = join(tempDirectory, 'built-origins.env');
   const validEnv = {
     ...process.env,
-    VITE_API_BASE_URL: 'https://api.example.com',
+    VITE_API_BASE_URL: '/api',
     VITE_LOGTO_ENDPOINT: 'https://tenant.logto.app',
     YIFUT_BASE_URL: 'https://payments.example.com:8443',
   };
@@ -110,11 +122,14 @@ test('Nginx entrypoint rejects invalid or drifted runtime origins before envsubs
   for (const tampered of [
     originalManifest.replace('YIFUT_BASE_URL=', 'UNEXPECTED_ORIGIN='),
     `${originalManifest}YIFUT_BASE_URL=https://payments.example.com:8443\n`,
-    originalManifest.replace('https://api.example.com', 'https://api.example.com/path'),
+    originalManifest.replace('VITE_API_BASE_URL=/api', 'VITE_API_BASE_URL=/api/'),
   ]) {
     writeFileSync(manifestPath, tampered, 'utf8');
     const result = runValidator();
     assert.notEqual(result.status, 0, 'tampered manifest should fail closed');
-    assert.match(result.stderr, /Invalid built origin manifest|expected an exact HTTPS origin/);
+    assert.match(
+      result.stderr,
+      /Invalid built origin manifest|expected (?:\/api or )?an exact HTTPS origin/,
+    );
   }
 });
