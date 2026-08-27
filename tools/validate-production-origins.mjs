@@ -1,9 +1,13 @@
 import { writeFileSync } from 'node:fs';
 
 const REQUIRED_HTTPS_ORIGINS = [
-  'VITE_API_BASE_URL',
   'VITE_LOGTO_ENDPOINT',
   'YIFUT_BASE_URL',
+];
+
+const MANIFEST_KEYS = [
+  'VITE_API_BASE_URL',
+  ...REQUIRED_HTTPS_ORIGINS,
 ];
 
 export const requireExactHttpsOrigin = (name, value) => {
@@ -31,7 +35,15 @@ export const requireExactHttpsOrigin = (name, value) => {
   return value;
 };
 
+export const requireProductionApiBaseUrl = (value) => {
+  if (value === '/api') {
+    return value;
+  }
+  return requireExactHttpsOrigin('VITE_API_BASE_URL', value);
+};
+
 export const validateProductionOrigins = (env = process.env) => {
+  requireProductionApiBaseUrl(env.VITE_API_BASE_URL);
   for (const name of REQUIRED_HTTPS_ORIGINS) {
     requireExactHttpsOrigin(name, env[name]);
   }
@@ -39,7 +51,7 @@ export const validateProductionOrigins = (env = process.env) => {
 
 export const serializeProductionOrigins = (env = process.env) => {
   validateProductionOrigins(env);
-  return `${REQUIRED_HTTPS_ORIGINS.map((name) => `${name}=${env[name]}`).join('\n')}\n`;
+  return `${MANIFEST_KEYS.map((name) => `${name}=${env[name]}`).join('\n')}\n`;
 };
 
 if (process.argv[1]?.endsWith('validate-production-origins.mjs')) {
