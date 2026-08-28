@@ -231,6 +231,8 @@ test('a pending Logto getter loading toggle preserves its owner while logout hid
   globalThis.__authOwnerFallback = async () => null;
   const authModule = await importUseAuthUserKey();
   const { useAuthUserKey } = authModule;
+  let activeToken = createToken('owner-a');
+  authModule.setAuthTokenProvider(async () => activeToken);
   const getOwnerAClaims = async () => ({ sub: 'owner-a' });
 
   try {
@@ -266,6 +268,7 @@ test('a pending Logto getter loading toggle preserves its owner while logout hid
       getIdTokenClaims: getOwnerBClaims,
     };
     assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+    activeToken = createToken('owner-b');
     ownerBClaims.resolve({ sub: 'owner-b' });
     await settleAsyncWork();
     assert.equal(runtime.render(() => useAuthUserKey()), 'owner-b');
@@ -341,27 +344,18 @@ test('provider owner B immediately replaces old A while stale A claims cannot ro
   }
 });
 
-test('a Logto claims proxy loading toggle invalidates the old attempt and settles one fresh read', async () => {
+test('a Logto claims proxy loading toggle preserves its own in-flight read', async () => {
   const runtime = createHookRuntime();
   globalThis.__authOwnerHookRuntime = runtime;
   globalThis.__authOwnerFallback = async () => null;
   const authModule = await importUseAuthUserKey();
   const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(async () => createToken('owner-a'));
+  const ownerAClaims = deferred();
   let getterCalls = 0;
-  const getOwnerAClaims = async () => {
+  const getOwnerAClaims = () => {
     getterCalls += 1;
-    globalThis.__authOwnerLogto = {
-      isAuthenticated: true,
-      isLoading: true,
-      getIdTokenClaims: getOwnerAClaims,
-    };
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    globalThis.__authOwnerLogto = {
-      isAuthenticated: true,
-      isLoading: false,
-      getIdTokenClaims: getOwnerAClaims,
-    };
-    return { sub: 'owner-a' };
+    return ownerAClaims.promise;
   };
 
   try {
@@ -372,19 +366,398 @@ test('a Logto claims proxy loading toggle invalidates the old attempt and settle
     };
     assert.equal(runtime.render(() => useAuthUserKey()), null);
     assert.equal(getterCalls, 1);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: getOwnerAClaims,
+    };
     assert.equal(runtime.render(() => useAuthUserKey()), null);
-    await new Promise((resolve) => setTimeout(resolve, 35));
-    assert.equal(runtime.render(() => useAuthUserKey()), null);
-    assert.equal(getterCalls, 2);
-    await new Promise((resolve) => setTimeout(resolve, 35));
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    ownerAClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
     assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
     assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
-    assert.equal(getterCalls, 2);
+    assert.equal(getterCalls, 1);
   } finally {
     delete globalThis.__authOwnerHookRuntime;
     delete globalThis.__authOwnerLogto;
     delete globalThis.__authOwnerFallback;
     authModule.clearAuthTokenProvider();
+  }
+});
+
+test('an initial account-switch pulse cannot commit deferred claims from the previous owner', async () => {
+  const runtime = createHookRuntime();
+  const staleOwnerAClaims = deferred();
+  let activeToken = createToken('owner-a');
+  let claimsCalls = 0;
+  const stableClaimsGetter = () => {
+    claimsCalls += 1;
+    return staleOwnerAClaims.promise;
+  };
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(async () => activeToken);
+
+  try {
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    assert.equal(runtime.render(() => useAuthUserKey()), null);
+    assert.equal(claimsCalls, 1);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    activeToken = createToken('owner-b');
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+
+    staleOwnerAClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-b');
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-b');
+    assert.ok(claimsCalls >= 1);
+  } finally {
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('an overlapping account-switch pulse cannot commit stale same-owner claims', async () => {
+  const runtime = createHookRuntime();
+  const staleOwnerAClaims = deferred();
+  let claimsCalls = 0;
+  let activeToken = createToken('owner-a');
+  const stableClaimsGetter = async () => {
+    claimsCalls += 1;
+    return claimsCalls === 1 ? { sub: 'owner-a' } : staleOwnerAClaims.promise;
+  };
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(async () => activeToken);
+
+  try {
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+    await authModule.requestAuthToken();
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    assert.equal(claimsCalls, 2);
+
+    activeToken = createToken('owner-b');
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+
+    staleOwnerAClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-b');
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-b');
+  } finally {
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('a loading pulse with null claims hides the old owner and resolves the current token owner', async () => {
+  const runtime = createHookRuntime();
+  const switchedClaims = deferred();
+  let claimsCalls = 0;
+  let activeToken = createToken('owner-a');
+  const stableClaimsGetter = () => {
+    claimsCalls += 1;
+    return claimsCalls === 1
+      ? Promise.resolve({ sub: 'owner-a' })
+      : switchedClaims.promise;
+  };
+  globalThis.__authOwnerHookRuntime = runtime;
+  let authModule;
+  globalThis.__authOwnerFallback = async () => {
+    await authModule.requestAuthToken();
+    return authModule.readAuthSessionSnapshot().ownerKey;
+  };
+  authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(async () => activeToken);
+
+  try {
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+    await authModule.requestAuthToken();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    assert.equal(claimsCalls, 2);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    activeToken = createToken('owner-b');
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+
+    switchedClaims.resolve(null);
+    await settleAsyncWork();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-b');
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-b');
+  } finally {
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('a real loading pulse during token verification rereads claims for the newest owner', async () => {
+  const runtime = createHookRuntime();
+  const ownerBToken = deferred();
+  let claimsCalls = 0;
+  let tokenRequests = 0;
+  const stableClaimsGetter = async () => {
+    claimsCalls += 1;
+    return { sub: claimsCalls === 1 ? 'owner-a' : claimsCalls === 2 ? 'owner-b' : 'owner-c' };
+  };
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(() => {
+    tokenRequests += 1;
+    if (tokenRequests === 1) return Promise.resolve(createToken('owner-a'));
+    if (tokenRequests === 2) return ownerBToken.promise;
+    return Promise.resolve(createToken('owner-c'));
+  });
+
+  try {
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+    await authModule.requestAuthToken();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+    assert.equal(claimsCalls, 2);
+    assert.equal(tokenRequests, 2);
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, null);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    ownerBToken.resolve(createToken('owner-b'));
+    await settleAsyncWork();
+    assert.equal(
+      authModule.readAuthSessionSnapshot().ownerKey,
+      null,
+      'the cancelled B token must not become visible after the C switch starts',
+    );
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+
+    assert.equal(claimsCalls, 3);
+    assert.equal(tokenRequests, 3);
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-c');
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-c');
+
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-c');
+  } finally {
+    ownerBToken.resolve(null);
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('a getter replacement during token verification rejects the superseded late token', async () => {
+  const runtime = createHookRuntime();
+  const ownerBClaims = deferred();
+  const ownerBToken = deferred();
+  const ownerCToken = deferred();
+  let tokenRequests = 0;
+  const ownerAClaimsGetter = async () => ({ sub: 'owner-a' });
+  const ownerBClaimsGetter = () => ownerBClaims.promise;
+  const ownerCClaimsGetter = async () => ({ sub: 'owner-c' });
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(() => {
+    tokenRequests += 1;
+    if (tokenRequests === 1) return Promise.resolve(createToken('owner-a'));
+    if (tokenRequests === 2) return ownerBToken.promise;
+    return ownerCToken.promise;
+  });
+
+  try {
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: ownerAClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+    await authModule.requestAuthToken();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: ownerBClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: ownerBClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: ownerBClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    ownerBClaims.resolve({ sub: 'owner-b' });
+    await settleAsyncWork();
+    assert.equal(tokenRequests, 2);
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-a');
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: ownerCClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await settleAsyncWork();
+    assert.equal(
+      tokenRequests,
+      2,
+      'the C verifier may share the bounded in-flight wrapper until B settles',
+    );
+
+    ownerBToken.resolve(createToken('owner-b'));
+    await settleAsyncWork();
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    await settleAsyncWork();
+    assert.equal(tokenRequests, 3);
+    assert.notEqual(
+      authModule.readAuthSessionSnapshot().ownerKey,
+      'owner-b',
+      'the superseded B token must not publish after the C getter becomes current',
+    );
+
+    ownerCToken.resolve(createToken('owner-c'));
+    await settleAsyncWork();
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-c');
+  } finally {
+    ownerBToken.resolve(null);
+    ownerCToken.resolve(null);
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
   }
 });
 
@@ -587,6 +960,291 @@ test('a never-settling B read times out so C can confirm and late B cannot roll 
     assert.equal(tokenRequests, requestsBeforeUnmount);
     assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-c');
   } finally {
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('an initial timed-out verification retries without requiring another render', async () => {
+  const runtime = createHookRuntime();
+  const fakeTimers = createFakeTimers();
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const pendingTokenRead = deferred();
+  const ownerAClaims = deferred();
+  let tokenRequests = 0;
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(async () => {
+    tokenRequests += 1;
+    return tokenRequests === 1
+      ? pendingTokenRead.promise
+      : createToken('owner-a');
+  });
+
+  try {
+    globalThis.setTimeout = fakeTimers.setTimeout;
+    globalThis.clearTimeout = fakeTimers.clearTimeout;
+    const getOwnerAClaims = () => ownerAClaims.promise;
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    assert.equal(runtime.render(() => useAuthUserKey()), null);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    runtime.render(() => useAuthUserKey());
+    ownerAClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+    assert.equal(tokenRequests, 1);
+
+    await fakeTimers.advanceBy(10_000);
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, null);
+    await fakeTimers.advanceBy(50);
+    assert.equal(tokenRequests, 2);
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-a');
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+  } finally {
+    pendingTokenRead.resolve(null);
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('verification rate-limits hung token reads and half-opens after a cooldown', async () => {
+  const runtime = createHookRuntime();
+  const fakeTimers = createFakeTimers();
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const ownerAClaims = deferred();
+  const tokenReads = [];
+  let tokenRequests = 0;
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(() => {
+    tokenRequests += 1;
+    if (tokenRequests === 3) return Promise.resolve(createToken('owner-a'));
+    const tokenRead = deferred();
+    tokenReads.push(tokenRead);
+    return tokenRead.promise;
+  });
+
+  try {
+    globalThis.setTimeout = fakeTimers.setTimeout;
+    globalThis.clearTimeout = fakeTimers.clearTimeout;
+    const getOwnerAClaims = () => ownerAClaims.promise;
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    assert.equal(runtime.render(() => useAuthUserKey()), null);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: getOwnerAClaims,
+    };
+    runtime.render(() => useAuthUserKey());
+    ownerAClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+    assert.equal(tokenRequests, 1);
+
+    await fakeTimers.advanceBy(10_000);
+    await fakeTimers.advanceBy(50);
+    assert.equal(tokenRequests, 2);
+    await fakeTimers.advanceBy(10_000);
+    assert.equal(tokenRequests, 2);
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, null);
+    assert.equal(fakeTimers.pendingCount(), 1, 'one cooldown timer should own the half-open probe');
+
+    await fakeTimers.advanceBy(29_999);
+    assert.equal(tokenRequests, 2);
+    await fakeTimers.advanceBy(1);
+    assert.equal(tokenRequests, 3);
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, 'owner-a');
+    assert.equal(runtime.render(() => useAuthUserKey()), 'owner-a');
+  } finally {
+    runtime.unmount();
+    authModule.clearAuthTokenProvider();
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('multiple hook instances share one pending token verification request', async () => {
+  const runtimes = [createHookRuntime(), createHookRuntime(), createHookRuntime()];
+  const pendingOwnerBToken = deferred();
+  let claimsOwner = 'owner-a';
+  let tokenRequests = 0;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(() => {
+    tokenRequests += 1;
+    return tokenRequests === 1
+      ? Promise.resolve(createToken('owner-a'))
+      : pendingOwnerBToken.promise;
+  });
+  const stableClaimsGetter = async () => ({ sub: claimsOwner });
+  const renderAll = () => {
+    for (const runtime of runtimes) {
+      globalThis.__authOwnerHookRuntime = runtime;
+      runtime.render(() => useAuthUserKey());
+    }
+  };
+
+  try {
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    renderAll();
+    await settleAsyncWork();
+    await authModule.requestAuthToken();
+    assert.equal(tokenRequests, 1);
+
+    claimsOwner = 'owner-b';
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    renderAll();
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: stableClaimsGetter,
+    };
+    renderAll();
+    await settleAsyncWork();
+
+    assert.equal(tokenRequests, 2, 'all hook instances must share one B verification request');
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, null);
+  } finally {
+    pendingOwnerBToken.resolve(null);
+    for (const runtime of runtimes) {
+      globalThis.__authOwnerHookRuntime = runtime;
+      runtime.unmount();
+    }
+    authModule.clearAuthTokenProvider();
+    delete globalThis.__authOwnerHookRuntime;
+    delete globalThis.__authOwnerLogto;
+    delete globalThis.__authOwnerFallback;
+  }
+});
+
+test('getter identity churn cannot bypass the hung verification budget before cooldown', async () => {
+  const runtime = createHookRuntime();
+  const fakeTimers = createFakeTimers();
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const initialClaims = deferred();
+  const tokenReads = [];
+  let tokenRequests = 0;
+  globalThis.__authOwnerHookRuntime = runtime;
+  globalThis.__authOwnerFallback = async () => null;
+  const authModule = await importUseAuthUserKey();
+  const { useAuthUserKey } = authModule;
+  authModule.setAuthTokenProvider(() => {
+    tokenRequests += 1;
+    const tokenRead = deferred();
+    tokenReads.push(tokenRead);
+    return tokenRead.promise;
+  });
+
+  try {
+    globalThis.setTimeout = fakeTimers.setTimeout;
+    globalThis.clearTimeout = fakeTimers.clearTimeout;
+    const initialClaimsGetter = () => initialClaims.promise;
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: initialClaimsGetter,
+    };
+    assert.equal(runtime.render(() => useAuthUserKey()), null);
+
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: true,
+      getIdTokenClaims: initialClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: initialClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    initialClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+    assert.equal(tokenRequests, 1);
+
+    const replacementClaims = deferred();
+    const replacementClaimsGetter = () => replacementClaims.promise;
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: replacementClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await fakeTimers.advanceBy(10_000);
+    replacementClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+    assert.equal(tokenRequests, 2);
+
+    const finalClaims = deferred();
+    const finalClaimsGetter = () => finalClaims.promise;
+    globalThis.__authOwnerLogto = {
+      isAuthenticated: true,
+      isLoading: false,
+      getIdTokenClaims: finalClaimsGetter,
+    };
+    runtime.render(() => useAuthUserKey());
+    await fakeTimers.advanceBy(10_000);
+    finalClaims.resolve({ sub: 'owner-a' });
+    await settleAsyncWork();
+
+    assert.equal(tokenRequests, 2, 'stale effects must still consume the global timeout budget');
+    assert.equal(authModule.readAuthSessionSnapshot().ownerKey, null);
+    assert.equal(fakeTimers.pendingCount(), 1, 'only the shared cooldown probe may remain scheduled');
+  } finally {
+    for (const tokenRead of tokenReads) tokenRead.resolve(null);
     runtime.unmount();
     authModule.clearAuthTokenProvider();
     globalThis.setTimeout = originalSetTimeout;

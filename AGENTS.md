@@ -53,6 +53,7 @@
 - Rich text editor clipboard/caret checks commonly use `node --test tests/richTextEditorCaret.test.mjs`; API auth timeout checks commonly use `node --test tests/apiClientAuthTimeout.test.mjs`.
 - Billing and quota UI checks commonly use `node --test tests/billing-ui-structure.test.mjs tests/billingServiceCache.test.mjs tests/quotaPurchasePromptStatic.test.mjs tests/tokenQuotaModalStatic.test.mjs tests/tokenQuotaOrderUtils.test.mjs`.
 - Zeabur root-Dockerfile deployment configuration changes commonly use `node --test tests/zeaburDeploymentStructure.test.mjs`.
+- Production-origin, CSP, or Nginx reverse-proxy configuration changes commonly use `node --test tests/productionOriginConfig.test.mjs tests/productionSecurityHeaders.test.mjs tests/nginxApiProxyStructure.test.mjs`.
 - Backend env and connectivity checks from `backend/`:
   - `python verify_env.py`
   - `python verify_db.py`
