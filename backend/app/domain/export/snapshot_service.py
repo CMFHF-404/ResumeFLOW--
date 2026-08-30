@@ -13,6 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...config import load_settings
 from ...models import ExportRenderSnapshot
+from ...utils.time_utils import utc_now_aware as _utc_now_aware
 from .limits import (
     MAX_ACTIVE_EXPORT_RENDER_CLAIMS_PER_USER,
     MAX_ACTIVE_EXPORT_SNAPSHOTS_PER_USER,
@@ -95,10 +96,6 @@ class SnapshotRenderedPdfError(SnapshotError):
 
 class SnapshotCapacityExceededError(SnapshotError):
     pass
-
-
-def _utc_now_aware() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _as_utc_timestamp(value: datetime) -> int:

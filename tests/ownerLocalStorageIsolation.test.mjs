@@ -75,6 +75,18 @@ const buildAssistantDraft = (createdAt = Date.now()) => ({
   createdAt,
 });
 
+test('owner-key guard preserves the owner-scoped storage boundary', async () => {
+  const { isAuthenticatedOwnerKey } = await importBundledModule('utils/authOwner.ts');
+
+  assert.equal(isAuthenticatedOwnerKey('owner-a'), true);
+  assert.equal(isAuthenticatedOwnerKey(' anonymous '), true);
+  assert.equal(isAuthenticatedOwnerKey('anonymous'), false);
+  assert.equal(isAuthenticatedOwnerKey(''), false);
+  assert.equal(isAuthenticatedOwnerKey('   '), false);
+  assert.equal(isAuthenticatedOwnerKey(null), false);
+  assert.equal(isAuthenticatedOwnerKey(undefined), false);
+});
+
 test('JD local cache is isolated by authenticated owner and never reads a legacy key', async () => {
   const localStorage = createLocalStorage();
   globalThis.localStorage = localStorage;
@@ -115,6 +127,12 @@ test('assistant manual-save drafts are owner-isolated, expire after seven days, 
   );
   assert.deepEqual(storage.readPendingAssistantManualSaveDrafts(null), []);
   assert.deepEqual(storage.readPendingAssistantManualSaveDrafts('owner-expired'), []);
+  storage.writePendingAssistantManualSaveDraft('anonymous', buildAssistantDraft(now));
+  storage.writePendingAssistantManualSaveDraft('   ', buildAssistantDraft(now));
+  assert.deepEqual(storage.readPendingAssistantManualSaveDrafts('anonymous'), []);
+  assert.deepEqual(storage.readPendingAssistantManualSaveDrafts('   '), []);
+  assert.equal(localStorage.getItem('yuanzijianli.assistantManualSaveDraft:anonymous'), null);
+  assert.equal(localStorage.getItem('yuanzijianli.assistantManualSaveDraft:%20%20%20'), null);
   assert.equal(localStorage.getItem('yuanzijianli.assistantManualSaveDraft'), null);
 });
 

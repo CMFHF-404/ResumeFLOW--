@@ -9,13 +9,7 @@ from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, LargeBin
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
-from .utils.time_utils import utc_now
-
-
-def utc_now_aware() -> datetime:
-    from datetime import timezone
-
-    return datetime.now(timezone.utc)
+from .utils.time_utils import utc_now, utc_now_aware
 
 
 class ExperienceCategory(str, Enum):

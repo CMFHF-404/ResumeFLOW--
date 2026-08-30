@@ -9,7 +9,7 @@ import {
     type MutableRefObject,
     type SetStateAction,
 } from 'react';
-import { useDebounce } from '../components/hooks/useDebounce';
+import { useDebounce } from './useDebounce';
 import { isAuthContextChangedError } from '../services/apiClient';
 import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
 import { experienceService, ExperienceListItem } from '../services/experienceService';

@@ -1,12 +1,6 @@
-const RESUME_STORAGE_KEY = 'yuanzijianli.activeResumeId';
+import { isAuthenticatedOwnerKey } from '../utils/authOwner';
 
-const isAuthenticatedOwnerKey = (
-  ownerKey: string | null | undefined,
-): ownerKey is string => (
-  typeof ownerKey === 'string'
-  && ownerKey.trim().length > 0
-  && ownerKey !== 'anonymous'
-);
+const RESUME_STORAGE_KEY = 'yuanzijianli.activeResumeId';
 
 export const buildActiveResumeStorageKey = (ownerKey: string) => (
   `${RESUME_STORAGE_KEY}:${encodeURIComponent(ownerKey)}`

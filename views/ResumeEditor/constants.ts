@@ -5,6 +5,10 @@ import type {
     SectionSpacingKey,
 } from '../../types/resume';
 import { MATCH_BADGE_STYLES } from '../../constants/resumeConstants';
+export {
+    FONT_SIZE_DEFAULT,
+    LINE_HEIGHT_DEFAULT,
+} from '../../constants/resumeLayout';
 
 export const DEFAULT_EXPERIENCE_TITLE_BY_CATEGORY = {
     work: '新建工作经历',
@@ -66,13 +70,11 @@ export const A4_HEIGHT_MM = 297;
 export const PREVIEW_PADDING_MM = 20;
 export const SMART_PAGE_BOTTOM_GAP_MM = PREVIEW_PADDING_MM;
 export const PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX = 2;
-export const LINE_HEIGHT_DEFAULT = 1.6;
 export const LINE_HEIGHT_MAX = 1.75;
 export const LINE_HEIGHT_MIN = 1.35;
 export const LINE_HEIGHT_STEP = 0.05;
 
 // 字号配置（支持智能一页动态调整）
-export const FONT_SIZE_DEFAULT = 16; // px - 默认基线
 export const FONT_SIZE_MAX = 18; // px - 手动 / 反算上限
 export const FONT_SIZE_MIN = 13; // px - 智能一页极限
 export const FONT_SIZE_STEP = 0.5; // px
