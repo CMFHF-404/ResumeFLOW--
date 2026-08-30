@@ -37,6 +37,7 @@ from app.domain.ai.runtime_budget import (  # noqa: E402
 )
 from app.domain.agent import (  # noqa: E402
     agent_auto_assembly_service,
+    agent_common_helpers,
     agent_key_service,
     agent_option_helpers,
     agent_pdf_helpers,
@@ -97,6 +98,9 @@ class _NoopAsyncContext:
 
 
 class AgentKeyServiceBoundaryTests(unittest.TestCase):
+    def test_agent_service_preserves_aware_utc_clock_alias(self) -> None:
+        self.assertIs(agent_service._now_aware, agent_common_helpers._now_aware)
+
     def test_agent_service_reexports_key_service_hash_helpers(self) -> None:
         key = "rfag_boundary-test"
 

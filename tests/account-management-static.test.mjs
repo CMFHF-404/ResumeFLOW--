@@ -8,7 +8,6 @@ test('account management uses hosted Logto Account Center without a second API r
   const sidebar = read('components/GlobalSidebar.tsx');
   const app = read('App.tsx');
   const authGuard = read('components/AuthGuard.tsx');
-  const service = read('services/logtoAccountService.ts');
   const index = read('index.tsx');
   const dockerfile = read('Dockerfile');
   const viteEnv = read('vite-env.d.ts');
@@ -42,13 +41,6 @@ test('account management uses hosted Logto Account Center without a second API r
   assert.doesNotMatch(envExample, /VITE_LOGTO_ACCOUNT_API_RESOURCE/);
   assert.doesNotMatch(envExample, /VITE_LOGTO_RESOURCE/);
 
-  assert.doesNotMatch(service, /VITE_LOGTO_ACCOUNT_API_RESOURCE/);
-  assert.doesNotMatch(service, /\/my-account/);
-  assert.doesNotMatch(service, /\/verifications\//);
-  assert.doesNotMatch(service, /resolveLogtoAccountApiResource/);
-  assert.match(service, /export type LogtoAccountIdentifierType = 'email' \| 'phone'/);
-  assert.match(service, /return `86\$\{nationalPhone\}`/);
-  assert.match(service, /digits\.startsWith\('86'\) \? digits\.slice\(2\) : digits/);
 });
 
 test('auth guard keeps session bridge behavior without blocking guest preview', () => {

@@ -4,6 +4,7 @@ import {
     type RawJDAnalysisResult,
 } from './aiNormalizeUtils';
 import { canonicalStringify } from '../utils/canonicalStringify';
+import { isAuthenticatedOwnerKey } from '../utils/authOwner';
 
 const JD_ANALYSIS_CACHE_PREFIX = 'yuanzijianli.jdAnalysisCache';
 
@@ -51,12 +52,6 @@ type RawJDAnalysisCacheRecord = {
     pendingSync?: unknown;
     basePersistedFingerprint?: unknown;
 };
-
-const isAuthenticatedOwnerKey = (ownerKey: string | null | undefined): ownerKey is string => (
-    typeof ownerKey === 'string'
-    && ownerKey.trim().length > 0
-    && ownerKey !== 'anonymous'
-);
 
 const buildLegacyCacheKey = (resumeId: string) => `${JD_ANALYSIS_CACHE_PREFIX}:${resumeId}`;
 

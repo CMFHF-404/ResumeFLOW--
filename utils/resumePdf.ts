@@ -8,10 +8,7 @@ import type {
   SkillGroupView,
 } from '../types/resume';
 import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/resumeTemplates';
-import {
-  FONT_SIZE_DEFAULT,
-  LINE_HEIGHT_DEFAULT,
-} from '../views/ResumeEditor/constants';
+import { FONT_SIZE_DEFAULT, LINE_HEIGHT_DEFAULT } from '../constants/resumeLayout';
 
 type ResumePdfSnapshotInput = {
   resumeName: string;

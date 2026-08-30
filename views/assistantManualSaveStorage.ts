@@ -1,4 +1,5 @@
 import type { AssistantExperienceDraft } from '../services/aiService';
+import { isAuthenticatedOwnerKey } from '../utils/authOwner';
 
 const ASSISTANT_MANUAL_SAVE_STORAGE_KEY = 'yuanzijianli.assistantManualSaveDraft';
 const ASSISTANT_MANUAL_SAVE_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -16,12 +17,6 @@ export type PendingAssistantManualSaveDraft = {
 type PendingAssistantManualSaveDraftMatcher = Partial<
   Pick<PendingAssistantManualSaveDraft, 'sessionId' | 'messageId' | 'resumeId' | 'masterId'>
 >;
-
-const isAuthenticatedOwnerKey = (ownerKey: string | null | undefined): ownerKey is string => (
-  typeof ownerKey === 'string'
-  && ownerKey.trim().length > 0
-  && ownerKey !== 'anonymous'
-);
 
 export const buildAssistantManualSaveStorageKey = (ownerKey: string) => (
   `${ASSISTANT_MANUAL_SAVE_STORAGE_KEY}:${encodeURIComponent(ownerKey)}`

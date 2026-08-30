@@ -8,6 +8,7 @@ import unittest
 import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
+from app.domain.export import snapshot_service
 from app.domain.export.schemas import ResumeEditorProfileSnapshot, ResumePdfRenderSnapshot
 from app.domain.export.snapshot_service import (
     SnapshotClaimedError,
@@ -36,6 +37,12 @@ from app.domain.export.limits import (
     MAX_EXPORT_SNAPSHOT_PAYLOAD_BYTES_PER_USER,
     MAX_EXPORT_SNAPSHOT_TOKEN_CHARACTERS,
 )
+from app.utils import time_utils
+
+
+class SnapshotTimeSourceTests(unittest.TestCase):
+    def test_snapshot_service_preserves_aware_utc_clock_alias(self) -> None:
+        self.assertIs(snapshot_service._utc_now_aware, time_utils.utc_now_aware)
 
 
 class _ScalarResult:

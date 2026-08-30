@@ -8,10 +8,9 @@ import math
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import HTTPException
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from ...models import ExperienceCategory, ExportRenderSnapshot
@@ -84,16 +83,15 @@ from .agent_generated_resume_config import (
     _build_agent_generated_resume_config,
     _build_agent_jd_analysis_config,
 )
+from .agent_common_helpers import _now_aware
 from .agent_pdf_fit_service import fit_snapshot_to_one_page
 from .agent_pdf_trim_service import (
     _apply_snapshot_trim,
     _build_snapshot_trim_plan,
 )
 from .agent_resume_helpers import (
-    _is_agent_generated_resume,
     _load_agent_bank,
     _load_resume_item_categories,
-    _resume_item_master_ids,
     resolve_agent_resume,
     resolve_agent_resume_detail,
 )
@@ -165,10 +163,6 @@ class AgentIdempotencyContext:
 
 
 logger = logging.getLogger(__name__)
-
-
-def _now_aware() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def build_agent_idempotency_context(
