@@ -37,6 +37,9 @@ test('profile save persists target_role and updates editor and Dashboard resume 
   const versionDrainIndex = saveAction.indexOf('await waitForResumeMutations(resumeId)');
   const versionRefreshIndex = saveAction.indexOf('await resumeService.get(resumeId, {');
   const configSaveIndex = saveAction.indexOf('await flushResumeConfig()');
+  const targetRolePersistIndex = saveAction.search(
+    /resumeService\.update\(\s*resumeId,\s*\{ target_role: normalizedTargetRole \}/,
+  );
   assert.ok(
     globalProfileSaveIndex >= 0
       && globalProfileSaveIndex < versionDrainIndex
@@ -53,8 +56,9 @@ test('profile save persists target_role and updates editor and Dashboard resume 
     'local and sync-mode transition saves should use the config flush fallback branch'
   );
   assert.ok(
-    versionRefreshIndex < saveAction.indexOf('resumeService.update(\n                    resumeId')
-      && configSaveIndex < saveAction.indexOf('resumeService.update(\n                    resumeId'),
+    targetRolePersistIndex >= 0
+      && versionRefreshIndex < targetRolePersistIndex
+      && configSaveIndex < targetRolePersistIndex,
     'both resume preparation branches should finish before target_role persistence can conflict'
   );
   assert.match(actions, /个人信息已保存，但简历同步设置保存失败/);
