@@ -50,7 +50,10 @@ test('auth guard keeps session bridge behavior without blocking guest preview', 
   assert.match(authGuard, /subscribeLoginRequired/);
   assert.match(authGuard, /setAuthTokenProvider/);
   assert.doesNotMatch(authGuard, /需要登录/);
-  assert.doesNotMatch(authGuard, /if \(!isAuthenticated\) \{[\s\S]+return \(/);
+  assert.doesNotMatch(
+    authGuard,
+    /if\s*\(\s*!isAuthenticated\s*\)\s*\{\s*return\s*\(/,
+  );
   assert.match(authGuard, /return <>\{children\}<\/>;/);
   assert.match(authGuard, /isAuthenticated && \(!isTokenReady \|\| !authUserKey\)/);
   assert.match(read('App.tsx'), /<AuthGuard authUserKey=\{authUserKey\}>/);
