@@ -3,10 +3,12 @@ import { useEffect, ReactNode, useRef, useState } from 'react';
 import {
     clearAuthTokenProvider,
     createLogtoAuthSessionRefresher,
+    isAuthSessionInvalidError,
+    markAuthSessionInvalid,
     resolveUsableAuthToken,
     setAuthTokenProvider,
 } from '../services/authTokenProvider';
-import { subscribeLoginRequired } from '../services/authRedirect';
+import { dispatchLoginRequired, subscribeLoginRequired } from '../services/authRedirect';
 import { devLog } from '../services/devLogger';
 import {
     isForceReauthReason,
@@ -24,24 +26,30 @@ export default function AuthGuard({ authUserKey, children }: AuthGuardProps) {
     const {
         isAuthenticated,
         isLoading,
+        error: authError,
         signIn,
         clearAccessToken,
+        clearAllTokens,
         getAccessToken,
         getIdToken,
     } = useLogto();
     const [isTokenReady, setIsTokenReady] = useState(false);
     const [hasAuthenticatedOnce, setHasAuthenticatedOnce] = useState(false);
+    const [requiresReauth, setRequiresReauth] = useState(false);
     const clearAccessTokenRef = useRef(clearAccessToken ?? null);
+    const clearAllTokensRef = useRef(clearAllTokens ?? null);
     const getAccessTokenRef = useRef(getAccessToken ?? null);
     const getIdTokenRef = useRef(getIdToken ?? null);
     const isSigningInRef = useRef(false);
+    const hasQueuedInvalidSessionReauthRef = useRef(false);
     const hasTokenGetter = !!getIdToken;
 
     useEffect(() => {
         clearAccessTokenRef.current = clearAccessToken ?? null;
+        clearAllTokensRef.current = clearAllTokens ?? null;
         getAccessTokenRef.current = getAccessToken ?? null;
         getIdTokenRef.current = getIdToken ?? null;
-    }, [clearAccessToken, getAccessToken, getIdToken]);
+    }, [clearAccessToken, clearAllTokens, getAccessToken, getIdToken]);
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -49,6 +57,25 @@ export default function AuthGuard({ authUserKey, children }: AuthGuardProps) {
             setHasAuthenticatedOnce(true);
         }
     }, [isAuthenticated]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            hasQueuedInvalidSessionReauthRef.current = false;
+            setRequiresReauth(false);
+        }
+    }, [isAuthenticated]);
+
+    useEffect(() => {
+        if (
+            !isAuthenticated
+            || !markAuthSessionInvalid(authError)
+            || hasQueuedInvalidSessionReauthRef.current
+        ) {
+            return;
+        }
+        hasQueuedInvalidSessionReauthRef.current = true;
+        setRequiresReauth(true);
+    }, [authError, isAuthenticated]);
 
     useEffect(() => {
         const unsubscribe = subscribeLoginRequired(({ reason, redirectUri }) => {
@@ -87,6 +114,20 @@ export default function AuthGuard({ authUserKey, children }: AuthGuardProps) {
     }, [isLoading]);
 
     useEffect(() => {
+        if (!requiresReauth || isLoading || isSigningInRef.current) {
+            return;
+        }
+        setRequiresReauth(false);
+        void (async () => {
+            try {
+                await clearAllTokensRef.current?.();
+            } finally {
+                dispatchLoginRequired('unauthorized');
+            }
+        })();
+    }, [isLoading, requiresReauth]);
+
+    useEffect(() => {
         if (!isAuthenticated || !hasTokenGetter) {
             clearAuthTokenProvider();
             setIsTokenReady(false);
@@ -109,6 +150,13 @@ export default function AuthGuard({ authUserKey, children }: AuthGuardProps) {
                 );
             } catch (error) {
                 console.warn('[AuthGuard] Failed to get ID token', error);
+                if (isAuthSessionInvalidError(error)) {
+                    if (!hasQueuedInvalidSessionReauthRef.current) {
+                        hasQueuedInvalidSessionReauthRef.current = true;
+                        setRequiresReauth(true);
+                    }
+                    throw error;
+                }
                 return null;
             }
         });
