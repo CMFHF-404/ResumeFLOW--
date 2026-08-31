@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { resolveCardMotionClass } from '../components/cardMotion';
 import { SKILL_TAGS } from '../data/skillTags';
 import TagInput from './TagInput';
-import { resolveCardMotionClass } from './experienceUtils';
 
 export type SkillCategoryCardData = {
     name: string;
