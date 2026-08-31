@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { resolveCardMotionClass } from '../components/cardMotion';
 import MonthPicker, { DEFAULT_DATE_PICKER_PORTAL_ID } from '../components/MonthPicker';
-import { resolveCardMotionClass } from './experienceUtils';
 
 export type CertificationCardData = {
     name: string;

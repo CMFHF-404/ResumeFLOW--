@@ -46,3 +46,22 @@ test('PDF utility uses pure shared layout constants and editor keeps compatibili
   assert.doesNotMatch(pdfSource, /views[\\/]ResumeEditor[\\/]constants/);
   assert.match(editorConstants, /export \{[\s\S]*FONT_SIZE_DEFAULT[\s\S]*LINE_HEIGHT_DEFAULT[\s\S]*\} from ['"]\.\.\/\.\.\/constants\/resumeLayout['"]/);
 });
+
+test('card views depend on focused motion and date leaves instead of the experience facade', () => {
+  const cardSources = [
+    read('views/ExperienceCard.tsx'),
+    read('views/CertificationCard.tsx'),
+    read('views/SkillCategoryCard.tsx'),
+  ];
+
+  for (const source of cardSources) {
+    assert.match(source, /from ['"]\.\.\/components\/cardMotion['"]/);
+    assert.doesNotMatch(source, /from ['"]\.\/experienceUtils['"]/);
+  }
+
+  assert.match(read('views/ExperienceCard.tsx'), /from ['"]\.\.\/utils\/dateUtils['"]/);
+  assert.match(
+    read('views/experienceUtils.ts'),
+    /export \{ resolveCardMotionClass \} from ['"]\.\.\/components\/cardMotion['"]/,
+  );
+});

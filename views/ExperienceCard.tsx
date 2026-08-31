@@ -5,7 +5,8 @@ import AIPolishToolbar from '../components/AIPolishToolbar';
 import type { PolishMode } from '../services/aiService';
 import MonthPicker from '../components/MonthPicker';
 import RichTextEditor from '../components/RichTextEditor';
-import { parseYearMonthValue, resolveCardMotionClass } from './experienceUtils';
+import { resolveCardMotionClass } from '../components/cardMotion';
+import { parseYearMonthValue } from '../utils/dateUtils';
 import { stripRichTextToText } from '../utils/richText';
 import type {
   ExperienceDraftCardData,
