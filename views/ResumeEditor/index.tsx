@@ -1310,10 +1310,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         floatingThinkingText,
         onStopFloating: handleStopFloating,
     });
+    const isEditorBusy = isLoadingResume || isCreatingResume;
     const {
         isPreviewOverflowing,
         overflowingSectionIds,
     } = useResumePreviewMeasurement({
+        enabled: !isEditorBusy,
         pageRef: measurePreviewRef,
         contentRef: measurePreviewContentRef,
         waitForPreviewUpdate,
@@ -1621,7 +1623,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     });
 
     const canCreateResume = !isLoadingResume;
-    const isEditorBusy = isLoadingResume || isCreatingResume;
     const sharedPreviewProps: SharedResumePreviewProps = {
         templateId: resumeTemplateId,
         themeColorPresetId,
@@ -2097,7 +2098,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onClose={mobileEditorDrawer.close}
                 sidebarProps={commonEditorSidebarProps}
             />
-            <ResumeEditorMeasurePreview {...measurePreviewProps} />
+            {!isEditorBusy ? <ResumeEditorMeasurePreview {...measurePreviewProps} /> : null}
             {isEditorBusy ? (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-[1px]">
                     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-200 shadow-sm">

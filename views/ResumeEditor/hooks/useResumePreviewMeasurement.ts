@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import type { ResumePrintLayoutMeasurement } from '../../../types/resume';
 import { measureResumeLayout } from '../snapshotUtils';
+import {
+    arePreviewMeasurementsEquivalent,
+    createPreviewMeasurementScheduler,
+} from './previewMeasurementScheduler';
 
 type UseResumePreviewMeasurementParams = {
+    enabled: boolean;
     pageRef: RefObject<HTMLDivElement | null>;
     contentRef: RefObject<HTMLDivElement | null>;
     waitForPreviewUpdate: (frames?: number) => Promise<void>;
@@ -10,6 +15,7 @@ type UseResumePreviewMeasurementParams = {
 };
 
 export const useResumePreviewMeasurement = ({
+    enabled,
     pageRef,
     contentRef,
     waitForPreviewUpdate,
@@ -17,44 +23,57 @@ export const useResumePreviewMeasurement = ({
 }: UseResumePreviewMeasurementParams) => {
     const [previewPrintMeasurement, setPreviewPrintMeasurement] = useState<ResumePrintLayoutMeasurement | null>(null);
 
-    const collectPreviewMeasurement = useCallback(async (): Promise<ResumePrintLayoutMeasurement | null> => {
+    const collectPreviewMeasurement = useCallback(async (
+        isCancelled: () => boolean = () => false
+    ): Promise<ResumePrintLayoutMeasurement | null> => {
         await waitForPreviewUpdate(2);
+        if (isCancelled()) {
+            return null;
+        }
         if (typeof document !== 'undefined' && document.fonts?.ready) {
             await document.fonts.ready;
+            if (isCancelled()) {
+                return null;
+            }
             await waitForPreviewUpdate(1);
+        }
+
+        if (isCancelled()) {
+            return null;
         }
 
         return measureResumeLayout(pageRef.current, contentRef.current);
     }, [contentRef, pageRef, waitForPreviewUpdate]);
 
     useEffect(() => {
-        let cancelled = false;
-        void collectPreviewMeasurement().then((measurement) => {
-            if (cancelled) {
-                return;
-            }
-            setPreviewPrintMeasurement(measurement);
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [collectPreviewMeasurement, ...measurementDeps]);
-
-    useEffect(() => {
+        if (!enabled) {
+            setPreviewPrintMeasurement(null);
+            return undefined;
+        }
         const pageElement = pageRef.current;
         const contentElement = contentRef.current;
         if (!pageElement || !contentElement || typeof window === 'undefined') {
             return undefined;
         }
-
-        let cancelled = false;
-        let frameId: number | null = null;
         const pendingImageListeners = new Set<HTMLImageElement>();
+        const commitMeasurement = (measurement: ResumePrintLayoutMeasurement | null) => {
+            setPreviewPrintMeasurement((current) => (
+                arePreviewMeasurementsEquivalent(current, measurement) ? current : measurement
+            ));
+        };
+        const scheduler = createPreviewMeasurementScheduler({
+            collect: collectPreviewMeasurement,
+            commit: commitMeasurement,
+            onError: (error) => {
+                console.warn('[ResumeEditor] 预览布局测量失败', error);
+            },
+            requestFrame: (callback) => window.requestAnimationFrame(callback),
+            cancelFrame: (frameId) => window.cancelAnimationFrame(frameId),
+        });
         const detachImageListeners = () => {
             pendingImageListeners.forEach((image) => {
-                image.removeEventListener('load', scheduleMeasurement);
-                image.removeEventListener('error', scheduleMeasurement);
+                image.removeEventListener('load', scheduler.schedule);
+                image.removeEventListener('error', scheduler.schedule);
             });
             pendingImageListeners.clear();
         };
@@ -64,58 +83,37 @@ export const useResumePreviewMeasurement = ({
                 if (image.complete) {
                     return;
                 }
-                image.addEventListener('load', scheduleMeasurement);
-                image.addEventListener('error', scheduleMeasurement);
+                image.addEventListener('load', scheduler.schedule);
+                image.addEventListener('error', scheduler.schedule);
                 pendingImageListeners.add(image);
             });
         };
-        const runMeasurement = () => {
-            frameId = null;
-            void collectPreviewMeasurement().then((measurement) => {
-                if (cancelled) {
-                    return;
-                }
-                setPreviewPrintMeasurement(measurement);
-            });
-        };
-        function scheduleMeasurement() {
-            if (cancelled || frameId !== null) {
-                return;
-            }
-            frameId = window.requestAnimationFrame(runMeasurement);
-        }
 
         refreshPendingImages();
-        scheduleMeasurement();
+        scheduler.schedule();
 
         if (typeof ResizeObserver === 'undefined') {
-            window.addEventListener('resize', scheduleMeasurement);
+            window.addEventListener('resize', scheduler.schedule);
             return () => {
-                cancelled = true;
                 detachImageListeners();
-                window.removeEventListener('resize', scheduleMeasurement);
-                if (frameId !== null) {
-                    window.cancelAnimationFrame(frameId);
-                }
+                window.removeEventListener('resize', scheduler.schedule);
+                scheduler.cancel();
             };
         }
 
         const observer = new ResizeObserver(() => {
             refreshPendingImages();
-            scheduleMeasurement();
+            scheduler.schedule();
         });
         observer.observe(pageElement);
         observer.observe(contentElement);
 
         return () => {
-            cancelled = true;
             detachImageListeners();
             observer.disconnect();
-            if (frameId !== null) {
-                window.cancelAnimationFrame(frameId);
-            }
+            scheduler.cancel();
         };
-    }, [collectPreviewMeasurement, contentRef, pageRef]);
+    }, [collectPreviewMeasurement, contentRef, enabled, pageRef, ...measurementDeps]);
 
     const overflowingSectionIds = useMemo(
         () => new Set(previewPrintMeasurement?.overflowingSectionIds ?? []),

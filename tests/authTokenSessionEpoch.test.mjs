@@ -136,6 +136,53 @@ test('a transient null token preserves an already established owner', async () =
   assert.equal(provider.readAuthSessionSnapshot(), established);
 });
 
+test('invalid-grant errors stay fail-closed for ordinary callers and reach owner verification', async () => {
+  const provider = await importAuthTokenProvider();
+  const invalidGrant = Object.assign(
+    new Error('Authorization request is invalid'),
+    { code: 'oidc.invalid_grant' },
+  );
+  let providerRequests = 0;
+  provider.setAuthTokenProvider(async () => {
+    providerRequests += 1;
+    throw invalidGrant;
+  });
+
+  assert.equal(await provider.requestAuthToken(), null);
+  await assert.rejects(
+    provider.probeAuthTokenForVerification(),
+    (error) => error === invalidGrant,
+  );
+  assert.equal(await provider.requestAuthToken(), null);
+  assert.equal(providerRequests, 1, 'a terminal session error suppresses later provider calls');
+  assert.equal(provider.readAuthSessionSnapshot().ownerKey, null);
+
+  const recoveredToken = createToken('owner-a');
+  provider.setAuthTokenProvider(async () => recoveredToken);
+  assert.equal(await provider.requestAuthToken(), recoveredToken);
+});
+
+test('a swallowed Logto invalid-grant can mark the session before another provider call', async () => {
+  const provider = await importAuthTokenProvider();
+  let providerRequests = 0;
+  provider.setAuthTokenProvider(async () => {
+    providerRequests += 1;
+    return null;
+  });
+  const invalidGrant = Object.assign(new Error('invalid grant'), {
+    code: 'oidc.invalid_grant',
+  });
+
+  assert.equal(provider.markAuthSessionInvalid(invalidGrant), true);
+  assert.equal(await provider.requestAuthToken(), null);
+  await assert.rejects(
+    provider.probeAuthTokenForVerification(),
+    (error) => error === invalidGrant,
+  );
+  assert.equal(providerRequests, 0);
+  assert.equal(provider.markAuthSessionInvalid(new Error('network unavailable')), false);
+});
+
 test('fresh account claims fail closed until the matching token confirms the new owner', async () => {
   const provider = await importAuthTokenProvider();
   const tokenA = createToken('owner-a');
@@ -157,10 +204,59 @@ test('fresh account claims fail closed until the matching token confirms the new
   assert.deepEqual(provider.readAuthSessionSnapshot(), pendingSnapshot);
 
   activeToken = tokenB;
-  assert.equal(await provider.requestAuthToken(), tokenB);
+  assert.equal(await provider.requestAuthToken(), null);
+  const ownerBProbe = await provider.probeAuthTokenForVerification();
+  assert.equal(ownerBProbe.ownerKey, 'owner-b');
+  assert.equal(ownerBProbe.publish('owner-b'), true);
   const ownerBSnapshot = provider.readAuthSessionSnapshot();
   assert.equal(ownerBSnapshot.ownerKey, 'owner-b');
   assert.ok(ownerBSnapshot.epoch > pendingSnapshot.epoch);
+});
+
+test('verification probes keep pending claims hidden until an atomic matching publish', async () => {
+  const provider = await importAuthTokenProvider();
+  const tokenA = createToken('owner-a');
+  const tokenB = createToken('owner-b');
+  let activeToken = tokenA;
+  provider.setAuthTokenProvider(async () => activeToken);
+  await provider.requestAuthToken();
+
+  const publishedOwners = [provider.readAuthSessionSnapshot().ownerKey];
+  const unsubscribe = provider.subscribeAuthSession(() => {
+    publishedOwners.push(provider.readAuthSessionSnapshot().ownerKey);
+  });
+
+  try {
+    provider.setAuthSessionPendingClaimsOwner('owner-b');
+    assert.equal(provider.readAuthSessionSnapshot().ownerKey, null);
+    assert.equal(await provider.requestAuthToken(), null, 'ordinary stale A token must stay blocked');
+
+    for (let index = 0; index < 2; index += 1) {
+      const staleProbe = await provider.probeAuthTokenForVerification();
+      assert.equal(staleProbe.ownerKey, 'owner-a');
+      assert.equal(staleProbe.publish('owner-b'), false);
+      assert.equal(provider.readAuthSessionSnapshot().ownerKey, null);
+    }
+
+    activeToken = tokenB;
+    assert.equal(
+      await provider.requestAuthToken(),
+      null,
+      'even a matching ordinary B token must wait for atomic proof publication',
+    );
+    assert.equal(provider.readAuthSessionSnapshot().ownerKey, null);
+    const matchingProbe = await provider.probeAuthTokenForVerification();
+    assert.equal(matchingProbe.ownerKey, 'owner-b');
+    assert.equal(provider.readAuthSessionSnapshot().ownerKey, null);
+    assert.equal(matchingProbe.publish('owner-b'), true);
+    assert.equal(provider.readAuthSessionSnapshot().ownerKey, 'owner-b');
+    assert.deepEqual(
+      publishedOwners.filter((owner, index) => index === 0 || owner !== publishedOwners[index - 1]),
+      ['owner-a', null, 'owner-b'],
+    );
+  } finally {
+    unsubscribe();
+  }
 });
 
 test('unchanged stale claims cannot displace a token-confirmed account', async () => {

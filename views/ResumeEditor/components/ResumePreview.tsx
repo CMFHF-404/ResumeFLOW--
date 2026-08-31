@@ -1077,20 +1077,28 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
 
         syncScaledPreviewMetrics();
 
+        let resizeFrameId: number | null = null;
         const handleResize = () => {
-            syncScaledPreviewMetrics();
+            if (resizeFrameId !== null) {
+                return;
+            }
+            resizeFrameId = window.requestAnimationFrame(() => {
+                resizeFrameId = null;
+                syncScaledPreviewMetrics();
+            });
         };
 
         if (typeof ResizeObserver === 'undefined') {
             window.addEventListener('resize', handleResize);
             return () => {
                 window.removeEventListener('resize', handleResize);
+                if (resizeFrameId !== null) {
+                    window.cancelAnimationFrame(resizeFrameId);
+                }
             };
         }
 
-        const resizeObserver = new ResizeObserver(() => {
-            syncScaledPreviewMetrics();
-        });
+        const resizeObserver = new ResizeObserver(handleResize);
 
         if (!isDashboardCardPreview && previewScrollRef.current) {
             resizeObserver.observe(previewScrollRef.current);
@@ -1107,6 +1115,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         return () => {
             resizeObserver.disconnect();
             window.removeEventListener('resize', handleResize);
+            if (resizeFrameId !== null) {
+                window.cancelAnimationFrame(resizeFrameId);
+            }
         };
     }, [isDashboardCardPreview, isScaledEditorPreview, previewRef, syncScaledPreviewMetrics]);
 
@@ -1764,6 +1775,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                     ? 'none'
                     : (usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'contain'),
                 WebkitOverflowScrolling: isDashboardThumbnailPreview || usePageScrollOnMobile || isDashboardModalPreview ? undefined : 'touch',
+                // Reserve the desktop editor scrollbar before overflow changes.
+                // Otherwise width-fit scaling can toggle the vertical scrollbar,
+                // which changes clientWidth and creates a permanent two-size loop.
+                scrollbarGutter: previewScope === 'editor' && !usePageScrollOnMobile ? 'stable' : undefined,
             }}
         >
             <div
