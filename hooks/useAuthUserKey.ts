@@ -4,8 +4,11 @@ import {
   resolveAuthUserKeyFromActiveSession,
 } from '../services/apiClient';
 import {
+  type AuthTokenVerificationProbe,
   readAuthSessionSnapshot,
-  requestAuthToken,
+  isAuthSessionInvalidError,
+  probeAuthTokenForVerification,
+  setAuthSessionPendingClaimsOwner,
   setAuthSessionOwner,
   setAuthSessionOwnerFromClaims,
   subscribeAuthSession,
@@ -20,8 +23,8 @@ export const AUTH_USER_KEY_STORAGE_KEY = 'yuanzijianli.authUserKey';
 
 type VerificationRequestResult = {
   ownerKey: string;
-  status: 'resolved' | 'timed-out' | 'cancelled';
-  confirmedOwnerKey: string | null;
+  status: 'resolved' | 'timed-out' | 'cancelled' | 'session-invalid';
+  probe: AuthTokenVerificationProbe | null;
 };
 
 type PendingVerificationRequest = {
@@ -100,7 +103,7 @@ const requestPendingVerificationToken = (expectedOwnerKey: string) => {
   const requestId = Symbol(expectedOwnerKey);
   let finishEntry: (
     status: VerificationRequestResult['status'],
-    confirmedOwnerKey?: string | null,
+    probe?: AuthTokenVerificationProbe | null,
   ) => boolean = () => false;
   let timedOut = false;
   const promise = new Promise<VerificationRequestResult>((resolve) => {
@@ -111,7 +114,7 @@ const requestPendingVerificationToken = (expectedOwnerKey: string) => {
         verificationTimeoutBudget.add(requestId);
       }
     }, AUTH_OWNER_TOKEN_REQUEST_TIMEOUT_MS);
-    finishEntry = (status, confirmedOwnerKey = null) => {
+    finishEntry = (status, probe = null) => {
       if (settled) {
         return false;
       }
@@ -120,7 +123,7 @@ const requestPendingVerificationToken = (expectedOwnerKey: string) => {
       if (pendingVerificationRequest?.promise === promise) {
         pendingVerificationRequest = null;
       }
-      resolve({ ownerKey: expectedOwnerKey, status, confirmedOwnerKey });
+      resolve({ ownerKey: expectedOwnerKey, status, probe });
       return true;
     };
   });
@@ -130,17 +133,21 @@ const requestPendingVerificationToken = (expectedOwnerKey: string) => {
     cancel: () => finishEntry('cancelled'),
   };
   pendingVerificationRequest = entry;
-  void requestAuthToken().then(
-    (token) => {
-      const accepted = finishEntry(
-        'resolved',
-        token ? readAuthSessionSnapshot().ownerKey : null,
-      );
+  void probeAuthTokenForVerification().then(
+    (probe) => {
+      const accepted = finishEntry('resolved', probe);
       if (!accepted && timedOut) {
         releaseTimedOutVerificationBudget(requestId);
       }
+      if (!accepted) {
+        probe.discard();
+      }
     },
     (error) => {
+      if (isAuthSessionInvalidError(error)) {
+        finishEntry('session-invalid');
+        return;
+      }
       console.warn(`${LOG_PREFIX} 验证切换后的 token 请求失败`, error);
       const accepted = finishEntry('resolved');
       if (!accepted && timedOut) {
@@ -195,6 +202,7 @@ export const useAuthUserKey = () => {
     generation: number;
     phase: 'claims' | 'verification';
     requiresTokenVerification: boolean;
+    verificationOwnerKey?: string | null;
   } | null>(null);
   const pendingVerificationWaitRef = useRef<{
     timerId: ReturnType<typeof setTimeout>;
@@ -265,9 +273,35 @@ export const useAuthUserKey = () => {
       return committedSnapshot;
     };
 
+    const invalidateForFreshClaims = (latestOwnerKey: string | null) => {
+      claimsOwnerKeyRef.current = latestOwnerKey;
+      pendingClaimsVerificationKeyRef.current = null;
+      forceNextClaimsVerificationRef.current = true;
+      lastClaimsAttemptRef.current = null;
+      requestGenerationRef.current += 1;
+      claimsRequestInFlightRef.current = null;
+      if (latestOwnerKey === null) {
+        setAuthSessionOwner(null);
+      } else {
+        setAuthSessionPendingClaimsOwner(latestOwnerKey);
+      }
+    };
+
+    const readLatestClaimsOwner = async () => {
+      if (!getIdTokenClaims) {
+        return null;
+      }
+      try {
+        return resolveUserKey(await getIdTokenClaims());
+      } catch (error) {
+        console.warn(`${LOG_PREFIX} 复核用户标识失败`, error);
+        return null;
+      }
+    };
+
     const verifyPendingClaimsOwner = async (
       expectedOwnerKey: string,
-    ): Promise<'confirmed' | 'superseded' | 'cancelled'> => {
+    ): Promise<'confirmed' | 'cancelled'> => {
       let attemptIndex = 0;
       while (isCurrent()) {
         if (verificationTimeoutBudget.size >= AUTH_OWNER_TOKEN_TIMED_OUT_REQUEST_LIMIT) {
@@ -297,10 +331,12 @@ export const useAuthUserKey = () => {
         try {
           const requestResult = await requestPendingVerificationToken(expectedOwnerKey);
           if (!isCurrent()) {
+            requestResult.probe?.discard();
             return 'cancelled';
           }
           if (
             requestResult.status === 'cancelled'
+            || requestResult.status === 'session-invalid'
           ) {
             return 'cancelled';
           }
@@ -308,15 +344,54 @@ export const useAuthUserKey = () => {
             attemptIndex += 1;
             continue;
           }
-          if (requestResult.ownerKey !== expectedOwnerKey) {
+          const probe = requestResult.probe;
+          if (!probe || requestResult.ownerKey !== expectedOwnerKey) {
+            probe?.discard();
             attemptIndex += 1;
             continue;
           }
-          if (requestResult.confirmedOwnerKey === expectedOwnerKey) {
-            return 'confirmed';
+
+          if (probe.ownerKey === expectedOwnerKey) {
+            const latestClaimsOwner = await readLatestClaimsOwner();
+            if (!isCurrent()) {
+              probe.discard();
+              return 'cancelled';
+            }
+            if (latestClaimsOwner !== expectedOwnerKey) {
+              probe.discard();
+              invalidateForFreshClaims(latestClaimsOwner);
+              return 'cancelled';
+            }
+            if (probe.publish(expectedOwnerKey)) {
+              return 'confirmed';
+            }
+            probe.discard();
+            if (readAuthSessionSnapshot().ownerKey === expectedOwnerKey) {
+              // Another hook instance may have atomically published this shared
+              // proof first. Treat the same verified owner as the shared result
+              // instead of hiding it and starting the cycle again.
+              return 'confirmed';
+            }
+            setAuthSessionPendingClaimsOwner(expectedOwnerKey);
+            attemptIndex += 1;
+            continue;
           }
-          if (requestResult.confirmedOwnerKey !== null) {
-            return 'superseded';
+
+          const probedOwnerKey = probe.ownerKey;
+          probe.discard();
+          if (probedOwnerKey !== null) {
+            const latestClaimsOwner = await readLatestClaimsOwner();
+            if (!isCurrent()) {
+              return 'cancelled';
+            }
+            if (latestClaimsOwner !== expectedOwnerKey) {
+              invalidateForFreshClaims(latestClaimsOwner);
+              return 'cancelled';
+            }
+            // Claims still expect this owner while the token belongs elsewhere.
+            // Hide any previous authority and keep ordinary token reads blocked
+            // until a matching proof can be atomically published.
+            setAuthSessionPendingClaimsOwner(expectedOwnerKey);
           }
         } catch (error) {
           console.warn(`${LOG_PREFIX} 验证切换后的用户标识失败`, error);
@@ -337,7 +412,15 @@ export const useAuthUserKey = () => {
       return;
     }
 
-    if (readAuthSessionSnapshot().ownerKey !== null) {
+    if (
+      readAuthSessionSnapshot().ownerKey !== null
+      && claimsRequestInFlightRef.current === null
+      && pendingClaimsVerificationKeyRef.current === null
+    ) {
+      // A Logto token/claims read toggles the shared loading state and
+      // re-renders this hook while its own verification is still active.
+      // Reset only once that attempt has fully settled; otherwise each pulse
+      // cancels the verifier and the following render starts it again forever.
       cancelPendingVerificationWait();
       resetVerificationCircuit();
     }
@@ -347,6 +430,17 @@ export const useAuthUserKey = () => {
     // actually unresolved.
     if (isLoading) {
       const inFlightAttempt = claimsRequestInFlightRef.current;
+      if (
+        inFlightAttempt?.phase === 'verification'
+        && inFlightAttempt.generation === requestGenerationRef.current
+      ) {
+        // Every Logto ID-token read raises isLoading itself, including the
+        // verifier that promotes pending claims from A to B. Cancelling any
+        // current verifier here makes that request restart itself forever.
+        // A claims recheck after confirmation handles a real account switch
+        // that happens to overlap this otherwise indistinguishable pulse.
+        return;
+      }
       if (
         inFlightAttempt?.getter === getIdTokenClaims
         && inFlightAttempt.generation === requestGenerationRef.current
@@ -385,6 +479,22 @@ export const useAuthUserKey = () => {
       return;
     }
 
+    const activeVerificationAttempt = claimsRequestInFlightRef.current;
+    if (
+      activeVerificationAttempt?.phase === 'verification'
+      && activeVerificationAttempt.generation === requestGenerationRef.current
+      && (
+        authSessionSnapshot.ownerKey === null
+        || activeVerificationAttempt.verificationOwnerKey === authSessionSnapshot.ownerKey
+      )
+    ) {
+      // The false half of the verifier's own loading pulse can render before
+      // the non-publishing probe has completed its claims check and atomic
+      // publish. Keep the in-flight attempt while authority is hidden or has
+      // just become its verified candidate.
+      return;
+    }
+
     const previousAttempt = lastClaimsAttemptRef.current;
     if (
       previousAttempt?.getter === getIdTokenClaims
@@ -417,6 +527,7 @@ export const useAuthUserKey = () => {
         const claims = await getIdTokenClaims();
         attempt.phase = 'verification';
         const nextKey = resolveUserKey(claims);
+        attempt.verificationOwnerKey = nextKey;
         if (isCurrent()) {
           if (attempt.requiresTokenVerification && nextKey === null) {
             claimsOwnerKeyRef.current = null;
@@ -450,6 +561,9 @@ export const useAuthUserKey = () => {
             // a brand-new initial authority on the next attempt.
             claimsOwnerKeyRef.current = nextKey;
             pendingClaimsVerificationKeyRef.current = nextKey;
+            if (readAuthSessionSnapshot().ownerKey !== nextKey) {
+              setAuthSessionPendingClaimsOwner(nextKey);
+            }
             const verification = await verifyPendingClaimsOwner(nextKey);
             if (!isCurrent() || verification !== 'confirmed') {
               return;
@@ -479,7 +593,13 @@ export const useAuthUserKey = () => {
           const committedSnapshot = commitUserKey(nextKey);
           forceNextClaimsVerificationRef.current = false;
           if (nextKey && committedSnapshot.ownerKey === null) {
-            await verifyPendingClaimsOwner(nextKey);
+            pendingClaimsVerificationKeyRef.current = nextKey;
+            const verification = await verifyPendingClaimsOwner(nextKey);
+            if (!isCurrent() || verification !== 'confirmed') {
+              return;
+            }
+            pendingClaimsVerificationKeyRef.current = null;
+            commitUserKey(nextKey);
           }
         }
       } catch (error) {

@@ -12,6 +12,17 @@ test('logout suppresses stale automatic login-required redirects', () => {
   assert.match(authGuard, /shouldAutoSignInForLoginRequired/);
   assert.match(authGuard, /isSigningIn:\s*isSigningInRef\.current/);
   assert.match(authGuard, /markUserSignInStarted\(\)/);
+  assert.match(authGuard, /isAuthSessionInvalidError\(error\)/);
+  assert.match(
+    authGuard,
+    /requiresReauth[\s\S]*!isLoading[\s\S]*dispatchLoginRequired\('unauthorized'\)/,
+  );
+  assert.match(authGuard, /hasQueuedInvalidSessionReauthRef\.current/);
+  assert.match(authGuard, /markAuthSessionInvalid\(authError\)/);
+  assert.match(
+    authGuard,
+    /await clearAllTokensRef\.current\?\.\(\);[\s\S]*finally[\s\S]*dispatchLoginRequired\('unauthorized'\)/,
+  );
 
   assert.match(sidebar, /markUserSignOutStarted/);
   assert.match(sidebar, /markUserSignOutStarted\(\);[\s\S]*await signOut/);
