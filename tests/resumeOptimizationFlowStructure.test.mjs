@@ -213,11 +213,11 @@ test('apply and retry chain uses self-owned committed tokens and never replays a
   assert.match(hook, /resume_optimization_context_stale|resume_optimization_content_conflict/);
 });
 
-test('ResumeEditor wires the flow without adding Task15 UI or flags', () => {
+test('ResumeEditor wires the flow through the exact Task15 feature flag', () => {
   const editor = read('views/ResumeEditor/index.tsx');
 
   assert.match(editor, /useResumeOptimizationFlow/);
-  assert.match(editor, /enabled: true/);
+  assert.match(editor, /enabled: RESUME_OPTIMIZATION_ENABLED/);
   assert.match(editor, /resumeId/);
   assert.match(editor, /sourceResumeUpdatedAt: resumeDetail\?\.resume\.updated_at/);
   assert.match(editor, /evaluationSignature/);
@@ -228,7 +228,10 @@ test('ResumeEditor wires the flow without adding Task15 UI or flags', () => {
   assert.match(editor, /generateEvaluation/);
   assert.match(editor, /flushResumeConfig/);
   assert.match(editor, /isAutoAssembling/);
-  assert.doesNotMatch(editor, /VITE_ENABLE_RESUME_OPTIMIZATION/);
+  assert.match(
+    editor,
+    /VITE_ENABLE_RESUME_OPTIMIZATION === 'true'/,
+  );
 });
 
 test('stale actions and delayed cancel or revert commits fail closed across resume switches', async () => {
@@ -280,7 +283,7 @@ test('post-score barrier observes the exact config snapshot consumed by the save
   const editor = read('views/ResumeEditor/index.tsx');
   const flowCall = editor.slice(
     editor.indexOf('const resumeOptimizationFlow = useResumeOptimizationFlow'),
-    editor.indexOf('void resumeOptimizationFlow'),
+    editor.indexOf('const isResumeOptimizationBusy ='),
   );
   assert.match(
     flowCall,

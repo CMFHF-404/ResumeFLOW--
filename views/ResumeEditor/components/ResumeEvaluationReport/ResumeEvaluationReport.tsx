@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileWarning, ListChecks } from 'lucide-react';
+import { FileWarning, ListChecks, Wand2 } from 'lucide-react';
 import {
     buildRadarAxis,
     buildRadarPoints,
@@ -16,6 +16,11 @@ type ResumeEvaluationReportProps = {
     thinkingText?: string;
     onGenerate?: () => void;
     onStop?: () => void;
+    isOptimizationEnabled?: boolean;
+    isOptimizationBusy?: boolean;
+    canStartOptimization?: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
 };
 
 const ReportList: React.FC<{
@@ -87,6 +92,11 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
     thinkingText,
     onGenerate,
     onStop,
+    isOptimizationEnabled = false,
+    isOptimizationBusy = false,
+    canStartOptimization = false,
+    optimizationDisabledReason,
+    onStartOptimization,
 }) => {
     const report = normalizeResumeEvaluation(evaluation);
     if (!report) {
@@ -123,6 +133,14 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
         );
     }
 
+    const resolvedOptimizationDisabledReason = isOutdated
+        ? '六维报告已过期，请重新生成后再优化。'
+        : isOptimizationBusy
+            ? '简历优化正在进行，请稍候。'
+            : !canStartOptimization
+                ? (optimizationDisabledReason || '当前暂不满足优化条件。')
+                : null;
+
     return (
         <section className="space-y-3" aria-label="简历分析报告">
             {isOutdated ? (
@@ -142,6 +160,25 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
                     <span className="rounded-md bg-emerald-100/75 px-2 py-1 font-semibold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">{report.overallLevel || '综合等级待标注'}</span>
                 </div>
                 {summary ? <p className="mt-3 border-l-2 border-emerald-500/60 pl-3 text-[11.5px] leading-relaxed text-slate-700 dark:text-slate-300">{summary}</p> : null}
+                {isOptimizationEnabled && onStartOptimization ? (
+                    <div className="mt-3 flex flex-col items-start gap-1.5">
+                        <button
+                            type="button"
+                            onClick={onStartOptimization}
+                            data-resume-optimization-focus-return="true"
+                            disabled={isOutdated || isOptimizationBusy || !canStartOptimization}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-slate-950"
+                        >
+                            <Wand2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            根据报告优化
+                        </button>
+                        {resolvedOptimizationDisabledReason ? (
+                            <p role="status" className="text-[10.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                {resolvedOptimizationDisabledReason}
+                            </p>
+                        ) : null}
+                    </div>
+                ) : null}
                 {isGenerating && onStop ? <button
                     type="button"
                     onClick={onStop}

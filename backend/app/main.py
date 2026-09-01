@@ -124,7 +124,8 @@ app.include_router(redemption_admin_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
 app.include_router(export_router)
-app.include_router(resume_optimization_router)
+if settings.enable_resume_optimization:
+    app.include_router(resume_optimization_router)
 
 
 def custom_openapi():
