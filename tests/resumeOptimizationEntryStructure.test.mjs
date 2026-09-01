@@ -77,7 +77,7 @@ test('editor uses the exact Vite flag while always calling the gated flow hook',
   assert.match(editor, /enabled: RESUME_OPTIMIZATION_ENABLED/);
   assert.doesNotMatch(editor, /if \([^)]*RESUME_OPTIMIZATION_ENABLED[^)]*\)[\s\S]{0,80}useResumeOptimizationFlow/);
   assert.ok((editor.match(/isOptimizationEnabled: RESUME_OPTIMIZATION_ENABLED/g) ?? []).length >= 2);
-  assert.ok((editor.match(/onStartOptimization: resumeOptimizationFlow\.startOptimization/g) ?? []).length >= 2);
+  assert.ok((editor.match(/onStartOptimization: handleStartResumeOptimization/g) ?? []).length >= 2);
   assert.ok((editor.match(/canStartOptimization: resumeOptimizationFlow\.canStart/g) ?? []).length >= 2);
   assert.ok((editor.match(/optimizationDisabledReason: resumeOptimizationFlow\.disabledReason/g) ?? []).length >= 2);
   assert.match(editor, /const isResumeOptimizationBusy =/);

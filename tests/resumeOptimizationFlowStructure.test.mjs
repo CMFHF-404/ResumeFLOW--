@@ -388,3 +388,23 @@ test('every async operation catch drops late non-abort errors before state or to
     assert.match(block, /shouldHandleOperationError\(cause, generation, operation, currentRun\.id\)/);
   }
 });
+
+test('flow stores safe progress nodes and never trusts server progress titles', async () => {
+  const { resolveResumeOptimizationProgressTitle } = await importFlow();
+  assert.deepEqual([
+    ['freeze_snapshot', '冻结当前简历版本'],
+    ['prepare_context', '整理六维问题与经历信息'],
+    ['plan_changes', '生成优化方案'],
+    ['verify_changes', '检查事实边界'],
+    ['persist_run', '保存优化方案'],
+    ['rewrite_answers', '根据补充信息更新方案'],
+  ].map(([node, expected]) => resolveResumeOptimizationProgressTitle(node) === expected), Array(6).fill(true));
+
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  assert.match(hook, /const \[progressNode, setProgressNode\] = useState/);
+  assert.match(hook, /setProgressNode\(event\.node\)/);
+  assert.match(hook, /resolveResumeOptimizationProgressTitle\(event\.node\)/);
+  assert.doesNotMatch(hook, /setProgressText\(event\.title\)/);
+  const returned = hook.slice(hook.lastIndexOf('return {'));
+  assert.match(returned, /progressNode/);
+});
