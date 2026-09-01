@@ -25,6 +25,17 @@ import type {
 } from '../../../types/resumeOptimization';
 import { canonicalStringify } from '../../../utils/canonicalStringify';
 import { canonicalizeResumeOptimizationTimestamp } from '../../../utils/resumeOptimizationNormalize.mjs';
+import {
+  toResumeOptimizationAnalyticsFailureCode,
+  trackResumeOptimizationApplyResult,
+  trackResumeOptimizationApplyStart,
+  trackResumeOptimizationChangeToggle,
+  trackResumeOptimizationPlanResult,
+  trackResumeOptimizationPlanStart,
+  trackResumeOptimizationQuestionsSubmit,
+  trackResumeOptimizationRescoreResult,
+  trackResumeOptimizationRevertResult,
+} from '../../../utils/analyticsTracker';
 
 export const TERMINAL_RESUME_OPTIMIZATION_STATUSES = new Set<ResumeOptimizationStatus>([
   'completed',
@@ -49,6 +60,30 @@ const ACTIVE_STREAM_UI_STATES = new Set<ResumeOptimizationUiState>([
   'starting',
   'answering',
 ]);
+
+const summarizeResumeOptimizationPlan = (run: ResumeOptimizationRun) => {
+  const plan = run.result ?? run.plan;
+  return {
+    beforeScore: run.sourceBeforeScore,
+    directChangeCount: plan.changes.filter((change) => (
+      change.safetyStatus === 'allowed'
+      && change.actionKind === 'rewrite_now'
+      && change.targetedValue !== null
+    )).length,
+    questionCount: plan.questions.length,
+    blockedChangeCount: plan.changes.filter((change) => change.safetyStatus === 'blocked').length,
+    bankSuggestionCount: plan.bankSuggestions.length,
+  };
+};
+
+const summarizeResumeOptimizationAnswers = (answers: ResumeOptimizationAnswer[]) => ({
+  questionCount: answers.length,
+  answeredCount: answers.filter((answer) => answer.state === 'answered').length,
+  noDataCount: answers.filter((answer) => answer.state === 'no_data').length,
+  unknownCount: answers.filter((answer) => answer.state === 'unknown').length,
+  notMyWorkCount: answers.filter((answer) => answer.state === 'not_my_work').length,
+  skippedCount: answers.filter((answer) => answer.state === 'skipped').length,
+});
 
 type ResumeOptimizationSelectionSnapshot = {
   runId: string;
@@ -578,9 +613,46 @@ export const useResumeOptimizationFlow = ({
     idempotencyKey: string;
   } | null>(null);
   const applyAttemptRef = useRef<ResumeOptimizationApplyAttempt | null>(null);
+  const applyAnalyticsAttemptRef = useRef<{
+    runId: string;
+    resumeId: string;
+    beforeScore: number | null;
+    acceptedChangeCount: number;
+    blockedChangeCount: number;
+    bankSuggestionCount: number;
+    startedAt: number;
+    resultTracked: boolean;
+  } | null>(null);
+  const rescoreResultTrackedRunIdsRef = useRef(new Set<string>());
   const postApplyCheckpointRef = useRef<ResumeOptimizationPostApplyCheckpoint | null>(null);
   const sourceWaiterRef = useRef<SourceWaiter | null>(null);
   const evaluationWaiterRef = useRef<EvaluationWaiter | null>(null);
+
+  const trackCompletedResumeOptimizationRescore = useCallback((
+    completedRun: ResumeOptimizationRun,
+    startedAt?: number,
+  ) => {
+    const postEvaluation = completedRun.postEvaluation;
+    if (
+      completedRun.status !== 'completed'
+      || !postEvaluation
+      || rescoreResultTrackedRunIdsRef.current.has(completedRun.id)
+    ) return;
+    rescoreResultTrackedRunIdsRef.current.add(completedRun.id);
+    const planMetrics = summarizeResumeOptimizationPlan(completedRun);
+    trackResumeOptimizationRescoreResult({
+      resumeId: completedRun.resumeId,
+      runId: completedRun.id,
+      action: 'success',
+      beforeScore: postEvaluation.beforeScore,
+      afterScore: postEvaluation.afterScore,
+      scoreDelta: postEvaluation.scoreDelta,
+      acceptedChangeCount: completedRun.acceptedChangeIds.length,
+      blockedChangeCount: planMetrics.blockedChangeCount,
+      bankSuggestionCount: planMetrics.bankSuggestionCount,
+      durationMs: startedAt === undefined ? undefined : Date.now() - startedAt,
+    });
+  }, []);
   const selfOwnedResumeTimestampsRef = useRef(new Set<string>());
   const selfOwnedResumeAndEvaluationTimestampsRef = useRef(new Set<string>());
   const latestToastRef = useRef(toast);
@@ -635,6 +707,7 @@ export const useResumeOptimizationFlow = ({
     rejectPendingWaiters(abortError());
     selfOwnedResumeTimestampsRef.current.clear();
     selfOwnedResumeAndEvaluationTimestampsRef.current.clear();
+    applyAnalyticsAttemptRef.current = null;
     setProgressText('');
     setProgressNode(null);
     if (clearVisibleRun) {
@@ -644,6 +717,7 @@ export const useResumeOptimizationFlow = ({
       frozenAnswerSubmissionRef.current = null;
       startAttemptRef.current = null;
       applyAttemptRef.current = null;
+      rescoreResultTrackedRunIdsRef.current.clear();
       clearPostApplyCheckpoint();
       setRun(null);
       setAnswerDrafts({});
@@ -1128,6 +1202,8 @@ export const useResumeOptimizationFlow = ({
     const started = await beginHandledOperation('启动简历优化失败。');
     if (!started) return null;
     const { generation, controller, operation } = started;
+    const planStartedAt = Date.now();
+    let planRequestStarted = false;
     activeRunIdRef.current = null;
     setUiState('starting');
     setError(null);
@@ -1154,6 +1230,11 @@ export const useResumeOptimizationFlow = ({
         startAttemptRef.current = attempt;
       }
       await assertCurrent(generation, operation);
+      planRequestStarted = true;
+      trackResumeOptimizationPlanStart({
+        resumeId: attempt.resumeId,
+        beforeScore: evaluation?.overallScore,
+      });
       const nextRun = await resumeOptimizationService.start({
         resumeId: attempt.resumeId,
         evaluationSignature: attempt.evaluationSignature,
@@ -1171,6 +1252,15 @@ export const useResumeOptimizationFlow = ({
         },
       });
       await assertCurrent(generation, operation);
+      const planMetrics = summarizeResumeOptimizationPlan(nextRun);
+      trackResumeOptimizationPlanResult({
+        resumeId: nextRun.resumeId,
+        runId: nextRun.id,
+        action: 'success',
+        ...planMetrics,
+        beforeScore: planMetrics.beforeScore ?? evaluation?.overallScore,
+        durationMs: Date.now() - planStartedAt,
+      });
       startAttemptRef.current = null;
       applyRunToState(nextRun);
       setProgressText('');
@@ -1178,6 +1268,15 @@ export const useResumeOptimizationFlow = ({
       return nextRun;
     } catch (cause) {
       if (await shouldHandleOperationError(cause, generation, operation)) {
+        if (planRequestStarted) {
+          trackResumeOptimizationPlanResult({
+            resumeId: startAttemptRef.current?.resumeId ?? resumeId,
+            action: 'failure',
+            beforeScore: evaluation?.overallScore,
+            durationMs: Date.now() - planStartedAt,
+            failureCode: toResumeOptimizationAnalyticsFailureCode(cause),
+          });
+        }
         handleOperationError(cause, '启动简历优化失败。');
       }
       return null;
@@ -1186,7 +1285,7 @@ export const useResumeOptimizationFlow = ({
     }
   }, [
     applyRunToState, assertCurrent, beginHandledOperation, evaluationSignature,
-    handleOperationError, markSelfOwnedResumeTimestamp, resumeId,
+    evaluation?.overallScore, handleOperationError, markSelfOwnedResumeTimestamp, resumeId,
     shouldHandleOperationError, startAvailability,
   ]);
 
@@ -1248,6 +1347,12 @@ export const useResumeOptimizationFlow = ({
     if (!frozenSubmission) {
       frozenAnswerSubmissionRef.current = answerAttempt;
       setIsAnswerSubmissionFrozen(true);
+      const answerMetrics = summarizeResumeOptimizationAnswers(answerAttempt.answers);
+      trackResumeOptimizationQuestionsSubmit({
+        resumeId: currentRun.resumeId,
+        runId: currentRun.id,
+        ...answerMetrics,
+      });
     }
     setUiState('answering');
     setError(null);
@@ -1321,14 +1426,17 @@ export const useResumeOptimizationFlow = ({
     ) return;
     const change = currentRun && effectivePlan(currentRun).changes.find((item) => item.changeId === changeId);
     if (!change || !isResumeOptimizationChangeSelectable(change) || currentRun?.status !== 'preview_ready') return;
-    setAcceptedChangeIds((current) => {
-      const next = current.includes(changeId)
-        ? current.filter((item) => item !== changeId)
-        : [...current, changeId];
-      saveResumeOptimizationSelectionSnapshot(authUserKey, resumeId, currentRun.id, next);
-      return next;
+    const next = acceptedChangeIds.includes(changeId)
+      ? acceptedChangeIds.filter((item) => item !== changeId)
+      : [...acceptedChangeIds, changeId];
+    setAcceptedChangeIds(next);
+    saveResumeOptimizationSelectionSnapshot(authUserKey, resumeId, currentRun.id, next);
+    trackResumeOptimizationChangeToggle({
+      resumeId: currentRun.resumeId,
+      runId: currentRun.id,
+      acceptedChangeCount: next.length,
     });
-  }, [authUserKey, enabled, resumeId]);
+  }, [acceptedChangeIds, authUserKey, enabled, resumeId]);
 
   const runPostApplyEvaluation = useCallback(async (
     appliedRun: ResumeOptimizationRun,
@@ -1336,6 +1444,25 @@ export const useResumeOptimizationFlow = ({
     controller: AbortController,
     operation: FlowOperation,
   ) => {
+    const rescoreStartedAt = Date.now();
+    let rescoreFailureTracked = false;
+    const trackRescoreFailure = (cause: unknown, fallbackCode = 'resume_optimization_rescore_failed') => {
+      if (rescoreFailureTracked || rescoreResultTrackedRunIdsRef.current.has(appliedRun.id)) return;
+      rescoreFailureTracked = true;
+      const planMetrics = summarizeResumeOptimizationPlan(appliedRun);
+      trackResumeOptimizationRescoreResult({
+        resumeId: appliedRun.resumeId,
+        runId: appliedRun.id,
+        action: 'failure',
+        beforeScore: appliedRun.sourceBeforeScore,
+        acceptedChangeCount: appliedRun.acceptedChangeIds.length,
+        blockedChangeCount: planMetrics.blockedChangeCount,
+        bankSuggestionCount: planMetrics.bankSuggestionCount,
+        durationMs: Date.now() - rescoreStartedAt,
+        failureCode: toResumeOptimizationAnalyticsFailureCode(cause) ?? fallbackCode,
+      });
+    };
+    try {
     setUiState('rescoring');
     setProgressText('正在生成应用后的六维报告…');
     let checkpoint = postApplyCheckpointRef.current;
@@ -1354,6 +1481,9 @@ export const useResumeOptimizationFlow = ({
       const outcome = await latestGenerateEvaluationRef.current();
       await assertCurrent(generation, operation, appliedRun.id);
       if (outcome.status !== 'success') {
+        if (outcome.status === 'error') {
+          trackRescoreFailure(undefined, 'resume_evaluation_failed');
+        }
         setRun(appliedRun);
         latestRunRef.current = appliedRun;
         setUiState('error');
@@ -1401,6 +1531,7 @@ export const useResumeOptimizationFlow = ({
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
       });
       await assertCurrent(generation, operation, appliedRun.id);
+      trackCompletedResumeOptimizationRescore(finalized.run, rescoreStartedAt);
       applyRunToState(finalized.run);
       setProgressText('');
       setProgressNode(null);
@@ -1424,6 +1555,7 @@ export const useResumeOptimizationFlow = ({
         });
         await assertCurrent(generation, operation, appliedRun.id);
         if (authoritativeRun.status === 'completed') {
+          trackCompletedResumeOptimizationRescore(authoritativeRun, rescoreStartedAt);
           applyRunToState(authoritativeRun);
           setProgressText('');
           setProgressNode(null);
@@ -1436,9 +1568,14 @@ export const useResumeOptimizationFlow = ({
       }
       throw cause;
     }
+    } catch (cause) {
+      if (!isAbortLike(cause)) trackRescoreFailure(cause);
+      throw cause;
+    }
   }, [
     applyRunToState, assertCurrent, markSelfOwnedResumeTimestamp,
-    publishPostApplyCheckpoint, waitForPersistedEvaluationReceipt,
+    publishPostApplyCheckpoint, trackCompletedResumeOptimizationRescore,
+    waitForPersistedEvaluationReceipt,
   ]);
 
   const recoverUncertainApplyAttempt = useCallback(async (
@@ -1461,6 +1598,26 @@ export const useResumeOptimizationFlow = ({
     const ownsOperation = !activeOperation;
     const { generation, controller, operation } = started;
     let applyWasConfirmed = false;
+    const trackPendingApplyResult = (
+      action: 'success' | 'failure',
+      failureCode?: string,
+    ) => {
+      const analyticsAttempt = applyAnalyticsAttemptRef.current;
+      if (!analyticsAttempt || analyticsAttempt.runId !== attempt.runId || analyticsAttempt.resultTracked) return;
+      analyticsAttempt.resultTracked = true;
+      trackResumeOptimizationApplyResult({
+        resumeId: analyticsAttempt.resumeId,
+        runId: analyticsAttempt.runId,
+        action,
+        beforeScore: analyticsAttempt.beforeScore,
+        acceptedChangeCount: analyticsAttempt.acceptedChangeCount,
+        blockedChangeCount: analyticsAttempt.blockedChangeCount,
+        bankSuggestionCount: analyticsAttempt.bankSuggestionCount,
+        durationMs: Date.now() - analyticsAttempt.startedAt,
+        failureCode,
+      });
+      applyAnalyticsAttemptRef.current = null;
+    };
     try {
       if (attempt.previewReadyConfirmations > 0) {
         await waitForResumeOptimizationApplyConfirmationBackoff(controller.signal);
@@ -1484,6 +1641,11 @@ export const useResumeOptimizationFlow = ({
           return authoritativeRun;
         }
         if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+        trackPendingApplyResult(
+          'failure',
+          toResumeOptimizationAnalyticsFailureCode(originalCause)
+            ?? 'resume_optimization_not_applied',
+        );
         applyRunToState(authoritativeRun, false, true);
         setUiState('preview');
         if (originalCause !== undefined) {
@@ -1498,6 +1660,8 @@ export const useResumeOptimizationFlow = ({
       }
       if (authoritativeRun.status === 'completed') {
         applyWasConfirmed = true;
+        trackPendingApplyResult('success');
+        trackCompletedResumeOptimizationRescore(authoritativeRun);
         if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
         applyRunToState(authoritativeRun);
         setProgressText('');
@@ -1507,6 +1671,7 @@ export const useResumeOptimizationFlow = ({
       }
       if (authoritativeRun.status === 'applied') {
         applyWasConfirmed = true;
+        trackPendingApplyResult('success');
         if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
         applyRunToState(authoritativeRun, false, true);
         setUiState('rescoring');
@@ -1562,6 +1727,11 @@ export const useResumeOptimizationFlow = ({
         return null;
       }
       if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+      trackPendingApplyResult(
+        'failure',
+        toResumeOptimizationAnalyticsFailureCode(originalCause)
+          ?? 'resume_optimization_not_applied',
+      );
       applyRunToState(authoritativeRun);
       return authoritativeRun;
     } catch (cause) {
@@ -1588,7 +1758,7 @@ export const useResumeOptimizationFlow = ({
     applyRunToState, assertCurrent, beginHandledOperation, enabled, handleOperationError,
     markSelfOwnedResumeTimestamp, publishPostApplyCheckpoint, rejectPendingWaiters,
     reloadResumeContext, resumeId, runPostApplyEvaluation, settleCommittedSourceAfterReload,
-    shouldHandleOperationError, waitForCommittedSource,
+    shouldHandleOperationError, trackCompletedResumeOptimizationRescore, waitForCommittedSource,
   ]);
 
   const applyAcceptedChanges = useCallback(async () => {
@@ -1609,6 +1779,7 @@ export const useResumeOptimizationFlow = ({
     }
     const attempt = freezeResumeOptimizationApplyAttempt(currentRun, acceptedChangeIds);
     if (!attempt) return null;
+    const applyPlanMetrics = summarizeResumeOptimizationPlan(currentRun);
     if (!isResumeOptimizationRunContextCurrent(
       currentRun,
       latestInputsRef.current.sourceResumeUpdatedAt,
@@ -1642,6 +1813,25 @@ export const useResumeOptimizationFlow = ({
         return null;
       }
       await assertCurrent(generation, operation, attempt.runId);
+      const applyStartedAt = Date.now();
+      applyAnalyticsAttemptRef.current = {
+        runId: attempt.runId,
+        resumeId: currentRun.resumeId,
+        beforeScore: currentRun.sourceBeforeScore,
+        acceptedChangeCount: attempt.acceptedChangeIds.length,
+        blockedChangeCount: applyPlanMetrics.blockedChangeCount,
+        bankSuggestionCount: applyPlanMetrics.bankSuggestionCount,
+        startedAt: applyStartedAt,
+        resultTracked: false,
+      };
+      trackResumeOptimizationApplyStart({
+        resumeId: currentRun.resumeId,
+        runId: currentRun.id,
+        beforeScore: currentRun.sourceBeforeScore,
+        acceptedChangeCount: attempt.acceptedChangeIds.length,
+        blockedChangeCount: applyPlanMetrics.blockedChangeCount,
+        bankSuggestionCount: applyPlanMetrics.bankSuggestionCount,
+      });
       applyRequestStarted = true;
       const applied = await resumeOptimizationService.apply(attempt.runId, {
         acceptedChangeIds: attempt.acceptedChangeIds,
@@ -1651,6 +1841,17 @@ export const useResumeOptimizationFlow = ({
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
       });
       await assertCurrent(generation, operation, attempt.runId);
+      trackResumeOptimizationApplyResult({
+        resumeId: currentRun.resumeId,
+        runId: currentRun.id,
+        action: 'success',
+        beforeScore: currentRun.sourceBeforeScore,
+        acceptedChangeCount: attempt.acceptedChangeIds.length,
+        blockedChangeCount: applyPlanMetrics.blockedChangeCount,
+        bankSuggestionCount: applyPlanMetrics.bankSuggestionCount,
+        durationMs: Date.now() - applyStartedAt,
+      });
+      applyAnalyticsAttemptRef.current = null;
       applyAttemptRef.current = null;
       markSelfOwnedResumeTimestamp(applied.resumeUpdatedAt);
       latestRunRef.current = applied.run;
@@ -1691,6 +1892,21 @@ export const useResumeOptimizationFlow = ({
       rejectPendingWaiters(cause instanceof Error ? cause : new Error('应用流程失败。'));
       if (applyRequestStarted && applyAttemptRef.current === attempt) {
         if (isStaleOptimizationError(cause)) {
+          const analyticsAttempt = applyAnalyticsAttemptRef.current;
+          if (analyticsAttempt && analyticsAttempt.runId === attempt.runId && !analyticsAttempt.resultTracked) {
+            trackResumeOptimizationApplyResult({
+              resumeId: analyticsAttempt.resumeId,
+              runId: analyticsAttempt.runId,
+              action: 'failure',
+              beforeScore: analyticsAttempt.beforeScore,
+              acceptedChangeCount: analyticsAttempt.acceptedChangeCount,
+              blockedChangeCount: analyticsAttempt.blockedChangeCount,
+              bankSuggestionCount: analyticsAttempt.bankSuggestionCount,
+              durationMs: Date.now() - analyticsAttempt.startedAt,
+              failureCode: toResumeOptimizationAnalyticsFailureCode(cause),
+            });
+            applyAnalyticsAttemptRef.current = null;
+          }
           applyAttemptRef.current = null;
           handleOperationError(cause, '应用简历优化失败。');
           return null;
@@ -1724,6 +1940,7 @@ export const useResumeOptimizationFlow = ({
     const started = await beginHandledOperation('六维复评失败，可稍后重试。');
     if (!started) return null;
     const { generation, controller, operation } = started;
+    const rescoreRetryStartedAt = Date.now();
     try {
       const authoritativeRun = await resumeOptimizationService.get(currentRun.id, {
         signal: controller.signal,
@@ -1731,6 +1948,10 @@ export const useResumeOptimizationFlow = ({
       });
       await assertCurrent(generation, operation, currentRun.id);
       if (authoritativeRun.status === 'completed') {
+        const postEvaluation = authoritativeRun.postEvaluation;
+        if (postEvaluation && !rescoreResultTrackedRunIdsRef.current.has(authoritativeRun.id)) {
+          trackCompletedResumeOptimizationRescore(authoritativeRun, rescoreRetryStartedAt);
+        }
         applyRunToState(authoritativeRun);
         setProgressText('');
         setProgressNode(null);
@@ -1791,7 +2012,8 @@ export const useResumeOptimizationFlow = ({
   }, [
     applyRunToState, assertCurrent, beginHandledOperation, enabled, handleOperationError,
     markSelfOwnedResumeTimestamp, publishPostApplyCheckpoint, reloadResumeContext, resumeId, runPostApplyEvaluation,
-    settleCommittedSourceAfterReload, shouldHandleOperationError, waitForCommittedSource,
+    settleCommittedSourceAfterReload, shouldHandleOperationError,
+    trackCompletedResumeOptimizationRescore, waitForCommittedSource,
   ]);
 
   const revertRun = useCallback(async () => {
@@ -1809,6 +2031,9 @@ export const useResumeOptimizationFlow = ({
     const started = await beginHandledOperation('撤销简历优化失败。');
     if (!started) return null;
     const { generation, controller, operation } = started;
+    const revertStartedAt = Date.now();
+    let revertMutationStarted = false;
+    let revertMutationSucceeded = false;
     try {
       const committedToken = await commitLatestResumeConfigIfNeededRef.current();
       const committedCurrentUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(committedToken);
@@ -1820,6 +2045,7 @@ export const useResumeOptimizationFlow = ({
         return null;
       }
       await assertCurrent(generation, operation, currentRun.id);
+      revertMutationStarted = true;
       const reverted = await resumeOptimizationService.revert(currentRun.id, {
         expectedResumeUpdatedAt: committedCurrentUpdatedAt,
       }, {
@@ -1827,6 +2053,13 @@ export const useResumeOptimizationFlow = ({
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
       });
       await assertCurrent(generation, operation, currentRun.id);
+      revertMutationSucceeded = true;
+      trackResumeOptimizationRevertResult({
+        resumeId: currentRun.resumeId,
+        runId: currentRun.id,
+        action: 'success',
+        durationMs: Date.now() - revertStartedAt,
+      });
       markSelfOwnedResumeAndEvaluationTimestamp(reverted.resumeUpdatedAt);
       const reloaded = await reloadResumeContext(resumeId);
       if (reloaded.status !== 'success') throw reloaded.error ?? new Error('撤销后重新加载失败。');
@@ -1842,6 +2075,15 @@ export const useResumeOptimizationFlow = ({
       return reverted.run;
     } catch (cause) {
       if (await shouldHandleOperationError(cause, generation, operation, currentRun.id)) {
+        if (revertMutationStarted && !revertMutationSucceeded) {
+          trackResumeOptimizationRevertResult({
+            resumeId: currentRun.resumeId,
+            runId: currentRun.id,
+            action: 'failure',
+            durationMs: Date.now() - revertStartedAt,
+            failureCode: toResumeOptimizationAnalyticsFailureCode(cause),
+          });
+        }
         handleOperationError(cause, '撤销简历优化失败。');
       }
       return null;

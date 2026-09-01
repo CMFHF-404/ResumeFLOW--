@@ -4,6 +4,10 @@ import { ShieldCheck, X } from 'lucide-react';
 import type { ExperienceCategory } from '../../../../services/experienceService';
 import type { useResumeOptimizationFlow } from '../../hooks/useResumeOptimizationFlow';
 import type { ResumeOptimizationStatus, ResumeOptimizationUiState } from '../../../../types/resumeOptimization';
+import {
+    trackResumeOptimizationPreviewView,
+    trackResumeOptimizationQuestionsView,
+} from '../../../../utils/analyticsTracker';
 import { ResumeOptimizationOverview } from './ResumeOptimizationOverview';
 import { ResumeOptimizationPreview } from './ResumeOptimizationPreview';
 import { ResumeOptimizationProgress } from './ResumeOptimizationProgress';
@@ -13,7 +17,10 @@ import {
     ResumeOptimizationStepRail,
     type ResumeOptimizationStepId,
 } from './ResumeOptimizationStepRail';
-import { areResumeOptimizationAnswersComplete } from './optimizationDisplayUtils.mjs';
+import {
+    areResumeOptimizationAnswersComplete,
+    buildResumeOptimizationOverviewMetrics,
+} from './optimizationDisplayUtils.mjs';
 
 type ResumeOptimizationFlowSlice = ReturnType<typeof useResumeOptimizationFlow>;
 
@@ -53,6 +60,9 @@ const FOCUSABLE_SELECTOR = [
     'textarea:not([disabled])',
     '[tabindex]:not([tabindex="-1"])',
 ].join(',');
+
+const resumeOptimizationQuestionsViewRunIds = new Set<string>();
+const resumeOptimizationPreviewViewRunIds = new Set<string>();
 
 const resolveStepFromRunStatus = (
     status: ResumeOptimizationStatus | undefined,
@@ -170,6 +180,38 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         const resolvedIndex = visibleSteps.indexOf(resolvedActiveStep);
         return resolvedIndex < 0 ? [visibleSteps[0]] : visibleSteps.slice(0, resolvedIndex + 1);
     }, [resolvedActiveStep, visibleSteps]);
+
+    useEffect(() => {
+        if (!run || !plan || isProgressVisible) return;
+        if (
+            displayStep === 'questions'
+            && canRenderQuestions
+            && !resumeOptimizationQuestionsViewRunIds.has(run.id)
+        ) {
+            resumeOptimizationQuestionsViewRunIds.add(run.id);
+            trackResumeOptimizationQuestionsView({
+                resumeId: run.resumeId,
+                runId: run.id,
+                questionCount: plan.questions.length,
+            });
+        }
+        if (
+            displayStep === 'preview'
+            && uiState !== 'stale'
+            && !resumeOptimizationPreviewViewRunIds.has(run.id)
+        ) {
+            resumeOptimizationPreviewViewRunIds.add(run.id);
+            const metrics = buildResumeOptimizationOverviewMetrics(plan);
+            trackResumeOptimizationPreviewView({
+                resumeId: run.resumeId,
+                runId: run.id,
+                directChangeCount: metrics.directChanges,
+                questionCount: metrics.questions,
+                blockedChangeCount: metrics.blockedChanges,
+                bankSuggestionCount: metrics.bankOpportunities,
+            });
+        }
+    }, [canRenderQuestions, displayStep, isProgressVisible, plan, run, uiState]);
 
     const requestClose = useCallback(async () => {
         if (isCloseBlocked || closeRequestInFlightRef.current) return false;
@@ -401,6 +443,8 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 />
                             ) : displayStep === 'preview' && plan && uiState !== 'stale' ? (
                                 <ResumeOptimizationPreview
+                                    resumeId={run.resumeId}
+                                    runId={run.id}
                                     plan={plan}
                                     acceptedChangeIds={acceptedChangeIds}
                                     readOnly={run?.status !== 'preview_ready'}

@@ -13,6 +13,7 @@ from ..ai.runtime_budget import (
     build_public_stream_error_event,
     new_ai_request_id,
 )
+from ..billing import billing_service
 from .bank_suggestion_service import build_bank_suggestions
 from .context_service import (
     FrozenOptimizationContext,
@@ -62,6 +63,64 @@ ProgressEvent = dict[str, Any]
 ProgressCallback = (
     Callable[[ProgressEvent], Awaitable[None] | None] | None
 )
+
+_PLAN_BILLING_ROUTE = "/api/resume-optimizations/stream"
+_ANSWER_BILLING_ROUTE = "/api/resume-optimizations/{run_id}/answers/stream"
+_BILLING_ROUTE_ALLOWLIST = frozenset({_PLAN_BILLING_ROUTE, _ANSWER_BILLING_ROUTE})
+_BILLING_COUNT_KEY_ALLOWLIST = frozenset(
+    {
+        "selected_experience_count",
+        "selected_skill_count",
+        "bank_candidate_count",
+        "issue_count",
+        "question_count",
+        "submitted_answer_count",
+        "answered_count",
+        "no_data_count",
+        "unknown_count",
+        "not_my_work_count",
+        "skipped_count",
+        "rewrite_question_count",
+        "affected_change_count",
+    }
+)
+
+
+def _update_current_billing_metadata(
+    *,
+    route: str,
+    run: ResumeOptimizationRun,
+    counts: Mapping[str, Any],
+) -> None:
+    context = billing_service.get_current_billing_context()
+    if context is None:
+        return
+    metadata: dict[str, Any] = {
+        "route": route if route in _BILLING_ROUTE_ALLOWLIST else "unknown",
+        "run_id": str(run.id),
+        "optimizer_version": str(run.optimizer_version),
+    }
+    for key in _BILLING_COUNT_KEY_ALLOWLIST:
+        value = counts.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            metadata[key] = value
+    context.metadata.clear()
+    context.metadata.update(metadata)
+
+
+def _selected_skill_count(frozen: FrozenOptimizationContext) -> int:
+    raw_skills = frozen.current_resume.get("skills")
+    if not isinstance(raw_skills, list):
+        return 0
+    return len(
+        {
+            skill_id.strip()
+            for item in raw_skills
+            if isinstance(item, Mapping)
+            and isinstance((skill_id := item.get("id")), str)
+            and skill_id.strip()
+        }
+    )
 
 
 _PLAN_PROGRESS_TITLES = {
@@ -520,6 +579,23 @@ async def create_optimization_plan(
             title=_PLAN_PROGRESS_TITLES["plan_changes"],
             request_id=resolved_request_id,
         )
+        evaluation_issues = frozen.evaluation.get("issues")
+        _update_current_billing_metadata(
+            route=_PLAN_BILLING_ROUTE,
+            run=run,
+            counts={
+                "selected_experience_count": len(
+                    frozen.selected_master_experience_ids
+                ),
+                "selected_skill_count": _selected_skill_count(frozen),
+                "bank_candidate_count": len(frozen.bank_suggestion_candidates),
+                "issue_count": (
+                    len(evaluation_issues)
+                    if isinstance(evaluation_issues, list)
+                    else 0
+                ),
+            },
+        )
         model_plan = await plan_resume_optimization(frozen)
 
         await _emit_progress(
@@ -873,6 +949,36 @@ async def answer_optimization_questions(
                 node="rewrite_changes",
                 title=_ANSWER_PROGRESS_TITLES["rewrite_changes"],
                 request_id=resolved_request_id,
+            )
+            _update_current_billing_metadata(
+                route=_ANSWER_BILLING_ROUTE,
+                run=run,
+                counts={
+                    "question_count": len(existing_plan.questions),
+                    "submitted_answer_count": len(payload.answers),
+                    "answered_count": sum(
+                        answer.state == OptimizationAnswerState.ANSWERED
+                        for answer in merged_answers
+                    ),
+                    "no_data_count": sum(
+                        answer.state == OptimizationAnswerState.NO_DATA
+                        for answer in merged_answers
+                    ),
+                    "unknown_count": sum(
+                        answer.state == OptimizationAnswerState.UNKNOWN
+                        for answer in merged_answers
+                    ),
+                    "not_my_work_count": sum(
+                        answer.state == OptimizationAnswerState.NOT_MY_WORK
+                        for answer in merged_answers
+                    ),
+                    "skipped_count": sum(
+                        answer.state == OptimizationAnswerState.SKIPPED
+                        for answer in merged_answers
+                    ),
+                    "rewrite_question_count": len(rewrite_questions),
+                    "affected_change_count": len(answered_affected_ids),
+                },
             )
             rewrites = await rewrite_answered_modules(
                 context=frozen,
