@@ -14,6 +14,10 @@ ENV_DATABASE_URL = "DATABASE_URL"
 ENV_LOGTO_ISSUER = "LOGTO_ISSUER"
 ENV_LOGTO_APP_ID = "LOGTO_APP_ID"
 ENV_LOGTO_JWKS_TTL = "LOGTO_JWKS_TTL_SECONDS"
+ENV_RESUMEFLOW_DEPLOYMENT_MODE = "RESUMEFLOW_DEPLOYMENT_MODE"
+ENV_FRONTEND_LOGTO_ENDPOINT = "FRONTEND_LOGTO_ENDPOINT"
+ENV_FRONTEND_LOGTO_APP_ID = "FRONTEND_LOGTO_APP_ID"
+ENV_FRONTEND_LOGTO_REDIRECT_URI = "FRONTEND_LOGTO_REDIRECT_URI"
 ENV_AI_API_KEY = "AI_API_KEY"
 ENV_AI_BASE_URL = "AI_BASE_URL"
 ENV_AI_RESPONSES_BASE_URL = "AI_RESPONSES_BASE_URL"
@@ -60,6 +64,8 @@ ENV_YIFUT_MERCHANT_PRIVATE_KEY = "YIFUT_MERCHANT_PRIVATE_KEY"
 ENV_YIFUT_PLATFORM_PUBLIC_KEY = "YIFUT_PLATFORM_PUBLIC_KEY"
 ENV_YIFUT_BASE_URL = "YIFUT_BASE_URL"
 DEFAULT_JWKS_TTL_SECONDS = 3600
+DEFAULT_RESUMEFLOW_DEPLOYMENT_MODE = "local"
+VALID_RESUMEFLOW_DEPLOYMENT_MODES = {"local", "production"}
 DEFAULT_AI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_AI_MODEL = "qwen3.7-plus"
 DEFAULT_AI_ROUTE_PROFILE = "hybrid_gemini_aifast"
@@ -139,6 +145,16 @@ def _resolve_ai_responses_base_url(ai_base_url: str) -> str:
 
 def _normalize_issuer(issuer: str) -> str:
     return issuer.rstrip("/")
+
+
+def _resolve_deployment_mode(value: Optional[str]) -> str:
+    mode = (value or DEFAULT_RESUMEFLOW_DEPLOYMENT_MODE).strip().lower()
+    if mode not in VALID_RESUMEFLOW_DEPLOYMENT_MODES:
+        valid = ", ".join(sorted(VALID_RESUMEFLOW_DEPLOYMENT_MODES))
+        raise RuntimeError(
+            f"Invalid {ENV_RESUMEFLOW_DEPLOYMENT_MODE}: expected one of: {valid}"
+        )
+    return mode
 
 def _get_bool_env(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -347,6 +363,85 @@ def _require_exact_https_origin(value: str, env_name: str) -> str:
     return expected
 
 
+def _derive_logto_endpoint(logto_issuer: str) -> str:
+    issuer_suffix = "/oidc"
+    if not logto_issuer.endswith(issuer_suffix):
+        raise RuntimeError(
+            f"Invalid {ENV_LOGTO_ISSUER}: expected a Logto issuer ending in {issuer_suffix}"
+        )
+    endpoint = logto_issuer[: -len(issuer_suffix)]
+    return _require_exact_https_origin(endpoint, ENV_LOGTO_ISSUER)
+
+
+def validate_logto_app_id(value: str, env_name: str) -> str:
+    """Accept the public Logto SPA identifier format shared by both services."""
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or re.fullmatch(r"[A-Za-z0-9_-]+", value) is None
+    ):
+        raise RuntimeError(
+            f"Invalid {env_name}: expected a non-empty Logto app ID containing only letters, numbers, hyphens, or underscores"
+        )
+    return value
+
+
+def validate_frontend_auth_config(
+    *,
+    logto_issuer: str,
+    logto_app_id: str,
+    frontend_origin: str,
+    cors_allow_origins: List[str],
+    frontend_logto_endpoint: Optional[str],
+    frontend_logto_app_id: Optional[str],
+    frontend_logto_redirect_uri: Optional[str],
+    require_explicit: bool,
+) -> None:
+    """Fail closed when the separately deployed browser auth config drifts.
+
+    The mirrored values are public Logto SPA configuration, never a client
+    secret. Remote deployments must provide them explicitly; strict loopback
+    development can derive them from the backend values for local ergonomics.
+    """
+    expected_endpoint = _derive_logto_endpoint(logto_issuer)
+    validate_logto_app_id(logto_app_id, ENV_LOGTO_APP_ID)
+    if urlsplit(frontend_origin).path:
+        raise RuntimeError(
+            f"Invalid {ENV_FRONTEND_ORIGIN}: expected an exact origin for frontend auth"
+        )
+    expected_redirect_uri = f"{frontend_origin}/callback"
+
+    if require_explicit and not frontend_logto_endpoint:
+        raise RuntimeError(f"Missing required environment variable: {ENV_FRONTEND_LOGTO_ENDPOINT}")
+    if require_explicit and not frontend_logto_app_id:
+        raise RuntimeError(f"Missing required environment variable: {ENV_FRONTEND_LOGTO_APP_ID}")
+    if require_explicit and not frontend_logto_redirect_uri:
+        raise RuntimeError(f"Missing required environment variable: {ENV_FRONTEND_LOGTO_REDIRECT_URI}")
+
+    configured_endpoint = frontend_logto_endpoint or expected_endpoint
+    configured_app_id = frontend_logto_app_id or logto_app_id
+    configured_redirect_uri = frontend_logto_redirect_uri or expected_redirect_uri
+
+    _require_exact_https_origin(configured_endpoint, ENV_FRONTEND_LOGTO_ENDPOINT)
+    validate_logto_app_id(configured_app_id, ENV_FRONTEND_LOGTO_APP_ID)
+    if configured_endpoint != expected_endpoint:
+        raise RuntimeError(
+            f"Invalid {ENV_FRONTEND_LOGTO_ENDPOINT}: must match {ENV_LOGTO_ISSUER} without /oidc"
+        )
+    if configured_app_id != logto_app_id:
+        raise RuntimeError(
+            f"Invalid {ENV_FRONTEND_LOGTO_APP_ID}: must match {ENV_LOGTO_APP_ID}"
+        )
+    if configured_redirect_uri != expected_redirect_uri:
+        raise RuntimeError(
+            f"Invalid {ENV_FRONTEND_LOGTO_REDIRECT_URI}: must exactly equal {ENV_FRONTEND_ORIGIN}/callback"
+        )
+    if frontend_origin not in cors_allow_origins:
+        raise RuntimeError(
+            f"Invalid {ENV_CORS_ALLOW_ORIGINS}: must include {ENV_FRONTEND_ORIGIN}"
+        )
+
+
 def _resolve_yifut_base_url(value: str, *, enabled: bool) -> str:
     """Keep disabled deployments bootable without weakening enabled checkout.
 
@@ -450,9 +545,15 @@ def load_settings() -> Settings:
         return _settings
 
     _load_env()
+    deployment_mode = _resolve_deployment_mode(
+        os.getenv(ENV_RESUMEFLOW_DEPLOYMENT_MODE)
+    )
     database_url = _normalize_database_url(_require_env(ENV_DATABASE_URL))
     logto_issuer = _normalize_issuer(_require_env(ENV_LOGTO_ISSUER))
-    logto_app_id = _require_env(ENV_LOGTO_APP_ID)
+    logto_app_id = validate_logto_app_id(
+        _require_env(ENV_LOGTO_APP_ID),
+        ENV_LOGTO_APP_ID,
+    )
     jwks_url = f"{logto_issuer}{DEFAULT_JWKS_PATH}"
     jwks_ttl_seconds = int(os.getenv(ENV_LOGTO_JWKS_TTL, DEFAULT_JWKS_TTL_SECONDS))
     ai_api_key = os.getenv(ENV_AI_API_KEY)
@@ -545,6 +646,10 @@ def load_settings() -> Settings:
         )
     )
     enable_dev_auth_bypass = _get_bool_env(ENV_ENABLE_DEV_AUTH_BYPASS, False)
+    if deployment_mode == "production" and enable_dev_auth_bypass:
+        raise RuntimeError(
+            f"Invalid {ENV_ENABLE_DEV_AUTH_BYPASS}: must be disabled in production"
+        )
     dev_user_id = os.getenv(ENV_DEV_USER_ID, DEFAULT_DEV_USER_ID)
     cors_allow_origins = _parse_csv_env(
         ENV_CORS_ALLOW_ORIGINS,
@@ -553,7 +658,20 @@ def load_settings() -> Settings:
     feishu_webhook_url = os.getenv(ENV_FEISHU_WEBHOOK_URL)
     feishu_app_id = os.getenv(ENV_FEISHU_APP_ID)
     feishu_app_secret = os.getenv(ENV_FEISHU_APP_SECRET)
+    if deployment_mode == "production":
+        _require_env(ENV_FRONTEND_ORIGIN)
+        _require_env(ENV_CORS_ALLOW_ORIGINS)
     frontend_origin = _resolve_frontend_origin(cors_allow_origins)
+    validate_frontend_auth_config(
+        logto_issuer=logto_issuer,
+        logto_app_id=logto_app_id,
+        frontend_origin=frontend_origin,
+        cors_allow_origins=cors_allow_origins,
+        frontend_logto_endpoint=os.getenv(ENV_FRONTEND_LOGTO_ENDPOINT),
+        frontend_logto_app_id=os.getenv(ENV_FRONTEND_LOGTO_APP_ID),
+        frontend_logto_redirect_uri=os.getenv(ENV_FRONTEND_LOGTO_REDIRECT_URI),
+        require_explicit=deployment_mode == "production",
+    )
     public_api_origin = _normalize_public_api_origin(
         os.getenv(ENV_PUBLIC_API_ORIGIN, DEFAULT_PUBLIC_API_ORIGIN)
     )
