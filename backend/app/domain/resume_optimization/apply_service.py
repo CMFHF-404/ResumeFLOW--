@@ -4,8 +4,13 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from typing import Any
+import html as html_lib
+import json
+import re
 import uuid
+from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import and_, or_
 from pydantic import ValidationError
@@ -14,18 +19,26 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...constants import ALLOWED_OVERRIDE_KEYS
 from ...database import AsyncSessionFactory
-from ...models import ExperienceVersion, MasterExperience
+from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ...utils.time_utils import utc_now_aware
+from ..ai.resume_evaluation import DIMENSION_NAMES, normalize_resume_evaluation
 from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_service import _mark_resume_analysis_outdated
 from .models import ResumeOptimizationRun
-from .run_service import OptimizationRunNotFoundError, hash_canonical_json
+from .run_service import (
+    OptimizationRunNotFoundError,
+    canonical_json,
+    hash_canonical_json,
+)
 from .schemas import (
     OptimizationAction,
     OptimizationChange,
     OptimizationModuleType,
     OptimizationPlan,
     ResumeOptimizationApplyRequest,
+    ResumeOptimizationFinalizeRequest,
+    ResumeOptimizationPostEvaluation,
+    ResumeOptimizationRevertRequest,
     ResumeOptimizationStatus,
 )
 from .state_machine import InvalidOptimizationTransitionError, require_status_transition
@@ -56,6 +69,8 @@ _SUMMARY_PATHS = frozenset({"personal_summary", "personalSummary"})
 _SKILL_PATHS = frozenset({"skills.order", "skillsOrder", "selection.skillIds"})
 _SECTION_PATHS = frozenset({"section_order", "sectionOrder"})
 _APPLY_SNAPSHOT_VERSION = "resume_optimization_apply_v1"
+_ROLLBACK_BEFORE_VERSION = "resume_optimization_rollback_before_v1"
+_POST_EVALUATION_VERSION = "resume_optimization_post_evaluation_v1"
 _STALE_PUBLIC_MESSAGE = "简历内容或六维评估已更新，请重新生成优化方案。"
 
 
@@ -90,6 +105,37 @@ class OptimizationApplyStaleError(RuntimeError):
         super().__init__(self.public_message)
 
 
+class OptimizationFinalizePendingError(RuntimeError):
+    code = "resume_optimization_evaluation_pending"
+    status_code = 409
+    public_message = "复评结果尚未就绪或已过期，请重新生成六维评估后重试。"
+    retryable = True
+
+    def __init__(self) -> None:
+        super().__init__(self.public_message)
+
+
+class OptimizationContentConflictError(RuntimeError):
+    code = "resume_optimization_content_conflict"
+    status_code = 409
+    public_message = "简历内容已在优化后发生变化，请刷新后再操作。"
+    retryable = False
+
+    def __init__(self) -> None:
+        super().__init__(self.public_message)
+
+
+class OptimizationRunDataInvalidError(RuntimeError):
+    code = "resume_optimization_run_invalid"
+    status_code = 500
+    public_message = "简历优化记录数据异常，请重新生成优化方案。"
+    retryable = False
+
+    def __init__(self, reason: str = "Persisted optimization apply data is invalid") -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
 @dataclass(frozen=True)
 class OptimizationApplyPatch:
     experience_star_by_link_id: dict[str, dict[str, Any]]
@@ -103,6 +149,13 @@ class OptimizationApplyResult:
     resume: Resume
     resume_updated_at: datetime
     applied_change_ids: list[str]
+
+
+@dataclass(frozen=True)
+class OptimizationRevertResult:
+    run: ResumeOptimizationRun
+    resume: Resume
+    resume_updated_at: datetime
 
 
 @dataclass(frozen=True)
@@ -676,6 +729,9 @@ async def _lock_frozen_links(
         .where(
             ResumeExperienceLink.resume_id == resume.id,
             MasterExperience.user_id == user_id,
+            MasterExperience.category.in_(
+                [ExperienceCategory.WORK, ExperienceCategory.PROJECT]
+            ),
             or_(*predicates),
         )
         .order_by(ResumeExperienceLink.id)
@@ -697,6 +753,81 @@ async def _lock_frozen_links(
             or str(link.experience_version_id) != str(record.source_version_id)
         ):
             raise OptimizationApplyStaleError()
+    return links
+
+
+async def _lock_current_selected_resume_links(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    resume: Resume,
+    frozen_records: Mapping[str, _FrozenLink],
+    applied_config: Any,
+) -> list[ResumeExperienceLink]:
+    config = _snapshot_object(applied_config, field_name="applied resume config")
+    selection = config.get("selection")
+    explicit_master_ids: list[str] | None = None
+    if isinstance(selection, Mapping) and "experienceIds" in selection:
+        raw_ids = selection.get("experienceIds")
+        if not isinstance(raw_ids, list):
+            raise OptimizationRunDataInvalidError(
+                "applied selection.experienceIds must be an array"
+            )
+        explicit_master_ids = []
+        for raw_id in raw_ids:
+            master_id = str(raw_id)
+            if not master_id or master_id in explicit_master_ids:
+                raise OptimizationRunDataInvalidError(
+                    "applied selection.experienceIds is invalid"
+                )
+            explicit_master_ids.append(master_id)
+        if set(explicit_master_ids) != set(frozen_records):
+            raise OptimizationRunDataInvalidError(
+                "applied selected experience IDs disagree with frozen selection"
+            )
+    statement = (
+        select(ResumeExperienceLink)
+        .join(
+            ExperienceVersion,
+            ExperienceVersion.id == ResumeExperienceLink.experience_version_id,
+        )
+        .join(
+            MasterExperience,
+            MasterExperience.id == ExperienceVersion.master_experience_id,
+        )
+        .where(
+            ResumeExperienceLink.resume_id == resume.id,
+            MasterExperience.user_id == user_id,
+            MasterExperience.category.in_(
+                [ExperienceCategory.WORK, ExperienceCategory.PROJECT]
+            ),
+        )
+        .order_by(ResumeExperienceLink.id)
+        .with_for_update(of=ResumeExperienceLink)
+        .execution_options(populate_existing=True)
+    )
+    if explicit_master_ids is not None:
+        statement = statement.where(
+            MasterExperience.id.in_(
+                [
+                    _as_uuid(item, field_name="selected master experience ID")
+                    for item in explicit_master_ids
+                ]
+            )
+        )
+    result = await session.execute(statement)
+    links = list(result.scalars().all())
+    expected = {
+        str(record.link_id): str(record.source_version_id)
+        for record in frozen_records.values()
+    }
+    current = {
+        str(link.id): str(link.experience_version_id)
+        for link in links
+        if str(link.resume_id) == str(resume.id)
+    }
+    if len(current) != len(links) or current != expected:
+        raise OptimizationContentConflictError()
     return links
 
 
@@ -748,6 +879,26 @@ def _touched_config_paths(changes: list[OptimizationChange]) -> dict[str, tuple[
 
 def _timestamp_like(reference: datetime, now: datetime) -> datetime:
     return now.replace(tzinfo=None) if reference.tzinfo is None else now
+
+
+def _rollback_before_signature(
+    *,
+    run_id: Any,
+    resume_id: Any,
+    source_snapshot_hash: str,
+    applied_change_ids: list[str],
+    before: Any,
+) -> str:
+    return hash_canonical_json(
+        {
+            "version": _ROLLBACK_BEFORE_VERSION,
+            "run_id": str(run_id),
+            "resume_id": str(resume_id),
+            "source_snapshot_hash": source_snapshot_hash,
+            "applied_change_ids": list(applied_change_ids),
+            "before": deepcopy(before),
+        }
+    )
 
 
 async def _write_stale(
@@ -856,6 +1007,13 @@ async def apply_resume_optimization(
         except OptimizationApplyStaleError:
             await persist_stale()
             raise
+        if str(run.source_evaluation_signature).lstrip().startswith("{"):
+            try:
+                _source_frontend_evaluation_snapshot(run)
+            except OptimizationRunDataInvalidError as exc:
+                raise OptimizationApplyValidationError(
+                    "Optimization requires a canonical editor evaluation snapshot"
+                ) from exc
 
         changes = _accepted_changes(run, set(payload.accepted_change_ids))
         try:
@@ -975,6 +1133,13 @@ async def apply_resume_optimization(
             "touched_links": touched_links,
             "protected_content": deepcopy(protected_content),
         }
+        after_snapshot["rollback_before_signature"] = _rollback_before_signature(
+            run_id=run.id,
+            resume_id=resume.id,
+            source_snapshot_hash=run.source_snapshot_hash,
+            applied_change_ids=list(patch.applied_change_ids),
+            before=after_snapshot["before"],
+        )
         applied_signature = hash_canonical_json(protected_content)
 
         require_status_transition(
@@ -999,6 +1164,1836 @@ async def apply_resume_optimization(
         )
     except OptimizationApplyStaleError:
         raise
+    except BaseException:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        raise
+
+
+class _PersistedEvaluationPending(ValueError):
+    pass
+
+
+def _require_mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OptimizationRunDataInvalidError(f"{field_name} must be an object")
+    return value
+
+
+def _require_exact_keys(
+    value: Any,
+    expected: set[str] | frozenset[str],
+    *,
+    field_name: str,
+) -> Mapping[str, Any]:
+    mapping = _require_mapping(value, field_name=field_name)
+    if set(mapping) != set(expected):
+        raise OptimizationRunDataInvalidError(f"{field_name} has an invalid shape")
+    return mapping
+
+
+def _validated_presence(value: Any, *, field_name: str) -> dict[str, Any]:
+    record = _require_exact_keys(
+        value,
+        {"present", "value"},
+        field_name=field_name,
+    )
+    if not isinstance(record.get("present"), bool):
+        raise OptimizationRunDataInvalidError(
+            f"{field_name}.present must be a boolean"
+        )
+    if record["present"] is False and record.get("value") is not None:
+        raise OptimizationRunDataInvalidError(
+            f"{field_name}.value must be null when absent"
+        )
+    return {"present": record["present"], "value": deepcopy(record.get("value"))}
+
+
+def _restore_presence(
+    target: dict[str, Any],
+    path: tuple[str, ...],
+    presence: Mapping[str, Any],
+) -> None:
+    cursor = target
+    for token in path[:-1]:
+        existing = cursor.get(token)
+        if not isinstance(existing, dict):
+            if presence["present"] is False:
+                return
+            existing = {}
+            cursor[token] = existing
+        cursor = existing
+    if presence["present"]:
+        cursor[path[-1]] = deepcopy(presence.get("value"))
+    else:
+        cursor.pop(path[-1], None)
+
+
+_EVALUATION_SECTION_ORDER = (
+    "summary",
+    "education",
+    "work",
+    "project",
+    "certifications",
+    "skills",
+)
+
+
+def _frontend_evaluation_section_order(
+    raw_order: list[Any],
+    *,
+    has_summary: bool,
+) -> list[str]:
+    editor_order: list[str] = []
+    for raw_id in raw_order:
+        section_id = str(raw_id)
+        if (
+            section_id in _EVALUATION_SECTION_ORDER
+            and section_id not in editor_order
+        ):
+            editor_order.append(section_id)
+    if "summary" not in editor_order:
+        editor_order.insert(0, "summary")
+    for section_id in _EVALUATION_SECTION_ORDER:
+        if section_id not in editor_order:
+            editor_order.append(section_id)
+    return [
+        section_id
+        for section_id in editor_order
+        if section_id != "summary" or has_summary
+    ]
+
+
+@dataclass
+class _FrontendHtmlSourceNode:
+    tag: str | None
+    text: str | None
+    attrs: tuple[tuple[str, str | None], ...]
+    children: list[_FrontendHtmlSourceNode]
+
+
+@dataclass
+class _FrontendSanitizedNode:
+    tag: str | None
+    text: str | None
+    children: list[_FrontendSanitizedNode | object]
+
+
+class _FrontendHtmlSourceParser(HTMLParser):
+    _VOID_TAGS = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.root = _FrontendHtmlSourceNode(None, None, (), [])
+        self._stack = [self.root]
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        normalized_tag = tag.lower()
+        node = _FrontendHtmlSourceNode(
+            normalized_tag,
+            None,
+            tuple((name.lower(), value) for name, value in attrs),
+            [],
+        )
+        self._stack[-1].children.append(node)
+        if normalized_tag not in self._VOID_TAGS:
+            self._stack.append(node)
+
+    def handle_startendtag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        normalized_tag = tag.lower()
+        self._stack[-1].children.append(
+            _FrontendHtmlSourceNode(
+                normalized_tag,
+                None,
+                tuple((name.lower(), value) for name, value in attrs),
+                [],
+            )
+        )
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.lower()
+        for index in range(len(self._stack) - 1, 0, -1):
+            if self._stack[index].tag == normalized_tag:
+                del self._stack[index:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        if data:
+            self._stack[-1].children.append(
+                _FrontendHtmlSourceNode(None, data, (), [])
+            )
+
+
+_FRONTEND_HTML_BREAK = object()
+_FRONTEND_INLINE_TAGS = frozenset({"b", "strong", "i", "em", "u", "a"})
+_FRONTEND_LIST_TAGS = frozenset({"ul", "ol", "li"})
+_FRONTEND_BLOCK_TAGS = frozenset({"div", "p"})
+
+
+def _frontend_append_break(parent: list[_FrontendSanitizedNode | object]) -> None:
+    if not parent or parent[-1] is not _FRONTEND_HTML_BREAK:
+        parent.append(_FRONTEND_HTML_BREAK)
+
+
+def _frontend_append_text(
+    parent: list[_FrontendSanitizedNode | object],
+    value: str,
+    *,
+    preserve_text_line_breaks: bool,
+) -> None:
+    normalized = value.replace("\u00a0", " ")
+    if preserve_text_line_breaks:
+        if normalized:
+            parent.append(_FrontendSanitizedNode(None, normalized, []))
+        return
+    parts = re.split(r"\r?\n", normalized)
+    for index, part in enumerate(parts):
+        if part:
+            parent.append(_FrontendSanitizedNode(None, part, []))
+        if index < len(parts) - 1:
+            _frontend_append_break(parent)
+
+
+def _frontend_style_tags(node: _FrontendHtmlSourceNode) -> list[str]:
+    style = next((value for name, value in node.attrs if name == "style"), "") or ""
+    declarations: dict[str, str] = {}
+    for declaration in style.split(";"):
+        name, separator, value = declaration.partition(":")
+        if separator:
+            declarations[name.strip().lower()] = value.strip().lower()
+    tags: list[str] = []
+    font_weight = declarations.get("font-weight", "")
+    numeric_weight = re.match(r"^[+-]?\d+", font_weight)
+    if font_weight in {"bold", "bolder"} or (
+        numeric_weight is not None and int(numeric_weight.group()) >= 600
+    ):
+        tags.append("b")
+    if re.match(r"^(?:italic|oblique)\b", declarations.get("font-style", "")):
+        tags.append("i")
+    text_decoration = " ".join(
+        (
+            declarations.get("text-decoration-line", ""),
+            declarations.get("text-decoration", ""),
+        )
+    )
+    if re.search(r"\bunderline\b", text_decoration):
+        tags.append("u")
+    return tags
+
+
+def _frontend_safe_href(node: _FrontendHtmlSourceNode) -> bool:
+    href = next((value for name, value in node.attrs if name == "href"), None)
+    if not href:
+        return False
+    try:
+        scheme = urlsplit(urljoin("https://fallback.local", href)).scheme
+    except ValueError:
+        return False
+    return scheme in {"http", "https", "mailto", "tel"}
+
+
+def _frontend_wrap_inline_styles(
+    child: _FrontendSanitizedNode,
+    style_tags: list[str],
+) -> _FrontendSanitizedNode:
+    wrapped = child
+    for tag in reversed(style_tags):
+        wrapped = _FrontendSanitizedNode(tag, None, [wrapped])
+    return wrapped
+
+
+def _frontend_styled_content_parent(
+    parent: list[_FrontendSanitizedNode | object],
+    style_tags: list[str],
+) -> list[_FrontendSanitizedNode | object]:
+    current = parent
+    for tag in style_tags:
+        wrapper = _FrontendSanitizedNode(tag, None, [])
+        current.append(wrapper)
+        current = wrapper.children
+    return current
+
+
+def _frontend_sanitize_nodes(
+    nodes: list[_FrontendHtmlSourceNode],
+    parent: list[_FrontendSanitizedNode | object],
+    *,
+    preserve_text_line_breaks: bool,
+) -> None:
+    for node in nodes:
+        if node.tag is None:
+            _frontend_append_text(
+                parent,
+                node.text or "",
+                preserve_text_line_breaks=preserve_text_line_breaks,
+            )
+            continue
+        if node.tag == "br":
+            _frontend_append_break(parent)
+            continue
+        if node.tag in _FRONTEND_INLINE_TAGS:
+            if node.tag == "a" and not _frontend_safe_href(node):
+                _frontend_sanitize_nodes(
+                    node.children,
+                    parent,
+                    preserve_text_line_breaks=preserve_text_line_breaks,
+                )
+                continue
+            mapped_tag = {"strong": "b", "em": "i"}.get(node.tag, node.tag)
+            inline = _FrontendSanitizedNode(mapped_tag, None, [])
+            _frontend_sanitize_nodes(
+                node.children,
+                inline.children,
+                preserve_text_line_breaks=preserve_text_line_breaks,
+            )
+            style_tags = [
+                tag for tag in _frontend_style_tags(node) if tag != mapped_tag
+            ]
+            parent.append(_frontend_wrap_inline_styles(inline, style_tags))
+            continue
+        if node.tag in _FRONTEND_LIST_TAGS:
+            block = _FrontendSanitizedNode(node.tag, None, [])
+            _frontend_sanitize_nodes(
+                node.children,
+                block.children,
+                preserve_text_line_breaks=preserve_text_line_breaks,
+            )
+            parent.append(block)
+            continue
+        content_parent = _frontend_styled_content_parent(
+            parent,
+            _frontend_style_tags(node),
+        )
+        _frontend_sanitize_nodes(
+            node.children,
+            content_parent,
+            preserve_text_line_breaks=preserve_text_line_breaks,
+        )
+        if node.tag in _FRONTEND_BLOCK_TAGS:
+            _frontend_append_break(parent)
+
+
+def _frontend_flatten_sanitized_node(
+    node: _FrontendSanitizedNode | object,
+) -> str:
+    if node is _FRONTEND_HTML_BREAK:
+        return "\n"
+    if not isinstance(node, _FrontendSanitizedNode):
+        return ""
+    if node.text is not None:
+        return node.text
+    flattened = "".join(
+        _frontend_flatten_sanitized_node(child) for child in node.children
+    )
+    return f"{flattened}\n" if node.tag == "li" else flattened
+
+
+def _frontend_sanitized_plain_text(
+    value: str,
+    *,
+    preserve_text_line_breaks: bool,
+) -> str:
+    parser = _FrontendHtmlSourceParser()
+    parser.feed(value)
+    parser.close()
+    sanitized: list[_FrontendSanitizedNode | object] = []
+    _frontend_sanitize_nodes(
+        parser.root.children,
+        sanitized,
+        preserve_text_line_breaks=preserve_text_line_breaks,
+    )
+    while sanitized and sanitized[-1] is _FRONTEND_HTML_BREAK:
+        sanitized.pop()
+    return "".join(_frontend_flatten_sanitized_node(node) for node in sanitized)
+
+
+def _frontend_plain_text(
+    value: Any,
+    *,
+    preserve_plain_line_breaks: bool = False,
+) -> str:
+    text = "" if value is None else str(value)
+    if not text:
+        return ""
+    rich_entity_pattern = re.compile(
+        r"&(lt|gt|amp;lt|amp;gt);",
+        re.IGNORECASE,
+    )
+    for _ in range(2):
+        if rich_entity_pattern.search(text) is None:
+            break
+        decoded = html_lib.unescape(text)
+        if decoded == text:
+            break
+        text = decoded
+    text = _frontend_sanitized_plain_text(
+        text,
+        preserve_text_line_breaks=preserve_plain_line_breaks,
+    )
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"(?:\*\*|＊＊|__)([^\r\n]+?)(?:\*\*|＊＊|__)", r"\1", text)
+    text = re.sub(r"(?<!\*)\*([^*\r\n]+)\*(?!\*)", r"\1", text)
+    return text.strip()
+
+
+def _frontend_snapshot_plain_text(value: Any) -> str:
+    return _frontend_plain_text(value, preserve_plain_line_breaks=True)
+
+
+def _snapshot_object(value: Any, *, field_name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OptimizationRunDataInvalidError(f"{field_name} must be an object")
+    return value
+
+
+def _snapshot_array(value: Any, *, field_name: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise OptimizationRunDataInvalidError(f"{field_name} must be an array")
+    return value
+
+
+def _exact_frontend_item(
+    value: Any,
+    *,
+    required: set[str],
+    optional: set[str] = frozenset(),
+    nullable: set[str] = frozenset(),
+    field_name: str,
+) -> Mapping[str, Any]:
+    item = _snapshot_object(value, field_name=field_name)
+    if not required.issubset(item) or set(item) - required - optional:
+        raise OptimizationRunDataInvalidError(f"{field_name} has an invalid shape")
+    for key in set(item) - {"star"}:
+        if item[key] is None and key in nullable:
+            continue
+        if not isinstance(item[key], str):
+            raise OptimizationRunDataInvalidError(
+                f"{field_name}.{key} must be text"
+            )
+    return item
+
+
+def _rebuild_frontend_fact_metadata(
+    snapshot: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    resume = _snapshot_object(snapshot.get("resume"), field_name="frontend resume")
+    profile = _snapshot_object(
+        resume.get("profile"),
+        field_name="frontend resume.profile",
+    )
+    experiences = _snapshot_array(
+        resume.get("experiences"),
+        field_name="frontend resume.experiences",
+    )
+    educations = _snapshot_array(
+        resume.get("educations"),
+        field_name="frontend resume.educations",
+    )
+    certifications = _snapshot_array(
+        resume.get("certifications"),
+        field_name="frontend resume.certifications",
+    )
+    skills = _snapshot_array(
+        resume.get("skills"),
+        field_name="frontend resume.skills",
+    )
+    facts: list[dict[str, Any]] = []
+
+    def add(source: str, value: Any, *, already_plain: bool = False) -> None:
+        content = (
+            _frontend_snapshot_plain_text(value)
+            if already_plain
+            else _frontend_plain_text(value)
+        )
+        if not content:
+            return
+        facts.append(
+            {
+                "fact_id": f"FACT_{len(facts) + 1:03d}",
+                "content": content,
+                "verification_status": "user_claimed",
+                "source": source,
+                "confidence": 1,
+            }
+        )
+
+    for field in ("name", "email", "phone", "location", "linkedin"):
+        add(f"resume.profile.{field}", profile.get(field))
+    add("resume.personal_summary", resume.get("personal_summary"))
+    for index, raw_item in enumerate(experiences):
+        item = _snapshot_object(raw_item, field_name="frontend experience")
+        base = f"resume.experiences[{index}]"
+        add(f"{base}.org", item.get("org"))
+        add(f"{base}.title", item.get("title"))
+        add(f"{base}.start_date", item.get("start_date"))
+        add(f"{base}.end_date", item.get("end_date"))
+        star = _snapshot_object(item.get("star"), field_name="frontend experience.star")
+        for key in ("s", "t", "a", "r"):
+            add(f"{base}.star.{key}", star.get(key), already_plain=True)
+    for index, raw_item in enumerate(educations):
+        item = _snapshot_object(raw_item, field_name="frontend education")
+        base = f"resume.educations[{index}]"
+        for field in (
+            "school",
+            "major",
+            "degree",
+            "start_date",
+            "end_date",
+            "gpa",
+            "courses",
+        ):
+            add(f"{base}.{field}", item.get(field), already_plain=True)
+    for index, raw_item in enumerate(certifications):
+        item = _snapshot_object(raw_item, field_name="frontend certification")
+        base = f"resume.certifications[{index}]"
+        for field in ("name", "issuer", "issue_date"):
+            add(f"{base}.{field}", item.get(field))
+    for index, raw_item in enumerate(skills):
+        item = _snapshot_object(raw_item, field_name="frontend skill")
+        add(f"resume.skills[{index}].name", item.get("name"))
+        add(f"resume.skills[{index}].category", item.get("category"))
+    add("target_role", snapshot.get("target_role"), already_plain=True)
+    return facts
+
+
+def _validate_exact_frontend_evaluation_snapshot(value: Any) -> dict[str, Any]:
+    snapshot = _require_exact_keys(
+        value,
+        {
+            "evaluation_scope",
+            "target_role",
+            "resume",
+            "experience_atoms",
+            "match_candidates",
+            "fact_metadata",
+        },
+        field_name="frontend evaluation snapshot",
+    )
+    if snapshot.get("evaluation_scope") != "full_resume" or not isinstance(
+        snapshot.get("target_role"),
+        str,
+    ):
+        raise OptimizationRunDataInvalidError("frontend evaluation identity is invalid")
+    resume = _require_exact_keys(
+        snapshot.get("resume"),
+        {
+            "section_order",
+            "profile",
+            "personal_summary",
+            "experiences",
+            "educations",
+            "certifications",
+            "skills",
+        },
+        field_name="frontend resume",
+    )
+    profile = _require_exact_keys(
+        resume.get("profile"),
+        {"name", "email", "phone", "location", "linkedin"},
+        field_name="frontend resume.profile",
+    )
+    if any(not isinstance(value, str) for value in profile.values()) or not isinstance(
+        resume.get("personal_summary"),
+        str,
+    ):
+        raise OptimizationRunDataInvalidError("frontend profile is invalid")
+    order = _snapshot_array(
+        resume.get("section_order"),
+        field_name="frontend resume.section_order",
+    )
+    if (
+        any(not isinstance(item, str) for item in order)
+        or len(order) != len(set(order))
+        or any(item not in _EVALUATION_SECTION_ORDER for item in order)
+    ):
+        raise OptimizationRunDataInvalidError("frontend section order is invalid")
+    if _frontend_snapshot_plain_text(snapshot["target_role"]) != snapshot["target_role"]:
+        raise OptimizationRunDataInvalidError("frontend target role must be plain text")
+    for value_to_check in [*profile.values(), resume["personal_summary"]]:
+        if _frontend_snapshot_plain_text(value_to_check) != value_to_check:
+            raise OptimizationRunDataInvalidError(
+                "frontend visible profile must be plain text"
+            )
+
+    experiences = _snapshot_array(
+        resume.get("experiences"),
+        field_name="frontend resume.experiences",
+    )
+    for index, value_item in enumerate(experiences):
+        item = _exact_frontend_item(
+            value_item,
+            required={"id", "title", "org", "star", "category"},
+            optional={"start_date", "end_date"},
+            nullable={"start_date", "end_date"},
+            field_name=f"frontend resume.experiences[{index}]",
+        )
+        if item["category"] not in {"work", "project"}:
+            raise OptimizationRunDataInvalidError("frontend experience category is invalid")
+        star = _require_exact_keys(
+            item.get("star"),
+            {"s", "t", "a", "r"},
+            field_name=f"frontend resume.experiences[{index}].star",
+        )
+        if any(
+            not isinstance(value, str)
+            or _frontend_snapshot_plain_text(value) != value
+            for value in star.values()
+        ):
+            raise OptimizationRunDataInvalidError("frontend formal STAR must be plain text")
+
+    for index, value_item in enumerate(
+        _snapshot_array(resume.get("educations"), field_name="frontend educations")
+    ):
+        item = _exact_frontend_item(
+            value_item,
+            required={"id", "school", "major", "degree"},
+            optional={"start_date", "end_date", "gpa", "courses"},
+            field_name=f"frontend resume.educations[{index}]",
+        )
+        if any(
+            _frontend_snapshot_plain_text(value) != value for value in item.values()
+        ):
+            raise OptimizationRunDataInvalidError("frontend education must be plain text")
+    for index, value_item in enumerate(
+        _snapshot_array(
+            resume.get("certifications"),
+            field_name="frontend certifications",
+        )
+    ):
+        _exact_frontend_item(
+            value_item,
+            required={"id", "name", "issuer", "issue_date"},
+            field_name=f"frontend resume.certifications[{index}]",
+        )
+    for index, value_item in enumerate(
+        _snapshot_array(resume.get("skills"), field_name="frontend skills")
+    ):
+        _exact_frontend_item(
+            value_item,
+            required={"id", "name", "category"},
+            field_name=f"frontend resume.skills[{index}]",
+        )
+    for index, value_item in enumerate(
+        _snapshot_array(
+            snapshot.get("experience_atoms"),
+            field_name="frontend experience_atoms",
+        )
+    ):
+        item = _exact_frontend_item(
+            value_item,
+            required={"id", "title", "org", "star"},
+            optional={"start_date", "end_date"},
+            nullable={"start_date", "end_date"},
+            field_name=f"frontend experience_atoms[{index}]",
+        )
+        star = _require_exact_keys(
+            item.get("star"),
+            {"s", "t", "a", "r"},
+            field_name=f"frontend experience_atoms[{index}].star",
+        )
+        if any(not isinstance(value, str) for value in star.values()):
+            raise OptimizationRunDataInvalidError("frontend candidate STAR is invalid")
+    candidates = _require_exact_keys(
+        snapshot.get("match_candidates"),
+        {"certifications", "skills"},
+        field_name="frontend match_candidates",
+    )
+    for index, value_item in enumerate(
+        _snapshot_array(
+            candidates.get("certifications"),
+            field_name="frontend candidate certifications",
+        )
+    ):
+        _exact_frontend_item(
+            value_item,
+            required={"id", "name", "issuer", "issue_date"},
+            field_name=f"frontend match_candidates.certifications[{index}]",
+        )
+    for index, value_item in enumerate(
+        _snapshot_array(
+            candidates.get("skills"),
+            field_name="frontend candidate skills",
+        )
+    ):
+        _exact_frontend_item(
+            value_item,
+            required={"id", "name", "category"},
+            field_name=f"frontend match_candidates.skills[{index}]",
+        )
+    fact_metadata = _snapshot_array(
+        snapshot.get("fact_metadata"),
+        field_name="frontend fact_metadata",
+    )
+    rebuilt_facts = _rebuild_frontend_fact_metadata(snapshot)
+    if fact_metadata != rebuilt_facts:
+        raise OptimizationRunDataInvalidError("frontend fact metadata is invalid")
+    return deepcopy(dict(snapshot))
+
+
+def _source_frontend_evaluation_snapshot(
+    run: ResumeOptimizationRun,
+) -> dict[str, Any]:
+    return _parse_frontend_evaluation_signature(
+        run.source_evaluation_signature,
+        jd_input_signature=run.source_jd_signature,
+        field_name="source evaluation signature",
+    )
+
+
+def _parse_frontend_evaluation_signature(
+    raw_signature: Any,
+    *,
+    jd_input_signature: str,
+    field_name: str,
+) -> dict[str, Any]:
+    # Optimization runs accept the editor's canonical frontend snapshot only.
+    # Agent final-snapshot attestations use a different snapshot domain and must
+    # be refreshed in the editor before an optimization run can be created.
+    try:
+        parsed = json.loads(raw_signature)
+    except (TypeError, ValueError) as exc:
+        raise OptimizationRunDataInvalidError(
+            f"{field_name} is not canonical JSON"
+        ) from exc
+    signature = _require_exact_keys(
+        parsed,
+        {"jdInputSignature", "resume"},
+        field_name=field_name,
+    )
+    if (
+        signature.get("jdInputSignature") != jd_input_signature
+        or canonical_json(signature) != raw_signature
+    ):
+        raise OptimizationRunDataInvalidError(
+            f"{field_name} identity is invalid"
+        )
+    raw_snapshot = _snapshot_object(
+        signature.get("resume"),
+        field_name="source frontend evaluation snapshot",
+    )
+    return _validate_exact_frontend_evaluation_snapshot(raw_snapshot)
+
+
+def _one_snapshot_item(
+    items: Any,
+    *,
+    item_id: str,
+    field_name: str,
+) -> Mapping[str, Any]:
+    matches = [
+        item
+        for item in _snapshot_array(items, field_name=field_name)
+        if isinstance(item, Mapping) and str(item.get("id")) == item_id
+    ]
+    if len(matches) != 1:
+        raise _PersistedEvaluationPending()
+    return matches[0]
+
+
+def _validated_post_frontend_evaluation_context(
+    *,
+    run: ResumeOptimizationRun,
+    changes: list[OptimizationChange],
+    persisted_signature: Any,
+    applied_config: Any,
+) -> tuple[dict[str, Any], str]:
+    try:
+        source = _source_frontend_evaluation_snapshot(run)
+        post = _parse_frontend_evaluation_signature(
+            persisted_signature,
+            jd_input_signature=run.source_jd_signature,
+            field_name="post evaluation signature",
+        )
+    except OptimizationRunDataInvalidError as exc:
+        raise _PersistedEvaluationPending() from exc
+
+    source_resume = _snapshot_object(
+        source.get("resume"),
+        field_name="source frontend resume",
+    )
+    post_resume = _snapshot_object(
+        post.get("resume"),
+        field_name="post frontend resume",
+    )
+    untouched = deepcopy(post)
+    untouched_resume = untouched["resume"]
+    config = _snapshot_object(applied_config, field_name="applied resume config")
+    raw_layout = config.get("layout")
+    if raw_layout is not None and not isinstance(raw_layout, Mapping):
+        raise OptimizationRunDataInvalidError("applied resume layout is invalid")
+    layout = raw_layout if isinstance(raw_layout, Mapping) else {}
+    summary_change = next(
+        (
+            item
+            for item in changes
+            if item.module_type == OptimizationModuleType.PERSONAL_SUMMARY
+        ),
+        None,
+    )
+    section_change = next(
+        (
+            item
+            for item in changes
+            if item.module_type == OptimizationModuleType.SECTION_ORDER
+        ),
+        None,
+    )
+    summary_visible = layout.get("isSummaryVisible") is not False
+    expected_summary = source_resume.get("personal_summary")
+    if summary_change is not None and summary_visible:
+        expected_summary = _frontend_plain_text(summary_change.targeted_value)
+    if post_resume.get("personal_summary") != expected_summary:
+        raise _PersistedEvaluationPending()
+    if summary_change is not None and summary_visible:
+        untouched_resume["personal_summary"] = deepcopy(
+            source_resume.get("personal_summary")
+        )
+
+    raw_section_order = layout.get("sectionOrder")
+    if raw_section_order is not None and not isinstance(raw_section_order, list):
+        raise _PersistedEvaluationPending()
+    if section_change is not None and not isinstance(raw_section_order, list):
+        raise _PersistedEvaluationPending()
+    if isinstance(raw_section_order, list) or (
+        summary_change is not None and summary_visible
+    ):
+        order_source: list[Any] = (
+            raw_section_order
+            if isinstance(raw_section_order, list)
+            else []
+        )
+        expected_section_order = _frontend_evaluation_section_order(
+            order_source,
+            has_summary=bool(expected_summary),
+        )
+    else:
+        expected_section_order = deepcopy(source_resume.get("section_order"))
+    if post_resume.get("section_order") != expected_section_order:
+        raise _PersistedEvaluationPending()
+    if section_change is not None or (
+        summary_change is not None and summary_visible
+    ):
+        untouched_resume["section_order"] = deepcopy(
+            source_resume.get("section_order")
+        )
+
+    for change in changes:
+        if change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
+            source_experience = _one_snapshot_item(
+                source_resume.get("experiences"),
+                item_id=change.module_id,
+                field_name="source frontend experiences",
+            )
+            post_experience = _one_snapshot_item(
+                post_resume.get("experiences"),
+                item_id=change.module_id,
+                field_name="post frontend experiences",
+            )
+            untouched_experience = _one_snapshot_item(
+                untouched_resume.get("experiences"),
+                item_id=change.module_id,
+                field_name="post frontend experiences",
+            )
+            star_key = change.field_path[-1]
+            source_star = _snapshot_object(
+                source_experience.get("star"),
+                field_name="source frontend experience.star",
+            )
+            post_star = _snapshot_object(
+                post_experience.get("star"),
+                field_name="post frontend experience.star",
+            )
+            target_text = _frontend_plain_text(change.targeted_value)
+            if post_star.get(star_key) != target_text:
+                raise _PersistedEvaluationPending()
+            untouched_experience["star"][star_key] = deepcopy(source_star[star_key])
+
+            source_atom = _one_snapshot_item(
+                source.get("experience_atoms"),
+                item_id=change.module_id,
+                field_name="source frontend experience_atoms",
+            )
+            post_atom = _one_snapshot_item(
+                post.get("experience_atoms"),
+                item_id=change.module_id,
+                field_name="post frontend experience_atoms",
+            )
+            untouched_atom = _one_snapshot_item(
+                untouched.get("experience_atoms"),
+                item_id=change.module_id,
+                field_name="post frontend experience_atoms",
+            )
+            source_atom_star = _snapshot_object(
+                source_atom.get("star"),
+                field_name="source frontend experience_atom.star",
+            )
+            post_atom_star = _snapshot_object(
+                post_atom.get("star"),
+                field_name="post frontend experience_atom.star",
+            )
+            if _frontend_plain_text(post_atom_star.get(star_key)) != target_text:
+                raise _PersistedEvaluationPending()
+            untouched_atom["star"][star_key] = deepcopy(source_atom_star[star_key])
+        elif change.module_type == OptimizationModuleType.PERSONAL_SUMMARY:
+            continue
+        elif change.module_type == OptimizationModuleType.SKILLS_ORDER:
+            targeted_ids = _string_order(
+                change.targeted_value,
+                field_name="targeted skill order",
+            )
+            source_skills = _snapshot_array(
+                source_resume.get("skills"),
+                field_name="source frontend skills",
+            )
+            post_skills = _snapshot_array(
+                post_resume.get("skills"),
+                field_name="post frontend skills",
+            )
+            source_by_id = {
+                str(item.get("id")): item
+                for item in source_skills
+                if isinstance(item, Mapping)
+            }
+            if (
+                [str(item.get("id")) for item in post_skills] != targeted_ids
+                or len(source_by_id) != len(source_skills)
+                or set(source_by_id) != set(targeted_ids)
+                or any(
+                    deepcopy(item) != deepcopy(source_by_id.get(str(item.get("id"))))
+                    for item in post_skills
+                    if isinstance(item, Mapping)
+                )
+            ):
+                raise _PersistedEvaluationPending()
+            untouched_resume["skills"] = deepcopy(source_skills)
+        elif change.module_type == OptimizationModuleType.SECTION_ORDER:
+            continue
+        else:
+            raise _PersistedEvaluationPending()
+
+    untouched["fact_metadata"] = deepcopy(source.get("fact_metadata"))
+    if untouched != source:
+        raise _PersistedEvaluationPending()
+    return post, str(persisted_signature)
+
+
+def _normalized_evaluation(
+    raw: Any,
+    *,
+    jd_available: bool,
+    fact_metadata: Any,
+) -> dict[str, Any]:
+    if not isinstance(fact_metadata, list):
+        raise ValueError("evaluation fact metadata must be an array")
+    return normalize_resume_evaluation(
+        raw,
+        jd_available=jd_available,
+        fact_metadata=fact_metadata,
+    )
+
+
+def _raw_evaluation_jd_available(raw: Any) -> bool:
+    if not isinstance(raw, Mapping):
+        raise ValueError("resume evaluation must be an object")
+    value = raw.get("jdMatch")
+    if "jdMatch" not in raw:
+        value = raw.get("jd_match")
+    return value is not None
+
+
+def source_before_score_from_run(run: ResumeOptimizationRun) -> int:
+    try:
+        snapshot = _validated_snapshot(run)
+        source_frontend_snapshot = _source_frontend_evaluation_snapshot(run)
+        jd_available = _raw_evaluation_jd_available(snapshot.get("evaluation"))
+        before = _normalized_evaluation(
+            snapshot.get("evaluation"),
+            jd_available=jd_available,
+            fact_metadata=source_frontend_snapshot.get("fact_metadata"),
+        )
+        return int(before["overallScore"])
+    except (
+        OptimizationApplyValidationError,
+        OptimizationApplyStaleError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise OptimizationRunDataInvalidError(
+            "Frozen source evaluation is invalid"
+        ) from exc
+
+
+def _semantic_issue_identity(issue: Any) -> tuple[Any, ...]:
+    if not isinstance(issue, Mapping):
+        raise ValueError("normalized issue must be an object")
+    description = re.sub(r"\s+", "", str(issue.get("description") or "")).casefold()
+    primary_dimension = str(issue.get("primaryDimension") or "")
+    related = issue.get("relatedDimensions")
+    if not isinstance(related, list):
+        raise ValueError("normalized issue relatedDimensions must be an array")
+    return (primary_dimension, description, tuple(sorted(str(item) for item in related)))
+
+
+def _post_evaluation_summary(
+    *,
+    run: ResumeOptimizationRun,
+    resume: Resume,
+    evaluation_signature: str,
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, Any]:
+    before_dimensions = {
+        item["dimension"]: item
+        for item in before.get("dimensions", [])
+        if isinstance(item, Mapping)
+    }
+    after_dimensions = {
+        item["dimension"]: item
+        for item in after.get("dimensions", [])
+        if isinstance(item, Mapping)
+    }
+    if set(before_dimensions) != set(DIMENSION_NAMES) or set(after_dimensions) != set(
+        DIMENSION_NAMES
+    ):
+        raise ValueError("normalized evaluations do not contain six dimensions")
+
+    dimension_deltas = []
+    for name in DIMENSION_NAMES:
+        before_score = int(before_dimensions[name]["score"])
+        after_score = int(after_dimensions[name]["score"])
+        dimension_deltas.append(
+            {
+                "dimension": name,
+                "beforeScore": before_score,
+                "afterScore": after_score,
+                "delta": after_score - before_score,
+            }
+        )
+
+    before_issues = {
+        _semantic_issue_identity(issue) for issue in before.get("issues", [])
+    }
+    after_issues = {
+        _semantic_issue_identity(issue) for issue in after.get("issues", [])
+    }
+    plan = _strict_final_plan(run)
+    safety = plan.safety_summary
+    before_score = int(before["overallScore"])
+    after_score = int(after["overallScore"])
+    payload = {
+        "version": _POST_EVALUATION_VERSION,
+        "evaluationSignature": evaluation_signature,
+        "resumeUpdatedAt": _normalize_current_timestamp(resume.updated_at),
+        "beforeScore": before_score,
+        "afterScore": after_score,
+        "scoreDelta": after_score - before_score,
+        "dimensionDeltas": dimension_deltas,
+        "issueCounts": {
+            "before": len(before_issues),
+            "after": len(after_issues),
+            "resolved": len(before_issues - after_issues),
+            "remaining": len(after_issues),
+            "introduced": len(after_issues - before_issues),
+        },
+        "unresolvedFactGapCount": len(after.get("missingInformation", [])),
+        "acceptedChangeCount": len(run.accepted_change_ids),
+        "blockedChangeCount": len(safety.blocked_change_ids),
+        "bankSuggestionCount": len(plan.bank_suggestions),
+        "safetySummary": safety.model_dump(mode="json"),
+    }
+    return ResumeOptimizationPostEvaluation.model_validate(payload).model_dump(
+        mode="json"
+    )
+
+
+def _safe_finalize_error() -> dict[str, Any]:
+    return {
+        "code": OptimizationFinalizePendingError.code,
+        "message": OptimizationFinalizePendingError.public_message,
+        "statusCode": OptimizationFinalizePendingError.status_code,
+        "retryable": True,
+    }
+
+
+def _validate_applied_identity(
+    run: ResumeOptimizationRun,
+) -> tuple[
+    dict[str, Any],
+    dict[str, _FrozenLink],
+    list[OptimizationChange],
+]:
+    if not isinstance(run.accepted_change_ids, list):
+        raise OptimizationRunDataInvalidError("accepted_change_ids must be an array")
+    accepted_ids = list(run.accepted_change_ids)
+    if (
+        not accepted_ids
+        or any(not isinstance(item, str) or not item.strip() for item in accepted_ids)
+        or len(accepted_ids) != len(set(accepted_ids))
+    ):
+        raise OptimizationRunDataInvalidError("accepted_change_ids are invalid")
+    try:
+        snapshot = _validated_snapshot(run)
+        frozen_links = _frozen_links(run)
+        changes = _accepted_changes(run, set(accepted_ids))
+    except (OptimizationApplyValidationError, OptimizationApplyStaleError) as exc:
+        raise OptimizationRunDataInvalidError() from exc
+    if [change.change_id for change in changes] != accepted_ids:
+        raise OptimizationRunDataInvalidError(
+            "accepted_change_ids do not match persisted plan order"
+        )
+    if not isinstance(run.applied_content_signature, str) or not re.fullmatch(
+        r"[0-9a-f]{64}",
+        run.applied_content_signature,
+    ):
+        raise OptimizationRunDataInvalidError("applied content signature is invalid")
+    return snapshot, frozen_links, changes
+
+
+def _validated_apply_journal(
+    run: ResumeOptimizationRun,
+    *,
+    frozen_links: Mapping[str, _FrozenLink],
+    changes: list[OptimizationChange],
+) -> dict[str, Any]:
+    journal = _require_exact_keys(
+        run.after_snapshot,
+        {
+            "version",
+            "run_id",
+            "resume_id",
+            "applied_at",
+            "applied_change_ids",
+            "before",
+            "after",
+            "touched_config",
+            "touched_links",
+            "protected_content",
+            "rollback_before_signature",
+        },
+        field_name="after_snapshot",
+    )
+    if (
+        journal.get("version") != _APPLY_SNAPSHOT_VERSION
+        or str(journal.get("run_id")) != str(run.id)
+        or str(journal.get("resume_id")) != str(run.resume_id)
+        or journal.get("applied_change_ids") != list(run.accepted_change_ids)
+    ):
+        raise OptimizationRunDataInvalidError("after_snapshot identity is invalid")
+    if run.applied_at is None or not isinstance(journal.get("applied_at"), str):
+        raise OptimizationRunDataInvalidError("after_snapshot applied_at is invalid")
+    try:
+        journal_applied_at = datetime.fromisoformat(
+            str(journal["applied_at"]).replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise OptimizationRunDataInvalidError(
+            "after_snapshot applied_at is invalid"
+        ) from exc
+    if (
+        journal_applied_at.tzinfo is None
+        or journal_applied_at.utcoffset() is None
+        or journal_applied_at.astimezone(timezone.utc)
+        != _require_aware_timestamp(run.applied_at, field_name="run.applied_at")
+    ):
+        raise OptimizationRunDataInvalidError("after_snapshot applied_at does not match")
+
+    expected_config_paths = _touched_config_paths(changes)
+    expected_link_ids: set[str] = set()
+    seen_targets: set[tuple[str, str]] = set()
+    for change in changes:
+        target = _canonical_target(change, frozen_links)
+        if target in seen_targets:
+            raise OptimizationRunDataInvalidError("accepted targets are duplicated")
+        seen_targets.add(target)
+        if target[0].startswith("link:"):
+            expected_link_ids.add(target[0][len("link:") :])
+
+    touched_config = _require_mapping(
+        journal.get("touched_config"),
+        field_name="after_snapshot.touched_config",
+    )
+    if set(touched_config) != set(expected_config_paths):
+        raise OptimizationRunDataInvalidError("touched config targets are invalid")
+    normalized_config: dict[str, Any] = {}
+    for name in expected_config_paths:
+        item = _require_exact_keys(
+            touched_config[name],
+            {"before", "after"},
+            field_name=f"after_snapshot.touched_config.{name}",
+        )
+        normalized_config[name] = {
+            "before": _validated_presence(
+                item["before"],
+                field_name=f"after_snapshot.touched_config.{name}.before",
+            ),
+            "after": _validated_presence(
+                item["after"],
+                field_name=f"after_snapshot.touched_config.{name}.after",
+            ),
+        }
+
+    touched_links = _require_mapping(
+        journal.get("touched_links"),
+        field_name="after_snapshot.touched_links",
+    )
+    if set(touched_links) != expected_link_ids:
+        raise OptimizationRunDataInvalidError("touched link targets are invalid")
+    normalized_links: dict[str, Any] = {}
+    frozen_by_link = {str(record.link_id): record for record in frozen_links.values()}
+    for link_id in sorted(expected_link_ids):
+        item = _require_exact_keys(
+            touched_links[link_id],
+            {
+                "source_version_id",
+                "before_overrides_json",
+                "after_overrides_json",
+                "before_star",
+                "after_star",
+            },
+            field_name=f"after_snapshot.touched_links.{link_id}",
+        )
+        record = frozen_by_link.get(link_id)
+        if record is None or str(item.get("source_version_id")) != str(
+            record.source_version_id
+        ):
+            raise OptimizationRunDataInvalidError("touched link source is invalid")
+        before_overrides = item.get("before_overrides_json")
+        after_overrides = item.get("after_overrides_json")
+        if not isinstance(before_overrides, Mapping) or not isinstance(
+            after_overrides,
+            Mapping,
+        ):
+            raise OptimizationRunDataInvalidError("touched link overrides are invalid")
+        normalized_links[link_id] = {
+            "source_version_id": str(record.source_version_id),
+            "before_overrides_json": deepcopy(dict(before_overrides)),
+            "after_overrides_json": deepcopy(dict(after_overrides)),
+            "before_star": _validated_presence(
+                item["before_star"],
+                field_name=f"after_snapshot.touched_links.{link_id}.before_star",
+            ),
+            "after_star": _validated_presence(
+                item["after_star"],
+                field_name=f"after_snapshot.touched_links.{link_id}.after_star",
+            ),
+        }
+
+    protected = _require_mapping(
+        journal.get("protected_content"),
+        field_name="after_snapshot.protected_content",
+    )
+    after = _require_mapping(journal.get("after"), field_name="after_snapshot.after")
+    if deepcopy(dict(after)) != deepcopy(dict(protected)):
+        raise OptimizationRunDataInvalidError("after/protected content disagree")
+    if hash_canonical_json(protected) != run.applied_content_signature:
+        raise OptimizationRunDataInvalidError("protected content signature is invalid")
+    if set(protected) != {
+        "title",
+        "target_role",
+        "resume_config",
+        "selected_links",
+    }:
+        raise OptimizationRunDataInvalidError("protected content shape is invalid")
+    protected_config = _require_mapping(
+        protected.get("resume_config"),
+        field_name="after_snapshot.protected_content.resume_config",
+    )
+    protected_links = _require_mapping(
+        protected.get("selected_links"),
+        field_name="after_snapshot.protected_content.selected_links",
+    )
+    if set(protected_links) != {
+        str(record.link_id) for record in frozen_links.values()
+    }:
+        raise OptimizationRunDataInvalidError("protected selected links are invalid")
+    for link_id, record in frozen_by_link.items():
+        protected_link = _require_exact_keys(
+            protected_links[link_id],
+            {"source_version_id", "display_order", "overrides_json"},
+            field_name=f"after_snapshot.protected_content.selected_links.{link_id}",
+        )
+        if (
+            str(protected_link.get("source_version_id"))
+            != str(record.source_version_id)
+            or isinstance(protected_link.get("display_order"), bool)
+            or not isinstance(protected_link.get("display_order"), int)
+            or not isinstance(protected_link.get("overrides_json"), Mapping)
+        ):
+            raise OptimizationRunDataInvalidError("protected selected link is invalid")
+
+    for name, path in expected_config_paths.items():
+        if normalized_config[name]["after"] != _value_presence(protected_config, path):
+            raise OptimizationRunDataInvalidError(
+                "touched config after value disagrees with protected content"
+            )
+    if "selection" in normalized_config:
+        parent_before = normalized_config["selection"]["before"]
+        parent_after = normalized_config["selection"]["after"]
+        expected_before_leaf = (
+            _value_presence(parent_before["value"], ("skillIds",))
+            if parent_before["present"] and isinstance(parent_before["value"], Mapping)
+            else {"present": False, "value": None}
+        )
+        expected_after_leaf = (
+            _value_presence(parent_after["value"], ("skillIds",))
+            if parent_after["present"] and isinstance(parent_after["value"], Mapping)
+            else {"present": False, "value": None}
+        )
+        if (
+            normalized_config.get("selection.skillIds", {}).get("before")
+            != expected_before_leaf
+            or normalized_config.get("selection.skillIds", {}).get("after")
+            != expected_after_leaf
+        ):
+            raise OptimizationRunDataInvalidError(
+                "selection parent and leaf journal entries disagree"
+            )
+    for link_id, item in normalized_links.items():
+        protected_overrides = protected_links[link_id]["overrides_json"]
+        if item["after_overrides_json"] != deepcopy(dict(protected_overrides)):
+            raise OptimizationRunDataInvalidError(
+                "touched link after overrides disagree with protected content"
+            )
+        if item["before_star"] != _value_presence(
+            item["before_overrides_json"],
+            ("star",),
+        ) or item["after_star"] != _value_presence(
+            item["after_overrides_json"],
+            ("star",),
+        ):
+            raise OptimizationRunDataInvalidError(
+                "touched link STAR presence disagrees with raw overrides"
+            )
+
+    before = _require_exact_keys(
+        journal.get("before"),
+        {"touched_config", "touched_links"},
+        field_name="after_snapshot.before",
+    )
+    rollback_signature = journal.get("rollback_before_signature")
+    if (
+        not isinstance(rollback_signature, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", rollback_signature)
+        or rollback_signature
+        != _rollback_before_signature(
+            run_id=run.id,
+            resume_id=run.resume_id,
+            source_snapshot_hash=run.source_snapshot_hash,
+            applied_change_ids=list(run.accepted_change_ids),
+            before=before,
+        )
+    ):
+        raise OptimizationRunDataInvalidError(
+            "rollback-before journal signature is invalid"
+        )
+    before_config = _require_mapping(
+        before.get("touched_config"),
+        field_name="after_snapshot.before.touched_config",
+    )
+    if set(before_config) != set(normalized_config):
+        raise OptimizationRunDataInvalidError("duplicated before config targets disagree")
+    for name, item in normalized_config.items():
+        if deepcopy(before_config[name]) != item["before"]:
+            raise OptimizationRunDataInvalidError("duplicated before config data disagree")
+    before_links = _require_mapping(
+        before.get("touched_links"),
+        field_name="after_snapshot.before.touched_links",
+    )
+    if set(before_links) != set(normalized_links):
+        raise OptimizationRunDataInvalidError("duplicated before link targets disagree")
+    for link_id, item in normalized_links.items():
+        duplicate = _require_exact_keys(
+            before_links[link_id],
+            {"source_version_id", "overrides_json", "star"},
+            field_name=f"after_snapshot.before.touched_links.{link_id}",
+        )
+        if (
+            duplicate.get("source_version_id") != item["source_version_id"]
+            or deepcopy(duplicate.get("overrides_json"))
+            != item["before_overrides_json"]
+            or deepcopy(duplicate.get("star")) != item["before_star"]
+        ):
+            raise OptimizationRunDataInvalidError("duplicated before link data disagree")
+
+    try:
+        frozen_snapshot = _validated_snapshot(run)
+    except OptimizationApplyStaleError as exc:
+        raise OptimizationRunDataInvalidError() from exc
+    frozen_resume = _snapshot_object(
+        frozen_snapshot.get("current_resume"),
+        field_name="frozen current resume",
+    )
+    reconstructed_before_config = deepcopy(dict(protected_config))
+    if "selection" in normalized_config:
+        _restore_presence(
+            reconstructed_before_config,
+            ("selection",),
+            normalized_config["selection"]["before"],
+        )
+    for name, path in {
+        "personalSummary": ("personalSummary",),
+        "layout.sectionOrder": ("layout", "sectionOrder"),
+    }.items():
+        if name in normalized_config:
+            _restore_presence(
+                reconstructed_before_config,
+                path,
+                normalized_config[name]["before"],
+            )
+
+    reconstructed_before_overrides = {
+        link_id: deepcopy(dict(value["overrides_json"]))
+        for link_id, value in protected_links.items()
+    }
+    for link_id, item in normalized_links.items():
+        reconstructed_before_overrides[link_id] = deepcopy(
+            item["before_overrides_json"]
+        )
+
+    for change in changes:
+        if change.module_type == OptimizationModuleType.PERSONAL_SUMMARY:
+            raw_before = normalized_config["personalSummary"]["before"]
+            frozen_summary = frozen_resume.get("personal_summary")
+            if raw_before["present"] and raw_before["value"] is not None and (
+                raw_before["value"] != frozen_summary
+            ):
+                raise OptimizationRunDataInvalidError(
+                    "summary rollback value is not frozen-source-backed"
+                )
+        elif change.module_type == OptimizationModuleType.SECTION_ORDER:
+            raw_before = normalized_config["layout.sectionOrder"]["before"]
+            if (
+                raw_before != {"present": True, "value": change.before_value}
+                or raw_before["value"] != frozen_resume.get("section_order")
+            ):
+                raise OptimizationRunDataInvalidError(
+                    "section-order rollback value is not frozen-source-backed"
+                )
+        elif change.module_type == OptimizationModuleType.SKILLS_ORDER:
+            parent_before = normalized_config["selection"]["before"]
+            parent_after = normalized_config["selection"]["after"]
+            leaf_before = normalized_config["selection.skillIds"]["before"]
+            if parent_before["present"] and isinstance(
+                parent_before["value"],
+                Mapping,
+            ):
+                if not parent_after["present"] or not isinstance(
+                    parent_after["value"],
+                    Mapping,
+                ):
+                    raise OptimizationRunDataInvalidError(
+                        "selection rollback parent is invalid"
+                    )
+                before_siblings = {
+                    key: deepcopy(value)
+                    for key, value in parent_before["value"].items()
+                    if key != "skillIds"
+                }
+                after_siblings = {
+                    key: deepcopy(value)
+                    for key, value in parent_after["value"].items()
+                    if key != "skillIds"
+                }
+                if before_siblings != after_siblings:
+                    raise OptimizationRunDataInvalidError(
+                        "selection rollback siblings changed during apply"
+                    )
+            elif parent_before not in (
+                {"present": False, "value": None},
+                {"present": True, "value": None},
+            ):
+                raise OptimizationRunDataInvalidError(
+                    "selection rollback parent is invalid"
+                )
+            if leaf_before["present"] and leaf_before["value"] is not None:
+                before_order = _string_order(
+                    leaf_before["value"],
+                    field_name="rollback selection.skillIds",
+                )
+                frozen_skill_ids = [
+                    str(item.get("id"))
+                    for item in frozen_resume.get("skills", [])
+                    if isinstance(item, Mapping)
+                ]
+                if (
+                    len(before_order) != len(frozen_skill_ids)
+                    or set(before_order) != set(frozen_skill_ids)
+                ):
+                    raise OptimizationRunDataInvalidError(
+                        "selection rollback membership is not frozen-source-backed"
+                    )
+        elif change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
+            record = frozen_links[change.module_id]
+            touched = normalized_links[str(record.link_id)]
+            before_star = touched["before_star"]
+            if before_star["present"]:
+                if not isinstance(before_star["value"], Mapping):
+                    raise OptimizationRunDataInvalidError(
+                        "STAR rollback value is invalid"
+                    )
+                frozen_star = _frozen_effective_star(
+                    frozen_snapshot,
+                    change.module_id,
+                )
+                for key in ("s", "t", "a", "r"):
+                    if key in before_star["value"] and (
+                        before_star["value"][key] != frozen_star[key]
+                    ):
+                        raise OptimizationRunDataInvalidError(
+                            "STAR rollback value is not frozen-source-backed"
+                        )
+
+    try:
+        replay = build_apply_patch(
+            run=run,
+            accepted_change_ids=set(run.accepted_change_ids),
+            current_resume_config=reconstructed_before_config,
+            current_link_overrides=reconstructed_before_overrides,
+        )
+    except OptimizationApplyValidationError as exc:
+        raise OptimizationRunDataInvalidError(
+            "Rollback journal cannot replay accepted changes"
+        ) from exc
+    if (
+        replay.next_resume_config != deepcopy(dict(protected_config))
+        or replay.applied_change_ids != list(run.accepted_change_ids)
+    ):
+        raise OptimizationRunDataInvalidError(
+            "Rollback journal does not replay to protected config"
+        )
+    replayed_overrides = deepcopy(reconstructed_before_overrides)
+    for link_id, star in replay.experience_star_by_link_id.items():
+        replayed_overrides[link_id]["star"] = deepcopy(star)
+    protected_overrides = {
+        link_id: deepcopy(dict(value["overrides_json"]))
+        for link_id, value in protected_links.items()
+    }
+    if replayed_overrides != protected_overrides:
+        raise OptimizationRunDataInvalidError(
+            "Rollback journal does not replay to protected link overrides"
+        )
+
+    return {
+        "protected_content": deepcopy(dict(protected)),
+        "touched_config": normalized_config,
+        "touched_links": normalized_links,
+    }
+
+
+async def finalize_run_from_persisted_evaluation(
+    *,
+    session: AsyncSession,
+    user_id: str,
+    run_id: str,
+    payload: ResumeOptimizationFinalizeRequest,
+) -> ResumeOptimizationRun:
+    expected = _require_aware_timestamp(
+        payload.expected_resume_updated_at,
+        field_name="expected_resume_updated_at",
+    )
+    original_status: str | None = None
+    try:
+        run = await _lock_run(session, user_id=user_id, run_id=run_id)
+        resume = await _lock_resume(session, user_id=user_id, run=run)
+        original_status = run.status
+        current_timestamp = _normalize_current_timestamp(resume.updated_at)
+        if current_timestamp != expected:
+            raise OptimizationContentConflictError()
+        if run.status == ResumeOptimizationStatus.COMPLETED.value:
+            try:
+                completed_summary = ResumeOptimizationPostEvaluation.model_validate(
+                    run.post_evaluation_json
+                )
+            except (TypeError, ValidationError, ValueError) as exc:
+                raise OptimizationRunDataInvalidError() from exc
+            if _normalize_current_timestamp(
+                completed_summary.resumeUpdatedAt
+            ) != expected:
+                raise OptimizationContentConflictError()
+            await session.commit()
+            return run
+        if run.status != ResumeOptimizationStatus.APPLIED.value:
+            raise OptimizationApplyConflictError()
+
+        snapshot, frozen_links, changes = _validate_applied_identity(run)
+        journal = _validated_apply_journal(
+            run,
+            frozen_links=frozen_links,
+            changes=changes,
+        )
+        links = await _lock_current_selected_resume_links(
+            session,
+            user_id=user_id,
+            resume=resume,
+            frozen_records=frozen_links,
+            applied_config=journal["protected_content"]["resume_config"],
+        )
+        current_projection = build_applied_content_projection(
+            resume=resume,
+            selected_links=links,
+        )
+        if (
+            current_projection != journal["protected_content"]
+            or hash_canonical_json(current_projection)
+            != run.applied_content_signature
+        ):
+            raise OptimizationContentConflictError()
+
+        require_status_transition(
+            ResumeOptimizationStatus.APPLIED,
+            ResumeOptimizationStatus.RESCORING,
+        )
+        now = utc_now_aware()
+        run.status = ResumeOptimizationStatus.RESCORING.value
+        run.updated_at = _timestamp_like(run.updated_at, now)
+        session.add(run)
+        await session.flush()
+
+        try:
+            config = resume.config
+            analysis = config.get("jdAnalysis") if isinstance(config, Mapping) else None
+            result = analysis.get("result") if isinstance(analysis, Mapping) else None
+            raw_after = (
+                result.get("resumeEvaluation") if isinstance(result, Mapping) else None
+            )
+            if (
+                not isinstance(analysis, Mapping)
+                or analysis.get("evaluationIsOutdated") is not False
+                or analysis.get("jdInputSignature") != run.source_jd_signature
+                or not isinstance(raw_after, Mapping)
+            ):
+                raise _PersistedEvaluationPending()
+
+            current_snapshot, expected_signature = (
+                _validated_post_frontend_evaluation_context(
+                    run=run,
+                    changes=changes,
+                    persisted_signature=analysis.get("evaluationSignature"),
+                    applied_config=journal["protected_content"]["resume_config"],
+                )
+            )
+            if (
+                not isinstance(current_snapshot, Mapping)
+                or analysis.get("evaluationSignature") != expected_signature
+            ):
+                raise _PersistedEvaluationPending()
+            raw_before = snapshot.get("evaluation")
+            before_jd_available = _raw_evaluation_jd_available(raw_before)
+            after_jd_available = _raw_evaluation_jd_available(raw_after)
+            if before_jd_available != after_jd_available:
+                raise _PersistedEvaluationPending()
+            before = _normalized_evaluation(
+                raw_before,
+                jd_available=before_jd_available,
+                fact_metadata=_source_frontend_evaluation_snapshot(run).get(
+                    "fact_metadata"
+                ),
+            )
+            after = _normalized_evaluation(
+                raw_after,
+                jd_available=before_jd_available,
+                fact_metadata=current_snapshot.get("fact_metadata"),
+            )
+            post_evaluation = _post_evaluation_summary(
+                run=run,
+                resume=resume,
+                evaluation_signature=expected_signature,
+                before=before,
+                after=after,
+            )
+        except (
+            _PersistedEvaluationPending,
+            OptimizationApplyValidationError,
+            ValidationError,
+            TypeError,
+            ValueError,
+        ):
+            require_status_transition(
+                ResumeOptimizationStatus.RESCORING,
+                ResumeOptimizationStatus.APPLIED,
+            )
+            run.status = ResumeOptimizationStatus.APPLIED.value
+            run.error_json = _safe_finalize_error()
+            run.updated_at = _timestamp_like(run.updated_at, utc_now_aware())
+            session.add(run)
+            await session.flush()
+            await session.commit()
+            raise OptimizationFinalizePendingError()
+
+        require_status_transition(
+            ResumeOptimizationStatus.RESCORING,
+            ResumeOptimizationStatus.COMPLETED,
+        )
+        completed_now = utc_now_aware()
+        run.post_evaluation_json = post_evaluation
+        run.status = ResumeOptimizationStatus.COMPLETED.value
+        run.completed_at = _timestamp_like(run.completed_at or run.updated_at, completed_now)
+        run.updated_at = _timestamp_like(run.updated_at, completed_now)
+        run.error_json = {}
+        session.add(run)
+        await session.flush()
+        await session.commit()
+        return run
+    except OptimizationFinalizePendingError:
+        raise
+    except BaseException:
+        if original_status is not None and "run" in locals():
+            run.status = original_status
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        raise
+
+
+async def revert_resume_optimization(
+    *,
+    session: AsyncSession,
+    user_id: str,
+    run_id: str,
+    payload: ResumeOptimizationRevertRequest,
+) -> OptimizationRevertResult:
+    expected = _require_aware_timestamp(
+        payload.expected_resume_updated_at,
+        field_name="expected_resume_updated_at",
+    )
+    try:
+        run = await _lock_run(session, user_id=user_id, run_id=run_id)
+        resume = await _lock_resume(session, user_id=user_id, run=run)
+        if run.status not in {
+            ResumeOptimizationStatus.APPLIED.value,
+            ResumeOptimizationStatus.COMPLETED.value,
+        }:
+            raise OptimizationApplyConflictError()
+        if _normalize_current_timestamp(resume.updated_at) != expected:
+            raise OptimizationContentConflictError()
+
+        _, frozen_links, changes = _validate_applied_identity(run)
+        journal = _validated_apply_journal(
+            run,
+            frozen_links=frozen_links,
+            changes=changes,
+        )
+        links = await _lock_current_selected_resume_links(
+            session,
+            user_id=user_id,
+            resume=resume,
+            frozen_records=frozen_links,
+            applied_config=journal["protected_content"]["resume_config"],
+        )
+        current_projection = build_applied_content_projection(
+            resume=resume,
+            selected_links=links,
+        )
+        if (
+            current_projection != journal["protected_content"]
+            or hash_canonical_json(current_projection)
+            != run.applied_content_signature
+        ):
+            raise OptimizationContentConflictError()
+
+        current_config = resume.config
+        current_analysis = (
+            current_config.get("jdAnalysis")
+            if isinstance(current_config, Mapping)
+            else None
+        )
+        if not isinstance(current_config, dict) or not isinstance(
+            current_analysis,
+            Mapping,
+        ):
+            raise OptimizationContentConflictError()
+
+        next_config = deepcopy(current_config)
+        touched_config = journal["touched_config"]
+        if "selection" in touched_config:
+            _restore_presence(
+                next_config,
+                ("selection",),
+                touched_config["selection"]["before"],
+            )
+        for name, path in {
+            "personalSummary": ("personalSummary",),
+            "layout.sectionOrder": ("layout", "sectionOrder"),
+        }.items():
+            if name in touched_config:
+                _restore_presence(
+                    next_config,
+                    path,
+                    touched_config[name]["before"],
+                )
+        next_config["jdAnalysis"] = deepcopy(dict(current_analysis))
+
+        link_by_id = {str(link.id): link for link in links}
+        next_link_overrides: dict[str, dict[str, Any]] = {}
+        for link_id, touched in journal["touched_links"].items():
+            link = link_by_id.get(link_id)
+            if link is None or not isinstance(link.overrides_json, dict):
+                raise OptimizationContentConflictError()
+            restored = deepcopy(link.overrides_json)
+            before_star = touched["before_star"]
+            if before_star["present"]:
+                restored["star"] = deepcopy(before_star["value"])
+            else:
+                restored.pop("star", None)
+            if restored != touched["before_overrides_json"]:
+                raise OptimizationRunDataInvalidError(
+                    "Rollback journal does not reconstruct raw link overrides"
+                )
+            next_link_overrides[link_id] = restored
+
+        stale_config = _mark_resume_analysis_outdated(next_config)
+        now = utc_now_aware()
+        resume.config = deepcopy(stale_config)
+        resume.updated_at = _timestamp_like(resume.updated_at, now)
+        session.add(resume)
+        for link_id, overrides in next_link_overrides.items():
+            link = link_by_id[link_id]
+            link.overrides_json = deepcopy(overrides)
+            session.add(link)
+
+        require_status_transition(
+            ResumeOptimizationStatus(run.status),
+            ResumeOptimizationStatus.REVERTED,
+        )
+        run.status = ResumeOptimizationStatus.REVERTED.value
+        run.updated_at = _timestamp_like(run.updated_at, now)
+        run.error_json = {}
+        session.add(run)
+        await session.flush()
+        await session.commit()
+        return OptimizationRevertResult(
+            run=run,
+            resume=resume,
+            resume_updated_at=resume.updated_at,
+        )
     except BaseException:
         try:
             await session.rollback()
