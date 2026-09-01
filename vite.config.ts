@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  // Browser code always uses the production-safe same-origin /api mount. The
+  // Vite development proxy needs a separate server-side upstream instead.
+  const devApiProxyTarget = env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:8000';
 
   return {
     plugins: [react()],
@@ -41,7 +44,7 @@ export default defineConfig(({ mode }) => {
       allowedHosts: ['.cpolar.top', '.localtunnel.me', '.ngrok.io', '.loca.lt'],
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL || 'http://localhost:8000',
+          target: devApiProxyTarget,
           changeOrigin: true,
           rewrite: (pathValue) => pathValue.replace(/^\/api/, ''),
           // 比后端 AI_TIMEOUT_SECONDS=300 多预留 10 秒，避免代理先于后端超时

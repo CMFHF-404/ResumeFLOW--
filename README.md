@@ -48,7 +48,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Vite 开发服务器默认绑定 `0.0.0.0:5173`，并把 `/api` 代理到 `VITE_API_BASE_URL`；未设置时回退到 `http://localhost:8000`。
+浏览器中的 `VITE_API_BASE_URL` 在生产和本地都固定为同源 `/api`。Vite 开发服务器默认绑定 `0.0.0.0:5173`，并把该路径代理到仅供开发服务器使用的 `VITE_DEV_API_PROXY_TARGET`（默认 `http://localhost:8000`）；它不会写入浏览器构建产物。
 
 本地 Logto 登出回跳需要在 Logto 控制台加入：
 
@@ -107,11 +107,14 @@ pnpm dev
 
 前端变量参考 `.env.example`，后端变量参考 `backend/.env.example`。常用配置包括：
 
-- `VITE_API_BASE_URL`：前端访问后端的 API 地址
+- `VITE_API_BASE_URL`：浏览器同源 API 挂载，生产固定为 `/api`
+- `VITE_DEV_API_PROXY_TARGET`：仅本地 Vite 开发服务器使用的后端 upstream，默认 `http://localhost:8000`
 - `VITE_LOGTO_*`：Logto 前端鉴权配置
 - `VITE_LOGTO_ACCOUNT_CENTER_URL`：Logto 托管账号中心地址
 - `DATABASE_URL`：PostgreSQL 连接字符串
-- `LOGTO_ISSUER` / `LOGTO_APP_ID`：后端 ID token 鉴权校验配置；不需要自定义 Logto API Resource
+- `LOGTO_ISSUER` / `LOGTO_APP_ID`：后端 ID token 鉴权校验配置；`LOGTO_APP_ID` 与 `FRONTEND_LOGTO_APP_ID` 必须是无首尾空白的非空 `[A-Za-z0-9_-]+`，且不需要自定义 Logto API Resource。
+- `RESUMEFLOW_DEPLOYMENT_MODE`：后端部署模式，默认 `local`；`backend/Dockerfile` 写入不可由普通运行环境变量降级的 production 镜像标记。生产模式启动时要求 `FRONTEND_ORIGIN`、`CORS_ALLOW_ORIGINS` 和全部 `FRONTEND_LOGTO_*`。
+- `FRONTEND_LOGTO_ENDPOINT` / `FRONTEND_LOGTO_APP_ID` / `FRONTEND_LOGTO_REDIRECT_URI`：后端启动时校验的前端公开 Logto 镜像配置；生产模式必须分别与 `VITE_LOGTO_ENDPOINT`、`VITE_LOGTO_APP_ID`、`VITE_LOGTO_REDIRECT_URI` 完全一致。`FRONTEND_LOGTO_REDIRECT_URI` 必须是 `FRONTEND_ORIGIN/callback`，且 `CORS_ALLOW_ORIGINS` 必须包含 `FRONTEND_ORIGIN`。
 - `AI_ROUTE_PROFILE`：后端 AI 路线，默认 `hybrid_gemini_aifast`；可选 `gemini_primary` 或 `qwen_primary` 做灰度切换
 - `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：默认生成与 thinking 服务；JD 分析、润色、AI 助手、Agent 和 thinking stream 默认走 Gemini
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：OpenAI-compatible / AIFAST 兼容配置；也作为 `qwen_primary` 灰度路线的主配置
@@ -164,7 +167,8 @@ python -m unittest test_experience_drafts
 ## 部署提示
 
 - 根目录 `Dockerfile` 构建前端静态产物，并用 Nginx 提供服务。
-- `backend/Dockerfile` 构建 FastAPI 服务，并安装 Playwright Chromium 以支持导出能力。
+- `backend/Dockerfile` 构建 FastAPI 服务，并安装 Playwright Chromium 以支持导出能力；容器在数据库初始化前校验公开前端 Logto 镜像配置，镜像健康检查使用 `http://127.0.0.1:8000/ready`，只有 JWKS 就绪才健康。
+- 在 Zeabur 服务控制台将后端健康检查路径配置为 `/ready`，不要使用仅表示进程存活的 `/health`。此仓库不能代替控制台完成该项配置。
 - 生产部署需要分别配置前端构建参数、后端环境变量、PostgreSQL、Logto 回调地址、Account Center 地址和 CORS 允许来源。
 - `backend/migrate_postgres_best_effort.py` 是手动高影响数据库迁移工具，只有在明确设置 `SOURCE_DATABASE_URL` 和 `TARGET_DATABASE_URL` 后才应运行。
 

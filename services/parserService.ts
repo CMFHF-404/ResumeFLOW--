@@ -7,6 +7,7 @@ import {
   readAuthSessionSnapshot,
 } from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
+import { handleFetchAuthFailure } from './authRecoveryCoordinator';
 import {
   DEFAULT_QUOTA_PURCHASE_MESSAGE,
   dispatchQuotaPurchaseRequired,
@@ -182,8 +183,12 @@ const streamResumeParseRequest = async (
 
   assertParseSessionCurrent();
   if (!response.ok) {
-    if (response.status === 401) {
-      dispatchLoginRequired('unauthorized-write');
+    if (response.status === 401 || response.status === 503) {
+      await handleFetchAuthFailure(
+        response,
+        dispatchSession.ownerKey,
+        isAuthSessionSnapshotCurrent(dispatchSession),
+      );
     }
     const errorMessage = await readErrorMessage(response);
     if (response.status === 402) {

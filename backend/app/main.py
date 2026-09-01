@@ -1,9 +1,13 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 from typing import List
 
-from .auth_middleware import LogtoAuthMiddleware
+from . import auth_middleware
 from .config import load_settings
 from .domain.account.account_router import router as account_router
 from .domain.agent.agent_router import router as agent_router
@@ -36,6 +40,9 @@ from .database import (
 )
 from .domain.export.browser_pdf_service import close_browser
 
+READINESS_DATABASE_TIMEOUT_SECONDS = 2.0
+
+
 def build_cors_allow_credentials(allow_origins: List[str]) -> bool:
     return "*" not in allow_origins
 
@@ -54,26 +61,39 @@ async def lifespan(app: FastAPI):
         # 在某些环境（如 Uvicorn）下，抛出异常会直接停止进程
         raise RuntimeError("Stopped application startup due to database connection failure.") from e
 
-    await payment_expiry_worker.start()
-    await export_snapshot_cleanup_worker.start()
-    try:
-        yield
-    finally:
-        # Always stop database maintenance before releasing the browser process.
+    if not settings.enable_dev_auth_bypass:
+        await auth_middleware.jwks_cache.start()
         try:
-            await export_snapshot_cleanup_worker.stop()
+            await auth_middleware.jwks_cache.warmup()
+        except auth_middleware.AuthDependencyUnavailable:
+            # Keep the process alive for recovery, but /ready remains 503 so a
+            # deployment platform does not route protected traffic to it.
+            pass
+
+    try:
+        await payment_expiry_worker.start()
+        await export_snapshot_cleanup_worker.start()
+        try:
+            yield
         finally:
+            # Always stop database maintenance before releasing the browser process.
             try:
-                await payment_expiry_worker.stop()
+                await export_snapshot_cleanup_worker.stop()
             finally:
-                await close_browser()
+                try:
+                    await payment_expiry_worker.stop()
+                finally:
+                    await close_browser()
+    finally:
+        if not settings.enable_dev_auth_bypass:
+            await auth_middleware.jwks_cache.close()
 
 app = FastAPI(title="ResumeFlow API", lifespan=lifespan)
 settings = load_settings()
 allow_credentials = build_cors_allow_credentials(settings.cors_allow_origins)
 
 if not settings.enable_dev_auth_bypass:
-    app.add_middleware(LogtoAuthMiddleware)
+    app.add_middleware(auth_middleware.LogtoAuthMiddleware)
 # CORS 必须放在最外层，确保包括鉴权失败在内的所有响应都带上跨域头
 # Starlette/FastAPI 中后注册的中间件会包裹先注册的中间件
 app.add_middleware(
@@ -136,3 +156,40 @@ app.openapi = custom_openapi
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def readiness_check():
+    try:
+        await asyncio.wait_for(
+            verify_db_connection(log_result=False),
+            timeout=READINESS_DATABASE_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        return JSONResponse(
+            {
+                "status": "not_ready",
+                "error": {"code": "database_unavailable"},
+            },
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            headers={"Retry-After": "5"},
+        )
+    if settings.enable_dev_auth_bypass:
+        return {"status": "ready"}
+    if not auth_middleware.jwks_cache.is_ready:
+        try:
+            # A failed cold start can recover through readiness probes even
+            # before protected traffic is admitted by the platform.
+            await auth_middleware.jwks_cache.warmup()
+        except auth_middleware.AuthDependencyUnavailable:
+            pass
+    if auth_middleware.jwks_cache.is_ready:
+        return {"status": "ready"}
+    return JSONResponse(
+        {
+            "status": "not_ready",
+            "error": {"code": "auth_dependency_unavailable"},
+        },
+        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+        headers={"Retry-After": "5"},
+    )

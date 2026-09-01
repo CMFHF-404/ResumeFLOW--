@@ -16,10 +16,14 @@ const importTypeScriptModule = async (path) => {
 
 test('auth flow suppresses stale login-required events after user logout', async () => {
   const {
+    isForceReauthReason,
     markUserSignInStarted,
     markUserSignOutStarted,
     shouldAutoSignInForLoginRequired,
   } = await importTypeScriptModule('services/authFlowState.ts');
+
+  assert.equal(isForceReauthReason('invalid-token'), true);
+  assert.equal(isForceReauthReason('session-invalid'), true);
 
   markUserSignInStarted();
   assert.equal(

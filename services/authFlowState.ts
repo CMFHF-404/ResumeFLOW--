@@ -1,6 +1,11 @@
 export const USER_SIGN_OUT_SUPPRESSION_MS = 15_000;
 
-const FORCE_REAUTH_REASONS = new Set(['unauthorized', 'unauthorized-write']);
+const FORCE_REAUTH_REASONS = new Set([
+    'invalid-token',
+    'session-invalid',
+    'unauthorized',
+    'unauthorized-write',
+]);
 
 let lastUserSignOutAt = 0;
 

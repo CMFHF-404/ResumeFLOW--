@@ -6,6 +6,10 @@ import {
     type AuthSessionSnapshot,
 } from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
+import {
+    handleAuthFailure,
+    markProtectedAuthSuccess,
+} from './authRecoveryCoordinator';
 import { devLog } from './devLogger';
 import { readAuthUserKeyFromToken } from './apiClientAuth';
 import {
@@ -19,6 +23,7 @@ declare module 'axios' {
         authCacheKeyAtDispatch?: string;
         authSessionEpochAtDispatch?: number;
         authSessionOwnerAtDispatch?: string | null;
+        suppressAuthRecovery?: boolean;
     }
 }
 
@@ -308,23 +313,30 @@ apiClient.interceptors.response.use(
         ) {
             return Promise.reject(new AuthContextChangedError());
         }
+        markProtectedAuthSuccess(
+            response.config?.url,
+            response.status,
+            response.config?.authSessionOwnerAtDispatch,
+        );
         return response;
     },
     (error) => {
-        if (
-            typeof error.config?.authSessionEpochAtDispatch === 'number'
-            && !isAuthSessionSnapshotCurrent({
+        const dispatchSession = typeof error.config?.authSessionEpochAtDispatch === 'number'
+            ? {
                 epoch: error.config.authSessionEpochAtDispatch,
                 ownerKey: error.config.authSessionOwnerAtDispatch ?? null,
-            })
-        ) {
+            }
+            : null;
+        if (dispatchSession && !isAuthSessionSnapshotCurrent(dispatchSession)) {
             return Promise.reject(new AuthContextChangedError());
         }
-        if (error.response?.status === 401) {
-            console.error('Authentication failed, redirecting to login...');
-            dispatchLoginRequired(
-                isWriteMethod(error.config?.method) ? 'unauthorized-write' : 'unauthorized'
-            );
+        if (error.response && !error.config?.suppressAuthRecovery) {
+            handleAuthFailure({
+                status: error.response.status,
+                data: error.response.data,
+                sessionOwnerKey: error.config?.authSessionOwnerAtDispatch,
+                isCurrentSession: dispatchSession !== null,
+            });
         }
         if (error.response?.status === 402) {
             dispatchQuotaPurchaseRequired(readQuotaPurchaseMessage(error.response.data));
