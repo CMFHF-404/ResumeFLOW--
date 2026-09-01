@@ -30,6 +30,7 @@ from .domain.export.schemas import (
 from .domain.feedback.feedback_router import router as feedback_router
 from .domain.parser.parser_router import router as parser_router
 from .domain.profile import profile_router
+from .domain.resume_optimization.router import router as resume_optimization_router
 from .domain.skills.skill_router import router as skills_router
 from .routers import experience_versions, resumes
 
@@ -123,6 +124,7 @@ app.include_router(redemption_admin_router)
 app.include_router(parser_router)
 app.include_router(feedback_router)
 app.include_router(export_router)
+app.include_router(resume_optimization_router)
 
 
 def custom_openapi():
