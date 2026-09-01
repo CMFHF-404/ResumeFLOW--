@@ -117,6 +117,15 @@ type HandleAnalyzeOptions = {
   onEvent?: JDAnalyzeStreamHandler;
 };
 
+// LOCAL_EVALUATION_ATTESTATION_BRIDGE_START
+export const stripLocalEvaluationAttestation = <T extends Record<string, unknown>>(
+  payload: T
+): Omit<T, "evaluationSignatureVersion"> => {
+  const { evaluationSignatureVersion: _discardedAttestation, ...localPayload } = payload;
+  return localPayload;
+};
+// LOCAL_EVALUATION_ATTESTATION_BRIDGE_END
+
 type UseJDAnalysisResult = {
   jdText: string;
   setJdText: Dispatch<SetStateAction<string>>;
@@ -898,7 +907,7 @@ export const useJDAnalysis = ({
       return false;
     }
     const nextPersistedJDAnalysis: ResumeJDAnalysis = {
-      ...currentPersisted,
+      ...stripLocalEvaluationAttestation(currentPersisted),
       result: { ...currentResult, resumeEvaluation: evaluation },
       evaluationSignature: requestEvaluationSignature,
       targetRoleSignature,

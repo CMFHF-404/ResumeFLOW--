@@ -141,6 +141,7 @@ import {
 } from './hooks/useResumeEditorExperiencePolishControls';
 import { useResumeEditorExperiencePolishCoordinator } from './hooks/useResumeEditorExperiencePolishCoordinator';
 import { useResumeEditorExperienceFocusRequest } from './hooks/useResumeEditorExperienceFocusRequest';
+import { useResumeOptimizationFlow } from './hooks/useResumeOptimizationFlow';
 import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
 type ResumeEditorProps = {
     cachedResumes?: DashboardResume[];
@@ -450,7 +451,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         lastSavedAt,
         hasResumeVersionConflict,
         applyResumeDetail,
-        flushResumeConfig,
+        flushResumeConfig: flushResumeConfigWithTimestamp,
         reloadResumeContext,
         suppressAutoSaveForConfig,
         clearSuppressedAutoSave,
@@ -493,6 +494,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         compareByDateDesc,
         compareCertificationByDateDesc,
     });
+    const flushResumeConfig = useCallback(async (
+        configOverride?: Parameters<typeof flushResumeConfigWithTimestamp>[0]
+    ) => {
+        await flushResumeConfigWithTimestamp(configOverride);
+    }, [flushResumeConfigWithTimestamp]);
     useEffect(() => {
         setIsLayoutAdjustToolbarOpen(false);
     }, [resumeId]);
@@ -551,6 +557,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectJdFile,
         clearJdFile,
         analysisResult,
+        persistedJDAnalysis,
         isAnalyzing,
         isJDCollapsed,
         setIsJDCollapsed,
@@ -855,6 +862,37 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         applyResumeDetail,
         setResumeExperienceMap,
     });
+    const resumeOptimizationFlow = useResumeOptimizationFlow({
+        enabled: true,
+        authUserKey,
+        resumeId,
+        sourceResumeUpdatedAt: resumeDetail?.resume.updated_at,
+        evaluationSignature,
+        evaluation: analysisResult?.resumeEvaluation ?? null,
+        persistedEvaluationSignature: persistedJDAnalysisSnapshot?.evaluationSignature ?? null,
+        persistedEvaluation: persistedJDAnalysisSnapshot?.result.resumeEvaluation ?? null,
+        isEvaluationOutdated,
+        jdText,
+        hasResumeVersionConflict,
+        isEvaluationRunning: isEvaluating,
+        isPolishing: Boolean(
+            floatingPolishSession
+            || experiencePolishPreview
+            || isFloatingExperiencePolishRunning
+            || isEditingExperiencePolishRunning
+            || isBatchPolishToolbarOpen
+        ),
+        isAutoAssembling,
+        reloadResumeContext,
+        generateEvaluation,
+        flushResumeConfig: flushResumeConfigWithTimestamp,
+        toast: {
+            success: showToastSuccess,
+            error: showToastError,
+            info: showToastInfo,
+        },
+    });
+    void resumeOptimizationFlow;
 
     const commitLayoutSnapshot = useCallback((
         snapshot: LayoutSnapshot,
