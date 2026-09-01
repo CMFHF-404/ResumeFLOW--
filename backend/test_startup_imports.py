@@ -5,6 +5,48 @@ import unittest
 
 
 class BackendStartupImportTests(unittest.TestCase):
+    def test_main_registers_resume_optimization_routes(self) -> None:
+        env = os.environ.copy()
+        env["DATABASE_URL"] = (
+            "postgresql+asyncpg://user:password@localhost:5432/resumeflow"
+        )
+        env.setdefault("LOGTO_ISSUER", "https://example.logto.app/oidc")
+        env.setdefault("LOGTO_APP_ID", "resume-spa-app-id")
+        script = """
+from app.main import app
+
+route_methods = {
+    (route.path, method)
+    for route in app.routes
+    for method in getattr(route, 'methods', set())
+}
+required = {
+    ('/api/resume-optimizations/stream', 'POST'),
+    ('/api/resume-optimizations/{run_id}/answers/stream', 'POST'),
+    ('/api/resume-optimizations/latest', 'GET'),
+    ('/api/resume-optimizations/{run_id}', 'GET'),
+    ('/api/resume-optimizations/{run_id}/cancel', 'POST'),
+}
+assert required <= route_methods, required - route_methods
+print('resume optimization routes registered')
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+        self.assertIn("resume optimization routes registered", result.stdout)
+
     def test_production_mode_requires_frontend_origin_and_cors(self) -> None:
         env = os.environ.copy()
         env.update(
