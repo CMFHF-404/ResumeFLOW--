@@ -14,6 +14,7 @@ RUNTIME_SCHEMA_STEPS = (
     "ensure_ai_assistant_tables",
     "ensure_agent_api_keys_table",
     "ensure_ai_token_billing_tables",
+    "ensure_resume_optimization_tables",
     "ensure_redemption_code_tables",
     "ensure_feedback_contact_type_column",
     "ensure_feedback_images_column",
