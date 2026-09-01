@@ -35,14 +35,16 @@ async def init_db() -> None:
         await connection.run_sync(SQLModel.metadata.create_all)
 
 
-async def verify_db_connection() -> None:
+async def verify_db_connection(*, log_result: bool = True) -> None:
     """验证数据库连接是否正常"""
     try:
         async with AsyncSessionFactory() as session:
             await session.execute(text("SELECT 1"))
-            print("Database connection verified successfully.")
+            if log_result:
+                print("Database connection verified successfully.")
     except Exception as e:
-        print(f"Database connection failed: {e}")
+        if log_result:
+            print(f"Database connection failed: {e}")
         raise e
 
 

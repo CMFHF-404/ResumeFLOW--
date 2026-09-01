@@ -8,6 +8,7 @@ import {
     readAuthSessionSnapshot,
 } from './authTokenProvider';
 import { dispatchLoginRequired } from './authRedirect';
+import { handleFetchAuthFailure } from './authRecoveryCoordinator';
 import { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
 import {
     DEFAULT_QUOTA_PURCHASE_MESSAGE,
@@ -37,12 +38,16 @@ const readStreamErrorMessage = async (response: Response) => {
     return '';
 };
 
-export const ensureStreamResponseOk = async (response: Response) => {
+export const ensureStreamResponseOk = async (
+    response: Response,
+    sessionOwnerKey?: string | null,
+    isCurrentSession = false,
+) => {
     if (response.ok) {
         return;
     }
-    if (response.status === 401) {
-        dispatchLoginRequired('unauthorized-write');
+    if (response.status === 401 || response.status === 503) {
+        await handleFetchAuthFailure(response, sessionOwnerKey, isCurrentSession);
     }
     const message = await readStreamErrorMessage(response);
     if (response.status === 402) {
@@ -108,7 +113,11 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     });
 
     assertStreamSessionCurrent();
-    await ensureStreamResponseOk(response);
+    await ensureStreamResponseOk(
+        response,
+        dispatchSession.ownerKey,
+        isAuthSessionSnapshotCurrent(dispatchSession),
+    );
     if (!response.body) {
         throw new Error('AI stream response body is empty');
     }
