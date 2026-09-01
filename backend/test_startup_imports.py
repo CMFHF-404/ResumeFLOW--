@@ -7,11 +7,21 @@ import unittest
 class BackendStartupImportTests(unittest.TestCase):
     def test_main_registers_resume_optimization_routes(self) -> None:
         env = os.environ.copy()
-        env["DATABASE_URL"] = (
-            "postgresql+asyncpg://user:password@localhost:5432/resumeflow"
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "local",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "FRONTEND_ORIGIN": "http://localhost:5173",
+                "CORS_ALLOW_ORIGINS": "http://localhost:5173",
+                "FRONTEND_LOGTO_ENDPOINT": "",
+                "FRONTEND_LOGTO_APP_ID": "",
+                "FRONTEND_LOGTO_REDIRECT_URI": "",
+                "ENABLE_DEV_AUTH_BYPASS": "false",
+                "ENABLE_RESUME_OPTIMIZATION": "true",
+            }
         )
-        env.setdefault("LOGTO_ISSUER", "https://example.logto.app/oidc")
-        env.setdefault("LOGTO_APP_ID", "resume-spa-app-id")
         script = """
 from app.main import app
 
@@ -46,6 +56,65 @@ print('resume optimization routes registered')
             msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
         )
         self.assertIn("resume optimization routes registered", result.stdout)
+
+    def test_main_omits_resume_optimization_router_while_disabled(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "local",
+                "LOGTO_ISSUER": "https://example.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "FRONTEND_ORIGIN": "http://localhost:5173",
+                "CORS_ALLOW_ORIGINS": "http://localhost:5173",
+                "FRONTEND_LOGTO_ENDPOINT": "",
+                "FRONTEND_LOGTO_APP_ID": "",
+                "FRONTEND_LOGTO_REDIRECT_URI": "",
+                "ENABLE_DEV_AUTH_BYPASS": "true",
+                "ENABLE_RESUME_OPTIMIZATION": "false",
+            }
+        )
+        script = """
+import asyncio
+import httpx
+from app.main import app
+
+optimization_paths = {
+    route.path
+    for route in app.routes
+    if route.path.startswith('/api/resume-optimizations')
+}
+assert not optimization_paths, optimization_paths
+
+async def verify_native_404():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
+        response = await client.get(
+            '/api/resume-optimizations/latest',
+            params={'resume_id': '11111111-1111-4111-8111-111111111111'},
+        )
+    assert response.status_code == 404, response.text
+    assert response.json() == {'detail': 'Not Found'}, response.text
+
+asyncio.run(verify_native_404())
+print('resume optimization routes disabled')
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+        self.assertIn("resume optimization routes disabled", result.stdout)
 
     def test_production_mode_requires_frontend_origin_and_cors(self) -> None:
         env = os.environ.copy()

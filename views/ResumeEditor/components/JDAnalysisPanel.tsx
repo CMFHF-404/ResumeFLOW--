@@ -369,6 +369,11 @@ type JDAnalysisPanelProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled?: boolean;
+    isOptimizationBusy?: boolean;
+    canStartOptimization?: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     thinkingText?: string;
     onStopAnalyze?: () => void;
     onOpenDetailsSidebar?: () => void;
@@ -385,6 +390,11 @@ type JDAnalysisDetailsModalProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled: boolean;
+    isOptimizationBusy: boolean;
+    canStartOptimization: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -466,6 +476,11 @@ type JDAnalysisDetailsContentProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled: boolean;
+    isOptimizationBusy: boolean;
+    canStartOptimization: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -481,6 +496,11 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     evaluationError,
     onGenerateEvaluation,
     onStopEvaluation,
+    isOptimizationEnabled,
+    isOptimizationBusy,
+    canStartOptimization,
+    optimizationDisabledReason,
+    onStartOptimization,
     copyStatus,
     manualCopyText,
     onCopyText,
@@ -543,6 +563,11 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
                     error={evaluationError}
                     onGenerate={onGenerateEvaluation}
                     onStop={onStopEvaluation}
+                    isOptimizationEnabled={isOptimizationEnabled}
+                    isOptimizationBusy={isOptimizationBusy}
+                    canStartOptimization={canStartOptimization}
+                    optimizationDisabledReason={optimizationDisabledReason}
+                    onStartOptimization={onStartOptimization}
                 />
             </div>
         )}
@@ -560,6 +585,11 @@ type JDAnalysisDetailsSidebarProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled: boolean;
+    isOptimizationBusy: boolean;
+    canStartOptimization: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     onClose: () => void;
     onOpenAgentPluginConfig?: () => void;
 };
@@ -574,6 +604,11 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
     evaluationError,
     onGenerateEvaluation,
     onStopEvaluation,
+    isOptimizationEnabled,
+    isOptimizationBusy,
+    canStartOptimization,
+    optimizationDisabledReason,
+    onStartOptimization,
     onClose,
     onOpenAgentPluginConfig,
 }) => {
@@ -631,6 +666,11 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                     evaluationError={evaluationError}
                     onGenerateEvaluation={onGenerateEvaluation}
                     onStopEvaluation={onStopEvaluation}
+                    isOptimizationEnabled={isOptimizationEnabled}
+                    isOptimizationBusy={isOptimizationBusy}
+                    canStartOptimization={canStartOptimization}
+                    optimizationDisabledReason={optimizationDisabledReason}
+                    onStartOptimization={onStartOptimization}
                     copyStatus={strategyCopyStatus}
                     manualCopyText={manualStrategyCopyText}
                     onCopyText={handleCopyStrategyText}
@@ -651,6 +691,11 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
     evaluationError,
     onGenerateEvaluation,
     onStopEvaluation,
+    isOptimizationEnabled,
+    isOptimizationBusy,
+    canStartOptimization,
+    optimizationDisabledReason,
+    onStartOptimization,
     copyStatus,
     manualCopyText,
     onCopyText,
@@ -703,6 +748,11 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                         evaluationError={evaluationError}
                         onGenerateEvaluation={onGenerateEvaluation}
                         onStopEvaluation={onStopEvaluation}
+                        isOptimizationEnabled={isOptimizationEnabled}
+                        isOptimizationBusy={isOptimizationBusy}
+                        canStartOptimization={canStartOptimization}
+                        optimizationDisabledReason={optimizationDisabledReason}
+                        onStartOptimization={onStartOptimization}
                         copyStatus={copyStatus}
                         manualCopyText={manualCopyText}
                         onCopyText={onCopyText}
@@ -982,6 +1032,12 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     evaluationThinkingText,
     evaluationError,
     onGenerateEvaluation,
+    onStopEvaluation,
+    isOptimizationEnabled = false,
+    isOptimizationBusy = false,
+    canStartOptimization = false,
+    optimizationDisabledReason,
+    onStartOptimization,
     thinkingText,
     onStopAnalyze,
     onOpenDetailsSidebar,
@@ -1317,6 +1373,12 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                 evaluationThinkingText={evaluationThinkingText}
                 evaluationError={evaluationError}
                 onGenerateEvaluation={onGenerateEvaluation}
+                onStopEvaluation={onStopEvaluation}
+                isOptimizationEnabled={isOptimizationEnabled}
+                isOptimizationBusy={isOptimizationBusy}
+                canStartOptimization={canStartOptimization}
+                optimizationDisabledReason={optimizationDisabledReason}
+                onStartOptimization={onStartOptimization}
                 copyStatus={strategyCopyStatus}
                 manualCopyText={manualStrategyCopyText}
                 onCopyText={handleCopyStrategyText}

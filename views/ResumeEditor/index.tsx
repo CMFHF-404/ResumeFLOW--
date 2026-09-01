@@ -172,6 +172,7 @@ const BATCH_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'highlight',
     'custom',
 ];
+const RESUME_OPTIMIZATION_ENABLED = import.meta.env.VITE_ENABLE_RESUME_OPTIMIZATION === 'true';
 const ResumeEditor: React.FC<ResumeEditorProps> = ({
     cachedResumes = [],
     cachedResumesOwnerKey = null,
@@ -863,7 +864,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setResumeExperienceMap,
     });
     const resumeOptimizationFlow = useResumeOptimizationFlow({
-        enabled: true,
+        enabled: RESUME_OPTIMIZATION_ENABLED,
         authUserKey,
         resumeId,
         sourceResumeUpdatedAt: resumeDetail?.resume.updated_at,
@@ -892,7 +893,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             info: showToastInfo,
         },
     });
-    void resumeOptimizationFlow;
+    const isResumeOptimizationBusy = (
+        resumeOptimizationFlow.uiState === 'starting'
+        || resumeOptimizationFlow.uiState === 'answering'
+        || resumeOptimizationFlow.uiState === 'applying'
+        || resumeOptimizationFlow.uiState === 'rescoring'
+    );
 
     const commitLayoutSnapshot = useCallback((
         snapshot: LayoutSnapshot,
@@ -1766,6 +1772,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             evaluationError,
             onGenerateEvaluation: handleGenerateEvaluation,
             onStopEvaluation: stopEvaluation,
+            isOptimizationEnabled: RESUME_OPTIMIZATION_ENABLED,
+            isOptimizationBusy: isResumeOptimizationBusy,
+            canStartOptimization: resumeOptimizationFlow.canStart,
+            optimizationDisabledReason: resumeOptimizationFlow.disabledReason,
+            onStartOptimization: resumeOptimizationFlow.startOptimization,
             thinkingText,
             onStopAnalyze: handleStopAnalysisWithToast,
             onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar,
@@ -1944,6 +1955,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         evaluationError,
         onGenerateEvaluation: handleGenerateEvaluation,
         onStopEvaluation: stopEvaluation,
+        isOptimizationEnabled: RESUME_OPTIMIZATION_ENABLED,
+        isOptimizationBusy: isResumeOptimizationBusy,
+        canStartOptimization: resumeOptimizationFlow.canStart,
+        optimizationDisabledReason: resumeOptimizationFlow.disabledReason,
+        onStartOptimization: resumeOptimizationFlow.startOptimization,
         onClose: handleCloseJDAnalysisDetailsSidebar,
         onOpenAgentPluginConfig,
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;

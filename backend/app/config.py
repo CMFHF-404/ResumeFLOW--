@@ -46,6 +46,11 @@ ENV_AI_THINKING_BUDGET_JD_ANALYSIS = "AI_THINKING_BUDGET_JD_ANALYSIS"
 ENV_AI_THINKING_BUDGET_POLISH = "AI_THINKING_BUDGET_POLISH"
 ENV_AI_THINKING_BUDGET_BOSS_GREETING = "AI_THINKING_BUDGET_BOSS_GREETING"
 ENV_ENABLE_DEV_AUTH_BYPASS = "ENABLE_DEV_AUTH_BYPASS"
+ENV_ENABLE_RESUME_OPTIMIZATION = "ENABLE_RESUME_OPTIMIZATION"
+ENV_RESUME_OPTIMIZATION_MAX_QUESTIONS = "RESUME_OPTIMIZATION_MAX_QUESTIONS"
+ENV_RESUME_OPTIMIZATION_MAX_BANK_SUGGESTIONS = (
+    "RESUME_OPTIMIZATION_MAX_BANK_SUGGESTIONS"
+)
 ENV_DEV_USER_ID = "DEV_USER_ID"
 ENV_CORS_ALLOW_ORIGINS = "CORS_ALLOW_ORIGINS"
 ENV_FEISHU_WEBHOOK_URL = "FEISHU_WEBHOOK_URL"
@@ -87,6 +92,9 @@ DEFAULT_AI_THINKING_BUDGET_JD_ANALYSIS = 1024
 DEFAULT_AI_THINKING_BUDGET_POLISH = 1024
 DEFAULT_AI_THINKING_BUDGET_BOSS_GREETING = 0
 DEFAULT_DEV_USER_ID = "dev-user-test-123"
+DEFAULT_ENABLE_RESUME_OPTIMIZATION = False
+DEFAULT_RESUME_OPTIMIZATION_MAX_QUESTIONS = 5
+DEFAULT_RESUME_OPTIMIZATION_MAX_BANK_SUGGESTIONS = 3
 DEFAULT_CORS_ALLOW_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
@@ -517,6 +525,9 @@ class Settings:
     ai_thinking_budget_polish: int
     ai_thinking_budget_boss_greeting: int
     enable_dev_auth_bypass: bool
+    enable_resume_optimization: bool
+    resume_optimization_max_questions: int
+    resume_optimization_max_bank_suggestions: int
     dev_user_id: str
     cors_allow_origins: List[str]
     feishu_webhook_url: Optional[str]
@@ -650,6 +661,22 @@ def load_settings() -> Settings:
         raise RuntimeError(
             f"Invalid {ENV_ENABLE_DEV_AUTH_BYPASS}: must be disabled in production"
         )
+    enable_resume_optimization = _get_bool_env(
+        ENV_ENABLE_RESUME_OPTIMIZATION,
+        DEFAULT_ENABLE_RESUME_OPTIMIZATION,
+    )
+    resume_optimization_max_questions = _get_bounded_int_env(
+        ENV_RESUME_OPTIMIZATION_MAX_QUESTIONS,
+        DEFAULT_RESUME_OPTIMIZATION_MAX_QUESTIONS,
+        minimum=0,
+        maximum=5,
+    )
+    resume_optimization_max_bank_suggestions = _get_bounded_int_env(
+        ENV_RESUME_OPTIMIZATION_MAX_BANK_SUGGESTIONS,
+        DEFAULT_RESUME_OPTIMIZATION_MAX_BANK_SUGGESTIONS,
+        minimum=0,
+        maximum=3,
+    )
     dev_user_id = os.getenv(ENV_DEV_USER_ID, DEFAULT_DEV_USER_ID)
     cors_allow_origins = _parse_csv_env(
         ENV_CORS_ALLOW_ORIGINS,
@@ -738,6 +765,9 @@ def load_settings() -> Settings:
         ai_thinking_budget_polish=ai_thinking_budget_polish,
         ai_thinking_budget_boss_greeting=ai_thinking_budget_boss_greeting,
         enable_dev_auth_bypass=enable_dev_auth_bypass,
+        enable_resume_optimization=enable_resume_optimization,
+        resume_optimization_max_questions=resume_optimization_max_questions,
+        resume_optimization_max_bank_suggestions=resume_optimization_max_bank_suggestions,
         dev_user_id=dev_user_id,
         cors_allow_origins=cors_allow_origins,
         feishu_webhook_url=feishu_webhook_url,
