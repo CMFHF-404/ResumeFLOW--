@@ -97,7 +97,9 @@ export const resolveResumeOptimizationRunUiState = (
   }
 };
 
-const effectivePlan = (run: ResumeOptimizationRun) => run.result ?? run.plan;
+const effectivePlan = (
+  run: Pick<ResumeOptimizationRun, 'plan' | 'result'>,
+) => run.result ?? run.plan;
 
 export const canonicalizeResumeOptimizationFlowTimestamp = (
   value: string | null | undefined,
@@ -126,19 +128,38 @@ export const isResumeOptimizationRunContextCurrent = (
   && run.sourceEvaluationSignature === evaluationSignature,
 );
 
+export const isResumeOptimizationChangeSelectable = (
+  change: Pick<
+    ResumeOptimizationRun['plan']['changes'][number],
+    'safetyStatus' | 'actionKind' | 'targetedValue'
+  >,
+): boolean => (
+  change.safetyStatus === 'allowed'
+  && (change.actionKind === 'rewrite_now' || change.actionKind === 'ask_user')
+  && change.targetedValue !== null
+);
+
+export const filterResumeOptimizationSelectableChangeIds = (
+  changes: ResumeOptimizationRun['plan']['changes'],
+  changeIds: string[],
+): string[] => {
+  const selectable = new Set(
+    changes.filter(isResumeOptimizationChangeSelectable).map((change) => change.changeId),
+  );
+  return [...new Set(changeIds)].filter((changeId) => selectable.has(changeId));
+};
+
 export const buildResumeOptimizationInitialAcceptedIds = (
   run: Pick<ResumeOptimizationRun, 'acceptedChangeIds' | 'plan' | 'result'>,
 ): string[] => {
   const plan = run.result ?? run.plan;
-  const allowed = new Set(
-    plan.changes
-      .filter((change) => change.safetyStatus === 'allowed')
-      .map((change) => change.changeId),
+  const persisted = filterResumeOptimizationSelectableChangeIds(
+    plan.changes,
+    run.acceptedChangeIds,
   );
-  const persisted = run.acceptedChangeIds.filter((changeId) => allowed.has(changeId));
   if (persisted.length > 0) return persisted;
   return plan.changes
-    .filter((change) => change.safetyStatus === 'allowed' && change.defaultSelected)
+    .filter((change) => isResumeOptimizationChangeSelectable(change) && change.defaultSelected)
     .map((change) => change.changeId);
 };
 
@@ -175,6 +196,14 @@ type ToastPort = {
 
 type AnswerDraft = Pick<ResumeOptimizationAnswer, 'state' | 'value'>;
 export type ResumeOptimizationAnswerDrafts = Record<string, AnswerDraft>;
+
+const VALID_ANSWER_STATES = new Set<ResumeOptimizationAnswerState>([
+  'answered',
+  'no_data',
+  'unknown',
+  'not_my_work',
+  'skipped',
+]);
 
 export type UseResumeOptimizationFlowOptions = {
   enabled: boolean;
@@ -244,26 +273,73 @@ const STALE_RESUME_OPTIMIZATION_ERROR_CODES = new Set([
 const isStaleOptimizationError = (error: unknown) => (
   isResumeOptimizationServiceError(error)
   && error.statusCode === 409
-  && error.code !== 'resume_optimization_evaluation_pending'
-  && (
-    STALE_RESUME_OPTIMIZATION_ERROR_CODES.has(error.code)
-    || error.code.startsWith('resume_optimization_')
-  )
+  && STALE_RESUME_OPTIMIZATION_ERROR_CODES.has(error.code)
 );
 
 const errorMessage = (error: unknown, fallback: string) => (
   error instanceof Error && error.message.trim() ? error.message : fallback
 );
 
-const buildAnswerDrafts = (run: ResumeOptimizationRun): ResumeOptimizationAnswerDrafts => {
+export const buildResumeOptimizationAnswerDrafts = (
+  run: Pick<ResumeOptimizationRun, 'id' | 'answers' | 'plan' | 'result'>,
+  previousRunId: string | null = null,
+  previousDrafts: ResumeOptimizationAnswerDrafts = {},
+): ResumeOptimizationAnswerDrafts => {
   const persisted = new Map(run.answers.map((answer) => [answer.questionId, answer]));
   return Object.fromEntries(effectivePlan(run).questions.map((question) => {
     const answer = persisted.get(question.questionId);
+    const localDraft = previousRunId === run.id ? previousDrafts[question.questionId] : undefined;
+    const validLocalDraft = localDraft
+      && VALID_ANSWER_STATES.has(localDraft.state)
+      && typeof localDraft.value === 'string'
+      ? localDraft
+      : undefined;
     return [question.questionId, {
-      state: answer?.state ?? 'answered',
-      value: answer?.value ?? '',
+      state: answer?.state ?? validLocalDraft?.state ?? 'answered',
+      value: answer?.value ?? validLocalDraft?.value ?? '',
     }];
   }));
+};
+
+export const buildResumeOptimizationAnswerPayload = (
+  run: Pick<ResumeOptimizationRun, 'answers' | 'plan' | 'result'>,
+  drafts: ResumeOptimizationAnswerDrafts,
+): ResumeOptimizationAnswer[] | null => {
+  const questions = effectivePlan(run).questions;
+  if (questions.length === 0 || questions.length > 5) return null;
+  const questionIds = questions.map((question) => question.questionId);
+  if (new Set(questionIds).size !== questionIds.length) return null;
+  const persistedIds = run.answers.map((answer) => answer.questionId);
+  if (new Set(persistedIds).size !== persistedIds.length) return null;
+  const knownQuestionIds = new Set(questionIds);
+  if (persistedIds.some((questionId) => !knownQuestionIds.has(questionId))) return null;
+  const persisted = new Map(run.answers.map((answer) => [answer.questionId, answer]));
+  const answers: ResumeOptimizationAnswer[] = [];
+  for (const questionId of questionIds) {
+    const authoritative = persisted.get(questionId);
+    if (authoritative) {
+      if (
+        !VALID_ANSWER_STATES.has(authoritative.state)
+        || typeof authoritative.value !== 'string'
+        || (authoritative.state === 'answered' && !authoritative.value.trim())
+      ) return null;
+      answers.push({ ...authoritative });
+      continue;
+    }
+    const draft = drafts[questionId];
+    if (
+      !draft
+      || !VALID_ANSWER_STATES.has(draft.state)
+      || typeof draft.value !== 'string'
+      || (draft.state === 'answered' && !draft.value.trim())
+    ) return null;
+    answers.push({
+      questionId,
+      state: draft.state,
+      value: draft.state === 'answered' ? draft.value : '',
+    });
+  }
+  return answers;
 };
 
 export const useResumeOptimizationFlow = ({
@@ -297,6 +373,7 @@ export const useResumeOptimizationFlow = ({
   const [progressNode, setProgressNode] = useState<ResumeOptimizationProgressNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<ResumeOptimizationAnswerDrafts>({});
+  const [isAnswerSubmissionFrozen, setIsAnswerSubmissionFrozen] = useState(false);
   const [acceptedChangeIds, setAcceptedChangeIds] = useState<string[]>([]);
   const [isHydrating, setIsHydrating] = useState(false);
 
@@ -304,6 +381,10 @@ export const useResumeOptimizationFlow = ({
   const generationRef = useRef(0);
   const activeRunIdRef = useRef<string | null>(null);
   const latestRunRef = useRef<ResumeOptimizationRun | null>(null);
+  const frozenAnswerSubmissionRef = useRef<{
+    runId: string;
+    answers: ResumeOptimizationAnswer[];
+  } | null>(null);
   const startAttemptRef = useRef<{
     resumeId: string;
     evaluationSignature: string;
@@ -358,9 +439,11 @@ export const useResumeOptimizationFlow = ({
       setIsHydrating(false);
       activeRunIdRef.current = null;
       latestRunRef.current = null;
+      frozenAnswerSubmissionRef.current = null;
       startAttemptRef.current = null;
       setRun(null);
       setAnswerDrafts({});
+      setIsAnswerSubmissionFrozen(false);
       setAcceptedChangeIds([]);
       setError(null);
       setUiState('closed');
@@ -373,13 +456,38 @@ export const useResumeOptimizationFlow = ({
     }
   }, [rejectPendingWaiters]);
 
-  const applyRunToState = useCallback((nextRun: ResumeOptimizationRun, automaticHydration = false) => {
+  const applyRunToState = useCallback((
+    nextRun: ResumeOptimizationRun,
+    automaticHydration = false,
+    preserveLocalSelections = false,
+  ) => {
+    const previousRunId = latestRunRef.current?.id ?? null;
+    const isSameRun = previousRunId === nextRun.id;
+    const hasFrozenAnswerRetry = Boolean(
+      isSameRun
+      && nextRun.status === 'awaiting_answers'
+      && frozenAnswerSubmissionRef.current?.runId === nextRun.id,
+    );
+    if (!hasFrozenAnswerRetry) {
+      frozenAnswerSubmissionRef.current = null;
+      setIsAnswerSubmissionFrozen(false);
+    }
     latestRunRef.current = nextRun;
     activeRunIdRef.current = nextRun.id;
     setRun(nextRun);
-    setAnswerDrafts(buildAnswerDrafts(nextRun));
-    setAcceptedChangeIds(buildResumeOptimizationInitialAcceptedIds(nextRun));
-    setUiState(resolveResumeOptimizationRunUiState(nextRun.status, automaticHydration));
+    setAnswerDrafts((current) => buildResumeOptimizationAnswerDrafts(
+      nextRun,
+      previousRunId,
+      current,
+    ));
+    setAcceptedChangeIds((current) => (
+      preserveLocalSelections && isSameRun
+        ? filterResumeOptimizationSelectableChangeIds(effectivePlan(nextRun).changes, current)
+        : buildResumeOptimizationInitialAcceptedIds(nextRun)
+    ));
+    setUiState(hasFrozenAnswerRetry
+      ? 'error'
+      : resolveResumeOptimizationRunUiState(nextRun.status, automaticHydration));
   }, []);
 
   const markSelfOwnedResumeTimestamp = useCallback((updatedAt: string) => {
@@ -670,6 +778,10 @@ export const useResumeOptimizationFlow = ({
 
   const isFlowBusy = isHydrating || controllerRef.current !== null
     || ['starting', 'answering', 'applying', 'rescoring'].includes(uiState);
+  const persistedAnswerIds = useMemo(
+    () => [...new Set((run?.answers ?? []).map((answer) => answer.questionId))],
+    [run],
+  );
   const startAvailability = useMemo(() => resolveResumeOptimizationStartAvailability({
     enabled,
     authUserKey,
@@ -768,19 +880,35 @@ export const useResumeOptimizationFlow = ({
   ) => {
     if (!enabled) return;
     const currentRun = latestRunRef.current;
-    if (!currentRun || currentRun.status !== 'awaiting_answers' || currentRun.answers.length > 0) {
-      throw new Error('已提交的回答不可修改，请开始新的优化运行。');
+    if (!currentRun || currentRun.status !== 'awaiting_answers' || uiState === 'stale') {
+      throw new Error('当前优化问题不可编辑。');
     }
     if (!effectivePlan(currentRun).questions.some((question) => question.questionId === questionId)) {
       throw new Error('未知的优化问题。');
     }
-    setAnswerDrafts((current) => ({ ...current, [questionId]: { state, value } }));
-  }, [enabled]);
+    const persistedAnswerIds = new Set(currentRun.answers.map((answer) => answer.questionId));
+    if (persistedAnswerIds.has(questionId)) {
+      throw new Error('已保存的回答不可修改。');
+    }
+    if (frozenAnswerSubmissionRef.current?.runId === currentRun.id) {
+      throw new Error('本次回答已冻结，请直接重试提交。');
+    }
+    if (!VALID_ANSWER_STATES.has(state)) throw new Error('不支持的回答状态。');
+    setAnswerDrafts((current) => ({
+      ...current,
+      [questionId]: { state, value: state === 'answered' ? value : '' },
+    }));
+  }, [enabled, uiState]);
 
   const submitAnswers = useCallback(async () => {
     if (!enabled) return null;
     const currentRun = latestRunRef.current;
-    if (!currentRun || currentRun.status !== 'awaiting_answers' || currentRun.answers.length > 0) return null;
+    if (
+      !currentRun
+      || currentRun.status !== 'awaiting_answers'
+      || uiState === 'stale'
+      || controllerRef.current !== null
+    ) return null;
     if (!isResumeOptimizationRunContextCurrent(
       currentRun,
       latestInputsRef.current.sourceResumeUpdatedAt,
@@ -790,17 +918,49 @@ export const useResumeOptimizationFlow = ({
       setUiState('stale');
       return null;
     }
-    const answers = effectivePlan(currentRun).questions.map((question): ResumeOptimizationAnswer => ({
-      questionId: question.questionId,
-      state: answerDrafts[question.questionId]?.state ?? 'skipped',
-      value: answerDrafts[question.questionId]?.value ?? '',
-    }));
-    const started = await beginHandledOperation('提交补充信息失败。');
-    if (!started) return null;
-    const { generation, controller, operation } = started;
+    const frozenSubmission = frozenAnswerSubmissionRef.current?.runId === currentRun.id
+      ? frozenAnswerSubmissionRef.current
+      : null;
+    const preparedAnswers = frozenSubmission?.answers
+      ?? buildResumeOptimizationAnswerPayload(currentRun, answerDrafts);
+    if (!preparedAnswers) return null;
+    const answerAttempt = frozenSubmission ?? {
+      runId: currentRun.id,
+      answers: preparedAnswers.map((answer) => ({ ...answer })),
+    };
+    if (!frozenSubmission) {
+      frozenAnswerSubmissionRef.current = answerAttempt;
+      setIsAnswerSubmissionFrozen(true);
+    }
     setUiState('answering');
     setError(null);
+    const started = await beginHandledOperation('提交补充信息失败。');
+    if (!started) {
+      if (!frozenSubmission && frozenAnswerSubmissionRef.current === answerAttempt) {
+        frozenAnswerSubmissionRef.current = null;
+        setIsAnswerSubmissionFrozen(false);
+      }
+      return null;
+    }
+    const { generation, controller, operation } = started;
+    const answers = answerAttempt.answers.map((answer) => ({ ...answer }));
     try {
+      if (frozenSubmission) {
+        const authoritativeRun = await resumeOptimizationService.get(currentRun.id, {
+          signal: controller.signal,
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await assertCurrent(generation, operation, currentRun.id);
+        if (authoritativeRun.id !== currentRun.id) throw new Error('优化运行身份不匹配。');
+        if (authoritativeRun.status !== 'awaiting_answers') {
+          frozenAnswerSubmissionRef.current = null;
+          setIsAnswerSubmissionFrozen(false);
+          applyRunToState(authoritativeRun);
+          setProgressText('');
+          setProgressNode(null);
+          return authoritativeRun;
+        }
+      }
       const nextRun = await resumeOptimizationService.answer(currentRun.id, { answers }, {
         signal: controller.signal,
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
@@ -812,6 +972,8 @@ export const useResumeOptimizationFlow = ({
         },
       });
       await assertCurrent(generation, operation, currentRun.id);
+      frozenAnswerSubmissionRef.current = null;
+      setIsAnswerSubmissionFrozen(false);
       applyRunToState(nextRun);
       setProgressText('');
       setProgressNode(null);
@@ -826,7 +988,7 @@ export const useResumeOptimizationFlow = ({
     }
   }, [
     answerDrafts, applyRunToState, assertCurrent, beginHandledOperation, enabled,
-    handleOperationError, shouldHandleOperationError,
+    handleOperationError, shouldHandleOperationError, uiState,
   ]);
 
   const toggleChange = useCallback((changeId: string) => {
@@ -841,7 +1003,7 @@ export const useResumeOptimizationFlow = ({
       )
     ) return;
     const change = currentRun && effectivePlan(currentRun).changes.find((item) => item.changeId === changeId);
-    if (!change || change.safetyStatus !== 'allowed' || currentRun?.status !== 'preview_ready') return;
+    if (!change || !isResumeOptimizationChangeSelectable(change) || currentRun?.status !== 'preview_ready') return;
     setAcceptedChangeIds((current) => current.includes(changeId)
       ? current.filter((item) => item !== changeId)
       : [...current, changeId]);
@@ -1060,7 +1222,14 @@ export const useResumeOptimizationFlow = ({
       setUiState('closed');
       return true;
     }
-    if (ACTIVE_STREAM_UI_STATES.has(uiState) && controllerRef.current) {
+    const hasPendingAnswerSubmission = Boolean(
+      currentRun
+      && frozenAnswerSubmissionRef.current?.runId === currentRun.id,
+    );
+    if (
+      controllerRef.current
+      && (ACTIVE_STREAM_UI_STATES.has(uiState) || hasPendingAnswerSubmission)
+    ) {
       if (!await confirmCancelActiveRun()) return false;
       await cancelRun();
       return true;
@@ -1072,7 +1241,22 @@ export const useResumeOptimizationFlow = ({
   const reopenLatestRun = useCallback(async () => {
     if (!enabled || !resumeId) return null;
     if (latestRunRef.current) {
-      applyRunToState(latestRunRef.current, false);
+      const cachedRun = latestRunRef.current;
+      const requiresCurrentContext = cachedRun.status === 'awaiting_answers'
+        || cachedRun.status === 'preview_ready';
+      if (
+        requiresCurrentContext
+        && !isResumeOptimizationRunContextCurrent(
+          cachedRun,
+          latestInputsRef.current.sourceResumeUpdatedAt,
+          latestInputsRef.current.evaluationSignature,
+        )
+      ) {
+        setError('简历或六维报告已变化，请重新生成优化方案。');
+        setUiState('stale');
+        return cachedRun;
+      }
+      applyRunToState(latestRunRef.current, false, true);
       return latestRunRef.current;
     }
     const started = await beginHandledOperation('重新打开优化记录失败。');
@@ -1106,6 +1290,8 @@ export const useResumeOptimizationFlow = ({
     progressNode,
     error,
     answerDrafts,
+    persistedAnswerIds,
+    isAnswerSubmissionFrozen,
     acceptedChangeIds,
     canStart: startAvailability.canStart,
     disabledReason: startAvailability.disabledReason,

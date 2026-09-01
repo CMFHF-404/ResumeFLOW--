@@ -23,12 +23,16 @@ type ResumeOptimizationStepRailProps = {
     activeStep: ResumeOptimizationStepId;
     hasQuestions: boolean;
     variant: 'desktop' | 'mobile';
+    availableSteps: ResumeOptimizationStepId[];
+    onStepSelect: (step: ResumeOptimizationStepId) => void;
 };
 
 export const ResumeOptimizationStepRail: React.FC<ResumeOptimizationStepRailProps> = ({
     activeStep,
     hasQuestions,
     variant,
+    availableSteps,
+    onStepSelect,
 }) => {
     const steps = buildResumeOptimizationSteps(hasQuestions);
     return (
@@ -36,18 +40,9 @@ export const ResumeOptimizationStepRail: React.FC<ResumeOptimizationStepRailProp
             <ol className={variant === 'mobile' ? 'flex min-w-max gap-2 px-4 py-3' : 'space-y-2 p-4'}>
                 {steps.map((step) => {
                     const isActive = step.id === activeStep;
-                    return (
-                        <li
-                            key={step.id}
-                            aria-current={isActive ? 'step' : undefined}
-                            className={[
-                                'flex items-center gap-2 rounded-xl border text-[12px] font-semibold transition-colors motion-reduce:transition-none',
-                                variant === 'mobile' ? 'whitespace-nowrap px-3 py-2' : 'px-3 py-3',
-                                isActive
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/70 dark:bg-emerald-950/35 dark:text-emerald-200'
-                                    : 'border-transparent text-slate-500 dark:text-slate-400',
-                            ].join(' ')}
-                        >
+                    const isAvailable = availableSteps.includes(step.id);
+                    const content = (
+                        <>
                             <span
                                 aria-hidden="true"
                                 className={[
@@ -60,6 +55,37 @@ export const ResumeOptimizationStepRail: React.FC<ResumeOptimizationStepRailProp
                                 {step.number}
                             </span>
                             <span>{step.label}</span>
+                        </>
+                    );
+                    return (
+                        <li
+                            key={step.id}
+                            aria-current={isActive ? 'step' : undefined}
+                        >
+                            {isAvailable ? (
+                                <button
+                                    type="button"
+                                    onClick={() => onStepSelect(step.id)}
+                                    className={[
+                                        'flex min-h-[44px] w-full items-center gap-2 rounded-xl border text-left text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 motion-reduce:transition-none',
+                                        variant === 'mobile' ? 'whitespace-nowrap px-3 py-2' : 'px-3 py-2.5',
+                                        isActive
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/70 dark:bg-emerald-950/35 dark:text-emerald-200'
+                                            : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-900',
+                                    ].join(' ')}
+                                >
+                                    {content}
+                                </button>
+                            ) : (
+                                <div
+                                    className={[
+                                        'flex min-h-[44px] items-center gap-2 rounded-xl border border-transparent text-[12px] font-semibold text-slate-400 opacity-65 dark:text-slate-600',
+                                        variant === 'mobile' ? 'whitespace-nowrap px-3 py-2' : 'px-3 py-2.5',
+                                    ].join(' ')}
+                                >
+                                    {content}
+                                </div>
+                            )}
                         </li>
                     );
                 })}
