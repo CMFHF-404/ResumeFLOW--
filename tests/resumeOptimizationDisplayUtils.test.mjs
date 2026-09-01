@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   areResumeOptimizationAnswersComplete,
+  buildResumeOptimizationChangePreview,
   buildResumeOptimizationOverviewMetrics,
   buildResumeOptimizationQuestionChoices,
   formatResumeOptimizationDimensionLabel,
@@ -10,6 +11,7 @@ import {
   formatResumeOptimizationSourceLabel,
   formatResumeOptimizationUserCopy,
   isResumeOptimizationAnswerComplete,
+  resolveResumeOptimizationExperienceCategory,
   resolveResumeOptimizationChoiceDraft,
   sortResumeOptimizationChangesByExpectedGain,
 } from '../views/ResumeEditor/components/ResumeOptimization/optimizationDisplayUtils.mjs';
@@ -87,6 +89,14 @@ test('display labels use allowlists and never echo paths or unknown identifiers'
     formatResumeOptimizationUserCopy('请修改 fieldPath=star.a 并参考 moduleId=private-id', '安全降级'),
     '安全降级',
   );
+  assert.equal(
+    formatResumeOptimizationUserCopy('{"issueId":"ISS_PRIVATE","evidenceId":"E_PRIVATE"}', '安全降级'),
+    '安全降级',
+  );
+  assert.equal(
+    formatResumeOptimizationUserCopy('来自 masterExperienceId=private-id 的 runId=private-run', '安全降级'),
+    '安全降级',
+  );
 });
 
 test('answer completeness accepts four terminal states and fails closed for malformed sets', () => {
@@ -136,4 +146,66 @@ test('question choices submit human labels, map terminal choices, and deduplicat
     label: '负责部分页面',
     draft: { state: 'answered', value: '负责部分页面' },
   }]);
+});
+
+test('diff values use targeted output, safe rich text, skill names, and static section labels', () => {
+  const textPreview = buildResumeOptimizationChangePreview({
+    moduleType: 'experience_star',
+    beforeValue: '<b>原始行动</b><br>第二行',
+    generalValue: '不得展示的通用稿',
+    targetedValue: '<strong>定向行动</strong>',
+  }, {});
+  assert.deepEqual(textPreview, {
+    before: ['原始行动', '第二行'],
+    after: ['定向行动'],
+  });
+  assert.doesNotMatch(JSON.stringify(textPreview), /不得展示的通用稿|<b>|<strong>/);
+
+  assert.deepEqual(buildResumeOptimizationChangePreview({
+    moduleType: 'experience_star',
+    beforeValue: '{"issueId":"ISS_PRIVATE"}',
+    targetedValue: '{"evidenceId":"E_PRIVATE"}',
+  }, {}), {
+    before: ['无内容'],
+    after: ['无内容'],
+  });
+
+  const skillPreview = buildResumeOptimizationChangePreview({
+    moduleType: 'skills_order',
+    beforeValue: ['private-skill-a', 'private-skill-unknown'],
+    generalValue: ['private-skill-unknown', 'private-skill-a'],
+    targetedValue: ['private-skill-unknown', 'private-skill-a'],
+  }, { 'private-skill-a': '用户研究' });
+  assert.deepEqual(skillPreview, {
+    before: ['用户研究', '未知技能'],
+    after: ['未知技能', '用户研究'],
+  });
+  assert.doesNotMatch(JSON.stringify(skillPreview), /private-skill/);
+
+  assert.deepEqual(buildResumeOptimizationChangePreview({
+    moduleType: 'section_order',
+    beforeValue: ['summary', 'work', 'private-section'],
+    generalValue: ['work', 'summary', 'private-section'],
+    targetedValue: ['work', 'summary', 'private-section'],
+  }, {}), {
+    before: ['个人评价', '工作经历', '其他模块'],
+    after: ['工作经历', '个人评价', '其他模块'],
+  });
+
+  assert.deepEqual(buildResumeOptimizationChangePreview({
+    moduleType: 'personal_summary',
+    beforeValue: { secret: true },
+    generalValue: null,
+    targetedValue: null,
+  }, {}), {
+    before: ['内容暂不可预览'],
+    after: ['保留原文'],
+  });
+});
+
+test('bank navigation categories fail closed without echoing unknown server values', () => {
+  assert.equal(resolveResumeOptimizationExperienceCategory('work'), 'work');
+  assert.equal(resolveResumeOptimizationExperienceCategory('project'), 'project');
+  assert.equal(resolveResumeOptimizationExperienceCategory('education'), 'education');
+  assert.equal(resolveResumeOptimizationExperienceCategory('../../private'), undefined);
 });

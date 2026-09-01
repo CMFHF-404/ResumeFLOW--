@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 
+import type { ExperienceCategory } from '../../../../services/experienceService';
 import type { useResumeOptimizationFlow } from '../../hooks/useResumeOptimizationFlow';
 import type { ResumeOptimizationStatus, ResumeOptimizationUiState } from '../../../../types/resumeOptimization';
 import { ResumeOptimizationOverview } from './ResumeOptimizationOverview';
+import { ResumeOptimizationPreview } from './ResumeOptimizationPreview';
 import { ResumeOptimizationProgress } from './ResumeOptimizationProgress';
 import { ResumeOptimizationQuestions } from './ResumeOptimizationQuestions';
 import {
@@ -33,6 +35,13 @@ type ResumeOptimizationFutureContentProps = Pick<ResumeOptimizationFlowSlice,
 type ResumeOptimizationWorkspaceProps = ResumeOptimizationFlowSlice & ResumeOptimizationFutureContentProps & {
     onRequestClose: () => boolean | Promise<boolean>;
     returnFocusRef: MutableRefObject<HTMLElement | null>;
+    suppressReturnFocusRef: MutableRefObject<boolean>;
+    skillNameById: Record<string, string>;
+    onViewExperience: (
+        category: ExperienceCategory | undefined,
+        masterExperienceId: string,
+    ) => void;
+    onOpenAutoAssembly: () => void;
 };
 
 const FOCUSABLE_SELECTOR = [
@@ -113,8 +122,14 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     isAnswerSubmissionFrozen,
     setAnswer,
     submitAnswers,
+    acceptedChangeIds,
+    toggleChange,
     onRequestClose,
     returnFocusRef,
+    suppressReturnFocusRef,
+    skillNameById,
+    onViewExperience,
+    onOpenAutoAssembly,
 }) => {
     const overlayRef = useRef<HTMLDivElement>(null);
     const dialogRef = useRef<HTMLElement>(null);
@@ -276,6 +291,10 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             });
             const savedReturnFocus = returnFocusRef.current;
             returnFocusRef.current = null;
+            if (suppressReturnFocusRef.current) {
+                suppressReturnFocusRef.current = false;
+                return;
+            }
             window.requestAnimationFrame(() => {
                 const fallbackReturnFocus = Array.from(
                     document.querySelectorAll<HTMLElement>('[data-resume-optimization-focus-return]:not([disabled])')
@@ -286,7 +305,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                 returnTarget?.focus();
             });
         };
-    }, [returnFocusRef]);
+    }, [returnFocusRef, suppressReturnFocusRef]);
 
     const footerStatus = useMemo(() => (
         isCloseBlocked ? '应用与复评期间暂不可关闭' : '可随时返回，未应用的方案会保留'
@@ -371,6 +390,16 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                     error={isQuestionRetry ? error : null}
                                     onSetAnswer={setAnswer}
                                     onSubmit={submitAnswers}
+                                />
+                            ) : displayStep === 'preview' && plan && uiState !== 'stale' ? (
+                                <ResumeOptimizationPreview
+                                    plan={plan}
+                                    acceptedChangeIds={acceptedChangeIds}
+                                    readOnly={run?.status !== 'preview_ready'}
+                                    skillNameById={skillNameById}
+                                    onToggleChange={toggleChange}
+                                    onViewExperience={onViewExperience}
+                                    onOpenAutoAssembly={onOpenAutoAssembly}
                                 />
                             ) : (
                                 <ResumeOptimizationPlaceholder activeStep={displayStep} error={error} uiState={uiState} />

@@ -1,4 +1,5 @@
 import { normalizeEvaluationDimension } from '../ResumeEvaluationReport/evaluationReportUtils.mjs';
+import { stripRichTextToText } from '../../../../utils/richText.ts';
 
 const TERMINAL_ANSWER_STATES = new Set([
   'no_data',
@@ -35,9 +36,30 @@ const SPECIAL_DIMENSION_LABELS = new Map([
   ['证书完整性', '证书完整性'],
 ]);
 
+const SECTION_LABELS = new Map([
+  ['summary', '个人评价'],
+  ['education', '教育背景'],
+  ['work', '工作经历'],
+  ['project', '项目经历'],
+  ['certifications', '证书资质'],
+  ['skills', '技能清单'],
+]);
+
+const EXPERIENCE_CATEGORIES = new Set(['work', 'project', 'education']);
+
 const list = (value) => Array.isArray(value) ? value : [];
 const text = (value) => typeof value === 'string' ? value.trim() : '';
-const INTERNAL_COPY_MARKER = /(?:\/?(?:currentResume|current_resume|selectedSourceExperiences|selected_source_experiences|userAnswers|user_answers)(?:\/|\.|\b)|\b(?:moduleId|module_id|fieldPath|field_path|sourceRefs?|source_refs?|sourceSnapshotHash|source_snapshot_hash|affectsChangeIds|affects_change_ids|changeId|change_id|questionId|question_id)\b)/iu;
+const INTERNAL_COPY_MARKER = /(?:\/?(?:currentResume|current_resume|selectedSourceExperiences|selected_source_experiences|userAnswers|user_answers)(?:\/|\.|\b)|\b(?:moduleId|module_id|fieldPath|field_path|sourceRefs?|source_refs?|sourceSnapshotHash|source_snapshot_hash|affectsChangeIds|affects_change_ids|changeId|change_id|questionId|question_id|issueId|issue_id|evidenceId|evidence_id|masterExperienceId|master_experience_id|suggestionId|suggestion_id|runId|run_id|requestId|request_id)\b)/iu;
+
+const looksLikeSerializedStructuredData = (value) => {
+  if (!value.startsWith('{') && !value.startsWith('[')) return false;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed !== null && typeof parsed === 'object';
+  } catch {
+    return false;
+  }
+};
 
 export const formatResumeOptimizationUserCopy = (value, fallback = '') => {
   const normalized = text(value);
@@ -47,7 +69,10 @@ export const formatResumeOptimizationUserCopy = (value, fallback = '') => {
     .normalize('NFKC')
     .replace(/%2f/giu, '/')
     .replace(/~1/gu, '/');
-  return INTERNAL_COPY_MARKER.test(inspectionCopy) ? safeFallback : normalized;
+  return INTERNAL_COPY_MARKER.test(inspectionCopy)
+    || looksLikeSerializedStructuredData(inspectionCopy)
+    ? safeFallback
+    : normalized;
 };
 
 export const RESUME_OPTIMIZATION_TERMINAL_ANSWER_OPTIONS = Object.freeze([
@@ -141,3 +166,55 @@ export const buildResumeOptimizationQuestionChoices = (choices) => {
   }
   return resolved;
 };
+
+const fallbackPreviewLines = (value) => (
+  value === null || value === undefined ? ['无内容'] : ['内容暂不可预览']
+);
+
+const formatRichTextPreviewLines = (value) => {
+  if (typeof value !== 'string') return fallbackPreviewLines(value);
+  const lines = stripRichTextToText(value)
+    .split(/\r?\n/u)
+    .map((item) => formatResumeOptimizationUserCopy(item))
+    .filter(Boolean);
+  return lines.length > 0 ? lines : ['无内容'];
+};
+
+const formatSkillOrderPreviewLines = (value, skillNameById) => {
+  if (!Array.isArray(value)) return fallbackPreviewLines(value);
+  return value.map((skillId) => {
+    if (typeof skillId !== 'string') return '未知技能';
+    const name = Object.prototype.hasOwnProperty.call(skillNameById, skillId)
+      ? skillNameById[skillId]
+      : undefined;
+    return formatResumeOptimizationUserCopy(name, '未知技能');
+  });
+};
+
+const formatSectionOrderPreviewLines = (value) => {
+  if (!Array.isArray(value)) return fallbackPreviewLines(value);
+  return value.map((sectionId) => (
+    typeof sectionId === 'string' ? SECTION_LABELS.get(sectionId) ?? '其他模块' : '其他模块'
+  ));
+};
+
+const formatChangePreviewLines = (moduleType, value, skillNameById) => {
+  if (moduleType === 'skills_order') {
+    return formatSkillOrderPreviewLines(value, skillNameById);
+  }
+  if (moduleType === 'section_order') {
+    return formatSectionOrderPreviewLines(value);
+  }
+  return formatRichTextPreviewLines(value);
+};
+
+export const buildResumeOptimizationChangePreview = (change, skillNameById = {}) => ({
+  before: formatChangePreviewLines(change?.moduleType, change?.beforeValue, skillNameById),
+  after: change?.targetedValue === null
+    ? ['保留原文']
+    : formatChangePreviewLines(change?.moduleType, change?.targetedValue, skillNameById),
+});
+
+export const resolveResumeOptimizationExperienceCategory = (value) => (
+  EXPERIENCE_CATEGORIES.has(value) ? value : undefined
+);

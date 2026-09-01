@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
     Check,
     ChevronDown,
@@ -49,6 +49,9 @@ export type MobileEditorHeaderProps = {
     onCloseBatchPolishToolbar?: () => void;
     onAutoAssemble: () => void;
     isAutoAssembling: boolean;
+    autoAssemblyFocusRequest?: number;
+    showReturnToOptimizationPlan?: boolean;
+    onReturnToOptimizationPlan?: () => void;
     onCreateResume: () => void;
     canCreateResume: boolean;
     isCreatingResume: boolean;
@@ -102,6 +105,9 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     onCloseBatchPolishToolbar,
     onAutoAssemble,
     isAutoAssembling,
+    autoAssemblyFocusRequest = 0,
+    showReturnToOptimizationPlan = false,
+    onReturnToOptimizationPlan,
     onCreateResume,
     canCreateResume,
     isCreatingResume,
@@ -138,6 +144,8 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     const [draftName, setDraftName] = useState(resumeName);
     const [isEditingJd, setIsEditingJd] = useState(false);
     const [isAnalysisCollapsed, setIsAnalysisCollapsed] = useState(false);
+    const autoAssemblyButtonRef = useRef<HTMLButtonElement>(null);
+    const handledAutoAssemblyFocusRequestRef = useRef(0);
 
     const showJdInput = !isJDCollapsed;
     const {
@@ -172,6 +180,26 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
             setIsAnalysisCollapsed(false);
         }
     }, [showJdInput, isAnalyzing, isGeneratingBossGreeting, isEditingJd]);
+
+    useEffect(() => {
+        if (
+            autoAssemblyFocusRequest <= 0
+            || handledAutoAssemblyFocusRequestRef.current === autoAssemblyFocusRequest
+        ) return undefined;
+        handledAutoAssemblyFocusRequestRef.current = autoAssemblyFocusRequest;
+        const frame = window.requestAnimationFrame(() => {
+            const button = autoAssemblyButtonRef.current;
+            if (!button || button.getClientRects().length === 0) return;
+            const prefersReducedMotion = typeof window.matchMedia === 'function'
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            button.scrollIntoView({
+                behavior: prefersReducedMotion ? 'auto' : 'smooth',
+                block: 'center',
+            });
+            button.focus();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [autoAssemblyFocusRequest]);
 
     const handleTextareaPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
         if (isAnalyzing) {
@@ -653,7 +681,18 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             </div>
                         )}
 
-                        <div className={`flex w-full items-stretch gap-2 ${showJdInput ? 'mt-4' : ''}`}>
+                        {showReturnToOptimizationPlan && onReturnToOptimizationPlan ? (
+                            <div className={`flex justify-end ${showJdInput ? 'mt-4' : ''}`}>
+                                <button
+                                    type="button"
+                                    onClick={onReturnToOptimizationPlan}
+                                    className="min-h-[36px] rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                                >
+                                    返回优化方案
+                                </button>
+                            </div>
+                        ) : null}
+                        <div className={`flex w-full items-stretch gap-2 ${showJdInput && !(showReturnToOptimizationPlan && onReturnToOptimizationPlan) ? 'mt-4' : 'mt-2'}`}>
                             <div className="flex min-w-[112px] flex-[1.08]">
                                 <button
                                     type="button"
@@ -703,6 +742,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 {isBatchPolishing ? '润色中' : '一键润色'}
                             </button>
                             <button
+                                ref={autoAssemblyButtonRef}
                                 type="button"
                                 onClick={onAutoAssemble}
                                 disabled={isAutoAssembling || hasBlockingPolishState}

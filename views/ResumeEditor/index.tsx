@@ -5,7 +5,8 @@ import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
 import { useResumeEvaluation } from '../../hooks/useResumeEvaluation';
 import { useResumeData } from '../../hooks/useResumeData';
-import type { AssistantSelectedResume } from '../../services/aiService';
+import type { AssistantDraftApplyNavigation, AssistantSelectedResume } from '../../services/aiService';
+import type { ExperienceCategory } from '../../services/experienceService';
 import type { Resume as DashboardResume } from '../../types';
 import { buildExperienceDate } from '../../utils/dateUtils';
 import {
@@ -152,6 +153,10 @@ type ResumeEditorProps = {
     onLaunchAssistant?: (request: AssistantLaunchRequest) => void;
     onOpenAssistantSession?: (sessionId: string) => void;
     onOpenAgentPluginConfig?: () => void;
+    onJumpToExperienceBank?: (
+        category?: AssistantDraftApplyNavigation['category'],
+        targetId?: string,
+    ) => void;
     mobileDrawerOpenRequest?: number;
     onMobileDrawerOpenRequestConsumed?: () => void;
     focusExperienceRequest?: {
@@ -182,6 +187,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     onLaunchAssistant,
     onOpenAssistantSession,
     onOpenAgentPluginConfig,
+    onJumpToExperienceBank,
     mobileDrawerOpenRequest = 0,
     onMobileDrawerOpenRequestConsumed,
     focusExperienceRequest = null,
@@ -289,6 +295,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen] = useState(false);
     const resumeOptimizationReturnFocusRef = useRef<HTMLElement | null>(null);
     const resumeOptimizationShouldRestoreReportRef = useRef(false);
+    const resumeOptimizationSuppressReturnFocusRef = useRef(false);
+    const resumeOptimizationNavigationInFlightRef = useRef(false);
+    const [resumeOptimizationAutoAssemblyFocusRequest, setResumeOptimizationAutoAssemblyFocusRequest] = useState(0);
     const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
     const assistantSidebarLaunchRequestIdRef = useRef(0);
     const {
@@ -902,6 +911,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         || resumeOptimizationFlow.uiState === 'applying'
         || resumeOptimizationFlow.uiState === 'rescoring'
     );
+    const resumeOptimizationSkillNameById = useMemo(() => Object.fromEntries(
+        skillGroups.flatMap((group) => group.skills.map((skillItem) => [skillItem.id, skillItem.name])),
+    ), [skillGroups]);
     const handleStartResumeOptimization = useCallback(async () => {
         resumeOptimizationReturnFocusRef.current = document.activeElement instanceof HTMLElement
             ? document.activeElement
@@ -922,6 +934,55 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resumeOptimizationShouldRestoreReportRef.current = false;
         return true;
     }, [resumeOptimizationFlow.closeWorkspace]);
+
+    const runResumeOptimizationNavigation = useCallback(async (navigate: () => void) => {
+        if (resumeOptimizationNavigationInFlightRef.current) return false;
+        resumeOptimizationNavigationInFlightRef.current = true;
+        resumeOptimizationSuppressReturnFocusRef.current = true;
+        let didClose = false;
+        try {
+            didClose = await resumeOptimizationFlow.closeWorkspace();
+            if (!didClose) {
+                resumeOptimizationSuppressReturnFocusRef.current = false;
+                return false;
+            }
+            resumeOptimizationShouldRestoreReportRef.current = false;
+            resumeOptimizationReturnFocusRef.current = null;
+            navigate();
+            return true;
+        } catch (cause) {
+            if (!didClose) resumeOptimizationSuppressReturnFocusRef.current = false;
+            throw cause;
+        } finally {
+            resumeOptimizationNavigationInFlightRef.current = false;
+        }
+    }, [resumeOptimizationFlow.closeWorkspace]);
+
+    const handleResumeOptimizationViewExperience = useCallback((
+        category: ExperienceCategory | undefined,
+        masterExperienceId: string,
+    ) => {
+        if (!onJumpToExperienceBank) return;
+        void runResumeOptimizationNavigation(() => {
+            onJumpToExperienceBank?.(category, masterExperienceId);
+        });
+    }, [onJumpToExperienceBank, runResumeOptimizationNavigation]);
+
+    const handleResumeOptimizationOpenAutoAssembly = useCallback(() => {
+        if (experience.editingExpId) {
+            showToastInfo('请先保存当前经历或返回列表，再前往一键组装。');
+            return;
+        }
+        void runResumeOptimizationNavigation(() => {
+            setFactorySidebarTab('edit');
+            setSidebarTab('experience');
+            setResumeOptimizationAutoAssemblyFocusRequest((current) => current + 1);
+        });
+    }, [experience.editingExpId, runResumeOptimizationNavigation, setSidebarTab, showToastInfo]);
+
+    const handleResumeOptimizationReturnToPlan = useCallback(() => {
+        void resumeOptimizationFlow.reopenLatestRun();
+    }, [resumeOptimizationFlow.reopenLatestRun]);
 
     useEffect(() => {
         if (resumeOptimizationFlow.uiState === 'closed') {
@@ -1870,6 +1931,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isAutoAssembling,
             onBatchPolish: handleOpenBatchPolishToolbar,
             onAutoAssemble: handleAutoAssemble,
+            autoAssemblyFocusRequest: resumeOptimizationAutoAssemblyFocusRequest,
+            showReturnToOptimizationPlan: (
+                resumeOptimizationFlow.uiState === 'closed'
+                && resumeOptimizationFlow.run?.status === 'preview_ready'
+            ),
+            onReturnToOptimizationPlan: handleResumeOptimizationReturnToPlan,
             onResetRenamingCategory: resetRenamingCategory,
             onPolishExperience: handlePolishExperienceFromCard,
             activePolishExperienceId: activeFloatingPolishExperienceId,
@@ -2097,6 +2164,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onOpenTemplateSelector={handleOpenTemplateSelector}
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
+                    autoAssemblyFocusRequest={resumeOptimizationAutoAssemblyFocusRequest}
+                    showReturnToOptimizationPlan={(
+                        resumeOptimizationFlow.uiState === 'closed'
+                        && resumeOptimizationFlow.run?.status === 'preview_ready'
+                    )}
+                    onReturnToOptimizationPlan={handleResumeOptimizationReturnToPlan}
                     onCreateResume={handleCreateResume}
                     canCreateResume={canCreateResume}
                     isCreatingResume={isCreatingResume}
@@ -2163,6 +2236,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     {...resumeOptimizationFlow}
                     onRequestClose={handleCloseResumeOptimization}
                     returnFocusRef={resumeOptimizationReturnFocusRef}
+                    suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
+                    skillNameById={resumeOptimizationSkillNameById}
+                    onViewExperience={handleResumeOptimizationViewExperience}
+                    onOpenAutoAssembly={handleResumeOptimizationOpenAutoAssembly}
                 />
             ) : null}
             <TemplateSelectorModal
