@@ -593,7 +593,7 @@ async def answer_resume_optimization_stream(
     return _stream_response(
         user_id=current_user.id,
         entrypoint="resume_optimization_answer",
-        route_metadata=f"/api/resume-optimizations/{run_id}/answers/stream",
+        route_metadata="/api/resume-optimizations/{run_id}/answers/stream",
         request_lease=request_lease,
         release_guard=release_guard,
         request_id=request_id,

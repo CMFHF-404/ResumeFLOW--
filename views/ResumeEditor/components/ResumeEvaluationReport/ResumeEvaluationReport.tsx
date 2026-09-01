@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { FileWarning, ListChecks, Wand2 } from 'lucide-react';
 import {
     buildRadarAxis,
@@ -6,6 +6,10 @@ import {
     EVALUATION_DIMENSIONS,
     normalizeResumeEvaluation,
 } from './evaluationReportUtils.mjs';
+import {
+    trackResumeOptimizationCtaClick,
+    trackResumeOptimizationCtaView,
+} from '../../../../utils/analyticsTracker';
 
 type ResumeEvaluationReportProps = {
     evaluation: unknown;
@@ -99,6 +103,39 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
     onStartOptimization,
 }) => {
     const report = normalizeResumeEvaluation(evaluation);
+    const optimizationCtaRef = useRef<HTMLButtonElement | null>(null);
+    const ctaViewTrackedRef = useRef(false);
+
+    useEffect(() => {
+        const node = optimizationCtaRef.current;
+        if (!canStartOptimization || isOutdated || isOptimizationBusy) {
+            return undefined;
+        }
+        if (!report || !isOptimizationEnabled || !onStartOptimization || !node || ctaViewTrackedRef.current) {
+            return undefined;
+        }
+        const trackIfVisible = (isIntersecting: boolean) => {
+            if (!isIntersecting || ctaViewTrackedRef.current || node.getClientRects().length === 0) return;
+            if (node.closest('[inert], [aria-hidden="true"]')) return;
+            const style = window.getComputedStyle(node);
+            if (style.display === 'none' || style.visibility === 'hidden') return;
+            ctaViewTrackedRef.current = true;
+            trackResumeOptimizationCtaView({ beforeScore: report.overallScore });
+        };
+        if (typeof IntersectionObserver === 'function') {
+            const observer = new IntersectionObserver((entries) => {
+                trackIfVisible(Boolean(entries[0]?.isIntersecting));
+            });
+            observer.observe(node);
+            return () => observer.disconnect();
+        }
+        const frame = window.requestAnimationFrame(() => trackIfVisible(true));
+        return () => window.cancelAnimationFrame(frame);
+    }, [
+        canStartOptimization, isOptimizationBusy, isOptimizationEnabled,
+        isOutdated, onStartOptimization, report,
+    ]);
+
     if (!report) {
         const placeholderContent = <>
             <FileWarning className="mx-auto h-5 w-5 text-slate-400" />
@@ -162,9 +199,16 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
                 {summary ? <p className="mt-3 border-l-2 border-emerald-500/60 pl-3 text-[11.5px] leading-relaxed text-slate-700 dark:text-slate-300">{summary}</p> : null}
                 {isOptimizationEnabled && onStartOptimization ? (
                     <div className="mt-3 flex flex-col items-start gap-1.5">
+                        <p className="text-[10.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                            本次优化按实际模型用量消耗 Token，包含一轮事实补充和一次应用后复评。
+                        </p>
                         <button
+                            ref={optimizationCtaRef}
                             type="button"
-                            onClick={onStartOptimization}
+                            onClick={() => {
+                                trackResumeOptimizationCtaClick({ beforeScore: report.overallScore });
+                                onStartOptimization?.();
+                            }}
                             data-resume-optimization-focus-return="true"
                             disabled={isOutdated || isOptimizationBusy || !canStartOptimization}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-slate-950"

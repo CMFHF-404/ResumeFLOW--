@@ -3,12 +3,15 @@ import { ArrowUpRight, Database, Wand2 } from 'lucide-react';
 
 import type { ResumeOptimizationBankSuggestion } from '../../../../types/resumeOptimization';
 import type { ExperienceCategory } from '../../../../services/experienceService';
+import { trackResumeOptimizationBankSuggestionClick } from '../../../../utils/analyticsTracker';
 import {
     formatResumeOptimizationUserCopy,
     resolveResumeOptimizationExperienceCategory,
 } from './optimizationDisplayUtils.mjs';
 
 type ResumeOptimizationBankSuggestionsProps = {
+    resumeId: string;
+    runId: string;
     suggestions: ResumeOptimizationBankSuggestion[];
     onViewExperience: (
         category: ExperienceCategory | undefined,
@@ -24,6 +27,8 @@ const CATEGORY_LABELS: Record<ExperienceCategory, string> = {
 };
 
 export const ResumeOptimizationBankSuggestions: React.FC<ResumeOptimizationBankSuggestionsProps> = ({
+    resumeId,
+    runId,
     suggestions,
     onViewExperience,
     onOpenAutoAssembly,
@@ -85,7 +90,15 @@ export const ResumeOptimizationBankSuggestions: React.FC<ResumeOptimizationBankS
                             <div className="mt-4 grid grid-cols-2 gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => onViewExperience(category, suggestion.masterExperienceId)}
+                                    onClick={() => {
+                                        trackResumeOptimizationBankSuggestionClick({
+                                            resumeId,
+                                            runId,
+                                            action: 'view_experience',
+                                            bankSuggestionCount: suggestions.length,
+                                        });
+                                        onViewExperience(category, suggestion.masterExperienceId);
+                                    }}
                                     className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 motion-reduce:transition-none dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-200 dark:hover:bg-indigo-950/40"
                                 >
                                     查看经历
@@ -93,7 +106,15 @@ export const ResumeOptimizationBankSuggestions: React.FC<ResumeOptimizationBankS
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={onOpenAutoAssembly}
+                                    onClick={() => {
+                                        trackResumeOptimizationBankSuggestionClick({
+                                            resumeId,
+                                            runId,
+                                            action: 'open_auto_assembly',
+                                            bankSuggestionCount: suggestions.length,
+                                        });
+                                        onOpenAutoAssembly();
+                                    }}
                                     className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 text-[11px] font-bold text-white transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 motion-reduce:transition-none dark:bg-indigo-500 dark:text-slate-950 dark:hover:bg-indigo-400"
                                 >
                                     <Wand2 className="h-3.5 w-3.5" aria-hidden="true" />

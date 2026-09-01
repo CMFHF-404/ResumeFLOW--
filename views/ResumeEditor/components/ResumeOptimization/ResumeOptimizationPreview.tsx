@@ -6,6 +6,8 @@ import { ResumeOptimizationBankSuggestions } from './ResumeOptimizationBankSugge
 import { ResumeOptimizationDiffCard } from './ResumeOptimizationDiffCard';
 
 type ResumeOptimizationPreviewProps = {
+    resumeId: string;
+    runId: string;
     plan: ResumeOptimizationPlan;
     acceptedChangeIds: string[];
     readOnly: boolean;
@@ -19,6 +21,8 @@ type ResumeOptimizationPreviewProps = {
 };
 
 export const ResumeOptimizationPreview: React.FC<ResumeOptimizationPreviewProps> = ({
+    resumeId,
+    runId,
     plan,
     acceptedChangeIds,
     readOnly,
@@ -56,6 +60,8 @@ export const ResumeOptimizationPreview: React.FC<ResumeOptimizationPreviewProps>
         </section>
 
         <ResumeOptimizationBankSuggestions
+            resumeId={resumeId}
+            runId={runId}
             suggestions={plan.bankSuggestions}
             onViewExperience={onViewExperience}
             onOpenAutoAssembly={onOpenAutoAssembly}

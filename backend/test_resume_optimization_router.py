@@ -555,7 +555,7 @@ class ResumeOptimizationRouterTests(unittest.IsolatedAsyncioTestCase):
             USER_ID,
             entrypoint="resume_optimization_answer",
             metadata={
-                "route": f"/api/resume-optimizations/{RUN_ID}/answers/stream"
+                "route": "/api/resume-optimizations/{run_id}/answers/stream"
             },
             request_lease=lease,
             release_request_lease_on_exit=False,

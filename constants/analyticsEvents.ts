@@ -24,6 +24,19 @@ export const ANALYTICS_EVENTS = {
   LAYOUT_MODE_CHANGE: 'layout_mode_change',
   SMART_ONE_PAGE_TRIGGERED: 'smart_one_page_triggered',
   MODULE_REORDERED: 'module_reordered',
+  RESUME_OPTIMIZATION_CTA_VIEW: 'resume_optimization_cta_view',
+  RESUME_OPTIMIZATION_CTA_CLICK: 'resume_optimization_cta_click',
+  RESUME_OPTIMIZATION_PLAN_START: 'resume_optimization_plan_start',
+  RESUME_OPTIMIZATION_PLAN_RESULT: 'resume_optimization_plan_result',
+  RESUME_OPTIMIZATION_QUESTIONS_VIEW: 'resume_optimization_questions_view',
+  RESUME_OPTIMIZATION_QUESTIONS_SUBMIT: 'resume_optimization_questions_submit',
+  RESUME_OPTIMIZATION_CHANGE_TOGGLE: 'resume_optimization_change_toggle',
+  RESUME_OPTIMIZATION_APPLY_START: 'resume_optimization_apply_start',
+  RESUME_OPTIMIZATION_APPLY_RESULT: 'resume_optimization_apply_result',
+  RESUME_OPTIMIZATION_RESCORE_RESULT: 'resume_optimization_rescore_result',
+  RESUME_OPTIMIZATION_REVERT_RESULT: 'resume_optimization_revert_result',
+  RESUME_OPTIMIZATION_BANK_SUGGESTION_CLICK: 'resume_optimization_bank_suggestion_click',
+  RESUME_OPTIMIZATION_PREVIEW_VIEW: 'resume_optimization_preview_view',
 } as const;
 
 export const ANALYTICS_PROPERTIES = {
@@ -44,6 +57,7 @@ export const ANALYTICS_PROPERTIES = {
   MODULE_KEY: 'module_key',
   SECTION_ID: 'section_id',
   RESUME_ID: 'resume_id',
+  RUN_ID: 'run_id',
   SOURCE_RESUME_ID: 'source_resume_id',
   DUPLICATED_RESUME_ID: 'duplicated_resume_id',
   FROM_POSITION: 'from_position',
@@ -62,6 +76,20 @@ export const ANALYTICS_PROPERTIES = {
   PROJECT_COUNT: 'project_count',
   EDUCATION_COUNT: 'education_count',
   CALLBACK_ONLY: 'callback_only',
+  BEFORE_SCORE: 'before_score',
+  AFTER_SCORE: 'after_score',
+  SCORE_DELTA: 'score_delta',
+  DIRECT_CHANGE_COUNT: 'direct_change_count',
+  QUESTION_COUNT: 'question_count',
+  ANSWERED_COUNT: 'answered_count',
+  NO_DATA_COUNT: 'no_data_count',
+  UNKNOWN_COUNT: 'unknown_count',
+  NOT_MY_WORK_COUNT: 'not_my_work_count',
+  SKIPPED_COUNT: 'skipped_count',
+  ACCEPTED_CHANGE_COUNT: 'accepted_change_count',
+  BLOCKED_CHANGE_COUNT: 'blocked_change_count',
+  BANK_SUGGESTION_COUNT: 'bank_suggestion_count',
+  FAILURE_CODE: 'failure_code',
 } as const;
 
 export type AiPolishAction = 'applied' | 'edited' | 'discarded';
