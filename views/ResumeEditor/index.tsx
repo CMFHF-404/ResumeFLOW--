@@ -465,6 +465,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         hasResumeVersionConflict,
         applyResumeDetail,
         flushResumeConfig: flushResumeConfigWithTimestamp,
+        commitLatestResumeConfigIfNeeded,
         reloadResumeContext,
         suppressAutoSaveForConfig,
         clearSuppressedAutoSave,
@@ -899,6 +900,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         reloadResumeContext,
         generateEvaluation,
         flushResumeConfig: flushResumeConfigWithTimestamp,
+        commitLatestResumeConfigIfNeeded,
         toast: {
             success: showToastSuccess,
             error: showToastError,

@@ -355,6 +355,7 @@ class ResumeOptimizationRunRead(BaseModel):
     applied_content_signature: str | None = None
     created_at: datetime
     updated_at: datetime
+    applied_resume_updated_at: datetime | None = None
     applied_at: datetime | None = None
     completed_at: datetime | None = None
 

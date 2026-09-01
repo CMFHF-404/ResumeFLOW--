@@ -135,6 +135,47 @@ test('evaluation signature tracks rendered section order while match candidates 
   );
 });
 
+test('selected skill order drives the resume snapshot without reordering match candidates', async () => {
+  const { buildAnalyzePayload, buildAnalyzeSignature, buildMatchCandidateSignature } = await importSnapshotUtils();
+  const orderedSkillGroups = [{
+    id: 'group-ordered',
+    name: '工具',
+    skills: [
+      { id: 'skill-a', name: 'Figma' },
+      { id: 'skill-b', name: 'SQL' },
+    ],
+  }];
+  const contextAB = {
+    ...context,
+    selectedSkillIds: new Set(['skill-a', 'skill-b']),
+  };
+  const contextBA = {
+    ...context,
+    selectedSkillIds: new Set(['skill-b', 'skill-a']),
+  };
+
+  const snapshotAB = buildAnalyzePayload(experiences, certifications, orderedSkillGroups, contextAB);
+  const snapshotBA = buildAnalyzePayload(experiences, certifications, orderedSkillGroups, contextBA);
+  assert.deepEqual(snapshotAB.resume.skills.map((item) => item.id), ['skill-a', 'skill-b']);
+  assert.deepEqual(snapshotBA.resume.skills.map((item) => item.id), ['skill-b', 'skill-a']);
+  assert.deepEqual(snapshotBA.match_candidates.skills.map((item) => item.id), ['skill-a', 'skill-b']);
+  assert.notEqual(
+    buildAnalyzeSignature(experiences, certifications, orderedSkillGroups, contextAB),
+    buildAnalyzeSignature(experiences, certifications, orderedSkillGroups, contextBA),
+  );
+  assert.equal(
+    buildMatchCandidateSignature(experiences, certifications, orderedSkillGroups),
+    buildMatchCandidateSignature(experiences, certifications, orderedSkillGroups),
+  );
+  const skillFacts = snapshotBA.fact_metadata.filter((fact) => fact.source.startsWith('resume.skills['));
+  assert.deepEqual(skillFacts.map((fact) => [fact.source, fact.content]), [
+    ['resume.skills[0].name', 'SQL'],
+    ['resume.skills[0].category', '工具'],
+    ['resume.skills[1].name', 'Figma'],
+    ['resume.skills[1].category', '工具'],
+  ]);
+});
+
 test('explicitly empty personal-summary override does not fall back to the global summary', async () => {
   const { buildAnalyzePayload, buildAnalyzeSignature } = await importSnapshotUtils();
   const inheritedContext = {

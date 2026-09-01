@@ -205,17 +205,19 @@ test('apply and retry chain uses self-owned committed tokens and never replays a
   assert.ok(startBlock.indexOf('flushResumeConfig') < startBlock.indexOf('resumeOptimizationService.start'));
   assert.ok(startBlock.indexOf('flushResumeConfig') < startBlock.indexOf('assertCurrent'));
   assert.ok(startBlock.indexOf('assertCurrent') < startBlock.indexOf('resumeOptimizationService.start'));
-  assert.match(applyBlock, /expectedResumeUpdatedAt: currentRun\.sourceResumeUpdatedAt/);
-  assert.doesNotMatch(applyBlock, /flushResumeConfig/);
+  assert.match(applyBlock, /commitLatestResumeConfigIfNeededRef\.current\(\)/);
+  assert.match(applyBlock, /expectedResumeUpdatedAt: committedSourceUpdatedAt/);
+  assert.match(applyBlock, /acceptedChangeIds: attempt\.acceptedChangeIds/);
   assert.ok(applyBlock.indexOf('resumeOptimizationService.apply') < applyBlock.indexOf('reloadResumeContext'));
   assert.match(applyBlock, /markSelfOwnedResumeTimestamp/);
   assert.match(applyBlock, /waitForCommittedSource/);
   assert.match(rescoreBlock, /latestGenerateEvaluationRef\.current\(\)/);
-  assert.match(rescoreBlock, /waitForPersistedEvaluation/);
+  assert.match(rescoreBlock, /waitForPersistedEvaluationReceipt/);
   const reportFlushIndex = rescoreBlock.indexOf('latestFlushResumeConfigRef.current');
   const preFinalizeGuardIndex = rescoreBlock.indexOf('assertCurrent', reportFlushIndex);
-  assert.ok(rescoreBlock.indexOf('waitForPersistedEvaluation') < reportFlushIndex);
-  assert.ok(reportFlushIndex < preFinalizeGuardIndex);
+  assert.ok(rescoreBlock.indexOf('waitForPersistedEvaluationReceipt') < reportFlushIndex);
+  assert.ok(reportFlushIndex < rescoreBlock.indexOf('markSelfOwnedResumeTimestamp', reportFlushIndex));
+  assert.ok(rescoreBlock.indexOf('markSelfOwnedResumeTimestamp', reportFlushIndex) < preFinalizeGuardIndex);
   assert.ok(preFinalizeGuardIndex < rescoreBlock.indexOf('resumeOptimizationService.finalize'));
   assert.doesNotMatch(rescoreBlock, /resumeOptimizationService\.apply/);
   assert.match(hook, /resume_optimization_context_stale|resume_optimization_content_conflict/);
@@ -284,7 +286,8 @@ test('stale actions and delayed cancel or revert commits fail closed across resu
   assert.ok(reloadIndex >= 0);
   assert.match(revertBlock, /markSelfOwnedResumeAndEvaluationTimestamp\(reverted\.resumeUpdatedAt\)/);
   assert.ok(reloadIndex < revertBlock.indexOf('assertCurrent', reloadIndex));
-  assert.ok(revertBlock.indexOf('assertCurrent', reloadIndex) < revertBlock.indexOf('applyRunToState'));
+  assert.ok(revertBlock.indexOf('assertCurrent', reloadIndex) < revertBlock.indexOf("setUiState('closed')"));
+  assert.doesNotMatch(revertBlock, /applyRunToState/);
 });
 
 test('post-score barrier observes the exact config snapshot consumed by the save flusher', () => {
@@ -358,9 +361,9 @@ test('flush ownership is asserted before self-owned tokens or attempts are publi
     hook.indexOf('const applyAcceptedChanges'),
   );
   const rescoreFlush = rescoreBlock.indexOf('latestFlushResumeConfigRef.current');
-  const rescoreAssert = rescoreBlock.indexOf('assertCurrent', rescoreFlush);
   const rescoreMark = rescoreBlock.indexOf('markSelfOwnedResumeTimestamp', rescoreFlush);
-  assert.ok(rescoreFlush < rescoreAssert && rescoreAssert < rescoreMark);
+  const rescoreAssert = rescoreBlock.indexOf('assertCurrent', rescoreMark);
+  assert.ok(rescoreFlush < rescoreMark && rescoreMark < rescoreAssert);
 });
 
 test('every async operation catch drops late non-abort errors before state or toast handling', () => {
@@ -389,11 +392,17 @@ test('every async operation catch drops late non-abort errors before state or to
       'late error guard must precede state/toast handling',
     );
   }
-  for (const action of ['submitAnswers', 'applyAcceptedChanges', 'retryRescore', 'revertRun', 'cancelRun']) {
+  for (const [action, expectedRunExpression] of [
+    ['submitAnswers', 'currentRun\\.id'],
+    ['applyAcceptedChanges', 'attempt\\.runId'],
+    ['retryRescore', 'currentRun\\.id'],
+    ['revertRun', 'currentRun\\.id'],
+    ['cancelRun', 'currentRun\\.id'],
+  ]) {
     const start = hook.indexOf(`const ${action}`);
     const next = hook.indexOf('\n  const ', start + 8);
     const block = hook.slice(start, next < 0 ? undefined : next);
-    assert.match(block, /shouldHandleOperationError\(cause, generation, operation, currentRun\.id\)/);
+    assert.match(block, new RegExp(`shouldHandleOperationError\\(cause, generation, operation, ${expectedRunExpression}\\)`));
   }
 });
 

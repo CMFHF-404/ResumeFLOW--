@@ -8,6 +8,7 @@ import { ResumeOptimizationOverview } from './ResumeOptimizationOverview';
 import { ResumeOptimizationPreview } from './ResumeOptimizationPreview';
 import { ResumeOptimizationProgress } from './ResumeOptimizationProgress';
 import { ResumeOptimizationQuestions } from './ResumeOptimizationQuestions';
+import { ResumeOptimizationResult } from './ResumeOptimizationResult';
 import {
     ResumeOptimizationStepRail,
     type ResumeOptimizationStepId,
@@ -124,6 +125,9 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     submitAnswers,
     acceptedChangeIds,
     toggleChange,
+    applyAcceptedChanges,
+    retryRescore,
+    revertRun,
     onRequestClose,
     returnFocusRef,
     suppressReturnFocusRef,
@@ -308,8 +312,12 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     }, [returnFocusRef, suppressReturnFocusRef]);
 
     const footerStatus = useMemo(() => (
-        isCloseBlocked ? '应用与复评期间暂不可关闭' : '可随时返回，未应用的方案会保留'
-    ), [isCloseBlocked]);
+        displayStep === 'preview' && run?.status === 'preview_ready'
+            ? <>将把 {acceptedChangeIds.length} 项修改应用到当前简历。不会改动总经历库，也不会更换已选内容。</>
+            : isCloseBlocked
+                ? '应用与复评期间暂不可关闭'
+                : '可随时返回，未应用的方案会保留'
+    ), [acceptedChangeIds.length, displayStep, isCloseBlocked, run?.status]);
 
     return (
         <div
@@ -401,6 +409,14 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                     onViewExperience={onViewExperience}
                                     onOpenAutoAssembly={onOpenAutoAssembly}
                                 />
+                            ) : displayStep === 'result' && run && ['applied', 'completed'].includes(run.status) ? (
+                                <ResumeOptimizationResult
+                                    run={run}
+                                    busy={uiState === 'applying' || uiState === 'rescoring' || uiState === 'stale'}
+                                    error={error}
+                                    onRetry={() => void retryRescore()}
+                                    onRevert={() => void revertRun()}
+                                />
                             ) : (
                                 <ResumeOptimizationPlaceholder activeStep={displayStep} error={error} uiState={uiState} />
                             )}
@@ -435,6 +451,15 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                             >
                                 {isQuestionRetry ? '重试提交' : '提交并生成方案'}
+                            </button>
+                        ) : displayStep === 'preview' && run?.status === 'preview_ready' && uiState !== 'stale' ? (
+                            <button
+                                type="button"
+                                disabled={acceptedChangeIds.length === 0 || uiState === 'applying' || uiState === 'rescoring'}
+                                onClick={() => void applyAcceptedChanges()}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                            >
+                                应用所选修改
                             </button>
                         ) : null}
                     </div>

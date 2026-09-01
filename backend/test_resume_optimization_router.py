@@ -225,6 +225,14 @@ async def _consume_stream(response) -> list[dict]:
 
 
 class ResumeOptimizationRouterTests(unittest.IsolatedAsyncioTestCase):
+    def test_run_read_exposes_an_explicit_applied_resume_version_token(self) -> None:
+        run = _run(ResumeOptimizationStatus.APPLIED)
+        run.applied_at = BASE_TIME
+
+        public = router_module._run_to_read(run)
+
+        self.assertEqual(public.applied_resume_updated_at, BASE_TIME)
+
     def setUp(self) -> None:
         self.owned_session_factory = _OwnedSessionFactory()
         self.session_factory_patch = patch.object(
