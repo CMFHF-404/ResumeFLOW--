@@ -27,6 +27,7 @@ import {
     ResumeAuthContextChangedError,
     assertResumeAuthContext,
     captureResumeAuthCacheKey,
+    isResumeVersionConflict,
     subscribeToResumeVersionConflicts,
     waitForResumeMutations,
 } from '../services/resumeService';
@@ -144,6 +145,7 @@ type UseResumeDataResult = {
     hasResumeVersionConflict: boolean;
     applyResumeDetail: (detail: ResumeDetail | null) => void;
     flushResumeConfig: (configOverride?: ResumeEditorConfig) => Promise<string | undefined>;
+    commitLatestResumeConfigIfNeeded: () => Promise<string | undefined>;
     reloadResumeContext: (resumeId?: string | null) => Promise<ReloadResumeContextResult>;
     suppressAutoSaveForConfig: (config: ResumeEditorConfig) => void;
     clearSuppressedAutoSave: () => void;
@@ -186,6 +188,18 @@ export class ResumeReloadConflictError extends Error {
     constructor() {
         super('Resume reload was invalidated by a version conflict.');
         this.name = 'ResumeReloadConflictError';
+    }
+}
+
+export class ResumeConfigMutationBarrierError extends Error {
+    readonly code = 'resume_config_mutation_barrier_conflict';
+    readonly statusCode = 409;
+
+    constructor(cause?: unknown) {
+        super('Resume changed while preparing an optimization mutation.', cause === undefined
+            ? undefined
+            : { cause });
+        this.name = 'ResumeConfigMutationBarrierError';
     }
 }
 
@@ -1050,6 +1064,69 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         state.suppressedAutoSaveSignatureRef,
         hasResumeVersionConflict,
     );
+    const commitLatestResumeConfigIfNeeded = useCallback(async () => {
+        const requestedResumeId = state.activeResumeIdRef.current;
+        const conflictEpochAtStart = resumeVersionConflictEpochRef.current;
+        if (!requestedResumeId || !state.hasHydratedConfigRef.current) {
+            return undefined;
+        }
+        if (resumeVersionConflictRef.current) {
+            throw new ResumeConfigMutationBarrierError();
+        }
+        const expectedAuthCacheKey = await captureResumeAuthCacheKey(options.authUserKey);
+        const assertBarrierCurrent = async () => {
+            await assertResumeAuthContext(expectedAuthCacheKey);
+            if (
+                state.activeResumeIdRef.current !== requestedResumeId
+                || !state.hasHydratedConfigRef.current
+            ) {
+                throw new ResumeAuthContextChangedError();
+            }
+            if (
+                resumeVersionConflictRef.current
+                || resumeVersionConflictEpochRef.current !== conflictEpochAtStart
+            ) {
+                throw new ResumeConfigMutationBarrierError();
+            }
+        };
+
+        await pendingResumeSaveDrainRef.current();
+        await waitForResumeMutations(requestedResumeId);
+        await assertBarrierCurrent();
+        const latestConfigSnapshot = latestEffectiveConfigSnapshotRef.current;
+        const latestConfigSignature = JSON.stringify(latestConfigSnapshot);
+        if (state.lastSavedConfigRef.current !== latestConfigSignature) {
+            try {
+                await saveCoordinator.save(latestConfigSnapshot);
+            } catch (error) {
+                if (
+                    isResumeVersionConflict(error)
+                    || resumeVersionConflictRef.current
+                    || resumeVersionConflictEpochRef.current !== conflictEpochAtStart
+                ) {
+                    throw new ResumeConfigMutationBarrierError(error);
+                }
+                throw error;
+            }
+        }
+        await pendingResumeSaveDrainRef.current();
+        await waitForResumeMutations(requestedResumeId);
+        await assertBarrierCurrent();
+        if (
+            state.lastSavedConfigRef.current !== latestConfigSignature
+            || JSON.stringify(latestEffectiveConfigSnapshotRef.current) !== latestConfigSignature
+        ) {
+            throw new ResumeConfigMutationBarrierError();
+        }
+        return state.resumeUpdatedAtRef.current;
+    }, [
+        options.authUserKey,
+        saveCoordinator,
+        state.activeResumeIdRef,
+        state.hasHydratedConfigRef,
+        state.lastSavedConfigRef,
+        state.resumeUpdatedAtRef,
+    ]);
     const flushResumeConfig = useResumeConfigFlusher(
         latestEffectiveConfigSnapshotRef,
         saveResumeConfig,
@@ -1077,6 +1154,7 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         hasResumeVersionConflict,
         applyResumeDetail,
         flushResumeConfig,
+        commitLatestResumeConfigIfNeeded,
         reloadResumeContext,
         suppressAutoSaveForConfig,
         clearSuppressedAutoSave,

@@ -618,6 +618,10 @@ export const normalizeResumeOptimizationRun = (value) => {
       : requiredText(record.applied_content_signature, 'run.applied_content_signature'),
     createdAt: canonicalizeResumeOptimizationTimestamp(record.created_at, 'run.created_at'),
     updatedAt: canonicalizeResumeOptimizationTimestamp(record.updated_at, 'run.updated_at'),
+    appliedResumeUpdatedAt: optionalTimestamp(
+      record.applied_resume_updated_at,
+      'run.applied_resume_updated_at',
+    ),
     appliedAt: optionalTimestamp(record.applied_at, 'run.applied_at'),
     completedAt: optionalTimestamp(record.completed_at, 'run.completed_at'),
   };

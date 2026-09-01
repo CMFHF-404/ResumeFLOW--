@@ -369,6 +369,7 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             applied_content_signature=run.applied_content_signature,
             created_at=run.created_at,
             updated_at=run.updated_at,
+            applied_resume_updated_at=run.applied_at,
             applied_at=run.applied_at,
             completed_at=run.completed_at,
         )

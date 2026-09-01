@@ -110,14 +110,11 @@ export const buildResumeEvaluationSnapshot = ({
   const selectedExperiences = experiences.filter((item) => selectedExperienceIds.has(item.id));
   const selectedEducations = educations.filter((item) => selectedEducationIds.has(item.id));
   const selectedCertifications = certifications.filter((item) => selectedCertificationIds.has(item.id));
-  const selectedSkillGroups = skillGroups
-    .map((group) => ({
-      ...group,
-      skills: group.skills.filter((skill) => selectedSkillIds.has(skill.id)),
-    }))
-    .filter((group) => group.skills.length > 0);
-  const selectedSkills = buildSkillAnalyzePayload(selectedSkillGroups);
   const allSkills = buildSkillAnalyzePayload(skillGroups);
+  const skillsById = new Map(allSkills.map((skill) => [skill.id, skill]));
+  const selectedSkills = [...selectedSkillIds]
+    .map((skillId) => skillsById.get(skillId))
+    .filter((skill): skill is (typeof allSkills)[number] => Boolean(skill));
   const resolvedSummary = isSummaryVisible
     ? plainText(hasPersonalSummaryOverride ? personalSummary : profile.summary)
     : "";

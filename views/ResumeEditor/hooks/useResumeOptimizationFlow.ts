@@ -23,6 +23,7 @@ import type {
   ResumeOptimizationStatus,
   ResumeOptimizationUiState,
 } from '../../../types/resumeOptimization';
+import { canonicalStringify } from '../../../utils/canonicalStringify';
 import { canonicalizeResumeOptimizationTimestamp } from '../../../utils/resumeOptimizationNormalize.mjs';
 
 export const TERMINAL_RESUME_OPTIMIZATION_STATUSES = new Set<ResumeOptimizationStatus>([
@@ -193,6 +194,29 @@ export const filterResumeOptimizationSelectableChangeIds = (
   return [...new Set(changeIds)].filter((changeId) => selectable.has(changeId));
 };
 
+export type ResumeOptimizationApplyAttempt = {
+  runId: string;
+  acceptedChangeIds: string[];
+  sourceResumeUpdatedAt: string;
+  previewReadyConfirmations: number;
+};
+
+export const freezeResumeOptimizationApplyAttempt = (
+  run: Pick<ResumeOptimizationRun, 'id' | 'sourceResumeUpdatedAt' | 'plan' | 'result'>,
+  acceptedChangeIds: string[],
+): ResumeOptimizationApplyAttempt | null => {
+  const frozenIds = filterResumeOptimizationSelectableChangeIds(
+    effectivePlan(run).changes,
+    acceptedChangeIds,
+  );
+  return frozenIds.length > 0 ? {
+    runId: run.id,
+    acceptedChangeIds: [...frozenIds],
+    sourceResumeUpdatedAt: run.sourceResumeUpdatedAt,
+    previewReadyConfirmations: 0,
+  } : null;
+};
+
 export const buildResumeOptimizationInitialAcceptedIds = (
   run: Pick<ResumeOptimizationRun, 'acceptedChangeIds' | 'plan' | 'result'>,
 ): string[] => {
@@ -267,6 +291,7 @@ export type UseResumeOptimizationFlowOptions = {
   reloadResumeContext: (resumeId?: string | null) => Promise<ReloadResumeContextResult>;
   generateEvaluation: () => Promise<ResumeEvaluationOutcome>;
   flushResumeConfig: () => Promise<string | undefined>;
+  commitLatestResumeConfigIfNeeded: () => Promise<string | undefined>;
   toast: ToastPort;
   confirmCancelActiveRun?: () => boolean | Promise<boolean>;
 };
@@ -284,6 +309,7 @@ type SourceWaiter = {
   generation: number;
   expectedResumeUpdatedAt: string;
   previousEvaluationSignature: string;
+  minimumInputRevision: number;
   resolve: (commit: SourceCommit) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -292,15 +318,108 @@ type SourceWaiter = {
 type EvaluationWaiter = {
   generation: number;
   evaluationSignature: string;
+  evaluationReceipt: ResumeEvaluation;
   resolve: () => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
+};
+
+export const doesResumeOptimizationEvaluationReceiptMatch = (
+  persistedEvaluationSignature: string | null,
+  persistedEvaluation: ResumeEvaluation | null,
+  expectedEvaluationSignature: string,
+  evaluationReceipt: ResumeEvaluation,
+) => Boolean(
+  persistedEvaluation
+  && persistedEvaluationSignature === expectedEvaluationSignature
+  && canonicalStringify(persistedEvaluation) === canonicalStringify(evaluationReceipt)
+);
+
+export type ResumeOptimizationPostApplyCheckpoint = {
+  runId: string;
+  phase: 'needs_reload';
+  appliedResumeUpdatedAt: string;
+  previousEvaluationSignature: string;
+} | {
+  runId: string;
+  phase: 'needs_evaluation';
+  sourceEvaluationSignature: string;
+} | {
+  runId: string;
+  phase: 'evaluation_ready';
+  sourceEvaluationSignature: string;
+  evaluationReceipt: ResumeEvaluation;
+} | {
+  runId: string;
+  phase: 'report_committed';
+  sourceEvaluationSignature: string;
+  evaluationReceipt: ResumeEvaluation;
+  committedResumeUpdatedAt: string;
+};
+
+const resumeOptimizationPostApplyCheckpoints = new Map<
+  string,
+  ResumeOptimizationPostApplyCheckpoint
+>();
+
+const cloneResumeOptimizationPostApplyCheckpoint = (
+  checkpoint: ResumeOptimizationPostApplyCheckpoint,
+): ResumeOptimizationPostApplyCheckpoint => ({ ...checkpoint });
+
+export const saveResumeOptimizationPostApplyCheckpoint = (
+  authUserKey: string | null,
+  resumeId: string | null,
+  checkpoint: ResumeOptimizationPostApplyCheckpoint,
+) => {
+  const key = resumeOptimizationSelectionSnapshotKey(authUserKey, resumeId);
+  if (!key || !checkpoint.runId) return;
+  resumeOptimizationPostApplyCheckpoints.set(
+    key,
+    cloneResumeOptimizationPostApplyCheckpoint(checkpoint),
+  );
+};
+
+export const readResumeOptimizationPostApplyCheckpoint = (
+  authUserKey: string | null,
+  resumeId: string | null,
+  runId: string,
+): ResumeOptimizationPostApplyCheckpoint | null => {
+  const key = resumeOptimizationSelectionSnapshotKey(authUserKey, resumeId);
+  const checkpoint = key ? resumeOptimizationPostApplyCheckpoints.get(key) : undefined;
+  return checkpoint?.runId === runId
+    ? cloneResumeOptimizationPostApplyCheckpoint(checkpoint)
+    : null;
+};
+
+export const clearResumeOptimizationPostApplyCheckpoint = (
+  authUserKey: string | null,
+  resumeId: string | null,
+) => {
+  const key = resumeOptimizationSelectionSnapshotKey(authUserKey, resumeId);
+  if (key) resumeOptimizationPostApplyCheckpoints.delete(key);
 };
 
 const abortError = () => {
   const error = new Error('Resume optimization operation was aborted.');
   error.name = 'AbortError';
   return error;
+};
+
+const waitForResumeOptimizationApplyConfirmationBackoff = (
+  signal: AbortSignal,
+) => {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(abortError());
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, 500);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 };
 
 const isAbortLike = (error: unknown) => (
@@ -314,10 +433,32 @@ const STALE_RESUME_OPTIMIZATION_ERROR_CODES = new Set([
   'resume_optimization_content_conflict',
 ]);
 
+const EVALUATION_PENDING_ERROR_CODE = 'resume_optimization_evaluation_pending';
+
+const rawHttpStatus = (error: unknown): number | undefined => (
+  typeof error === 'object'
+  && error !== null
+  && 'response' in error
+  && typeof (error as { response?: { status?: unknown } }).response?.status === 'number'
+    ? (error as { response: { status: number } }).response.status
+    : undefined
+);
+
+const isResumeVersionConflictLike = (error: unknown) => {
+  if (
+    error instanceof Error
+    && ['ResumeConfigMutationBarrierError', 'ResumeReloadConflictError'].includes(error.name)
+  ) return true;
+  if (isResumeOptimizationServiceError(error)) {
+    return error.statusCode === 409
+      && error.code !== EVALUATION_PENDING_ERROR_CODE
+      && STALE_RESUME_OPTIMIZATION_ERROR_CODES.has(error.code);
+  }
+  return rawHttpStatus(error) === 409;
+};
+
 const isStaleOptimizationError = (error: unknown) => (
-  isResumeOptimizationServiceError(error)
-  && error.statusCode === 409
-  && STALE_RESUME_OPTIMIZATION_ERROR_CODES.has(error.code)
+  isResumeVersionConflictLike(error)
 );
 
 const errorMessage = (error: unknown, fallback: string) => (
@@ -404,6 +545,7 @@ export const useResumeOptimizationFlow = ({
   reloadResumeContext,
   generateEvaluation,
   flushResumeConfig,
+  commitLatestResumeConfigIfNeeded,
   toast,
   confirmCancelActiveRun = () => window.confirm('优化仍在进行，关闭将取消本次运行，是否继续？'),
 }: UseResumeOptimizationFlowOptions) => {
@@ -435,6 +577,8 @@ export const useResumeOptimizationFlow = ({
     expectedResumeUpdatedAt: string;
     idempotencyKey: string;
   } | null>(null);
+  const applyAttemptRef = useRef<ResumeOptimizationApplyAttempt | null>(null);
+  const postApplyCheckpointRef = useRef<ResumeOptimizationPostApplyCheckpoint | null>(null);
   const sourceWaiterRef = useRef<SourceWaiter | null>(null);
   const evaluationWaiterRef = useRef<EvaluationWaiter | null>(null);
   const selfOwnedResumeTimestampsRef = useRef(new Set<string>());
@@ -442,6 +586,7 @@ export const useResumeOptimizationFlow = ({
   const latestToastRef = useRef(toast);
   const latestGenerateEvaluationRef = useRef(generateEvaluation);
   const latestFlushResumeConfigRef = useRef(flushResumeConfig);
+  const commitLatestResumeConfigIfNeededRef = useRef(commitLatestResumeConfigIfNeeded);
   const latestInputsRef = useRef({
     authUserKey,
     resumeId,
@@ -450,12 +595,25 @@ export const useResumeOptimizationFlow = ({
     persistedEvaluationSignature,
     persistedEvaluation,
   });
+  const latestInputsRevisionRef = useRef(0);
   const identityRef = useRef({
     authUserKey,
     resumeId,
     sourceResumeUpdatedAt: canonicalSourceResumeUpdatedAt,
     evaluationSignature,
   });
+
+  const publishPostApplyCheckpoint = useCallback((
+    checkpoint: ResumeOptimizationPostApplyCheckpoint,
+  ) => {
+    postApplyCheckpointRef.current = checkpoint;
+    saveResumeOptimizationPostApplyCheckpoint(authUserKey, resumeId, checkpoint);
+  }, [authUserKey, resumeId]);
+
+  const clearPostApplyCheckpoint = useCallback(() => {
+    postApplyCheckpointRef.current = null;
+    clearResumeOptimizationPostApplyCheckpoint(authUserKey, resumeId);
+  }, [authUserKey, resumeId]);
 
   const rejectPendingWaiters = useCallback((cause: Error) => {
     if (sourceWaiterRef.current) {
@@ -485,6 +643,8 @@ export const useResumeOptimizationFlow = ({
       latestRunRef.current = null;
       frozenAnswerSubmissionRef.current = null;
       startAttemptRef.current = null;
+      applyAttemptRef.current = null;
+      clearPostApplyCheckpoint();
       setRun(null);
       setAnswerDrafts({});
       setIsAnswerSubmissionFrozen(false);
@@ -493,12 +653,16 @@ export const useResumeOptimizationFlow = ({
       setUiState('closed');
     } else if (markStale && latestRunRef.current) {
       startAttemptRef.current = null;
+      applyAttemptRef.current = null;
+      clearPostApplyCheckpoint();
       setError('简历或六维报告已变化，请重新生成优化方案。');
       setUiState('stale');
     } else if (markStale) {
       startAttemptRef.current = null;
+      applyAttemptRef.current = null;
+      clearPostApplyCheckpoint();
     }
-  }, [rejectPendingWaiters]);
+  }, [clearPostApplyCheckpoint, rejectPendingWaiters]);
 
   const applyRunToState = useCallback((
     nextRun: ResumeOptimizationRun,
@@ -507,6 +671,40 @@ export const useResumeOptimizationFlow = ({
   ) => {
     const previousRunId = latestRunRef.current?.id ?? null;
     const isSameRun = previousRunId === nextRun.id;
+    const restoredCheckpoint = nextRun.status === 'applied'
+      ? readResumeOptimizationPostApplyCheckpoint(authUserKey, resumeId, nextRun.id)
+      : null;
+    if (!isSameRun) {
+      applyAttemptRef.current = null;
+      postApplyCheckpointRef.current = restoredCheckpoint;
+      if (!restoredCheckpoint) {
+        clearResumeOptimizationPostApplyCheckpoint(authUserKey, resumeId);
+      }
+    }
+    if (TERMINAL_RESUME_OPTIMIZATION_STATUSES.has(nextRun.status)) {
+      applyAttemptRef.current = null;
+      clearPostApplyCheckpoint();
+    } else if (
+      nextRun.status === 'applied'
+      && !postApplyCheckpointRef.current
+      && nextRun.appliedAt
+      && latestInputsRef.current.sourceResumeUpdatedAt
+      && !resumeOptimizationFlowTimestampsEqual(
+        latestInputsRef.current.sourceResumeUpdatedAt,
+        nextRun.sourceResumeUpdatedAt,
+      )
+      && evaluationSignature !== nextRun.sourceEvaluationSignature
+      && persistedEvaluationSignature
+      && persistedEvaluationSignature === evaluationSignature
+      && persistedEvaluation
+    ) {
+      publishPostApplyCheckpoint({
+        runId: nextRun.id,
+        phase: 'evaluation_ready',
+        sourceEvaluationSignature: evaluationSignature,
+        evaluationReceipt: persistedEvaluation,
+      });
+    }
     const hasFrozenAnswerRetry = Boolean(
       isSameRun
       && nextRun.status === 'awaiting_answers'
@@ -543,7 +741,10 @@ export const useResumeOptimizationFlow = ({
     setUiState(hasFrozenAnswerRetry
       ? 'error'
       : resolveResumeOptimizationRunUiState(nextRun.status, automaticHydration));
-  }, [authUserKey, resumeId]);
+  }, [
+    authUserKey, clearPostApplyCheckpoint, evaluationSignature, persistedEvaluation,
+    persistedEvaluationSignature, publishPostApplyCheckpoint, resumeId,
+  ]);
 
   const markSelfOwnedResumeTimestamp = useCallback((updatedAt: string) => {
     const canonicalUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(updatedAt);
@@ -588,6 +789,7 @@ export const useResumeOptimizationFlow = ({
         generation,
         expectedResumeUpdatedAt: canonicalExpectedResumeUpdatedAt,
         previousEvaluationSignature,
+        minimumInputRevision: latestInputsRevisionRef.current + 1,
         resolve,
         reject,
         timeout,
@@ -595,15 +797,55 @@ export const useResumeOptimizationFlow = ({
     });
   }, []);
 
-  const waitForPersistedEvaluation = useCallback((
+  const settleCommittedSourceAfterReload = useCallback(async (
+    expectedResumeUpdatedAt: string,
+    generation: number,
+  ) => {
+    const afterNextPaint = () => new Promise<void>((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => resolve());
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
+    await afterNextPaint();
+    await afterNextPaint();
+    if (generationRef.current !== generation) throw abortError();
+    const canonicalExpectedResumeUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(
+      expectedResumeUpdatedAt,
+    );
+    const waiter = sourceWaiterRef.current;
+    const latest = latestInputsRef.current;
+    if (
+      canonicalExpectedResumeUpdatedAt
+      && waiter
+      && waiter.generation === generation
+      && waiter.expectedResumeUpdatedAt === canonicalExpectedResumeUpdatedAt
+      && latest.sourceResumeUpdatedAt === canonicalExpectedResumeUpdatedAt
+      && latest.evaluationSignature
+      && latestInputsRevisionRef.current >= waiter.minimumInputRevision
+    ) {
+      clearTimeout(waiter.timeout);
+      sourceWaiterRef.current = null;
+      waiter.resolve({
+        resumeUpdatedAt: canonicalExpectedResumeUpdatedAt,
+        evaluationSignature: latest.evaluationSignature,
+      });
+    }
+  }, []);
+
+  const waitForPersistedEvaluationReceipt = useCallback((
     expectedEvaluationSignature: string,
+    evaluationReceipt: ResumeEvaluation,
     generation: number,
   ): Promise<void> => {
     const latest = latestInputsRef.current;
-    if (
-      latest.persistedEvaluationSignature === expectedEvaluationSignature
-      && latest.persistedEvaluation
-    ) {
+    if (doesResumeOptimizationEvaluationReceiptMatch(
+      latest.persistedEvaluationSignature,
+      latest.persistedEvaluation,
+      expectedEvaluationSignature,
+      evaluationReceipt,
+    )) {
       return Promise.resolve();
     }
     return new Promise((resolve, reject) => {
@@ -614,6 +856,7 @@ export const useResumeOptimizationFlow = ({
       evaluationWaiterRef.current = {
         generation,
         evaluationSignature: expectedEvaluationSignature,
+        evaluationReceipt,
         resolve,
         reject,
         timeout,
@@ -625,6 +868,7 @@ export const useResumeOptimizationFlow = ({
     latestToastRef.current = toast;
     latestGenerateEvaluationRef.current = generateEvaluation;
     latestFlushResumeConfigRef.current = flushResumeConfig;
+    commitLatestResumeConfigIfNeededRef.current = commitLatestResumeConfigIfNeeded;
     latestInputsRef.current = {
       authUserKey,
       resumeId,
@@ -633,6 +877,7 @@ export const useResumeOptimizationFlow = ({
       persistedEvaluationSignature,
       persistedEvaluation,
     };
+    latestInputsRevisionRef.current += 1;
 
     const previous = identityRef.current;
     const ownerChanged = previous.authUserKey !== authUserKey;
@@ -661,6 +906,7 @@ export const useResumeOptimizationFlow = ({
 
     if (ownerChanged || resumeChanged) {
       clearResumeOptimizationSelectionSnapshot(previous.authUserKey, previous.resumeId);
+      clearResumeOptimizationPostApplyCheckpoint(previous.authUserKey, previous.resumeId);
     }
 
     identityRef.current = {
@@ -695,16 +941,26 @@ export const useResumeOptimizationFlow = ({
     if (
       evaluationWaiter
       && evaluationWaiter.generation === generationRef.current
-      && persistedEvaluationSignature === evaluationWaiter.evaluationSignature
-      && persistedEvaluation
+      && doesResumeOptimizationEvaluationReceiptMatch(
+        persistedEvaluationSignature,
+        persistedEvaluation,
+        evaluationWaiter.evaluationSignature,
+        evaluationWaiter.evaluationReceipt,
+      )
     ) {
       clearTimeout(evaluationWaiter.timeout);
       evaluationWaiterRef.current = null;
       evaluationWaiter.resolve();
     }
   }, [authUserKey, resumeId, evaluationSignature, canonicalSourceResumeUpdatedAt,
-    enabled, flushResumeConfig, generateEvaluation, invalidateGeneration,
+    commitLatestResumeConfigIfNeeded, enabled, flushResumeConfig, generateEvaluation, invalidateGeneration,
     persistedEvaluation, persistedEvaluationSignature, toast]);
+
+  useLayoutEffect(() => {
+    if (hasResumeVersionConflict && latestRunRef.current) {
+      invalidateGeneration(false, true);
+    }
+  }, [hasResumeVersionConflict, invalidateGeneration]);
 
   useEffect(() => () => {
     generationRef.current += 1;
@@ -768,13 +1024,15 @@ export const useResumeOptimizationFlow = ({
     const message = errorMessage(cause, fallback);
     setError(message);
     if (isStaleOptimizationError(cause)) {
+      applyAttemptRef.current = null;
+      clearPostApplyCheckpoint();
       setUiState('stale');
       latestToastRef.current.error('简历已变化，当前优化方案已失效；本地草稿已保留。');
     } else {
       setUiState('error');
       latestToastRef.current.error(message);
     }
-  }, []);
+  }, [clearPostApplyCheckpoint]);
 
   const beginHandledOperation = useCallback(async (fallback: string) => {
     try {
@@ -1074,49 +1332,283 @@ export const useResumeOptimizationFlow = ({
 
   const runPostApplyEvaluation = useCallback(async (
     appliedRun: ResumeOptimizationRun,
-    expectedEvaluationSignature: string,
     generation: number,
     controller: AbortController,
     operation: FlowOperation,
   ) => {
     setUiState('rescoring');
     setProgressText('正在生成应用后的六维报告…');
-    const outcome = await latestGenerateEvaluationRef.current();
-    await assertCurrent(generation, operation, appliedRun.id);
-    if (outcome.status !== 'success') {
-      setRun(appliedRun);
-      latestRunRef.current = appliedRun;
-      setUiState('error');
-      setError('应用已完成，但六维复评失败；可重试复评。');
-      return null;
+    let checkpoint = postApplyCheckpointRef.current;
+    if (!checkpoint || checkpoint.runId !== appliedRun.id) {
+      checkpoint = {
+        runId: appliedRun.id,
+        phase: 'needs_evaluation',
+        sourceEvaluationSignature: latestInputsRef.current.evaluationSignature,
+      };
+      publishPostApplyCheckpoint(checkpoint);
     }
-    await waitForPersistedEvaluation(expectedEvaluationSignature, generation);
-    await assertCurrent(generation, operation, appliedRun.id);
-    const flushedUpdatedAt = await latestFlushResumeConfigRef.current();
-    const finalizedUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(flushedUpdatedAt);
-    if (!finalizedUpdatedAt) throw new Error('六维报告尚未保存。');
-    await assertCurrent(generation, operation, appliedRun.id);
-    markSelfOwnedResumeTimestamp(finalizedUpdatedAt);
-    const finalized = await resumeOptimizationService.finalize(appliedRun.id, {
-      expectedResumeUpdatedAt: finalizedUpdatedAt,
-    }, {
-      signal: controller.signal,
-      expectedAuthCacheKey: operation.expectedAuthCacheKey,
-    });
-    await assertCurrent(generation, operation, appliedRun.id);
-    applyRunToState(finalized.run);
-    setProgressText('');
-    latestToastRef.current.success('简历优化与复评已完成。');
-    return finalized.run;
+    if (checkpoint.phase === 'needs_reload') {
+      throw new Error('应用后的简历上下文尚未加载。');
+    }
+    if (checkpoint.phase === 'needs_evaluation') {
+      const outcome = await latestGenerateEvaluationRef.current();
+      await assertCurrent(generation, operation, appliedRun.id);
+      if (outcome.status !== 'success') {
+        setRun(appliedRun);
+        latestRunRef.current = appliedRun;
+        setUiState('error');
+        setError('应用已完成，但六维复评失败；可重试复评。');
+        return null;
+      }
+      checkpoint = {
+        runId: appliedRun.id,
+        phase: 'evaluation_ready',
+        sourceEvaluationSignature: checkpoint.sourceEvaluationSignature,
+        evaluationReceipt: outcome.evaluation,
+      };
+      publishPostApplyCheckpoint(checkpoint);
+    }
+    if (checkpoint.phase === 'evaluation_ready') {
+      await waitForPersistedEvaluationReceipt(
+        checkpoint.sourceEvaluationSignature,
+        checkpoint.evaluationReceipt,
+        generation,
+      );
+      await assertCurrent(generation, operation, appliedRun.id);
+      const flushedUpdatedAt = await latestFlushResumeConfigRef.current();
+      const finalizedUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(flushedUpdatedAt);
+      if (!finalizedUpdatedAt) throw new Error('六维报告尚未保存。');
+      markSelfOwnedResumeTimestamp(finalizedUpdatedAt);
+      checkpoint = {
+        runId: appliedRun.id,
+        phase: 'report_committed',
+        sourceEvaluationSignature: checkpoint.sourceEvaluationSignature,
+        evaluationReceipt: checkpoint.evaluationReceipt,
+        committedResumeUpdatedAt: finalizedUpdatedAt,
+      };
+      publishPostApplyCheckpoint(checkpoint);
+      await assertCurrent(generation, operation, appliedRun.id);
+    }
+    const reportIsCommitted = checkpoint.phase === 'report_committed';
+    if (!reportIsCommitted) {
+      throw new Error('应用后复评状态无效。');
+    }
+    try {
+      const finalized = await resumeOptimizationService.finalize(appliedRun.id, {
+        expectedResumeUpdatedAt: checkpoint.committedResumeUpdatedAt,
+      }, {
+        signal: controller.signal,
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await assertCurrent(generation, operation, appliedRun.id);
+      applyRunToState(finalized.run);
+      setProgressText('');
+      setProgressNode(null);
+      latestToastRef.current.success('简历优化与复评已完成。');
+      return finalized.run;
+    } catch (cause) {
+      if (
+        isResumeOptimizationServiceError(cause)
+        && cause.code === EVALUATION_PENDING_ERROR_CODE
+      ) {
+        publishPostApplyCheckpoint({
+          runId: appliedRun.id,
+          phase: 'needs_evaluation',
+          sourceEvaluationSignature: checkpoint.sourceEvaluationSignature,
+        });
+      }
+      try {
+        const authoritativeRun = await resumeOptimizationService.get(appliedRun.id, {
+          signal: controller.signal,
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await assertCurrent(generation, operation, appliedRun.id);
+        if (authoritativeRun.status === 'completed') {
+          applyRunToState(authoritativeRun);
+          setProgressText('');
+          setProgressNode(null);
+          latestToastRef.current.success('简历优化与复评已完成。');
+          return authoritativeRun;
+        }
+        applyRunToState(authoritativeRun, false, true);
+      } catch (refreshError) {
+        if (isAbortLike(refreshError)) throw refreshError;
+      }
+      throw cause;
+    }
   }, [
     applyRunToState, assertCurrent, markSelfOwnedResumeTimestamp,
-    waitForPersistedEvaluation,
+    publishPostApplyCheckpoint, waitForPersistedEvaluationReceipt,
+  ]);
+
+  const recoverUncertainApplyAttempt = useCallback(async (
+    attempt: ResumeOptimizationApplyAttempt,
+    activeOperation?: {
+      generation: number;
+      controller: AbortController;
+      operation: FlowOperation;
+    },
+    originalCause?: unknown,
+  ) => {
+    if (!enabled || (!activeOperation && controllerRef.current)) return null;
+    setUiState('applying');
+    setError(null);
+    const started = activeOperation ?? await beginHandledOperation('无法确认简历优化是否已应用。');
+    if (!started) {
+      setUiState('preview');
+      return null;
+    }
+    const ownsOperation = !activeOperation;
+    const { generation, controller, operation } = started;
+    let applyWasConfirmed = false;
+    try {
+      if (attempt.previewReadyConfirmations > 0) {
+        await waitForResumeOptimizationApplyConfirmationBackoff(controller.signal);
+      }
+      const authoritativeRun = await resumeOptimizationService.get(attempt.runId, {
+        signal: controller.signal,
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await assertCurrent(generation, operation, attempt.runId);
+      if (authoritativeRun.status === 'preview_ready') {
+        const previewReadyConfirmations = attempt.previewReadyConfirmations + 1;
+        if (previewReadyConfirmations < 2) {
+          if (applyAttemptRef.current === attempt) {
+            applyAttemptRef.current = { ...attempt, previewReadyConfirmations };
+          }
+          applyRunToState(authoritativeRun, false, true);
+          setUiState('preview');
+          const message = '上次应用仍在确认中；再次点击只会复核服务端状态。';
+          setError(message);
+          latestToastRef.current.info?.(message);
+          return authoritativeRun;
+        }
+        if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+        applyRunToState(authoritativeRun, false, true);
+        setUiState('preview');
+        if (originalCause !== undefined) {
+          const message = errorMessage(originalCause, '应用简历优化失败。');
+          setError(message);
+          latestToastRef.current.error(message);
+        } else {
+          setError(null);
+          latestToastRef.current.info?.('已确认上次应用未生效，请再次确认应用。');
+        }
+        return authoritativeRun;
+      }
+      if (authoritativeRun.status === 'completed') {
+        applyWasConfirmed = true;
+        if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+        applyRunToState(authoritativeRun);
+        setProgressText('');
+        setProgressNode(null);
+        latestToastRef.current.success('简历优化与复评已完成。');
+        return authoritativeRun;
+      }
+      if (authoritativeRun.status === 'applied') {
+        applyWasConfirmed = true;
+        if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+        applyRunToState(authoritativeRun, false, true);
+        setUiState('rescoring');
+        let checkpoint = postApplyCheckpointRef.current;
+        if (!checkpoint || checkpoint.runId !== authoritativeRun.id) {
+          const appliedResumeUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(
+            authoritativeRun.appliedResumeUpdatedAt,
+          );
+          if (!appliedResumeUpdatedAt) throw new Error('无法确认应用后的简历版本。');
+          markSelfOwnedResumeTimestamp(appliedResumeUpdatedAt);
+          checkpoint = {
+            runId: authoritativeRun.id,
+            phase: 'needs_reload',
+            appliedResumeUpdatedAt,
+            previousEvaluationSignature: latestInputsRef.current.evaluationSignature,
+          };
+          publishPostApplyCheckpoint(checkpoint);
+        }
+        if (checkpoint.phase === 'needs_reload') {
+          markSelfOwnedResumeTimestamp(checkpoint.appliedResumeUpdatedAt);
+          const sourceCommitPromise = waitForCommittedSource(
+            checkpoint.appliedResumeUpdatedAt,
+            checkpoint.previousEvaluationSignature,
+            generation,
+          );
+          void sourceCommitPromise.catch(() => undefined);
+          const reload = await reloadResumeContext(resumeId);
+          if (reload.status !== 'success') {
+            throw reload.error ?? new Error('应用后重新加载简历失败。');
+          }
+          await settleCommittedSourceAfterReload(
+            checkpoint.appliedResumeUpdatedAt,
+            generation,
+          );
+          const sourceCommit = await sourceCommitPromise;
+          await assertCurrent(generation, operation, authoritativeRun.id);
+          publishPostApplyCheckpoint({
+            runId: authoritativeRun.id,
+            phase: 'needs_evaluation',
+            sourceEvaluationSignature: sourceCommit.evaluationSignature,
+          });
+        }
+        return await runPostApplyEvaluation(
+          authoritativeRun,
+          generation,
+          controller,
+          operation,
+        );
+      }
+      if (['applying', 'rescoring', 'planning'].includes(authoritativeRun.status)) {
+        setError('服务端仍在处理上次应用；再次点击只会继续确认状态。');
+        setUiState('preview');
+        return null;
+      }
+      if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+      applyRunToState(authoritativeRun);
+      return authoritativeRun;
+    } catch (cause) {
+      if (await shouldHandleOperationError(cause, generation, operation, attempt.runId)) {
+        rejectPendingWaiters(cause instanceof Error ? cause : new Error('确认应用状态失败。'));
+        if (
+          !applyWasConfirmed
+          && applyAttemptRef.current === attempt
+          && !isStaleOptimizationError(cause)
+        ) {
+          const message = '暂时无法确认上次应用结果；再次点击只会重试状态确认。';
+          setError(message);
+          setUiState('preview');
+          latestToastRef.current.error(message);
+        } else {
+          handleOperationError(cause, '确认简历优化状态失败。');
+        }
+      }
+      return null;
+    } finally {
+      if (ownsOperation && generationRef.current === generation) controllerRef.current = null;
+    }
+  }, [
+    applyRunToState, assertCurrent, beginHandledOperation, enabled, handleOperationError,
+    markSelfOwnedResumeTimestamp, publishPostApplyCheckpoint, rejectPendingWaiters,
+    reloadResumeContext, resumeId, runPostApplyEvaluation, settleCommittedSourceAfterReload,
+    shouldHandleOperationError, waitForCommittedSource,
   ]);
 
   const applyAcceptedChanges = useCallback(async () => {
     if (!enabled) return null;
     const currentRun = latestRunRef.current;
-    if (!currentRun || currentRun.status !== 'preview_ready' || acceptedChangeIds.length === 0) return null;
+    if (
+      !currentRun
+      || currentRun.status !== 'preview_ready'
+      || controllerRef.current
+    ) return null;
+    const pendingAttempt = applyAttemptRef.current;
+    if (pendingAttempt) {
+      if (pendingAttempt.runId !== currentRun.id) {
+        applyAttemptRef.current = null;
+      } else {
+        return await recoverUncertainApplyAttempt(pendingAttempt);
+      }
+    }
+    const attempt = freezeResumeOptimizationApplyAttempt(currentRun, acceptedChangeIds);
+    if (!attempt) return null;
     if (!isResumeOptimizationRunContextCurrent(
       currentRun,
       latestInputsRef.current.sourceResumeUpdatedAt,
@@ -1126,24 +1618,50 @@ export const useResumeOptimizationFlow = ({
       setUiState('stale');
       return null;
     }
-    const started = await beginHandledOperation('应用简历优化失败。');
-    if (!started) return null;
-    const { generation, controller, operation } = started;
+    applyAttemptRef.current = attempt;
     setUiState('applying');
     setError(null);
+    const started = await beginHandledOperation('应用简历优化失败。');
+    if (!started) {
+      if (applyAttemptRef.current === attempt) applyAttemptRef.current = null;
+      return null;
+    }
+    const { generation, controller, operation } = started;
+    let applyRequestStarted = false;
     try {
-      const applied = await resumeOptimizationService.apply(currentRun.id, {
-        acceptedChangeIds,
-        expectedResumeUpdatedAt: currentRun.sourceResumeUpdatedAt,
+      const committedToken = await commitLatestResumeConfigIfNeededRef.current();
+      const committedSourceUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(committedToken);
+      if (
+        !committedSourceUpdatedAt
+        || !resumeOptimizationFlowTimestampsEqual(
+          committedSourceUpdatedAt,
+          attempt.sourceResumeUpdatedAt,
+        )
+      ) {
+        invalidateGeneration(false, true);
+        return null;
+      }
+      await assertCurrent(generation, operation, attempt.runId);
+      applyRequestStarted = true;
+      const applied = await resumeOptimizationService.apply(attempt.runId, {
+        acceptedChangeIds: attempt.acceptedChangeIds,
+        expectedResumeUpdatedAt: committedSourceUpdatedAt,
       }, {
         signal: controller.signal,
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
       });
-      await assertCurrent(generation, operation, currentRun.id);
+      await assertCurrent(generation, operation, attempt.runId);
+      applyAttemptRef.current = null;
       markSelfOwnedResumeTimestamp(applied.resumeUpdatedAt);
       latestRunRef.current = applied.run;
       setRun(applied.run);
       setUiState('rescoring');
+      publishPostApplyCheckpoint({
+        runId: applied.run.id,
+        phase: 'needs_reload',
+        appliedResumeUpdatedAt: applied.resumeUpdatedAt,
+        previousEvaluationSignature: latestInputsRef.current.evaluationSignature,
+      });
       const sourceCommitPromise = waitForCommittedSource(
         applied.resumeUpdatedAt,
         latestInputsRef.current.evaluationSignature,
@@ -1152,20 +1670,39 @@ export const useResumeOptimizationFlow = ({
       void sourceCommitPromise.catch(() => undefined);
       const reload = await reloadResumeContext(resumeId);
       if (reload.status !== 'success') throw reload.error ?? new Error('应用后重新加载简历失败。');
+      await settleCommittedSourceAfterReload(applied.resumeUpdatedAt, generation);
       const sourceCommit = await sourceCommitPromise;
-      await assertCurrent(generation, operation, currentRun.id);
+      await assertCurrent(generation, operation, attempt.runId);
+      publishPostApplyCheckpoint({
+        runId: applied.run.id,
+        phase: 'needs_evaluation',
+        sourceEvaluationSignature: sourceCommit.evaluationSignature,
+      });
       return await runPostApplyEvaluation(
         applied.run,
-        sourceCommit.evaluationSignature,
         generation,
         controller,
         operation,
       );
     } catch (cause) {
-      if (!await shouldHandleOperationError(cause, generation, operation, currentRun.id)) {
+      if (!await shouldHandleOperationError(cause, generation, operation, attempt.runId)) {
         return null;
       }
       rejectPendingWaiters(cause instanceof Error ? cause : new Error('应用流程失败。'));
+      if (applyRequestStarted && applyAttemptRef.current === attempt) {
+        if (isStaleOptimizationError(cause)) {
+          applyAttemptRef.current = null;
+          handleOperationError(cause, '应用简历优化失败。');
+          return null;
+        }
+        return await recoverUncertainApplyAttempt(
+          attempt,
+          { generation, controller, operation },
+          cause,
+        );
+      } else if (!applyRequestStarted && applyAttemptRef.current === attempt) {
+        applyAttemptRef.current = null;
+      }
       handleOperationError(cause, '应用简历优化失败。');
       return null;
     } finally {
@@ -1173,23 +1710,72 @@ export const useResumeOptimizationFlow = ({
     }
   }, [
     acceptedChangeIds, assertCurrent, beginHandledOperation, enabled, handleOperationError,
-    markSelfOwnedResumeTimestamp, reloadResumeContext, resumeId,
-    rejectPendingWaiters, runPostApplyEvaluation, shouldHandleOperationError,
-    waitForCommittedSource,
+    invalidateGeneration, markSelfOwnedResumeTimestamp, reloadResumeContext, resumeId,
+    publishPostApplyCheckpoint, recoverUncertainApplyAttempt, rejectPendingWaiters, runPostApplyEvaluation,
+    settleCommittedSourceAfterReload, shouldHandleOperationError, waitForCommittedSource,
   ]);
 
   const retryRescore = useCallback(async () => {
     if (!enabled) return null;
     const currentRun = latestRunRef.current;
-    if (!currentRun || currentRun.status !== 'applied') return null;
+    if (!currentRun || currentRun.status !== 'applied' || controllerRef.current) return null;
+    setUiState('rescoring');
+    setError(null);
     const started = await beginHandledOperation('六维复评失败，可稍后重试。');
     if (!started) return null;
     const { generation, controller, operation } = started;
-    setError(null);
     try {
+      const authoritativeRun = await resumeOptimizationService.get(currentRun.id, {
+        signal: controller.signal,
+        expectedAuthCacheKey: operation.expectedAuthCacheKey,
+      });
+      await assertCurrent(generation, operation, currentRun.id);
+      if (authoritativeRun.status === 'completed') {
+        applyRunToState(authoritativeRun);
+        setProgressText('');
+        setProgressNode(null);
+        return authoritativeRun;
+      }
+      if (authoritativeRun.status !== 'applied') {
+        applyRunToState(authoritativeRun);
+        return authoritativeRun;
+      }
+      applyRunToState(authoritativeRun, false, true);
+      let checkpoint = postApplyCheckpointRef.current;
+      if (!checkpoint || checkpoint.runId !== authoritativeRun.id) {
+        const appliedResumeUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(
+          authoritativeRun.appliedResumeUpdatedAt,
+        );
+        if (!appliedResumeUpdatedAt) throw new Error('无法确认应用后的简历版本。');
+        markSelfOwnedResumeTimestamp(appliedResumeUpdatedAt);
+        checkpoint = {
+          runId: authoritativeRun.id,
+          phase: 'needs_reload',
+          appliedResumeUpdatedAt,
+          previousEvaluationSignature: latestInputsRef.current.evaluationSignature,
+        };
+        publishPostApplyCheckpoint(checkpoint);
+      }
+      if (checkpoint.phase === 'needs_reload') {
+        const sourceCommitPromise = waitForCommittedSource(
+          checkpoint.appliedResumeUpdatedAt,
+          checkpoint.previousEvaluationSignature,
+          generation,
+        );
+        void sourceCommitPromise.catch(() => undefined);
+        const reload = await reloadResumeContext(resumeId);
+        if (reload.status !== 'success') throw reload.error ?? new Error('应用后重新加载简历失败。');
+        await settleCommittedSourceAfterReload(checkpoint.appliedResumeUpdatedAt, generation);
+        const sourceCommit = await sourceCommitPromise;
+        await assertCurrent(generation, operation, currentRun.id);
+        publishPostApplyCheckpoint({
+          runId: authoritativeRun.id,
+          phase: 'needs_evaluation',
+          sourceEvaluationSignature: sourceCommit.evaluationSignature,
+        });
+      }
       return await runPostApplyEvaluation(
-        currentRun,
-        latestInputsRef.current.evaluationSignature,
+        authoritativeRun,
         generation,
         controller,
         operation,
@@ -1203,22 +1789,39 @@ export const useResumeOptimizationFlow = ({
       if (generationRef.current === generation) controllerRef.current = null;
     }
   }, [
-    beginHandledOperation, enabled, handleOperationError, runPostApplyEvaluation,
-    shouldHandleOperationError,
+    applyRunToState, assertCurrent, beginHandledOperation, enabled, handleOperationError,
+    markSelfOwnedResumeTimestamp, publishPostApplyCheckpoint, reloadResumeContext, resumeId, runPostApplyEvaluation,
+    settleCommittedSourceAfterReload, shouldHandleOperationError, waitForCommittedSource,
   ]);
 
   const revertRun = useCallback(async () => {
     if (!enabled) return null;
     const currentRun = latestRunRef.current;
     const currentUpdatedAt = latestInputsRef.current.sourceResumeUpdatedAt;
-    if (!currentRun || !currentUpdatedAt || !['applied', 'completed'].includes(currentRun.status)) return null;
+    if (
+      !currentRun
+      || !currentUpdatedAt
+      || !['applied', 'completed'].includes(currentRun.status)
+      || controllerRef.current
+    ) return null;
+    setUiState('applying');
+    setError(null);
     const started = await beginHandledOperation('撤销简历优化失败。');
     if (!started) return null;
     const { generation, controller, operation } = started;
-    setUiState('applying');
     try {
+      const committedToken = await commitLatestResumeConfigIfNeededRef.current();
+      const committedCurrentUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(committedToken);
+      if (
+        !committedCurrentUpdatedAt
+        || !resumeOptimizationFlowTimestampsEqual(committedCurrentUpdatedAt, currentUpdatedAt)
+      ) {
+        invalidateGeneration(false, true);
+        return null;
+      }
+      await assertCurrent(generation, operation, currentRun.id);
       const reverted = await resumeOptimizationService.revert(currentRun.id, {
-        expectedResumeUpdatedAt: currentUpdatedAt,
+        expectedResumeUpdatedAt: committedCurrentUpdatedAt,
       }, {
         signal: controller.signal,
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
@@ -1228,7 +1831,13 @@ export const useResumeOptimizationFlow = ({
       const reloaded = await reloadResumeContext(resumeId);
       if (reloaded.status !== 'success') throw reloaded.error ?? new Error('撤销后重新加载失败。');
       await assertCurrent(generation, operation, currentRun.id);
-      applyRunToState(reverted.run);
+      applyAttemptRef.current = null;
+      clearPostApplyCheckpoint();
+      latestRunRef.current = reverted.run;
+      setRun(reverted.run);
+      setUiState('closed');
+      setProgressText('');
+      setProgressNode(null);
       latestToastRef.current.success('已撤销本次简历优化。');
       return reverted.run;
     } catch (cause) {
@@ -1240,7 +1849,8 @@ export const useResumeOptimizationFlow = ({
       if (generationRef.current === generation) controllerRef.current = null;
     }
   }, [
-    applyRunToState, assertCurrent, beginHandledOperation, enabled, handleOperationError,
+    assertCurrent, beginHandledOperation, clearPostApplyCheckpoint, enabled, handleOperationError,
+    invalidateGeneration,
     markSelfOwnedResumeAndEvaluationTimestamp, reloadResumeContext, resumeId,
     shouldHandleOperationError,
   ]);

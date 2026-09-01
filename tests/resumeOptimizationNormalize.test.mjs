@@ -91,6 +91,7 @@ const run = (overrides = {}) => ({
   applied_content_signature: null,
   created_at: '2026-09-01T03:00:00Z',
   updated_at: '2026-09-01T03:01:00Z',
+  applied_resume_updated_at: null,
   applied_at: null,
   completed_at: null,
   ...overrides,
@@ -135,6 +136,7 @@ const completedRun = (overrides = {}) => run({
   accepted_change_ids: ['CHG_1'],
   applied_content_signature: 'applied-signature',
   post_evaluation: postEvaluation(),
+  applied_resume_updated_at: '2026-09-01T03:05:00Z',
   applied_at: '2026-09-01T03:05:00Z',
   completed_at: '2026-09-01T03:10:00Z',
   ...overrides,
@@ -148,6 +150,7 @@ test('normalizes the backend snake-case run and preserves blocked changes safely
   assert.equal(normalized.id, RUN_ID);
   assert.equal(normalized.resumeId, RESUME_ID);
   assert.equal(normalized.status, 'preview_ready');
+  assert.equal(normalized.appliedResumeUpdatedAt, null);
   assert.equal(normalized.result.changes.length, 2);
   const blocked = normalized.result.changes.find((item) => item.changeId === 'CHG_BLOCKED');
   assert.equal(blocked.safetyStatus, 'blocked');
@@ -156,6 +159,18 @@ test('normalizes the backend snake-case run and preserves blocked changes safely
   assert.deepEqual(blocked.sourceLabels, ['已选经历原始版本']);
   assert.equal('sourceRefs' in blocked, false);
   assert.doesNotMatch(JSON.stringify(blocked.sourceLabels), /private-master-id|\//);
+});
+
+test('normalizes the explicit applied resume version token independently from event time', async () => {
+  const { normalizeResumeOptimizationRun } = await importNormalizer();
+  const normalized = normalizeResumeOptimizationRun(run({
+    status: 'applied',
+    applied_resume_updated_at: '2026-09-01T03:05:00.123456Z',
+    applied_at: '2026-09-01T03:05:01Z',
+  }));
+
+  assert.equal(normalized.appliedResumeUpdatedAt, '2026-09-01T03:05:00.123456Z');
+  assert.equal(normalized.appliedAt, '2026-09-01T03:05:01.000Z');
 });
 
 test('accepts a valid non-text section reorder without source refs', async () => {

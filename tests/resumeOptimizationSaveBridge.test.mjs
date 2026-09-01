@@ -91,6 +91,38 @@ test('useResumeData places the conflict barrier before hydration setters and flu
   assert.match(source, /resolveCommittedResumeSaveToken\(/);
 });
 
+test('optimization mutation barrier drains saves, consumes the latest snapshot, and skips clean writes', () => {
+  const source = read('hooks/useResumeData.ts');
+  const barrier = source.slice(
+    source.indexOf('const commitLatestResumeConfigIfNeeded'),
+    source.indexOf('const flushResumeConfig'),
+  );
+  const drain = barrier.indexOf('await pendingResumeSaveDrainRef.current()');
+  const latestSnapshot = barrier.indexOf('latestEffectiveConfigSnapshotRef.current', drain);
+  const signature = barrier.indexOf('JSON.stringify', latestSnapshot);
+  const dirtyGate = barrier.indexOf('state.lastSavedConfigRef.current !==', signature);
+  const save = barrier.indexOf('saveCoordinator.save', dirtyGate);
+  const token = barrier.indexOf('state.resumeUpdatedAtRef.current', save);
+
+  assert.ok(drain >= 0 && drain < latestSnapshot && latestSnapshot < signature);
+  assert.ok(signature < dirtyGate && dirtyGate < save && save < token);
+  assert.match(barrier, /resumeVersionConflictEpochRef\.current/);
+  assert.match(barrier, /resumeVersionConflictRef\.current/);
+  assert.match(barrier, /state\.activeResumeIdRef\.current/);
+  assert.match(
+    barrier,
+    /JSON\.stringify\(latestEffectiveConfigSnapshotRef\.current\) !== latestConfigSignature[\s\S]*throw new ResumeConfigMutationBarrierError/,
+  );
+  assert.match(source, /commitLatestResumeConfigIfNeeded: \(\) => Promise<string \| undefined>/);
+
+  const editor = read('views/ResumeEditor/index.tsx');
+  const flowCall = editor.slice(
+    editor.indexOf('const resumeOptimizationFlow = useResumeOptimizationFlow'),
+    editor.indexOf('const isResumeOptimizationBusy'),
+  );
+  assert.match(flowCall, /commitLatestResumeConfigIfNeeded/);
+});
+
 test('local resume evaluation removes inherited agent attestation without mutating the source', async () => {
   const { stripLocalEvaluationAttestation } = await importMarkedHelpers(
     'hooks/useJDAnalysis.ts',

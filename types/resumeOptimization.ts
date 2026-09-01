@@ -186,6 +186,7 @@ export interface ResumeOptimizationRun {
   appliedContentSignature: string | null;
   createdAt: string;
   updatedAt: string;
+  appliedResumeUpdatedAt: string | null;
   appliedAt: string | null;
   completedAt: string | null;
 }
