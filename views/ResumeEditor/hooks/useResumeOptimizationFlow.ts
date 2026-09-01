@@ -18,6 +18,7 @@ import type { ResumeEvaluation } from '../../../types/ai';
 import type {
   ResumeOptimizationAnswer,
   ResumeOptimizationAnswerState,
+  ResumeOptimizationProgressNode,
   ResumeOptimizationRun,
   ResumeOptimizationStatus,
   ResumeOptimizationUiState,
@@ -29,6 +30,19 @@ export const TERMINAL_RESUME_OPTIMIZATION_STATUSES = new Set<ResumeOptimizationS
   'cancelled',
   'reverted',
 ]);
+
+const RESUME_OPTIMIZATION_PROGRESS_TITLES: Record<ResumeOptimizationProgressNode, string> = {
+  freeze_snapshot: '冻结当前简历版本',
+  prepare_context: '整理六维问题与经历信息',
+  plan_changes: '生成优化方案',
+  verify_changes: '检查事实边界',
+  persist_run: '保存优化方案',
+  rewrite_answers: '根据补充信息更新方案',
+};
+
+export const resolveResumeOptimizationProgressTitle = (
+  node: ResumeOptimizationProgressNode | null,
+): string => node ? RESUME_OPTIMIZATION_PROGRESS_TITLES[node] : '正在准备优化方案…';
 
 const ACTIVE_STREAM_UI_STATES = new Set<ResumeOptimizationUiState>([
   'starting',
@@ -280,6 +294,7 @@ export const useResumeOptimizationFlow = ({
   const [uiState, setUiState] = useState<ResumeOptimizationUiState>('closed');
   const [run, setRun] = useState<ResumeOptimizationRun | null>(null);
   const [progressText, setProgressText] = useState('');
+  const [progressNode, setProgressNode] = useState<ResumeOptimizationProgressNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<ResumeOptimizationAnswerDrafts>({});
   const [acceptedChangeIds, setAcceptedChangeIds] = useState<string[]>([]);
@@ -338,6 +353,7 @@ export const useResumeOptimizationFlow = ({
     selfOwnedResumeTimestampsRef.current.clear();
     selfOwnedResumeAndEvaluationTimestampsRef.current.clear();
     setProgressText('');
+    setProgressNode(null);
     if (clearVisibleRun) {
       setIsHydrating(false);
       activeRunIdRef.current = null;
@@ -687,6 +703,7 @@ export const useResumeOptimizationFlow = ({
     setUiState('starting');
     setError(null);
     setProgressText('正在保存当前简历…');
+    setProgressNode('freeze_snapshot');
     try {
       let attempt = startAttemptRef.current;
       if (
@@ -719,7 +736,8 @@ export const useResumeOptimizationFlow = ({
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
         onEvent: (event) => {
           if (generationRef.current === generation && event.type === 'progress') {
-            setProgressText(event.title);
+            setProgressNode(event.node);
+            setProgressText(resolveResumeOptimizationProgressTitle(event.node));
           }
         },
       });
@@ -727,6 +745,7 @@ export const useResumeOptimizationFlow = ({
       startAttemptRef.current = null;
       applyRunToState(nextRun);
       setProgressText('');
+      setProgressNode(null);
       return nextRun;
     } catch (cause) {
       if (await shouldHandleOperationError(cause, generation, operation)) {
@@ -787,13 +806,15 @@ export const useResumeOptimizationFlow = ({
         expectedAuthCacheKey: operation.expectedAuthCacheKey,
         onEvent: (event) => {
           if (generationRef.current === generation && event.type === 'progress') {
-            setProgressText(event.title);
+            setProgressNode(event.node);
+            setProgressText(resolveResumeOptimizationProgressTitle(event.node));
           }
         },
       });
       await assertCurrent(generation, operation, currentRun.id);
       applyRunToState(nextRun);
       setProgressText('');
+      setProgressNode(null);
       return nextRun;
     } catch (cause) {
       if (await shouldHandleOperationError(cause, generation, operation, currentRun.id)) {
@@ -1082,6 +1103,7 @@ export const useResumeOptimizationFlow = ({
     uiState,
     run,
     progressText,
+    progressNode,
     error,
     answerDrafts,
     acceptedChangeIds,

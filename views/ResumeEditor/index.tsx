@@ -142,6 +142,7 @@ import {
 import { useResumeEditorExperiencePolishCoordinator } from './hooks/useResumeEditorExperiencePolishCoordinator';
 import { useResumeEditorExperienceFocusRequest } from './hooks/useResumeEditorExperienceFocusRequest';
 import { useResumeOptimizationFlow } from './hooks/useResumeOptimizationFlow';
+import { ResumeOptimizationWorkspace } from './components/ResumeOptimization/ResumeOptimizationWorkspace';
 import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
 type ResumeEditorProps = {
     cachedResumes?: DashboardResume[];
@@ -286,6 +287,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
     const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
     const [isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen] = useState(false);
+    const resumeOptimizationReturnFocusRef = useRef<HTMLElement | null>(null);
+    const resumeOptimizationShouldRestoreReportRef = useRef(false);
     const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
     const assistantSidebarLaunchRequestIdRef = useRef(0);
     const {
@@ -899,6 +902,32 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         || resumeOptimizationFlow.uiState === 'applying'
         || resumeOptimizationFlow.uiState === 'rescoring'
     );
+    const handleStartResumeOptimization = useCallback(async () => {
+        resumeOptimizationReturnFocusRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        resumeOptimizationShouldRestoreReportRef.current = true;
+        setIsJDAnalysisDetailsSidebarOpen(false);
+        await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => resolve());
+        });
+        return resumeOptimizationFlow.startOptimization();
+    }, [resumeOptimizationFlow.startOptimization]);
+    const handleCloseResumeOptimization = useCallback(async () => {
+        const didClose = await resumeOptimizationFlow.closeWorkspace();
+        if (!didClose) return false;
+        if (resumeOptimizationShouldRestoreReportRef.current) {
+            setIsJDAnalysisDetailsSidebarOpen(true);
+        }
+        resumeOptimizationShouldRestoreReportRef.current = false;
+        return true;
+    }, [resumeOptimizationFlow.closeWorkspace]);
+
+    useEffect(() => {
+        if (resumeOptimizationFlow.uiState === 'closed') {
+            resumeOptimizationShouldRestoreReportRef.current = false;
+        }
+    }, [resumeOptimizationFlow.uiState]);
 
     const commitLayoutSnapshot = useCallback((
         snapshot: LayoutSnapshot,
@@ -1776,7 +1805,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             isOptimizationBusy: isResumeOptimizationBusy,
             canStartOptimization: resumeOptimizationFlow.canStart,
             optimizationDisabledReason: resumeOptimizationFlow.disabledReason,
-            onStartOptimization: resumeOptimizationFlow.startOptimization,
+            onStartOptimization: handleStartResumeOptimization,
             thinkingText,
             onStopAnalyze: handleStopAnalysisWithToast,
             onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar,
@@ -1959,7 +1988,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isOptimizationBusy: isResumeOptimizationBusy,
         canStartOptimization: resumeOptimizationFlow.canStart,
         optimizationDisabledReason: resumeOptimizationFlow.disabledReason,
-        onStartOptimization: resumeOptimizationFlow.startOptimization,
+        onStartOptimization: handleStartResumeOptimization,
         onClose: handleCloseJDAnalysisDetailsSidebar,
         onOpenAgentPluginConfig,
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
@@ -2129,6 +2158,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 isAssistantSidebarOpen={isRightSidebarOpen}
                 assistantSidebar={rightSidebarContent}
             />
+            {resumeOptimizationFlow.uiState !== 'closed' ? (
+                <ResumeOptimizationWorkspace
+                    {...resumeOptimizationFlow}
+                    onRequestClose={handleCloseResumeOptimization}
+                    returnFocusRef={resumeOptimizationReturnFocusRef}
+                />
+            ) : null}
             <TemplateSelectorModal
                 isOpen={isTemplateSelectorOpen}
                 selectedTemplateId={resumeTemplateId}
