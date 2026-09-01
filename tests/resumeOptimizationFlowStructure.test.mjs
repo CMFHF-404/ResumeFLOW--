@@ -527,3 +527,36 @@ test('reopening an externally stale cached run remains fail closed', () => {
   assert.match(reopenBlock, /setUiState\('stale'\)/);
   assert.match(reopenBlock, /status === 'awaiting_answers'[\s\S]*status === 'preview_ready'/);
 });
+
+test('preview selections survive a same-owner top-level navigation remount', async () => {
+  const {
+    clearResumeOptimizationSelectionSnapshot,
+    readResumeOptimizationSelectionSnapshot,
+    saveResumeOptimizationSelectionSnapshot,
+  } = await importFlow();
+
+  clearResumeOptimizationSelectionSnapshot('owner-a', 'resume-a');
+  saveResumeOptimizationSelectionSnapshot('owner-a', 'resume-a', 'run-a', []);
+  assert.deepEqual(
+    readResumeOptimizationSelectionSnapshot('owner-a', 'resume-a', 'run-a'),
+    [],
+  );
+  assert.equal(readResumeOptimizationSelectionSnapshot('owner-a', 'resume-a', 'run-b'), null);
+  assert.equal(readResumeOptimizationSelectionSnapshot('owner-b', 'resume-a', 'run-a'), null);
+
+  saveResumeOptimizationSelectionSnapshot('owner-a', 'resume-a', 'run-a', ['change-b', 'change-a']);
+  const restored = readResumeOptimizationSelectionSnapshot('owner-a', 'resume-a', 'run-a');
+  assert.deepEqual(restored, ['change-b', 'change-a']);
+  restored.push('mutated-by-caller');
+  assert.deepEqual(
+    readResumeOptimizationSelectionSnapshot('owner-a', 'resume-a', 'run-a'),
+    ['change-b', 'change-a'],
+  );
+
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  const applyBlock = hook.slice(hook.indexOf('const applyRunToState'), hook.indexOf('const waitForSourceSnapshot'));
+  assert.match(applyBlock, /readResumeOptimizationSelectionSnapshot/);
+  assert.match(applyBlock, /filterResumeOptimizationSelectableChangeIds/);
+  const toggleBlock = hook.slice(hook.indexOf('const toggleChange'), hook.indexOf('const runPostApplyEvaluation'));
+  assert.match(toggleBlock, /saveResumeOptimizationSelectionSnapshot/);
+});

@@ -49,6 +49,50 @@ const ACTIVE_STREAM_UI_STATES = new Set<ResumeOptimizationUiState>([
   'answering',
 ]);
 
+type ResumeOptimizationSelectionSnapshot = {
+  runId: string;
+  acceptedChangeIds: string[];
+};
+
+const resumeOptimizationSelectionSnapshots = new Map<string, ResumeOptimizationSelectionSnapshot>();
+
+const resumeOptimizationSelectionSnapshotKey = (
+  authUserKey: string | null,
+  resumeId: string | null,
+) => authUserKey && resumeId ? JSON.stringify([authUserKey, resumeId]) : null;
+
+export const saveResumeOptimizationSelectionSnapshot = (
+  authUserKey: string | null,
+  resumeId: string | null,
+  runId: string,
+  acceptedChangeIds: string[],
+) => {
+  const key = resumeOptimizationSelectionSnapshotKey(authUserKey, resumeId);
+  if (!key || !runId) return;
+  resumeOptimizationSelectionSnapshots.set(key, {
+    runId,
+    acceptedChangeIds: [...new Set(acceptedChangeIds)],
+  });
+};
+
+export const readResumeOptimizationSelectionSnapshot = (
+  authUserKey: string | null,
+  resumeId: string | null,
+  runId: string,
+): string[] | null => {
+  const key = resumeOptimizationSelectionSnapshotKey(authUserKey, resumeId);
+  const snapshot = key ? resumeOptimizationSelectionSnapshots.get(key) : undefined;
+  return snapshot?.runId === runId ? [...snapshot.acceptedChangeIds] : null;
+};
+
+export const clearResumeOptimizationSelectionSnapshot = (
+  authUserKey: string | null,
+  resumeId: string | null,
+) => {
+  const key = resumeOptimizationSelectionSnapshotKey(authUserKey, resumeId);
+  if (key) resumeOptimizationSelectionSnapshots.delete(key);
+};
+
 type ResumeOptimizationStartAvailabilityInput = {
   enabled: boolean;
   authUserKey: string | null;
@@ -480,15 +524,26 @@ export const useResumeOptimizationFlow = ({
       previousRunId,
       current,
     ));
+    const restoredSelections = nextRun.status === 'preview_ready'
+      ? readResumeOptimizationSelectionSnapshot(authUserKey, resumeId, nextRun.id)
+      : null;
+    if (nextRun.status !== 'preview_ready') {
+      clearResumeOptimizationSelectionSnapshot(authUserKey, resumeId);
+    }
     setAcceptedChangeIds((current) => (
       preserveLocalSelections && isSameRun
         ? filterResumeOptimizationSelectableChangeIds(effectivePlan(nextRun).changes, current)
-        : buildResumeOptimizationInitialAcceptedIds(nextRun)
+        : restoredSelections !== null
+          ? filterResumeOptimizationSelectableChangeIds(
+            effectivePlan(nextRun).changes,
+            restoredSelections,
+          )
+          : buildResumeOptimizationInitialAcceptedIds(nextRun)
     ));
     setUiState(hasFrozenAnswerRetry
       ? 'error'
       : resolveResumeOptimizationRunUiState(nextRun.status, automaticHydration));
-  }, []);
+  }, [authUserKey, resumeId]);
 
   const markSelfOwnedResumeTimestamp = useCallback((updatedAt: string) => {
     const canonicalUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(updatedAt);
@@ -603,6 +658,10 @@ export const useResumeOptimizationFlow = ({
       ),
     );
     const signatureOwned = !signatureChanged || waiterOwnsSource || timestampOwnsEvaluation;
+
+    if (ownerChanged || resumeChanged) {
+      clearResumeOptimizationSelectionSnapshot(previous.authUserKey, previous.resumeId);
+    }
 
     identityRef.current = {
       authUserKey,
@@ -1004,10 +1063,14 @@ export const useResumeOptimizationFlow = ({
     ) return;
     const change = currentRun && effectivePlan(currentRun).changes.find((item) => item.changeId === changeId);
     if (!change || !isResumeOptimizationChangeSelectable(change) || currentRun?.status !== 'preview_ready') return;
-    setAcceptedChangeIds((current) => current.includes(changeId)
-      ? current.filter((item) => item !== changeId)
-      : [...current, changeId]);
-  }, [enabled]);
+    setAcceptedChangeIds((current) => {
+      const next = current.includes(changeId)
+        ? current.filter((item) => item !== changeId)
+        : [...current, changeId];
+      saveResumeOptimizationSelectionSnapshot(authUserKey, resumeId, currentRun.id, next);
+      return next;
+    });
+  }, [authUserKey, enabled, resumeId]);
 
   const runPostApplyEvaluation = useCallback(async (
     appliedRun: ResumeOptimizationRun,
