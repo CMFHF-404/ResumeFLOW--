@@ -3,11 +3,14 @@ import { ShieldCheck, X } from 'lucide-react';
 
 import type { useResumeOptimizationFlow } from '../../hooks/useResumeOptimizationFlow';
 import type { ResumeOptimizationStatus, ResumeOptimizationUiState } from '../../../../types/resumeOptimization';
+import { ResumeOptimizationOverview } from './ResumeOptimizationOverview';
 import { ResumeOptimizationProgress } from './ResumeOptimizationProgress';
+import { ResumeOptimizationQuestions } from './ResumeOptimizationQuestions';
 import {
     ResumeOptimizationStepRail,
     type ResumeOptimizationStepId,
 } from './ResumeOptimizationStepRail';
+import { areResumeOptimizationAnswersComplete } from './optimizationDisplayUtils.mjs';
 
 type ResumeOptimizationFlowSlice = ReturnType<typeof useResumeOptimizationFlow>;
 
@@ -105,6 +108,11 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     run,
     progressText,
     error,
+    answerDrafts,
+    persistedAnswerIds,
+    isAnswerSubmissionFrozen,
+    setAnswer,
+    submitAnswers,
     onRequestClose,
     returnFocusRef,
 }) => {
@@ -112,12 +120,37 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     const dialogRef = useRef<HTMLElement>(null);
     const headingRef = useRef<HTMLHeadingElement>(null);
     const closeRequestInFlightRef = useRef(false);
-    const hasQuestions = Boolean((run?.result ?? run?.plan)?.questions.length);
+    const plan = run ? run.result ?? run.plan : null;
+    const hasQuestions = Boolean(plan?.questions.length);
     const resolvedActiveStep = resolveResumeOptimizationActiveStep(uiState, run?.status, hasQuestions);
     const [displayStep, setDisplayStep] = useState<ResumeOptimizationStepId>(() => resolvedActiveStep);
     const previousUiStateRef = useRef(uiState);
     const isCloseBlocked = uiState === 'applying' || uiState === 'rescoring';
     const isProgressVisible = ['starting', 'answering', 'applying', 'rescoring'].includes(uiState);
+    const isQuestionRetry = uiState === 'error' && run?.status === 'awaiting_answers';
+    const canRenderQuestions = Boolean(
+        plan
+        && displayStep === 'questions'
+        && uiState !== 'stale',
+    );
+    const canEditQuestions = Boolean(
+        canRenderQuestions
+        && run?.status === 'awaiting_answers'
+        && (uiState === 'awaiting_answers' || isQuestionRetry),
+    );
+    const canSubmitAnswers = Boolean(
+        plan
+        && canEditQuestions
+        && areResumeOptimizationAnswersComplete(plan.questions, answerDrafts),
+    );
+    const visibleSteps = useMemo(() => (
+        (['overview', 'questions', 'preview', 'result'] as ResumeOptimizationStepId[])
+            .filter((step) => hasQuestions || step !== 'questions')
+    ), [hasQuestions]);
+    const availableSteps = useMemo(() => {
+        const resolvedIndex = visibleSteps.indexOf(resolvedActiveStep);
+        return resolvedIndex < 0 ? [visibleSteps[0]] : visibleSteps.slice(0, resolvedIndex + 1);
+    }, [resolvedActiveStep, visibleSteps]);
 
     const requestClose = useCallback(async () => {
         if (isCloseBlocked || closeRequestInFlightRef.current) return false;
@@ -128,6 +161,14 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             closeRequestInFlightRef.current = false;
         }
     }, [isCloseBlocked, onRequestClose]);
+
+    const handleStepSelect = useCallback((step: ResumeOptimizationStepId) => {
+        if (availableSteps.includes(step)) setDisplayStep(step);
+    }, [availableSteps]);
+
+    const handleContinueFromOverview = useCallback(() => {
+        setDisplayStep(hasQuestions ? 'questions' : 'preview');
+    }, [hasQuestions]);
 
     const getFocusableElements = useCallback(() => {
         const dialog = dialogRef.current;
@@ -184,6 +225,13 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         previousUiStateRef.current = uiState;
         setDisplayStep(resolvedActiveStep);
     }, [resolvedActiveStep, uiState]);
+
+    useEffect(() => {
+        const dialog = dialogRef.current;
+        if (dialog && !dialog.contains(document.activeElement)) {
+            headingRef.current?.focus();
+        }
+    }, [displayStep, uiState]);
 
     useEffect(() => {
         const overlay = overlayRef.current;
@@ -290,15 +338,40 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
 
                 <div className="min-h-0 flex-1 overflow-hidden md:flex">
                     <aside className="hidden w-[220px] shrink-0 border-r border-slate-200 bg-white/60 dark:border-slate-800 dark:bg-slate-950/55 md:block">
-                        <ResumeOptimizationStepRail activeStep={displayStep} hasQuestions={hasQuestions} variant="desktop" />
+                        <ResumeOptimizationStepRail
+                            activeStep={displayStep}
+                            hasQuestions={hasQuestions}
+                            variant="desktop"
+                            availableSteps={availableSteps}
+                            onStepSelect={handleStepSelect}
+                        />
                     </aside>
                     <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
                         <div className="shrink-0 border-b border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-950/70 md:hidden">
-                            <ResumeOptimizationStepRail activeStep={displayStep} hasQuestions={hasQuestions} variant="mobile" />
+                            <ResumeOptimizationStepRail
+                                activeStep={displayStep}
+                                hasQuestions={hasQuestions}
+                                variant="mobile"
+                                availableSteps={availableSteps}
+                                onStepSelect={handleStepSelect}
+                            />
                         </div>
                         <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
                             {isProgressVisible ? (
                                 <ResumeOptimizationProgress progressText={progressText} />
+                            ) : displayStep === 'overview' && plan ? (
+                                <ResumeOptimizationOverview plan={plan} />
+                            ) : canRenderQuestions && plan ? (
+                                <ResumeOptimizationQuestions
+                                    questions={plan.questions}
+                                    drafts={answerDrafts}
+                                    persistedAnswers={run?.answers ?? []}
+                                    disabled={!canEditQuestions}
+                                    submissionFrozen={isAnswerSubmissionFrozen}
+                                    error={isQuestionRetry ? error : null}
+                                    onSetAnswer={setAnswer}
+                                    onSubmit={submitAnswers}
+                                />
                             ) : (
                                 <ResumeOptimizationPlaceholder activeStep={displayStep} error={error} uiState={uiState} />
                             )}
@@ -308,14 +381,34 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
 
                 <footer className="sticky bottom-0 z-10 flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 md:px-6 md:pb-3">
                     <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{footerStatus}</p>
-                    <button
-                        type="button"
-                        disabled={isCloseBlocked}
-                        onClick={() => void requestClose()}
-                        className="min-h-[44px] shrink-0 rounded-xl border border-slate-200 px-4 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
-                    >
-                        返回编辑器
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                        <button
+                            type="button"
+                            disabled={isCloseBlocked}
+                            onClick={() => void requestClose()}
+                            className="min-h-[44px] rounded-xl border border-slate-200 px-4 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                        >
+                            返回编辑器
+                        </button>
+                        {displayStep === 'overview' && plan && uiState !== 'stale' ? (
+                            <button
+                                type="button"
+                                onClick={handleContinueFromOverview}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
+                            >
+                                {hasQuestions ? '继续补充信息' : '查看优化方案'}
+                            </button>
+                        ) : canRenderQuestions && canEditQuestions ? (
+                            <button
+                                type="submit"
+                                form="resume-optimization-questions-form"
+                                disabled={!canSubmitAnswers || (isAnswerSubmissionFrozen && !isQuestionRetry)}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                            >
+                                {isQuestionRetry ? '重试提交' : '提交并生成方案'}
+                            </button>
+                        ) : null}
+                    </div>
                 </footer>
             </section>
         </div>

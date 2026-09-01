@@ -54,10 +54,18 @@ const importFlow = async () => {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}#${Math.random()}`);
 };
 
-const change = (changeId, safetyStatus, defaultSelected) => ({
+const change = (
   changeId,
   safetyStatus,
   defaultSelected,
+  actionKind = 'rewrite_now',
+  targetedValue = '安全目标值',
+) => ({
+  changeId,
+  safetyStatus,
+  defaultSelected,
+  actionKind,
+  targetedValue,
 });
 
 test('pure flow guards map terminal hydration, allowed selection, and busy gates', async () => {
@@ -407,4 +415,115 @@ test('flow stores safe progress nodes and never trusts server progress titles', 
   assert.doesNotMatch(hook, /setProgressText\(event\.title\)/);
   const returned = hook.slice(hook.lastIndexOf('return {'));
   assert.match(returned, /progressNode/);
+});
+
+test('answer recovery keeps authoritative persisted answers and freezes ambiguous retries', async () => {
+  const {
+    buildResumeOptimizationAnswerDrafts,
+    buildResumeOptimizationAnswerPayload,
+  } = await importFlow();
+  const run = {
+    id: 'run-a',
+    answers: [{ questionId: 'q1', state: 'answered', value: '服务端事实' }],
+    plan: { questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+    result: null,
+  };
+  const currentDrafts = {
+    q1: { state: 'answered', value: '本地旧值' },
+    q2: { state: 'answered', value: '本地未提交事实' },
+    ghost: { state: 'answered', value: '不再属于当前问题' },
+  };
+
+  assert.deepEqual(buildResumeOptimizationAnswerDrafts(run, 'run-a', currentDrafts), {
+    q1: { state: 'answered', value: '服务端事实' },
+    q2: { state: 'answered', value: '本地未提交事实' },
+  });
+  assert.deepEqual(buildResumeOptimizationAnswerDrafts(run, 'run-b', currentDrafts), {
+    q1: { state: 'answered', value: '服务端事实' },
+    q2: { state: 'answered', value: '' },
+  });
+  assert.deepEqual(buildResumeOptimizationAnswerPayload(run, currentDrafts), [
+    { questionId: 'q1', state: 'answered', value: '服务端事实' },
+    { questionId: 'q2', state: 'answered', value: '本地未提交事实' },
+  ]);
+  assert.equal(buildResumeOptimizationAnswerPayload(run, {
+    q1: currentDrafts.q1,
+    q2: { state: 'answered', value: '   ' },
+  }), null);
+  assert.equal(buildResumeOptimizationAnswerPayload(run, { q1: currentDrafts.q1 }), null);
+
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  assert.match(hook, /frozenAnswerSubmissionRef = useRef/);
+  assert.match(hook, /isAnswerSubmissionFrozen/);
+  assert.match(hook, /persistedAnswerIds/);
+  assert.doesNotMatch(hook, /currentRun\.answers\.length > 0/);
+  assert.doesNotMatch(hook, /\?\.state \?\? 'skipped'/);
+  assert.doesNotMatch(hook, /error\.code\.startsWith\('resume_optimization_'\)/);
+  assert.match(hook, /resume_optimization_context_stale/);
+  assert.match(hook, /resume_optimization_content_conflict/);
+  const submitBlock = hook.slice(hook.indexOf('const submitAnswers'), hook.indexOf('const toggleChange'));
+  assert.match(submitBlock, /frozenAnswerSubmissionRef\.current/);
+  const publishAttempt = submitBlock.indexOf('frozenAnswerSubmissionRef.current =');
+  const beginOperation = submitBlock.indexOf('await beginHandledOperation');
+  const refreshRun = submitBlock.indexOf('resumeOptimizationService.get');
+  const answerRun = submitBlock.indexOf('resumeOptimizationService.answer');
+  assert.ok(publishAttempt >= 0 && publishAttempt < beginOperation);
+  assert.ok(refreshRun > beginOperation && refreshRun < answerRun);
+});
+
+test('selectable changes match backend apply rules and same-run reopen preserves local choices', async () => {
+  const {
+    buildResumeOptimizationInitialAcceptedIds,
+    filterResumeOptimizationSelectableChangeIds,
+    isResumeOptimizationChangeSelectable,
+  } = await importFlow();
+  const changes = [
+    change('rewrite', 'allowed', true, 'rewrite_now', 'target'),
+    change('question', 'allowed', true, 'ask_user', 'target'),
+    change('missing-target', 'allowed', true, 'rewrite_now', null),
+    change('wrong-action', 'allowed', true, 'leave_unchanged', 'target'),
+    change('blocked', 'blocked', true, 'rewrite_now', 'target'),
+  ];
+  assert.deepEqual(changes.map(isResumeOptimizationChangeSelectable), [true, true, false, false, false]);
+  assert.deepEqual(buildResumeOptimizationInitialAcceptedIds({
+    acceptedChangeIds: [],
+    plan: { changes },
+    result: null,
+  }), ['rewrite', 'question']);
+  assert.deepEqual(filterResumeOptimizationSelectableChangeIds(changes, [
+    'question', 'missing-target', 'rewrite', 'question', 'unknown',
+  ]), ['question', 'rewrite']);
+
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  const toggleBlock = hook.slice(hook.indexOf('const toggleChange'), hook.indexOf('const runPostApplyEvaluation'));
+  assert.match(toggleBlock, /isResumeOptimizationChangeSelectable\(change\)/);
+  assert.match(hook, /applyRunToState\(latestRunRef\.current, false, true\)/);
+  assert.match(hook, /preserveLocalSelections/);
+});
+
+test('answer retry survives close and slow auth close cannot continue in background', () => {
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  const applyBlock = hook.slice(hook.indexOf('const applyRunToState'), hook.indexOf('const waitForSourceSnapshot'));
+  assert.match(applyBlock, /hasFrozenAnswerRetry/);
+  assert.match(applyBlock, /hasFrozenAnswerRetry[\s\S]*\? 'error'/);
+
+  const submitBlock = hook.slice(hook.indexOf('const submitAnswers'), hook.indexOf('const toggleChange'));
+  const publishAnswering = submitBlock.indexOf("setUiState('answering')");
+  const beginOperation = submitBlock.indexOf("await beginHandledOperation('提交补充信息失败。')");
+  assert.ok(publishAnswering >= 0 && publishAnswering < beginOperation);
+
+  const closeBlock = hook.slice(hook.indexOf('const closeWorkspace'), hook.indexOf('const reopenLatestRun'));
+  assert.match(closeBlock, /frozenAnswerSubmissionRef\.current\?\.runId/);
+  assert.match(closeBlock, /controllerRef\.current/);
+  assert.match(closeBlock, /cancelRun\(\)/);
+});
+
+test('reopening an externally stale cached run remains fail closed', () => {
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  const reopenBlock = hook.slice(hook.indexOf('const reopenLatestRun'), hook.indexOf('return {', hook.indexOf('const reopenLatestRun')));
+  const contextCheck = reopenBlock.indexOf('isResumeOptimizationRunContextCurrent');
+  const applyCached = reopenBlock.indexOf('applyRunToState(latestRunRef.current');
+  assert.ok(contextCheck >= 0 && contextCheck < applyCached);
+  assert.match(reopenBlock, /setUiState\('stale'\)/);
+  assert.match(reopenBlock, /status === 'awaiting_answers'[\s\S]*status === 'preview_ready'/);
 });
