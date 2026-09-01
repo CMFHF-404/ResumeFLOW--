@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 OPTIMIZER_VERSION = "resume_optimization_v1"
 POLICY_VERSION = "thin_safety_v1"
 PROMPT_VERSION = "resume_optimization_prompt_v1"
+RESUME_EVALUATION_DIMENSION_NAMES = (
+    "逻辑清晰",
+    "STAR应用",
+    "内容可读",
+    "内容完整",
+    "专业表达",
+    "成果量化",
+)
 
 
 class ResumeOptimizationStatus(str, Enum):
@@ -246,6 +254,87 @@ class OptimizationPlan(BaseModel):
     )
 
 
+class ResumeOptimizationDimensionDelta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: str
+    beforeScore: int = Field(ge=0, le=100)
+    afterScore: int = Field(ge=0, le=100)
+    delta: int = Field(ge=-100, le=100)
+
+
+class ResumeOptimizationIssueCounts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    before: int = Field(ge=0)
+    after: int = Field(ge=0)
+    resolved: int = Field(ge=0)
+    remaining: int = Field(ge=0)
+    introduced: int = Field(ge=0)
+
+
+class ResumeOptimizationPostEvaluation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["resume_optimization_post_evaluation_v1"]
+    evaluationSignature: str
+    resumeUpdatedAt: datetime
+    beforeScore: int = Field(ge=0, le=100)
+    afterScore: int = Field(ge=0, le=100)
+    scoreDelta: int = Field(ge=-100, le=100)
+    dimensionDeltas: list[ResumeOptimizationDimensionDelta] = Field(
+        min_length=6,
+        max_length=6,
+    )
+    issueCounts: ResumeOptimizationIssueCounts
+    unresolvedFactGapCount: int = Field(ge=0)
+    acceptedChangeCount: int = Field(ge=0)
+    blockedChangeCount: int = Field(ge=0)
+    bankSuggestionCount: int = Field(ge=0)
+    safetySummary: OptimizationSafetySummary
+
+    @field_validator("evaluationSignature")
+    @classmethod
+    def _validate_evaluation_signature(cls, value: str) -> str:
+        return _require_non_empty(value, field_name="evaluationSignature")
+
+    @field_validator("resumeUpdatedAt")
+    @classmethod
+    def _validate_post_evaluation_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("resumeUpdatedAt must include a timezone")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_summary_arithmetic(self):
+        if self.scoreDelta != self.afterScore - self.beforeScore:
+            raise ValueError("scoreDelta does not match before/after scores")
+        seen: set[str] = set()
+        for item in self.dimensionDeltas:
+            if item.dimension in seen:
+                raise ValueError("dimensionDeltas must have unique dimensions")
+            seen.add(item.dimension)
+            if item.delta != item.afterScore - item.beforeScore:
+                raise ValueError("dimension delta does not match before/after scores")
+        if tuple(item.dimension for item in self.dimensionDeltas) != (
+            RESUME_EVALUATION_DIMENSION_NAMES
+        ):
+            raise ValueError("dimensionDeltas must use the fixed dimension order")
+        if self.issueCounts.remaining != self.issueCounts.after:
+            raise ValueError("remaining issue count must match after issue count")
+        if self.issueCounts.resolved > self.issueCounts.before:
+            raise ValueError("resolved issue count exceeds before issue count")
+        if self.issueCounts.introduced > self.issueCounts.after:
+            raise ValueError("introduced issue count exceeds after issue count")
+        if self.issueCounts.after != (
+            self.issueCounts.before
+            - self.issueCounts.resolved
+            + self.issueCounts.introduced
+        ):
+            raise ValueError("issue count arithmetic is inconsistent")
+        return self
+
+
 class ResumeOptimizationRunRead(BaseModel):
     id: str
     resume_id: str
@@ -257,9 +346,11 @@ class ResumeOptimizationRunRead(BaseModel):
     source_evaluation_signature: str
     source_jd_signature: str = ""
     source_snapshot_hash: str
+    source_before_score: int | None = Field(default=None, ge=0, le=100)
     plan: OptimizationPlan = Field(default_factory=OptimizationPlan)
     answers: list[OptimizationAnswer] = Field(default_factory=list)
     result: dict[str, Any] = Field(default_factory=dict)
+    post_evaluation: ResumeOptimizationPostEvaluation | None = None
     accepted_change_ids: list[str] = Field(default_factory=list)
     applied_content_signature: str | None = None
     created_at: datetime
@@ -304,6 +395,27 @@ class ResumeOptimizationApplyRequest(BaseModel):
         )
 
 
+class _ResumeOptimizationTimestampRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_resume_updated_at: datetime
+
+    @field_validator("expected_resume_updated_at")
+    @classmethod
+    def _validate_aware_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("expected_resume_updated_at must include a timezone")
+        return value
+
+
+class ResumeOptimizationFinalizeRequest(_ResumeOptimizationTimestampRequest):
+    pass
+
+
+class ResumeOptimizationRevertRequest(_ResumeOptimizationTimestampRequest):
+    pass
+
+
 class ResumeOptimizationFinalizeResponse(BaseModel):
     run: ResumeOptimizationRunRead
 
@@ -312,3 +424,22 @@ class ResumeOptimizationApplyResponse(BaseModel):
     run: ResumeOptimizationRunRead
     resume_updated_at: datetime
     applied_change_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("resume_updated_at")
+    @classmethod
+    def _normalize_public_resume_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+
+class ResumeOptimizationRevertResponse(BaseModel):
+    run: ResumeOptimizationRunRead
+    resume_updated_at: datetime
+
+    @field_validator("resume_updated_at")
+    @classmethod
+    def _normalize_public_resume_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)

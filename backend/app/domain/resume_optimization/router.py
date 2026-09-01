@@ -29,6 +29,18 @@ from ..ai.runtime_budget import (
     new_ai_request_id,
 )
 from ..billing import billing_service
+from .apply_service import (
+    OptimizationApplyConflictError,
+    OptimizationApplyStaleError,
+    OptimizationApplyValidationError,
+    OptimizationContentConflictError,
+    OptimizationFinalizePendingError,
+    OptimizationRunDataInvalidError,
+    apply_resume_optimization,
+    finalize_run_from_persisted_evaluation,
+    revert_resume_optimization,
+    source_before_score_from_run,
+)
 from .context_service import OptimizationContextError
 from .models import ResumeOptimizationRun
 from .normalizers import OptimizationPlanNormalizationError
@@ -51,6 +63,13 @@ from .schemas import (
     OptimizationAnswer,
     OptimizationPlan,
     ResumeOptimizationAnswersRequest,
+    ResumeOptimizationApplyRequest,
+    ResumeOptimizationApplyResponse,
+    ResumeOptimizationFinalizeRequest,
+    ResumeOptimizationFinalizeResponse,
+    ResumeOptimizationPostEvaluation,
+    ResumeOptimizationRevertRequest,
+    ResumeOptimizationRevertResponse,
     ResumeOptimizationRunRead,
     ResumeOptimizationStartRequest,
     ResumeOptimizationStatus,
@@ -91,6 +110,10 @@ _SAFE_DOMAIN_MESSAGES = {
     "resume_optimization_planning_claim_lost": OptimizationPlanningClaimLostError.public_message,
     "resume_optimization_plan_invalid": AI_PROVIDER_INVALID_RESPONSE_MESSAGE,
     "resume_optimization_run_invalid": OptimizationPersistedRunInvalidError.public_message,
+    "resume_optimization_apply_invalid": OptimizationApplyValidationError.public_message,
+    "resume_optimization_apply_conflict": OptimizationApplyConflictError.public_message,
+    "resume_optimization_evaluation_pending": OptimizationFinalizePendingError.public_message,
+    "resume_optimization_content_conflict": OptimizationContentConflictError.public_message,
 }
 _DOMAIN_ERROR_TYPES = (
     OptimizationContextError,
@@ -103,6 +126,12 @@ _DOMAIN_ERROR_TYPES = (
     OptimizationPlanningClaimLostError,
     OptimizationPlanNormalizationError,
     OptimizationPersistedRunInvalidError,
+    OptimizationApplyValidationError,
+    OptimizationApplyConflictError,
+    OptimizationApplyStaleError,
+    OptimizationFinalizePendingError,
+    OptimizationContentConflictError,
+    OptimizationRunDataInvalidError,
 )
 
 
@@ -282,6 +311,44 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             if stored_result is not None
             else {}
         )
+        raw_post_evaluation = run.post_evaluation_json
+        if not isinstance(raw_post_evaluation, dict):
+            raise ValueError("post_evaluation_json must be an object")
+        post_evaluation = (
+            ResumeOptimizationPostEvaluation.model_validate(raw_post_evaluation)
+            if raw_post_evaluation
+            else None
+        )
+        source_before_score = (
+            source_before_score_from_run(run)
+            if bool(run.before_snapshot)
+            and str(run.source_evaluation_signature).lstrip().startswith("{")
+            and run.status
+            in {
+                ResumeOptimizationStatus.APPLIED.value,
+                ResumeOptimizationStatus.RESCORING.value,
+                ResumeOptimizationStatus.COMPLETED.value,
+                ResumeOptimizationStatus.REVERTED.value,
+            }
+            else None
+        )
+        if run.status == ResumeOptimizationStatus.COMPLETED.value and (
+            post_evaluation is None
+        ):
+            raise ValueError("completed runs require post_evaluation_json")
+        if post_evaluation is not None:
+            if (
+                source_before_score is None
+                or post_evaluation.beforeScore != source_before_score
+                or post_evaluation.acceptedChangeCount
+                != len(run.accepted_change_ids)
+                or post_evaluation.blockedChangeCount
+                != len(plan.safety_summary.blocked_change_ids)
+                or post_evaluation.bankSuggestionCount
+                != len(plan.bank_suggestions)
+                or post_evaluation.safetySummary != plan.safety_summary
+            ):
+                raise ValueError("post evaluation summary disagrees with run plan")
         return ResumeOptimizationRunRead(
             id=str(run.id),
             resume_id=str(run.resume_id),
@@ -293,9 +360,11 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             source_evaluation_signature=run.source_evaluation_signature,
             source_jd_signature=run.source_jd_signature,
             source_snapshot_hash=run.source_snapshot_hash,
+            source_before_score=source_before_score,
             plan=plan,
             answers=_answers_from_run(run),
             result=public_result,
+            post_evaluation=post_evaluation,
             accepted_change_ids=list(run.accepted_change_ids),
             applied_content_signature=run.applied_content_signature,
             created_at=run.created_at,
@@ -530,6 +599,82 @@ async def answer_resume_optimization_stream(
         operation=operation,
         progress_node_aliases={"rewrite_changes": "rewrite_answers"},
     )
+
+
+@router.post("/{run_id}/apply", response_model=ResumeOptimizationApplyResponse)
+async def apply_resume_optimization_run(
+    run_id: str,
+    payload: ResumeOptimizationApplyRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+) -> ResumeOptimizationApplyResponse:
+    try:
+        result = await apply_resume_optimization(
+            session=session,
+            user_id=current_user.id,
+            run_id=run_id,
+            payload=payload,
+        )
+        return ResumeOptimizationApplyResponse(
+            run=_run_to_read(result.run),
+            resume_updated_at=result.resume_updated_at,
+            applied_change_ids=list(result.applied_change_ids),
+        )
+    except _DOMAIN_ERROR_TYPES as exc:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        _raise_domain_http_error(exc)
+
+
+@router.post("/{run_id}/finalize", response_model=ResumeOptimizationFinalizeResponse)
+async def finalize_resume_optimization_run(
+    run_id: str,
+    payload: ResumeOptimizationFinalizeRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+) -> ResumeOptimizationFinalizeResponse:
+    try:
+        run = await finalize_run_from_persisted_evaluation(
+            session=session,
+            user_id=current_user.id,
+            run_id=run_id,
+            payload=payload,
+        )
+        return ResumeOptimizationFinalizeResponse(run=_run_to_read(run))
+    except _DOMAIN_ERROR_TYPES as exc:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        _raise_domain_http_error(exc)
+
+
+@router.post("/{run_id}/revert", response_model=ResumeOptimizationRevertResponse)
+async def revert_resume_optimization_run(
+    run_id: str,
+    payload: ResumeOptimizationRevertRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+) -> ResumeOptimizationRevertResponse:
+    try:
+        result = await revert_resume_optimization(
+            session=session,
+            user_id=current_user.id,
+            run_id=run_id,
+            payload=payload,
+        )
+        return ResumeOptimizationRevertResponse(
+            run=_run_to_read(result.run),
+            resume_updated_at=result.resume_updated_at,
+        )
+    except _DOMAIN_ERROR_TYPES as exc:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        _raise_domain_http_error(exc)
 
 
 @router.post("/{run_id}/cancel", response_model=ResumeOptimizationRunRead)
