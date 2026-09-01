@@ -111,7 +111,11 @@ const importApiClientWithPendingToken = async () => {
             loader: 'js',
           }));
           buildContext.onLoad({ filter: /^auth-redirect-stub$/, namespace: 'stub' }, () => ({
-            contents: 'export const dispatchLoginRequired = () => {};',
+            contents: `
+              export const dispatchLoginRequired = (reason) => {
+                globalThis.__authLoginRequiredDispatches?.push(reason);
+              };
+            `,
             loader: 'js',
           }));
           buildContext.onLoad({ filter: /^dev-logger-stub$/, namespace: 'stub' }, () => ({
@@ -366,6 +370,66 @@ test('a response is rejected when its dispatch session epoch is no longer active
     delete globalThis.__activeAuthToken;
     delete globalThis.__apiClientRequestInterceptor;
     delete globalThis.__apiClientResponseInterceptor;
+    delete globalThis.__apiClientResponseErrorInterceptor;
+  }
+});
+
+test('API auth recovery requires an explicit invalid-token code and de-duplicates one page', async () => {
+  globalThis.__activeAuthToken = 'token-a';
+  globalThis.__authLoginRequiredDispatches = [];
+  try {
+    await importApiClientWithPendingToken();
+    const requestInterceptor = globalThis.__apiClientRequestInterceptor;
+    const responseErrorInterceptor = globalThis.__apiClientResponseErrorInterceptor;
+    const headers = {
+      values: new Map(),
+      delete(name) {
+        this.values.delete(name);
+      },
+      set(name, value) {
+        this.values.set(name, value);
+      },
+    };
+    const config = await requestInterceptor({
+      data: null,
+      headers,
+      method: 'get',
+      url: '/profile',
+      expectedAuthCacheKey: 'user-a',
+    });
+    const failure = (status, data) => ({
+      config,
+      response: { status, data },
+      message: `request failed: ${status}`,
+    });
+    const expectFailure = async (error) => {
+      await assert.rejects(
+        responseErrorInterceptor(error),
+        (actual) => actual === error,
+      );
+    };
+
+    config.suppressAuthRecovery = true;
+    await expectFailure(failure(401, { error: { code: 'invalid_token' } }));
+    assert.deepEqual(
+      globalThis.__authLoginRequiredDispatches,
+      [],
+      'the bounded dependency probe must never start sign-in',
+    );
+    delete config.suppressAuthRecovery;
+
+    await expectFailure(failure(401, { error: { code: 'invalid_token' } }));
+    await expectFailure(failure(401, { error: { code: 'invalid_token' } }));
+    await expectFailure(failure(401, { error: { code: 'other_error' } }));
+    await expectFailure(failure(503, {
+        error: { code: 'auth_dependency_unavailable' },
+    }));
+
+    assert.deepEqual(globalThis.__authLoginRequiredDispatches, ['invalid-token']);
+  } finally {
+    delete globalThis.__activeAuthToken;
+    delete globalThis.__authLoginRequiredDispatches;
+    delete globalThis.__apiClientRequestInterceptor;
     delete globalThis.__apiClientResponseErrorInterceptor;
   }
 });

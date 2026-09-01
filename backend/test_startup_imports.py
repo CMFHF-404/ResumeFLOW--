@@ -5,6 +5,184 @@ import unittest
 
 
 class BackendStartupImportTests(unittest.TestCase):
+    def test_production_mode_requires_frontend_origin_and_cors(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "production",
+                "LOGTO_ISSUER": "https://tenant.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                # Empty values prevent a local backend/.env from masking the
+                # intentionally absent production contract in this subprocess.
+                "FRONTEND_ORIGIN": "",
+                "CORS_ALLOW_ORIGINS": "",
+                "FRONTEND_LOGTO_ENDPOINT": "",
+                "FRONTEND_LOGTO_APP_ID": "",
+                "FRONTEND_LOGTO_REDIRECT_URI": "",
+            }
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from app.config import load_settings; load_settings()"],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("FRONTEND_ORIGIN", result.stderr)
+
+    def test_local_mode_is_the_default_and_allows_loopback_auth_derivation(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "",
+                "LOGTO_ISSUER": "https://tenant.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "FRONTEND_ORIGIN": "",
+                "CORS_ALLOW_ORIGINS": "",
+                "FRONTEND_LOGTO_ENDPOINT": "",
+                "FRONTEND_LOGTO_APP_ID": "",
+                "FRONTEND_LOGTO_REDIRECT_URI": "",
+            }
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from app.config import load_settings; load_settings()"],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_remote_frontend_auth_mirror_is_required_before_application_import(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "production",
+                "LOGTO_ISSUER": "https://tenant.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "FRONTEND_ORIGIN": "https://app.example.com",
+                "CORS_ALLOW_ORIGINS": "https://app.example.com",
+            }
+        )
+        for name in (
+            "FRONTEND_LOGTO_ENDPOINT",
+            "FRONTEND_LOGTO_APP_ID",
+            "FRONTEND_LOGTO_REDIRECT_URI",
+        ):
+            # Keep dotenv from an operator's local backend/.env from masking
+            # the intentionally missing production mirror in this subprocess.
+            env[name] = ""
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from app.config import load_settings; load_settings()"],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("FRONTEND_LOGTO_ENDPOINT", result.stderr)
+
+    def test_production_rejects_matching_but_malformed_logto_app_ids(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "production",
+                "LOGTO_ISSUER": "https://tenant.logto.app/oidc",
+                "LOGTO_APP_ID": "resume spa app id",
+                "FRONTEND_ORIGIN": "https://app.example.com",
+                "CORS_ALLOW_ORIGINS": "https://app.example.com",
+                "FRONTEND_LOGTO_ENDPOINT": "https://tenant.logto.app",
+                "FRONTEND_LOGTO_APP_ID": "resume spa app id",
+                "FRONTEND_LOGTO_REDIRECT_URI": "https://app.example.com/callback",
+            }
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from app.config import load_settings; load_settings()"],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("LOGTO_APP_ID", result.stderr)
+
+    def test_production_rejects_truthy_dev_auth_bypass_before_app_import(self) -> None:
+        for value in ("1", "true", "yes", "on"):
+            with self.subTest(value=value):
+                env = os.environ.copy()
+                env.update(
+                    {
+                        "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                        "RESUMEFLOW_DEPLOYMENT_MODE": "production",
+                        "LOGTO_ISSUER": "https://tenant.logto.app/oidc",
+                        "LOGTO_APP_ID": "resume-spa-app-id",
+                        "FRONTEND_ORIGIN": "https://app.example.com",
+                        "CORS_ALLOW_ORIGINS": "https://app.example.com",
+                        "FRONTEND_LOGTO_ENDPOINT": "https://tenant.logto.app",
+                        "FRONTEND_LOGTO_APP_ID": "resume-spa-app-id",
+                        "FRONTEND_LOGTO_REDIRECT_URI": "https://app.example.com/callback",
+                        "ENABLE_DEV_AUTH_BYPASS": value,
+                    }
+                )
+
+                result = subprocess.run(
+                    [sys.executable, "-c", "import app.main"],
+                    cwd=os.path.dirname(__file__),
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("ENABLE_DEV_AUTH_BYPASS", result.stderr)
+
+    def test_local_mode_still_allows_dev_auth_bypass(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DATABASE_URL": "postgresql+asyncpg://user:password@localhost:5432/resumeflow",
+                "RESUMEFLOW_DEPLOYMENT_MODE": "local",
+                "LOGTO_ISSUER": "https://tenant.logto.app/oidc",
+                "LOGTO_APP_ID": "resume-spa-app-id",
+                "FRONTEND_ORIGIN": "http://localhost:5173",
+                "CORS_ALLOW_ORIGINS": "http://localhost:5173",
+                "ENABLE_DEV_AUTH_BYPASS": "true",
+            }
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from app.config import load_settings; assert load_settings().enable_dev_auth_bypass",
+            ],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_disabled_payment_with_stale_provider_url_does_not_block_startup_import(self) -> None:
         env = os.environ.copy()
         env.update(
