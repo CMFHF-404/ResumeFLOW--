@@ -177,6 +177,17 @@ export const resolveResumeOptimizationRunUiState = (
   }
 };
 
+export const shouldResetResumeOptimizationStartAttempt = ({
+  runStatus,
+}: {
+  streamErrorCode?: string;
+  runStatus?: ResumeOptimizationStatus;
+}): boolean => runStatus === 'failed';
+
+export const isResumeOptimizationStartSuccessStatus = (
+  runStatus: ResumeOptimizationStatus,
+): boolean => runStatus === 'awaiting_answers' || runStatus === 'preview_ready';
+
 const effectivePlan = (
   run: Pick<ResumeOptimizationRun, 'plan' | 'result'>,
 ) => run.result ?? run.plan;
@@ -1252,6 +1263,13 @@ export const useResumeOptimizationFlow = ({
         },
       });
       await assertCurrent(generation, operation);
+      if (shouldResetResumeOptimizationStartAttempt({ runStatus: nextRun.status })) {
+        startAttemptRef.current = null;
+        throw new Error('本次优化规划未完成，请重试。');
+      }
+      if (!isResumeOptimizationStartSuccessStatus(nextRun.status)) {
+        throw new Error('优化方案仍在生成，请重试。');
+      }
       const planMetrics = summarizeResumeOptimizationPlan(nextRun);
       trackResumeOptimizationPlanResult({
         resumeId: nextRun.resumeId,

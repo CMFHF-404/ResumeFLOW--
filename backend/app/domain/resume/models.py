@@ -4,11 +4,11 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 import uuid
 
-from sqlalchemy import Column
+from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-from ...utils.time_utils import utc_now
+from ...utils.time_utils import utc_now_aware
 
 
 class Resume(SQLModel, table=True):
@@ -19,8 +19,14 @@ class Resume(SQLModel, table=True):
     title: str
     target_role: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class ResumeExperienceLink(SQLModel, table=True):
@@ -33,4 +39,7 @@ class ResumeExperienceLink(SQLModel, table=True):
     )
     overrides_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     display_order: int = 0
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now_aware,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )

@@ -645,7 +645,6 @@ def _validate_current_report(
     evaluation = result.get("resumeEvaluation") if isinstance(result, Mapping) else None
     if (
         not isinstance(analysis, Mapping)
-        or analysis.get("isOutdated") is True
         or analysis.get("evaluationIsOutdated") is True
         or not isinstance(evaluation, Mapping)
         or analysis.get("evaluationSignature") != run.source_evaluation_signature

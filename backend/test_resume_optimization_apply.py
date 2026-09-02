@@ -1077,6 +1077,16 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
                 self.assertEqual(session.stale_session.commits, 1)
 
+    async def test_fresh_evaluation_can_apply_while_jd_analysis_is_outdated(self) -> None:
+        run = _run([_change("CHG_A")])
+        resume = _resume()
+        resume.config["jdAnalysis"]["isOutdated"] = True
+
+        result, session = await self._apply(run, resume, _link())
+
+        self.assertEqual(result.run.status, ResumeOptimizationStatus.APPLIED.value)
+        self.assertEqual(session.commits, 1)
+
     async def test_run_transitions_preview_ready_to_applying_to_applied(self) -> None:
         result, session = await self._apply(
             _run([_change("CHG_A")]),
@@ -1092,6 +1102,17 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.run.status, ResumeOptimizationStatus.APPLIED.value)
         self.assertEqual(session.commits, 1)
+
+    async def test_resume_timestamp_mapping_matches_timestamptz_contract(self) -> None:
+        self.assertTrue(Resume.__table__.c.updated_at.type.timezone)
+        result, _session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(updated_at=BASE_TIME),
+            _link(),
+        )
+
+        self.assertIsNotNone(result.resume.updated_at.utcoffset())
+        self.assertIsNotNone(result.run.updated_at.utcoffset())
 
     async def test_after_snapshot_and_applied_content_signature_are_recorded(self) -> None:
         result, _session = await self._apply(

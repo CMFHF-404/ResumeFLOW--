@@ -91,6 +91,8 @@ const readStreamErrorDetail = async (response: Response) => {
     return {};
 };
 
+const AI_TOKEN_QUOTA_EXHAUSTED_CODE = 'ai_token_quota_exhausted';
+
 export const ensureStreamResponseOk = async (
     response: Response,
     sessionOwnerKey?: string | null,
@@ -104,13 +106,14 @@ export const ensureStreamResponseOk = async (
     }
     const detail = await readStreamErrorDetail(response);
     if (response.status === 402) {
-        const quotaMessage = detail.message || DEFAULT_QUOTA_PURCHASE_MESSAGE;
+        const quotaMessage = DEFAULT_QUOTA_PURCHASE_MESSAGE;
+        const hasKnownQuotaCode = detail.code === AI_TOKEN_QUOTA_EXHAUSTED_CODE;
         dispatchQuotaPurchaseRequired(quotaMessage);
         throw new StreamRequestError(quotaMessage, {
-            code: detail.code || 'ai_token_quota_exhausted',
+            code: AI_TOKEN_QUOTA_EXHAUSTED_CODE,
             statusCode: response.status,
             retryable: false,
-            requestId: detail.requestId,
+            requestId: hasKnownQuotaCode ? detail.requestId : undefined,
         });
     }
     const message = detail.message || `AI stream request failed: ${response.status}`;
@@ -220,8 +223,8 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
             let parsed: TEvent;
             try {
                 parsed = JSON.parse(line) as TEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
+            } catch {
+                console.warn('Failed to parse stream line');
                 continue;
             }
             onEvent?.(parsed);

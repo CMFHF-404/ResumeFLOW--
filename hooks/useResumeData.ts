@@ -208,12 +208,20 @@ export const selectResumeConfigForFlush = <T,>(
     latestConfigSnapshotRef: { current: T }
 ): T => configOverride ?? latestConfigSnapshotRef.current;
 
+export const adoptResumeDetailUpdatedAt = (
+    resumeUpdatedAtRef: { current: string | undefined },
+    detail: { resume: { updated_at: string } } | null,
+) => {
+    resumeUpdatedAtRef.current = detail?.resume.updated_at;
+    return resumeUpdatedAtRef.current;
+};
+
 export const resolveCommittedResumeSaveToken = ({
     requestedResumeId,
     currentResumeId,
     requestedConfigSignature,
     lastSavedConfigSignature,
-    previousUpdatedAt,
+    previousUpdatedAt: _previousUpdatedAt,
     currentUpdatedAt,
     isHydrated,
 }: {
@@ -230,7 +238,6 @@ export const resolveCommittedResumeSaveToken = ({
     && isHydrated
     && lastSavedConfigSignature === requestedConfigSignature
     && currentUpdatedAt
-    && currentUpdatedAt !== previousUpdatedAt
         ? currentUpdatedAt
         : undefined
 );
@@ -869,11 +876,13 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     }, [state.lastSavedAt, state.latestLastSavedAtRef, state.latestSaveStateRef, state.saveState]);
     const applyResumeDetail = useCallback(
         (detail: ResumeDetail | null) => {
+            adoptResumeDetailUpdatedAt(state.resumeUpdatedAtRef, detail);
             state.setResumeDetail(detail);
             state.setResumeExperienceMap(options.buildResumeExperienceMap(detail));
         },
         [
             options.buildResumeExperienceMap,
+            state.resumeUpdatedAtRef,
             state.setResumeDetail,
             state.setResumeExperienceMap,
         ]

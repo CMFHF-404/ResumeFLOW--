@@ -27,8 +27,11 @@ test('six-dimension report uses a dedicated stream and isolated controller', () 
   assert.match(jdHook, /evaluationIsOutdated: false/);
   assert.match(jdHook, /evaluationSignature: requestEvaluationSignature,\s*targetRoleSignature,/);
   assert.match(jdHook, /evaluationSignature: requestEvaluationSignature,\s*targetRoleSignature,\s*\}/);
-  assert.match(editor, /await flushResumeConfig\(\)/);
-  assert.match(editor, /return generateEvaluation\(\)/);
+  assert.match(editor, /runResumeEvaluationAfterLinkPreflight\(\{/);
+  assert.match(editor, /ensureLinks: ensureSelectedExperienceLinks/);
+  assert.match(editor, /flushConfig: flushResumeConfig/);
+  assert.match(editor, /generateEvaluation/);
+  assert.match(resumeData, /adoptResumeDetailUpdatedAt\(state\.resumeUpdatedAtRef, detail\)/);
   assert.match(editor, /const handleAnalyzePersistedSnapshot = useCallback/);
   assert.match(editor, /handleAnalyze: handleAnalyzePersistedSnapshot/);
   assert.match(resumeData, /expected_updated_at: expectedUpdatedAt/);
@@ -104,4 +107,20 @@ test('report stop action and single-button placeholder stay accessible', () => {
   assert.doesNotMatch(placeholder, /<h4|<p/);
   assert.match(panel, /onStopEvaluation\?: \(\) => void/);
   assert.match(editor, /onStopEvaluation: stopEvaluation/);
+});
+
+test('six-dimension failures expose one safe retryable message instead of validator details', () => {
+  const hook = read('hooks/useResumeEvaluation.ts');
+  const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx');
+  const catchBlock = hook.slice(
+    hook.indexOf('} catch (cause) {'),
+    hook.indexOf('} finally {'),
+  );
+
+  assert.match(hook, /const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "六维报告生成失败，请重试。"/);
+  assert.match(catchBlock, /setError\(RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE\)/);
+  assert.doesNotMatch(catchBlock, /cause\.message|setError\(cause|Invalid resume evaluation structure|repair attempt/);
+  assert.match(catchBlock, /return \{ status: "error" \}/);
+  assert.match(report, /if \(onGenerate && !isGenerating\)/);
+  assert.match(report, /role="alert"/);
 });

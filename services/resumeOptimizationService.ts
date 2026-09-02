@@ -57,6 +57,52 @@ const RETRYABLE_ERROR_CODES = new Set([
   'resume_optimization_evaluation_pending',
 ]);
 
+const DEFAULT_RESUME_OPTIMIZATION_ERROR_MESSAGE = '简历优化请求失败，请稍后重试。';
+
+const SAFE_PUBLIC_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
+  resume_optimization_run_not_found: '未找到该简历优化记录。',
+  resume_optimization_idempotency_conflict: '该幂等键已用于不同的优化请求。',
+  resume_optimization_idempotency_key_required: '缺少 Idempotency-Key 请求头。',
+  resume_optimization_idempotency_key_invalid: 'Idempotency-Key 格式无效。',
+  invalid_optimization_transition: '当前优化状态不允许执行此操作。',
+  resume_optimization_context_error: '无法准备简历优化上下文。',
+  resume_optimization_context_request_invalid: '简历优化请求无效。',
+  resume_optimization_context_not_found: '未找到待优化的简历。',
+  resume_optimization_context_stale: '简历内容或六维评估已更新，请重新生成优化方案。',
+  resume_optimization_evaluation_invalid: '当前六维评估不可用于优化。',
+  resume_optimization_selection_invalid: '当前简历经历选择不可用于优化。',
+  resume_optimization_answers_invalid: '补充信息与当前优化问题不匹配，请刷新后重试。',
+  resume_optimization_answer_in_progress: '补充信息正在处理中，请稍后重试。',
+  resume_optimization_answer_claim_lost: '本次补充处理已失效，请刷新优化方案后重试。',
+  resume_optimization_planning_claim_lost: '本次优化规划已失效，请刷新后重试。',
+  resume_optimization_plan_invalid: 'AI analysis returned an invalid response. Please retry.',
+  resume_optimization_run_invalid: '简历优化记录数据异常，请重新生成优化方案。',
+  resume_optimization_apply_invalid: '优化方案或应用选择无效，请刷新后重试。',
+  resume_optimization_apply_conflict: '当前优化方案状态不允许再次应用。',
+  resume_optimization_evaluation_pending: '复评结果尚未就绪或已过期，请重新生成六维评估后重试。',
+  resume_optimization_content_conflict: '简历内容已在优化后发生变化，请刷新后再操作。',
+  ai_runtime_budget_exceeded: 'AI 请求或响应超过安全处理上限，请缩短内容后重试。',
+  ai_runtime_timeout: 'AI 请求处理超时，请稍后重试。',
+  ai_usage_accounting_failed: 'AI 用量记录失败，请稍后重试。',
+  ai_stream_consumer_failed: 'AI 流式响应传递失败，请稍后重试。',
+  ai_usage_payload_invalid: 'AI 服务返回了无效的用量数据，请稍后重试。',
+  ai_provider_invalid_response: 'AI analysis returned an invalid response. Please retry.',
+  ai_provider_unavailable: 'AI provider is temporarily unavailable. Please retry.',
+  ai_token_quota_exhausted: 'AI Token 额度已用完，请购买套餐或兑换卡密后继续使用。',
+  auth_dependency_unavailable: '认证服务暂时不可用',
+  internal_error: DEFAULT_RESUME_OPTIMIZATION_ERROR_MESSAGE,
+});
+
+const readSafePublicError = (
+  value: unknown,
+): { code: string; message: string } | null => {
+  if (typeof value !== 'string') return null;
+  const code = value.trim();
+  if (!code) return null;
+  const message = SAFE_PUBLIC_ERROR_MESSAGES[code];
+  return typeof message === 'string' ? { code, message } : null;
+};
+
 export class ResumeOptimizationServiceError extends Error {
   readonly code: string;
   readonly statusCode: number;
@@ -121,20 +167,15 @@ const readHttpErrorMetadata = (error: unknown): HttpErrorMetadata | null => {
   const data = toRecord(response?.data);
   const detail = toRecord(data?.detail);
   const publicError = toRecord(data?.error) ?? toRecord(detail?.error) ?? detail;
-  const stringDetail = typeof data?.detail === 'string' ? data.detail.trim() : '';
-  const code = typeof publicError?.code === 'string' && publicError.code.trim()
-    ? publicError.code.trim()
-    : `resume_optimization_http_${status}`;
-  const message = typeof publicError?.message === 'string' && publicError.message.trim()
-    ? publicError.message.trim()
-    : stringDetail
-      || (error instanceof Error && error.message.trim()
-        ? error.message.trim()
-        : '简历优化请求失败，请稍后重试。');
-  const requestId = typeof publicError?.requestId === 'string' && publicError.requestId.trim()
+  const safeError = readSafePublicError(publicError?.code);
+  const code = safeError?.code ?? 'resume_optimization_request_failed';
+  const message = safeError?.message ?? DEFAULT_RESUME_OPTIMIZATION_ERROR_MESSAGE;
+  const requestId = safeError
+    && typeof publicError?.requestId === 'string'
+    && publicError.requestId.trim()
     ? publicError.requestId.trim()
     : undefined;
-  const explicitRetryable = typeof publicError?.retryable === 'boolean'
+  const explicitRetryable = safeError && typeof publicError?.retryable === 'boolean'
     ? publicError.retryable
     : undefined;
   return {
@@ -152,13 +193,17 @@ const toServiceError = (error: unknown): Error => {
     return error;
   }
   if (error instanceof StreamRequestError) {
-    return new ResumeOptimizationServiceError(error.message, {
-      code: error.code,
+    const safeError = readSafePublicError(error.code);
+    return new ResumeOptimizationServiceError(
+      safeError?.message ?? DEFAULT_RESUME_OPTIMIZATION_ERROR_MESSAGE,
+      {
+      code: safeError?.code ?? 'resume_optimization_request_failed',
       statusCode: error.statusCode,
       retryable: error.retryable,
-      requestId: error.requestId,
+      requestId: safeError ? error.requestId : undefined,
       cause: error,
-    });
+      },
+    );
   }
   const http = readHttpErrorMetadata(error);
   if (http) {
@@ -179,9 +224,7 @@ const toServiceError = (error: unknown): Error => {
     });
   }
   return new ResumeOptimizationServiceError(
-    error instanceof Error && error.message.trim()
-      ? error.message
-      : '简历优化请求失败，请稍后重试。',
+    DEFAULT_RESUME_OPTIMIZATION_ERROR_MESSAGE,
     { cause: error },
   );
 };

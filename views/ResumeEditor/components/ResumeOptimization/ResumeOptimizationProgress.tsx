@@ -9,6 +9,7 @@ export const ResumeOptimizationProgress: React.FC<ResumeOptimizationProgressProp
     progressText,
 }) => (
     <section
+        role="status"
         aria-live="polite"
         aria-atomic="true"
         className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-emerald-100/80 bg-gradient-to-br from-emerald-50/70 via-white to-slate-50/70 px-6 py-10 text-center dark:border-emerald-900/40 dark:from-emerald-950/25 dark:via-slate-950 dark:to-slate-900/40"

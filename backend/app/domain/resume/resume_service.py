@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ...constants import ALLOWED_OVERRIDE_KEYS
 from ...models import ExperienceVersion
 from ...utils.date_utils import normalize_month_date_string
-from ...utils.time_utils import utc_now
+from ...utils.time_utils import utc_now_aware
 from ..experience.experience_service import get_version_for_user
 from .models import Resume, ResumeExperienceLink
 from .resume_schema import (
@@ -250,6 +250,7 @@ async def update_resume(
         raise ConcurrencyConflictError(
             "Resume changed since it was loaded. Reload before saving again."
         )
+    previous_title = getattr(resume, "title", None)
     previous_config = deepcopy(resume.config)
     previous_target_role = resume.target_role
     target_role_changed = (
@@ -272,7 +273,13 @@ async def update_resume(
             resume.target_role,
             previous_target_role=previous_target_role,
         )
-    resume.updated_at = utc_now()
+    if (
+        getattr(resume, "title", None) == previous_title
+        and resume.target_role == previous_target_role
+        and resume.config == previous_config
+    ):
+        return resume
+    resume.updated_at = utc_now_aware()
     session.add(resume)
     await session.commit()
     await session.refresh(resume)
@@ -304,7 +311,7 @@ async def persist_resume_boss_greeting(
     }
     if signature:
         boss_greeting_payload["signature"] = signature
-    updated_at = utc_now()
+    updated_at = utc_now_aware()
     await session.execute(
         text(
             """
@@ -419,7 +426,7 @@ async def update_assembly(
         await handler(session, user_id, resume, op)
     if ops:
         resume.config = _mark_resume_analysis_outdated(resume.config)
-    resume.updated_at = utc_now()
+    resume.updated_at = utc_now_aware()
     session.add(resume)
     await session.commit()
 
