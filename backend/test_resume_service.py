@@ -3,7 +3,7 @@ import unittest
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 def _set_required_env_defaults() -> None:
@@ -274,6 +274,44 @@ class ResumeContentEvaluationFreshnessTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         session.commit.assert_not_awaited()
+
+    async def test_identical_config_save_preserves_resume_version_token(self) -> None:
+        current_updated_at = datetime(2026, 8, 8, 10, 0, tzinfo=timezone.utc)
+        config = {
+            "selection": {"experienceIds": ["exp-1"]},
+            "jdAnalysis": {
+                "evaluationSignature": "evaluation-1",
+                "evaluationIsOutdated": False,
+            },
+        }
+        resume = SimpleNamespace(
+            updated_at=current_updated_at,
+            title="当前简历",
+            target_role="产品经理",
+            config=deepcopy(config),
+        )
+        session = SimpleNamespace(
+            add=MagicMock(),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+
+        with patch.object(resume_service, "_get_resume", AsyncMock(return_value=resume)):
+            result = await resume_service.update_resume(
+                session,
+                "user-1",
+                "resume-1",
+                ResumeUpdate(
+                    config=deepcopy(config),
+                    expected_updated_at=current_updated_at,
+                ),
+            )
+
+        self.assertIs(result, resume)
+        self.assertEqual(resume.updated_at, current_updated_at)
+        session.add.assert_not_called()
+        session.commit.assert_not_awaited()
+        session.refresh.assert_not_awaited()
 
     async def test_content_save_requires_expected_updated_at(self) -> None:
         session = self._session()

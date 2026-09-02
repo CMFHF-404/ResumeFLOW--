@@ -685,6 +685,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                             <div className={`flex justify-end ${showJdInput ? 'mt-4' : ''}`}>
                                 <button
                                     type="button"
+                                    data-resume-optimization-focus-return="true"
                                     onClick={onReturnToOptimizationPlan}
                                     className="min-h-[36px] rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
                                 >

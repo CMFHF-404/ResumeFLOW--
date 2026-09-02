@@ -71,7 +71,7 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
             ) : null}
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <label htmlFor={explicitAnswerId} className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[12px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50/40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20">
+                <label htmlFor={explicitAnswerId} className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[12px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50/40 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20">
                     <input
                         id={explicitAnswerId}
                         type="radio"
@@ -89,7 +89,7 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
                         <label
                             key={choice.label}
                             htmlFor={quickChoiceId}
-                            className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[12px] text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50/40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20"
+                            className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[12px] text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50/40 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20"
                         >
                             <input
                                 id={quickChoiceId}
@@ -113,7 +113,7 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
                         <label
                             key={option.state}
                             htmlFor={terminalChoiceId}
-                            className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[12px] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+                            className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[12px] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-900"
                         >
                             <input
                                 id={terminalChoiceId}

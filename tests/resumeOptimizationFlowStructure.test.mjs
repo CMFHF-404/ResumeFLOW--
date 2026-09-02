@@ -366,6 +366,72 @@ test('flush ownership is asserted before self-owned tokens or attempts are publi
   assert.ok(rescoreFlush < rescoreMark && rescoreMark < rescoreAssert);
 });
 
+test('start retries rotate only after a returned failed run and never hydrate non-ready runs', async () => {
+  const {
+    isResumeOptimizationStartSuccessStatus,
+    shouldResetResumeOptimizationStartAttempt,
+  } = await importFlow();
+
+  assert.equal(shouldResetResumeOptimizationStartAttempt({
+    runStatus: 'failed',
+  }), true);
+  assert.equal(shouldResetResumeOptimizationStartAttempt({
+    streamErrorCode: 'planning_claim_lost',
+  }), false, 'ambiguous transport failures must retain the original idempotency key');
+  assert.equal(shouldResetResumeOptimizationStartAttempt({
+    runStatus: 'preview_ready',
+  }), false);
+  assert.equal(isResumeOptimizationStartSuccessStatus('awaiting_answers'), true);
+  assert.equal(isResumeOptimizationStartSuccessStatus('preview_ready'), true);
+  assert.equal(isResumeOptimizationStartSuccessStatus('planning'), false);
+  assert.equal(isResumeOptimizationStartSuccessStatus('failed'), false);
+
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  const startBlock = hook.slice(
+    hook.indexOf('const startOptimization'),
+    hook.indexOf('const setAnswer'),
+  );
+  assert.doesNotMatch(
+    startBlock,
+    /event\.type === 'error'[\s\S]*startAttemptRef\.current = null/,
+    'a retryable stream error must not rotate the in-flight idempotency key',
+  );
+
+  const currentGuard = startBlock.indexOf('await assertCurrent', startBlock.indexOf('const nextRun'));
+  const failedRunGuard = startBlock.indexOf('shouldResetResumeOptimizationStartAttempt({', currentGuard);
+  const readyRunGuard = startBlock.indexOf('isResumeOptimizationStartSuccessStatus(nextRun.status)', currentGuard);
+  const successMetrics = startBlock.indexOf('summarizeResumeOptimizationPlan(nextRun)', currentGuard);
+  const applyRun = startBlock.indexOf('applyRunToState(nextRun)', currentGuard);
+  assert.ok(
+    currentGuard >= 0
+      && failedRunGuard > currentGuard
+      && readyRunGuard > failedRunGuard
+      && successMetrics > readyRunGuard
+      && applyRun > successMetrics,
+    'failed and still-planning idempotent replays must be rejected before success analytics or UI hydration',
+  );
+
+  const catchIndex = startBlock.indexOf('catch (cause)');
+  const lateOwnerGuard = startBlock.indexOf('shouldHandleOperationError', catchIndex);
+  const visibleError = startBlock.indexOf('handleOperationError', lateOwnerGuard);
+  assert.ok(
+    catchIndex >= 0
+      && lateOwnerGuard > catchIndex
+      && visibleError > lateOwnerGuard,
+    'visible start errors must remain behind the current-owner guard',
+  );
+  assert.doesNotMatch(
+    startBlock.slice(catchIndex),
+    /shouldResetResumeOptimizationStartAttempt/,
+    'stream and transport errors must preserve the original attempt until a returned Run is authoritative',
+  );
+  assert.doesNotMatch(
+    startBlock.slice(catchIndex),
+    /finally[\s\S]*startAttemptRef\.current = null/,
+    'ambiguous network failures must not clear the retry key in finally',
+  );
+});
+
 test('every async operation catch drops late non-abort errors before state or toast handling', () => {
   const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
   const blocks = [

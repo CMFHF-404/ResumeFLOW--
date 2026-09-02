@@ -143,6 +143,8 @@ import {
 import { useResumeEditorExperiencePolishCoordinator } from './hooks/useResumeEditorExperiencePolishCoordinator';
 import { useResumeEditorExperienceFocusRequest } from './hooks/useResumeEditorExperienceFocusRequest';
 import { useResumeOptimizationFlow } from './hooks/useResumeOptimizationFlow';
+import { useResumeEvaluationLinkPreflight } from './hooks/useResumeEvaluationLinkPreflight';
+import { runResumeEvaluationAfterLinkPreflight } from './hooks/resumeExperienceLinkPersistence';
 import { ResumeOptimizationWorkspace } from './components/ResumeOptimization/ResumeOptimizationWorkspace';
 import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
 type ResumeEditorProps = {
@@ -652,15 +654,28 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             showToastError('重新加载失败，请刷新页面后重试。');
         }
     }, [hasResumeVersionConflict, reloadResumeContext, resumeId, showToastError]);
+    const ensureSelectedExperienceLinks = useResumeEvaluationLinkPreflight({
+        authUserKey,
+        resumeId,
+        evaluationSignature,
+        selectedExperienceIds: selectedExpIds,
+        resumeExperienceMap,
+        experienceSourceMap,
+        applyResumeDetail,
+        setResumeExperienceMap,
+    });
     const handleGenerateEvaluation = useCallback(async () => {
         try {
-            await flushResumeConfig();
+            return await runResumeEvaluationAfterLinkPreflight({
+                ensureLinks: ensureSelectedExperienceLinks,
+                flushConfig: flushResumeConfig,
+                generateEvaluation,
+            });
         } catch {
             showToastError('简历内容已在其他请求中更新，请刷新后再生成六维报告');
             return;
         }
-        return generateEvaluation();
-    }, [flushResumeConfig, generateEvaluation, showToastError]);
+    }, [ensureSelectedExperienceLinks, flushResumeConfig, generateEvaluation, showToastError]);
     const {
         activeManualSaveDraftRef,
         appliedManualSaveDraftKeyRef,

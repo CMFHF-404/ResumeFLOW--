@@ -205,7 +205,11 @@ def _stream_error_event(exc: Exception, *, request_id: str) -> dict[str, Any]:
             "statusCode": 503,
             "retryable": True,
         }
-    event = build_public_stream_error_event(exc, request_id=request_id)
+    event = build_public_stream_error_event(
+        exc,
+        request_id=request_id,
+        preserve_http_exception_detail=False,
+    )
     event.setdefault("statusCode", 500)
     return event
 

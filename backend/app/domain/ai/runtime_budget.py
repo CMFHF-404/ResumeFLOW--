@@ -304,9 +304,14 @@ def build_public_stream_error_event(
     request_id: str,
     preserve_value_error: bool = False,
     preserve_exceptions: tuple[type[Exception], ...] = (),
+    preserve_http_exception_detail: bool = True,
 ) -> dict[str, Any]:
     if isinstance(exc, HTTPException):
-        message = exc.detail if isinstance(exc.detail, str) else "请求处理失败。"
+        message = (
+            exc.detail
+            if preserve_http_exception_detail and isinstance(exc.detail, str)
+            else "请求处理失败。"
+        )
         return {
             "type": "error",
             "code": "http_error",

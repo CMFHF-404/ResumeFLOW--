@@ -221,7 +221,11 @@ def _public_error_metadata(exc: Exception, *, request_id: str) -> dict[str, Any]
         }
     # Never persist exception text, provider payloads, or trace details for an
     # unknown failure.  The request ID is the sole diagnostic join key.
-    return build_public_stream_error_event(exc, request_id=request_id)
+    return build_public_stream_error_event(
+        exc,
+        request_id=request_id,
+        preserve_http_exception_detail=False,
+    )
 
 
 def _frozen_context_from_snapshot(

@@ -44,10 +44,19 @@ test('save bridge reads the latest ref, returns the new token, and rejects a dra
     currentUpdatedAt: 'v2',
     isHydrated: true,
   }), 'v2');
+  assert.equal(resolveCommittedResumeSaveToken({
+    requestedResumeId: 'resume-a',
+    currentResumeId: 'resume-a',
+    requestedConfigSignature: 'config-a',
+    lastSavedConfigSignature: 'config-a',
+    previousUpdatedAt: 'v1',
+    currentUpdatedAt: 'v1',
+    isHydrated: true,
+  }), 'v1', 'an acknowledged identical save must preserve and return its current token');
   for (const invalidReceipt of [
     { currentResumeId: 'resume-b' },
     { lastSavedConfigSignature: 'config-b' },
-    { currentUpdatedAt: 'v1' },
+    { currentUpdatedAt: undefined },
     { isHydrated: false },
   ]) {
     assert.equal(resolveCommittedResumeSaveToken({

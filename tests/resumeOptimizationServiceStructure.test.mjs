@@ -453,7 +453,7 @@ test('preserves stream and HTTP error metadata while passing Abort/Auth errors t
     (error) => error instanceof ResumeOptimizationServiceError
       && error.code === 'resume_optimization_content_conflict'
       && error.statusCode === 409
-      && error.message === '内容已变化',
+      && error.message === '简历内容已在优化后发生变化，请刷新后再操作。',
   );
 
   const canceledError = new Error('canceled');
@@ -486,6 +486,84 @@ test('preserves stream and HTTP error metadata while passing Abort/Auth errors t
       && error.message === '认证服务暂时不可用'
       && error.statusCode === 503
       && error.retryable === true,
+  );
+});
+
+test('unknown HTTP and transport messages fail closed instead of exposing proxy content', async () => {
+  const harness = makeHarness();
+  const { resumeOptimizationService, ResumeOptimizationServiceError } = await importService(harness);
+  const canary = 'PRIVATE_PROXY_HTML_OR_STACK_CANARY';
+  const fallback = '简历优化请求失败，请稍后重试。';
+  const errors = [
+    {
+      response: {
+        status: 502,
+        data: { detail: { code: 'unknown_proxy_failure', message: canary } },
+      },
+    },
+    {
+      response: {
+        status: 502,
+        data: { detail: canary },
+      },
+    },
+    Object.assign(new Error(canary), {
+      response: { status: 502, data: {} },
+    }),
+    new Error(canary),
+  ];
+
+  for (const sourceError of errors) {
+    harness.apiError = sourceError;
+    await assert.rejects(
+      resumeOptimizationService.get(RUN_ID),
+      (error) => error instanceof ResumeOptimizationServiceError
+        && error.message === fallback
+        && !error.message.includes(canary),
+    );
+  }
+
+  harness.apiError = {
+    response: {
+      status: 409,
+      data: {
+        detail: {
+          code: 'resume_optimization_content_conflict',
+          message: canary,
+        },
+      },
+    },
+  };
+  await assert.rejects(
+    resumeOptimizationService.get(RUN_ID),
+    (error) => error instanceof ResumeOptimizationServiceError
+      && error.code === 'resume_optimization_content_conflict'
+      && error.message === '简历内容已在优化后发生变化，请刷新后再操作。'
+      && !error.message.includes(canary),
+  );
+
+  harness.streamEvents = [{
+    type: 'error',
+    code: 'unknown_proxy_failure',
+    message: canary,
+    requestId: 'proxy-canary-request',
+    statusCode: 502,
+    retryable: false,
+  }];
+  await assert.rejects(
+    resumeOptimizationService.start(
+      {
+        resumeId: RESUME_ID,
+        evaluationSignature: 'evaluation-signature',
+        expectedResumeUpdatedAt: '2026-09-01T03:00:00Z',
+      },
+      { idempotencyKey: IDEMPOTENCY_KEY },
+    ),
+    (error) => error instanceof ResumeOptimizationServiceError
+      && error.code === 'resume_optimization_request_failed'
+      && error.message === fallback
+      && error.requestId === undefined
+      && !error.message.includes(canary),
   );
 });
 
@@ -723,6 +801,85 @@ test('stream helper preserves the existing 402 purchase prompt fallback', async 
     );
     assert.deepEqual(harness.quotaCalls, ['quota']);
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('stream helper never forwards arbitrary 402 response text to the purchase prompt', async () => {
+  const canary = 'PRIVATE_QUOTA_RESPONSE_CANARY';
+  const harness = {
+    authCalls: [],
+    quotaCalls: [],
+    session: { epoch: 1, ownerKey: 'owner-a' },
+  };
+  const { postStreamRequest, StreamRequestError } = await importStreamUtils(harness);
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [payload, expectedRequestId] of [
+      [{ detail: canary }, undefined],
+      [{
+        detail: {
+          code: 'ai_token_quota_exhausted',
+          message: canary,
+          requestId: 'quota-request',
+        },
+      }, 'quota-request'],
+    ]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(payload), {
+        status: 402,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await assert.rejects(
+        postStreamRequest({
+          path: '/api/example/stream',
+          body: '{}',
+          expectedAuthCacheKey: 'owner-a',
+          getFinalResult: (event) => event.type === 'final' ? event.result : null,
+        }),
+        (error) => error instanceof StreamRequestError
+          && error.code === 'ai_token_quota_exhausted'
+          && error.message === 'quota'
+          && error.requestId === expectedRequestId
+          && error.statusCode === 402
+          && error.retryable === false
+          && !error.message.includes(canary),
+      );
+    }
+    assert.deepEqual(harness.quotaCalls, ['quota', 'quota']);
+    assert.doesNotMatch(JSON.stringify(harness.quotaCalls), new RegExp(canary));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('stream helper reports malformed NDJSON without logging parser details or raw lines', async () => {
+  const canary = 'PRIVATE_MALFORMED_NDJSON_CANARY';
+  const harness = {
+    authCalls: [],
+    session: { epoch: 1, ownerKey: 'owner-a' },
+  };
+  const { postStreamRequest } = await importStreamUtils(harness);
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings = [];
+  globalThis.fetch = async () => new Response(`${canary}\n`, { status: 200 });
+  console.warn = (...args) => warnings.push(args);
+  try {
+    await assert.rejects(
+      postStreamRequest({
+        path: '/api/example/stream',
+        body: '{}',
+        expectedAuthCacheKey: 'owner-a',
+        getFinalResult: (event) => event.type === 'final' ? event.result : null,
+      }),
+      (error) => error instanceof Error
+        && error.message === 'AI stream did not return final result',
+    );
+    assert.deepEqual(warnings, [['Failed to parse stream line']]);
+    assert.doesNotMatch(JSON.stringify(warnings), new RegExp(canary));
+    assert.doesNotMatch(JSON.stringify(warnings), /SyntaxError|Unexpected token/);
+  } finally {
+    console.warn = originalWarn;
     globalThis.fetch = originalFetch;
   }
 });

@@ -32,6 +32,8 @@ const isAbortError = (error: unknown) => (
   && (error as { name?: unknown }).name === "AbortError"
 );
 
+const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "六维报告生成失败，请重试。";
+
 /**
  * The expensive six-dimension request intentionally owns a separate run id
  * and AbortController. It can never cancel, replace, or invalidate JD fit.
@@ -136,7 +138,7 @@ export const useResumeEvaluation = ({
         return { status: "aborted" };
       }
       if (isCurrent()) {
-        setError(cause instanceof Error ? cause.message : "六维报告生成失败，请重试");
+        setError(RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE);
       }
       return { status: "error" };
     } finally {
