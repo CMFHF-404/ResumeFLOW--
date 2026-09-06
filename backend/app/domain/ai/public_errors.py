@@ -22,6 +22,19 @@ class AiProviderPayloadError(ValueError):
     """The upstream provider returned a syntactically or structurally invalid payload."""
 
 
+class ResumeEvaluationIntegrityError(AiProviderPayloadError):
+    """A six-dimension result could not be repaired without changing its meaning."""
+
+    code = "resume_evaluation_integrity_failed"
+    status_code = HTTP_502_BAD_GATEWAY
+    retryable = True
+    public_message = "本次六维报告未通过完整性校验，未保存本次结果，请重试。"
+
+    def __init__(self, reason: str = "") -> None:
+        suffix = f": {reason}" if reason else ""
+        super().__init__(f"{self.code}{suffix}")
+
+
 class AiProviderUnavailableError(ValueError):
     """The upstream provider rejected or could not complete the request."""
 
@@ -31,6 +44,17 @@ def translate_ai_public_exception(exc: Exception) -> HTTPException | None:
         return ai_runtime_http_exception(exc)
     if isinstance(exc, HTTPException):
         return exc
+    if isinstance(exc, ResumeEvaluationIntegrityError):
+        return HTTPException(
+            status_code=exc.status_code,
+            detail={
+                "error": {
+                    "code": exc.code,
+                    "message": exc.public_message,
+                    "retryable": exc.retryable,
+                }
+            },
+        )
     if isinstance(exc, (httpx.HTTPError, AiProviderUnavailableError)):
         return HTTPException(
             status_code=HTTP_503_SERVICE_UNAVAILABLE,

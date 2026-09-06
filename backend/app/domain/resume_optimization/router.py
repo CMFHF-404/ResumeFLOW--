@@ -30,15 +30,22 @@ from ..ai.runtime_budget import (
 )
 from ..billing import billing_service
 from .apply_service import (
+    AppliedRunResumabilityCheck,
     OptimizationApplyConflictError,
     OptimizationApplyStaleError,
     OptimizationApplyValidationError,
     OptimizationContentConflictError,
     OptimizationFinalizePendingError,
+    OptimizationRescoreClaimLostError,
+    OptimizationRescoreInProgressError,
     OptimizationRunDataInvalidError,
     apply_resume_optimization,
+    claim_resume_optimization_rescore,
     finalize_run_from_persisted_evaluation,
+    is_applied_run_resumable,
+    project_plan_with_current_safety,
     revert_resume_optimization,
+    source_snapshot_uses_v2_signature_contract,
     source_before_score_from_run,
 )
 from .context_service import OptimizationContextError
@@ -68,6 +75,7 @@ from .schemas import (
     ResumeOptimizationFinalizeRequest,
     ResumeOptimizationFinalizeResponse,
     ResumeOptimizationPostEvaluation,
+    ResumeOptimizationRescoreClaimRequest,
     ResumeOptimizationRevertRequest,
     ResumeOptimizationRevertResponse,
     ResumeOptimizationRunRead,
@@ -113,6 +121,8 @@ _SAFE_DOMAIN_MESSAGES = {
     "resume_optimization_apply_invalid": OptimizationApplyValidationError.public_message,
     "resume_optimization_apply_conflict": OptimizationApplyConflictError.public_message,
     "resume_optimization_evaluation_pending": OptimizationFinalizePendingError.public_message,
+    "resume_optimization_rescore_in_progress": OptimizationRescoreInProgressError.public_message,
+    "resume_optimization_rescore_claim_lost": OptimizationRescoreClaimLostError.public_message,
     "resume_optimization_content_conflict": OptimizationContentConflictError.public_message,
 }
 _DOMAIN_ERROR_TYPES = (
@@ -130,6 +140,8 @@ _DOMAIN_ERROR_TYPES = (
     OptimizationApplyConflictError,
     OptimizationApplyStaleError,
     OptimizationFinalizePendingError,
+    OptimizationRescoreInProgressError,
+    OptimizationRescoreClaimLostError,
     OptimizationContentConflictError,
     OptimizationRunDataInvalidError,
 )
@@ -151,6 +163,8 @@ def _domain_status_code(exc: Exception) -> int:
             OptimizationAnswerInProgressError,
             OptimizationAnswerClaimLostError,
             OptimizationPlanningClaimLostError,
+            OptimizationRescoreInProgressError,
+            OptimizationRescoreClaimLostError,
         ),
     ):
         return 409
@@ -300,6 +314,22 @@ def _validated_persisted_plan(
 
 def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
     try:
+        public_status = ResumeOptimizationStatus(run.status)
+        if (
+            public_status
+            in {
+                ResumeOptimizationStatus.PLANNING,
+                ResumeOptimizationStatus.AWAITING_ANSWERS,
+                ResumeOptimizationStatus.PREVIEW_READY,
+            }
+            and isinstance(run.before_snapshot, dict)
+            and "evaluation_signature" in run.before_snapshot
+            and not source_snapshot_uses_v2_signature_contract(run.before_snapshot)
+        ):
+            # Historical pre-apply runs cannot safely continue under the
+            # current source-binding contract. Project them through the stale
+            # re-generate UI without mutating persisted history.
+            public_status = ResumeOptimizationStatus.STALE
         stored_plan = _validated_persisted_plan(
             run.plan_json,
             empty_as_missing=False,
@@ -309,9 +339,12 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             run.result_json,
             empty_as_missing=True,
         )
-        plan = stored_result or stored_plan
+        plan = project_plan_with_current_safety(
+            run,
+            plan=stored_result or stored_plan,
+        )
         public_result = (
-            stored_result.model_dump(mode="json")
+            plan.model_dump(mode="json")
             if stored_result is not None
             else {}
         )
@@ -324,7 +357,7 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             else None
         )
         source_before_score = (
-            source_before_score_from_run(run)
+            source_before_score_from_run(run, allow_legacy=True)
             if bool(run.before_snapshot)
             and str(run.source_evaluation_signature).lstrip().startswith("{")
             and run.status
@@ -356,7 +389,7 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
         return ResumeOptimizationRunRead(
             id=str(run.id),
             resume_id=str(run.resume_id),
-            status=ResumeOptimizationStatus(run.status),
+            status=public_status,
             optimizer_version=run.optimizer_version,
             policy_version=run.policy_version,
             prompt_version=run.prompt_version,
@@ -563,6 +596,18 @@ async def get_latest_resume_optimization_run(
         )
         if run is None:
             raise OptimizationRunNotFoundError(resume_id)
+        if run.status == ResumeOptimizationStatus.APPLIED.value:
+            recheck: AppliedRunResumabilityCheck = await is_applied_run_resumable(
+                session=session,
+                user_id=current_user.id,
+                run_id=str(run.id),
+            )
+            run = recheck.run
+            if (
+                run.status == ResumeOptimizationStatus.APPLIED.value
+                and not recheck.is_resumable
+            ):
+                raise OptimizationRunNotFoundError(resume_id)
         return _run_to_read(run)
     except _DOMAIN_ERROR_TYPES as exc:
         _raise_domain_http_error(exc)
@@ -604,6 +649,29 @@ async def answer_resume_optimization_stream(
         operation=operation,
         progress_node_aliases={"rewrite_changes": "rewrite_answers"},
     )
+
+
+@router.post("/{run_id}/rescore-claim", response_model=ResumeOptimizationRunRead)
+async def claim_resume_optimization_rescore_run(
+    run_id: str,
+    payload: ResumeOptimizationRescoreClaimRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user=Depends(get_current_user),
+) -> ResumeOptimizationRunRead:
+    try:
+        run = await claim_resume_optimization_rescore(
+            session=session,
+            user_id=current_user.id,
+            run_id=run_id,
+            payload=payload,
+        )
+        return _run_to_read(run)
+    except _DOMAIN_ERROR_TYPES as exc:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        _raise_domain_http_error(exc)
 
 
 @router.post("/{run_id}/apply", response_model=ResumeOptimizationApplyResponse)

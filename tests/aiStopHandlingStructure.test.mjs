@@ -110,7 +110,7 @@ test('JD analysis running status aligns the thinking label with the stop control
   const source = readSource('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const snippets = runningStatusSnippets(
     source,
-    "思考中：{thinkingText || '正在分析岗位要求...'}"
+    "思考中：{thinkingText?.trim() || '正在分析岗位要求...'}"
   );
 
   assert.equal(snippets.length, 2, 'desktop JD analysis should have collapsed and input running states');
@@ -126,10 +126,13 @@ test('JD analysis thinking text stays on a single truncated line', () => {
   const panelSource = readSource('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const mobileSource = readSource('views/ResumeEditor/components/MobileEditorHeader.tsx');
 
-  for (const source of [panelSource, mobileSource]) {
+  for (const [source, thinkingSnippet] of [
+    [panelSource, "思考中：{thinkingText?.trim() || '正在分析岗位要求...'}"],
+    [mobileSource, "思考中：{thinkingText || '正在分析岗位要求...'}"],
+  ]) {
     const snippets = runningStatusSnippets(
       source,
-      "思考中：{thinkingText || '正在分析岗位要求...'}"
+      thinkingSnippet,
     );
     assert.ok(snippets.length > 0, 'JD thinking status should be rendered');
     for (const snippet of snippets) {

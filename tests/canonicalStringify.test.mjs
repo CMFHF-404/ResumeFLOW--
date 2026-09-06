@@ -40,7 +40,7 @@ test('canonicalStringify preserves the legacy fingerprint semantics exactly', as
   assert.throws(() => canonicalStringify(1n), TypeError);
 });
 
-test('JD signature compatibility export and persistence fingerprint share the authority', async () => {
+test('JD signature compatibility and versioned persistence fingerprints share canonical authority', async () => {
   const value = {
     z: { b: 2, a: 1 },
     a: ['second', 'first'],
@@ -53,8 +53,14 @@ test('JD signature compatibility export and persistence fingerprint share the au
   const expected = authority.canonicalStringify(value);
 
   assert.equal(signatures.canonicalStringify(value), expected);
-  assert.equal(storage.buildJDAnalysisPersistenceFingerprint(value), expected);
-  assert.equal(legacyStorage.buildJDAnalysisPersistenceFingerprint(value), expected);
+  assert.equal(
+    storage.buildJDAnalysisPersistenceFingerprint(value),
+    `jd-analysis-normalized-v2:${expected}`,
+  );
+  assert.equal(
+    legacyStorage.buildJDAnalysisPersistenceFingerprint(value),
+    `jd-analysis-normalized-v2:${expected}`,
+  );
 });
 
 test('fingerprint consumers import the leaf authority instead of defining local variants', () => {

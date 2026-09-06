@@ -44,7 +44,7 @@ test('match-state hook owns one stable reset authority for all seven state group
   assert.match(source, /return \{[\s\S]*?resetAllMatchState,[\s\S]*?\};/);
 });
 
-test('all four full-reset triggers delegate to resetAllMatchState', () => {
+test('all five full-reset triggers delegate to resetAllMatchState', () => {
   const source = read('hooks/useJDAnalysis.ts');
   const persistedRestore = sliceBetween(
     source,
@@ -54,6 +54,11 @@ test('all four full-reset triggers delegate to resetAllMatchState', () => {
   const resumeReset = sliceBetween(
     source,
     'const resetJDAnalysisState = useCallback',
+    '  useEffect(() => {',
+  );
+  const restoredAttachmentConversion = sliceBetween(
+    source,
+    'const convertRestoredAttachmentToText = useCallback',
     '  useEffect(() => {',
   );
   const updateAnalysis = sliceBetween(
@@ -68,6 +73,10 @@ test('all four full-reset triggers delegate to resetAllMatchState', () => {
   );
   assert.match(resumeReset, /resetAllMatchState\(\);/);
   assert.match(
+    restoredAttachmentConversion,
+    /const convertRestoredAttachmentToText[\s\S]*?resetAllMatchState\(\);[\s\S]*?setNeedsReanalysis\(true\);/,
+  );
+  assert.match(
     source,
     /if \(analysisContext\.jdInputSignature !== jdInputSignature\) \{[\s\S]*?resetAllMatchState\(\);[\s\S]*?setNeedsReanalysis\(true\);/,
   );
@@ -77,12 +86,12 @@ test('all four full-reset triggers delegate to resetAllMatchState', () => {
   );
   assert.match(
     updateAnalysis,
-    /if \(result\.resumeEvaluation\?\.jdMatch === null\) \{\s*resetAllMatchState\(\);\s*\}/,
+    /if \(mergedResult\.resumeEvaluation\?\.jdMatch === null\) \{\s*resetAllMatchState\(\);\s*\}/,
   );
   assert.equal(
     (source.match(/\bresetAllMatchState\(\);/g) ?? []).length,
-    4,
-    'the four audited reset paths should be the only full-reset callers',
+    5,
+    'the five audited reset paths should be the only full-reset callers',
   );
 
   for (const legacyResetCall of [

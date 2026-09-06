@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const templateSelectorModule = path
+    .resolve(__dirname, 'views/ResumeEditor/components/TemplateSelectorModal.tsx')
+    .replaceAll('\\', '/');
   // Browser code always uses the production-safe same-origin /api mount. The
   // Vite development proxy needs a separate server-side upstream instead.
   const devApiProxyTarget = env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:8000';
@@ -28,11 +31,22 @@ export default defineConfig(({ mode }) => {
       sourcemap: mode === 'development',
       rollupOptions: {
         output: {
-          // React is shared by every route and large enough to obscure changes
-          // in the application entry. Keep only this truly eager runtime in a
-          // stable vendor chunk; route-only libraries remain with lazy routes.
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom', 'react-dom/client'],
+          // Assign only the named modules. Letting Rollup absorb their entire
+          // dependency trees can pull route-only UI back into the app entry.
+          onlyExplicitManualChunks: true,
+          manualChunks(moduleId) {
+            const normalizedId = moduleId.replaceAll('\\', '/').split('?')[0];
+            if (normalizedId === templateSelectorModule) {
+              return 'resume-template-selector';
+            }
+            if (
+              normalizedId.includes('/node_modules/react/')
+              || normalizedId.includes('/node_modules/react-dom/')
+              || normalizedId.includes('/node_modules/scheduler/')
+            ) {
+              return 'react-vendor';
+            }
+            return undefined;
           },
         },
       },

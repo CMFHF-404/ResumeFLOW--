@@ -3,11 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from typing import Any
 import html as html_lib
 import json
+import math
 import re
 import uuid
 from urllib.parse import urljoin, urlsplit
@@ -25,6 +26,14 @@ from ..ai.resume_evaluation import DIMENSION_NAMES, normalize_resume_evaluation
 from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_service import _mark_resume_analysis_outdated
 from .models import ResumeOptimizationRun
+from .normalizers import (
+    _action_boundary_parts,
+    _is_action_ecmascript_whitespace,
+    _is_default_ignorable_action_char,
+    action_markdown_rendered_marker_indices,
+    markdown_link_spans,
+    normalize_action_paragraph_endings,
+)
 from .run_service import (
     OptimizationRunNotFoundError,
     canonical_json,
@@ -32,15 +41,19 @@ from .run_service import (
 )
 from .schemas import (
     OptimizationAction,
+    OptimizationAnswer,
     OptimizationChange,
     OptimizationModuleType,
     OptimizationPlan,
+    OptimizationSafetySummary,
     ResumeOptimizationApplyRequest,
     ResumeOptimizationFinalizeRequest,
     ResumeOptimizationPostEvaluation,
+    ResumeOptimizationRescoreClaimRequest,
     ResumeOptimizationRevertRequest,
     ResumeOptimizationStatus,
 )
+from .safety import preserves_rich_text_structure, verify_plan_changes
 from .state_machine import InvalidOptimizationTransitionError, require_status_transition
 
 
@@ -63,6 +76,8 @@ _FROZEN_SNAPSHOT_KEYS = frozenset(
         "fact_metadata",
     }
 )
+_EVALUATION_SIGNATURE_SCHEMA_KEY = "evaluation_signature_schema"
+_FRONTEND_EVALUATION_SIGNATURE_SCHEMA_V2 = "frontend_evaluation_v2"
 _STAR_PATHS = frozenset({"star.s", "star.t", "star.a", "star.r"})
 _SUMMARY_MODULE_IDS = frozenset({"personal_summary", "current_resume", "resume"})
 _SUMMARY_PATHS = frozenset({"personal_summary", "personalSummary"})
@@ -72,6 +87,29 @@ _APPLY_SNAPSHOT_VERSION = "resume_optimization_apply_v1"
 _ROLLBACK_BEFORE_VERSION = "resume_optimization_rollback_before_v1"
 _POST_EVALUATION_VERSION = "resume_optimization_post_evaluation_v1"
 _STALE_PUBLIC_MESSAGE = "简历内容或六维评估已更新，请重新生成优化方案。"
+_ACTIVE_RESCORE_CLAIM_KEY = "_activeRescoreClaim"
+_DEFAULT_RESCORE_CLAIM_TTL_SECONDS = 900
+_EXPECTED_SIGNATURE_VALUE_UNSET = object()
+_LEGACY_FRONTEND_EVALUATION_SIGNATURE_KEYS = frozenset(
+    {"jdInputSignature", "resume"}
+)
+_POST_APPLY_SIGNATURE_COMPATIBLE_STATUSES = frozenset(
+    {
+        ResumeOptimizationStatus.APPLIED.value,
+        ResumeOptimizationStatus.RESCORING.value,
+        ResumeOptimizationStatus.COMPLETED.value,
+        ResumeOptimizationStatus.REVERTED.value,
+    }
+)
+_ACTION_MATERIALIZATION_PUNCTUATION = frozenset("。！？!?；;，,、：:.…")
+_ACTION_MATERIALIZATION_HTML_RE = re.compile(
+    r'''<!--[\s\S]*?-->|<(?:[^"'<>]|"[^"]*"|'[^']*')*>'''
+)
+_ACTION_MATERIALIZATION_ENTITY_RE = re.compile(
+    r"&(?:#[xX][0-9a-fA-F]+;?|#[0-9]+;?|[A-Za-z][A-Za-z0-9]+;?)"
+)
+_ACTION_MATERIALIZATION_MARKDOWN_ENTITY_PLACEHOLDER = "\ue002"
+_ACTION_MATERIALIZATION_MARKDOWN_PROTECTED_PLACEHOLDER = "\ue003"
 
 
 class OptimizationApplyValidationError(ValueError):
@@ -125,6 +163,26 @@ class OptimizationContentConflictError(RuntimeError):
         super().__init__(self.public_message)
 
 
+class OptimizationRescoreInProgressError(RuntimeError):
+    code = "resume_optimization_rescore_in_progress"
+    status_code = 409
+    public_message = "该优化记录正在复评，请稍后刷新。"
+    retryable = True
+
+    def __init__(self) -> None:
+        super().__init__(self.public_message)
+
+
+class OptimizationRescoreClaimLostError(RuntimeError):
+    code = "resume_optimization_rescore_claim_lost"
+    status_code = 409
+    public_message = "本次复评租约已失效，请刷新后重试。"
+    retryable = True
+
+    def __init__(self) -> None:
+        super().__init__(self.public_message)
+
+
 class OptimizationRunDataInvalidError(RuntimeError):
     code = "resume_optimization_run_invalid"
     status_code = 500
@@ -134,6 +192,124 @@ class OptimizationRunDataInvalidError(RuntimeError):
     def __init__(self, reason: str = "Persisted optimization apply data is invalid") -> None:
         self.reason = reason
         super().__init__(reason)
+
+
+def _is_action_materialization_suffix(char: str) -> bool:
+    return (
+        _is_action_ecmascript_whitespace(char)
+        or _is_default_ignorable_action_char(char)
+        or char in "”’\"'」』"
+    )
+
+
+def _action_materialization_text_sources(value: str) -> tuple[str, str]:
+    """Decode visible text while keeping entity-origin Markdown markers inert."""
+
+    rendered: list[str] = []
+    markdown_source: list[str] = []
+    cursor = 0
+    for match in _ACTION_MATERIALIZATION_ENTITY_RE.finditer(value):
+        literal = html_lib.unescape(value[cursor:match.start()])
+        entity = html_lib.unescape(match.group())
+        rendered.append(literal)
+        markdown_source.append(literal)
+        rendered.append(entity)
+        markdown_source.append("".join(
+            _ACTION_MATERIALIZATION_MARKDOWN_ENTITY_PLACEHOLDER
+            if char in "*＊_"
+            else char
+            for char in entity
+        ))
+        cursor = match.end()
+    literal = html_lib.unescape(value[cursor:])
+    rendered.append(literal)
+    markdown_source.append(literal)
+    return "".join(rendered), "".join(markdown_source)
+
+
+def _action_segment_materialization_key(
+    parts: list[tuple[str, bool]],
+) -> str:
+    value_parts: list[str] = []
+    markdown_text_segments: list[tuple[int, int, str]] = []
+    protected: list[bool] = []
+    for value, is_markup in parts:
+        if is_markup:
+            normalized = value
+            markdown_source = ""
+        else:
+            normalized, markdown_source = _action_materialization_text_sources(value)
+            segment_start = len(protected)
+            markdown_text_segments.append((
+                segment_start,
+                segment_start + len(normalized),
+                markdown_source,
+            ))
+        value_parts.append(normalized)
+        protected.extend([is_markup] * len(normalized))
+    value = "".join(value_parts)
+
+    masked = "".join(
+        " " if protected[index] else char for index, char in enumerate(value)
+    )
+    for start, end, label, _target in markdown_link_spans(masked):
+        label_end = start + 1 + len(label)
+        for index in range(start, end):
+            if not (start + 1 <= index < label_end):
+                protected[index] = True
+
+    for start, end, markdown_source in markdown_text_segments:
+        if len(markdown_source) != end - start:
+            continue
+        candidate = "".join(
+            _ACTION_MATERIALIZATION_MARKDOWN_PROTECTED_PLACEHOLDER
+            if protected[start + index]
+            else char
+            for index, char in enumerate(markdown_source)
+        )
+        marker_indices = action_markdown_rendered_marker_indices(candidate)
+        if marker_indices is None:
+            continue
+        for index in marker_indices:
+            if not protected[start + index]:
+                protected[start + index] = True
+
+    substantive = [
+        index
+        for index, char in enumerate(value)
+        if not protected[index]
+        and char not in _ACTION_MATERIALIZATION_PUNCTUATION
+        and not _is_action_materialization_suffix(char)
+    ]
+    last_substantive = substantive[-1] if substantive else -1
+    return "".join(
+        char
+        for index, char in enumerate(value)
+        if not (
+            index > last_substantive
+            and not protected[index]
+            and char in _ACTION_MATERIALIZATION_PUNCTUATION
+        )
+    )
+
+
+def _action_materialization_key(value: str) -> str:
+    """Ignore terminal Action punctuation without replaying a materializer."""
+
+    output: list[str] = []
+    for part, is_boundary in _action_boundary_parts(value):
+        if is_boundary:
+            output.append(part)
+            continue
+        segment: list[tuple[str, bool]] = []
+        cursor = 0
+        for match in _ACTION_MATERIALIZATION_HTML_RE.finditer(part):
+            segment.append((part[cursor:match.start()], False))
+            segment.append((match.group(), True))
+            cursor = match.end()
+        segment.append((part[cursor:], False))
+        output.append(_action_segment_materialization_key(segment))
+    return "".join(output)
 
 
 @dataclass(frozen=True)
@@ -156,6 +332,17 @@ class OptimizationRevertResult:
     run: ResumeOptimizationRun
     resume: Resume
     resume_updated_at: datetime
+
+
+@dataclass(frozen=True)
+class AppliedRunResumabilityCheck:
+    """The run locked during an applied-content resumability recheck."""
+
+    run: ResumeOptimizationRun
+    is_resumable: bool
+
+    def __bool__(self) -> bool:
+        return self.is_resumable
 
 
 @dataclass(frozen=True)
@@ -203,6 +390,8 @@ def _strict_final_plan(run: ResumeOptimizationRun) -> OptimizationPlan:
 def _accepted_changes(
     run: ResumeOptimizationRun,
     accepted_change_ids: set[str],
+    *,
+    enforce_current_safety: bool,
 ) -> list[OptimizationChange]:
     if not isinstance(accepted_change_ids, (set, frozenset)):
         raise OptimizationApplyValidationError("accepted_change_ids must be a set")
@@ -214,6 +403,12 @@ def _accepted_changes(
         )
 
     plan = _strict_final_plan(run)
+    verified_by_id: dict[str, OptimizationChange] | None = None
+    if enforce_current_safety:
+        projected = project_plan_with_current_safety(run, plan=plan)
+        verified_by_id = {
+            change.change_id: change for change in projected.changes
+        }
     by_id = {change.change_id: change for change in plan.changes}
     if accepted_change_ids - set(by_id):
         raise OptimizationApplyValidationError("An accepted change ID is unknown")
@@ -224,7 +419,14 @@ def _accepted_changes(
             continue
         if change.safety_status != "allowed":
             raise OptimizationApplyValidationError(
-                "Only safety-allowed changes may be applied"
+                "Only persisted safety-allowed changes may be applied"
+            )
+        if (
+            verified_by_id is not None
+            and verified_by_id[change.change_id].safety_status != "allowed"
+        ):
+            raise OptimizationApplyValidationError(
+                "Only changes allowed by the current safety policy may be applied"
             )
         if change.action_kind not in {
             OptimizationAction.REWRITE_NOW,
@@ -237,19 +439,202 @@ def _accepted_changes(
             raise OptimizationApplyValidationError(
                 "Applicable changes require a targeted value"
             )
+        if enforce_current_safety and change.module_type in {
+            OptimizationModuleType.EXPERIENCE_STAR,
+            OptimizationModuleType.PERSONAL_SUMMARY,
+        } and (
+            not isinstance(change.before_value, str)
+            or not isinstance(change.targeted_value, str)
+            or (
+                not (
+                    change.module_type == OptimizationModuleType.PERSONAL_SUMMARY
+                    and change.targeted_value == ""
+                )
+                and not preserves_rich_text_structure(
+                    change.before_value,
+                    change.targeted_value,
+                )
+            )
+        ):
+            raise OptimizationApplyValidationError(
+                "Text changes must preserve rich-text links and emphasis"
+            )
         selected.append(change)
     return selected
 
 
+def _current_safety_source_documents(
+    run: ResumeOptimizationRun,
+    *,
+    plan: OptimizationPlan,
+) -> dict[str, Any]:
+    snapshot = _validated_snapshot(run)
+    current_resume = snapshot.get("current_resume")
+    selected_sources = snapshot.get("selected_source_experiences")
+    if not isinstance(current_resume, Mapping) or not isinstance(
+        selected_sources, Mapping
+    ):
+        raise OptimizationApplyValidationError(
+            "Frozen safety source documents are invalid"
+        )
+
+    raw_answers = run.answers_json
+    if not isinstance(raw_answers, Mapping):
+        raise OptimizationApplyValidationError(
+            "Persisted optimization answers have an invalid root shape"
+        )
+    if not raw_answers:
+        answer_items: Any = []
+    elif set(raw_answers) == {"answers"}:
+        answer_items = raw_answers.get("answers")
+    else:
+        raise OptimizationApplyValidationError(
+            "Persisted optimization answers have an invalid root shape"
+        )
+    if not isinstance(answer_items, list):
+        raise OptimizationApplyValidationError(
+            "Persisted optimization answers must be an array"
+        )
+
+    answers: list[OptimizationAnswer] = []
+    for raw_answer in answer_items:
+        if not isinstance(raw_answer, Mapping) or set(raw_answer) != {
+            "question_id",
+            "state",
+            "value",
+        }:
+            raise OptimizationApplyValidationError(
+                "Persisted optimization answer has an invalid shape"
+            )
+        try:
+            answers.append(OptimizationAnswer.model_validate(raw_answer))
+        except (TypeError, ValidationError, ValueError) as exc:
+            raise OptimizationApplyValidationError(
+                "Persisted optimization answer is invalid"
+            ) from exc
+
+    answer_ids = [answer.question_id for answer in answers]
+    question_ids = {question.question_id for question in plan.questions}
+    if len(answer_ids) != len(set(answer_ids)) or not set(answer_ids) <= question_ids:
+        raise OptimizationApplyValidationError(
+            "Persisted optimization answers do not match the final plan"
+        )
+
+    return {
+        "currentResume": deepcopy(dict(current_resume)),
+        "selectedSourceExperiences": deepcopy(dict(selected_sources)),
+        "userAnswers": {
+            answer.question_id: {
+                "state": answer.state.value,
+                "value": answer.value,
+            }
+            for answer in answers
+        },
+    }
+
+
+def project_plan_with_current_safety(
+    run: ResumeOptimizationRun,
+    *,
+    plan: OptimizationPlan,
+) -> OptimizationPlan:
+    """Return the current-policy read/apply view without mutating persisted data."""
+
+    copied = plan.model_copy(deep=True)
+    if run.status != ResumeOptimizationStatus.PREVIEW_READY.value:
+        return copied
+    actionable = any(
+        change.action_kind in {
+            OptimizationAction.REWRITE_NOW,
+            OptimizationAction.ASK_USER,
+        }
+        and change.targeted_value is not None
+        for change in copied.changes
+    )
+    if not actionable:
+        return copied
+
+    source_documents = _current_safety_source_documents(run, plan=copied)
+    verified_changes, _ = verify_plan_changes(
+        plan=copied,
+        source_documents=source_documents,
+    )
+    if [change.change_id for change in verified_changes] != [
+        change.change_id for change in copied.changes
+    ]:
+        raise OptimizationApplyValidationError(
+            "Current safety verification changed the persisted plan identity"
+        )
+    projected_changes = [
+        verified
+        if persisted.safety_status == "allowed"
+        else persisted.model_copy(
+            update={"default_selected": False},
+            deep=True,
+        )
+        for persisted, verified in zip(copied.changes, verified_changes, strict=True)
+    ]
+    allowed_ids = [
+        change.change_id
+        for change in projected_changes
+        if change.safety_status == "allowed"
+    ]
+    blocked_ids = [
+        change.change_id
+        for change in projected_changes
+        if change.safety_status == "blocked"
+    ]
+    pending_ids = [
+        change.change_id
+        for change in projected_changes
+        if change.safety_status == "pending"
+    ]
+    safety_summary = OptimizationSafetySummary(
+        allowed_change_ids=allowed_ids,
+        blocked_change_ids=blocked_ids,
+        pending_change_ids=pending_ids,
+        findings=[
+            f"{change.change_id}：{finding}"
+            for change in projected_changes
+            for finding in change.safety_findings
+        ],
+    )
+    return copied.model_copy(
+        update={
+            "changes": projected_changes,
+            "safety_summary": safety_summary,
+        },
+        deep=True,
+    )
+
+
 def _validated_snapshot(run: ResumeOptimizationRun) -> dict[str, Any]:
     snapshot = run.before_snapshot
-    if not isinstance(snapshot, Mapping) or set(snapshot) != _FROZEN_SNAPSHOT_KEYS:
+    if not isinstance(snapshot, Mapping) or set(snapshot) not in {
+        _FROZEN_SNAPSHOT_KEYS,
+        _FROZEN_SNAPSHOT_KEYS | {_EVALUATION_SIGNATURE_SCHEMA_KEY},
+    }:
         raise OptimizationApplyValidationError("Frozen optimization snapshot is invalid")
     copied = deepcopy(dict(snapshot))
+    if (
+        _EVALUATION_SIGNATURE_SCHEMA_KEY in copied
+        and copied.get(_EVALUATION_SIGNATURE_SCHEMA_KEY)
+        != _FRONTEND_EVALUATION_SIGNATURE_SCHEMA_V2
+    ):
+        raise OptimizationApplyValidationError(
+            "Frozen evaluation signature schema is invalid"
+        )
     if hash_canonical_json(copied) != run.source_snapshot_hash:
         raise OptimizationApplyStaleError()
     if str(copied.get("resume_id")) != str(run.resume_id):
         raise OptimizationApplyStaleError()
+    if (
+        copied.get("evaluation_signature") != run.source_evaluation_signature
+        or copied.get("jd_signature") != run.source_jd_signature
+    ):
+        raise OptimizationApplyValidationError(
+            "Frozen optimization source identity is invalid"
+        )
     return copied
 
 
@@ -400,6 +785,7 @@ def build_apply_patch(
     accepted_change_ids: set[str],
     current_resume_config: dict[str, Any],
     current_link_overrides: dict[str, dict[str, Any]],
+    enforce_current_safety: bool = True,
 ) -> OptimizationApplyPatch:
     if not isinstance(current_resume_config, dict):
         raise OptimizationApplyValidationError("Current resume config is invalid")
@@ -408,10 +794,15 @@ def build_apply_patch(
 
     snapshot = _validated_snapshot(run)
     frozen_links = _frozen_links(run)
-    changes = _accepted_changes(run, accepted_change_ids)
+    changes = _accepted_changes(
+        run,
+        accepted_change_ids,
+        enforce_current_safety=enforce_current_safety,
+    )
     next_config = deepcopy(current_resume_config)
     next_stars: dict[str, dict[str, Any]] = {}
     targets: set[tuple[str, str]] = set()
+    has_effective_change = False
 
     for change in changes:
         target = _canonical_target(change, frozen_links)
@@ -448,6 +839,17 @@ def build_apply_patch(
                 raise OptimizationApplyValidationError(
                     "Experience change before value no longer matches the frozen snapshot"
                 )
+            if change.field_path == "star.a" and enforce_current_safety:
+                value = normalize_action_paragraph_endings(value)
+                if enforce_current_safety and not preserves_rich_text_structure(
+                    change.before_value,
+                    value,
+                ):
+                    raise OptimizationApplyValidationError(
+                        "Normalized action text must preserve rich-text links and emphasis"
+                    )
+            if value != effective_star[change.field_path[-1]]:
+                has_effective_change = True
             star = next_stars.get(link_id)
             if star is None:
                 star = _deep_merge(effective_star, raw_override_star)
@@ -470,6 +872,8 @@ def build_apply_patch(
                 raise OptimizationApplyValidationError(
                     "Summary before value no longer matches the frozen snapshot"
                 )
+            if value != frozen_summary:
+                has_effective_change = True
             next_config["personalSummary"] = value
             continue
 
@@ -524,6 +928,8 @@ def build_apply_patch(
                 raise OptimizationApplyValidationError(
                     "Skill order must contain exactly the selected skill IDs"
                 )
+            if next_order != current_order:
+                has_effective_change = True
             next_selection["skillIds"] = next_order
             next_config["selection"] = next_selection
             continue
@@ -550,12 +956,19 @@ def build_apply_patch(
                 raise OptimizationApplyValidationError(
                     "Section order must contain exactly the existing section IDs"
                 )
+            if next_order != current_order:
+                has_effective_change = True
             next_layout = deepcopy(dict(layout))
             next_layout["sectionOrder"] = next_order
             next_config["layout"] = next_layout
             continue
 
         raise OptimizationApplyValidationError("Unsupported optimization change")
+
+    if enforce_current_safety and not has_effective_change:
+        raise OptimizationApplyValidationError(
+            "Accepted changes do not modify the frozen resume content"
+        )
 
     skills_changed = any(
         change.module_type == OptimizationModuleType.SKILLS_ORDER
@@ -639,6 +1052,8 @@ def _validate_current_report(
     resume: Resume,
     snapshot: Mapping[str, Any],
 ) -> None:
+    if not source_snapshot_uses_v2_signature_contract(snapshot):
+        raise OptimizationApplyStaleError()
     config = resume.config
     analysis = config.get("jdAnalysis") if isinstance(config, Mapping) else None
     result = analysis.get("result") if isinstance(analysis, Mapping) else None
@@ -653,6 +1068,28 @@ def _validate_current_report(
         or snapshot.get("jd_signature") != run.source_jd_signature
     ):
         raise OptimizationApplyStaleError()
+    try:
+        _parse_frontend_evaluation_signature(
+            run.source_evaluation_signature,
+            jd_input_signature=run.source_jd_signature,
+            field_name="source evaluation signature",
+            expected_evaluation=evaluation,
+            expected_jd_result=result,
+        )
+    except OptimizationRunDataInvalidError as exc:
+        raise OptimizationApplyValidationError(
+            "Optimization requires the current editor evaluation signature"
+        ) from exc
+
+
+def source_snapshot_uses_v2_signature_contract(snapshot: Any) -> bool:
+    """Return whether a frozen source was server-marked for current apply."""
+
+    return (
+        isinstance(snapshot, Mapping)
+        and snapshot.get(_EVALUATION_SIGNATURE_SCHEMA_KEY)
+        == _FRONTEND_EVALUATION_SIGNATURE_SCHEMA_V2
+    )
 
 
 async def _lock_run(
@@ -780,10 +1217,37 @@ async def _lock_current_selected_resume_links(
                     "applied selection.experienceIds is invalid"
                 )
             explicit_master_ids.append(master_id)
-        if set(explicit_master_ids) != set(frozen_records):
+        if not set(frozen_records).issubset(explicit_master_ids):
             raise OptimizationRunDataInvalidError(
                 "applied selected experience IDs disagree with frozen selection"
             )
+        hidden_master_ids = [
+            master_id for master_id in explicit_master_ids
+            if master_id not in frozen_records
+        ]
+        if hidden_master_ids:
+            # Context construction excludes archived experiences from the frozen
+            # snapshot while retaining their IDs in the user's resume config.
+            # Reconfirm that omission here; an active or unknown extra ID must
+            # still fail rather than silently expand the applied selection.
+            # Hold confirmed rows until commit. Skip concurrent bank mutations
+            # instead of waiting in reverse (resume -> master) lock order.
+            archived_result = await session.execute(
+                select(MasterExperience.id).where(
+                    MasterExperience.user_id == user_id,
+                    MasterExperience.id.in_([
+                        _as_uuid(item, field_name="hidden selected master experience ID")
+                        for item in hidden_master_ids
+                    ]),
+                    MasterExperience.is_archived.is_(True),
+                ).with_for_update(of=MasterExperience, skip_locked=True)
+            )
+            archived_ids = {str(item) for item in archived_result.scalars().all()}
+            if set(hidden_master_ids) != archived_ids:
+                raise OptimizationContentConflictError()
+            explicit_master_ids = [
+                item for item in explicit_master_ids if item in frozen_records
+            ]
     statement = (
         select(ResumeExperienceLink)
         .join(
@@ -820,6 +1284,39 @@ async def _lock_current_selected_resume_links(
         str(record.link_id): str(record.source_version_id)
         for record in frozen_records.values()
     }
+    if explicit_master_ids is None:
+        hidden_link_ids = {
+            str(link.id) for link in links if str(link.id) not in expected
+        }
+        if hidden_link_ids:
+            # Implicit selection includes every linked experience, but the
+            # frozen frontend snapshot omits archived bank entries. Exclude
+            # only those omissions we can still confirm and lock as archived.
+            archived_result = await session.execute(
+                select(ResumeExperienceLink.id)
+                .join(
+                    ExperienceVersion,
+                    ExperienceVersion.id == ResumeExperienceLink.experience_version_id,
+                )
+                .join(
+                    MasterExperience,
+                    MasterExperience.id == ExperienceVersion.master_experience_id,
+                )
+                .where(
+                    ResumeExperienceLink.resume_id == resume.id,
+                    MasterExperience.user_id == user_id,
+                    ResumeExperienceLink.id.in_([
+                        _as_uuid(item, field_name="hidden resume experience link ID")
+                        for item in sorted(hidden_link_ids)
+                    ]),
+                    MasterExperience.is_archived.is_(True),
+                )
+                .with_for_update(of=MasterExperience, skip_locked=True)
+            )
+            archived_link_ids = {str(item) for item in archived_result.scalars().all()}
+            if hidden_link_ids != archived_link_ids:
+                raise OptimizationContentConflictError()
+            links = [link for link in links if str(link.id) not in archived_link_ids]
     current = {
         str(link.id): str(link.experience_version_id)
         for link in links
@@ -1014,7 +1511,11 @@ async def apply_resume_optimization(
                     "Optimization requires a canonical editor evaluation snapshot"
                 ) from exc
 
-        changes = _accepted_changes(run, set(payload.accepted_change_ids))
+        changes = _accepted_changes(
+            run,
+            set(payload.accepted_change_ids),
+            enforce_current_safety=True,
+        )
         try:
             frozen_links = _frozen_links(run)
         except OptimizationApplyStaleError:
@@ -1271,6 +1772,7 @@ class _FrontendHtmlSourceNode:
     text: str | None
     attrs: tuple[tuple[str, str | None], ...]
     children: list[_FrontendHtmlSourceNode]
+    had_child_node: bool
 
 
 @dataclass
@@ -1302,7 +1804,7 @@ class _FrontendHtmlSourceParser(HTMLParser):
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.root = _FrontendHtmlSourceNode(None, None, (), [])
+        self.root = _FrontendHtmlSourceNode(None, None, (), [], False)
         self._stack = [self.root]
 
     def handle_starttag(
@@ -1316,7 +1818,9 @@ class _FrontendHtmlSourceParser(HTMLParser):
             None,
             tuple((name.lower(), value) for name, value in attrs),
             [],
+            False,
         )
+        self._stack[-1].had_child_node = True
         self._stack[-1].children.append(node)
         if normalized_tag not in self._VOID_TAGS:
             self._stack.append(node)
@@ -1327,12 +1831,14 @@ class _FrontendHtmlSourceParser(HTMLParser):
         attrs: list[tuple[str, str | None]],
     ) -> None:
         normalized_tag = tag.lower()
+        self._stack[-1].had_child_node = True
         self._stack[-1].children.append(
             _FrontendHtmlSourceNode(
                 normalized_tag,
                 None,
                 tuple((name.lower(), value) for name, value in attrs),
                 [],
+                False,
             )
         )
 
@@ -1345,20 +1851,177 @@ class _FrontendHtmlSourceParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         if data:
+            self._stack[-1].had_child_node = True
             self._stack[-1].children.append(
-                _FrontendHtmlSourceNode(None, data, (), [])
+                _FrontendHtmlSourceNode(None, data, (), [], False)
             )
+
+    def handle_comment(self, data: str) -> None:
+        self._stack[-1].had_child_node = True
+
+    def handle_decl(self, decl: str) -> None:
+        # In a fragment/body context Chromium ignores a doctype token instead
+        # of creating a child node. An otherwise empty block therefore takes
+        # the editor's explicit-break path.
+        return None
+
+    def handle_pi(self, data: str) -> None:
+        self._stack[-1].had_child_node = True
+
+    def unknown_decl(self, data: str) -> None:
+        self._stack[-1].had_child_node = True
 
 
 _FRONTEND_HTML_BREAK = object()
 _FRONTEND_INLINE_TAGS = frozenset({"b", "strong", "i", "em", "u", "a"})
 _FRONTEND_LIST_TAGS = frozenset({"ul", "ol", "li"})
 _FRONTEND_BLOCK_TAGS = frozenset({"div", "p"})
+_FRONTEND_MARKDOWN_TRIGGER_RE = re.compile(
+    r"(?:\*\*|＊＊|__|\]\(|\*[^*\r\n]+\*)"
+)
+_FRONTEND_RICH_TEXT_HTML_TAG_RE = re.compile(
+    r"</?(?:b|strong|i|em|u|a|br|ul|ol|li)\b",
+    re.IGNORECASE,
+)
+_FRONTEND_MARKDOWN_HTML_SPLIT_RE = re.compile(r"(<[^>]+>)")
+_FRONTEND_MARKDOWN_BOLD_RE = re.compile(
+    r"(?:\*\*|＊＊)([^*\r\n＊]+)(?:\*\*|＊＊)"
+)
+_FRONTEND_MARKDOWN_UNDERLINE_RE = re.compile(r"__([^_\r\n]+)__")
+_FRONTEND_MARKDOWN_ITALIC_RE = re.compile(
+    r"(^|[^*])\*([^\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029"
+    r"\u202f\u205f\u3000\ufeff*](?:[^*\r\n]*?[^\t\n\v\f\r \u00a0"
+    r"\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff*])?)"
+    r"\*(?!\*)"
+)
+_FRONTEND_NUMERIC_CHARACTER_REFERENCE_RE = re.compile(
+    r"&#(?:(?P<hex>[xX][0-9a-fA-F]+)|(?P<decimal>[0-9]+));?"
+)
 
 
-def _frontend_append_break(parent: list[_FrontendSanitizedNode | object]) -> None:
-    if not parent or parent[-1] is not _FRONTEND_HTML_BREAK:
+def _frontend_append_break(
+    parent: list[_FrontendSanitizedNode | object],
+    *,
+    explicit: bool = False,
+) -> None:
+    if explicit or not parent or parent[-1] is not _FRONTEND_HTML_BREAK:
         parent.append(_FRONTEND_HTML_BREAK)
+
+
+def _frontend_normalize_markdown_token(value: str) -> str:
+    normalized = value.replace("\u00a0", " ").replace("\u3000", " ")
+    start = 0
+    end = len(normalized)
+    while start < end and (
+        _is_action_ecmascript_whitespace(normalized[start])
+        or normalized[start] in "\u200b\u200c\u200d"
+    ):
+        start += 1
+    while end > start and (
+        _is_action_ecmascript_whitespace(normalized[end - 1])
+        or normalized[end - 1] in "\u200b\u200c\u200d"
+    ):
+        end -= 1
+    return normalized[start:end]
+
+
+def _frontend_escape_markdown_link_target(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
+
+
+def _frontend_markdown_links_to_html(value: str) -> str:
+    output: list[str] = []
+    cursor = 0
+    for start, end, label, target in markdown_link_spans(value):
+        output.append(value[cursor:start])
+        output.append(
+            f'<a href="{_frontend_escape_markdown_link_target(target)}">'
+            f"{_frontend_normalize_markdown_token(label)}</a>"
+        )
+        cursor = end
+    output.append(value[cursor:])
+    return "".join(output)
+
+
+def _frontend_apply_legacy_markdown(value: str) -> str:
+    rendered = _frontend_markdown_links_to_html(value)
+    rendered = _FRONTEND_MARKDOWN_BOLD_RE.sub(
+        lambda match: f"<b>{_frontend_normalize_markdown_token(match.group(1))}</b>",
+        rendered,
+    )
+    rendered = _FRONTEND_MARKDOWN_UNDERLINE_RE.sub(
+        lambda match: f"<u>{_frontend_normalize_markdown_token(match.group(1))}</u>",
+        rendered,
+    )
+    return _FRONTEND_MARKDOWN_ITALIC_RE.sub(
+        lambda match: (
+            f"{match.group(1)}<i>"
+            f"{_frontend_normalize_markdown_token(match.group(2))}</i>"
+        ),
+        rendered,
+    )
+
+
+def _frontend_maybe_convert_legacy_markdown(value: str) -> str:
+    if not value or _FRONTEND_MARKDOWN_TRIGGER_RE.search(value) is None:
+        return value
+    if re.search(r"<[^>]+>", value) is None:
+        return _frontend_apply_legacy_markdown(value)
+    return "".join(
+        part
+        if part.startswith("<") and part.endswith(">")
+        else _frontend_apply_legacy_markdown(part)
+        for part in _FRONTEND_MARKDOWN_HTML_SPLIT_RE.split(value)
+    )
+
+
+def _frontend_preserve_numeric_reference_characters(
+    value: str,
+) -> tuple[str, dict[str, str]]:
+    """Protect HTML5 numeric references that Python's parser incorrectly drops."""
+
+    replacements: dict[str, str] = {}
+    next_placeholder = 0xF0000
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal next_placeholder
+        digits = match.group("hex") or match.group("decimal")
+        base = 16 if match.group("hex") else 10
+        if match.group("hex"):
+            digits = digits[1:]
+        try:
+            codepoint = int(digits, base)
+        except (TypeError, ValueError):
+            return match.group()
+        is_disallowed_control = (
+            1 <= codepoint <= 8
+            or codepoint == 11
+            or 14 <= codepoint <= 31
+            or codepoint == 127
+        )
+        is_noncharacter = (
+            0xFDD0 <= codepoint <= 0xFDEF
+            or (
+                codepoint <= 0x10FFFF
+                and (codepoint & 0xFFFF) in {0xFFFE, 0xFFFF}
+            )
+        )
+        if not (is_disallowed_control or is_noncharacter):
+            return match.group()
+        while chr(next_placeholder) in value or chr(next_placeholder) in replacements:
+            next_placeholder += 1
+        placeholder = chr(next_placeholder)
+        next_placeholder += 1
+        replacements[placeholder] = chr(codepoint)
+        return placeholder
+
+    return _FRONTEND_NUMERIC_CHARACTER_REFERENCE_RE.sub(replace, value), replacements
 
 
 def _frontend_append_text(
@@ -1377,7 +2040,7 @@ def _frontend_append_text(
         if part:
             parent.append(_FrontendSanitizedNode(None, part, []))
         if index < len(parts) - 1:
-            _frontend_append_break(parent)
+            _frontend_append_break(parent, explicit=True)
 
 
 def _frontend_style_tags(node: _FrontendHtmlSourceNode) -> list[str]:
@@ -1455,7 +2118,7 @@ def _frontend_sanitize_nodes(
             )
             continue
         if node.tag == "br":
-            _frontend_append_break(parent)
+            _frontend_append_break(parent, explicit=True)
             continue
         if node.tag in _FRONTEND_INLINE_TAGS:
             if node.tag == "a" and not _frontend_safe_href(node):
@@ -1496,7 +2159,7 @@ def _frontend_sanitize_nodes(
             preserve_text_line_breaks=preserve_text_line_breaks,
         )
         if node.tag in _FRONTEND_BLOCK_TAGS:
-            _frontend_append_break(parent)
+            _frontend_append_break(parent, explicit=not node.had_child_node)
 
 
 def _frontend_flatten_sanitized_node(
@@ -1514,11 +2177,29 @@ def _frontend_flatten_sanitized_node(
     return f"{flattened}\n" if node.tag == "li" else flattened
 
 
-def _frontend_sanitized_plain_text(
+def _frontend_serialize_sanitized_node(
+    node: _FrontendSanitizedNode | object,
+) -> str:
+    if node is _FRONTEND_HTML_BREAK:
+        return "<br>"
+    if not isinstance(node, _FrontendSanitizedNode):
+        return ""
+    if node.text is not None:
+        return html_lib.escape(node.text, quote=False)
+    content = "".join(
+        _frontend_serialize_sanitized_node(child) for child in node.children
+    )
+    return f"<{node.tag}>{content}</{node.tag}>" if node.tag else content
+
+
+def _frontend_sanitized_nodes(
     value: str,
     *,
     preserve_text_line_breaks: bool,
-) -> str:
+) -> tuple[list[_FrontendSanitizedNode | object], dict[str, str]]:
+    value = _frontend_maybe_convert_legacy_markdown(value)
+    value, preserved_references = _frontend_preserve_numeric_reference_characters(value)
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
     parser = _FrontendHtmlSourceParser()
     parser.feed(value)
     parser.close()
@@ -1530,7 +2211,50 @@ def _frontend_sanitized_plain_text(
     )
     while sanitized and sanitized[-1] is _FRONTEND_HTML_BREAK:
         sanitized.pop()
-    return "".join(_frontend_flatten_sanitized_node(node) for node in sanitized)
+    return sanitized, preserved_references
+
+
+def _frontend_restore_preserved_references(
+    value: str,
+    preserved_references: Mapping[str, str],
+) -> str:
+    for placeholder, character in preserved_references.items():
+        value = value.replace(placeholder, character)
+    return value
+
+
+def _frontend_sanitized_html(value: str) -> str:
+    """Mirror one browser ``sanitizeRichTextHtml`` serialize pass."""
+
+    sanitized, preserved_references = _frontend_sanitized_nodes(
+        value,
+        preserve_text_line_breaks=False,
+    )
+    return _frontend_restore_preserved_references(
+        "".join(_frontend_serialize_sanitized_node(node) for node in sanitized),
+        preserved_references,
+    )
+
+
+def _frontend_sanitized_plain_text(
+    value: str,
+    *,
+    preserve_text_line_breaks: bool,
+) -> str:
+    sanitized, preserved_references = _frontend_sanitized_nodes(
+        value,
+        preserve_text_line_breaks=preserve_text_line_breaks,
+    )
+    # The frontend serializes the sanitized tree and parses it once more before
+    # reading textContent. That second HTML parse canonicalizes CR character
+    # references in text nodes to LF.
+    flattened = "".join(
+        _frontend_flatten_sanitized_node(node) for node in sanitized
+    ).replace("\r\n", "\n").replace("\r", "\n")
+    return _frontend_restore_preserved_references(
+        flattened,
+        preserved_references,
+    )
 
 
 def _frontend_plain_text(
@@ -1541,6 +2265,21 @@ def _frontend_plain_text(
     text = "" if value is None else str(value)
     if not text:
         return ""
+    text = _frontend_sanitized_plain_text(
+        text,
+        preserve_text_line_breaks=preserve_plain_line_breaks,
+    )
+    start = 0
+    end = len(text)
+    while start < end and _is_action_ecmascript_whitespace(text[start]):
+        start += 1
+    while end > start and _is_action_ecmascript_whitespace(text[end - 1]):
+        end -= 1
+    return text[start:end]
+
+
+def _frontend_decode_rich_text_entities_deep(value: Any) -> str:
+    text = "" if value is None else str(value)
     rich_entity_pattern = re.compile(
         r"&(lt|gt|amp;lt|amp;gt);",
         re.IGNORECASE,
@@ -1548,22 +2287,40 @@ def _frontend_plain_text(
     for _ in range(2):
         if rich_entity_pattern.search(text) is None:
             break
-        decoded = html_lib.unescape(text)
+        protected, preserved_references = (
+            _frontend_preserve_numeric_reference_characters(text)
+        )
+        decoded = html_lib.unescape(protected)
+        for placeholder, character in preserved_references.items():
+            decoded = decoded.replace(placeholder, character)
         if decoded == text:
             break
         text = decoded
-    text = _frontend_sanitized_plain_text(
-        text,
-        preserve_text_line_breaks=preserve_plain_line_breaks,
-    )
-    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"(?:\*\*|＊＊|__)([^\r\n]+?)(?:\*\*|＊＊|__)", r"\1", text)
-    text = re.sub(r"(?<!\*)\*([^*\r\n]+)\*(?!\*)", r"\1", text)
-    return text.strip()
+    return text
+
+
+def _frontend_star_plain_text(value: Any) -> str:
+    """Mirror normalizeStarValue followed by evaluation plainText."""
+
+    normalized = _frontend_decode_rich_text_entities_deep(value)
+    if (
+        _FRONTEND_RICH_TEXT_HTML_TAG_RE.search(normalized) is not None
+        or _FRONTEND_MARKDOWN_TRIGGER_RE.search(normalized) is not None
+    ):
+        normalized = _frontend_sanitized_html(normalized)
+    return _frontend_plain_text(normalized)
 
 
 def _frontend_snapshot_plain_text(value: Any) -> str:
-    return _frontend_plain_text(value, preserve_plain_line_breaks=True)
+    text = "" if value is None else str(value)
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
+    start = 0
+    end = len(text)
+    while start < end and _is_action_ecmascript_whitespace(text[start]):
+        start += 1
+    while end > start and _is_action_ecmascript_whitespace(text[end - 1]):
+        end -= 1
+    return text[start:end]
 
 
 def _snapshot_object(value: Any, *, field_name: str) -> Mapping[str, Any]:
@@ -1601,6 +2358,8 @@ def _exact_frontend_item(
 
 def _rebuild_frontend_fact_metadata(
     snapshot: Mapping[str, Any],
+    *,
+    normalized_profile_summary: bool = True,
 ) -> list[dict[str, Any]]:
     resume = _snapshot_object(snapshot.get("resume"), field_name="frontend resume")
     profile = _snapshot_object(
@@ -1644,8 +2403,16 @@ def _rebuild_frontend_fact_metadata(
         )
 
     for field in ("name", "email", "phone", "location", "linkedin"):
-        add(f"resume.profile.{field}", profile.get(field))
-    add("resume.personal_summary", resume.get("personal_summary"))
+        add(
+            f"resume.profile.{field}",
+            profile.get(field),
+            already_plain=normalized_profile_summary,
+        )
+    add(
+        "resume.personal_summary",
+        resume.get("personal_summary"),
+        already_plain=normalized_profile_summary,
+    )
     for index, raw_item in enumerate(experiences):
         item = _snapshot_object(raw_item, field_name="frontend experience")
         base = f"resume.experiences[{index}]"
@@ -1682,7 +2449,11 @@ def _rebuild_frontend_fact_metadata(
     return facts
 
 
-def _validate_exact_frontend_evaluation_snapshot(value: Any) -> dict[str, Any]:
+def _validate_exact_frontend_evaluation_snapshot(
+    value: Any,
+    *,
+    normalized_profile_summary_facts: bool = True,
+) -> dict[str, Any]:
     snapshot = _require_exact_keys(
         value,
         {
@@ -1850,7 +2621,10 @@ def _validate_exact_frontend_evaluation_snapshot(value: Any) -> dict[str, Any]:
         snapshot.get("fact_metadata"),
         field_name="frontend fact_metadata",
     )
-    rebuilt_facts = _rebuild_frontend_fact_metadata(snapshot)
+    rebuilt_facts = _rebuild_frontend_fact_metadata(
+        snapshot,
+        normalized_profile_summary=normalized_profile_summary_facts,
+    )
     if fact_metadata != rebuilt_facts:
         raise OptimizationRunDataInvalidError("frontend fact metadata is invalid")
     return deepcopy(dict(snapshot))
@@ -1858,12 +2632,151 @@ def _validate_exact_frontend_evaluation_snapshot(value: Any) -> dict[str, Any]:
 
 def _source_frontend_evaluation_snapshot(
     run: ResumeOptimizationRun,
+    *,
+    allow_legacy: bool = False,
 ) -> dict[str, Any]:
+    if allow_legacy and run.status not in _POST_APPLY_SIGNATURE_COMPATIBLE_STATUSES:
+        raise OptimizationRunDataInvalidError(
+            "legacy source signatures are restricted to post-apply runs"
+        )
+    snapshot = _validated_snapshot(run)
+    legacy_allowed_for_snapshot = (
+        allow_legacy and _EVALUATION_SIGNATURE_SCHEMA_KEY not in snapshot
+    )
+    uses_v2_fact_contract = (
+        snapshot.get(_EVALUATION_SIGNATURE_SCHEMA_KEY)
+        == _FRONTEND_EVALUATION_SIGNATURE_SCHEMA_V2
+    )
     return _parse_frontend_evaluation_signature(
         run.source_evaluation_signature,
         jd_input_signature=run.source_jd_signature,
         field_name="source evaluation signature",
+        expected_evaluation=snapshot.get("evaluation"),
+        allow_legacy=legacy_allowed_for_snapshot,
+        normalized_profile_summary_facts=uses_v2_fact_contract,
     )
+
+
+def _frontend_json_key_order(value: str) -> bytes:
+    """Match Array.sort's UTF-16 code-unit order used by canonicalStringify."""
+
+    return value.encode("utf-16-be", "surrogatepass")
+
+
+def _reject_nonfinite_json_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _is_finite_json_number(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _require_finite_json_tree(value: Any) -> None:
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and not _is_finite_json_number(value)
+    ):
+        raise ValueError("non-finite JSON number")
+    if isinstance(value, list):
+        for item in value:
+            _require_finite_json_tree(item)
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            _require_finite_json_tree(item)
+
+
+def _load_frontend_canonical_json(raw_value: Any, *, field_name: str) -> Any:
+    """Parse frontend canonical JSON without reserializing JS number tokens.
+
+    JavaScript JSON.stringify and Python json.dumps intentionally render some
+    finite numbers differently (for example 1e-6 and negative zero).  The
+    signature is already persisted and hash-bound, so canonicality here is the
+    structural contract: compact JSON, sorted object keys, and no duplicates.
+    Parsed values are subsequently checked against trusted persisted objects.
+    """
+
+    if not isinstance(raw_value, str):
+        raise OptimizationRunDataInvalidError(f"{field_name} is not canonical JSON")
+
+    in_string = False
+    escaped = False
+    for char in raw_value:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in " \t\r\n":
+            raise OptimizationRunDataInvalidError(
+                f"{field_name} is not canonical JSON"
+            )
+
+    def canonical_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _value in pairs]
+        if len(keys) != len(set(keys)) or keys != sorted(
+            keys, key=_frontend_json_key_order
+        ):
+            raise ValueError("object keys are duplicated or not canonical")
+        return dict(pairs)
+
+    try:
+        parsed = json.loads(
+            raw_value,
+            object_pairs_hook=canonical_object,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+        _require_finite_json_tree(parsed)
+        return parsed
+    except (TypeError, ValueError) as exc:
+        raise OptimizationRunDataInvalidError(
+            f"{field_name} is not canonical JSON"
+        ) from exc
+
+
+def _json_values_semantically_equal(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left is right
+    if isinstance(left, (int, float)) or isinstance(right, (int, float)):
+        return (
+            _is_finite_json_number(left)
+            and _is_finite_json_number(right)
+            and left == right
+        )
+    if isinstance(left, str) or isinstance(right, str):
+        return isinstance(left, str) and isinstance(right, str) and left == right
+    if isinstance(left, list) or isinstance(right, list):
+        return (
+            isinstance(left, list)
+            and isinstance(right, list)
+            and len(left) == len(right)
+            and all(
+                _json_values_semantically_equal(left_item, right_item)
+                for left_item, right_item in zip(left, right)
+            )
+        )
+    if isinstance(left, Mapping) or isinstance(right, Mapping):
+        return (
+            isinstance(left, Mapping)
+            and isinstance(right, Mapping)
+            and set(left) == set(right)
+            and all(
+                _json_values_semantically_equal(left[key], right[key])
+                for key in left
+            )
+        )
+    return False
 
 
 def _parse_frontend_evaluation_signature(
@@ -1871,33 +2784,138 @@ def _parse_frontend_evaluation_signature(
     *,
     jd_input_signature: str,
     field_name: str,
+    expected_evaluation: Any = _EXPECTED_SIGNATURE_VALUE_UNSET,
+    expected_jd_result: Any = _EXPECTED_SIGNATURE_VALUE_UNSET,
+    expected_jd_result_identity: str | None = None,
+    allow_legacy: bool = False,
+    normalized_profile_summary_facts: bool = True,
 ) -> dict[str, Any]:
     # Optimization runs accept the editor's canonical frontend snapshot only.
     # Agent final-snapshot attestations use a different snapshot domain and must
     # be refreshed in the editor before an optimization run can be created.
-    try:
-        parsed = json.loads(raw_signature)
-    except (TypeError, ValueError) as exc:
-        raise OptimizationRunDataInvalidError(
-            f"{field_name} is not canonical JSON"
-        ) from exc
+    parsed = _load_frontend_canonical_json(raw_signature, field_name=field_name)
+    if (
+        isinstance(parsed, Mapping)
+        and set(parsed) == _LEGACY_FRONTEND_EVALUATION_SIGNATURE_KEYS
+    ):
+        if not allow_legacy or parsed.get("jdInputSignature") != jd_input_signature:
+            raise OptimizationRunDataInvalidError(
+                f"{field_name} legacy identity is invalid"
+            )
+        return _validate_exact_frontend_evaluation_snapshot(
+            _snapshot_object(
+                parsed.get("resume"),
+                field_name="legacy source frontend evaluation snapshot",
+            ),
+            normalized_profile_summary_facts=normalized_profile_summary_facts,
+        )
     signature = _require_exact_keys(
         parsed,
-        {"jdInputSignature", "resume"},
+        {
+            "jdInputSignature",
+            "resume",
+            "jdAvailable",
+            "jdResultIdentity",
+            "jdMatchPercentage",
+        },
         field_name=field_name,
     )
+    jd_available = signature.get("jdAvailable")
+    jd_result_identity = signature.get("jdResultIdentity")
+    jd_match_percentage = signature.get("jdMatchPercentage")
     if (
         signature.get("jdInputSignature") != jd_input_signature
-        or canonical_json(signature) != raw_signature
+        or not isinstance(jd_available, bool)
+        or not isinstance(jd_result_identity, str)
     ):
         raise OptimizationRunDataInvalidError(
             f"{field_name} identity is invalid"
+        )
+    parsed_jd_identity = _load_frontend_canonical_json(
+        jd_result_identity,
+        field_name=f"{field_name} JD result identity",
+    )
+    match_is_number = (
+        _is_finite_json_number(jd_match_percentage)
+        and 0 <= float(jd_match_percentage) <= 100
+    )
+    if (
+        (jd_available and (not match_is_number or parsed_jd_identity is None))
+        or (
+            not jd_available
+            and (jd_match_percentage is not None or parsed_jd_identity is not None)
+        )
+    ):
+        raise OptimizationRunDataInvalidError(
+            f"{field_name} JD availability is invalid"
+        )
+
+    if expected_evaluation is not _EXPECTED_SIGNATURE_VALUE_UNSET:
+        if not isinstance(expected_evaluation, Mapping):
+            raise OptimizationRunDataInvalidError(
+                f"{field_name} evaluation is invalid"
+            )
+        evaluation_match = expected_evaluation.get("jdMatch")
+        if "jdMatch" not in expected_evaluation:
+            evaluation_match = expected_evaluation.get("jd_match")
+        evaluation_available = evaluation_match is not None
+        if evaluation_available != jd_available or (
+            evaluation_available
+            and (
+                not _is_finite_json_number(evaluation_match)
+                or float(evaluation_match) != float(jd_match_percentage)
+            )
+        ):
+            raise OptimizationRunDataInvalidError(
+                f"{field_name} JD match disagrees with the evaluation"
+            )
+
+    if expected_jd_result is not _EXPECTED_SIGNATURE_VALUE_UNSET:
+        expected_identity: Any = None
+        if jd_available:
+            if not isinstance(expected_jd_result, Mapping):
+                raise OptimizationRunDataInvalidError(
+                    f"{field_name} persisted JD result is invalid"
+                )
+            identity_payload = deepcopy(dict(expected_jd_result))
+            identity_payload.pop("resumeEvaluation", None)
+            expected_identity = identity_payload
+            outer_match = expected_jd_result.get("matchPercentage")
+            if (
+                not _is_finite_json_number(outer_match)
+                or float(outer_match) != float(jd_match_percentage)
+            ):
+                raise OptimizationRunDataInvalidError(
+                    f"{field_name} JD match disagrees with the persisted result"
+                )
+        if not _json_values_semantically_equal(
+            parsed_jd_identity,
+            expected_identity,
+        ):
+            raise OptimizationRunDataInvalidError(
+                f"{field_name} JD result identity disagrees with persisted data"
+            )
+    if (
+        expected_jd_result_identity is not None
+        and not _json_values_semantically_equal(
+            parsed_jd_identity,
+            _load_frontend_canonical_json(
+                expected_jd_result_identity,
+                field_name=f"{field_name} expected JD result identity",
+            ),
+        )
+    ):
+        raise OptimizationRunDataInvalidError(
+            f"{field_name} JD result identity changed"
         )
     raw_snapshot = _snapshot_object(
         signature.get("resume"),
         field_name="source frontend evaluation snapshot",
     )
-    return _validate_exact_frontend_evaluation_snapshot(raw_snapshot)
+    return _validate_exact_frontend_evaluation_snapshot(
+        raw_snapshot,
+        normalized_profile_summary_facts=normalized_profile_summary_facts,
+    )
 
 
 def _one_snapshot_item(
@@ -1922,13 +2940,31 @@ def _validated_post_frontend_evaluation_context(
     changes: list[OptimizationChange],
     persisted_signature: Any,
     applied_config: Any,
+    persisted_evaluation: Any,
+    persisted_jd_result: Any,
 ) -> tuple[dict[str, Any], str]:
     try:
-        source = _source_frontend_evaluation_snapshot(run)
+        source = _source_frontend_evaluation_snapshot(run, allow_legacy=True)
+        source_signature = _load_frontend_canonical_json(
+            run.source_evaluation_signature,
+            field_name="source evaluation signature",
+        )
+        source_jd_result_identity = (
+            source_signature.get("jdResultIdentity")
+            if isinstance(source_signature, Mapping)
+            else None
+        )
         post = _parse_frontend_evaluation_signature(
             persisted_signature,
             jd_input_signature=run.source_jd_signature,
             field_name="post evaluation signature",
+            expected_evaluation=persisted_evaluation,
+            expected_jd_result=persisted_jd_result,
+            expected_jd_result_identity=(
+                source_jd_result_identity
+                if isinstance(source_jd_result_identity, str)
+                else None
+            ),
         )
     except OptimizationRunDataInvalidError as exc:
         raise _PersistedEvaluationPending() from exc
@@ -2029,7 +3065,7 @@ def _validated_post_frontend_evaluation_context(
                 post_experience.get("star"),
                 field_name="post frontend experience.star",
             )
-            target_text = _frontend_plain_text(change.targeted_value)
+            target_text = _frontend_star_plain_text(change.targeted_value)
             if post_star.get(star_key) != target_text:
                 raise _PersistedEvaluationPending()
             untouched_experience["star"][star_key] = deepcopy(source_star[star_key])
@@ -2127,10 +3163,17 @@ def _raw_evaluation_jd_available(raw: Any) -> bool:
     return value is not None
 
 
-def source_before_score_from_run(run: ResumeOptimizationRun) -> int:
+def source_before_score_from_run(
+    run: ResumeOptimizationRun,
+    *,
+    allow_legacy: bool = False,
+) -> int:
     try:
         snapshot = _validated_snapshot(run)
-        source_frontend_snapshot = _source_frontend_evaluation_snapshot(run)
+        source_frontend_snapshot = _source_frontend_evaluation_snapshot(
+            run,
+            allow_legacy=allow_legacy,
+        )
         jd_available = _raw_evaluation_jd_available(snapshot.get("evaluation"))
         before = _normalized_evaluation(
             snapshot.get("evaluation"),
@@ -2260,7 +3303,11 @@ def _validate_applied_identity(
     try:
         snapshot = _validated_snapshot(run)
         frozen_links = _frozen_links(run)
-        changes = _accepted_changes(run, set(accepted_ids))
+        changes = _accepted_changes(
+            run,
+            set(accepted_ids),
+            enforce_current_safety=False,
+        )
     except (OptimizationApplyValidationError, OptimizationApplyStaleError) as exc:
         raise OptimizationRunDataInvalidError() from exc
     if [change.change_id for change in changes] != accepted_ids:
@@ -2549,45 +3596,31 @@ def _validated_apply_journal(
         frozen_snapshot.get("current_resume"),
         field_name="frozen current resume",
     )
-    reconstructed_before_config = deepcopy(dict(protected_config))
-    if "selection" in normalized_config:
-        _restore_presence(
-            reconstructed_before_config,
-            ("selection",),
-            normalized_config["selection"]["before"],
-        )
-    for name, path in {
-        "personalSummary": ("personalSummary",),
-        "layout.sectionOrder": ("layout", "sectionOrder"),
-    }.items():
-        if name in normalized_config:
-            _restore_presence(
-                reconstructed_before_config,
-                path,
-                normalized_config[name]["before"],
-            )
-
-    reconstructed_before_overrides = {
-        link_id: deepcopy(dict(value["overrides_json"]))
-        for link_id, value in protected_links.items()
-    }
-    for link_id, item in normalized_links.items():
-        reconstructed_before_overrides[link_id] = deepcopy(
-            item["before_overrides_json"]
-        )
-
+    star_changes_by_link: dict[str, dict[str, OptimizationChange]] = {}
     for change in changes:
         if change.module_type == OptimizationModuleType.PERSONAL_SUMMARY:
             raw_before = normalized_config["personalSummary"]["before"]
             frozen_summary = frozen_resume.get("personal_summary")
-            if raw_before["present"] and raw_before["value"] is not None and (
-                raw_before["value"] != frozen_summary
+            raw_after = normalized_config["personalSummary"]["after"]
+            if change.before_value != frozen_summary or (
+                raw_before["present"]
+                and raw_before["value"] is not None
+                and raw_before["value"] != frozen_summary
             ):
                 raise OptimizationRunDataInvalidError(
                     "summary rollback value is not frozen-source-backed"
                 )
+            if not raw_after["present"] or not isinstance(raw_after["value"], str):
+                raise OptimizationRunDataInvalidError(
+                    "summary applied value is invalid"
+                )
+            if raw_after["value"] != change.targeted_value:
+                raise OptimizationRunDataInvalidError(
+                    "summary applied value disagrees with the persisted plan"
+                )
         elif change.module_type == OptimizationModuleType.SECTION_ORDER:
             raw_before = normalized_config["layout.sectionOrder"]["before"]
+            raw_after = normalized_config["layout.sectionOrder"]["after"]
             if (
                 raw_before != {"present": True, "value": change.before_value}
                 or raw_before["value"] != frozen_resume.get("section_order")
@@ -2595,10 +3628,30 @@ def _validated_apply_journal(
                 raise OptimizationRunDataInvalidError(
                     "section-order rollback value is not frozen-source-backed"
                 )
+            try:
+                after_order = _string_order(
+                    raw_after["value"] if raw_after["present"] else None,
+                    field_name="journal layout.sectionOrder",
+                )
+            except OptimizationApplyValidationError as exc:
+                raise OptimizationRunDataInvalidError(
+                    "section-order applied value is invalid"
+                ) from exc
+            if len(after_order) != len(raw_before["value"]) or set(
+                after_order
+            ) != set(raw_before["value"]):
+                raise OptimizationRunDataInvalidError(
+                    "section-order applied membership is invalid"
+                )
+            if after_order != change.targeted_value:
+                raise OptimizationRunDataInvalidError(
+                    "section-order applied value disagrees with the persisted plan"
+                )
         elif change.module_type == OptimizationModuleType.SKILLS_ORDER:
             parent_before = normalized_config["selection"]["before"]
             parent_after = normalized_config["selection"]["after"]
             leaf_before = normalized_config["selection.skillIds"]["before"]
+            leaf_after = normalized_config["selection.skillIds"]["after"]
             if parent_before["present"] and isinstance(
                 parent_before["value"],
                 Mapping,
@@ -2631,6 +3684,14 @@ def _validated_apply_journal(
                 raise OptimizationRunDataInvalidError(
                     "selection rollback parent is invalid"
                 )
+            elif (
+                not parent_after["present"]
+                or not isinstance(parent_after["value"], Mapping)
+                or set(parent_after["value"]) != {"skillIds"}
+            ):
+                raise OptimizationRunDataInvalidError(
+                    "selection applied parent is invalid"
+                )
             if leaf_before["present"] and leaf_before["value"] is not None:
                 before_order = _string_order(
                     leaf_before["value"],
@@ -2648,19 +3709,56 @@ def _validated_apply_journal(
                     raise OptimizationRunDataInvalidError(
                         "selection rollback membership is not frozen-source-backed"
                     )
+            else:
+                before_order = [
+                    str(item.get("id"))
+                    for item in frozen_resume.get("skills", [])
+                    if isinstance(item, Mapping)
+                ]
+            if change.before_value != before_order:
+                raise OptimizationRunDataInvalidError(
+                    "selection rollback value disagrees with the persisted plan"
+                )
+            try:
+                after_order = _string_order(
+                    leaf_after["value"] if leaf_after["present"] else None,
+                    field_name="journal selection.skillIds",
+                )
+            except OptimizationApplyValidationError as exc:
+                raise OptimizationRunDataInvalidError(
+                    "selection applied value is invalid"
+                ) from exc
+            if len(after_order) != len(before_order) or set(after_order) != set(
+                before_order
+            ):
+                raise OptimizationRunDataInvalidError(
+                    "selection applied membership is invalid"
+                )
+            if after_order != change.targeted_value:
+                raise OptimizationRunDataInvalidError(
+                    "selection applied value disagrees with the persisted plan"
+                )
         elif change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
             record = frozen_links[change.module_id]
             touched = normalized_links[str(record.link_id)]
             before_star = touched["before_star"]
+            frozen_star = _frozen_effective_star(
+                frozen_snapshot,
+                change.module_id,
+            )
+            field_name = change.field_path[-1]
+            if change.before_value != frozen_star[field_name]:
+                raise OptimizationRunDataInvalidError(
+                    "STAR rollback value disagrees with the frozen source"
+                )
+            star_changes_by_link.setdefault(str(record.link_id), {})[
+                field_name
+            ] = change
             if before_star["present"]:
                 if not isinstance(before_star["value"], Mapping):
                     raise OptimizationRunDataInvalidError(
                         "STAR rollback value is invalid"
                     )
-                frozen_star = _frozen_effective_star(
-                    frozen_snapshot,
-                    change.module_id,
-                )
                 for key in ("s", "t", "a", "r"):
                     if key in before_star["value"] and (
                         before_star["value"][key] != frozen_star[key]
@@ -2669,41 +3767,245 @@ def _validated_apply_journal(
                             "STAR rollback value is not frozen-source-backed"
                         )
 
-    try:
-        replay = build_apply_patch(
-            run=run,
-            accepted_change_ids=set(run.accepted_change_ids),
-            current_resume_config=reconstructed_before_config,
-            current_link_overrides=reconstructed_before_overrides,
-        )
-    except OptimizationApplyValidationError as exc:
-        raise OptimizationRunDataInvalidError(
-            "Rollback journal cannot replay accepted changes"
-        ) from exc
-    if (
-        replay.next_resume_config != deepcopy(dict(protected_config))
-        or replay.applied_change_ids != list(run.accepted_change_ids)
-    ):
-        raise OptimizationRunDataInvalidError(
-            "Rollback journal does not replay to protected config"
-        )
-    replayed_overrides = deepcopy(reconstructed_before_overrides)
-    for link_id, star in replay.experience_star_by_link_id.items():
-        replayed_overrides[link_id]["star"] = deepcopy(star)
-    protected_overrides = {
-        link_id: deepcopy(dict(value["overrides_json"]))
-        for link_id, value in protected_links.items()
+    master_id_by_link = {
+        str(record.link_id): master_id for master_id, record in frozen_links.items()
     }
-    if replayed_overrides != protected_overrides:
-        raise OptimizationRunDataInvalidError(
-            "Rollback journal does not replay to protected link overrides"
+    for link_id, touched in normalized_links.items():
+        before_overrides = touched["before_overrides_json"]
+        after_overrides = touched["after_overrides_json"]
+        before_siblings = {
+            key: deepcopy(value)
+            for key, value in before_overrides.items()
+            if key != "star"
+        }
+        after_siblings = {
+            key: deepcopy(value)
+            for key, value in after_overrides.items()
+            if key != "star"
+        }
+        if before_siblings != after_siblings:
+            raise OptimizationRunDataInvalidError(
+                "non-STAR link overrides changed during apply"
+            )
+
+        raw_before_star = before_overrides.get("star", {})
+        if not isinstance(raw_before_star, Mapping):
+            raise OptimizationRunDataInvalidError(
+                "rollback STAR override is invalid"
+            )
+        after_star = touched["after_star"]
+        if not after_star["present"] or not isinstance(after_star["value"], Mapping):
+            raise OptimizationRunDataInvalidError("applied STAR override is invalid")
+        frozen_star = _frozen_effective_star(
+            frozen_snapshot,
+            master_id_by_link[link_id],
         )
+        effective_before_star = _deep_merge(frozen_star, raw_before_star)
+        materialized_star = deepcopy(dict(after_star["value"]))
+        if set(materialized_star) != set(effective_before_star):
+            raise OptimizationRunDataInvalidError(
+                "applied STAR shape disagrees with the frozen source"
+            )
+        changed_fields = star_changes_by_link.get(link_id, {})
+        for field_name, before_value in effective_before_star.items():
+            after_value = materialized_star[field_name]
+            if field_name in changed_fields:
+                if not isinstance(after_value, str):
+                    raise OptimizationRunDataInvalidError(
+                        "applied STAR target must be text"
+                    )
+                targeted_value = changed_fields[field_name].targeted_value
+                target_matches = (
+                    isinstance(targeted_value, str)
+                    and (
+                        _action_materialization_key(after_value)
+                        == _action_materialization_key(targeted_value)
+                        if field_name == "a"
+                        else after_value == targeted_value
+                    )
+                )
+                if not target_matches:
+                    raise OptimizationRunDataInvalidError(
+                        "applied STAR value disagrees with the persisted plan"
+                    )
+            elif after_value != before_value:
+                raise OptimizationRunDataInvalidError(
+                    "non-target STAR content changed during apply"
+                )
 
     return {
         "protected_content": deepcopy(dict(protected)),
         "touched_config": normalized_config,
         "touched_links": normalized_links,
     }
+
+
+def _rescore_claim_is_active(
+    claim: Any,
+    *,
+    now: datetime,
+    ttl_seconds: int,
+) -> bool:
+    if not isinstance(claim, Mapping):
+        return False
+    claimed_at = claim.get("claimedAt")
+    if not isinstance(claimed_at, str):
+        return False
+    try:
+        parsed = datetime.fromisoformat(claimed_at)
+    except ValueError:
+        return False
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return False
+    return parsed.astimezone(timezone.utc) + timedelta(
+        seconds=ttl_seconds
+    ) > now.astimezone(timezone.utc)
+
+
+async def _require_applied_content_current_locked(
+    *,
+    session: AsyncSession,
+    user_id: str,
+    run: ResumeOptimizationRun,
+    resume: Resume,
+) -> None:
+    analysis = (
+        resume.config.get("jdAnalysis")
+        if isinstance(resume.config, Mapping)
+        else None
+    )
+    if (
+        not isinstance(analysis, Mapping)
+        or analysis.get("jdInputSignature") != run.source_jd_signature
+    ):
+        raise OptimizationContentConflictError()
+    _, frozen_links, changes = _validate_applied_identity(run)
+    journal = _validated_apply_journal(
+        run,
+        frozen_links=frozen_links,
+        changes=changes,
+    )
+    links = await _lock_current_selected_resume_links(
+        session,
+        user_id=user_id,
+        resume=resume,
+        frozen_records=frozen_links,
+        applied_config=journal["protected_content"]["resume_config"],
+    )
+    current_projection = build_applied_content_projection(
+        resume=resume,
+        selected_links=links,
+    )
+    if (
+        current_projection != journal["protected_content"]
+        or hash_canonical_json(current_projection) != run.applied_content_signature
+    ):
+        raise OptimizationContentConflictError()
+
+
+async def is_applied_run_resumable(
+    *,
+    session: AsyncSession,
+    user_id: str,
+    run_id: str,
+) -> AppliedRunResumabilityCheck:
+    """Return the locked run and whether its applied content remains current."""
+
+    run = await _lock_run(session, user_id=user_id, run_id=run_id)
+    if run.status != ResumeOptimizationStatus.APPLIED.value:
+        return AppliedRunResumabilityCheck(run=run, is_resumable=False)
+    resume = await _lock_resume(session, user_id=user_id, run=run)
+    try:
+        await _require_applied_content_current_locked(
+            session=session,
+            user_id=user_id,
+            run=run,
+            resume=resume,
+        )
+    except OptimizationContentConflictError:
+        return AppliedRunResumabilityCheck(run=run, is_resumable=False)
+    return AppliedRunResumabilityCheck(run=run, is_resumable=True)
+
+
+async def claim_resume_optimization_rescore(
+    *,
+    session: AsyncSession,
+    user_id: str,
+    run_id: str,
+    payload: ResumeOptimizationRescoreClaimRequest,
+    claim_ttl_seconds: int = _DEFAULT_RESCORE_CLAIM_TTL_SECONDS,
+) -> ResumeOptimizationRun:
+    """Atomically reserve one run's paid post-apply evaluation."""
+
+    if (
+        isinstance(claim_ttl_seconds, bool)
+        or not isinstance(claim_ttl_seconds, int)
+        or claim_ttl_seconds <= 0
+    ):
+        raise ValueError("claim_ttl_seconds must be a positive integer")
+    expected = _require_aware_timestamp(
+        payload.expected_resume_updated_at,
+        field_name="expected_resume_updated_at",
+    )
+    try:
+        run = await _lock_run(session, user_id=user_id, run_id=run_id)
+        resume = await _lock_resume(session, user_id=user_id, run=run)
+        if run.status == ResumeOptimizationStatus.COMPLETED.value:
+            await session.commit()
+            return run
+        if run.status != ResumeOptimizationStatus.APPLIED.value:
+            raise OptimizationApplyConflictError()
+        if _normalize_current_timestamp(resume.updated_at) != expected:
+            raise OptimizationContentConflictError()
+        await _require_applied_content_current_locked(
+            session=session,
+            user_id=user_id,
+            run=run,
+            resume=resume,
+        )
+
+        now = utc_now_aware()
+        error_json = deepcopy(run.error_json) if isinstance(run.error_json, dict) else {}
+        active_claim = error_json.get(_ACTIVE_RESCORE_CLAIM_KEY)
+        claim_is_active = _rescore_claim_is_active(
+            active_claim,
+            now=now,
+            ttl_seconds=claim_ttl_seconds,
+        )
+        if (
+            claim_is_active
+            and isinstance(active_claim, Mapping)
+            and active_claim.get("claimId") == payload.claim_id
+        ):
+            error_json[_ACTIVE_RESCORE_CLAIM_KEY] = {
+                "claimId": payload.claim_id,
+                "claimedAt": now.isoformat(),
+            }
+            run.error_json = error_json
+            run.updated_at = _timestamp_like(run.updated_at, now)
+            session.add(run)
+            await session.flush()
+            await session.commit()
+            return run
+        if claim_is_active:
+            raise OptimizationRescoreInProgressError()
+
+        error_json[_ACTIVE_RESCORE_CLAIM_KEY] = {
+            "claimId": payload.claim_id,
+            "claimedAt": now.isoformat(),
+        }
+        run.error_json = error_json
+        run.updated_at = _timestamp_like(run.updated_at, now)
+        session.add(run)
+        await session.flush()
+        await session.commit()
+        return run
+    except BaseException:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        raise
 
 
 async def finalize_run_from_persisted_evaluation(
@@ -2741,29 +4043,34 @@ async def finalize_run_from_persisted_evaluation(
         if run.status != ResumeOptimizationStatus.APPLIED.value:
             raise OptimizationApplyConflictError()
 
+        active_claim = (
+            run.error_json.get(_ACTIVE_RESCORE_CLAIM_KEY)
+            if isinstance(run.error_json, Mapping)
+            else None
+        )
+        if (
+            not isinstance(active_claim, Mapping)
+            or active_claim.get("claimId") != payload.claim_id
+            or not _rescore_claim_is_active(
+                active_claim,
+                now=utc_now_aware(),
+                ttl_seconds=_DEFAULT_RESCORE_CLAIM_TTL_SECONDS,
+            )
+        ):
+            raise OptimizationRescoreClaimLostError()
+
         snapshot, frozen_links, changes = _validate_applied_identity(run)
         journal = _validated_apply_journal(
             run,
             frozen_links=frozen_links,
             changes=changes,
         )
-        links = await _lock_current_selected_resume_links(
-            session,
+        await _require_applied_content_current_locked(
+            session=session,
             user_id=user_id,
+            run=run,
             resume=resume,
-            frozen_records=frozen_links,
-            applied_config=journal["protected_content"]["resume_config"],
         )
-        current_projection = build_applied_content_projection(
-            resume=resume,
-            selected_links=links,
-        )
-        if (
-            current_projection != journal["protected_content"]
-            or hash_canonical_json(current_projection)
-            != run.applied_content_signature
-        ):
-            raise OptimizationContentConflictError()
 
         require_status_transition(
             ResumeOptimizationStatus.APPLIED,
@@ -2796,6 +4103,8 @@ async def finalize_run_from_persisted_evaluation(
                     changes=changes,
                     persisted_signature=analysis.get("evaluationSignature"),
                     applied_config=journal["protected_content"]["resume_config"],
+                    persisted_evaluation=raw_after,
+                    persisted_jd_result=result,
                 )
             )
             if (
@@ -2811,7 +4120,10 @@ async def finalize_run_from_persisted_evaluation(
             before = _normalized_evaluation(
                 raw_before,
                 jd_available=before_jd_available,
-                fact_metadata=_source_frontend_evaluation_snapshot(run).get(
+                fact_metadata=_source_frontend_evaluation_snapshot(
+                    run,
+                    allow_legacy=True,
+                ).get(
                     "fact_metadata"
                 ),
             )
@@ -2886,6 +4198,21 @@ async def revert_resume_optimization(
     try:
         run = await _lock_run(session, user_id=user_id, run_id=run_id)
         resume = await _lock_resume(session, user_id=user_id, run=run)
+        active_claim = (
+            run.error_json.get(_ACTIVE_RESCORE_CLAIM_KEY)
+            if isinstance(run.error_json, Mapping)
+            else None
+        )
+        if _rescore_claim_is_active(
+            active_claim,
+            now=utc_now_aware(),
+            ttl_seconds=_DEFAULT_RESCORE_CLAIM_TTL_SECONDS,
+        ) and (
+            not isinstance(active_claim, Mapping)
+            or payload.claim_id is None
+            or active_claim.get("claimId") != payload.claim_id
+        ):
+            raise OptimizationRescoreInProgressError()
         if run.status not in {
             ResumeOptimizationStatus.APPLIED.value,
             ResumeOptimizationStatus.COMPLETED.value,

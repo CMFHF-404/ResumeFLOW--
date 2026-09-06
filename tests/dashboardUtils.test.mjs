@@ -66,34 +66,70 @@ const scoreRubric = [
   ['成果量化', [['结果指标', 30], ['基线与前后对比', 25], ['覆盖规模', 15], ['时间窗口', 10], ['过程数量', 10], ['数据可信度', 10]]],
 ];
 
-const evaluationAt = (score) => ({
-  evaluationVersion: 'resume_flow_v1',
-  evaluationScope: 'full_resume',
-  overallScore: score,
-  overallLevel: '',
-  evaluationConfidence: 0.8,
-  scoreCalculation: {
-    dimensionSum: score * 6,
-    rawAverage: score,
-    roundingRule: 'round_half_up',
-    finalScore: score,
-  },
-  dimensions: scoreRubric.map(([dimension, items]) => {
+const evaluationAt = (score) => {
+  const issues = [];
+  const dimensions = scoreRubric.map(([dimension, items], dimensionIndex) => {
     let remaining = score;
     const subscores = items.map(([name, maxScore]) => {
       const itemScore = Math.min(maxScore, remaining);
       remaining -= itemScore;
-      return { name, maxScore, score: itemScore, evidenceIds: [] };
+      return {
+        name,
+        maxScore,
+        score: itemScore,
+        evidenceIds: itemScore > 0 ? ['E001'] : [],
+      };
     });
-    return { dimension, score, level: '', subscores, strengths: [], issues: [], improvementQuestions: [] };
-  }),
-  evidence: [],
-  issues: [],
-  jdMatch: null,
-  missingInformation: [],
-  riskFlags: [],
-  topPriorities: [],
-});
+    const issueId = `ISSUE_${dimensionIndex + 1}`;
+    if (score < 100) {
+      issues.push({
+        issueId,
+        description: `${dimension}仍有提升空间`,
+        primaryDimension: dimension,
+        relatedDimensions: [],
+        evidenceIds: [],
+        severity: 'medium',
+        pointsNotEarned: 100 - score,
+      });
+    }
+    return {
+      dimension,
+      score,
+      level: '',
+      subscores,
+      strengths: [],
+      issues: score < 100 ? [issueId] : [],
+      improvementQuestions: [],
+    };
+  });
+  return {
+    evaluationVersion: 'resume_flow_v1',
+    evaluationScope: 'full_resume',
+    overallScore: score,
+    overallLevel: '',
+    evaluationConfidence: 0.8,
+    scoreCalculation: {
+      dimensionSum: score * 6,
+      rawAverage: score,
+      roundingRule: 'round_half_up',
+      finalScore: score,
+    },
+    dimensions,
+    evidence: [{
+      evidenceId: 'E001',
+      sourceText: '已核验的简历事实',
+      location: 'resume',
+      factId: 'FACT_001',
+      verificationStatus: 'verified',
+      supportedDimensions: scoreRubric.map(([dimension]) => dimension),
+    }],
+    issues,
+    jdMatch: null,
+    missingInformation: [],
+    riskFlags: [],
+    topPriorities: [],
+  };
+};
 
 test('dashboard score accepts only the current full-resume evaluation version', async () => {
   const { resolveDashboardResumeEvaluationScore } = await importDashboardScoreUtils();

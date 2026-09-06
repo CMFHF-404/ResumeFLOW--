@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import math
 import re
 import unicodedata
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -55,40 +56,56 @@ _RISK_TYPES = {
     "duplicated_content",
 }
 _POSITIVE_EVIDENCE_STATUSES = {"verified", "user_claimed"}
-_DATE_SOURCE_PATTERN = re.compile(
-    r"(?:^|[.\[\]_])(?:start|end|issue|expiry|graduation)?_?date(?:$|[.\]])|"
-    r"(?:^|[.\[\]_])(?:start|end)_?time(?:$|[.\]])",
-    re.IGNORECASE,
-)
-_NON_QUANTIFICATION_SOURCE_PATTERN = re.compile(
-    r"(?:^|[.\[])profile(?:$|[.\]])|"
-    r"(?:^|[.\[_])(?:credential_?id|credential_?url|gpa)(?:$|[.\]])",
-    re.IGNORECASE,
-)
-_DATE_TEXT_PATTERNS = (
-    re.compile(r"(?<!\d)(?:19|20)\d{2}[-/.](?:0?[1-9]|1[0-2])(?:[-/.](?:0?[1-9]|[12]\d|3[01]))?(?!\d)"),
-    re.compile(r"(?<!\d)(?:19|20)\d{2}\s*年\s*(?:0?[1-9]|1[0-2])?\s*月?(?:\s*(?:0?[1-9]|[12]\d|3[01])\s*日)?(?!\d)"),
-    re.compile(
-        r"(?<!\d)(?:19|20)\d{2}(?:\s*年)?(?!\s*(?:万|亿|元|人|名|个|次|轮|页|项|家|%|％))(?!\d)"
-    ),
-)
-_EFFECTIVE_NUMBER_PATTERN = re.compile(
-    r"(?<![A-Za-z])\d+(?:[.,]\d+)?\s*(?:百分点|%|％|倍|万|亿|k|K|人|名|个|次|轮|页|项|家|条|份|"
-    r"小时|天|周|月|年|元|美元|人民币|用户|客户|团队|部门|系统|项目|功能)?"
-)
-_EFFECTIVE_NUMBER_WITH_UNIT_PATTERN = re.compile(
-    r"(?<![A-Za-z])\d+(?:[.,]\d+)?\s*(?:百分点|%|％|倍|万|亿|k|K|人|名|个|次|轮|页|项|家|条|份|"
-    r"小时|天|周|月|年|元|美元|人民币|用户|客户|团队|部门|系统|项目|功能|订单)"
-)
-_BUSINESS_METRIC_PATTERN = re.compile(
-    r"转化率?|留存率?|收入|营收|销售额|利润|成本|效率|满意度|准确率|完成率|成功率|错误率|故障率|"
-    r"响应时间|处理时长|交付周期|活跃用户|新增用户|付费用户|用户(?:数|数量)|客户(?:数|数量)|订单量|处理量|GMV|ROI",
-    re.IGNORECASE,
-)
-_BUSINESS_CHANGE_PATTERN = re.compile(r"节省|降低|减少|提升|增长|新增|下降|缩短|提高|改善", re.IGNORECASE)
-_PROCESS_OR_SCALE_NUMBER_PATTERN = re.compile(
-    r"(?:人|名|个|次|轮|页|项|家|条|份|用户|客户|团队|部门|项目|功能)\s*$"
-)
+LOSSY_REPAIR_ISSUE_PREFIX = "SERVER_GAP_"
+def has_lossy_resume_evaluation_artifact(raw: Any) -> bool:
+    """Detect reports produced by the retired score-dropping repair path."""
+    if not isinstance(raw, Mapping):
+        return False
+
+    def has_lossy_issue_id(value: Any) -> bool:
+        return (
+            isinstance(value, str)
+            and value.upper().startswith(LOSSY_REPAIR_ISSUE_PREFIX)
+        )
+
+    issues = raw.get("issues")
+    if isinstance(issues, list):
+        for issue in issues:
+            if not isinstance(issue, Mapping):
+                continue
+            issue_id = issue.get("issueId", issue.get("issue_id"))
+            if has_lossy_issue_id(issue_id):
+                return True
+    dimensions = raw.get("dimensions")
+    if isinstance(dimensions, list):
+        for dimension in dimensions:
+            if not isinstance(dimension, Mapping):
+                continue
+            issue_ids = dimension.get("issues")
+            if isinstance(issue_ids, list) and any(
+                has_lossy_issue_id(issue_id) for issue_id in issue_ids
+            ):
+                return True
+            score = dimension.get("score")
+            strengths = dimension.get("strengths")
+            if (
+                not isinstance(score, bool)
+                and isinstance(score, (int, float))
+                and score == 0
+                and isinstance(strengths, list)
+                and any(isinstance(item, str) and item.strip() for item in strengths)
+            ):
+                return True
+    priorities = raw.get("topPriorities", raw.get("top_priorities"))
+    if isinstance(priorities, list) and any(
+        isinstance(priority, Mapping)
+        and has_lossy_issue_id(
+            priority.get("issueId", priority.get("issue_id"))
+        )
+        for priority in priorities
+    ):
+        return True
+    return False
 
 
 def _snake_to_camel_key(key: str) -> str:
@@ -141,8 +158,13 @@ def _require_int(value: Any, path: str, minimum: int = 0, maximum: int = 100) ->
 def _require_confidence(value: Any) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("resumeEvaluation.evaluationConfidence must be a number")
-    normalized = float(value)
-    if normalized < 0 or normalized > 1:
+    try:
+        normalized = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(
+            "resumeEvaluation.evaluationConfidence must be a finite number"
+        ) from exc
+    if not math.isfinite(normalized) or normalized < 0 or normalized > 1:
         raise ValueError("resumeEvaluation.evaluationConfidence must be between 0 and 1")
     return normalized
 
@@ -244,6 +266,50 @@ def _build_fact_index(raw: Optional[Sequence[Mapping[str, Any]]]) -> Dict[str, D
     return facts
 
 
+def _validate_content_completeness_integrity(
+    evaluation: Mapping[str, Any],
+    fact_metadata: Optional[Sequence[Mapping[str, Any]]],
+) -> None:
+    if fact_metadata is None:
+        return
+    sources = {
+        str(item.get("source") or "").strip()
+        for item in fact_metadata
+        if isinstance(item, Mapping)
+    }
+
+    def has_source(*prefixes: str) -> bool:
+        return any(
+            source.startswith(prefix)
+            for source in sources
+            for prefix in prefixes
+        )
+
+    has_profile = has_source("resume.profile.", "/currentResume/profile/")
+    has_education = has_source(
+        "resume.educations[",
+        "/currentResume/educations/",
+    )
+    has_experience = has_source(
+        "resume.experiences[",
+        "/currentResume/experiences/",
+    )
+    if not (has_profile and has_education and has_experience):
+        return
+    completeness = next(
+        (
+            item
+            for item in evaluation.get("dimensions", [])
+            if isinstance(item, Mapping) and item.get("dimension") == "内容完整"
+        ),
+        None,
+    )
+    if isinstance(completeness, Mapping) and completeness.get("score") == 0:
+        raise ValueError(
+            "内容完整 cannot be zero when profile, education, and experience facts exist"
+        )
+
+
 def _source_text_binds_fact(source_text: str, fact_content: str) -> bool:
     source = _normalize_source_text(source_text)
     fact = _normalize_source_text(fact_content)
@@ -284,127 +350,10 @@ def _resolve_evidence_fact_id(
     return candidates[0]
 
 
-def _fact_has_effective_number(fact: Mapping[str, str]) -> bool:
-    source = fact.get("source", "")
-    if _DATE_SOURCE_PATTERN.search(source) or _NON_QUANTIFICATION_SOURCE_PATTERN.search(source):
-        return False
-    text = fact.get("content", "")
-    for pattern in _DATE_TEXT_PATTERNS:
-        text = pattern.sub(" ", text)
-    # Bare numbers are commonly technology versions or standard identifiers
-    # (Python 3, React 18, ISO 9001). They only qualify through the stricter
-    # business-result detector below; process, scale, and time counts must carry
-    # an explicit unit here.
-    return bool(_EFFECTIVE_NUMBER_WITH_UNIT_PATTERN.search(text))
-
-
-def _fact_has_numeric_business_result(fact: Mapping[str, str]) -> bool:
-    source = fact.get("source", "")
-    if _DATE_SOURCE_PATTERN.search(source) or _NON_QUANTIFICATION_SOURCE_PATTERN.search(source):
-        return False
-    text = fact.get("content", "")
-    for pattern in _DATE_TEXT_PATTERNS:
-        text = pattern.sub(" ", text)
-    for match in _EFFECTIVE_NUMBER_PATTERN.finditer(text):
-        before = text[max(0, match.start() - 12) : match.start()]
-        after = text[match.end() : match.end() + 8]
-        is_process_or_scale_number = bool(
-            _PROCESS_OR_SCALE_NUMBER_PATTERN.search(match.group(0))
-        )
-        metric_matches = list(_BUSINESS_METRIC_PATTERN.finditer(before))
-        metric_is_local = bool(metric_matches) and len(before) - metric_matches[-1].end() <= 8
-        change_matches = list(_BUSINESS_CHANGE_PATTERN.finditer(before))
-        if (
-            change_matches
-            and len(before) - change_matches[-1].end() <= 5
-            and (not is_process_or_scale_number or metric_is_local)
-        ):
-            return True
-        if metric_is_local and not is_process_or_scale_number:
-            return True
-        if re.search(r"%|％|万|亿|元|美元|人民币|百分点", match.group(0)) and _BUSINESS_METRIC_PATTERN.search(after):
-            return True
-    return False
-
-
-def _semantic_issue_signature(description: str) -> str:
-    text = unicodedata.normalize("NFKC", description).casefold()
-    compact = re.sub(r"[\W_]+", "", text, flags=re.UNICODE)
-    missing = bool(re.search(r"缺少|缺失|不足|没有|无|未(?:说明|提供|体现|包含|量化|明确|交代)", compact))
-
-    def has(pattern: str) -> bool:
-        return bool(re.search(pattern, compact))
-
-    # Outcome presence and outcome measurement are distinct problems in the
-    # source rubric, so keep them separate even when they cite the same fact.
-    if missing and has(r"结果|成果|成效|业绩|影响"):
-        if has(r"指标|数字|数据|量化|百分比|比例|金额"):
-            return "missing:result_metric"
-        return "missing:star_result"
-    if missing and has(r"情境|背景|起点|业务问题"):
-        return "missing:star_situation"
-    if missing and has(r"任务|目标|职责|责任"):
-        return "missing:star_task"
-    if missing and has(r"行动|措施|方法|决策"):
-        return "missing:star_action"
-
-    if has(r"因果|为何|为什么|关联") and has(r"不足|缺|不清|未|弱|断裂"):
-        return "logic:causality"
-    if has(r"顺序|叙事|组织") and has(r"混乱|不清|无序|跳跃|不足"):
-        return "logic:order"
-    if has(r"层级") and has(r"混乱|不清|错误|不足"):
-        return "logic:hierarchy"
-    if has(r"矛盾|不一致|不聚焦|偏题|无关"):
-        return "logic:focus_consistency"
-
-    if has(r"句子|长句") and has(r"过长|冗长|嵌套|不清|难以扫读"):
-        return "readability:sentence"
-    if has(r"扫读|浏览|定位重点") and has(r"困难|不足|不易|难"):
-        return "readability:scan"
-    if has(r"密度|压缩") and has(r"过高|过低|不足|拥挤"):
-        return "readability:density"
-    if has(r"语法|标点|自然度|语义不完整"):
-        return "readability:grammar"
-    if has(r"重复|冗余|赘述"):
-        return "readability:redundancy"
-
-    # Strong wording signals take precedence over completeness nouns such as
-    # "岗位" or "专业" (for example, "岗位术语不专业" is not a missing module).
-    if has(r"术语|专业词") and has(r"不专业|错误|不足|缺"):
-        return "professional:terminology"
-    if has(r"动词") and has(r"单一|笼统|不足|缺|不准确"):
-        return "professional:verbs"
-    if has(r"贡献|责任|主导|参与|协助") and has(r"边界|夸大|不清|模糊"):
-        return "professional:ownership"
-    if has(r"精确|准确|对象|范围|交付物") and has(r"不足|不清|模糊|缺"):
-        return "professional:precision"
-    if has(r"自夸|主观|口语|可信") and has(r"过度|不足|不够|严重"):
-        return "professional:credibility"
-
-    if missing and has(r"教育|学校|学历|所学专业|专业(?:名称|信息|字段|方向)"):
-        return "completeness:education"
-    if missing and has(r"联系|邮箱|电话|姓名|基础信息"):
-        return "completeness:profile"
-    if missing and has(r"经历|项目|工作|实习|研究"):
-        return "completeness:experience"
-    if missing and has(r"技能|工具|资格|证书"):
-        return "completeness:skills"
-    if missing and has(r"岗位|求职方向|职业方向"):
-        return "completeness:target_role"
-    if missing and has(r"模块|字段|信息"):
-        return "completeness:other_field"
-
-    if missing and has(r"基线|前后对比|优化前|优化后"):
-        return "quantification:baseline"
-    if missing and has(r"规模|覆盖|用户量|客户量|团队规模"):
-        return "quantification:scale"
-    if missing and has(r"周期|时间窗口|时长"):
-        return "quantification:time_window"
-    if missing and has(r"过程|轮次|数量|人数|页数"):
-        return "quantification:process_count"
-    if has(r"数据") and has(r"可信|来源|夸张|绑定"):
-        return "quantification:credibility"
-    return f"text:{compact}"
+def _issue_text_identity(description: str) -> str:
+    # Only textual identity is deterministic. Paraphrases and shared issue
+    # categories must be assessed by the model in their evidence context.
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", description)).strip()
 
 
 def _normalize_evidence(
@@ -440,7 +389,37 @@ def _normalize_evidence(
             fact_id = _require_string(raw_fact_id, f"resumeEvaluation.evidence[{index}].factId")
             fact = fact_index.get(fact_id)
             if fact is None:
-                raise ValueError(f"evidence {evidence_id} references unknown factId {fact_id}")
+                raw_source_text = entry.get("sourceText")
+                raw_status = entry.get("verificationStatus")
+                if not isinstance(raw_source_text, str) or not raw_source_text.strip():
+                    raise ValueError(f"evidence {evidence_id} references unknown factId {fact_id}")
+                if not isinstance(raw_status, str) or not raw_status.strip():
+                    raise ValueError(f"evidence {evidence_id} references unknown factId {fact_id}")
+                source_text = _require_string(
+                    raw_source_text,
+                    f"resumeEvaluation.evidence[{index}].sourceText",
+                )
+                status = _require_string(
+                    raw_status,
+                    f"resumeEvaluation.evidence[{index}].verificationStatus",
+                )
+                if status not in _VERIFICATION_STATUSES:
+                    raise ValueError(f"invalid verification status for evidence {evidence_id}")
+                remap_candidates = [
+                    candidate_id
+                    for candidate_id, candidate in fact_index.items()
+                    if candidate["verificationStatus"] == status
+                    and _source_text_binds_fact(source_text, candidate["content"])
+                ]
+                if len(remap_candidates) == 1:
+                    fact_id = remap_candidates[0]
+                    fact = fact_index[fact_id]
+                elif len(remap_candidates) > 1:
+                    raise ValueError(
+                        f"evidence {evidence_id} sourceText ambiguously matches multiple facts"
+                    )
+                else:
+                    raise ValueError(f"evidence {evidence_id} references unknown factId {fact_id}")
             raw_source_text = entry.get("sourceText")
             if raw_source_text is None or (
                 isinstance(raw_source_text, str) and not raw_source_text.strip()
@@ -544,8 +523,8 @@ def _normalize_issues(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     normalized: List[Dict[str, Any]] = []
     issue_ids: set[str] = set()
-    semantic_ids: Dict[Tuple[str, str], str] = {}
-    semantic_primaries: Dict[str, str] = {}
+    semantic_ids: dict[tuple[Any, ...], str] = {}
+    semantic_primaries: dict[tuple[Any, ...], str] = {}
     remapped: Dict[str, str] = {}
     for index, item in enumerate(_require_list(raw, "resumeEvaluation.issues")):
         entry = _require_dict(item, f"resumeEvaluation.issues[{index}]")
@@ -554,22 +533,31 @@ def _normalize_issues(
             raise ValueError(f"duplicate issue id: {issue_id}")
         description = _require_string(entry.get("description"), f"resumeEvaluation.issues[{index}].description")
         primary = _dimension_name(entry.get("primaryDimension"), f"resumeEvaluation.issues[{index}].primaryDimension")
+        raw_related_dimensions = entry.get("relatedDimensions")
+        if raw_related_dimensions is None:
+            raw_related_dimensions = []
         related = [
             _dimension_name(value, f"resumeEvaluation.issues[{index}].relatedDimensions")
-            for value in _require_list(entry.get("relatedDimensions"), f"resumeEvaluation.issues[{index}].relatedDimensions")
+            for value in _require_list(raw_related_dimensions, f"resumeEvaluation.issues[{index}].relatedDimensions")
         ]
         related = [value for value in dict.fromkeys(related) if value != primary]
         severity = _require_string(entry.get("severity"), f"resumeEvaluation.issues[{index}].severity")
         if severity not in _SEVERITIES:
             raise ValueError(f"invalid severity for issue {issue_id}")
-        semantic_description = _semantic_issue_signature(description)
-        existing_primary = semantic_primaries.get(semantic_description)
+        semantic_description = _issue_text_identity(description)
+        evidence_refs = _evidence_refs(
+            entry.get("evidenceIds"), f"resumeEvaluation.issues[{index}].evidenceIds",
+            evidence_ids, fact_evidence_aliases,
+        )
+        identity = (semantic_description, tuple(sorted(evidence_refs)))
+        existing_primary = semantic_primaries.get(identity)
         if existing_primary is not None and existing_primary != primary:
             raise ValueError(
                 f"the same issue description cannot use multiple primary dimensions: {description}"
             )
-        semantic_primaries[semantic_description] = primary
-        semantic_key = (primary, semantic_description)
+        semantic_primaries[identity] = primary
+        semantic_key = (primary, identity, severity, tuple(sorted(related)),
+                        _require_int(entry.get("pointsNotEarned"), "issue.pointsNotEarned", 0, 100))
         if semantic_key in semantic_ids:
             remapped[issue_id] = semantic_ids[semantic_key]
             continue
@@ -716,33 +704,9 @@ def _normalize_dimensions(
                     "evidenceIds": subscore_evidence_ids,
                 }
             )
-        if dimension_name == "成果量化":
-            quantification_evidence_ids = {
-                evidence_id
-                for subscore in normalized_subscores
-                if subscore["score"] > 0
-                for evidence_id in subscore["evidenceIds"]
-            }
-            quantification_facts = [
-                fact_index[evidence_by_id[evidence_id]["factId"]]
-                for evidence_id in quantification_evidence_ids
-            ]
-            has_effective_number = any(
-                _fact_has_effective_number(fact) for fact in quantification_facts
-            )
-            has_numeric_business_result = any(
-                _fact_has_numeric_business_result(fact) for fact in quantification_facts
-            )
-            score_cap = 100 if has_numeric_business_result else 74 if has_effective_number else 49
-            if dimension_score > score_cap:
-                reason = (
-                    "no valid non-date number"
-                    if score_cap == 49
-                    else "only process or scale numbers without a numeric business result"
-                )
-                raise ValueError(
-                    f"成果量化 score {dimension_score} exceeds cap {score_cap}: {reason}"
-                )
+        # Quantification rubric interpretation belongs to the evidence-aware
+        # evaluator. Keyword windows cannot establish whether a number is a
+        # business outcome; retain schema, evidence and arithmetic checks here.
         total += dimension_score
         dimension_issue_ids = _issue_refs(
             entry.get("issues"),
@@ -764,13 +728,21 @@ def _normalize_dimensions(
             issues_by_id,
             expected_points_not_earned,
         )
+        strengths = _unique_strings(
+            entry.get("strengths"),
+            f"resumeEvaluation.dimensions[{dimension_name}].strengths",
+        )
+        if dimension_score == 0 and strengths:
+            raise ValueError(
+                f"{dimension_name} zero score cannot contain strengths"
+            )
         dimensions.append(
             {
                 "dimension": dimension_name,
                 "score": dimension_score,
                 "level": _level(dimension_score),
                 "subscores": normalized_subscores,
-                "strengths": _unique_strings(entry.get("strengths"), f"resumeEvaluation.dimensions[{dimension_name}].strengths"),
+                "strengths": strengths,
                 "issues": dimension_issue_ids,
                 "improvementQuestions": _unique_strings(entry.get("improvementQuestions"), f"resumeEvaluation.dimensions[{dimension_name}].improvementQuestions"),
             }
@@ -870,6 +842,8 @@ def normalize_resume_evaluation(
     fact_metadata: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     evaluation = _require_dict(_camelize(raw), "resumeEvaluation")
+    if has_lossy_resume_evaluation_artifact(evaluation):
+        raise ValueError("resumeEvaluation contains a lossy repair artifact")
     scope = _require_string(evaluation.get("evaluationScope"), "resumeEvaluation.evaluationScope")
     if scope != EVALUATION_SCOPE:
         raise ValueError("resumeEvaluation.evaluationScope must be full_resume")
@@ -930,7 +904,7 @@ def normalize_resume_evaluation(
     else:
         jd_match = None
 
-    return {
+    normalized = {
         "evaluationVersion": EVALUATION_VERSION,
         "evaluationScope": EVALUATION_SCOPE,
         "targetRole": _require_string(evaluation.get("targetRole", ""), "resumeEvaluation.targetRole", allow_empty=True),
@@ -955,6 +929,8 @@ def normalize_resume_evaluation(
         "topPriorities": _normalize_priorities(evaluation.get("topPriorities"), issue_ids, issue_remapped),
         "jdMatch": jd_match,
     }
+    _validate_content_completeness_integrity(normalized, fact_metadata)
+    return normalized
 
 
 def normalize_jd_analysis_evaluation(

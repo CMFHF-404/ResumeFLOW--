@@ -12,40 +12,41 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(editor, /ResumeEditorDesktopWorkspace/);
   assert.match(editor, /factorySidebarProps=\{factorySidebarProps\}/);
   assert.match(editor, /layoutAdjustProps=\{layoutAdjustProps\}/);
-  assert.match(editor, /previewProps=\{editorPreviewProps\}/);
-  assert.match(editor, /const isRightSidebarOpen = isAssistantSidebarOpen \|\| isJDAnalysisDetailsSidebarOpen/);
-  assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
+  assert.match(editor, /previewProps=\{editorPreviewPropsWithOptimization\}/);
+  assert.match(editor, /const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null/);
+  assert.match(editor, /isRightSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /surface="sidebar"/);
-  assert.match(editor, /onLaunchAssistant=\{handleToggleResumeAssistantSidebar\}/);
-  assert.match(editor, /isAssistantSidebarOpen=\{isAssistantSidebarOpen\}/);
+  assert.match(editor, /workspaceLayout=\{workspaceLayout\}/);
+  assert.match(editor, /onWorkspaceLayoutChange=\{handleWorkspaceLayoutChange\}/);
   assert.doesNotMatch(editor, /handleOpenDesktopTemplateTab/);
   assert.doesNotMatch(editor, /handleOpenDesktopLayoutTab/);
-  assert.doesNotMatch(editor, /onLaunchAssistant=\{handleOpenResumeAssistantSidebar\}/);
+  assert.doesNotMatch(editor, /handleToggleResumeAssistantSidebar/);
   assert.doesNotMatch(editor, /SIDEBAR_WIDTH_CLASS/);
   assert.doesNotMatch(editor, /<EditorSidebar\s/);
 
   assert.match(workspace, /import ResumeFactorySidebar, \{ type ResumeFactorySidebarProps \} from '\.\/ResumeFactorySidebar'/);
   assert.match(workspace, /import ResumeEditorPreviewStage from '\.\/ResumeEditorPreviewStage'/);
   assert.match(workspace, /factorySidebarProps: ResumeFactorySidebarProps/);
-  assert.match(workspace, /assistantSidebar\?: React\.ReactNode/);
-  assert.match(workspace, /isAssistantSidebarOpen\?: boolean/);
+  assert.match(workspace, /rightSidebar\?: React\.ReactNode/);
+  assert.match(workspace, /isRightSidebarOpen\?: boolean/);
+  assert.match(workspace, /layoutMode: ResumeEditorWorkspaceLayout/);
   assert.match(workspace, /relative flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row/);
   assert.match(workspace, /<ResumeFactorySidebar \{\.\.\.factorySidebarProps\} \/>/);
   assert.match(workspace, /<ResumeEditorPreviewStage/);
   assert.match(workspace, /layoutAdjustProps=\{layoutAdjustProps\}/);
   assert.match(workspace, /previewProps=\{previewProps\}/);
-  assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'md:w-\[430px\] xl:w-\[460px\]'/);
-  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'\s*\n\s*\? 'md:w-\[384px\] lg:w-\[562\.5px\] xl:w-\[607\.5px\]'\s*\n\s*: 'md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
-  assert.match(workspace, /const ASSISTANT_SIDEBAR_WIDTH = '390px'/);
-  assert.match(workspace, /data-rf-assistant-sidebar/);
-  assert.match(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l shadow-\[/);
-  assert.doesNotMatch(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'absolute inset-y-0 right-0 z-30 opacity-100/);
-  assert.match(workspace, /style=\{\{\s*width: isAssistantSidebarOpen \? ASSISTANT_SIDEBAR_WIDTH : 0,\s*opacity: isAssistantSidebarOpen \? 1 : 0,\s*flexShrink: 0,\s*\}\}/);
-  assert.doesNotMatch(workspace, /isAssistantSidebarOpen\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l 2xl:w-\[420px\]'/);
+  assert.match(workspace, /layoutMode === 'triple'\s*\n\s*\? 'xl:flex xl:w-\[460px\]'/);
+  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'\s*\n\s*\? 'md:flex md:w-\[384px\] lg:w-\[562\.5px\] xl:w-\[607\.5px\]'\s*\n\s*: 'md:flex md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
+  assert.match(workspace, /const DEFAULT_RIGHT_SIDEBAR_WIDTH = '390px'/);
+  assert.match(workspace, /const AI_RIGHT_SIDEBAR_WIDTH = '460px'/);
+  assert.match(workspace, /data-rf-right-sidebar/);
+  assert.match(workspace, /showRightSidebar\s*\n\s*\? 'w-\[390px\] opacity-100 md:border-l shadow-\[/);
+  assert.match(workspace, /const rightSidebarWidth = layoutMode === 'ai' \? AI_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH/);
+  assert.match(workspace, /style=\{\{\s*width: showRightSidebar \? rightSidebarWidth : 0,\s*opacity: showRightSidebar \? 1 : 0,\s*flexShrink: 0,\s*\}\}/);
   assert.match(workspace, /: 'w-0 opacity-0 md:border-l-0 pointer-events-none'/);
-  assert.match(workspace, /<div className="h-full shrink-0" style=\{\{ width: ASSISTANT_SIDEBAR_WIDTH \}\}>/);
+  assert.match(workspace, /<div className="h-full shrink-0" style=\{\{ width: rightSidebarWidth \}\}>/);
   assert.doesNotMatch(workspace, /h-full w-\[390px\] shrink-0 2xl:w-\[420px\]/);
-  assert.match(workspace, /\{assistantSidebar\}/);
+  assert.match(workspace, /\{rightSidebar\}/);
   assert.doesNotMatch(workspace, /layoutMode="drawer"/);
   assert.doesNotMatch(workspace, /showJDPanel=\{false\}/);
 
@@ -66,6 +67,19 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(templateSelectionPanel, /aria-pressed=\{isSelected\}/);
   assert.match(templateSelectionPanel, /isSelected \? \([\s\S]*?bottom-1\.5 right-1\.5[\s\S]*?aria-hidden="true"[\s\S]*?<Check className="h-3 w-3" \/>/);
   assert.match(templateSelectionPanel, /group-hover:opacity-100/);
+});
+
+test('triple layout defers its factory rail below xl so the desktop preview remains readable', () => {
+  const workspace = read('views/ResumeEditor/components/ResumeEditorDesktopWorkspace.tsx');
+  const previewStage = read('views/ResumeEditor/components/ResumeEditorPreviewStage.tsx');
+
+  assert.match(
+    workspace,
+    /layoutMode === 'triple'\s*\? 'xl:flex xl:w-\[460px\]'/,
+  );
+  assert.doesNotMatch(workspace, /layoutMode === 'triple'\s*\? 'md:w-\[430px\]/);
+  assert.match(workspace, /showRightSidebar\s*\? 'w-\[390px\] opacity-100/);
+  assert.match(previewStage, /flex flex-1 flex-col min-w-0/);
 });
 
 test('desktop layout sidebar groups layout parameters and removes density shortcuts', () => {

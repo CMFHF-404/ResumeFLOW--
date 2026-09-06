@@ -55,6 +55,8 @@ const RETRYABLE_ERROR_CODES = new Set([
   'resume_optimization_answer_claim_lost',
   'resume_optimization_planning_claim_lost',
   'resume_optimization_evaluation_pending',
+  'resume_optimization_rescore_in_progress',
+  'resume_optimization_rescore_claim_lost',
 ]);
 
 const DEFAULT_RESUME_OPTIMIZATION_ERROR_MESSAGE = '简历优化请求失败，请稍后重试。';
@@ -75,18 +77,20 @@ const SAFE_PUBLIC_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.free
   resume_optimization_answer_in_progress: '补充信息正在处理中，请稍后重试。',
   resume_optimization_answer_claim_lost: '本次补充处理已失效，请刷新优化方案后重试。',
   resume_optimization_planning_claim_lost: '本次优化规划已失效，请刷新后重试。',
-  resume_optimization_plan_invalid: 'AI analysis returned an invalid response. Please retry.',
+  resume_optimization_plan_invalid: 'AI 返回的优化结果结构异常，请重试。',
   resume_optimization_run_invalid: '简历优化记录数据异常，请重新生成优化方案。',
   resume_optimization_apply_invalid: '优化方案或应用选择无效，请刷新后重试。',
   resume_optimization_apply_conflict: '当前优化方案状态不允许再次应用。',
   resume_optimization_evaluation_pending: '复评结果尚未就绪或已过期，请重新生成六维评估后重试。',
+  resume_optimization_rescore_in_progress: '该优化记录正在复评，请稍后刷新。',
+  resume_optimization_rescore_claim_lost: '本次复评租约已失效，请刷新后重试。',
   resume_optimization_content_conflict: '简历内容已在优化后发生变化，请刷新后再操作。',
   ai_runtime_budget_exceeded: 'AI 请求或响应超过安全处理上限，请缩短内容后重试。',
   ai_runtime_timeout: 'AI 请求处理超时，请稍后重试。',
   ai_usage_accounting_failed: 'AI 用量记录失败，请稍后重试。',
   ai_stream_consumer_failed: 'AI 流式响应传递失败，请稍后重试。',
   ai_usage_payload_invalid: 'AI 服务返回了无效的用量数据，请稍后重试。',
-  ai_provider_invalid_response: 'AI analysis returned an invalid response. Please retry.',
+  ai_provider_invalid_response: 'AI 返回的优化结果结构异常，请重试。',
   ai_provider_unavailable: 'AI provider is temporarily unavailable. Please retry.',
   ai_token_quota_exhausted: 'AI Token 额度已用完，请购买套餐或兑换卡密后继续使用。',
   auth_dependency_unavailable: '认证服务暂时不可用',
@@ -486,7 +490,7 @@ export const resumeOptimizationService = {
 
   async finalize(
     runId: string,
-    payload: ResumeOptimizationTimestampInput,
+    payload: ResumeOptimizationTimestampInput & { claimId: string },
     options: ResumeOptimizationRequestOptions = {},
   ): Promise<ResumeOptimizationFinalizeResponse> {
     const canonicalRunId = canonicalUuid(runId, 'runId');
@@ -498,6 +502,7 @@ export const resumeOptimizationService = {
             payload.expectedResumeUpdatedAt,
             'expectedResumeUpdatedAt',
           ),
+          claim_id: canonicalUuid(payload.claimId, 'claimId'),
         },
         requestConfig(options),
       );
@@ -509,9 +514,33 @@ export const resumeOptimizationService = {
     }
   },
 
+  async claimRescore(
+    runId: string,
+    payload: ResumeOptimizationTimestampInput & { claimId: string },
+    options: ResumeOptimizationRequestOptions = {},
+  ): Promise<ResumeOptimizationRun> {
+    const canonicalRunId = canonicalUuid(runId, 'runId');
+    try {
+      const response = await apiClient.post(
+        `/api/resume-optimizations/${encodeURIComponent(canonicalRunId)}/rescore-claim`,
+        {
+          claim_id: canonicalUuid(payload.claimId, 'claimId'),
+          expected_resume_updated_at: canonicalTimestamp(
+            payload.expectedResumeUpdatedAt,
+            'expectedResumeUpdatedAt',
+          ),
+        },
+        requestConfig(options),
+      );
+      return normalizeRun(response.data);
+    } catch (error) {
+      throw toServiceError(error);
+    }
+  },
+
   async revert(
     runId: string,
-    payload: ResumeOptimizationTimestampInput,
+    payload: ResumeOptimizationTimestampInput & { claimId?: string },
     options: ResumeOptimizationRequestOptions = {},
   ): Promise<ResumeOptimizationRevertResponse> {
     const canonicalRunId = canonicalUuid(runId, 'runId');
@@ -523,6 +552,9 @@ export const resumeOptimizationService = {
             payload.expectedResumeUpdatedAt,
             'expectedResumeUpdatedAt',
           ),
+          ...(payload.claimId ? {
+            claim_id: canonicalUuid(payload.claimId, 'claimId'),
+          } : {}),
         },
         requestConfig(options),
       );

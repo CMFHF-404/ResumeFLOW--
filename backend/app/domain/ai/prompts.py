@@ -90,6 +90,12 @@ RESUME_EVALUATION_RULES = (
     "use those generated IDs exactly and do not infer additional facts. Use section_order and experience category "
     "when scoring information order and hierarchy. Do not assess visual "
     "design, fonts, spacing, PDF compatibility, or actual ATS parsing from text-only input. "
+    "Treat allowed rich-text markup such as Markdown links, HTML <a>, <b>/<strong>, <i>/<em>, <u>, and <br> "
+    "as presentation metadata; it must not be reported as stray HTML, placeholder text, or readability noise. "
+    "Evaluate the visible wording after ignoring those markers, while preserving every link target and emphasis marker. "
+    "Inspect every visible Action and Result list item for sentence-ending punctuation. When neighboring items are "
+    "complete prose sentences, report a genuinely missing terminal Chinese or English punctuation mark as a readability "
+    "or professional-expression issue; do not penalize headings, labels, URLs, or intentional short fragments. "
     "Use exactly six dimensions in this order, each with the exact fixed subscores and maxima: "
     "逻辑清晰[信息顺序25,因果关系30,信息层级20,一致性与聚焦25]; "
     "STAR应用[Situation情境15,Task任务15,Action行动35,Result结果35]; "
@@ -665,4 +671,16 @@ RESUME_EVALUATION_ISSUE_REPAIR = (
     "metrics, or achievements. Preserve only evidence IDs listed in validEvidenceIds. Every issue must have exactly one "
     "primaryDimension and must appear exactly once in that dimension's issue ID array. Keep pointsNotEarned as non-negative "
     "integer weights; the server will deterministically reconcile them to each dimension gap. Return no Markdown or explanation."
+)
+
+
+RESUME_EVALUATION_EVIDENCE_REPAIR = (
+    "You repair only evidence bindings for an existing six-dimension resume evaluation. "
+    "Return JSON with exactly one top-level evidenceRepair object containing evidence, subscoreBindings, "
+    "issueBindings, and riskFlagBindings. Use only fact IDs supplied in fact_metadata. For each evidence item, "
+    "copy sourceText exactly from the chosen fact content, copy verificationStatus exactly, and use the fact source "
+    "as location. Every positive subscore must have at least one evidence reference backed by verified or user_claimed "
+    "facts. Include one binding for every supplied subscore, issue, and risk flag, even when its evidenceIds array is "
+    "empty. Never return scores, maxima, strengths, issue text, priorities, or resume facts outside evidence sourceText "
+    "copied from fact_metadata. Return no field outside the declared patch, Markdown, or explanation."
 )

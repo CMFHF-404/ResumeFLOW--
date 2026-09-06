@@ -533,7 +533,7 @@ export const normalizeResumeOptimizationRun = (value) => {
   const record = toRecord(value, 'run');
   const status = enumValue(record.status, STATUS_VALUES, 'run.status');
   if (record.optimizer_version !== 'resume_optimization_v1') fail('run.optimizer_version is unsupported');
-  if (record.policy_version !== 'thin_safety_v1') fail('run.policy_version is unsupported');
+  if (!['thin_safety_v1', 'evidence_semantic_v2'].includes(record.policy_version)) fail('run.policy_version is unsupported');
   if (record.prompt_version !== 'resume_optimization_prompt_v1') fail('run.prompt_version is unsupported');
 
   const plan = normalizePlan(record.plan, 'run.plan');
@@ -595,7 +595,7 @@ export const normalizeResumeOptimizationRun = (value) => {
     resumeId: canonicalizeResumeOptimizationUuid(record.resume_id, 'run.resume_id'),
     status,
     optimizerVersion: 'resume_optimization_v1',
-    policyVersion: 'thin_safety_v1',
+    policyVersion: record.policy_version,
     promptVersion: 'resume_optimization_prompt_v1',
     sourceResumeUpdatedAt: canonicalizeResumeOptimizationTimestamp(
       record.source_resume_updated_at,

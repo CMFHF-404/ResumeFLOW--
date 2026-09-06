@@ -479,3 +479,12 @@ test('emits only safe labels for source references', async () => {
   assert.equal(formatResumeOptimizationSourceRef('/userAnswers/Q_PRIVATE/value'), '本轮补充信息');
   assert.equal(formatResumeOptimizationSourceRef('/unknown/private/path'), '已验证来源');
 });
+
+
+test('accepts the semantic review policy while retaining historical policy identity', async () => {
+  const { normalizeResumeOptimizationRun } = await importNormalizer();
+  for (const policy of ['thin_safety_v1', 'evidence_semantic_v2']) {
+    assert.equal(normalizeResumeOptimizationRun(run({ policy_version: policy })).policyVersion, policy);
+  }
+  assert.throws(() => normalizeResumeOptimizationRun(run({ policy_version: 'unknown' })));
+});

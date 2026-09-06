@@ -79,6 +79,8 @@ test('production entry keeps deferred UI out of the static graph and below the c
   const chunkByFileName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
   const entryChunk = chunks.find((chunk) => chunk.isEntry);
   assert.ok(entryChunk, 'production entry chunk is missing');
+  const resumeEditorChunk = findChunkContainingModule(chunks, '/views/ResumeEditor/index.tsx');
+  assert.ok(resumeEditorChunk, 'ResumeEditor production chunk is missing');
 
   const oversized = chunks
     .map((chunk) => ({
@@ -89,10 +91,20 @@ test('production entry keeps deferred UI out of the static graph and below the c
   assert.deepEqual(oversized, [], `production chunks exceed ${MAX_PRODUCTION_CHUNK_BYTES} bytes`);
 
   const staticEntryDependencies = collectStaticEntryDependencies(entryChunk, chunkByFileName);
+  const staticResumeEditorDependencies = collectStaticEntryDependencies(resumeEditorChunk, chunkByFileName);
+  const resumeEditorDeferredModules = new Set([
+    '/views/AIAssistant.tsx',
+    '/views/ResumeEditor/components/MobileEditorHeader.tsx',
+    '/views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx',
+  ]);
   for (const moduleSuffix of [
     '/components/FeedbackModal.tsx',
     '/components/AgentApiPluginConfigModal.tsx',
     '/components/TokenQuotaModal.tsx',
+    '/views/AIAssistant.tsx',
+    '/views/ResumeEditor/components/MobileEditorHeader.tsx',
+    '/views/ResumeEditor/components/TemplateSelectorModal.tsx',
+    '/views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx',
     '/node_modules/react-datepicker/dist/index.es.js',
   ]) {
     const ownerChunk = findChunkContainingModule(chunks, moduleSuffix);
@@ -102,6 +114,13 @@ test('production entry keeps deferred UI out of the static graph and below the c
       false,
       `${moduleSuffix} must not be loaded by the static entry graph`,
     );
+    if (resumeEditorDeferredModules.has(moduleSuffix)) {
+      assert.equal(
+        staticResumeEditorDependencies.has(ownerChunk.fileName),
+        false,
+        `${moduleSuffix} must be deferred from the ResumeEditor static graph`,
+      );
+    }
   }
 
   assert.equal(

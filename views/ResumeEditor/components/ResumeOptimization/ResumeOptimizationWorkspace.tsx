@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, ShieldCheck } from 'lucide-react';
 
 import type { ExperienceCategory } from '../../../../services/experienceService';
 import type { useResumeOptimizationFlow } from '../../hooks/useResumeOptimizationFlow';
@@ -20,6 +20,7 @@ import {
 import {
     areResumeOptimizationAnswersComplete,
     buildResumeOptimizationOverviewMetrics,
+    isResumeOptimizationChangeReviewable,
 } from './optimizationDisplayUtils.mjs';
 
 type ResumeOptimizationFlowSlice = ReturnType<typeof useResumeOptimizationFlow>;
@@ -41,10 +42,12 @@ type ResumeOptimizationFutureContentProps = Pick<ResumeOptimizationFlowSlice,
 >;
 
 type ResumeOptimizationWorkspaceProps = ResumeOptimizationFlowSlice & ResumeOptimizationFutureContentProps & {
+    surface?: 'modal' | 'sidebar';
     onRequestClose: () => boolean | Promise<boolean>;
     returnFocusRef: MutableRefObject<HTMLElement | null>;
     suppressReturnFocusRef: MutableRefObject<boolean>;
     skillNameById: Record<string, string>;
+    moduleOrder: string[];
     onViewExperience: (
         category: ExperienceCategory | undefined,
         masterExperienceId: string,
@@ -92,9 +95,20 @@ export const resolveResumeOptimizationActiveStep = (
     return 'overview';
 };
 
+export const resolveResumeOptimizationOverviewContinueStep = (
+    runStatus: ResumeOptimizationStatus | undefined,
+    hasQuestions: boolean,
+    answersComplete: boolean,
+): ResumeOptimizationStepId => {
+    if (runStatus === 'preview_ready') return 'preview';
+    if (runStatus === 'awaiting_answers') return hasQuestions ? 'questions' : 'preview';
+    return hasQuestions && !answersComplete ? 'questions' : 'preview';
+};
+
 const isVisibleFocusable = (element: HTMLElement) => (
     element.isConnected
     && element.getClientRects().length > 0
+    && !element.closest('[inert]')
     && element.getAttribute('aria-hidden') !== 'true'
     && !(element instanceof HTMLButtonElement && element.disabled)
 );
@@ -124,6 +138,7 @@ const ResumeOptimizationPlaceholder: React.FC<{
 };
 
 export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspaceProps> = ({
+    surface = 'modal',
     uiState,
     run,
     progressText,
@@ -138,24 +153,46 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     applyAcceptedChanges,
     retryRescore,
     revertRun,
+    startOptimization,
+    canStart,
+    disabledReason,
     onRequestClose,
     returnFocusRef,
     suppressReturnFocusRef,
     skillNameById,
+    moduleOrder,
     onViewExperience,
     onOpenAutoAssembly,
 }) => {
+    const isSidebarSurface = surface === 'sidebar';
     const overlayRef = useRef<HTMLDivElement>(null);
     const dialogRef = useRef<HTMLElement>(null);
     const headingRef = useRef<HTMLHeadingElement>(null);
     const closeRequestInFlightRef = useRef(false);
     const plan = run ? run.result ?? run.plan : null;
+    const hasRenderablePlan = Boolean(plan && run?.status !== 'failed');
     const hasQuestions = Boolean(plan?.questions.length);
+    const hasReviewableChanges = Boolean(plan?.changes.some(isResumeOptimizationChangeReviewable));
+    const answersComplete = Boolean(
+        plan
+        && hasQuestions
+        && areResumeOptimizationAnswersComplete(plan.questions, answerDrafts)
+    );
+    const overviewContinueStep = resolveResumeOptimizationOverviewContinueStep(
+        run?.status,
+        hasQuestions,
+        answersComplete,
+    );
+    const canContinueFromOverview = hasQuestions || hasReviewableChanges;
     const resolvedActiveStep = resolveResumeOptimizationActiveStep(uiState, run?.status, hasQuestions);
     const [displayStep, setDisplayStep] = useState<ResumeOptimizationStepId>(() => resolvedActiveStep);
     const previousUiStateRef = useRef(uiState);
     const isCloseBlocked = uiState === 'applying' || uiState === 'rescoring';
     const isProgressVisible = ['starting', 'answering', 'applying', 'rescoring'].includes(uiState);
+    const canReplaceUnreviewablePlan = run?.status === 'preview_ready'
+        && !hasReviewableChanges && !isProgressVisible && uiState !== 'stale';
+    const canRetryPlanning = uiState === 'error'
+        && (!run || run.status === 'cancelled' || run.status === 'failed');
     const isQuestionRetry = uiState === 'error' && run?.status === 'awaiting_answers';
     const canRenderQuestions = Boolean(
         plan
@@ -170,7 +207,12 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     const canSubmitAnswers = Boolean(
         plan
         && canEditQuestions
-        && areResumeOptimizationAnswersComplete(plan.questions, answerDrafts),
+        && answersComplete,
+    );
+    const canViewPlanFromReadOnlyQuestions = Boolean(
+        canRenderQuestions
+        && !canEditQuestions
+        && run?.status === 'preview_ready',
     );
     const visibleSteps = useMemo(() => (
         (['overview', 'questions', 'preview', 'result'] as ResumeOptimizationStepId[])
@@ -180,6 +222,12 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         const resolvedIndex = visibleSteps.indexOf(resolvedActiveStep);
         return resolvedIndex < 0 ? [visibleSteps[0]] : visibleSteps.slice(0, resolvedIndex + 1);
     }, [resolvedActiveStep, visibleSteps]);
+    const previousStep = useMemo(() => {
+        const currentIndex = visibleSteps.indexOf(displayStep);
+        if (currentIndex <= 0) return null;
+        const candidate = visibleSteps[currentIndex - 1];
+        return availableSteps.includes(candidate) ? candidate : null;
+    }, [availableSteps, displayStep, visibleSteps]);
 
     useEffect(() => {
         if (!run || !plan || isProgressVisible) return;
@@ -228,8 +276,13 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     }, [availableSteps]);
 
     const handleContinueFromOverview = useCallback(() => {
-        setDisplayStep(hasQuestions ? 'questions' : 'preview');
-    }, [hasQuestions]);
+        if (!canContinueFromOverview) return;
+        setDisplayStep(overviewContinueStep);
+    }, [canContinueFromOverview, overviewContinueStep]);
+
+    const handlePreviousStep = useCallback(() => {
+        if (previousStep) setDisplayStep(previousStep);
+    }, [previousStep]);
 
     const getFocusableElements = useCallback(() => {
         const dialog = dialogRef.current;
@@ -238,6 +291,24 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             .filter(isVisibleFocusable);
     }, []);
 
+    const restoreReturnFocus = useCallback(() => {
+        const savedReturnFocus = returnFocusRef.current;
+        returnFocusRef.current = null;
+        if (suppressReturnFocusRef.current) {
+            suppressReturnFocusRef.current = false;
+            return;
+        }
+        window.requestAnimationFrame(() => {
+            const fallbackReturnFocus = Array.from(
+                document.querySelectorAll<HTMLElement>('[data-resume-optimization-focus-return]:not([disabled])')
+            ).find(isVisibleFocusable);
+            const returnTarget = savedReturnFocus && isVisibleFocusable(savedReturnFocus)
+                ? savedReturnFocus
+                : fallbackReturnFocus;
+            returnTarget?.focus();
+        });
+    }, [returnFocusRef, suppressReturnFocusRef]);
+
     const handleDialogKeyDown = useCallback((event: React.KeyboardEvent) => {
         event.stopPropagation();
         if (event.key === 'Escape') {
@@ -245,6 +316,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             if (!isCloseBlocked) void requestClose();
             return;
         }
+        if (isSidebarSurface) return;
         if (event.key !== 'Tab') return;
         const dialog = dialogRef.current;
         const focusableElements = getFocusableElements();
@@ -268,7 +340,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             event.preventDefault();
             firstFocusable.focus();
         }
-    }, [getFocusableElements, isCloseBlocked, requestClose]);
+    }, [getFocusableElements, isCloseBlocked, isSidebarSurface, requestClose]);
 
     useEffect(() => {
         if (uiState === 'error' || uiState === 'stale') {
@@ -288,13 +360,28 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     }, [resolvedActiveStep, uiState]);
 
     useEffect(() => {
+        if (isSidebarSurface) return;
         const dialog = dialogRef.current;
         if (dialog && !dialog.contains(document.activeElement)) {
             headingRef.current?.focus();
         }
-    }, [displayStep, uiState]);
+    }, [displayStep, isSidebarSurface, uiState]);
 
     useEffect(() => {
+        if (!isSidebarSurface) return undefined;
+        const activeElementAtOpen = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        if (!returnFocusRef.current) returnFocusRef.current = activeElementAtOpen;
+        const focusHeadingFrame = window.requestAnimationFrame(() => headingRef.current?.focus());
+        return () => {
+            window.cancelAnimationFrame(focusHeadingFrame);
+            restoreReturnFocus();
+        };
+    }, [isSidebarSurface, restoreReturnFocus]);
+
+    useEffect(() => {
+        if (isSidebarSurface) return undefined;
         const overlay = overlayRef.current;
         const dialog = dialogRef.current;
         if (!overlay || !dialog) return undefined;
@@ -335,51 +422,39 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                 if (ariaHidden === null) element.removeAttribute('aria-hidden');
                 else element.setAttribute('aria-hidden', ariaHidden);
             });
-            const savedReturnFocus = returnFocusRef.current;
-            returnFocusRef.current = null;
-            if (suppressReturnFocusRef.current) {
-                suppressReturnFocusRef.current = false;
-                return;
-            }
-            window.requestAnimationFrame(() => {
-                const fallbackReturnFocus = Array.from(
-                    document.querySelectorAll<HTMLElement>('[data-resume-optimization-focus-return]:not([disabled])')
-                ).find(isVisibleFocusable);
-                const returnTarget = savedReturnFocus && isVisibleFocusable(savedReturnFocus)
-                    ? savedReturnFocus
-                    : fallbackReturnFocus;
-                returnTarget?.focus();
-            });
+            restoreReturnFocus();
         };
-    }, [returnFocusRef, suppressReturnFocusRef]);
+    }, [isSidebarSurface, restoreReturnFocus, returnFocusRef]);
 
     const footerStatus = useMemo(() => (
         displayStep === 'preview' && run?.status === 'preview_ready'
             ? <>将把 {acceptedChangeIds.length} 项修改应用到当前简历。不会改动总经历库，也不会更换已选内容。</>
             : isCloseBlocked
                 ? '应用与复评期间暂不可关闭'
-                : '可随时返回，未应用的方案会保留'
+                : null
     ), [acceptedChangeIds.length, displayStep, isCloseBlocked, run?.status]);
 
-    return (
-        <div
-            ref={overlayRef}
-            className="fixed inset-0 z-[100] flex h-[100dvh] items-center justify-center bg-slate-950/50 backdrop-blur-sm motion-reduce:transition-none md:p-4"
+    const workspace = (
+        <section
+            ref={dialogRef}
+            role={isSidebarSurface ? 'region' : 'dialog'}
+            aria-modal={isSidebarSurface ? undefined : true}
+            aria-labelledby="resume-optimization-workspace-title"
+            tabIndex={-1}
+            data-rf-resume-optimization-surface={surface}
+            className={[
+                'flex h-full w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950',
+                isSidebarSurface
+                    ? 'border-0 shadow-none'
+                    : 'h-[100dvh] shadow-2xl md:max-h-[min(900px,calc(100vh-32px))] md:max-w-6xl md:rounded-2xl md:border md:border-slate-200/80 md:dark:border-slate-800',
+            ].join(' ')}
             onKeyDown={handleDialogKeyDown}
-            onMouseDown={(event) => {
-                if (event.target === event.currentTarget) void requestClose();
-            }}
+            onMouseDown={(event) => event.stopPropagation()}
         >
-            <section
-                ref={dialogRef}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="resume-optimization-workspace-title"
-                tabIndex={-1}
-                className="flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 shadow-2xl dark:bg-slate-950 md:max-h-[min(900px,calc(100vh-32px))] md:max-w-6xl md:rounded-2xl md:border md:border-slate-200/80 md:dark:border-slate-800"
-                onMouseDown={(event) => event.stopPropagation()}
-            >
-                <header className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white/90 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/90 md:px-6">
+                <header className={[
+                    'flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white/90 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/90',
+                    isSidebarSurface ? '' : 'md:px-6',
+                ].join(' ')}>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -396,27 +471,35 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                     </div>
                     <button
                         type="button"
-                        aria-label="关闭简历优化工作区"
+                        aria-label="返回上一层"
                         disabled={isCloseBlocked}
                         onClick={() => void requestClose()}
                         className="grid min-h-[44px] min-w-[44px] place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                     >
-                        <X className="h-5 w-5" aria-hidden="true" />
+                        <ArrowLeft className="h-5 w-5" aria-hidden="true" />
                     </button>
                 </header>
 
-                <div className="min-h-0 flex-1 overflow-hidden md:flex">
-                    <aside className="hidden w-[220px] shrink-0 border-r border-slate-200 bg-white/60 dark:border-slate-800 dark:bg-slate-950/55 md:block">
+                <div className={['min-h-0 flex-1 overflow-hidden', isSidebarSurface ? 'flex flex-col' : 'md:flex'].join(' ')}>
+                    <aside className={[
+                        'shrink-0 bg-white/60 dark:bg-slate-950/55',
+                        isSidebarSurface
+                            ? 'block border-b border-slate-200 dark:border-slate-800'
+                            : 'hidden w-[220px] border-r border-slate-200 dark:border-slate-800 md:block',
+                    ].join(' ')}>
                         <ResumeOptimizationStepRail
                             activeStep={displayStep}
                             hasQuestions={hasQuestions}
-                            variant="desktop"
+                            variant={isSidebarSurface ? 'mobile' : 'desktop'}
                             availableSteps={availableSteps}
                             onStepSelect={handleStepSelect}
                         />
                     </aside>
                     <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                        <div className="shrink-0 border-b border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-950/70 md:hidden">
+                        <div className={[
+                            'shrink-0 border-b border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-950/70',
+                            isSidebarSurface ? 'hidden' : 'md:hidden',
+                        ].join(' ')}>
                             <ResumeOptimizationStepRail
                                 activeStep={displayStep}
                                 hasQuestions={hasQuestions}
@@ -425,11 +508,11 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 onStepSelect={handleStepSelect}
                             />
                         </div>
-                        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+                        <div className={['min-h-0 flex-1 overflow-y-auto p-4', isSidebarSurface ? '' : 'md:p-6'].join(' ')}>
                             {isProgressVisible ? (
                                 <ResumeOptimizationProgress progressText={progressText} />
-                            ) : displayStep === 'overview' && plan ? (
-                                <ResumeOptimizationOverview plan={plan} />
+                            ) : displayStep === 'overview' && hasRenderablePlan && plan ? (
+                                <ResumeOptimizationOverview plan={plan} moduleOrder={moduleOrder} />
                             ) : canRenderQuestions && plan ? (
                                 <ResumeOptimizationQuestions
                                     questions={plan.questions}
@@ -452,6 +535,8 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                     onToggleChange={toggleChange}
                                     onViewExperience={onViewExperience}
                                     onOpenAutoAssembly={onOpenAutoAssembly}
+                                    surface={surface}
+                                    moduleOrder={moduleOrder}
                                 />
                             ) : displayStep === 'result' && run && ['applied', 'completed'].includes(run.status) ? (
                                 <ResumeOptimizationResult
@@ -468,24 +553,44 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                     </main>
                 </div>
 
-                <footer className="sticky bottom-0 z-10 flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 md:px-6 md:pb-3">
-                    <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{footerStatus}</p>
-                    <div className="flex shrink-0 items-center gap-2">
+                <footer className={[
+                    'sticky bottom-0 z-10 flex shrink-0 items-center gap-2 border-t border-slate-200 bg-white/95 px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95',
+                    isSidebarSurface ? 'justify-end' : 'justify-between md:px-6 md:py-3',
+                ].join(' ')}>
+                    {footerStatus ? (
+                        <p className="mr-auto text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{footerStatus}</p>
+                    ) : null}
+                    <div className={['flex shrink-0 items-center gap-2', isSidebarSurface ? 'justify-end' : ''].join(' ')}>
                         <button
                             type="button"
-                            disabled={isCloseBlocked}
-                            onClick={() => void requestClose()}
+                            disabled={isCloseBlocked || !previousStep}
+                            onClick={handlePreviousStep}
                             className="min-h-[44px] rounded-xl border border-slate-200 px-4 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
                         >
-                            返回编辑器
+                            上一步
                         </button>
-                        {displayStep === 'overview' && plan && uiState !== 'stale' ? (
+                        {canReplaceUnreviewablePlan || canRetryPlanning ? (
                             <button
                                 type="button"
-                                onClick={handleContinueFromOverview}
-                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
+                                disabled={!canStart}
+                                title={!canStart ? disabledReason ?? undefined : undefined}
+                                onClick={() => void startOptimization({ replaceUnreviewableRun: canReplaceUnreviewablePlan })}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                             >
-                                {hasQuestions ? '继续补充信息' : '查看优化方案'}
+                                {canReplaceUnreviewablePlan ? '重新生成优化方案' : '重试生成方案'}
+                            </button>
+                        ) : displayStep === 'overview' && hasRenderablePlan && plan && uiState !== 'stale' ? (
+                            <button
+                                type="button"
+                                disabled={!canContinueFromOverview}
+                                onClick={handleContinueFromOverview}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                            >
+                                {hasQuestions
+                                    ? '继续补充信息'
+                                    : hasReviewableChanges
+                                        ? '查看优化方案'
+                                        : '请重新生成优化方案'}
                             </button>
                         ) : canRenderQuestions && canEditQuestions ? (
                             <button
@@ -494,7 +599,15 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 disabled={!canSubmitAnswers || (isAnswerSubmissionFrozen && !isQuestionRetry)}
                                 className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                             >
-                                {isQuestionRetry ? '重试提交' : '提交并生成方案'}
+                                {isQuestionRetry ? '重试提交' : '下一步'}
+                            </button>
+                        ) : canViewPlanFromReadOnlyQuestions ? (
+                            <button
+                                type="button"
+                                onClick={() => setDisplayStep('preview')}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
+                            >
+                                查看优化方案
                             </button>
                         ) : displayStep === 'preview' && run?.status === 'preview_ready' && uiState !== 'stale' ? (
                             <button
@@ -503,12 +616,25 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 onClick={() => void applyAcceptedChanges()}
                                 className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                             >
-                                应用所选修改
+                                应用已接受的 {acceptedChangeIds.length} 项
                             </button>
                         ) : null}
                     </div>
                 </footer>
-            </section>
+        </section>
+    );
+
+    if (isSidebarSurface) return workspace;
+
+    return (
+        <div
+            ref={overlayRef}
+            className="fixed inset-0 z-[100] flex h-[100dvh] items-center justify-center bg-slate-950/50 backdrop-blur-sm motion-reduce:transition-none md:p-4"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) void requestClose();
+            }}
+        >
+            {workspace}
         </div>
     );
 };

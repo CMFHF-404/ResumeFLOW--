@@ -33,6 +33,146 @@ test('rich text sanitizer parses attacker markup in an inert template', () => {
 
 const chromiumExecutable = resolveChromiumExecutable();
 
+const buildActionListPreviewHarness = async () => {
+  const result = await build({
+    stdin: {
+      contents: `
+        import React from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { renderStarBlocks } from './views/ResumeEditor/components/ResumePreview/previewRenderUtils.tsx';
+
+        const star = { s: '', t: '', a: '第一<br><br>第二', r: '' };
+        const root = createRoot(document.getElementById('root'));
+        root.render(React.createElement('main', null,
+          React.createElement('section', { 'data-marker-style': 'unordered' },
+            renderStarBlocks(star, 'experience-unordered', 'unordered')),
+          React.createElement('section', { 'data-marker-style': 'ordered' },
+            renderStarBlocks(star, 'experience-ordered', 'ordered')),
+        ));
+      `,
+      resolveDir: process.cwd(),
+      sourcefile: 'action-list-preview-harness.tsx',
+      loader: 'tsx',
+    },
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    write: false,
+  });
+  return result.outputFiles[0].text;
+};
+
+test('Action marker lists skip semantic blank lines instead of rendering empty bullets', {
+  skip: chromiumExecutable ? false : 'No Chromium executable is available for the DOM rendering probe',
+}, async () => {
+  const harness = await buildActionListPreviewHarness();
+  const browser = await chromium.launch({ executablePath: chromiumExecutable, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<div id="root"></div>');
+    await page.addScriptTag({ content: harness });
+    await page.locator('[data-marker-style="unordered"] li').first().waitFor();
+
+    const result = await page.evaluate(() => [...document.querySelectorAll('[data-marker-style]')]
+      .map((section) => ({
+        markerStyle: section.getAttribute('data-marker-style'),
+        items: [...section.querySelectorAll('li')].map((item) => item.textContent),
+        emptyItems: [...section.querySelectorAll('li')]
+          .filter((item) => !(item.textContent ?? '').trim()).length,
+      })));
+
+    assert.deepEqual(result, [
+      { markerStyle: 'unordered', items: ['第一', '第二'], emptyItems: 0 },
+      { markerStyle: 'ordered', items: ['第一', '第二'], emptyItems: 0 },
+    ]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('legacy Markdown link conversion matches the optimization link grammar', {
+  skip: chromiumExecutable ? false : 'No Chromium executable is available for the DOM rendering probe',
+}, async () => {
+  const bundle = await build({
+    entryPoints: ['utils/richText.ts'],
+    bundle: true,
+    format: 'iife',
+    globalName: 'RichTextBundle',
+    platform: 'browser',
+    write: false,
+  });
+  const browser = await chromium.launch({ executablePath: chromiumExecutable, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<div id="sink"></div>');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    const cases = [
+      [
+        'escaped opener is literal',
+        String.raw`\[evil](https://evil.example) [safe](https://safe.example)`,
+        ['https://safe.example'],
+      ],
+      [
+        'newline label is literal',
+        '[evil\nlabel](https://evil.example) [safe](https://safe.example)',
+        ['https://safe.example'],
+      ],
+      [
+        'unclosed title is literal',
+        '[evil](https://evil.example "unfinished) [safe](https://safe.example)',
+        ['https://safe.example'],
+      ],
+      [
+        'nested label and quoted title use only the URL target',
+        '[safe [nested]](https://safe.example/path_(v1) "title ) text")',
+        ['https://safe.example/path_(v1)'],
+      ],
+      [
+        'malformed comment is parsed as active markup by the renderer',
+        '正文<!--><a href="https://attacker.example/a">点击</a>',
+        ['https://attacker.example/a'],
+      ],
+      [
+        'raw text container can retain an active anchor in the renderer',
+        '<noscript><a href="https://attacker.example/a">点击</a></noscript>',
+        ['https://attacker.example/a'],
+      ],
+    ];
+    const results = await page.evaluate((matrix) => matrix.map(([name, input]) => {
+      const sink = document.getElementById('sink');
+      sink.innerHTML = window.RichTextBundle.sanitizeRichTextHtml(input);
+      return {
+        name,
+        hrefs: [...sink.querySelectorAll('a')].map((anchor) => anchor.getAttribute('href')),
+        text: sink.textContent,
+      };
+    }), cases);
+
+    for (let index = 0; index < cases.length; index += 1) {
+      assert.deepEqual(results[index].hrefs, cases[index][2], cases[index][0]);
+    }
+    assert.match(results[3].text, /safe \[nested\]/u);
+
+    const splitResults = await page.evaluate(() => ({
+      anchorLines: window.RichTextBundle.splitRichTextLines(
+        '<a href="https://safe.example/path">第一<br>第二</a>',
+      ),
+      explicitBlankLines: window.RichTextBundle.splitRichTextLines('第一<br><br>第二'),
+      emptyParagraphLines: window.RichTextBundle.splitRichTextLines('<p></p><p>第二</p>'),
+      listWithDirectText: window.RichTextBundle.splitRichTextLines('<ul>前缀<li>项目</li></ul>'),
+    }));
+    assert.equal(splitResults.anchorLines.length, 2);
+    for (const line of splitResults.anchorLines) {
+      assert.match(line, /<a href="https:\/\/safe\.example\/path"/u);
+    }
+    assert.deepEqual(splitResults.explicitBlankLines, ['第一', '', '第二']);
+    assert.deepEqual(splitResults.emptyParagraphLines, ['', '第二']);
+    assert.match(splitResults.listWithDirectText.join(''), /前缀/u);
+  } finally {
+    await browser.close();
+  }
+});
+
 const buildRichTextEditorHarness = async () => {
   const result = await build({
     stdin: {

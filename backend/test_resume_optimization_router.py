@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager, ExitStack
+from copy import deepcopy
 from datetime import datetime, timezone
 import json
 import os
@@ -27,7 +28,10 @@ _set_required_env_defaults()
 
 from app.domain.ai.runtime_budget import AiRuntimeTimeoutError  # noqa: E402
 from app.domain.ai.public_errors import AiProviderPayloadError  # noqa: E402
-from app.domain.resume_optimization import router as router_module  # noqa: E402
+from app.domain.resume_optimization import (  # noqa: E402
+    apply_service,
+    router as router_module,
+)
 from app.domain.resume_optimization.context_service import (  # noqa: E402
     OptimizationContextStaleError,
 )
@@ -38,6 +42,7 @@ from app.domain.resume_optimization.normalizers import (  # noqa: E402
 )
 from app.domain.resume_optimization.run_service import (  # noqa: E402
     OptimizationRunNotFoundError,
+    hash_canonical_json,
 )
 from app.domain.resume_optimization.schemas import (  # noqa: E402
     BankSuggestion,
@@ -45,6 +50,7 @@ from app.domain.resume_optimization.schemas import (  # noqa: E402
     OptimizationPlan,
     ResumeOptimizationAnswersRequest,
     ResumeOptimizationStartRequest,
+    ResumeOptimizationRescoreClaimRequest,
     ResumeOptimizationStatus,
 )
 from app.domain.resume_optimization.state_machine import (  # noqa: E402
@@ -139,6 +145,74 @@ def _persisted_question(question_id: str = "Q1") -> dict:
         "affects_change_ids": ["CHG_1"],
         "priority": 1,
     }
+
+
+def _preview_summary_run(
+    *,
+    targeted_value: str,
+    source_refs: list[str] | None = None,
+    questions: list[dict] | None = None,
+    answers_json: dict | None = None,
+    status: ResumeOptimizationStatus = ResumeOptimizationStatus.PREVIEW_READY,
+) -> ResumeOptimizationRun:
+    run = _run(status)
+    change = {
+        "change_id": "CHG_SUMMARY",
+        "issue_ids": ["ISSUE_1"],
+        "dimension": "内容完整性",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "服务100名用户",
+        "general_value": targeted_value,
+        "targeted_value": targeted_value,
+        "source_refs": source_refs or ["/currentResume/personal_summary"],
+        "introduced_terms": [],
+        "rationale": "使用冻结来源",
+        "expected_score_gain": 3,
+        "default_selected": True,
+        "safety_status": "allowed",
+        "safety_findings": [],
+    }
+    plan = OptimizationPlan(
+        changes=[change],
+        questions=questions or [],
+    ).model_dump(mode="json")
+    snapshot = {
+        "resume_id": str(RESUME_ID),
+        "resume_updated_at": BASE_TIME.isoformat(),
+        "evaluation_signature": "evaluation-signature",
+        "evaluation_signature_schema": "frontend_evaluation_v2",
+        "jd_signature": "jd-signature",
+        "target_role": "产品经理",
+        "evaluation": {"overallScore": 70, "issues": []},
+        "current_resume": {
+            "section_order": [],
+            "personal_summary": "服务100名用户",
+            "skills": [],
+            "experiences": {},
+        },
+        "selected_source_experiences": {},
+        "selected_master_experience_ids": [],
+        "selected_experience_links": {},
+        "bank_suggestion_candidates": [],
+        "fact_metadata": [],
+    }
+    run.before_snapshot = snapshot
+    run.source_snapshot_hash = hash_canonical_json(snapshot)
+    run.plan_json = deepcopy(plan)
+    run.result_json = deepcopy(plan)
+    run.answers_json = {} if answers_json is None else deepcopy(answers_json)
+    from semantic_review_test_support import with_supported_review
+    documents = apply_service._current_safety_source_documents(run, plan=OptimizationPlan.model_validate(plan))
+    plan["changes"] = [with_supported_review(
+        OptimizationPlan.model_validate({"changes": [item]}).changes[0], documents,
+    ).model_dump(mode="json") for item in plan["changes"]]
+    run.plan_json = deepcopy(plan)
+    run.result_json = deepcopy(plan)
+    return run
 
 
 class _Session:
@@ -680,6 +754,146 @@ class ResumeOptimizationRouterTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(canary, serialized)
         self.assertEqual(payload["plan"]["bank_suggestions"][0]["suggestion_id"], "BANK_001")
 
+    async def test_preview_read_projects_current_safety_without_mutating_run(self) -> None:
+        run = _preview_summary_run(targeted_value="服务1000名用户")
+        persisted_before = run.model_dump(mode="python")
+
+        public = router_module._run_to_read(run)
+
+        change = public.plan.changes[0]
+        self.assertEqual(change.change_id, "CHG_SUMMARY")
+        self.assertEqual(change.safety_status, "blocked")
+        self.assertFalse(change.default_selected)
+        self.assertEqual(
+            public.plan.safety_summary.blocked_change_ids,
+            ["CHG_SUMMARY"],
+        )
+        self.assertEqual(
+            public.result["safety_summary"]["blocked_change_ids"],
+            ["CHG_SUMMARY"],
+        )
+        self.assertEqual(run.model_dump(mode="python"), persisted_before)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_SUMMARY"},
+                current_resume_config={"personalSummary": "服务100名用户"},
+                current_link_overrides={},
+            )
+
+    async def test_latest_projects_current_safety_for_preview_run(self) -> None:
+        run = _preview_summary_run(targeted_value="服务1000名用户")
+        persisted_before = run.model_dump(mode="python")
+        with patch.object(
+            router_module,
+            "get_latest_run_for_resume",
+            AsyncMock(return_value=run),
+        ):
+            public = await router_module.get_latest_resume_optimization_run(
+                resume_id=str(RESUME_ID),
+                session=_Session(),
+                current_user=SimpleNamespace(id=USER_ID),
+            )
+
+        self.assertEqual(public.plan.changes[0].safety_status, "blocked")
+        self.assertFalse(public.plan.changes[0].default_selected)
+        self.assertEqual(run.model_dump(mode="python"), persisted_before)
+
+    async def test_latest_projects_unmarked_historical_preview_as_stale(self) -> None:
+        for status in (
+            ResumeOptimizationStatus.PLANNING,
+            ResumeOptimizationStatus.AWAITING_ANSWERS,
+            ResumeOptimizationStatus.PREVIEW_READY,
+        ):
+            with self.subTest(status=status.value):
+                run = _preview_summary_run(targeted_value="持续服务100名用户")
+                run.status = status.value
+                run.before_snapshot.pop("evaluation_signature_schema")
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+                persisted_before = run.model_dump(mode="python")
+                with patch.object(
+                    router_module,
+                    "get_latest_run_for_resume",
+                    AsyncMock(return_value=run),
+                ):
+                    public = await router_module.get_latest_resume_optimization_run(
+                        resume_id=str(RESUME_ID),
+                        session=_Session(),
+                        current_user=SimpleNamespace(id=USER_ID),
+                    )
+
+                self.assertEqual(public.status, ResumeOptimizationStatus.STALE)
+                self.assertEqual(run.status, status.value)
+                self.assertEqual(run.model_dump(mode="python"), persisted_before)
+
+    async def test_preview_safety_projection_accepts_safe_empty_and_answer_sources(self) -> None:
+        safe = _preview_summary_run(targeted_value="持续服务100名用户")
+        safe_public = router_module._run_to_read(safe)
+        self.assertEqual(safe.answers_json, {})
+        self.assertEqual(safe_public.plan.changes[0].safety_status, "allowed")
+
+        question = {
+            "question_id": "Q1",
+            "module_id": "current_resume",
+            "field_path": "personal_summary",
+            "text": "服务了多少用户？",
+            "reason": "确认数字事实",
+            "answer_type": "single_choice_with_text",
+            "choices": [],
+            "affects_change_ids": ["CHG_SUMMARY"],
+            "priority": 1,
+        }
+        answered = _preview_summary_run(
+            targeted_value="服务1000名用户",
+            source_refs=["/userAnswers/Q1/value"],
+            questions=[question],
+            answers_json={
+                "answers": [
+                    {
+                        "question_id": "Q1",
+                        "state": "answered",
+                        "value": "服务1000名用户",
+                    }
+                ]
+            },
+        )
+        answered_public = router_module._run_to_read(answered)
+        self.assertEqual(
+            answered_public.plan.changes[0].safety_status,
+            "allowed",
+        )
+
+    async def test_applied_read_does_not_rewrite_historical_safety(self) -> None:
+        applied = _preview_summary_run(
+            targeted_value="服务1000名用户",
+            status=ResumeOptimizationStatus.APPLIED,
+        )
+
+        public = router_module._run_to_read(applied)
+
+        self.assertEqual(public.plan.changes[0].safety_status, "allowed")
+        self.assertTrue(public.plan.changes[0].default_selected)
+
+    async def test_preview_projection_does_not_upgrade_persisted_blocked_change(self) -> None:
+        run = _preview_summary_run(targeted_value="持续服务100名用户")
+        for payload in (run.plan_json, run.result_json):
+            payload["changes"][0]["safety_status"] = "blocked"
+            payload["changes"][0]["default_selected"] = False
+            payload["changes"][0]["safety_findings"] = ["历史规则已阻断"]
+
+        public = router_module._run_to_read(run)
+
+        self.assertEqual(public.plan.changes[0].safety_status, "blocked")
+        self.assertFalse(public.plan.changes[0].default_selected)
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_SUMMARY"},
+                current_resume_config={"personalSummary": "服务100名用户"},
+                current_link_overrides={},
+            )
+
     async def test_result_serializer_normalizes_nested_extras_without_leaking(self) -> None:
         stored = _run()
         result = OptimizationPlan(
@@ -848,6 +1062,120 @@ class ResumeOptimizationRouterTests(unittest.IsolatedAsyncioTestCase):
             raised.exception.detail["code"],
             "resume_optimization_run_not_found",
         )
+
+    async def test_latest_hides_only_an_applied_run_with_diverged_content(self) -> None:
+        applied = _run(ResumeOptimizationStatus.APPLIED)
+        with (
+            patch.object(
+                router_module,
+                "get_latest_run_for_resume",
+                AsyncMock(return_value=applied),
+            ),
+            patch.object(
+                router_module,
+                "is_applied_run_resumable",
+                AsyncMock(
+                    return_value=SimpleNamespace(run=applied, is_resumable=False)
+                ),
+            ) as resumable,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await router_module.get_latest_resume_optimization_run(
+                    resume_id=str(RESUME_ID),
+                    session=_Session(),
+                    current_user=SimpleNamespace(id=USER_ID),
+                )
+
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(
+            raised.exception.detail["code"],
+            "resume_optimization_run_not_found",
+        )
+        resumable.assert_awaited_once()
+
+    async def test_latest_uses_locked_recheck_status_when_finalize_wins_race(self) -> None:
+        initially_applied = _run(ResumeOptimizationStatus.APPLIED)
+        finalized_while_rechecking = _run(ResumeOptimizationStatus.COMPLETED)
+        recheck = SimpleNamespace(
+            run=finalized_while_rechecking,
+            is_resumable=False,
+        )
+        serialized = SimpleNamespace(status=ResumeOptimizationStatus.COMPLETED)
+        with (
+            patch.object(
+                router_module,
+                "get_latest_run_for_resume",
+                AsyncMock(return_value=initially_applied),
+            ),
+            patch.object(
+                router_module,
+                "is_applied_run_resumable",
+                AsyncMock(return_value=recheck),
+            ),
+            patch.object(router_module, "_run_to_read", return_value=serialized) as read,
+        ):
+            result = await router_module.get_latest_resume_optimization_run(
+                resume_id=str(RESUME_ID),
+                session=_Session(),
+                current_user=SimpleNamespace(id=USER_ID),
+            )
+
+        self.assertIs(result, serialized)
+        read.assert_called_once_with(finalized_while_rechecking)
+
+    async def test_latest_keeps_applied_run_when_only_evaluation_save_advanced_timestamp(self) -> None:
+        applied = _run(ResumeOptimizationStatus.APPLIED)
+        applied.applied_at = BASE_TIME
+        with (
+            patch.object(
+                router_module,
+                "get_latest_run_for_resume",
+                AsyncMock(return_value=applied),
+            ),
+            patch.object(
+                router_module,
+                "is_applied_run_resumable",
+                AsyncMock(
+                    return_value=SimpleNamespace(run=applied, is_resumable=True)
+                ),
+            ),
+        ):
+            result = await router_module.get_latest_resume_optimization_run(
+                resume_id=str(RESUME_ID),
+                session=_Session(),
+                current_user=SimpleNamespace(id=USER_ID),
+            )
+
+        self.assertEqual(result.status, ResumeOptimizationStatus.APPLIED)
+
+    async def test_rescore_claim_route_is_unbilled_and_returns_authoritative_run(self) -> None:
+        claimed = _run(ResumeOptimizationStatus.APPLIED)
+        claim = AsyncMock(return_value=claimed)
+        begin = AsyncMock()
+        session = _Session()
+        payload = ResumeOptimizationRescoreClaimRequest(
+            claim_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            expected_resume_updated_at=BASE_TIME,
+        )
+        with (
+            patch.object(router_module, "claim_resume_optimization_rescore", claim),
+            patch.object(router_module.billing_service, "begin_ai_request", begin),
+        ):
+            result = await router_module.claim_resume_optimization_rescore_run(
+                run_id=str(RUN_ID),
+                payload=payload,
+                session=session,
+                current_user=SimpleNamespace(id=USER_ID),
+            )
+
+        self.assertEqual(result.status, ResumeOptimizationStatus.APPLIED)
+        claim.assert_awaited_once_with(
+            session=session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=payload,
+        )
+        begin.assert_not_awaited()
 
     async def test_owner_isolation_maps_not_found_to_stable_404(self) -> None:
         session = _Session()

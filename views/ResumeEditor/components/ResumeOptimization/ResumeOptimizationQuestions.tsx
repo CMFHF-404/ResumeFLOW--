@@ -25,6 +25,7 @@ type ResumeOptimizationQuestionsProps = {
         questionId: string,
         state: ResumeOptimizationAnswerState,
         value?: string,
+        inputSource?: ResumeOptimizationAnswerDrafts[string]['inputSource'],
     ) => void;
     onSubmit: () => unknown;
 };
@@ -89,7 +90,7 @@ export const ResumeOptimizationQuestions: React.FC<ResumeOptimizationQuestionsPr
                 <div>
                     <p className="text-sm font-bold text-slate-950 dark:text-white">补齐可验证事实</p>
                     <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                        不确定时请选择对应状态；系统不会把空缺自动当作“跳过”。
+                        不确定时可选择“无法回答”；系统不会自动替你提交空缺。
                     </p>
                 </div>
                 <p aria-live="polite" className="rounded-full bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
@@ -115,7 +116,7 @@ export const ResumeOptimizationQuestions: React.FC<ResumeOptimizationQuestionsPr
                     draft={drafts[question.questionId] ?? { state: 'answered', value: '' }}
                     persisted={persistedIds.has(question.questionId)}
                     disabled={disabled || submissionFrozen}
-                    onChange={(state, value) => onSetAnswer(question.questionId, state, value)}
+                    onChange={(state, value, inputSource) => onSetAnswer(question.questionId, state, value, inputSource)}
                 />
             ))}
         </form>

@@ -134,7 +134,10 @@ const resolveFallbackSelection = (
     fallbackIds: string[],
     preserveExplicitEmpty = false
 ) => {
-    const selection = resolveSelectionSet(ids);
+    const validIds = new Set(fallbackIds);
+    const selection = new Set(
+        [...resolveSelectionSet(ids)].filter((id) => validIds.has(id))
+    );
     if (preserveExplicitEmpty && Array.isArray(ids) && ids.length === 0) {
         return selection;
     }
@@ -147,6 +150,9 @@ const resolveExperienceSelection = (
     allItems: ResumeExperienceView[]
 ) => {
     const selection = resolveSelectionSet(ids);
+    if (Array.isArray(ids) && ids.length === 0) {
+        return selection;
+    }
     if (selection.size > 0) {
         return selection;
     }
@@ -208,7 +214,8 @@ export const buildDashboardResumePreviewState = (
     const orderedEducations = applyExplicitOrder(educationViews, (item) => item.id, orders?.educationIds);
     const selectedEduIds = resolveFallbackSelection(
         config.selection?.educationIds,
-        orderedEducations.map((item) => item.id)
+        orderedEducations.map((item) => item.id),
+        true
     );
 
     const certificationViews = certifications

@@ -65,23 +65,51 @@ const change = (
   safetyStatus,
   defaultSelected,
   actionKind,
+  beforeValue: '原内容',
   targetedValue,
+});
+
+test('answer draft hydration retains local input source without sending it to the API', async () => {
+  const { buildResumeOptimizationAnswerDrafts, buildResumeOptimizationAnswerPayload } = await importFlow();
+  const run = { id: 'input-origin-run', answers: [], plan: { questions: [{ questionId: 'q1' }] }, result: null };
+  const drafts = { q1: { state: 'answered', value: 'Yes', inputSource: 'custom' } };
+  assert.deepEqual(buildResumeOptimizationAnswerDrafts(run, run.id, drafts), drafts);
+  assert.deepEqual(buildResumeOptimizationAnswerPayload(run, drafts), [
+    { questionId: 'q1', state: 'answered', value: 'Yes' },
+  ]);
+  assert.deepEqual(buildResumeOptimizationAnswerDrafts(run, 'other-run', drafts), {
+    q1: { state: 'answered', value: '' },
+  });
+  assert.deepEqual(buildResumeOptimizationAnswerDrafts({
+    ...run, answers: [{ questionId: 'q1', state: 'answered', value: 'Server fact' }],
+  }, run.id, drafts), { q1: { state: 'answered', value: 'Server fact' } });
 });
 
 test('pure flow guards map terminal hydration, allowed selection, and busy gates', async () => {
   const {
     buildResumeOptimizationInitialAcceptedIds,
+    filterResumeOptimizationSelectableChangeIds,
+    resolveResumeOptimizationObservedRunUiState,
     resolveResumeOptimizationRunUiState,
     resolveResumeOptimizationStartAvailability,
   } = await importFlow();
 
-  for (const status of ['completed', 'cancelled', 'reverted']) {
+  for (const status of ['completed', 'cancelled', 'reverted', 'failed']) {
     assert.equal(resolveResumeOptimizationRunUiState(status, true), 'closed');
   }
   assert.equal(resolveResumeOptimizationRunUiState('preview_ready', true), 'preview');
   assert.equal(resolveResumeOptimizationRunUiState('completed', false), 'completed');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('rescoring', false), 'closed');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('completed', false), 'closed');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('failed', false), 'closed');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('stale', false), 'closed');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('rescoring', true), 'rescoring');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('completed', true), 'completed');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('failed', true), 'error');
+  assert.equal(resolveResumeOptimizationObservedRunUiState('stale', true), 'stale');
 
   const run = {
+    status: 'preview_ready',
     acceptedChangeIds: [],
     plan: { changes: [] },
     result: {
@@ -92,9 +120,87 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
       ],
     },
   };
-  assert.deepEqual(buildResumeOptimizationInitialAcceptedIds(run), ['allowed-default']);
+  assert.deepEqual(buildResumeOptimizationInitialAcceptedIds(run), []);
   run.acceptedChangeIds = ['allowed-off', 'blocked-default'];
+  run.status = 'applied';
   assert.deepEqual(buildResumeOptimizationInitialAcceptedIds(run), ['allowed-off']);
+
+  const duplicateTargetChanges = [
+    {
+      ...change('first-target', 'allowed', false),
+      moduleType: 'experience_star',
+      moduleId: 'experience-1',
+      fieldPath: 'star.a',
+    },
+    {
+      ...change('second-target', 'allowed', false),
+      moduleType: 'experience_star',
+      moduleId: 'experience-1',
+      fieldPath: 'star.a',
+    },
+    {
+      ...change('independent-target', 'allowed', false),
+      moduleType: 'experience_star',
+      moduleId: 'experience-1',
+      fieldPath: 'star.r',
+    },
+  ];
+  assert.deepEqual(
+    filterResumeOptimizationSelectableChangeIds(
+      duplicateTargetChanges,
+      ['first-target', 'independent-target', 'second-target'],
+    ),
+    ['independent-target', 'second-target'],
+  );
+
+  const aliasedPersistedTargetChanges = [
+    {
+      ...change('summary-first', 'allowed', false),
+      moduleType: 'personal_summary',
+      moduleId: 'current_resume',
+      fieldPath: 'personal_summary',
+    },
+    {
+      ...change('summary-second', 'allowed', false),
+      moduleType: 'personal_summary',
+      moduleId: 'resume',
+      fieldPath: 'personalSummary',
+    },
+    {
+      ...change('skills-first', 'allowed', false),
+      moduleType: 'skills_order',
+      moduleId: 'skills',
+      fieldPath: 'skills.order',
+    },
+    {
+      ...change('skills-second', 'allowed', false),
+      moduleType: 'skills_order',
+      moduleId: 'skills',
+      fieldPath: 'selection.skillIds',
+    },
+    {
+      ...change('sections-first', 'allowed', false),
+      moduleType: 'section_order',
+      moduleId: 'sections',
+      fieldPath: 'section_order',
+    },
+    {
+      ...change('sections-second', 'allowed', false),
+      moduleType: 'section_order',
+      moduleId: 'sections',
+      fieldPath: 'sectionOrder',
+    },
+  ];
+  assert.deepEqual(
+    filterResumeOptimizationSelectableChangeIds(
+      aliasedPersistedTargetChanges,
+      [
+        'summary-first', 'skills-first', 'sections-first',
+        'summary-second', 'skills-second', 'sections-second',
+      ],
+    ),
+    ['summary-second', 'skills-second', 'sections-second'],
+  );
 
   const ready = {
     enabled: true,
@@ -104,6 +210,8 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
     evaluationSignature: 'S1',
     persistedEvaluationSignature: 'S1',
     evaluation: { overallScore: 60 },
+    persistedEvaluation: { overallScore: 60 },
+    isJDAnalysisOutdated: false,
     isEvaluationOutdated: false,
     hasResumeVersionConflict: false,
     isEvaluationRunning: false,
@@ -122,8 +230,19 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
   }).canStart, false);
   assert.equal(resolveResumeOptimizationStartAvailability({
     ...ready,
+    persistedEvaluation: { overallScore: 59 },
+  }).canStart, false, 'same-signature reports must remain blocked until the exact evaluation is persisted');
+  assert.equal(resolveResumeOptimizationStartAvailability({
+    ...ready,
     isEvaluationOutdated: true,
   }).canStart, false);
+  assert.deepEqual(resolveResumeOptimizationStartAvailability({
+    ...ready,
+    isJDAnalysisOutdated: true,
+  }), {
+    canStart: false,
+    disabledReason: 'JD 匹配已过期，请重新进行 JD 匹配。',
+  });
   assert.equal(resolveResumeOptimizationStartAvailability({ ...ready, isPolishing: true }).canStart, false);
   assert.equal(resolveResumeOptimizationStartAvailability({ ...ready, hasResumeVersionConflict: true }).canStart, false);
 });
@@ -145,13 +264,16 @@ test('hook owns cross-render guards, hydration, complete action API, and safe cl
   );
   assert.match(hydrationBlock, /controllerRef\.current === controller/);
   assert.match(hydrationBlock, /controllerRef\.current = null/);
+  assert.match(hydrationBlock, /isResumeOptimizationRunContextCurrent\(/);
+  assert.match(hydrationBlock, /persistedEvaluation, persistedEvaluationSignature/);
+  assert.match(hook, /hasTrustedEvaluation: isResumeOptimizationEvaluationPersistedAndTrusted\(/);
   const beginBlock = hook.slice(hook.indexOf('const beginOperation'), hook.indexOf('const assertCurrent'));
   assert.match(beginBlock, /catch/);
   assert.match(beginBlock, /controllerRef\.current = null/);
 
   for (const field of [
     'uiState', 'run', 'progressText', 'error', 'answerDrafts', 'acceptedChangeIds',
-    'canStart', 'disabledReason', 'startOptimization', 'setAnswer', 'submitAnswers',
+    'canStart', 'canResumeLatestRun', 'disabledReason', 'startOptimization', 'setAnswer', 'submitAnswers',
     'toggleChange', 'applyAcceptedChanges', 'retryRescore', 'revertRun', 'cancelRun',
     'closeWorkspace', 'reopenLatestRun',
   ]) {
@@ -165,7 +287,7 @@ test('hook owns cross-render guards, hydration, complete action API, and safe cl
   assert.match(closeBlock, /preview_ready/);
   assert.match(closeBlock, /confirmCancelActiveRun/);
   assert.match(closeBlock, /cancelRun/);
-  assert.ok(closeBlock.indexOf('preview_ready') < closeBlock.indexOf('cancelRun'));
+  assert.ok(closeBlock.indexOf('confirmCancelActiveRun') < closeBlock.indexOf('preview_ready'));
 });
 
 test('enabled gates hydration and every public action without conditional hook calls', () => {
@@ -233,6 +355,7 @@ test('ResumeEditor wires the flow through the exact Task15 feature flag', () => 
   assert.match(editor, /evaluationSignature/);
   assert.match(editor, /evaluation: analysisResult\?\.resumeEvaluation \?\? null/);
   assert.match(editor, /persistedEvaluationSignature: persistedJDAnalysisSnapshot\?\.evaluationSignature \?\? null/);
+  assert.match(editor, /isJDAnalysisOutdated: isOutdated/);
   assert.match(editor, /isEvaluationOutdated/);
   assert.match(editor, /reloadResumeContext/);
   assert.match(editor, /generateEvaluation/);
@@ -375,6 +498,9 @@ test('start retries rotate only after a returned failed run and never hydrate no
   assert.equal(shouldResetResumeOptimizationStartAttempt({
     runStatus: 'failed',
   }), true);
+  for (const runStatus of ['cancelled', 'stale', 'reverted', 'completed']) {
+    assert.equal(shouldResetResumeOptimizationStartAttempt({ runStatus }), true);
+  }
   assert.equal(shouldResetResumeOptimizationStartAttempt({
     streamErrorCode: 'planning_claim_lost',
   }), false, 'ambiguous transport failures must retain the original idempotency key');
@@ -430,6 +556,56 @@ test('start retries rotate only after a returned failed run and never hydrate no
     /finally[\s\S]*startAttemptRef\.current = null/,
     'ambiguous network failures must not clear the retry key in finally',
   );
+  assert.match(startBlock, /saveResumeOptimizationStartAttempt\(authUserKey, resumeId, attempt\)/);
+  assert.match(startBlock, /clearResumeOptimizationStartAttempt\(authUserKey, resumeId\)/);
+  assert.match(
+    hook,
+    /if \(shouldResetResumeOptimizationStartAttempt\(\{ runStatus: nextRun\.status \}\)\) \{[\s\S]*?startAttemptRef\.current = null;[\s\S]*?clearResumeOptimizationStartAttempt\(authUserKey, resumeId\)/,
+    'applying an authoritative terminal run must clear its persisted start attempt',
+  );
+  assert.match(
+    hook,
+    /if \(TERMINAL_RESUME_OPTIMIZATION_STATUSES\.has\(latest\.status\)\) \{[\s\S]*?shouldResetResumeOptimizationStartAttempt\(\{ runStatus: latest\.status \}\)[\s\S]*?clearResumeOptimizationStartAttempt\(authUserKey, resumeId\)/,
+    'hydrating an authoritative cancelled run must clear its persisted start attempt',
+  );
+});
+
+test('processing hydration observes authority and planning retries survive ref loss', () => {
+  const hook = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  assert.match(hook, /RESUME_OPTIMIZATION_OBSERVED_STATUSES[\s\S]*'planning'[\s\S]*'applying'[\s\S]*'rescoring'/);
+  assert.match(hook, /storage\.setItem\(key, JSON\.stringify\(attempt\)\)/);
+  assert.match(hook, /readResumeOptimizationStartAttempt\(authUserKey, resumeId\)/);
+  assert.match(hook, /sessionStorage\.setItem\(key, claimId\.toLowerCase\(\)\)/);
+  const observerStart = hook.indexOf('RESUME_OPTIMIZATION_OBSERVED_STATUSES.has(run.status)');
+  const observer = hook.slice(observerStart, hook.indexOf('const isFlowBusy', observerStart));
+  assert.match(observer, /resumeOptimizationService\.get\(observedRunId/);
+  assert.match(observer, /setTimeout\(\(\) => void observe\(\)/);
+  assert.match(observer, /resolveResumeOptimizationObservedRunUiState\([\s\S]*authoritative\.status[\s\S]*observedRunPresentationRequestedRef\.current/);
+  const hydration = hook.slice(
+    hook.indexOf('resumeOptimizationService.getLatest(resumeId'),
+    observerStart,
+  );
+  assert.match(hydration, /!observedRunPresentationDismissedRef\.current[\s\S]*resolvedHydratedUiState !== 'closed'/);
+  const reopen = hook.slice(
+    hook.indexOf('const reopenLatestRun'),
+    hook.indexOf('return {', hook.indexOf('const reopenLatestRun')),
+  );
+  assert.match(reopen, /RESUME_OPTIMIZATION_OBSERVED_STATUSES\.has\(cachedRun\.status\)/);
+  assert.match(reopen, /resumeOptimizationService\.get\(cachedRun\.id/);
+  assert.match(reopen, /latestRunRef\.current\.status !== 'applied'/);
+  assert.match(reopen, /resumeOptimizationService\.getLatest\(resumeId/);
+  assert.match(reopen, /observedRunPresentationRequestedRef\.current = true/);
+  const close = hook.slice(
+    hook.indexOf('const closeWorkspace'),
+    hook.indexOf('const reopenLatestRun'),
+  );
+  assert.match(close, /observedRunPresentationRequestedRef\.current = false/);
+  assert.match(close, /observedRunPresentationDismissedRef\.current = true/);
+  const start = hook.slice(
+    hook.indexOf('const startOptimization'),
+    hook.indexOf('const setAnswer'),
+  );
+  assert.match(start, /observedRunPresentationRequestedRef\.current = true/);
 });
 
 test('every async operation catch drops late non-abort errors before state or toast handling', () => {
@@ -558,13 +734,21 @@ test('selectable changes match backend apply rules and same-run reopen preserves
     change('missing-target', 'allowed', true, 'rewrite_now', null),
     change('wrong-action', 'allowed', true, 'leave_unchanged', 'target'),
     change('blocked', 'blocked', true, 'rewrite_now', 'target'),
+    { ...change('unsafe-rich-text', 'allowed', true, 'rewrite_now', '完成交付'), beforeValue: '<a href="https://example.com">完成交付</a>' },
   ];
-  assert.deepEqual(changes.map(isResumeOptimizationChangeSelectable), [true, true, false, false, false]);
+  assert.deepEqual(changes.map(isResumeOptimizationChangeSelectable), [true, true, false, false, false, false]);
   assert.deepEqual(buildResumeOptimizationInitialAcceptedIds({
+    status: 'preview_ready',
     acceptedChangeIds: [],
     plan: { changes },
     result: null,
-  }), ['rewrite', 'question']);
+  }), []);
+  assert.deepEqual(buildResumeOptimizationInitialAcceptedIds({
+    status: 'applied',
+    acceptedChangeIds: ['question', 'blocked', 'rewrite'],
+    plan: { changes },
+    result: null,
+  }), ['question', 'rewrite']);
   assert.deepEqual(filterResumeOptimizationSelectableChangeIds(changes, [
     'question', 'missing-target', 'rewrite', 'question', 'unknown',
   ]), ['question', 'rewrite']);
@@ -600,7 +784,9 @@ test('reopening an externally stale cached run remains fail closed', () => {
   const applyCached = reopenBlock.indexOf('applyRunToState(latestRunRef.current');
   assert.ok(contextCheck >= 0 && contextCheck < applyCached);
   assert.match(reopenBlock, /setUiState\('stale'\)/);
-  assert.match(reopenBlock, /status === 'awaiting_answers'[\s\S]*status === 'preview_ready'/);
+  assert.match(reopenBlock, /RESUME_OPTIMIZATION_SOURCE_REPORT_STATUSES\.has/);
+  assert.match(reopenBlock, /!latestInputsRef\.current\.hasTrustedEvaluation/);
+  assert.ok((reopenBlock.match(/isResumeOptimizationRunContextCurrent\(/g) ?? []).length >= 2);
 });
 
 test('preview selections survive a same-owner top-level navigation remount', async () => {

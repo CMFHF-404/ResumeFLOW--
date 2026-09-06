@@ -88,7 +88,7 @@ def _suggestion(index: int = 1) -> BankSuggestion:
 class ResumeOptimizationEnumTests(unittest.TestCase):
     def test_public_versions_are_frozen(self) -> None:
         self.assertEqual(OPTIMIZER_VERSION, "resume_optimization_v1")
-        self.assertEqual(POLICY_VERSION, "thin_safety_v1")
+        self.assertEqual(POLICY_VERSION, "evidence_semantic_v2")
         self.assertEqual(PROMPT_VERSION, "resume_optimization_prompt_v1")
 
     def test_public_enum_values_are_exact(self) -> None:

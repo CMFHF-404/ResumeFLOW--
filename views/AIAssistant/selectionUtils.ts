@@ -361,23 +361,15 @@ export const hasResumeJDContext = (resume: Resume) => {
   if (!jdAnalysis || typeof jdAnalysis !== 'object') {
     return false;
   }
-  const jdText = typeof jdAnalysis.jdText === 'string' ? jdAnalysis.jdText.trim() : '';
-  if (jdText) {
-    return true;
-  }
-  const result = jdAnalysis.result;
-  if (!result || typeof result !== 'object') {
+  const record = jdAnalysis as Record<string, unknown>;
+  const hasInputMode = Object.hasOwn(record, 'inputMode');
+  if (hasInputMode && record.inputMode !== 'text' && record.inputMode !== 'attachment') {
     return false;
   }
-  const extractedJdText = (typeof (result as Record<string, unknown>).extractedJdText === 'string'
-    ? (result as Record<string, unknown>).extractedJdText
-    : typeof (result as Record<string, unknown>).extracted_jd_text === 'string'
-      ? (result as Record<string, unknown>).extracted_jd_text
-      : '') as string;
-  const summary = (typeof (result as Record<string, unknown>).summary === 'string'
-    ? (result as Record<string, unknown>).summary
-    : '') as string;
-  return Boolean(extractedJdText.trim() || summary.trim());
+  const sourceText = record.inputMode === 'attachment'
+    ? record.attachmentExtractedText
+    : record.jdText;
+  return typeof sourceText === 'string' && Boolean(sourceText.trim());
 };
 
 export const readMessageSelectedExperiences = (message: AssistantMessage): AssistantSelectedExperience[] => {

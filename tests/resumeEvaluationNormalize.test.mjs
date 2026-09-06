@@ -66,6 +66,22 @@ const buildEvaluation = () => ({
   topPriorities: [],
 });
 
+const addZeroPointIssue = (evaluation, overrides = {}) => {
+  const issue = {
+    issueId: 'ISSUE_001',
+    description: '需要进一步说明',
+    primaryDimension: '逻辑清晰',
+    relatedDimensions: [],
+    evidenceIds: ['E001'],
+    severity: 'low',
+    pointsNotEarned: 0,
+    ...overrides,
+  };
+  evaluation.issues = [issue];
+  evaluation.dimensions[0].issues = [issue.issueId];
+  return issue;
+};
+
 test('accepts only an arithmetically consistent fixed six-dimension evaluation', async () => {
   const { normalizeResumeEvaluation } = await importNormalizer();
   const normalized = normalizeResumeEvaluation(buildEvaluation());
@@ -143,6 +159,403 @@ test('invalid persisted evaluation cannot masquerade as a current resume score',
   assert.equal(current.resumeEvaluation.evaluationVersion, 'resume_flow_v1');
 });
 
+test('rejects evaluations whose evidence and issue references do not form a closed graph', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+
+  const unknownPositiveEvidence = buildEvaluation();
+  unknownPositiveEvidence.dimensions[0].subscores[0].evidenceIds = ['E404'];
+  assert.equal(normalizeResumeEvaluation(unknownPositiveEvidence), undefined);
+
+  const unknownDimensionIssue = buildEvaluation();
+  unknownDimensionIssue.dimensions[0].issues = ['ISSUE_404'];
+  assert.equal(normalizeResumeEvaluation(unknownDimensionIssue), undefined);
+
+  const orphanedIssue = buildEvaluation();
+  orphanedIssue.issues = [{
+    issueId: 'ISSUE_001',
+    description: '缺少量化成果',
+    primaryDimension: '逻辑清晰',
+    relatedDimensions: [],
+    evidenceIds: ['E001'],
+    severity: 'medium',
+    pointsNotEarned: 0,
+  }];
+  assert.equal(normalizeResumeEvaluation(orphanedIssue), undefined);
+
+  const unknownPriorityIssue = buildEvaluation();
+  unknownPriorityIssue.issues = [{
+    issueId: 'ISSUE_001',
+    description: '缺少量化成果',
+    primaryDimension: '逻辑清晰',
+    relatedDimensions: [],
+    evidenceIds: ['E001'],
+    severity: 'medium',
+    pointsNotEarned: 0,
+  }];
+  unknownPriorityIssue.dimensions[0].issues = ['ISSUE_001'];
+  unknownPriorityIssue.topPriorities = [{
+    priority: 1,
+    issueId: 'ISSUE_404',
+    action: '补充成果指标',
+    expectedScoreGain: 1,
+  }];
+  assert.equal(normalizeResumeEvaluation(unknownPriorityIssue), undefined);
+});
+
+test('matches backend evidence and issue-point contracts without rejecting unique legacy fact aliases', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+
+  const unverifiedPositiveEvidence = buildEvaluation();
+  unverifiedPositiveEvidence.evidence[0].verificationStatus = 'unverified';
+  assert.equal(normalizeResumeEvaluation(unverifiedPositiveEvidence), undefined);
+
+  const missingIssueForPointsNotEarned = buildEvaluation();
+  const reducedSubscore = missingIssueForPointsNotEarned.dimensions[0].subscores[0];
+  reducedSubscore.score = 24;
+  missingIssueForPointsNotEarned.dimensions[0].score = 99;
+  missingIssueForPointsNotEarned.scoreCalculation.dimensionSum = 599;
+  missingIssueForPointsNotEarned.scoreCalculation.rawAverage = 599 / 6;
+  missingIssueForPointsNotEarned.scoreCalculation.finalScore = 100;
+  missingIssueForPointsNotEarned.overallScore = 100;
+  assert.equal(normalizeResumeEvaluation(missingIssueForPointsNotEarned), undefined);
+
+  const nonzeroIssueOnPerfectDimension = buildEvaluation();
+  nonzeroIssueOnPerfectDimension.issues = [{
+    issueId: 'ISSUE_001',
+    description: '不应扣分的建议',
+    primaryDimension: '逻辑清晰',
+    relatedDimensions: [],
+    evidenceIds: ['E001'],
+    severity: 'low',
+    pointsNotEarned: 1,
+  }];
+  nonzeroIssueOnPerfectDimension.dimensions[0].issues = ['ISSUE_001'];
+  assert.equal(
+    normalizeResumeEvaluation(nonzeroIssueOnPerfectDimension)?.issues[0].pointsNotEarned,
+    0
+  );
+
+  const positiveScoreWithoutEvidence = buildEvaluation();
+  positiveScoreWithoutEvidence.dimensions[0].subscores[0].evidenceIds = [];
+  assert.equal(normalizeResumeEvaluation(positiveScoreWithoutEvidence), undefined);
+
+  const inferredPositiveEvidence = buildEvaluation();
+  inferredPositiveEvidence.evidence[0].verificationStatus = 'inferred';
+  assert.equal(normalizeResumeEvaluation(inferredPositiveEvidence), undefined);
+
+  const factAlias = buildEvaluation();
+  factAlias.dimensions[0].subscores[0].evidenceIds = ['FACT_001'];
+  factAlias.issues = [{
+    issueId: 'ISSUE_001',
+    description: '不应扣分的建议',
+    primaryDimension: '逻辑清晰',
+    relatedDimensions: [],
+    evidenceIds: ['FACT_001'],
+    severity: 'low',
+    pointsNotEarned: 0,
+  }];
+  factAlias.dimensions[0].issues = ['ISSUE_001'];
+  factAlias.riskFlags = [{
+    type: 'unverified_fact',
+    description: '需要人工复核',
+    evidenceIds: ['FACT_001'],
+  }];
+  const normalizedFactAlias = normalizeResumeEvaluation(factAlias);
+  assert.deepEqual(normalizedFactAlias?.dimensions[0].subscores[0].evidenceIds, ['E001']);
+  assert.deepEqual(normalizedFactAlias?.issues[0].evidenceIds, ['E001']);
+  assert.deepEqual(normalizedFactAlias?.riskFlags[0].evidenceIds, ['E001']);
+
+  const ambiguousFactAlias = buildEvaluation();
+  ambiguousFactAlias.dimensions[0].subscores[0].evidenceIds = ['FACT_001'];
+  ambiguousFactAlias.evidence.push({
+    ...ambiguousFactAlias.evidence[0],
+    evidenceId: 'E002',
+  });
+  assert.equal(normalizeResumeEvaluation(ambiguousFactAlias), undefined);
+});
+
+test('applies backend-legal evidence support and issue-point normalization', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+
+  const incompleteSupport = buildEvaluation();
+  incompleteSupport.evidence[0].supportedDimensions = [];
+  const normalizedSupport = normalizeResumeEvaluation(incompleteSupport);
+  assert.deepEqual(
+    normalizedSupport?.evidence[0].supportedDimensions,
+    rubric.map(([dimension]) => dimension)
+  );
+
+  const weightedIssuePoints = buildEvaluation();
+  weightedIssuePoints.dimensions[0].subscores[0].score = 23;
+  weightedIssuePoints.dimensions[0].score = 98;
+  weightedIssuePoints.scoreCalculation.dimensionSum = 598;
+  weightedIssuePoints.scoreCalculation.rawAverage = 598 / 6;
+  weightedIssuePoints.scoreCalculation.finalScore = 100;
+  weightedIssuePoints.overallScore = 100;
+  weightedIssuePoints.issues = [
+    {
+      issueId: 'ISSUE_A',
+      description: '信息顺序需要改进',
+      primaryDimension: '逻辑清晰',
+      relatedDimensions: [],
+      evidenceIds: ['E001'],
+      severity: 'medium',
+      pointsNotEarned: 1,
+    },
+    {
+      issueId: 'ISSUE_B',
+      description: '因果关系需要改进',
+      primaryDimension: '逻辑清晰',
+      relatedDimensions: [],
+      evidenceIds: ['E001'],
+      severity: 'medium',
+      pointsNotEarned: 3,
+    },
+  ];
+  weightedIssuePoints.dimensions[0].issues = ['ISSUE_A', 'ISSUE_B'];
+  const normalizedPoints = normalizeResumeEvaluation(weightedIssuePoints);
+  assert.deepEqual(
+    normalizedPoints?.issues.map((issue) => issue.pointsNotEarned),
+    [1, 1]
+  );
+
+  const primaryRepeatedAsRelated = buildEvaluation();
+  addZeroPointIssue(primaryRepeatedAsRelated, {
+    relatedDimensions: ['逻辑清晰', 'STAR应用'],
+  });
+  assert.deepEqual(
+    normalizeResumeEvaluation(primaryRepeatedAsRelated)?.issues[0].relatedDimensions,
+    ['STAR应用']
+  );
+});
+
+test('deduplicates identical issues and evidence like the backend and rejects cross-primary reuse', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+
+  const samePrimary = buildEvaluation();
+  samePrimary.dimensions[0].subscores[0].score = 23;
+  samePrimary.dimensions[0].score = 98;
+  samePrimary.scoreCalculation.dimensionSum = 598;
+  samePrimary.scoreCalculation.rawAverage = 598 / 6;
+  samePrimary.scoreCalculation.finalScore = 100;
+  samePrimary.issues = [
+    {
+      issueId: 'ISSUE_A',
+      description: '缺少结果指标',
+      primaryDimension: '逻辑清晰',
+      relatedDimensions: [],
+      evidenceIds: ['E001'],
+      severity: 'medium',
+      pointsNotEarned: 1,
+    },
+    {
+      issueId: 'ISSUE_B',
+      description: '缺少结果指标',
+      primaryDimension: '逻辑清晰',
+      relatedDimensions: [],
+      evidenceIds: ['E001'],
+      severity: 'medium',
+      pointsNotEarned: 1,
+    },
+  ];
+  samePrimary.dimensions[0].issues = ['ISSUE_A', 'ISSUE_B'];
+  samePrimary.topPriorities = [{
+    priority: 7,
+    issueId: 'ISSUE_B',
+    action: '补充成果指标',
+    expectedScoreGain: 2,
+  }];
+
+  const normalized = normalizeResumeEvaluation(samePrimary);
+  assert.deepEqual(normalized?.issues.map((issue) => issue.issueId), ['ISSUE_A']);
+  assert.equal(normalized?.issues[0].pointsNotEarned, 2);
+  assert.deepEqual(normalized?.dimensions[0].issues, ['ISSUE_A']);
+  assert.deepEqual(normalized?.topPriorities.map((priority) => ({
+    priority: priority.priority,
+    issueId: priority.issueId,
+  })), [{ priority: 1, issueId: 'ISSUE_A' }]);
+
+  const crossPrimary = buildEvaluation();
+  crossPrimary.issues = [
+    {
+      issueId: 'ISSUE_LOGIC',
+      description: '缺少结果指标',
+      primaryDimension: '逻辑清晰',
+      relatedDimensions: [],
+      evidenceIds: ['E001'],
+      severity: 'medium',
+      pointsNotEarned: 0,
+    },
+    {
+      issueId: 'ISSUE_STAR',
+      description: '缺少结果指标',
+      primaryDimension: 'STAR应用',
+      relatedDimensions: [],
+      evidenceIds: ['E001'],
+      severity: 'medium',
+      pointsNotEarned: 0,
+    },
+  ];
+  crossPrimary.dimensions[0].issues = ['ISSUE_LOGIC'];
+  crossPrimary.dimensions[1].issues = ['ISSUE_STAR'];
+  assert.equal(normalizeResumeEvaluation(crossPrimary), undefined);
+});
+
+test('fails closed on conflicting aliases and distinguishes explicit null from omission', async () => {
+  const { normalizeJDAnalysisResult, normalizeResumeEvaluation } = await importNormalizer();
+
+  const conflictingScore = buildEvaluation();
+  conflictingScore.overall_score = 99;
+  assert.equal(normalizeResumeEvaluation(conflictingScore), undefined);
+
+  const equalScoreAlias = buildEvaluation();
+  equalScoreAlias.overall_score = equalScoreAlias.overallScore;
+  assert.equal(normalizeResumeEvaluation(equalScoreAlias)?.overallScore, 100);
+
+  const nullTargetRole = buildEvaluation();
+  nullTargetRole.targetRole = null;
+  assert.equal(normalizeResumeEvaluation(nullTargetRole), undefined);
+
+  const omittedTargetRole = buildEvaluation();
+  delete omittedTargetRole.targetRole;
+  assert.equal(normalizeResumeEvaluation(omittedTargetRole)?.targetRole, '');
+
+  const nullJdMatch = buildEvaluation();
+  nullJdMatch.jdMatch = null;
+  assert.equal(normalizeResumeEvaluation(nullJdMatch)?.jdMatch, null);
+
+  const conflictingWrapper = normalizeJDAnalysisResult({
+    matchPercentage: 73,
+    jobKeywords: [],
+    missingKeywords: [],
+    summary: 'conflicting wrapper',
+    resumeEvaluation: buildEvaluation(),
+    resume_evaluation: { ...buildEvaluation(), overallScore: 99 },
+  });
+  assert.equal('resumeEvaluation' in conflictingWrapper, false);
+});
+
+test('matches backend omission and null semantics for optional evaluation fields', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+
+  const missingLocation = buildEvaluation();
+  delete missingLocation.evidence[0].location;
+  assert.equal(normalizeResumeEvaluation(missingLocation)?.evidence[0].location, '');
+
+  const nullLocation = buildEvaluation();
+  nullLocation.evidence[0].location = null;
+  assert.equal(normalizeResumeEvaluation(nullLocation), undefined);
+
+  const missingRelatedDimensions = buildEvaluation();
+  const missingRelatedIssue = addZeroPointIssue(missingRelatedDimensions);
+  delete missingRelatedIssue.relatedDimensions;
+  assert.deepEqual(
+    normalizeResumeEvaluation(missingRelatedDimensions)?.issues[0].relatedDimensions,
+    []
+  );
+
+  const nullRelatedDimensions = buildEvaluation();
+  addZeroPointIssue(nullRelatedDimensions, { relatedDimensions: null });
+  assert.deepEqual(
+    normalizeResumeEvaluation(nullRelatedDimensions)?.issues[0].relatedDimensions,
+    []
+  );
+
+  const missingPotentialDimension = buildEvaluation();
+  missingPotentialDimension.missingInformation = [{
+    field: 'metric',
+    reason: 'missing',
+    question: 'Which metric improved?',
+    potentialScoreGain: 5,
+  }];
+  assert.equal(
+    normalizeResumeEvaluation(missingPotentialDimension)
+      ?.missingInformation[0].potentialDimension,
+    ''
+  );
+
+  const nullPotentialDimension = buildEvaluation();
+  nullPotentialDimension.missingInformation = [{
+    field: 'metric',
+    reason: 'missing',
+    question: 'Which metric improved?',
+    potentialDimension: null,
+    potentialScoreGain: 5,
+  }];
+  assert.equal(normalizeResumeEvaluation(nullPotentialDimension), undefined);
+});
+
+test('fails closed instead of filtering or coercing malformed evaluation collections', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+  const cases = [
+    ['null evidence member', (evaluation) => evaluation.evidence.push(null)],
+    ['null issue member', (evaluation) => evaluation.issues.push(null)],
+    ['invalid missing-information dimension', (evaluation) => {
+      evaluation.missingInformation = [{
+        field: 'business metric',
+        reason: 'missing',
+        question: 'Which metric improved?',
+        potentialDimension: 'not-a-dimension',
+        potentialScoreGain: 5,
+      }];
+    }],
+    ['coerced missing-information gain', (evaluation) => {
+      evaluation.missingInformation = [{
+        field: 'business metric',
+        reason: 'missing',
+        question: 'Which metric improved?',
+        potentialDimension: '成果量化',
+        potentialScoreGain: '5',
+      }];
+    }],
+    ['invalid risk type', (evaluation) => {
+      evaluation.riskFlags = [{
+        type: 'invented_risk',
+        description: 'invalid',
+        evidenceIds: ['E001'],
+      }];
+    }],
+    ['malformed risk evidence reference', (evaluation) => {
+      evaluation.riskFlags = [{
+        type: 'unverified_fact',
+        description: 'review required',
+        evidenceIds: ['E001', null],
+      }];
+    }],
+    ['coerced priority rank', (evaluation) => {
+      addZeroPointIssue(evaluation);
+      evaluation.topPriorities = [{
+        priority: '1',
+        issueId: 'ISSUE_001',
+        action: 'Clarify the result',
+        expectedScoreGain: 0,
+      }];
+    }],
+    ['invalid related dimension', (evaluation) => {
+      addZeroPointIssue(evaluation, { relatedDimensions: ['not-a-dimension'] });
+    }],
+    ['missing supportedDimensions', (evaluation) => {
+      delete evaluation.evidence[0].supportedDimensions;
+    }],
+    ['invalid confidence type', (evaluation) => {
+      evaluation.evaluationConfidence = '0.82';
+    }],
+    ['excess user-claimed confidence', (evaluation) => {
+      evaluation.evaluationConfidence = 0.9;
+    }],
+  ];
+
+  for (const [label, corrupt] of cases) {
+    const evaluation = buildEvaluation();
+    corrupt(evaluation);
+    assert.equal(
+      normalizeResumeEvaluation(evaluation),
+      undefined,
+      label
+    );
+  }
+});
+
 test('JD analysis strips malformed embedded evaluations without changing JD fit', async () => {
   const { normalizeCurrentJDAnalysisResult } = await importNormalizer();
   for (const rawAverage of [1000, '100']) {
@@ -157,5 +570,86 @@ test('JD analysis strips malformed embedded evaluations without changing JD fit'
       });
     assert.equal(normalized.matchPercentage, 100);
     assert.equal('resumeEvaluation' in normalized, false);
+  }
+});
+
+test('legacy lossy repair artifacts are stripped while legitimate zero scores remain valid', async () => {
+  const { normalizeCurrentJDAnalysisResult, normalizeResumeEvaluation } = await importNormalizer();
+
+  const serverGap = buildEvaluation();
+  serverGap.issues = [{
+    issueId: 'SERVER_GAP_001',
+    description: '服务端补洞产物',
+    primaryDimension: '逻辑清晰',
+    relatedDimensions: [],
+    evidenceIds: [],
+    severity: 'high',
+    pointsNotEarned: 0,
+  }];
+  serverGap.dimensions[0].issues = ['SERVER_GAP_001'];
+  const sanitized = normalizeCurrentJDAnalysisResult({
+    matchPercentage: 73,
+    jobKeywords: ['product'],
+    missingKeywords: [],
+    summary: '保留 JD 分析',
+    resumeEvaluation: serverGap,
+  });
+  assert.equal(sanitized.matchPercentage, 73);
+  assert.equal(sanitized.summary, '保留 JD 分析');
+  assert.equal('resumeEvaluation' in sanitized, false);
+
+  const priorityFingerprint = buildEvaluation();
+  priorityFingerprint.topPriorities = [{
+    priority: 1,
+    issueId: 'SERVER_GAP_999',
+    action: '历史降级动作',
+    expectedScoreGain: 1,
+  }];
+  assert.equal(normalizeResumeEvaluation(priorityFingerprint), undefined);
+
+  const zeroWithStrength = buildEvaluation();
+  const dimension = zeroWithStrength.dimensions[0];
+  dimension.subscores.forEach((subscore) => {
+    subscore.score = 0;
+    subscore.evidenceIds = [];
+  });
+  dimension.score = 0;
+  dimension.strengths = ['与零分矛盾的亮点'];
+  dimension.issues = ['ISSUE_ZERO_SCORE'];
+  zeroWithStrength.issues = [{
+    issueId: 'ISSUE_ZERO_SCORE',
+    description: '该维度没有可计分证据',
+    primaryDimension: dimension.dimension,
+    relatedDimensions: [],
+    evidenceIds: [],
+    severity: 'high',
+    pointsNotEarned: 100,
+  }];
+  zeroWithStrength.scoreCalculation.dimensionSum = 500;
+  zeroWithStrength.scoreCalculation.rawAverage = 500 / 6;
+  zeroWithStrength.scoreCalculation.finalScore = 83;
+  zeroWithStrength.overallScore = 83;
+  assert.equal(normalizeResumeEvaluation(zeroWithStrength), undefined);
+
+  dimension.strengths = [];
+  assert.equal(normalizeResumeEvaluation(zeroWithStrength)?.dimensions[0].score, 0);
+});
+
+
+test('preserves distinct project issues and distinct evidence despite shared keywords', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+  for (const sameText of [false, true]) {
+    const value = buildEvaluation();
+    value.evidence.push({ ...value.evidence[0], evidenceId: 'E002', factId: 'FACT_002' });
+    value.issues = ['支付项目缺少结果指标', sameText ? '支付项目缺少结果指标' : '推荐项目缺少结果指标']
+      .map((description, index) => ({
+        issueId: `ISSUE_${index}`, description, primaryDimension: '逻辑清晰',
+        relatedDimensions: [], evidenceIds: [index ? 'E002' : 'E001'],
+        severity: 'medium', pointsNotEarned: 0,
+      }));
+    value.dimensions[0].issues = ['ISSUE_0', 'ISSUE_1'];
+    const normalized = normalizeResumeEvaluation(value);
+    assert.deepEqual(normalized?.issues.map(issue => issue.evidenceIds), [['E001'], ['E002']]);
+    assert.deepEqual(normalized?.dimensions[0].issues, ['ISSUE_0', 'ISSUE_1']);
   }
 });

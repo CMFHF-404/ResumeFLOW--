@@ -90,13 +90,13 @@ import {
 } from './snapshotUtils';
 import type { EditorSidebarProps } from './components/EditorSidebar';
 import EditorToolbar from './components/EditorToolbar';
-import MobileEditorHeader from './components/MobileEditorHeader';
-import ResumeEditorDesktopWorkspace from './components/ResumeEditorDesktopWorkspace';
+import ResumeEditorDesktopWorkspace, {
+    type ResumeEditorWorkspaceLayout,
+} from './components/ResumeEditorDesktopWorkspace';
 import ResumeEditorMeasurePreview from './components/ResumeEditorMeasurePreview';
 import ResumeEditorMobileDrawer from './components/ResumeEditorMobileDrawer';
 import TemplateSelectorModal from './components/TemplateSelectorModal';
 import { JDAnalysisDetailsSidebar } from './components/JDAnalysisPanel';
-import AIAssistant from '../AIAssistant';
 import type { ResumeFactorySidebarProps, ResumeFactoryTab } from './components/ResumeFactorySidebar';
 import buildExperiencePolishToolbars from './components/ExperiencePolishToolbars';
 import type { AssistantLaunchRequest } from '../AIAssistant/types';
@@ -145,8 +145,16 @@ import { useResumeEditorExperienceFocusRequest } from './hooks/useResumeEditorEx
 import { useResumeOptimizationFlow } from './hooks/useResumeOptimizationFlow';
 import { useResumeEvaluationLinkPreflight } from './hooks/useResumeEvaluationLinkPreflight';
 import { runResumeEvaluationAfterLinkPreflight } from './hooks/resumeExperienceLinkPersistence';
-import { ResumeOptimizationWorkspace } from './components/ResumeOptimization/ResumeOptimizationWorkspace';
+import { shouldRenderResumeOptimizationComparison } from './components/ResumeOptimization/optimizationDisplayUtils.mjs';
 import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
+
+const AIAssistant = React.lazy(() => import('../AIAssistant'));
+const MobileEditorHeader = React.lazy(() => import('./components/MobileEditorHeader'));
+const ResumeOptimizationWorkspace = React.lazy(async () => {
+    const module = await import('./components/ResumeOptimization/ResumeOptimizationWorkspace');
+    return { default: module.ResumeOptimizationWorkspace };
+});
+
 type ResumeEditorProps = {
     cachedResumes?: DashboardResume[];
     cachedResumesOwnerKey?: string | null;
@@ -167,6 +175,8 @@ type ResumeEditorProps = {
     } | null;
     onFocusExperienceRequestHandled?: (requestId: number) => void;
 };
+
+type RightSidebarSurface = 'assistant' | 'analysis' | 'optimization' | null;
 
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
@@ -293,8 +303,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         closeToast,
     } = useToast();
     const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
-    const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
-    const [isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen] = useState(false);
+    const [workspaceLayout, setWorkspaceLayout] = useState<ResumeEditorWorkspaceLayout>('list');
+    const [rightSidebarSurface, setRightSidebarSurface] = useState<RightSidebarSurface>(null);
+    const [isAssistantSidebarMounted, setIsAssistantSidebarMounted] = useState(false);
+    const isJDAnalysisDetailsSidebarOpen = rightSidebarSurface === 'analysis';
+    const [isResumeOptimizationLayoutTransitioning, setIsResumeOptimizationLayoutTransitioning] = useState(false);
     const resumeOptimizationReturnFocusRef = useRef<HTMLElement | null>(null);
     const resumeOptimizationShouldRestoreReportRef = useRef(false);
     const resumeOptimizationSuppressReturnFocusRef = useRef(false);
@@ -566,6 +579,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     useEffect(() => {
         setPersistedJDAnalysisSnapshot(undefined);
     }, [resumeId]);
+    useEffect(() => {
+        setAssistantSidebarLaunchRequest(null);
+        setIsAssistantSidebarMounted(false);
+        setRightSidebarSurface(null);
+        setWorkspaceLayout('list');
+        setIsResumeOptimizationLayoutTransitioning(false);
+    }, [authUserKey, resumeId]);
     const {
         jdText,
         setJdText,
@@ -593,6 +613,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isEvaluationOutdated,
         evaluationSnapshot,
         evaluationSignature,
+        evaluationJdText,
+        evaluationJdAvailable,
+        evaluationJdMatchPercentage,
+        isEvaluationJdAnalysisInputCurrent,
+        hasMissingEvaluationJdContext,
+        hasPendingJdFileSelection,
+        hasPendingJDAnalysisConflict,
+        canPersistCurrentJDAnalysis,
+        restorePendingJDAnalysisRecovery,
+        discardPendingJDAnalysisRecovery,
+        convertRestoredAttachmentToText,
         persistResumeEvaluation,
         thinkingText,
         handleStopAnalysis,
@@ -620,8 +651,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         authUserKey,
     });
     const jdPolishContext = useMemo(
-        () => buildJDPolishContext(jdText, analysisResult, isOutdated),
-        [analysisResult, isOutdated, jdText]
+        () => hasPendingJDAnalysisConflict ? '' : buildJDPolishContext(
+            evaluationJdText,
+            analysisResult,
+            isOutdated || !evaluationJdAvailable,
+        ),
+        [analysisResult, evaluationJdAvailable, evaluationJdText, hasPendingJDAnalysisConflict, isOutdated]
     );
     const hasJdContext = Boolean(jdPolishContext.trim());
     const jdCapabilityPolishContext = useMemo(
@@ -637,13 +672,42 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } = useResumeEvaluation({
         authUserKey,
         resumeId,
-        jdText,
+        jdText: evaluationJdText,
+        jdAvailable: evaluationJdAvailable,
+        jdMatchPercentage: evaluationJdMatchPercentage,
+        isJdAnalysisInputCurrent: isEvaluationJdAnalysisInputCurrent,
+        hasMissingJdContext: hasMissingEvaluationJdContext,
+        hasPendingJdFileSelection,
+        hasJdAnalysisPersistenceConflict: hasPendingJDAnalysisConflict,
+        canPersistCurrentJDAnalysis,
         jdAnalysisResult: analysisResult,
         snapshot: evaluationSnapshot,
         evaluationSignature,
+        isEvaluationOutdated,
         persistEvaluation: persistResumeEvaluation,
     });
-
+    const [isRestoredAttachmentConversionOpen, setIsRestoredAttachmentConversionOpen] = useState(false);
+    const [restoredAttachmentFullTextDraft, setRestoredAttachmentFullTextDraft] = useState('');
+    useEffect(() => {
+        if (!hasMissingAttachmentContext) {
+            setIsRestoredAttachmentConversionOpen(false);
+            setRestoredAttachmentFullTextDraft('');
+        }
+    }, [hasMissingAttachmentContext]);
+    const handleRestorePendingJDAnalysis = useCallback(() => {
+        if (hasResumeVersionConflict) return;
+        if (!window.confirm('恢复本地分析会以本地副本替换当前云端 JD 分析，是否继续？')) return;
+        if (!restorePendingJDAnalysisRecovery()) {
+            showToastError('本地 JD 分析恢复失败，请刷新后重试。');
+        }
+    }, [hasResumeVersionConflict, restorePendingJDAnalysisRecovery, showToastError]);
+    const handleDiscardPendingJDAnalysis = useCallback(() => {
+        if (hasResumeVersionConflict) return;
+        if (!window.confirm('舍弃后，本地未同步的 JD 分析副本将无法恢复，是否继续？')) return;
+        if (!discardPendingJDAnalysisRecovery()) {
+            showToastError('无法切换到云端 JD 分析，请刷新后重试。');
+        }
+    }, [discardPendingJDAnalysisRecovery, hasResumeVersionConflict, showToastError]);
     const handleReloadAfterResumeConflict = useCallback(async () => {
         if (!resumeId || !hasResumeVersionConflict) return;
         if (!window.confirm('检测到该简历已在其他页面更新。重新加载将放弃当前未保存修改，是否继续？')) {
@@ -665,17 +729,32 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setResumeExperienceMap,
     });
     const handleGenerateEvaluation = useCallback(async () => {
+        if (!canPersistCurrentJDAnalysis()) {
+            showToastError('请先处理未同步的本地 JD 分析。');
+            return { status: 'error' as const };
+        }
         try {
             return await runResumeEvaluationAfterLinkPreflight({
                 ensureLinks: ensureSelectedExperienceLinks,
                 flushConfig: flushResumeConfig,
                 generateEvaluation,
+                assertJDAnalysisCurrent: canPersistCurrentJDAnalysis,
             });
         } catch {
+            if (!canPersistCurrentJDAnalysis()) {
+                showToastError('请先处理未同步的本地 JD 分析。');
+                return { status: 'error' as const };
+            }
             showToastError('简历内容已在其他请求中更新，请刷新后再生成六维报告');
             return;
         }
-    }, [ensureSelectedExperienceLinks, flushResumeConfig, generateEvaluation, showToastError]);
+    }, [
+        canPersistCurrentJDAnalysis,
+        ensureSelectedExperienceLinks,
+        flushResumeConfig,
+        generateEvaluation,
+        showToastError,
+    ]);
     const {
         activeManualSaveDraftRef,
         appliedManualSaveDraftKeyRef,
@@ -891,6 +970,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         applyResumeDetail,
         setResumeExperienceMap,
     });
+    const resumeOptimizationToast = useMemo(() => ({
+        success: showToastSuccess,
+        error: showToastError,
+        info: showToastInfo,
+    }), [showToastError, showToastInfo, showToastSuccess]);
     const resumeOptimizationFlow = useResumeOptimizationFlow({
         enabled: RESUME_OPTIMIZATION_ENABLED,
         authUserKey,
@@ -900,6 +984,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         evaluation: analysisResult?.resumeEvaluation ?? null,
         persistedEvaluationSignature: persistedJDAnalysisSnapshot?.evaluationSignature ?? null,
         persistedEvaluation: persistedJDAnalysisSnapshot?.result.resumeEvaluation ?? null,
+        isJDAnalysisOutdated: isOutdated,
         isEvaluationOutdated,
         jdText,
         hasResumeVersionConflict,
@@ -916,14 +1001,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         generateEvaluation,
         flushResumeConfig: flushResumeConfigWithTimestamp,
         commitLatestResumeConfigIfNeeded,
-        toast: {
-            success: showToastSuccess,
-            error: showToastError,
-            info: showToastInfo,
-        },
+        toast: resumeOptimizationToast,
     });
     const isResumeOptimizationBusy = (
-        resumeOptimizationFlow.uiState === 'starting'
+        isResumeOptimizationLayoutTransitioning
+        || resumeOptimizationFlow.uiState === 'starting'
         || resumeOptimizationFlow.uiState === 'answering'
         || resumeOptimizationFlow.uiState === 'applying'
         || resumeOptimizationFlow.uiState === 'rescoring'
@@ -931,26 +1013,100 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const resumeOptimizationSkillNameById = useMemo(() => Object.fromEntries(
         skillGroups.flatMap((group) => group.skills.map((skillItem) => [skillItem.id, skillItem.name])),
     ), [skillGroups]);
+    const hasResumableResumeOptimizationRun = resumeOptimizationFlow.canResumeLatestRun;
     const handleStartResumeOptimization = useCallback(async () => {
+        if (!canPersistCurrentJDAnalysis()) {
+            showToastError('请先处理未同步的本地 JD 分析。');
+            return null;
+        }
         resumeOptimizationReturnFocusRef.current = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : null;
         resumeOptimizationShouldRestoreReportRef.current = true;
-        setIsJDAnalysisDetailsSidebarOpen(false);
-        await new Promise<void>((resolve) => {
-            window.requestAnimationFrame(() => resolve());
-        });
-        return resumeOptimizationFlow.startOptimization();
-    }, [resumeOptimizationFlow.startOptimization]);
-    const handleCloseResumeOptimization = useCallback(async () => {
-        const didClose = await resumeOptimizationFlow.closeWorkspace();
-        if (!didClose) return false;
-        if (resumeOptimizationShouldRestoreReportRef.current) {
-            setIsJDAnalysisDetailsSidebarOpen(true);
+        setIsResumeOptimizationLayoutTransitioning(true);
+        setWorkspaceLayout('ai');
+        setRightSidebarSurface('optimization');
+        try {
+            await new Promise<void>((resolve) => {
+                window.requestAnimationFrame(() => resolve());
+            });
+            if (!canPersistCurrentJDAnalysis()) {
+                showToastError('请先处理未同步的本地 JD 分析。');
+                setRightSidebarSurface(analysisResult ? 'analysis' : null);
+                setWorkspaceLayout(analysisResult ? 'ai' : 'list');
+                return null;
+            }
+            if (
+                hasResumableResumeOptimizationRun
+                && resumeOptimizationFlow.run?.status !== 'planning'
+            ) {
+                const reopenedRun = await resumeOptimizationFlow.reopenLatestRun();
+                if (!reopenedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
+                    setRightSidebarSurface(analysisResult ? 'analysis' : null);
+                    setWorkspaceLayout(analysisResult ? 'ai' : 'list');
+                }
+                return reopenedRun;
+            }
+            const startedRun = await resumeOptimizationFlow.startOptimization();
+            if (!startedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
+                setRightSidebarSurface(analysisResult ? 'analysis' : null);
+                setWorkspaceLayout(analysisResult ? 'ai' : 'list');
+            }
+            return startedRun;
+        } finally {
+            setIsResumeOptimizationLayoutTransitioning(false);
         }
+    }, [
+        analysisResult,
+        canPersistCurrentJDAnalysis,
+        hasResumableResumeOptimizationRun,
+        resumeOptimizationFlow.run?.status,
+        resumeOptimizationFlow.reopenLatestRun,
+        resumeOptimizationFlow.getLatestUiState,
+        resumeOptimizationFlow.startOptimization,
+        showToastError,
+    ]);
+    const focusRestoredAnalysisReport = useCallback(() => {
+        window.requestAnimationFrame(() => {
+            const focusTarget = Array.from(document.querySelectorAll<HTMLButtonElement>(
+                '[data-resume-optimization-focus-return="true"][aria-label="关闭分析报告"]:not([disabled])'
+            )).find((candidate) => (
+                candidate.isConnected
+                && candidate.getClientRects().length > 0
+                && !candidate.closest('[inert]')
+            ));
+            focusTarget?.focus();
+        });
+    }, []);
+    const handleCloseResumeOptimization = useCallback(async () => {
+        const shouldRestoreAnalysis = resumeOptimizationShouldRestoreReportRef.current && Boolean(analysisResult);
+        resumeOptimizationSuppressReturnFocusRef.current = shouldRestoreAnalysis;
+        const didClose = await resumeOptimizationFlow.closeWorkspace();
+        if (!didClose) {
+            resumeOptimizationSuppressReturnFocusRef.current = false;
+            return false;
+        }
+        if (!shouldRestoreAnalysis) {
+            setIsAssistantSidebarMounted(false);
+        }
+        setRightSidebarSurface(shouldRestoreAnalysis ? 'analysis' : null);
+        setWorkspaceLayout(shouldRestoreAnalysis ? 'ai' : 'list');
+        if (shouldRestoreAnalysis) focusRestoredAnalysisReport();
         resumeOptimizationShouldRestoreReportRef.current = false;
         return true;
-    }, [resumeOptimizationFlow.closeWorkspace]);
+    }, [analysisResult, focusRestoredAnalysisReport, resumeOptimizationFlow.closeWorkspace]);
+
+    const handleRevertResumeOptimization = useCallback(async () => {
+        const shouldRestoreAnalysis = resumeOptimizationShouldRestoreReportRef.current && Boolean(analysisResult);
+        resumeOptimizationSuppressReturnFocusRef.current = shouldRestoreAnalysis;
+        const revertedRun = await resumeOptimizationFlow.revertRun();
+        if (revertedRun?.status !== 'reverted') {
+            resumeOptimizationSuppressReturnFocusRef.current = false;
+            return revertedRun;
+        }
+        await handleCloseResumeOptimization();
+        return revertedRun;
+    }, [analysisResult, handleCloseResumeOptimization, resumeOptimizationFlow.revertRun]);
 
     const runResumeOptimizationNavigation = useCallback(async (navigate: () => void) => {
         if (resumeOptimizationNavigationInFlightRef.current) return false;
@@ -965,6 +1121,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
             resumeOptimizationShouldRestoreReportRef.current = false;
             resumeOptimizationReturnFocusRef.current = null;
+            setIsAssistantSidebarMounted(false);
+            setRightSidebarSurface(null);
+            setWorkspaceLayout('list');
             navigate();
             return true;
         } catch (cause) {
@@ -998,14 +1157,36 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [experience.editingExpId, runResumeOptimizationNavigation, setSidebarTab, showToastInfo]);
 
     const handleResumeOptimizationReturnToPlan = useCallback(() => {
-        void resumeOptimizationFlow.reopenLatestRun();
-    }, [resumeOptimizationFlow.reopenLatestRun]);
+        resumeOptimizationShouldRestoreReportRef.current = true;
+        setWorkspaceLayout('ai');
+        setRightSidebarSurface('optimization');
+        void (async () => {
+            const reopenedRun = await resumeOptimizationFlow.reopenLatestRun();
+            if (!reopenedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
+                setRightSidebarSurface(analysisResult ? 'analysis' : null);
+                setWorkspaceLayout(analysisResult ? 'ai' : 'list');
+            }
+        })();
+    }, [
+        analysisResult,
+        resumeOptimizationFlow.getLatestUiState,
+        resumeOptimizationFlow.reopenLatestRun,
+    ]);
 
     useEffect(() => {
-        if (resumeOptimizationFlow.uiState === 'closed') {
+        if (rightSidebarSurface === 'optimization' && workspaceLayout !== 'ai') {
+            setWorkspaceLayout('ai');
+        }
+    }, [rightSidebarSurface, workspaceLayout]);
+
+    useEffect(() => {
+        if (
+            resumeOptimizationFlow.uiState === 'closed'
+            && rightSidebarSurface !== 'optimization'
+        ) {
             resumeOptimizationShouldRestoreReportRef.current = false;
         }
-    }, [resumeOptimizationFlow.uiState]);
+    }, [resumeOptimizationFlow.uiState, rightSidebarSurface]);
 
     const commitLayoutSnapshot = useCallback((
         snapshot: LayoutSnapshot,
@@ -1068,14 +1249,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const handleAnalyzePersistedSnapshot = useCallback(async (
         options?: Parameters<typeof handleAnalyze>[0]
     ) => {
+        if (!canPersistCurrentJDAnalysis()) {
+            showToastError('请先处理未同步的本地 JD 分析。');
+            return { status: 'pending_conflict' as const };
+        }
+        stopEvaluation();
         try {
             await flushResumeConfig();
         } catch {
             showToastError('简历内容已在其他请求中更新，请刷新后再分析 JD');
             return { status: 'aborted' as const };
         }
+        if (!canPersistCurrentJDAnalysis()) {
+            showToastError('请先处理未同步的本地 JD 分析。');
+            return { status: 'pending_conflict' as const };
+        }
         return handleAnalyze(options);
-    }, [flushResumeConfig, handleAnalyze, showToastError]);
+    }, [
+        canPersistCurrentJDAnalysis,
+        flushResumeConfig,
+        handleAnalyze,
+        showToastError,
+        stopEvaluation,
+    ]);
     const {
         handleAnalyzeWithAutoName,
         invalidateJdAnalyzeWorkflow,
@@ -1091,6 +1287,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastError,
         showToastSuccess,
     });
+    const handleConfirmRestoredAttachmentConversion = useCallback(async () => {
+        if (!convertRestoredAttachmentToText(restoredAttachmentFullTextDraft)) {
+            showToastError('请先粘贴完整 JD 正文。');
+            return;
+        }
+        setIsRestoredAttachmentConversionOpen(false);
+        setRestoredAttachmentFullTextDraft('');
+        await handleAnalyzeWithAutoName();
+    }, [
+        convertRestoredAttachmentToText,
+        handleAnalyzeWithAutoName,
+        restoredAttachmentFullTextDraft,
+        showToastError,
+    ]);
     const handleStopAnalysisWithToast = useCallback(() => {
         invalidateJdAnalyzeWorkflow();
         handleStopAnalysis();
@@ -1334,15 +1544,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setExperiencePolishPreview,
         handleApplyResumeAssistantDraft,
     });
-    const handleToggleResumeAssistantSidebar = useCallback(() => {
-        if (isAssistantSidebarOpen) {
-            setAssistantSidebarLaunchRequest(null);
-            setIsAssistantSidebarOpen(false);
-            return;
-        }
+    const openResumeAssistantSidebar = useCallback(() => {
         if (!resumeId) {
             showToastInfo('请先选择或创建一份简历');
-            return;
+            return false;
         }
         assistantSidebarLaunchRequestIdRef.current += 1;
         setAssistantSidebarLaunchRequest({
@@ -1358,19 +1563,30 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             prefillResume: assistantSidebarSelectedResume ?? undefined,
             applyDraftHandler: handleApplyResumeAssistantDraft,
         });
-        setIsJDAnalysisDetailsSidebarOpen(false);
-        setIsAssistantSidebarOpen(true);
+        setIsAssistantSidebarMounted(true);
+        setRightSidebarSurface('assistant');
+        return true;
     }, [
         assistantSidebarSelectedResume,
         handleApplyResumeAssistantDraft,
-        isAssistantSidebarOpen,
         resumeId,
         resumeName,
         showToastInfo,
     ]);
-    const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
-        setIsJDAnalysisDetailsSidebarOpen(false);
+    const handleCloseAssistantSidebar = useCallback(() => {
+        setAssistantSidebarLaunchRequest(null);
+        setIsAssistantSidebarMounted(false);
+        setRightSidebarSurface(null);
+        setWorkspaceLayout('list');
     }, []);
+    const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
+        if (isAssistantSidebarMounted) {
+            setRightSidebarSurface('assistant');
+            return;
+        }
+        setRightSidebarSurface(null);
+        setWorkspaceLayout('list');
+    }, [isAssistantSidebarMounted]);
     const {
         captureReturnFocus: captureMobileAnalysisReturnFocus,
         isMobileAnalysisViewport,
@@ -1384,13 +1600,63 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             return;
         }
         captureMobileAnalysisReturnFocus();
-        setIsJDAnalysisDetailsSidebarOpen(true);
+        setRightSidebarSurface('analysis');
+        setWorkspaceLayout((currentLayout) => currentLayout === 'ai' ? 'ai' : 'triple');
     }, [analysisResult, captureMobileAnalysisReturnFocus]);
+    const shouldRestoreHydratedOptimizationWorkspace = Boolean(
+        !isMobileAnalysisViewport
+        && rightSidebarSurface === null
+        && resumeOptimizationFlow.run?.resumeId === resumeId
+        && ['planning', 'applying', 'rescoring'].includes(resumeOptimizationFlow.run?.status ?? '')
+        && isResumeOptimizationBusy
+        // closeWorkspace records an explicit dismissal as `closed`; do not steal
+        // focus or reopen a task the user intentionally left.
+        && ['starting', 'applying', 'rescoring'].includes(resumeOptimizationFlow.uiState)
+    );
     useEffect(() => {
-        if (!analysisResult) {
-            setIsJDAnalysisDetailsSidebarOpen(false);
+        if (!shouldRestoreHydratedOptimizationWorkspace) return;
+        // invalidateGeneration updates this ref synchronously. It guards the
+        // brief stale render that can otherwise follow an owner change.
+        if (resumeOptimizationFlow.getLatestUiState() !== resumeOptimizationFlow.uiState) return;
+        setWorkspaceLayout('ai');
+        setRightSidebarSurface('optimization');
+    }, [
+        resumeOptimizationFlow.getLatestUiState,
+        resumeOptimizationFlow.uiState,
+        shouldRestoreHydratedOptimizationWorkspace,
+    ]);
+    useEffect(() => {
+        if (!analysisResult && rightSidebarSurface === 'analysis') {
+            handleCloseJDAnalysisDetailsSidebar();
         }
-    }, [analysisResult]);
+    }, [analysisResult, handleCloseJDAnalysisDetailsSidebar, rightSidebarSurface]);
+    const handleWorkspaceLayoutChange = useCallback(async (nextLayout: ResumeEditorWorkspaceLayout) => {
+        if (nextLayout === workspaceLayout && (nextLayout === 'list' || rightSidebarSurface !== null)) return;
+        if (rightSidebarSurface === 'optimization') {
+            if (isResumeOptimizationBusy) return;
+            const didClose = await resumeOptimizationFlow.closeWorkspace();
+            if (!didClose) return;
+            resumeOptimizationShouldRestoreReportRef.current = false;
+            resumeOptimizationReturnFocusRef.current = null;
+        }
+        if (nextLayout === 'list') {
+            setAssistantSidebarLaunchRequest(null);
+            setIsAssistantSidebarMounted(false);
+            setRightSidebarSurface(null);
+            setWorkspaceLayout('list');
+            return;
+        }
+        setWorkspaceLayout(nextLayout);
+        if (rightSidebarSurface === null || rightSidebarSurface === 'optimization') {
+            openResumeAssistantSidebar();
+        }
+    }, [
+        isResumeOptimizationBusy,
+        openResumeAssistantSidebar,
+        resumeOptimizationFlow.closeWorkspace,
+        rightSidebarSurface,
+        workspaceLayout,
+    ]);
     const handleConsumeAssistantSidebarLaunchRequest = useCallback((requestId?: string) => {
         setAssistantSidebarLaunchRequest((current) => {
             if (!current) {
@@ -1850,6 +2116,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onProfileTabSelected: handleProfileTabSelected,
         jdPanelProps: {
             jdText,
+            jdContextText: jdPolishContext,
             analysisResult,
             isAnalyzing,
             isCollapsed: isJDCollapsed,
@@ -1950,8 +2217,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             onAutoAssemble: handleAutoAssemble,
             autoAssemblyFocusRequest: resumeOptimizationAutoAssemblyFocusRequest,
             showReturnToOptimizationPlan: (
-                resumeOptimizationFlow.uiState === 'closed'
-                && resumeOptimizationFlow.run?.status === 'preview_ready'
+                rightSidebarSurface !== 'optimization'
+                && hasResumableResumeOptimizationRun
             ),
             onReturnToOptimizationPlan: handleResumeOptimizationReturnToPlan,
             onResetRenamingCategory: resetRenamingCategory,
@@ -2057,10 +2324,40 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         skillTagSeparator,
         templatePresetMap,
     ]);
-    const isRightSidebarOpen = isAssistantSidebarOpen || isJDAnalysisDetailsSidebarOpen;
+    const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null;
+    const isAssistantSidebarActive = rightSidebarSurface === 'assistant';
+    const resumeOptimizationModuleOrder = useMemo(() => {
+        const modulesBySection = new Map<string, string[]>([
+            ['summary', ['summary']],
+            ['work', selectedWorkItems.map((item) => item.id)],
+            ['project', selectedProjectItems.map((item) => item.id)],
+            ['skills', ['skills']],
+        ]);
+        return [
+            ...sectionOrder.flatMap((sectionId) => modulesBySection.get(sectionId) ?? []),
+            'sections',
+        ];
+    }, [sectionOrder, selectedProjectItems, selectedWorkItems]);
+    const optimizationReviewPlan = resumeOptimizationFlow.run
+        ? resumeOptimizationFlow.run.result ?? resumeOptimizationFlow.run.plan
+        : null;
+    const editorPreviewPropsWithOptimization = (
+        rightSidebarSurface === 'optimization'
+        && optimizationReviewPlan
+        && !isMobileAnalysisViewport
+        && !isResumeOptimizationLayoutTransitioning
+        && shouldRenderResumeOptimizationComparison(resumeOptimizationFlow.uiState)
+    ) ? {
+            ...editorPreviewProps,
+            optimizationComparison: {
+                changes: optimizationReviewPlan.changes,
+                acceptedChangeIds: resumeOptimizationFlow.acceptedChangeIds,
+                readOnly: resumeOptimizationFlow.run?.status !== 'preview_ready',
+            },
+        } : editorPreviewProps;
     const jdAnalysisDetailsSidebarProps = analysisResult ? {
         analysisResult,
-        jdText,
+        jdText: jdPolishContext,
         isOutdated,
         isEvaluationOutdated,
         isEvaluating,
@@ -2078,39 +2375,61 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
     const rightSidebarContent = isRightSidebarOpen ? (
         <div className="relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950">
-            <div
-                aria-hidden={isJDAnalysisDetailsSidebarOpen}
-                inert={isJDAnalysisDetailsSidebarOpen ? true : undefined}
-                className={[
-                    'absolute inset-0 transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)]',
-                    isJDAnalysisDetailsSidebarOpen ? '-translate-y-4' : 'translate-y-0',
-                ].join(' ')}
-            >
-                {isAssistantSidebarOpen ? (
+            {isAssistantSidebarMounted ? (
+                <div
+                    aria-hidden={!isAssistantSidebarActive}
+                    inert={!isAssistantSidebarActive ? true : undefined}
+                    className={[
+                        'absolute inset-0 transition-[transform,opacity] duration-200 ease-out',
+                        isAssistantSidebarActive
+                            ? 'translate-y-0 opacity-100'
+                            : '-translate-y-4 opacity-0 pointer-events-none',
+                    ].join(' ')}
+                >
+                    <React.Suspense fallback={<div className="h-full w-full animate-pulse bg-slate-50 dark:bg-slate-900" aria-label="正在加载 AI 助手" />}>
                     <AIAssistant
                         authUserKey={authUserKey}
                         surface="sidebar"
                         pendingLaunchRequest={assistantSidebarLaunchRequest}
                         liveSelectedResume={assistantSidebarSelectedResume}
                         onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
-                        onClose={() => setIsAssistantSidebarOpen(false)}
+                        onClose={handleCloseAssistantSidebar}
                         onExpandToFullPage={handleExpandAssistantSidebar}
                         onOpenAnalysisDetails={analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
                     />
-                ) : null}
-            </div>
-            <div
-                aria-hidden={!isJDAnalysisDetailsSidebarOpen}
-                inert={!isJDAnalysisDetailsSidebarOpen ? true : undefined}
-                className={[
-                    'absolute inset-0 z-10 will-change-transform transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)]',
-                    isJDAnalysisDetailsSidebarOpen ? 'translate-y-0' : 'translate-y-full pointer-events-none',
-                ].join(' ')}
-            >
-                {jdAnalysisDetailsSidebarProps ? (
+                    </React.Suspense>
+                </div>
+            ) : null}
+            {jdAnalysisDetailsSidebarProps ? (
+                <div
+                    aria-hidden={!isJDAnalysisDetailsSidebarOpen}
+                    inert={!isJDAnalysisDetailsSidebarOpen ? true : undefined}
+                    className={[
+                        'absolute inset-0 transition-transform duration-200 ease-out',
+                        isJDAnalysisDetailsSidebarOpen
+                            ? 'translate-y-0'
+                            : 'translate-y-full pointer-events-none',
+                    ].join(' ')}
+                >
                     <JDAnalysisDetailsSidebar {...jdAnalysisDetailsSidebarProps} />
-                ) : null}
-            </div>
+                </div>
+            ) : null}
+            {rightSidebarSurface === 'optimization' && !isMobileAnalysisViewport ? (
+                <React.Suspense fallback={<div className="h-full w-full animate-pulse bg-slate-50 dark:bg-slate-900" aria-label="正在加载简历优化工作区" />}>
+                    <ResumeOptimizationWorkspace
+                        {...resumeOptimizationFlow}
+                        revertRun={handleRevertResumeOptimization}
+                        surface="sidebar"
+                        onRequestClose={handleCloseResumeOptimization}
+                        returnFocusRef={resumeOptimizationReturnFocusRef}
+                        suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
+                        skillNameById={resumeOptimizationSkillNameById}
+                        moduleOrder={resumeOptimizationModuleOrder}
+                        onViewExperience={handleResumeOptimizationViewExperience}
+                        onOpenAutoAssembly={handleResumeOptimizationOpenAutoAssembly}
+                    />
+                </React.Suspense>
+            ) : null}
         </div>
     ) : null;
     return (
@@ -2135,6 +2454,70 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     </button>
                 </div>
             ) : null}
+            {hasPendingJDAnalysisConflict ? (
+                <div
+                    role="alert"
+                    className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100 md:px-6"
+                >
+                    <span>检测到未同步的本地 JD 分析，暂时无法确认它基于当前云端版本。为避免覆盖或重复消耗 AI，请先选择处理方式。</span>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            disabled={hasResumeVersionConflict}
+                            onClick={handleRestorePendingJDAnalysis}
+                            className="rounded-md border border-rose-300 bg-white px-2.5 py-1 text-rose-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-400/40 dark:bg-rose-950/40 dark:text-rose-100"
+                        >
+                            恢复本地分析
+                        </button>
+                        <button
+                            type="button"
+                            disabled={hasResumeVersionConflict}
+                            onClick={handleDiscardPendingJDAnalysis}
+                            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                        >
+                            舍弃本地副本
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+            {hasMissingAttachmentContext ? (
+                <div
+                    role="alert"
+                    className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 md:px-6"
+                >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span>原 JD 附件正文不可恢复；当前输入框仅是补充说明，不会被当作完整 JD。请重新上传附件，或明确改用完整文本 JD。</span>
+                        <button
+                            type="button"
+                            onClick={() => setIsRestoredAttachmentConversionOpen((current) => !current)}
+                            className="rounded-md border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 dark:border-amber-400/40 dark:bg-amber-950/40 dark:text-amber-100"
+                        >
+                            改用完整文本 JD
+                        </button>
+                    </div>
+                    {isRestoredAttachmentConversionOpen ? (
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+                            <label className="min-w-0 flex-1">
+                                <span className="mb-1 block font-semibold">完整 JD 正文</span>
+                                <textarea
+                                    value={restoredAttachmentFullTextDraft}
+                                    onChange={(event) => setRestoredAttachmentFullTextDraft(event.target.value)}
+                                    placeholder="请在此粘贴完整 JD 正文"
+                                    className="h-24 w-full rounded-md border border-amber-300 bg-white p-2 text-xs text-slate-800 dark:border-amber-500/40 dark:bg-slate-950 dark:text-slate-100"
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                disabled={!restoredAttachmentFullTextDraft.trim()}
+                                onClick={() => void handleConfirmRestoredAttachmentConversion()}
+                                className="rounded-md bg-amber-700 px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                确认切换并重新评分
+                            </button>
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
             <div className="hidden md:block">
                 <EditorToolbar
                     isDarkMode={isDarkMode}
@@ -2153,12 +2536,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
                     isPreviewOverflowing={isPreviewOverflowing}
-                    onLaunchAssistant={handleToggleResumeAssistantSidebar}
-                    canLaunchAssistant={Boolean(resumeId && !isLoadingResume)}
-                    isAssistantSidebarOpen={isAssistantSidebarOpen}
+                    workspaceLayout={workspaceLayout}
+                    onWorkspaceLayoutChange={handleWorkspaceLayoutChange}
+                    canOpenWorkspacePanels={Boolean(resumeId && !isLoadingResume)}
+                    isWorkspaceLayoutLocked={rightSidebarSurface === 'optimization' && isResumeOptimizationBusy}
                 />
             </div>
             <div className="md:hidden">
+                <React.Suspense fallback={null}>
                     <MobileEditorHeader
                         resumeId={resumeId}
                         resumeName={resumeName}
@@ -2183,8 +2568,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isAutoAssembling={isAutoAssembling}
                     autoAssemblyFocusRequest={resumeOptimizationAutoAssemblyFocusRequest}
                     showReturnToOptimizationPlan={(
-                        resumeOptimizationFlow.uiState === 'closed'
-                        && resumeOptimizationFlow.run?.status === 'preview_ready'
+                        rightSidebarSurface !== 'optimization'
+                        && hasResumableResumeOptimizationRun
                     )}
                     onReturnToOptimizationPlan={handleResumeOptimizationReturnToPlan}
                     onCreateResume={handleCreateResume}
@@ -2218,6 +2603,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     thinkingText={thinkingText}
                     onStopAnalyze={handleStopAnalysisWithToast}
                 />
+                </React.Suspense>
             </div>
             {isJDAnalysisDetailsSidebarOpen && jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport ? (
                 <div
@@ -2244,20 +2630,26 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             <ResumeEditorDesktopWorkspace
                 factorySidebarProps={factorySidebarProps}
                 layoutAdjustProps={layoutAdjustProps}
-                previewProps={editorPreviewProps}
-                isAssistantSidebarOpen={isRightSidebarOpen}
-                assistantSidebar={rightSidebarContent}
+                previewProps={editorPreviewPropsWithOptimization}
+                layoutMode={workspaceLayout}
+                isRightSidebarOpen={isRightSidebarOpen}
+                rightSidebar={rightSidebarContent}
             />
-            {resumeOptimizationFlow.uiState !== 'closed' ? (
-                <ResumeOptimizationWorkspace
-                    {...resumeOptimizationFlow}
-                    onRequestClose={handleCloseResumeOptimization}
-                    returnFocusRef={resumeOptimizationReturnFocusRef}
-                    suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
-                    skillNameById={resumeOptimizationSkillNameById}
-                    onViewExperience={handleResumeOptimizationViewExperience}
-                    onOpenAutoAssembly={handleResumeOptimizationOpenAutoAssembly}
-                />
+            {resumeOptimizationFlow.uiState !== 'closed' && isMobileAnalysisViewport ? (
+                <React.Suspense fallback={<div className="fixed inset-0 z-[90] animate-pulse bg-white/95 dark:bg-slate-950/95" aria-label="正在加载简历优化工作区" />}>
+                    <ResumeOptimizationWorkspace
+                        {...resumeOptimizationFlow}
+                        revertRun={handleRevertResumeOptimization}
+                        surface="modal"
+                        onRequestClose={handleCloseResumeOptimization}
+                        returnFocusRef={resumeOptimizationReturnFocusRef}
+                        suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
+                        skillNameById={resumeOptimizationSkillNameById}
+                        moduleOrder={resumeOptimizationModuleOrder}
+                        onViewExperience={handleResumeOptimizationViewExperience}
+                        onOpenAutoAssembly={handleResumeOptimizationOpenAutoAssembly}
+                    />
+                </React.Suspense>
             ) : null}
             <TemplateSelectorModal
                 isOpen={isTemplateSelectorOpen}

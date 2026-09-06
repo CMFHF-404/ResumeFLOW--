@@ -9,7 +9,11 @@ import httpx
 
 from ..ai.sse_events import iter_sse_json_payloads
 from ..ai import runtime_budget
-from ..ai.llm_transport import _UsageAttempt, _build_usage_payload
+from ..ai.llm_transport import (
+    _UsageAttempt,
+    _build_gemini_generation_config,
+    _build_usage_payload,
+)
 from ..ai.public_errors import AiProviderPayloadError, AiProviderUnavailableError
 from ..ai.response_diagnostics import response_body_log_metadata
 from ..ai.upstream_response import UPSTREAM_ACCEPT_ENCODING, read_bounded_response_body
@@ -24,6 +28,7 @@ logger = logging.getLogger("app.domain.parser.parser_service")
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 GEMINI_POOL_TIMEOUT_SECONDS = 10.0
 THOUGHT_PAYLOAD_TIMEOUT_SECONDS = 180.0
+RESUME_THINKING_BUDGET_TOKENS = -1
 
 ThoughtCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
 
@@ -69,7 +74,12 @@ def _build_gemini_payload_timeout_seconds(
     return min(float(settings.ai_timeout_seconds), max_timeout_seconds)
 
 
-def _build_resume_thinking_request(cleaned_text: str, prompt: str) -> Dict[str, Any]:
+def _build_resume_thinking_request(
+    cleaned_text: str,
+    prompt: str,
+    *,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
     return {
         "systemInstruction": {
             "parts": [{"text": prompt}],
@@ -88,14 +98,11 @@ def _build_resume_thinking_request(cleaned_text: str, prompt: str) -> Dict[str, 
                 ],
             }
         ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
-            "responseMimeType": "application/json",
-            "thinkingConfig": {
-                "includeThoughts": True,
-            },
-        },
+        "generationConfig": _build_gemini_generation_config(
+            RESUME_THINKING_BUDGET_TOKENS,
+            model=model,
+            include_thoughts=True,
+        ),
     }
 
 

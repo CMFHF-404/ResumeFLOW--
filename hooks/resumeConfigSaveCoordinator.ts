@@ -2,12 +2,18 @@ export type ResumeConfigSaveOptions = {
   forceVersionCheck?: boolean;
 };
 
+type ResumeConfigSaveReceipt = {
+  resumeId: string;
+  configSignature: string;
+};
+
 type ResumeConfigSaveCoordinatorOptions<TConfig, TResult> = {
   getResumeId: () => string | null;
   getExpectedUpdatedAt: () => string | undefined;
   getLastSavedSignature: () => string | null;
   isHydrated: () => boolean;
   assertCanPersist?: () => void;
+  prepareConfig?: (resumeId: string, config: TConfig) => TConfig;
   persist: (
     resumeId: string,
     config: TConfig,
@@ -28,6 +34,7 @@ export const createResumeConfigSaveCoordinator = <TConfig, TResult>({
   getLastSavedSignature,
   isHydrated,
   assertCanPersist = () => undefined,
+  prepareConfig = (_resumeId, config) => config,
   persist,
   onSaveStart,
   onSaveSuccess,
@@ -39,13 +46,13 @@ export const createResumeConfigSaveCoordinator = <TConfig, TResult>({
   const save = (
     config: TConfig,
     { forceVersionCheck = false }: ResumeConfigSaveOptions = {}
-  ): Promise<void> => {
+  ): Promise<ResumeConfigSaveReceipt | undefined> => {
     const requestedResumeId = getResumeId();
     if (!requestedResumeId || !isHydrated()) {
-      return Promise.resolve();
+      return Promise.resolve(undefined);
     }
-    const configSignature = serialize(config);
-    const pendingKey = `${requestedResumeId}\u0000${configSignature}`;
+    const queuedConfigSignature = serialize(config);
+    const pendingKey = `${requestedResumeId}\u0000${queuedConfigSignature}`;
     const pendingForSameSnapshot = pendingKeys.get(pendingKey) ?? 0;
     pendingKeys.set(pendingKey, pendingForSameSnapshot + 1);
 
@@ -54,18 +61,22 @@ export const createResumeConfigSaveCoordinator = <TConfig, TResult>({
         return;
       }
       assertCanPersist();
+      const preparedConfig = prepareConfig(requestedResumeId, config);
+      const configSignature = serialize(preparedConfig);
+      const receipt = { resumeId: requestedResumeId, configSignature };
       const alreadySaved = configSignature === getLastSavedSignature();
       if (alreadySaved && (!forceVersionCheck || pendingForSameSnapshot > 0)) {
-        return;
+        return receipt;
       }
       onSaveStart(requestedResumeId);
       const result = await persist(
         requestedResumeId,
-        config,
+        preparedConfig,
         getExpectedUpdatedAt()
       );
       if (getResumeId() === requestedResumeId && isHydrated()) {
         onSaveSuccess(requestedResumeId, result, configSignature);
+        return receipt;
       }
     };
 

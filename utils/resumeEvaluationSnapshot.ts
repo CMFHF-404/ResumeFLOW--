@@ -52,8 +52,7 @@ const plainText = (value: unknown) => stripRichTextToText(String(value ?? "")).t
 
 const buildFactCollector = () => {
   const facts: ResumeEvaluationFactMetadata[] = [];
-  const add = (source: string, value: unknown) => {
-    const content = plainText(value);
+  const append = (source: string, content: string) => {
     if (!content) {
       return;
     }
@@ -65,7 +64,9 @@ const buildFactCollector = () => {
       confidence: 1,
     });
   };
-  return { facts, add };
+  const add = (source: string, value: unknown) => append(source, plainText(value));
+  const addNormalized = (source: string, value: string) => append(source, value);
+  return { facts, add, addNormalized };
 };
 
 const buildEvaluationExperience = (item: ResumeExperienceView) => ({
@@ -131,10 +132,12 @@ export const buildResumeEvaluationSnapshot = ({
     location: plainText(profile.location),
     linkedin: plainText(profile.linkedin),
   };
-  const { facts, add } = buildFactCollector();
+  const { facts, add, addNormalized } = buildFactCollector();
 
-  Object.entries(resumeProfile).forEach(([field, value]) => add(`resume.profile.${field}`, value));
-  add("resume.personal_summary", resolvedSummary);
+  Object.entries(resumeProfile).forEach(([field, value]) => (
+    addNormalized(`resume.profile.${field}`, value)
+  ));
+  addNormalized("resume.personal_summary", resolvedSummary);
   selectedExperiences.forEach((item, index) => {
     const base = `resume.experiences[${index}]`;
     add(`${base}.org`, item.company);

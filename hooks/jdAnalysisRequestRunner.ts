@@ -15,7 +15,11 @@ import type {
   JDAnalysisItemSignatures,
 } from "../types/analysis";
 import type { ResumeEvaluationSnapshot } from "../utils/resumeEvaluationSnapshot";
-import { canonicalStringify, splitAttachmentDerivedJdText } from "./jdAnalysisSignatureUtils";
+import {
+  canonicalStringify,
+  resolveResumeEvaluationJDContext,
+  splitAttachmentDerivedJdText,
+} from "./jdAnalysisSignatureUtils";
 import { buildPrevResultPayload, type MatchUpdateMode } from "./jdAnalysisMatchUtils";
 import { buildResumeAISnapshot } from "../utils/resumeHelpers";
 import type { AuthOwnerOptions } from "../services/apiClient";
@@ -125,6 +129,16 @@ export const runJDAnalysisRequest = async ({
       snapshot.jdText,
       snapshot.attachmentExtractedText
     );
+  const restoredAttachmentContext = !currentFile && snapshot.inputMode === "attachment"
+    ? resolveResumeEvaluationJDContext({
+      jdText: snapshot.jdText,
+      inputMode: "attachment",
+      attachmentExtractedText: snapshot.attachmentExtractedText,
+    })
+    : null;
+  if (restoredAttachmentContext?.hasMissingAttachmentText) {
+    throw new Error("Restored attachment body unavailable.");
+  }
   const handleEvent = (event: AnalyzeStreamEvent) => {
     reportStreamEvent(event, onProgress, onEvent);
   };
@@ -138,7 +152,7 @@ export const runJDAnalysisRequest = async ({
       prevExperienceText: shouldUsePrev ? prevExperienceText : undefined,
     }, handleEvent, signal, { expectedAuthCacheKey })
     : await service.analyzeJD({
-      text: snapshot.jdText,
+      text: restoredAttachmentContext?.text ?? snapshot.jdText,
       resumeText,
       prevResult: shouldUsePrev ? prevResultPayload : undefined,
       experienceText: snapshot.experienceText,
@@ -146,9 +160,11 @@ export const runJDAnalysisRequest = async ({
     }, handleEvent, signal, { expectedAuthCacheKey });
   const extractedAttachmentText = currentFile
     ? result.extractedJdText?.trim() ?? ""
-    : "";
+    : restoredAttachmentContext?.jdAvailable
+      ? snapshot.attachmentExtractedText?.trim() ?? ""
+      : "";
   const shouldPersistAttachmentAsText = Boolean(
-    currentFile && extractedAttachmentText
+    extractedAttachmentText && (currentFile || restoredAttachmentContext?.jdAvailable)
   );
 
   return {

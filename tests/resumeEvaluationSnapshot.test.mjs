@@ -201,6 +201,32 @@ test('explicitly empty personal-summary override does not fall back to the globa
   );
 });
 
+test('already-normalized profile and summary facts remain identical to their snapshot sources', async () => {
+  const { buildAnalyzePayload } = await importSnapshotUtils();
+  const literalMarkupContext = {
+    ...context,
+    profile: {
+      ...profile,
+      name: '&lt;b&gt;Literal name&lt;/b&gt;',
+    },
+    personalSummary: '&lt;i&gt;Literal summary&lt;/i&gt;',
+  };
+
+  const snapshot = buildAnalyzePayload(
+    experiences,
+    certifications,
+    skillGroups,
+    literalMarkupContext,
+  );
+  const nameFact = snapshot.fact_metadata.find((fact) => fact.source === 'resume.profile.name');
+  const summaryFact = snapshot.fact_metadata.find((fact) => fact.source === 'resume.personal_summary');
+
+  assert.equal(nameFact.content, snapshot.resume.profile.name);
+  assert.equal(summaryFact.content, snapshot.resume.personal_summary);
+  assert.equal(nameFact.content, '<b>Literal name</b>');
+  assert.equal(summaryFact.content, '<i>Literal summary</i>');
+});
+
 test('quality-only analysis cannot become JD polish or capability context', async () => {
   const {
     buildJDCapabilityContext,
@@ -244,4 +270,54 @@ test('JD fallbacks use role intent and never relabel the resume-quality summary'
   const fallbackContext = buildJDPolishContext('', result, false);
   assert.match(fallbackContext, /岗位诉求：负责从用户研究到产品落地的完整闭环。/);
   assert.doesNotMatch(fallbackContext, /简历质量良好/);
+});
+
+test('persisted attachment polish context fails closed without its body and composes restored supplements', async () => {
+  const { buildPersistedJDPolishContext } = await importAssistantContextUtils();
+  const persisted = {
+    jdText: '仅补充：需要英语沟通',
+    inputMode: 'attachment',
+    result: {
+      jobTitle: '产品经理',
+      extractedJdText: '不应作为缺失附件的隐式恢复来源',
+    },
+  };
+
+  assert.equal(buildPersistedJDPolishContext(persisted, false), '');
+  assert.equal(
+    buildPersistedJDPolishContext({
+      ...persisted,
+      attachmentExtractedText: '负责产品规划与交付',
+    }, false),
+    '负责产品规划与交付\n\n补充 JD 说明：\n仅补充：需要英语沟通',
+  );
+});
+
+test('persisted text JD never falls back to derived analysis fields', async () => {
+  const { buildPersistedJDPolishContext } = await importAssistantContextUtils();
+  const richResult = {
+    extractedJdText: 'derived JD body',
+    jobTitle: '产品经理',
+    jdInterpretation: { roleIntent: '推动产品交付' },
+  };
+
+  assert.equal(buildPersistedJDPolishContext({
+    jdText: '',
+    inputMode: 'text',
+    result: richResult,
+  }, false), '');
+  assert.equal(buildPersistedJDPolishContext({
+    jdText: 'legacy complete JD',
+    result: richResult,
+  }, false), 'legacy complete JD');
+  assert.equal(buildPersistedJDPolishContext({
+    jdText: 'stale complete JD',
+    inputMode: 'text',
+    result: richResult,
+  }, true), '');
+  assert.equal(buildPersistedJDPolishContext({
+    jdText: 'must not be trusted',
+    inputMode: 'supplement-only',
+    result: richResult,
+  }, false), '');
 });

@@ -4,6 +4,7 @@ from contextlib import contextmanager, ExitStack
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import asyncio
+import httpx
 import os
 import unittest
 import uuid
@@ -24,6 +25,7 @@ from app.domain.ai.runtime_budget import (  # noqa: E402
     AiRuntimeBudgetExceeded,
     AiRuntimeTimeoutError,
 )
+from app.domain.ai.public_errors import AiProviderUnavailableError  # noqa: E402
 from app.domain.resume_optimization import orchestrator  # noqa: E402
 from app.domain.resume_optimization.context_service import (  # noqa: E402
     FrozenOptimizationContext,
@@ -32,6 +34,9 @@ from app.domain.resume_optimization.context_service import (  # noqa: E402
 from app.domain.resume_optimization.models import ResumeOptimizationRun  # noqa: E402
 from app.domain.resume_optimization.normalizers import (  # noqa: E402
     OptimizationPlanNormalizationError,
+)
+from app.domain.resume_optimization.planner_service import (  # noqa: E402
+    OptimizationAnswerRewriteNormalizationError,
 )
 from app.domain.resume_optimization import run_service  # noqa: E402
 from app.domain.resume_optimization.run_service import (  # noqa: E402
@@ -413,8 +418,21 @@ class _RunStore:
         self.run.status = ResumeOptimizationStatus.FAILED.value
         return self.run.model_copy(deep=True)
 
+    async def record_run_stale(self, session, _user_id, _run_id, error_json):
+        session.operations.append("record_stale")
+        self.stale_calls.append(deepcopy(error_json))
+        self.run.error_json = deepcopy(error_json)
+        self.run.status = ResumeOptimizationStatus.STALE.value
+        return self.run.model_copy(deep=True)
+
 
 class ResumeOptimizationOrchestratorTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from semantic_review_test_support import supported_plan_review
+        review_patch = patch.object(orchestrator, "review_plan_semantics", supported_plan_review)
+        review_patch.start()
+        self.addCleanup(review_patch.stop)
+
     @contextmanager
     def _patch_store(self, store: _RunStore):
         patches = (
@@ -461,6 +479,7 @@ class ResumeOptimizationOrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 store.record_answer_run_claim_error,
             ),
             patch.object(orchestrator, "record_run_error", store.record_run_error),
+            patch.object(orchestrator, "record_run_stale", store.record_run_stale),
         )
         with ExitStack() as stack:
             for store_patch in patches:
@@ -1146,6 +1165,55 @@ class ResumeOptimizationOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.run.answers_json["answers"][0]["question_id"], "Q1")
         self.assertNotIn("transition_run", session.operations)
 
+    async def test_answer_rewrite_contract_failure_keeps_retryable_run_and_answer_draft(self) -> None:
+        context = _context()
+        pending = _ask_change("CHG_1", issue_id="I1", module_id="exp-a")
+        plan = OptimizationPlan(
+            changes=[pending],
+            questions=[_question("Q1", module_id="exp-a", affects=["CHG_1"])],
+        )
+        store = _RunStore(
+            _run(
+                status=ResumeOptimizationStatus.AWAITING_ANSWERS,
+                context=context,
+                plan=plan,
+            )
+        )
+        answer = OptimizationAnswer(
+            question_id="Q1",
+            state=OptimizationAnswerState.ANSWERED,
+            value="本人负责两个页面",
+        )
+        failure = OptimizationAnswerRewriteNormalizationError()
+
+        with (
+            self._patch_store(store),
+            patch.object(
+                orchestrator,
+                "build_frozen_optimization_context",
+                AsyncMock(return_value=_context()),
+            ),
+            patch.object(
+                orchestrator,
+                "rewrite_answered_modules",
+                AsyncMock(side_effect=failure),
+            ),
+            patch.object(orchestrator, "new_ai_request_id", return_value="answer-contract"),
+        ):
+            with self.assertRaises(OptimizationAnswerRewriteNormalizationError):
+                await orchestrator.answer_optimization_questions(
+                    session=_FakeSession(),
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=ResumeOptimizationAnswersRequest(answers=[answer]),
+                )
+
+        self.assertEqual(store.run.status, ResumeOptimizationStatus.AWAITING_ANSWERS.value)
+        self.assertEqual(store.run.error_json["code"], "resume_optimization_plan_invalid")
+        self.assertEqual(store.run.error_json["requestId"], "answer-contract")
+        self.assertTrue(store.run.error_json["retryable"])
+        self.assertEqual(store.run.answers_json["answers"][0]["question_id"], "Q1")
+
     async def test_cancelled_planning_propagates_without_reclassifying_run(self) -> None:
         context = _context()
         store = _RunStore(_run(context=context))
@@ -1619,6 +1687,53 @@ class ResumeOptimizationOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.run.error_json["code"], "internal_error")
         self.assertEqual(store.run.error_json["requestId"], "corrupt-run")
 
+    async def test_legacy_awaiting_answers_snapshot_becomes_stale_without_ai(self) -> None:
+        pending = _ask_change("CHG_1", issue_id="I1", module_id="exp-a")
+        plan = OptimizationPlan(
+            changes=[pending],
+            questions=[_question("Q1", module_id="exp-a", affects=["CHG_1"])],
+        )
+        legacy = _run(
+            status=ResumeOptimizationStatus.AWAITING_ANSWERS,
+            plan=plan,
+        )
+        legacy.before_snapshot.pop("evaluation_signature_schema")
+        original_answers = deepcopy(legacy.answers_json)
+        store = _RunStore(legacy)
+        session = _FakeSession()
+
+        with (
+            self._patch_store(store),
+            patch.object(
+                orchestrator,
+                "rewrite_answered_modules",
+                AsyncMock(),
+            ) as rewrite,
+        ):
+            with self.assertRaises(OptimizationContextStaleError) as caught:
+                await orchestrator.answer_optimization_questions(
+                    session=session,
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=ResumeOptimizationAnswersRequest(
+                        answers=[
+                            OptimizationAnswer(
+                                question_id="Q1",
+                                state="answered",
+                                value="must not persist",
+                            )
+                        ]
+                    ),
+                    request_id="legacy-answer",
+                )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(store.run.status, ResumeOptimizationStatus.STALE.value)
+        self.assertEqual(store.run.answers_json, original_answers)
+        self.assertEqual(store.stale_calls[0]["code"], "resume_optimization_context_stale")
+        self.assertNotIn("claim_answers", session.operations)
+        rewrite.assert_not_awaited()
+
     async def test_nonretryable_runtime_error_does_not_freeze_submitted_answer(self) -> None:
         context = _context()
         pending = _ask_change("CHG_1", issue_id="I1", module_id="exp-a")
@@ -1667,6 +1782,172 @@ class ResumeOptimizationOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.run.status, ResumeOptimizationStatus.AWAITING_ANSWERS.value)
         self.assertEqual(store.run.answers_json["answers"], [])
         self.assertEqual(store.run.error_json["code"], "ai_runtime_budget_exceeded")
+
+    async def test_provider_unavailable_retains_answers_and_awaiting_state_for_retry(self) -> None:
+        context = _context()
+        first = _ask_change("CHG_1", issue_id="I1", module_id="exp-a")
+        second = _ask_change(
+            "CHG_2",
+            issue_id="I2",
+            module_id="exp-b",
+        )
+        plan = OptimizationPlan(
+            changes=[first, second],
+            questions=[
+                _question("Q1", module_id="exp-a", affects=["CHG_1"]),
+                _question("Q2", module_id="exp-b", affects=["CHG_2"]),
+            ],
+        )
+        historical = OptimizationAnswer(
+            question_id="Q1",
+            state="answered",
+            value="本人负责两个页面",
+        )
+        submitted = OptimizationAnswer(
+            question_id="Q2",
+            state="answered",
+            value="本人负责数据平台交付",
+        )
+        store = _RunStore(
+            _run(
+                status=ResumeOptimizationStatus.AWAITING_ANSWERS,
+                context=context,
+                plan=plan,
+                answers=[historical],
+            )
+        )
+        frozen_snapshot = deepcopy(store.run.before_snapshot)
+        provider_error = AiProviderUnavailableError("private upstream failure")
+
+        with (
+            self._patch_store(store),
+            patch.object(
+                orchestrator,
+                "build_frozen_optimization_context",
+                AsyncMock(return_value=_context()),
+            ),
+            patch.object(
+                orchestrator,
+                "rewrite_answered_modules",
+                AsyncMock(side_effect=provider_error),
+            ),
+            patch.object(orchestrator, "new_ai_request_id", return_value="provider-retry"),
+        ):
+            with self.assertRaises(AiProviderUnavailableError):
+                await orchestrator.answer_optimization_questions(
+                    session=_FakeSession(),
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=ResumeOptimizationAnswersRequest(answers=[submitted]),
+                )
+
+        self.assertEqual(store.run.status, ResumeOptimizationStatus.AWAITING_ANSWERS.value)
+        self.assertEqual(store.run.before_snapshot, frozen_snapshot)
+        self.assertEqual(
+            [item["question_id"] for item in store.run.answers_json["answers"]],
+            ["Q1", "Q2"],
+        )
+        self.assertEqual(store.run.answers_json["answers"][0]["value"], historical.value)
+        self.assertEqual(store.run.answers_json["answers"][1]["value"], submitted.value)
+        self.assertEqual(store.run.error_json["code"], "ai_provider_unavailable")
+        self.assertEqual(store.run.error_json["requestId"], "provider-retry")
+        self.assertTrue(store.run.error_json["retryable"])
+
+    async def test_http_transport_failures_retain_merged_answers_for_retry(self) -> None:
+        request = httpx.Request("POST", "https://provider.example/v1/generate")
+        failures = (
+            httpx.ConnectError("private connect failure", request=request),
+            httpx.HTTPStatusError(
+                "private rate limit body",
+                request=request,
+                response=httpx.Response(429, request=request),
+            ),
+            httpx.HTTPStatusError(
+                "private provider failure body",
+                request=request,
+                response=httpx.Response(503, request=request),
+            ),
+        )
+        for provider_error in failures:
+            with self.subTest(error=type(provider_error).__name__):
+                context = _context()
+                first = _ask_change("CHG_1", issue_id="I1", module_id="exp-a")
+                second = _ask_change("CHG_2", issue_id="I2", module_id="exp-b")
+                plan = OptimizationPlan(
+                    changes=[first, second],
+                    questions=[
+                        _question("Q1", module_id="exp-a", affects=["CHG_1"]),
+                        _question("Q2", module_id="exp-b", affects=["CHG_2"]),
+                    ],
+                )
+                historical = OptimizationAnswer(
+                    question_id="Q1",
+                    state="answered",
+                    value="本人负责两个页面",
+                )
+                submitted = OptimizationAnswer(
+                    question_id="Q2",
+                    state="answered",
+                    value="本人负责数据平台交付",
+                )
+                store = _RunStore(
+                    _run(
+                        status=ResumeOptimizationStatus.AWAITING_ANSWERS,
+                        context=context,
+                        plan=plan,
+                        answers=[historical],
+                    )
+                )
+                frozen_snapshot = deepcopy(store.run.before_snapshot)
+
+                with (
+                    self._patch_store(store),
+                    patch.object(
+                        orchestrator,
+                        "build_frozen_optimization_context",
+                        AsyncMock(return_value=_context()),
+                    ),
+                    patch.object(
+                        orchestrator,
+                        "rewrite_answered_modules",
+                        AsyncMock(side_effect=provider_error),
+                    ),
+                    patch.object(
+                        orchestrator,
+                        "new_ai_request_id",
+                        return_value="transport-retry",
+                    ),
+                ):
+                    with self.assertRaises(type(provider_error)):
+                        await orchestrator.answer_optimization_questions(
+                            session=_FakeSession(),
+                            user_id=USER_ID,
+                            run_id=str(RUN_ID),
+                            payload=ResumeOptimizationAnswersRequest(
+                                answers=[submitted]
+                            ),
+                        )
+
+                self.assertEqual(
+                    store.run.status,
+                    ResumeOptimizationStatus.AWAITING_ANSWERS.value,
+                )
+                self.assertEqual(store.run.before_snapshot, frozen_snapshot)
+                self.assertEqual(
+                    [item["question_id"] for item in store.run.answers_json["answers"]],
+                    ["Q1", "Q2"],
+                )
+                self.assertEqual(
+                    store.run.error_json,
+                    {
+                        "type": "error",
+                        "code": "ai_provider_unavailable",
+                        "message": "AI provider is temporarily unavailable. Please retry.",
+                        "requestId": "transport-retry",
+                        "statusCode": 503,
+                        "retryable": True,
+                    },
+                )
 
 
 class ResumeOptimizationRunServiceTask9Tests(unittest.IsolatedAsyncioTestCase):

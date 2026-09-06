@@ -6,9 +6,14 @@ from copy import deepcopy
 import inspect
 from typing import Any
 
+import httpx
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ..ai import runtime_budget
+from ..ai.public_errors import (
+    AI_PROVIDER_UNAVAILABLE_MESSAGE,
+    AiProviderUnavailableError,
+)
 from ..ai.runtime_budget import (
     build_public_stream_error_event,
     new_ai_request_id,
@@ -16,6 +21,7 @@ from ..ai.runtime_budget import (
 from ..billing import billing_service
 from .bank_suggestion_service import build_bank_suggestions
 from .context_service import (
+    FRONTEND_EVALUATION_SIGNATURE_SCHEMA,
     FrozenOptimizationContext,
     OptimizationContextError,
     OptimizationContextStaleError,
@@ -24,6 +30,7 @@ from .context_service import (
 from .models import ResumeOptimizationRun
 from .normalizers import OptimizationPlanNormalizationError
 from .planner_service import (
+    OptimizationAnswerRewriteNormalizationError,
     plan_resume_optimization,
     rewrite_answered_modules,
 )
@@ -43,8 +50,13 @@ from .run_service import (
     record_answer_run_claim_error,
     record_planning_run_claim_terminal,
     record_run_error,
+    record_run_stale,
 )
 from .safety import verify_plan_changes
+from .semantic_review import (
+    OptimizationSemanticReviewNormalizationError,
+    review_plan_semantics,
+)
 from .schemas import (
     OptimizationAction,
     OptimizationAnswer,
@@ -140,6 +152,7 @@ _FROZEN_SNAPSHOT_KEYS = frozenset(
     {
         "resume_id",
         "resume_updated_at",
+        "evaluation_signature_schema",
         "evaluation_signature",
         "jd_signature",
         "target_role",
@@ -210,6 +223,24 @@ async def _rollback(session: AsyncSession) -> None:
 def _public_error_metadata(exc: Exception, *, request_id: str) -> dict[str, Any]:
     if isinstance(exc, runtime_budget.TERMINAL_AI_RUNTIME_ERRORS):
         return build_public_stream_error_event(exc, request_id=request_id)
+    if isinstance(exc, (OptimizationAnswerRewriteNormalizationError, OptimizationSemanticReviewNormalizationError)):
+        return {
+            "type": "error",
+            "code": exc.code,
+            "message": exc.public_message,
+            "requestId": request_id,
+            "statusCode": exc.status_code,
+            "retryable": exc.retryable,
+        }
+    if isinstance(exc, (httpx.HTTPError, AiProviderUnavailableError)):
+        return {
+            "type": "error",
+            "code": "ai_provider_unavailable",
+            "message": AI_PROVIDER_UNAVAILABLE_MESSAGE,
+            "requestId": request_id,
+            "statusCode": 503,
+            "retryable": True,
+        }
     if isinstance(exc, OptimizationContextStaleError):
         return {
             "type": "error",
@@ -231,14 +262,33 @@ def _public_error_metadata(exc: Exception, *, request_id: str) -> dict[str, Any]
 def _frozen_context_from_snapshot(
     snapshot: Mapping[str, Any],
 ) -> FrozenOptimizationContext:
-    if not isinstance(snapshot, Mapping) or set(snapshot) != _FROZEN_SNAPSHOT_KEYS:
+    if not isinstance(snapshot, Mapping):
         raise OptimizationPlanNormalizationError(
             "persisted optimization snapshot has an invalid shape"
+        )
+    snapshot_keys = set(snapshot)
+    if snapshot_keys == _FROZEN_SNAPSHOT_KEYS - {"evaluation_signature_schema"}:
+        raise OptimizationContextStaleError(
+            "The frozen optimization source predates the current signature contract"
+        )
+    if snapshot_keys != _FROZEN_SNAPSHOT_KEYS:
+        raise OptimizationPlanNormalizationError(
+            "persisted optimization snapshot has an invalid shape"
+        )
+    if (
+        snapshot.get("evaluation_signature_schema")
+        != FRONTEND_EVALUATION_SIGNATURE_SCHEMA
+    ):
+        raise OptimizationPlanNormalizationError(
+            "persisted optimization snapshot has an invalid signature schema"
         )
     try:
         return FrozenOptimizationContext(
             resume_id=str(snapshot["resume_id"]),
             resume_updated_at=str(snapshot["resume_updated_at"]),
+            evaluation_signature_schema=str(
+                snapshot["evaluation_signature_schema"]
+            ),
             evaluation_signature=str(snapshot["evaluation_signature"]),
             jd_signature=str(snapshot["jd_signature"]),
             target_role=str(snapshot["target_role"]),
@@ -492,6 +542,7 @@ async def _record_failed_and_commit(
     await _commit(session)
 
 
+@runtime_budget.ai_deadline_scoped
 async def create_optimization_plan(
     *,
     session: AsyncSession,
@@ -607,6 +658,9 @@ async def create_optimization_plan(
             node="verify_changes",
             title=_PLAN_PROGRESS_TITLES["verify_changes"],
             request_id=resolved_request_id,
+        )
+        model_plan = await review_plan_semantics(
+            plan=model_plan, source_documents=frozen.source_documents,
         )
         verified_changes, safety_summary = verify_plan_changes(
             plan=model_plan,
@@ -740,6 +794,7 @@ async def create_optimization_plan(
         raise
 
 
+@runtime_budget.ai_deadline_scoped
 async def answer_optimization_questions(
     *,
     session: AsyncSession,
@@ -777,6 +832,16 @@ async def answer_optimization_questions(
             raise OptimizationPlanNormalizationError(
                 "persisted answers reference unknown questions"
             )
+    except OptimizationContextStaleError as exc:
+        await _rollback(session)
+        await record_run_stale(
+            session,
+            user_id,
+            run_id,
+            _public_error_metadata(exc, request_id=resolved_request_id),
+        )
+        await _commit(session)
+        raise
     except Exception as exc:
         await _record_failed_and_commit(
             session=session,
@@ -1006,11 +1071,12 @@ async def answer_optimization_questions(
             )
             # Recheck only newly replaced changes.  Untouched blocked changes
             # retain their original blocked status and explanatory findings.
+            reviewed_rewrites = await review_plan_semantics(
+                plan=OptimizationPlan(changes=rewrites, questions=existing_plan.questions),
+                source_documents=_answer_documents(frozen, merged_answers),
+            )
             verified_rewrites, _ = verify_plan_changes(
-                plan=OptimizationPlan(
-                    changes=rewrites,
-                    questions=existing_plan.questions,
-                ),
+                plan=reviewed_rewrites,
                 source_documents=_answer_documents(frozen, merged_answers),
             )
 
@@ -1128,6 +1194,44 @@ async def answer_optimization_questions(
     except OptimizationAnswerValidationError:
         # The claim was explicitly released by the validation race path above.
         # A client conflict must not terminalize the server-owned run.
+        raise
+    except (OptimizationAnswerRewriteNormalizationError, OptimizationSemanticReviewNormalizationError) as exc:
+        await _rollback(session)
+        await record_answer_run_claim_error(
+            session,
+            user_id,
+            run_id,
+            claim_id=resolved_request_id,
+            answers_json={
+                "answers": [
+                    answer.model_dump(mode="json") for answer in merged_answers
+                ]
+            },
+            error_json=_public_error_metadata(
+                exc,
+                request_id=resolved_request_id,
+            ),
+        )
+        await _commit(session)
+        raise
+    except (httpx.HTTPError, AiProviderUnavailableError) as exc:
+        await _rollback(session)
+        await record_answer_run_claim_error(
+            session,
+            user_id,
+            run_id,
+            claim_id=resolved_request_id,
+            answers_json={
+                "answers": [
+                    answer.model_dump(mode="json") for answer in merged_answers
+                ]
+            },
+            error_json=_public_error_metadata(
+                exc,
+                request_id=resolved_request_id,
+            ),
+        )
+        await _commit(session)
         raise
     except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
         await _rollback(session)

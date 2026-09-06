@@ -278,7 +278,33 @@ test('start and answer use exact stream paths, snake-case bodies, owner guard, s
   assert.equal(answerCall.expectedAuthCacheKey, 'owner-a');
 });
 
-test('all six non-stream methods use exact wrappers and forward signal plus expected owner', async () => {
+test('answer rewrite contract failures surface a safe Chinese retry message', async () => {
+  const harness = makeHarness();
+  harness.streamEvents = [{
+    type: 'error',
+    code: 'resume_optimization_plan_invalid',
+    message: 'private provider payload',
+    statusCode: 502,
+    retryable: true,
+    requestId: 'answer-contract',
+  }];
+  const { resumeOptimizationService, ResumeOptimizationServiceError } = await importService(harness);
+
+  await assert.rejects(
+    resumeOptimizationService.answer(
+      RUN_ID,
+      { answers: [{ questionId: 'Q1', state: 'answered', value: '补充内容' }] },
+      { expectedAuthCacheKey: 'owner-a' },
+    ),
+    (error) => error instanceof ResumeOptimizationServiceError
+      && error.code === 'resume_optimization_plan_invalid'
+      && error.message === 'AI 返回的优化结果结构异常，请重试。'
+      && error.retryable === true
+      && error.requestId === 'answer-contract',
+  );
+});
+
+test('all seven non-stream methods use exact wrappers and forward signal plus expected owner', async () => {
   const harness = makeHarness();
   const { resumeOptimizationService } = await importService(harness);
   const controller = new AbortController();
@@ -288,6 +314,7 @@ test('all six non-stream methods use exact wrappers and forward signal plus expe
     wireRun(),
     wireRun(),
     { run: appliedRun, resume_updated_at: '2026-09-01T03:05:00Z', applied_change_ids: ['CHG_1'] },
+    wireRun({ status: 'applied', accepted_change_ids: ['CHG_1'] }),
     { run: wireRun() },
     { run: wireRun({ status: 'reverted' }), resume_updated_at: '2026-09-01T03:15:00Z' },
     wireRun({ status: 'cancelled' }),
@@ -300,14 +327,22 @@ test('all six non-stream methods use exact wrappers and forward signal plus expe
     { acceptedChangeIds: ['CHG_1'], expectedResumeUpdatedAt: '2026-09-01T03:04:00Z' },
     common,
   );
+  await resumeOptimizationService.claimRescore(
+    RUN_ID,
+    {
+      claimId: IDEMPOTENCY_KEY,
+      expectedResumeUpdatedAt: '2026-09-01T03:04:00Z',
+    },
+    common,
+  );
   await resumeOptimizationService.finalize(
     RUN_ID,
-    { expectedResumeUpdatedAt: '2026-09-01T03:05:00Z' },
+    { expectedResumeUpdatedAt: '2026-09-01T03:05:00Z', claimId: IDEMPOTENCY_KEY },
     common,
   );
   await resumeOptimizationService.revert(
     RUN_ID,
-    { expectedResumeUpdatedAt: '2026-09-01T03:10:00Z' },
+    { expectedResumeUpdatedAt: '2026-09-01T03:10:00Z', claimId: IDEMPOTENCY_KEY },
     common,
   );
   await resumeOptimizationService.cancel(RUN_ID, common);
@@ -318,6 +353,7 @@ test('all six non-stream methods use exact wrappers and forward signal plus expe
       ['get', `/api/resume-optimizations/${RUN_ID}`],
       ['get', '/api/resume-optimizations/latest'],
       ['post', `/api/resume-optimizations/${RUN_ID}/apply`],
+      ['post', `/api/resume-optimizations/${RUN_ID}/rescore-claim`],
       ['post', `/api/resume-optimizations/${RUN_ID}/finalize`],
       ['post', `/api/resume-optimizations/${RUN_ID}/revert`],
       ['post', `/api/resume-optimizations/${RUN_ID}/cancel`],
@@ -336,12 +372,18 @@ test('all six non-stream methods use exact wrappers and forward signal plus expe
     expected_resume_updated_at: '2026-09-01T03:04:00.000Z',
   });
   assert.deepEqual(harness.apiCalls[3].args[1], {
-    expected_resume_updated_at: '2026-09-01T03:05:00.000Z',
+    claim_id: IDEMPOTENCY_KEY,
+    expected_resume_updated_at: '2026-09-01T03:04:00.000Z',
   });
   assert.deepEqual(harness.apiCalls[4].args[1], {
-    expected_resume_updated_at: '2026-09-01T03:10:00.000Z',
+    expected_resume_updated_at: '2026-09-01T03:05:00.000Z',
+    claim_id: IDEMPOTENCY_KEY,
   });
-  assert.equal(harness.apiCalls[5].args[1], undefined);
+  assert.deepEqual(harness.apiCalls[5].args[1], {
+    expected_resume_updated_at: '2026-09-01T03:10:00.000Z',
+    claim_id: IDEMPOTENCY_KEY,
+  });
+  assert.equal(harness.apiCalls[6].args[1], undefined);
   assert.deepEqual(
     harness.versionRecords.map((args) => args.slice(0, 2)),
     [
@@ -479,7 +521,7 @@ test('preserves stream and HTTP error metadata while passing Abort/Auth errors t
   await assert.rejects(
     resumeOptimizationService.finalize(
       RUN_ID,
-      { expectedResumeUpdatedAt: '2026-09-01T03:10:00Z' },
+      { expectedResumeUpdatedAt: '2026-09-01T03:10:00Z', claimId: IDEMPOTENCY_KEY },
     ),
     (error) => error instanceof ResumeOptimizationServiceError
       && error.code === 'auth_dependency_unavailable'
@@ -884,10 +926,10 @@ test('stream helper reports malformed NDJSON without logging parser details or r
   }
 });
 
-test('service source exposes all eight methods and never applies through resumeService.update', async () => {
+test('service source exposes all nine methods and never applies through resumeService.update', async () => {
   const source = await readFile('services/resumeOptimizationService.ts', 'utf8');
 
-  for (const method of ['start', 'answer', 'get', 'getLatest', 'apply', 'finalize', 'revert', 'cancel']) {
+  for (const method of ['start', 'answer', 'get', 'getLatest', 'apply', 'claimRescore', 'finalize', 'revert', 'cancel']) {
     assert.match(source, new RegExp(`\\b${method}\\s*\\(`));
   }
   assert.match(source, /postStreamRequest/);

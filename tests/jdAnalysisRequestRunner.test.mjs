@@ -152,6 +152,71 @@ test('runs attachment JD analysis with supplemental text and persisted extracted
   assert.equal(output.shouldPersistAttachmentAsText, true);
 });
 
+test('restored attachment analysis sends canonical recovered text and preserves it for text-mode persistence', async () => {
+  const { runJDAnalysisRequest } = await importJDAnalysisRequestRunner();
+  const calls = [];
+  const service = {
+    analyzeJD: async (params) => {
+      calls.push(params);
+      return buildResult();
+    },
+    analyzeJDWithAttachment: async () => {
+      throw new Error('a restored attachment must use the recovered text route');
+    },
+  };
+
+  const output = await runJDAnalysisRequest({
+    snapshot: buildSnapshot({
+      jdText: '需要英语流利',
+      jdFile: null,
+      inputMode: 'attachment',
+      attachmentName: 'restored.pdf',
+      attachmentExtractedText: '完整附件 JD 正文',
+    }),
+    mode: 'full',
+    analysisContext: null,
+    analysisResult: null,
+    service,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].text, '完整附件 JD 正文\n\n补充 JD 说明：\n需要英语流利');
+  assert.equal(output.currentFile, null);
+  assert.equal(output.attachmentSupplementalJdText, '需要英语流利');
+  assert.equal(output.extractedAttachmentText, '完整附件 JD 正文');
+  assert.equal(output.shouldPersistAttachmentAsText, true);
+});
+
+test('restored attachment without a recoverable body fails before either provider is called', async () => {
+  const { runJDAnalysisRequest } = await importJDAnalysisRequestRunner();
+  let providerCalls = 0;
+  const service = {
+    analyzeJD: async () => {
+      providerCalls += 1;
+      return buildResult();
+    },
+    analyzeJDWithAttachment: async () => {
+      providerCalls += 1;
+      return buildResult();
+    },
+  };
+
+  await assert.rejects(() => runJDAnalysisRequest({
+    snapshot: buildSnapshot({
+      jdText: '仅补充说明',
+      jdFile: null,
+      inputMode: 'attachment',
+      attachmentName: 'missing.pdf',
+      attachmentExtractedText: null,
+    }),
+    mode: 'full',
+    analysisContext: null,
+    analysisResult: null,
+    service,
+  }), /attachment body/i);
+  assert.equal(providerCalls, 0);
+});
+
 test('partial analysis sends previous result only when context and result are available', async () => {
   const { runJDAnalysisRequest } = await importJDAnalysisRequestRunner();
   const calls = [];
