@@ -31,8 +31,11 @@ from ..ai.runtime_budget import (
     ai_wall_clock_limited,
 )
 from ..ai.streaming_policy import (
+    AI_ROUTE_PROFILE_OPENAI,
+    AI_ROUTE_PROFILE_QWEN,
     has_qwen_thinking_provider,
     has_thinking_stream_provider,
+    resolve_route_profile,
     resolve_thinking_model_name,
 )
 from .chunking import (
@@ -448,6 +451,7 @@ def _build_resume_thinking_request(cleaned_text: str) -> Dict[str, Any]:
     return thinking_transport._build_resume_thinking_request(
         cleaned_text,
         RESUME_PARSING_PROMPT,
+        model=str(getattr(settings, "gemini_model", "") or ""),
     )
 
 
@@ -461,7 +465,8 @@ async def _stream_resume_thinking_parse(
     request_id: Optional[str],
     thought_callback: ThoughtCallback = None,
 ) -> Dict[str, Any]:
-    if _has_qwen_thinking_provider():
+    route_profile = resolve_route_profile(settings)
+    if route_profile in {AI_ROUTE_PROFILE_OPENAI, AI_ROUTE_PROFILE_QWEN}:
         call_start = perf_counter()
         result = await _stream_thinking_json_response(
             system_prompt=RESUME_PARSING_PROMPT,
@@ -484,7 +489,7 @@ async def _stream_resume_thinking_parse(
             call_ms,
             request_id,
             {
-                "mode": "qwen_thinking",
+                "mode": f"{route_profile}_thinking",
                 "input_length": len(cleaned_text),
             },
         )

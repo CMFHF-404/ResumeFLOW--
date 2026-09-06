@@ -2,13 +2,14 @@ import React, { useMemo } from 'react';
 import { CheckCircle2, LockKeyhole } from 'lucide-react';
 
 import type { ResumeOptimizationChange } from '../../../../types/resumeOptimization';
-import { isResumeOptimizationChangeSelectable } from '../../hooks/useResumeOptimizationFlow';
 import {
     buildResumeOptimizationChangePreview,
+    buildResumeOptimizationSafetyFindingCopy,
     formatResumeOptimizationDimensionLabel,
     formatResumeOptimizationModuleLabel,
     formatResumeOptimizationSourceLabel,
     formatResumeOptimizationUserCopy,
+    isResumeOptimizationChangeReviewable as isResumeOptimizationChangeSelectable,
 } from './optimizationDisplayUtils.mjs';
 
 type ResumeOptimizationDiffCardProps = {
@@ -17,6 +18,7 @@ type ResumeOptimizationDiffCardProps = {
     readOnly: boolean;
     skillNameById: Record<string, string>;
     onToggleChange: (changeId: string) => void;
+    surface?: 'modal' | 'sidebar';
 };
 
 const ValuePanel: React.FC<{
@@ -30,14 +32,14 @@ const ValuePanel: React.FC<{
         className={[
             'min-w-0 rounded-xl border p-3.5',
             tone === 'before'
-                ? 'border-slate-200 bg-slate-100/75 dark:border-slate-700 dark:bg-slate-900/80'
+                ? 'border-amber-200 bg-amber-50/80 dark:border-amber-900/70 dark:bg-amber-950/30'
                 : 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/70 dark:bg-emerald-950/30',
         ].join(' ')}
     >
         <p className={[
             'text-[10px] font-bold tracking-wide',
             tone === 'before'
-                ? 'text-slate-500 dark:text-slate-400'
+                ? 'text-amber-700 dark:text-amber-300'
                 : 'text-emerald-700 dark:text-emerald-300',
         ].join(' ')}>
             {title}
@@ -60,21 +62,38 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
     readOnly,
     skillNameById,
     onToggleChange,
+    surface = 'modal',
 }) => {
     const changeSelectable = isResumeOptimizationChangeSelectable(change);
     const selectable = changeSelectable && !readOnly;
     const preview = useMemo(
         () => buildResumeOptimizationChangePreview({
             moduleType: change.moduleType,
+            fieldPath: change.fieldPath,
             beforeValue: change.beforeValue,
             targetedValue: change.targetedValue,
         }, skillNameById),
-        [change.beforeValue, change.moduleType, change.targetedValue, skillNameById],
+        [change.beforeValue, change.fieldPath, change.moduleType, change.targetedValue, skillNameById],
     );
     const isBlocked = change.safetyStatus === 'blocked';
+    const safetyFindings = useMemo(
+        () => buildResumeOptimizationSafetyFindingCopy(change.safetyFindings),
+        [change.safetyFindings],
+    );
     const isOrderPreview = change.moduleType === 'skills_order' || change.moduleType === 'section_order';
     const scopeLabel = change.scope === 'jd_targeted' ? 'JD定向' : '通用优化';
     const rationale = formatResumeOptimizationUserCopy(change.rationale, '该项说明已安全隐藏。');
+    const choiceLabel = `${formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}是否采用优化`;
+    const handleChoiceKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (!selectable || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault();
+        const shouldSelect = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+        if (shouldSelect !== selected) onToggleChange(change.changeId);
+        const radios = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'),
+        );
+        radios[shouldSelect ? 1 : 0]?.focus();
+    };
 
     return (
         <article
@@ -85,7 +104,7 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
                     : 'border-slate-200/80 bg-white/90 dark:border-slate-800 dark:bg-slate-950/55',
             ].join(' ')}
         >
-            <header className="flex flex-wrap items-start justify-between gap-3">
+            <header>
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <h4 className="text-sm font-bold text-slate-950 dark:text-white">
@@ -103,28 +122,23 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
                             </span>
                         ) : null}
                     </div>
-                    <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{rationale}</p>
+                    <p className="mt-2 text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500">发现的问题</p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-300">{rationale}</p>
+                    {isBlocked ? (
+                        <section className="mt-3 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2.5 dark:border-rose-900/70 dark:bg-rose-950/30" aria-label="安全阻断说明">
+                            <p className="text-[10px] font-bold tracking-wide text-rose-800 dark:text-rose-200">安全阻断说明</p>
+                            <ul className="mt-1.5 space-y-1 text-[11px] leading-5 text-rose-800 dark:text-rose-100">
+                                {safetyFindings.map((finding) => <li key={finding}>{finding}</li>)}
+                            </ul>
+                        </section>
+                    ) : null}
                 </div>
-
-                <label className="flex min-h-[44px] shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 focus-within:ring-2 focus-within:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                    <input
-                        type="checkbox"
-                        checked={changeSelectable && selected}
-                        disabled={!selectable}
-                        onChange={() => {
-                            if (selectable) onToggleChange(change.changeId);
-                        }}
-                        className="h-4 w-4 rounded border-slate-300 accent-emerald-600 disabled:cursor-not-allowed"
-                    />
-                    {readOnly
-                        ? changeSelectable && selected ? '已应用' : '保留原文'
-                        : selectable && selected ? '应用此项' : '保留原文'}
-                </label>
             </header>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <ValuePanel title="修改前" lines={preview.before} tone="before" orderPreview={isOrderPreview} />
-                <ValuePanel title="修改后" lines={preview.after} tone="after" orderPreview={isOrderPreview} />
+            <p className="mt-4 text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500">准备优化</p>
+            <div className={`mt-2 grid grid-cols-1 gap-3 ${surface === 'modal' ? 'md:grid-cols-2' : ''}`}>
+                <ValuePanel title="原内容" lines={preview.before} tone="before" orderPreview={isOrderPreview} />
+                <ValuePanel title="优化后" lines={preview.after} tone="after" orderPreview={isOrderPreview} />
             </div>
 
             <footer className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-slate-800">
@@ -137,12 +151,58 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
                     {readOnly && changeSelectable && selected ? (
                         <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> 已应用</>
                     ) : changeSelectable ? (
-                        <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> 已通过事实检查</>
+                        <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> 自动规则未发现风险</>
                     ) : (
                         <><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" /> 此项不可应用</>
                     )}
                 </span>
             </footer>
+
+            <div
+                role="radiogroup"
+                aria-label={choiceLabel}
+                onKeyDown={handleChoiceKeyDown}
+                className="mt-3 grid grid-cols-2 gap-2"
+            >
+                <button
+                    type="button"
+                    role="radio"
+                    aria-checked={changeSelectable && !selected}
+                    tabIndex={!selected ? 0 : -1}
+                    disabled={!selectable}
+                    onClick={() => {
+                        if (selectable && selected) onToggleChange(change.changeId);
+                    }}
+                    className={[
+                        'min-h-[44px] rounded-xl border px-3 text-[11px] font-bold transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-55',
+                        changeSelectable && !selected
+                            ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'
+                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
+                    ].join(' ')}
+                >
+                    保留原文
+                </button>
+                <button
+                    type="button"
+                    role="radio"
+                    aria-checked={changeSelectable && selected}
+                    tabIndex={selected ? 0 : -1}
+                    disabled={!selectable}
+                    onClick={() => {
+                        if (selectable && !selected) onToggleChange(change.changeId);
+                    }}
+                    className={[
+                        'min-h-[44px] rounded-xl border px-3 text-[11px] font-bold transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-55',
+                        changeSelectable && selected
+                            ? 'border-emerald-300 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-slate-950'
+                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
+                    ].join(' ')}
+                >
+                    {readOnly && changeSelectable && selected ? '已应用' : '采用优化'}
+                </button>
+            </div>
         </article>
     );
 };

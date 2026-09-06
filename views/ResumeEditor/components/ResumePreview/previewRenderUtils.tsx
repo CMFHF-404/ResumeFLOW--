@@ -8,6 +8,7 @@ import {
     RICH_TEXT_INLINE_STYLES_CLASS,
     sanitizeRichTextHtml,
     splitRichTextLines,
+    stripRichTextToText,
 } from '../../../../utils/richText';
 
 export const renderTimelineBlueLeadMarkers = (showConnectorToNext: boolean) => (
@@ -215,18 +216,112 @@ const resolveActionList = (
     listType: ResumeExperienceListMarkerStyle = 'unordered'
 ) => {
     const lines = splitRichTextLines(value ?? '');
-    return { lines, listType };
+    const renderableLines = listType === 'none'
+        ? lines
+        : lines.filter((line) => (
+            stripRichTextToText(line)
+                .replace(/[\u200B\u200C\u200D\uFEFF]/gu, '')
+                .trim()
+                .length > 0
+        ));
+    return { lines: renderableLines, listType };
 };
 
 const renderRichText = (value: string) => ({
     __html: sanitizeRichTextHtml(value),
 });
 
+export const renderOptimizationTextComparison = (
+    comparison: ResumeOptimizationTextComparison,
+    fieldLabel: string,
+) => (
+    <section
+        key={`${comparison.changeId}-${fieldLabel}`}
+        data-rf-optimization-comparison={comparison.changeId}
+        aria-label={`${fieldLabel}优化对照`}
+        className="my-2 space-y-2"
+    >
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-amber-950">
+            <div className="mb-1 text-[9px] font-bold tracking-wide text-amber-800">
+                原内容 · {fieldLabel}
+            </div>
+            <div
+                className={`text-[11px] leading-[var(--rf-line-height)] ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                dangerouslySetInnerHTML={renderRichText(comparison.beforeValue)}
+            />
+        </div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-950">
+            <div className="mb-1 text-[9px] font-bold tracking-wide text-emerald-800">
+                优化后 · {fieldLabel}
+            </div>
+            <div
+                className={`text-[11px] leading-[var(--rf-line-height)] ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                dangerouslySetInnerHTML={renderRichText(comparison.afterValue)}
+            />
+        </div>
+    </section>
+);
+
 export const renderStarBlocks = (
     star: StarFields,
     itemId: string,
-    experienceListMarkerStyle: ResumeExperienceListMarkerStyle
+    experienceListMarkerStyle: ResumeExperienceListMarkerStyle,
+    starComparisons: ResumeOptimizationStarComparison[] = [],
 ) => {
+    if (starComparisons.length > 0) {
+        const comparisonByField = new Map(starComparisons.map((item) => [item.field, item]));
+        const renderComparison = (field: keyof StarFields) => {
+            const comparison = comparisonByField.get(field);
+            if (!comparison) return null;
+            const fieldLabel = STAR_FIELD_LABELS[field];
+            return renderOptimizationTextComparison(comparison, fieldLabel);
+        };
+        const renderPlainField = (field: keyof StarFields, className: string) => {
+            const value = normalizeStarText(star[field]);
+            return value ? (
+                <div
+                    key={`${itemId}-${field}`}
+                    className={`${className} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                    dangerouslySetInnerHTML={renderRichText(value)}
+                />
+            ) : null;
+        };
+        const actionList = resolveActionList(star.a, experienceListMarkerStyle);
+
+        return (
+            <>
+                {comparisonByField.has('s')
+                    ? renderComparison('s')
+                    : renderPlainField('s', 'text-gray-900 text-xs mb-1')}
+                {comparisonByField.has('t')
+                    ? renderComparison('t')
+                    : renderPlainField('t', 'text-gray-900 text-xs mb-1')}
+                {comparisonByField.has('a') ? renderComparison('a') : (
+                    actionList.lines.length > 0 ? (
+                        actionList.listType === 'none' ? (
+                            <div className={`space-y-[var(--rf-bullet-spacing)] text-xs text-gray-900 leading-[var(--rf-line-height)] ${RICH_TEXT_INLINE_STYLES_CLASS}`}>
+                                {actionList.lines.map((line, index) => (
+                                    <div key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                                ))}
+                            </div>
+                        ) : React.createElement(
+                            actionList.listType === 'ordered' ? 'ol' : 'ul',
+                            {
+                                className: `${actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'} list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`,
+                            },
+                            actionList.lines.map((line, index) => (
+                                <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                            )),
+                        )
+                    ) : null
+                )}
+                {comparisonByField.has('r')
+                    ? renderComparison('r')
+                    : renderPlainField('r', 'text-xs text-gray-900 mt-1')}
+            </>
+        );
+    }
+
     const contextText = buildContextText(star);
     const actionList = resolveActionList(star.a, experienceListMarkerStyle);
     const resultText = normalizeStarText(star.r);
@@ -272,4 +367,23 @@ export const renderStarBlocks = (
             ) : null}
         </>
     );
+};
+
+export type ResumeOptimizationTextComparison = {
+    changeId: string;
+    beforeValue: string;
+    afterValue: string;
+    selected: boolean;
+    readOnly: boolean;
+};
+
+export type ResumeOptimizationStarComparison = ResumeOptimizationTextComparison & {
+    field: keyof StarFields;
+};
+
+const STAR_FIELD_LABELS: Record<keyof StarFields, string> = {
+    s: '情境',
+    t: '任务',
+    a: '行动',
+    r: '结果',
 };

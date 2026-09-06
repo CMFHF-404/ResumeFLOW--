@@ -161,8 +161,11 @@ export const createApplyExperienceState = (
             ...applyExplicitOrder(projectViews, (item) => item.id, orders?.projectExperienceIds),
         ];
         setExperienceItems(ordered);
-        const configSelection = resolveSelectionSet(config.selection?.experienceIds);
-        if (configSelection.size > 0) {
+        const rawExperienceIds = config.selection?.experienceIds;
+        const configSelection = resolveSelectionSet(rawExperienceIds);
+        if (Array.isArray(rawExperienceIds) && rawExperienceIds.length === 0) {
+            setSelectedExpIds(new Set());
+        } else if (configSelection.size > 0) {
             setSelectedExpIds(configSelection);
         } else if (resumeMap.size > 0) {
             setSelectedExpIds(new Set(resumeMap.keys()));
@@ -188,7 +191,14 @@ export const createApplyEducationState = (
         const selection = resolveSelectionSet(config.selection?.educationIds);
         const validIds = new Set(views.map((item) => item.id));
         const normalized = new Set([...selection].filter((id) => validIds.has(id)));
-        setSelectedEduIds(normalized.size ? normalized : new Set(validIds));
+        setSelectedEduIds(
+            Array.isArray(config.selection?.educationIds)
+            && config.selection.educationIds.length === 0
+                ? new Set()
+                : normalized.size
+                    ? normalized
+                    : new Set(validIds)
+        );
     };
 };
 

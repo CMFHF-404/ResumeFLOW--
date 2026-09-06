@@ -15,9 +15,10 @@ import { certificationsService, Certification as CertificationRecord } from '../
 import { experienceService, ExperienceListItem } from '../services/experienceService';
 import { profileService, Profile } from '../services/profileService';
 import {
+    graftJDAnalysisAuthority,
     loadJDAnalysisCache,
     normalizeJDAnalysisPersistence,
-    selectPreferredPersistedJDAnalysis,
+    resolveJDAnalysisForConfigSnapshot,
 } from '../services/jdAnalysisStorage';
 import {
     resumeService,
@@ -424,28 +425,18 @@ const updateLastSavedRef = (
 
 const buildEffectiveConfigSnapshot = (
     configSnapshot: ResumeEditorConfig,
-    persistedJDAnalysisSnapshot: ResumeEditorConfig['jdAnalysis'] | null | undefined,
     resumeId: string | null,
     resumeDetail: ResumeDetail | null,
     authUserKey?: string | null,
 ): ResumeEditorConfig => {
-    if (persistedJDAnalysisSnapshot !== undefined) {
-        return configSnapshot;
-    }
     const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
         (resumeDetail?.resume?.config as ResumeEditorConfig | undefined)?.jdAnalysis
     );
-    const selectedPersistedJDAnalysis = selectPreferredPersistedJDAnalysis(
+    const selectedPersistedJDAnalysis = resolveJDAnalysisForConfigSnapshot(
         backendPersistedJDAnalysis,
         resumeId ? loadJDAnalysisCache(authUserKey, resumeId) : null
-    )?.payload;
-    if (!selectedPersistedJDAnalysis) {
-        return configSnapshot;
-    }
-    return {
-        ...configSnapshot,
-        jdAnalysis: selectedPersistedJDAnalysis,
-    };
+    );
+    return graftJDAnalysisAuthority(configSnapshot, selectedPersistedJDAnalysis);
 };
 
 const useResumeContextLoader = (
@@ -922,7 +913,6 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     const effectiveConfigSnapshot = useMemo(
         () => buildEffectiveConfigSnapshot(
             options.configSnapshot,
-            options.persistedJDAnalysisSnapshot,
             state.resumeId,
             state.resumeDetail,
             options.authUserKey,
@@ -936,9 +926,26 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
         ]
     );
     const latestEffectiveConfigSnapshotRef = useRef(effectiveConfigSnapshot);
+    const latestServerJDAnalysisRef = useRef<{
+        resumeId: string | null;
+        payload: ResumeEditorConfig['jdAnalysis'] | null;
+    }>({
+        resumeId: state.resumeId,
+        payload: normalizeJDAnalysisPersistence(
+            (state.resumeDetail?.resume?.config as ResumeEditorConfig | undefined)?.jdAnalysis
+        ),
+    });
     useLayoutEffect(() => {
         latestEffectiveConfigSnapshotRef.current = effectiveConfigSnapshot;
     }, [effectiveConfigSnapshot]);
+    useLayoutEffect(() => {
+        latestServerJDAnalysisRef.current = {
+            resumeId: state.resumeId,
+            payload: normalizeJDAnalysisPersistence(
+                (state.resumeDetail?.resume?.config as ResumeEditorConfig | undefined)?.jdAnalysis
+            ),
+        };
+    }, [state.resumeDetail, state.resumeId]);
     useEffect(() => {
         if (hasResumeVersionConflict) {
             state.suppressedAutoSaveSignatureRef.current = JSON.stringify(
@@ -986,6 +993,19 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
                     throw new Error('Resume version conflict requires an explicit reload.');
                 }
             },
+            prepareConfig: (resumeId, config) => {
+                const serverAuthority = latestServerJDAnalysisRef.current;
+                if (serverAuthority.resumeId !== resumeId) {
+                    throw new Error('Resume JD authority is not initialized for this save.');
+                }
+                return graftJDAnalysisAuthority(
+                    config,
+                    resolveJDAnalysisForConfigSnapshot(
+                        serverAuthority.payload,
+                        loadJDAnalysisCache(options.authUserKey, resumeId)
+                    )
+                );
+            },
             persist: (resumeId, config, expectedUpdatedAt) => resumeService.update(
                 resumeId,
                 {
@@ -1001,9 +1021,12 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
                 const savedJDAnalysis = normalizeJDAnalysisPersistence(
                     (updatedResume.config as ResumeEditorConfig | undefined)?.jdAnalysis
                 );
-                const latestConfigSignature = JSON.stringify(
-                    latestEffectiveConfigSnapshotRef.current
-                );
+                latestServerJDAnalysisRef.current = {
+                    resumeId: _resumeId,
+                    payload: savedJDAnalysis,
+                };
+                const latestConfigSnapshot = latestEffectiveConfigSnapshotRef.current;
+                const latestConfigSignature = JSON.stringify(latestConfigSnapshot);
                 state.resumeUpdatedAtRef.current = updatedResume.updated_at;
                 state.setResumeDetail((prev) => mergeResumeSaveResultIntoDetail(
                     prev,
@@ -1011,6 +1034,7 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
                     {
                         savedConfigSignature: configSignature,
                         latestConfigSignature,
+                        latestConfigSnapshot,
                         pendingJDAnalysisCache,
                         savedJDAnalysis,
                     }
@@ -1037,22 +1061,37 @@ export const useResumeData = (options: UseResumeDataOptions): UseResumeDataResul
     }, [saveCoordinator]);
     const saveResumeConfig = useCallback<SaveResumeConfig>(async (config, saveOptions) => {
         const requestedResumeId = state.activeResumeIdRef.current;
-        const requestedConfigSignature = JSON.stringify(config);
         const previousUpdatedAt = state.resumeUpdatedAtRef.current;
         if (!requestedResumeId || !state.hasHydratedConfigRef.current) {
             return undefined;
         }
-        await saveCoordinator.save(config, saveOptions);
+        const serverAuthority = latestServerJDAnalysisRef.current;
+        if (serverAuthority.resumeId !== requestedResumeId) {
+            throw new Error('Resume JD authority is not initialized for this save.');
+        }
+        const authoritativeJDAnalysis = resolveJDAnalysisForConfigSnapshot(
+            serverAuthority.payload,
+            loadJDAnalysisCache(options.authUserKey, requestedResumeId)
+        );
+        const authoritativeConfig = graftJDAnalysisAuthority(
+            config,
+            authoritativeJDAnalysis
+        );
+        const receipt = await saveCoordinator.save(authoritativeConfig, saveOptions);
+        if (!receipt || receipt.resumeId !== requestedResumeId) {
+            return undefined;
+        }
         return resolveCommittedResumeSaveToken({
             requestedResumeId,
             currentResumeId: state.activeResumeIdRef.current,
-            requestedConfigSignature,
+            requestedConfigSignature: receipt.configSignature,
             lastSavedConfigSignature: state.lastSavedConfigRef.current,
             previousUpdatedAt,
             currentUpdatedAt: state.resumeUpdatedAtRef.current,
             isHydrated: state.hasHydratedConfigRef.current,
         });
     }, [
+        options.authUserKey,
         saveCoordinator,
         state.activeResumeIdRef,
         state.hasHydratedConfigRef,

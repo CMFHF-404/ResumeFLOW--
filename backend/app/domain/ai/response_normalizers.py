@@ -52,10 +52,49 @@ def _extract_json_payload(text: str) -> str:
     return cleaned[start : end + 1]
 
 
+def _loads_json_with_trailing_closer_recovery(payload: str) -> Any:
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        if exc.msg != "Extra data":
+            raise
+        try:
+            parsed, end = json.JSONDecoder().raw_decode(payload)
+        except json.JSONDecodeError:
+            raise exc
+        trailing = payload[end:].strip()
+        if trailing and len(trailing) <= 8 and all(char in "}]" for char in trailing):
+            return parsed
+
+        candidates = [parsed]
+        while trailing:
+            if len(candidates) >= 3:
+                raise exc
+            try:
+                candidate, candidate_end = json.JSONDecoder().raw_decode(trailing)
+            except json.JSONDecodeError:
+                raise exc
+            if (
+                not isinstance(parsed, dict)
+                or not isinstance(candidate, dict)
+                or set(candidate) != set(parsed)
+            ):
+                raise exc
+            candidates.append(candidate)
+            trailing = trailing[candidate_end:].strip()
+            if trailing and len(trailing) <= 8 and all(
+                char in "}]" for char in trailing
+            ):
+                trailing = ""
+        if len(candidates) > 1:
+            return candidates[-1]
+        raise exc
+
+
 def _parse_json_content(text: str) -> Dict[str, Any]:
     payload = _extract_json_payload(text)
     try:
-        parsed = json.loads(payload)
+        parsed = _loads_json_with_trailing_closer_recovery(payload)
     except json.JSONDecodeError as exc:
         logger.error("JSON Parse Error: %s", exc)
         logger.error("Raw Text Summary: %s", _summarize_text(text))

@@ -57,9 +57,11 @@ export const normalizePersistedAnalysisForState = (
 
 export const resolveHydratedEvaluationSignature = (
   payload: ResumeJDAnalysis,
-  currentEvaluationSignature: string
+  currentEvaluationSignature: string,
+  hasMissingAttachmentText = false
 ) => (
-  payload.evaluationSignatureVersion === "agent_final_snapshot_v1"
+  !hasMissingAttachmentText
+  && payload.evaluationSignatureVersion === "agent_final_snapshot_v1"
   && payload.isOutdated === false
   && payload.evaluationIsOutdated === false
     ? currentEvaluationSignature
@@ -109,6 +111,30 @@ export const buildResumeJDAnalysisPayload = (
   updatedAt,
 });
 
+export const buildRestoredAttachmentTextConversionPayload = (
+  payload: ResumeJDAnalysis,
+  fullJdText: string,
+  updatedAt: string = new Date().toISOString()
+): ResumeJDAnalysis => {
+  const jdText = fullJdText.trim();
+  const {
+    analysisSignatureVersion: _discardedAnalysisAttestation,
+    evaluationSignatureVersion: _discardedEvaluationAttestation,
+    ...localPayload
+  } = payload;
+  return {
+    ...localPayload,
+    jdText,
+    jdInputSignature: buildJDInputSignature(jdText, null),
+    inputMode: "text",
+    attachmentName: undefined,
+    attachmentExtractedText: undefined,
+    isOutdated: true,
+    evaluationIsOutdated: true,
+    updatedAt,
+  };
+};
+
 export const resolvePersistedAttachmentFields = ({
   snapshot,
   hasCurrentFile,
@@ -126,9 +152,11 @@ export const resolvePersistedAttachmentFields = ({
   shouldPersistAttachmentAsText: boolean;
 }): PersistedAttachmentFields => {
   if (shouldPersistAttachmentAsText) {
-    const supplementalJdText = hasCurrentFile
-      ? attachmentSupplementalJdText.trim()
-      : snapshot.jdText.trim();
+    const supplementalJdText = (
+      hasCurrentFile || snapshot.inputMode === "attachment"
+        ? attachmentSupplementalJdText
+        : snapshot.jdText
+    ).trim();
     const jdText = supplementalJdText
       ? `${extractedAttachmentText}${JD_ATTACHMENT_SUPPLEMENT_PREFIX}${supplementalJdText}`
       : extractedAttachmentText;

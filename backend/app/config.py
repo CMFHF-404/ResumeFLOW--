@@ -9,6 +9,8 @@ from urllib.parse import unquote, urlsplit
 
 from dotenv import load_dotenv
 
+from .ai_model_capabilities import is_openai_responses_streaming_unsupported
+
 DEFAULT_JWKS_PATH = "/jwks"
 ENV_DATABASE_URL = "DATABASE_URL"
 ENV_LOGTO_ISSUER = "LOGTO_ISSUER"
@@ -72,9 +74,14 @@ DEFAULT_JWKS_TTL_SECONDS = 3600
 DEFAULT_RESUMEFLOW_DEPLOYMENT_MODE = "local"
 VALID_RESUMEFLOW_DEPLOYMENT_MODES = {"local", "production"}
 DEFAULT_AI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_AI_MODEL = "qwen3.7-plus"
-DEFAULT_AI_ROUTE_PROFILE = "hybrid_gemini_aifast"
-VALID_AI_ROUTE_PROFILES = {"hybrid_gemini_aifast", "gemini_primary", "qwen_primary"}
+DEFAULT_AI_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_AI_ROUTE_PROFILE = "gemini_primary"
+VALID_AI_ROUTE_PROFILES = {
+    "hybrid_gemini_aifast",
+    "gemini_primary",
+    "openai_primary",
+    "qwen_primary",
+}
 DEFAULT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_AI_DEDUPE_MAX_CANDIDATES = 24
 DEFAULT_AI_MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
@@ -87,7 +94,7 @@ DEFAULT_AI_STREAM_TOTAL_TIMEOUT_SECONDS = 360
 DEFAULT_AI_STREAM_QUEUE_MAX_EVENTS = 64
 DEFAULT_AI_MAX_OUTPUT_TOKENS = 16_384
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_AI_THINKING_BUDGET_JD_ANALYSIS = 1024
 DEFAULT_AI_THINKING_BUDGET_POLISH = 1024
 DEFAULT_AI_THINKING_BUDGET_BOSS_GREETING = 0
@@ -151,6 +158,169 @@ def _resolve_ai_responses_base_url(ai_base_url: str) -> str:
     return derive_qwen_responses_base_url(ai_base_url)
 
 
+def _configured_env_value(value: Optional[str]) -> Optional[str]:
+    normalized = (value or "").strip()
+    return normalized or None
+
+
+def _has_same_http_origin(first_url: str, second_url: str) -> bool:
+    try:
+        first = urlsplit(first_url)
+        second = urlsplit(second_url)
+        first_scheme = first.scheme.lower()
+        second_scheme = second.scheme.lower()
+        if first_scheme not in {"http", "https"} or second_scheme not in {
+            "http",
+            "https",
+        }:
+            return False
+        default_ports = {"http": 80, "https": 443}
+        first_port = first.port if first.port is not None else default_ports[first_scheme]
+        second_port = (
+            second.port if second.port is not None else default_ports[second_scheme]
+        )
+        return (
+            bool(first.scheme and first.hostname and second.scheme and second.hostname)
+            and first_scheme == second_scheme
+            and first.hostname.lower() == second.hostname.lower()
+            and first_port == second_port
+        )
+    except ValueError:
+        return False
+
+
+def validate_ai_responses_base_url_origin(
+    *, ai_base_url: str, ai_responses_base_url: str
+) -> None:
+    """Responses requests share AI_API_KEY, so their endpoint cannot cross origins."""
+    if not _has_same_http_origin(ai_base_url, ai_responses_base_url):
+        raise RuntimeError(
+            f"{ENV_AI_RESPONSES_BASE_URL} must share an origin with "
+            f"{ENV_AI_BASE_URL} because no independent Responses API key is configured"
+        )
+
+
+def resolve_ai_fast_lane_credentials(
+    *,
+    ai_api_key: Optional[str],
+    ai_base_url: str,
+    configured_fast_api_key: Optional[str],
+    configured_fast_base_url: Optional[str],
+) -> tuple[Optional[str], str]:
+    """Resolve the fast lane without attaching a primary key to another endpoint."""
+    fast_api_key = _configured_env_value(configured_fast_api_key)
+    fast_base_url = _configured_env_value(configured_fast_base_url)
+    if bool(fast_api_key) != bool(fast_base_url):
+        raise RuntimeError(
+            f"{ENV_AI_FAST_BASE_URL} and {ENV_AI_FAST_API_KEY} must be configured together"
+        )
+    return fast_api_key or ai_api_key, fast_base_url or ai_base_url
+
+
+def validate_production_ai_lane_credentials(
+    *,
+    deployment_mode: str,
+    route_profile: str,
+    ai_api_key: Optional[str],
+    gemini_api_key: Optional[str],
+    ai_fast_api_key: Optional[str],
+) -> None:
+    """Fail startup when any production AI lane lacks usable credentials."""
+    if deployment_mode != "production":
+        return
+
+    has_ai_key = bool(_configured_env_value(ai_api_key))
+    has_gemini_key = bool(_configured_env_value(gemini_api_key))
+    has_fast_key = bool(_configured_env_value(ai_fast_api_key))
+
+    if route_profile == "gemini_primary":
+        if not has_gemini_key:
+            raise RuntimeError(
+                f"Missing required environment variable: {ENV_GEMINI_API_KEY} when "
+                f"{ENV_AI_ROUTE_PROFILE}=gemini_primary in production"
+            )
+        return
+
+    if route_profile in {"openai_primary", "qwen_primary"}:
+        if not has_ai_key:
+            raise RuntimeError(
+                f"Missing required environment variable: {ENV_AI_API_KEY} when "
+                f"{ENV_AI_ROUTE_PROFILE}={route_profile} in production"
+            )
+        return
+
+    if route_profile == "hybrid_gemini_aifast":
+        if not has_fast_key:
+            raise RuntimeError(
+                f"Missing required environment variable: {ENV_AI_API_KEY} or "
+                f"{ENV_AI_FAST_API_KEY} for the resume_parse lane when "
+                f"{ENV_AI_ROUTE_PROFILE}=hybrid_gemini_aifast in production"
+            )
+        if not (has_gemini_key or has_ai_key):
+            raise RuntimeError(
+                f"Missing required environment variable: {ENV_AI_API_KEY} or "
+                f"{ENV_GEMINI_API_KEY} for the default/tool/thinking lanes when "
+                f"{ENV_AI_ROUTE_PROFILE}=hybrid_gemini_aifast in production"
+            )
+
+
+def _is_dashscope_url(value: str) -> bool:
+    try:
+        hostname = (urlsplit(value).hostname or "").lower()
+    except ValueError:
+        return False
+    return hostname == "dashscope.aliyuncs.com" or hostname.endswith(
+        ".dashscope.aliyuncs.com"
+    )
+
+
+def _is_official_openai_api_url(value: str) -> bool:
+    try:
+        hostname = (urlsplit(value).hostname or "").lower()
+    except ValueError:
+        return False
+    return hostname == "api.openai.com" or hostname.endswith(".api.openai.com")
+
+
+def validate_openai_responses_streaming_model(
+    *,
+    model: str,
+    responses_base_url: str,
+) -> None:
+    if (
+        _is_official_openai_api_url(responses_base_url)
+        and is_openai_responses_streaming_unsupported(model)
+    ):
+        raise RuntimeError(
+            f"Invalid {ENV_AI_MODEL}: {model} does not support the streaming "
+            "Responses transport required by this application"
+        )
+
+
+def validate_openai_primary_provider_urls(
+    *,
+    ai_base_url: str,
+    ai_responses_base_url: Optional[str],
+    ai_base_url_is_explicit: bool,
+) -> None:
+    """Keep an OpenAI-primary route from silently inheriting Qwen endpoints."""
+    if not ai_base_url_is_explicit:
+        raise RuntimeError(
+            f"{ENV_AI_BASE_URL} must be explicitly configured when "
+            f"{ENV_AI_ROUTE_PROFILE}=openai_primary"
+        )
+    if _is_dashscope_url(ai_base_url):
+        raise RuntimeError(
+            f"Invalid {ENV_AI_BASE_URL}: DashScope endpoints cannot be used when "
+            f"{ENV_AI_ROUTE_PROFILE}=openai_primary"
+        )
+    if ai_responses_base_url and _is_dashscope_url(ai_responses_base_url):
+        raise RuntimeError(
+            f"Invalid {ENV_AI_RESPONSES_BASE_URL}: DashScope Responses endpoints "
+            f"cannot be used when {ENV_AI_ROUTE_PROFILE}=openai_primary"
+        )
+
+
 def _normalize_issuer(issuer: str) -> str:
     return issuer.rstrip("/")
 
@@ -195,6 +365,73 @@ def _resolve_ai_route_profile(value: Optional[str]) -> str:
     if normalized not in VALID_AI_ROUTE_PROFILES:
         valid = ", ".join(sorted(VALID_AI_ROUTE_PROFILES))
         raise RuntimeError(f"Invalid {ENV_AI_ROUTE_PROFILE}: {normalized}. Expected one of: {valid}")
+    return normalized
+
+
+def _resolve_ai_model_for_profile(
+    value: Optional[str],
+    *,
+    route_profile: str,
+    gemini_model: str,
+    gemini_api_key: Optional[str],
+    fast_model: Optional[str],
+) -> str:
+    if route_profile == "gemini_primary":
+        return gemini_model
+    if (
+        route_profile == "hybrid_gemini_aifast"
+        and _configured_env_value(gemini_api_key)
+        and not _configured_env_value(value)
+        and _configured_env_value(fast_model)
+    ):
+        return _configured_env_value(fast_model) or ""
+    if value is None or not value.strip():
+        raise RuntimeError(
+            f"Invalid {ENV_AI_MODEL}: a compatible model must be explicitly configured "
+            f"through {ENV_AI_MODEL} or {ENV_AI_FAST_MODEL} when "
+            f"{ENV_AI_ROUTE_PROFILE}={route_profile}"
+        )
+    normalized = value.strip()
+    if normalized.lower().startswith("gemini"):
+        raise RuntimeError(
+            f"Invalid {ENV_AI_MODEL}: a Gemini model cannot be used with "
+            f"{ENV_AI_ROUTE_PROFILE}={route_profile}"
+        )
+    return normalized
+
+
+def validate_gemini_model(value: Optional[str]) -> str:
+    normalized = (value or "").strip()
+    if re.fullmatch(r"gemini-[A-Za-z0-9][A-Za-z0-9._-]*", normalized) is None:
+        raise RuntimeError(
+            f"Invalid {ENV_GEMINI_MODEL}: expected a non-empty Gemini model ID"
+        )
+    return normalized
+
+
+def normalize_ai_provider_base_url(
+    value: str,
+    env_name: str,
+    *,
+    production: bool,
+) -> str:
+    if production:
+        return _normalize_deployment_http_base_url(value, env_name)
+    return (value or "").rstrip("/")
+
+
+def _validate_compatible_lane_model(
+    value: str,
+    *,
+    env_name: str,
+    route_profile: str,
+) -> str:
+    normalized = value.strip()
+    if route_profile != "gemini_primary" and normalized.lower().startswith("gemini"):
+        raise RuntimeError(
+            f"Invalid {env_name}: a Gemini model cannot be used with "
+            f"{ENV_AI_ROUTE_PROFILE}={route_profile}"
+        )
     return normalized
 
 def _parse_csv_env(name: str, default: List[str]) -> List[str]:
@@ -567,16 +804,128 @@ def load_settings() -> Settings:
     )
     jwks_url = f"{logto_issuer}{DEFAULT_JWKS_PATH}"
     jwks_ttl_seconds = int(os.getenv(ENV_LOGTO_JWKS_TTL, DEFAULT_JWKS_TTL_SECONDS))
-    ai_api_key = os.getenv(ENV_AI_API_KEY)
-    ai_base_url = os.getenv(ENV_AI_BASE_URL, DEFAULT_AI_BASE_URL)
-    ai_responses_base_url = _resolve_ai_responses_base_url(ai_base_url)
-    ai_model = os.getenv(ENV_AI_MODEL, DEFAULT_AI_MODEL)
     ai_route_profile = _resolve_ai_route_profile(os.getenv(ENV_AI_ROUTE_PROFILE))
-    ai_fast_api_key = os.getenv(ENV_AI_FAST_API_KEY) or ai_api_key
-    ai_fast_base_url = os.getenv(ENV_AI_FAST_BASE_URL) or ai_base_url
-    ai_fast_model = os.getenv(ENV_AI_FAST_MODEL) or ai_model
+    ai_api_key = _configured_env_value(os.getenv(ENV_AI_API_KEY))
+    gemini_api_key = _configured_env_value(os.getenv(ENV_GEMINI_API_KEY))
+    gemini_base_url = os.getenv(ENV_GEMINI_BASE_URL, DEFAULT_GEMINI_BASE_URL)
+    configured_gemini_model = os.getenv(ENV_GEMINI_MODEL)
+    gemini_model = (
+        configured_gemini_model
+        if configured_gemini_model is not None
+        else DEFAULT_GEMINI_MODEL
+    )
+    gemini_lane_active = ai_route_profile == "gemini_primary" or (
+        ai_route_profile == "hybrid_gemini_aifast" and bool(gemini_api_key)
+    )
+    if gemini_lane_active:
+        gemini_model = validate_gemini_model(gemini_model)
+
+    configured_ai_fast_model = os.getenv(ENV_AI_FAST_MODEL)
+    ai_model = _resolve_ai_model_for_profile(
+        os.getenv(ENV_AI_MODEL),
+        route_profile=ai_route_profile,
+        gemini_model=gemini_model,
+        gemini_api_key=gemini_api_key,
+        fast_model=configured_ai_fast_model,
+    )
+    configured_ai_base_url = os.getenv(ENV_AI_BASE_URL)
+    ai_base_url = configured_ai_base_url or DEFAULT_AI_BASE_URL
+    configured_ai_fast_api_key = os.getenv(ENV_AI_FAST_API_KEY)
+    configured_ai_fast_base_url = os.getenv(ENV_AI_FAST_BASE_URL)
+    has_independent_fast_lane = bool(
+        _configured_env_value(configured_ai_fast_api_key)
+        and _configured_env_value(configured_ai_fast_base_url)
+    )
+    primary_base_active = ai_route_profile in {
+        "openai_primary",
+        "qwen_primary",
+    } or (
+        ai_route_profile == "hybrid_gemini_aifast"
+        and (not gemini_api_key or not has_independent_fast_lane)
+    )
+    if deployment_mode == "production":
+        if gemini_lane_active:
+            gemini_base_url = _normalize_deployment_http_base_url(
+                gemini_base_url,
+                ENV_GEMINI_BASE_URL,
+            )
+        if primary_base_active:
+            ai_base_url = _normalize_deployment_http_base_url(
+                ai_base_url,
+                ENV_AI_BASE_URL,
+            )
+        if ai_route_profile != "gemini_primary" and has_independent_fast_lane:
+            configured_ai_fast_base_url = _normalize_deployment_http_base_url(
+                configured_ai_fast_base_url or "",
+                ENV_AI_FAST_BASE_URL,
+            )
+    ai_responses_base_url = _resolve_ai_responses_base_url(ai_base_url)
+    if (
+        deployment_mode == "production"
+        and ai_route_profile in {"openai_primary", "qwen_primary"}
+    ):
+        ai_responses_base_url = _normalize_deployment_http_base_url(
+            ai_responses_base_url,
+            ENV_AI_RESPONSES_BASE_URL,
+        )
+    if ai_route_profile == "openai_primary":
+        validate_openai_primary_provider_urls(
+            ai_base_url=ai_base_url,
+            ai_responses_base_url=ai_responses_base_url,
+            ai_base_url_is_explicit=bool(
+                configured_ai_base_url and configured_ai_base_url.strip()
+            ),
+        )
+        validate_openai_responses_streaming_model(
+            model=ai_model,
+            responses_base_url=ai_responses_base_url,
+        )
+    if ai_route_profile in {"openai_primary", "qwen_primary"}:
+        validate_ai_responses_base_url_origin(
+            ai_base_url=ai_base_url,
+            ai_responses_base_url=ai_responses_base_url,
+        )
+    if ai_route_profile == "gemini_primary":
+        ai_fast_api_key = _configured_env_value(configured_ai_fast_api_key) or ai_api_key
+        ai_fast_base_url = configured_ai_fast_base_url or ai_base_url
+    else:
+        ai_fast_api_key, ai_fast_base_url = resolve_ai_fast_lane_credentials(
+            ai_api_key=ai_api_key,
+            ai_base_url=ai_base_url,
+            configured_fast_api_key=configured_ai_fast_api_key,
+            configured_fast_base_url=configured_ai_fast_base_url,
+        )
+    validate_production_ai_lane_credentials(
+        deployment_mode=deployment_mode,
+        route_profile=ai_route_profile,
+        ai_api_key=ai_api_key,
+        gemini_api_key=gemini_api_key,
+        ai_fast_api_key=ai_fast_api_key,
+    )
+    ai_fast_model = _validate_compatible_lane_model(
+        (
+            gemini_model
+            if ai_route_profile == "gemini_primary"
+            else configured_ai_fast_model
+            if configured_ai_fast_model and configured_ai_fast_model.strip()
+            else ai_model
+        ),
+        env_name=ENV_AI_FAST_MODEL,
+        route_profile=ai_route_profile,
+    )
     ai_dedupe_enabled = _get_bool_env(ENV_AI_DEDUPE_ENABLED, True)
-    ai_dedupe_model = os.getenv(ENV_AI_DEDUPE_MODEL) or ai_fast_model or ai_model
+    configured_ai_dedupe_model = os.getenv(ENV_AI_DEDUPE_MODEL)
+    ai_dedupe_model = _validate_compatible_lane_model(
+        (
+            gemini_model
+            if ai_route_profile == "gemini_primary"
+            else configured_ai_dedupe_model
+            if configured_ai_dedupe_model and configured_ai_dedupe_model.strip()
+            else ai_fast_model or ai_model
+        ),
+        env_name=ENV_AI_DEDUPE_MODEL,
+        route_profile=ai_route_profile,
+    )
     ai_dedupe_max_candidates = int(
         os.getenv(ENV_AI_DEDUPE_MAX_CANDIDATES, DEFAULT_AI_DEDUPE_MAX_CANDIDATES)
     )
@@ -635,9 +984,6 @@ def load_settings() -> Settings:
         minimum=256,
         maximum=65_536,
     )
-    gemini_api_key = os.getenv(ENV_GEMINI_API_KEY)
-    gemini_base_url = os.getenv(ENV_GEMINI_BASE_URL, DEFAULT_GEMINI_BASE_URL)
-    gemini_model = os.getenv(ENV_GEMINI_MODEL, DEFAULT_GEMINI_MODEL)
     ai_thinking_budget_jd_analysis = int(
         os.getenv(
             ENV_AI_THINKING_BUDGET_JD_ANALYSIS,

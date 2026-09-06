@@ -412,6 +412,35 @@ test('a source change while config is flushing cannot start a billable evaluatio
   assert.deepEqual(events, ['preflight', 'flush']);
 });
 
+test('JD persistence authority is rechecked after link and config awaits before generation', async () => {
+  const { runResumeEvaluationAfterLinkPreflight } = await importPreflightHelpers();
+
+  for (const conflictStage of ['preflight', 'flush']) {
+    let authorityCurrent = true;
+    const events = [];
+    await assert.rejects(runResumeEvaluationAfterLinkPreflight({
+      assertJDAnalysisCurrent: () => authorityCurrent,
+      ensureLinks: async () => {
+        events.push('preflight');
+        if (conflictStage === 'preflight') authorityCurrent = false;
+      },
+      flushConfig: async () => {
+        events.push('flush');
+        if (conflictStage === 'flush') authorityCurrent = false;
+      },
+      generateEvaluation: async () => {
+        events.push('generate');
+      },
+    }), /persistence authority/i);
+
+    assert.equal(events.includes('generate'), false, conflictStage);
+    assert.deepEqual(
+      events,
+      conflictStage === 'preflight' ? ['preflight'] : ['preflight', 'flush'],
+    );
+  }
+});
+
 test('editor wires the owner-guarded preflight before config flush and report generation', () => {
   const editor = read('views/ResumeEditor/index.tsx');
   const hook = read('views/ResumeEditor/hooks/useResumeEvaluationLinkPreflight.ts');
@@ -428,5 +457,6 @@ test('editor wires the owner-guarded preflight before config flush and report ge
   assert.match(handler, /ensureLinks: ensureSelectedExperienceLinks/);
   assert.match(handler, /flushConfig: flushResumeConfig/);
   assert.match(handler, /generateEvaluation/);
+  assert.match(handler, /assertJDAnalysisCurrent: canPersistCurrentJDAnalysis/);
   assert.match(handler, /showToastError\('简历内容已在其他请求中更新，请刷新后再生成六维报告'\)/);
 });

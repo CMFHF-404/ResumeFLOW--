@@ -12,7 +12,8 @@ test('ResumeEditor delegates preview workspace prop assembly to a focused hook',
   assert.match(editor, /const sharedPreviewProps/);
   assert.match(editor, /useResumeEditorPreviewWorkspaceProps\(\{/);
   assert.match(editor, /layoutAdjustProps=\{layoutAdjustProps\}/);
-  assert.match(editor, /previewProps=\{editorPreviewProps\}/);
+  assert.match(editor, /const editorPreviewPropsWithOptimization =/);
+  assert.match(editor, /previewProps=\{editorPreviewPropsWithOptimization\}/);
   assert.match(editor, /<ResumeEditorMeasurePreview \{\.\.\.measurePreviewProps\} \/>/);
   assert.doesNotMatch(editor, /layoutAdjustProps=\{\{/);
   assert.doesNotMatch(editor, /previewProps=\{\{/);

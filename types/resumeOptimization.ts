@@ -171,7 +171,7 @@ export interface ResumeOptimizationRun {
   resumeId: string;
   status: ResumeOptimizationStatus;
   optimizerVersion: 'resume_optimization_v1';
-  policyVersion: 'thin_safety_v1';
+  policyVersion: 'thin_safety_v1' | 'evidence_semantic_v2';
   promptVersion: 'resume_optimization_prompt_v1';
   sourceResumeUpdatedAt: string;
   sourceEvaluationSignature: string;

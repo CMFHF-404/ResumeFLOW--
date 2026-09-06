@@ -4,15 +4,18 @@ import { BookOpenCheck, CircleAlert, ListChecks, Sparkles } from 'lucide-react';
 import type { ResumeOptimizationPlan } from '../../../../types/resumeOptimization';
 import {
     buildResumeOptimizationOverviewMetrics,
+    buildResumeOptimizationSafetyFindingCopy,
     formatResumeOptimizationDimensionLabel,
     formatResumeOptimizationModuleLabel,
     formatResumeOptimizationSourceLabel,
     formatResumeOptimizationUserCopy,
-    sortResumeOptimizationChangesByExpectedGain,
+    isResumeOptimizationChangeReviewable,
+    sortResumeOptimizationChangesByResumeOrder,
 } from './optimizationDisplayUtils.mjs';
 
 type ResumeOptimizationOverviewProps = {
     plan: ResumeOptimizationPlan;
+    moduleOrder?: string[];
 };
 
 const METRIC_CONFIG = [
@@ -29,11 +32,21 @@ const TONE_CLASSES = {
     slate: 'border-slate-200/80 bg-slate-50/80 text-slate-700 dark:border-slate-800 dark:bg-slate-900/55 dark:text-slate-200',
 } as const;
 
-export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProps> = ({ plan }) => {
+export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProps> = ({ plan, moduleOrder = [] }) => {
     const metrics = useMemo(() => buildResumeOptimizationOverviewMetrics(plan), [plan]);
     const priorities = useMemo(
-        () => sortResumeOptimizationChangesByExpectedGain(plan.changes),
-        [plan.changes],
+        () => sortResumeOptimizationChangesByResumeOrder(
+            plan.changes.filter(isResumeOptimizationChangeReviewable),
+            moduleOrder,
+        ),
+        [moduleOrder, plan.changes],
+    );
+    const blockedChanges = useMemo(
+        () => sortResumeOptimizationChangesByResumeOrder(
+            plan.changes.filter((change) => change.safetyStatus === 'blocked'),
+            moduleOrder,
+        ),
+        [moduleOrder, plan.changes],
     );
 
     return (
@@ -50,7 +63,7 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                         先看优化范围，再决定下一步
                     </h3>
                     <p className="mt-2 text-[12px] leading-6 text-slate-500 dark:text-slate-400">
-                        所有改写都受事实边界约束；预计提升仅用于排序，最终效果以应用后的六维复评为准。
+                        所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的六维复评为准。
                     </p>
                 </div>
 
@@ -67,15 +80,43 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                 </dl>
             </section>
 
+            {blockedChanges.length > 0 ? (
+                <section
+                    aria-labelledby="resume-optimization-blocked-overview-title"
+                    className="overflow-hidden rounded-2xl border border-rose-200/80 bg-rose-50/45 dark:border-rose-900/70 dark:bg-rose-950/20"
+                >
+                    <div className="border-b border-rose-200/80 px-4 py-3 dark:border-rose-900/70 md:px-5">
+                        <h3 id="resume-optimization-blocked-overview-title" className="text-sm font-bold text-rose-900 dark:text-rose-100">
+                            安全阻断说明
+                        </h3>
+                        <p className="mt-1 text-[11px] text-rose-800 dark:text-rose-200">以下改写不会被应用，原文会保持不变。</p>
+                    </div>
+                    <ul className="divide-y divide-rose-200/80 dark:divide-rose-900/60">
+                        {blockedChanges.map((change) => (
+                            <li key={change.changeId} className="px-4 py-3 md:px-5">
+                                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                                    {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}
+                                </p>
+                                <ul className="mt-1.5 space-y-1 text-[11px] leading-5 text-rose-800 dark:text-rose-100">
+                                    {buildResumeOptimizationSafetyFindingCopy(change.safetyFindings).map((finding) => (
+                                        <li key={finding}>{finding}</li>
+                                    ))}
+                                </ul>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            ) : null}
+
             <section
                 aria-labelledby="resume-optimization-priority-title"
                 className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 dark:border-slate-800 dark:bg-slate-950/50"
             >
                 <div className="border-b border-slate-200/80 px-4 py-3 dark:border-slate-800 md:px-5">
                     <h3 id="resume-optimization-priority-title" className="text-sm font-bold text-slate-900 dark:text-white">
-                        优先处理
+                        处理顺序
                     </h3>
-                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">按预计提升空间由高到低排列</p>
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">按简历内容中的出现顺序排列</p>
                 </div>
                 {priorities.length > 0 ? (
                     <ol className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -91,9 +132,6 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                                         </span>
                                         <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                                             {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}
-                                        </span>
-                                        <span className="ml-auto text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                                            预计提升空间 +{change.expectedScoreGain}
                                         </span>
                                     </div>
                                     <p className="mt-2 text-[12px] leading-5 text-slate-700 dark:text-slate-200">
@@ -113,7 +151,7 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                     </ol>
                 ) : (
                     <p className="px-5 py-8 text-center text-[12px] text-slate-500 dark:text-slate-400">
-                        当前没有需要改写的项目。
+                        没有可安全应用的修改，请重新生成优化方案。
                     </p>
                 )}
             </section>

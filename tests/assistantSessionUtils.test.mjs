@@ -29,6 +29,18 @@ const importAssistantSessionContextUtils = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+const importAssistantSelectionUtils = async () => {
+  const result = await build({
+    entryPoints: ['views/AIAssistant/selectionUtils.ts'],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const encoded = Buffer.from(result.outputFiles[0].text).toString('base64');
+  return import(`data:text/javascript;base64,${encoded}`);
+};
+
 const buildSession = (id, updatedAt, title = `Session ${id}`) => ({
   id,
   user_id: 'user-1',
@@ -280,4 +292,89 @@ test('hydrates sidebar context from latest historical selected resume without lo
   assert.deepEqual(hydrated.selectedResume.snapshot.experiences.map((item) => item.id), ['exp-1', 'exp-2']);
   assert.deepEqual(hydrated.selectedResumeModuleIds, ['exp-exp-2']);
   assert.deepEqual(hydrated.selectedExperiences.map((item) => item.masterId), ['master-1']);
+});
+
+test('same-resume live context can authoritatively clear a historical JD context', async () => {
+  const { deriveSelectedAssistantContextFromMessages } = await importAssistantSessionContextUtils();
+  const historical = {
+    id: 'historical-user',
+    role: 'user',
+    message_type: 'user_text',
+    content_json: {
+      text: '继续',
+      selected_resume: {
+        resume_id: 'resume-1',
+        resume_name: 'Resume',
+        jd_context: 'stale supplement only',
+        snapshot: { experiences: [], educations: [], certifications: [], skills: [] },
+      },
+    },
+    created_at: '2026-09-04T00:00:00.000Z',
+  };
+  const liveWithoutJD = {
+    resumeId: 'resume-1',
+    resumeName: 'Resume',
+    snapshot: { experiences: [], educations: [], certifications: [], skills: [] },
+  };
+
+  const hydrated = deriveSelectedAssistantContextFromMessages(
+    [historical],
+    liveWithoutJD,
+  );
+  assert.equal(hydrated.selectedResume.jdContext, undefined);
+});
+
+test('resume picker recognizes only canonical persisted JD input, not supplements or summaries', async () => {
+  const { hasResumeJDContext } = await importAssistantSelectionUtils();
+  const baseAnalysis = {
+    experienceSignature: 'experience-signature',
+    jdInputSignature: 'jd-signature',
+    result: { summary: 'generic analysis summary' },
+    itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+    inputMode: 'attachment',
+    updatedAt: '2026-09-04T00:00:00.000Z',
+  };
+  const resume = (jdAnalysis) => ({ config: { jdAnalysis } });
+
+  assert.equal(hasResumeJDContext(resume({
+    ...baseAnalysis,
+    jdText: 'supplement only',
+    attachmentName: 'missing.pdf',
+  })), false);
+  assert.equal(hasResumeJDContext(resume({
+    ...baseAnalysis,
+    jdText: 'supplement',
+    attachmentExtractedText: 'recoverable attachment body',
+  })), true);
+  assert.equal(hasResumeJDContext(resume({
+    ...baseAnalysis,
+    inputMode: 'text',
+    jdText: '',
+    result: {
+      ...baseAnalysis.result,
+      jobTitle: 'Senior Engineer',
+      roleIntent: 'Platform leadership',
+      extractedJdText: 'derived fallback must not count',
+    },
+  })), false);
+  assert.equal(hasResumeJDContext(resume({
+    ...baseAnalysis,
+    inputMode: 'text',
+    jdText: 'complete text JD',
+  })), true);
+  const { inputMode: _inputMode, ...legacyAnalysis } = baseAnalysis;
+  assert.equal(hasResumeJDContext(resume({
+    ...legacyAnalysis,
+    jdText: 'legacy complete text JD',
+  })), true);
+  assert.equal(hasResumeJDContext(resume({
+    ...baseAnalysis,
+    inputMode: 'supplement-only',
+    jdText: 'must not be treated as JD',
+  })), false);
+  assert.equal(hasResumeJDContext(resume({
+    ...baseAnalysis,
+    inputMode: null,
+    jdText: 'must not be treated as JD',
+  })), false);
 });

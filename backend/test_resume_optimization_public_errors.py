@@ -560,7 +560,7 @@ class ResumeOptimizationPublicTransportTests(unittest.IsolatedAsyncioTestCase):
         terminal = self._events(response)[-1]
         self.assertEqual(terminal["code"], "http_error")
         self.assertEqual(terminal["statusCode"], 503)
-        self.assertFalse(terminal["retryable"])
+        self.assertTrue(terminal["retryable"])
         self.assertEqual(terminal["requestId"], "http-request")
         self.assert_safe_response(response, internal_detail, "AI_API_KEY")
 

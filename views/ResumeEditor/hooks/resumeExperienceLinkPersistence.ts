@@ -34,7 +34,15 @@ type ResumeEvaluationLinkSequence<T> = {
     ensureLinks: () => Promise<unknown>;
     flushConfig: () => Promise<unknown>;
     generateEvaluation: () => Promise<T>;
+    assertJDAnalysisCurrent?: () => boolean | Promise<boolean>;
 };
+
+export class ResumeEvaluationJDAnalysisConflictError extends Error {
+    constructor() {
+        super('JD analysis persistence authority changed during evaluation preflight.');
+        this.name = 'ResumeEvaluationJDAnalysisConflictError';
+    }
+}
 
 export class ResumeEvaluationLinkTargetChangedError extends Error {
     constructor() {
@@ -166,7 +174,14 @@ export const runResumeEvaluationAfterLinkPreflight = async <T>({
     ensureLinks,
     flushConfig,
     generateEvaluation,
+    assertJDAnalysisCurrent,
 }: ResumeEvaluationLinkSequence<T>): Promise<T> => {
+    const assertJDAuthority = async () => {
+        if (assertJDAnalysisCurrent && !(await assertJDAnalysisCurrent())) {
+            throw new ResumeEvaluationJDAnalysisConflictError();
+        }
+    };
+    await assertJDAuthority();
     const receipt = await ensureLinks();
     const assertCurrent = (
         typeof receipt === 'object'
@@ -177,8 +192,10 @@ export const runResumeEvaluationAfterLinkPreflight = async <T>({
         ? receipt.assertCurrent as () => Promise<void>
         : null;
     await assertCurrent?.();
+    await assertJDAuthority();
     await flushConfig();
     await assertCurrent?.();
+    await assertJDAuthority();
     return generateEvaluation();
 };
 // RESUME_EVALUATION_LINK_PREFLIGHT_TEST_END

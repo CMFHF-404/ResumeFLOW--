@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
+import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 OPTIMIZER_VERSION = "resume_optimization_v1"
-POLICY_VERSION = "thin_safety_v1"
+POLICY_VERSION = "evidence_semantic_v2"
 PROMPT_VERSION = "resume_optimization_prompt_v1"
 RESUME_EVALUATION_DIMENSION_NAMES = (
     "逻辑清晰",
@@ -96,6 +97,16 @@ def _validate_non_empty_unique_ids(
     return value
 
 
+class OptimizationSemanticReview(BaseModel):
+    """Server-created receipt; never accepted from the planning model or apply API."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy_version: str
+    verdict: Literal["supported", "unsupported", "uncertain"]
+    reason: str = Field(min_length=1, max_length=1000)
+
+
 class OptimizationChange(BaseModel):
     change_id: str
     issue_ids: list[str]
@@ -115,6 +126,7 @@ class OptimizationChange(BaseModel):
     default_selected: bool = True
     safety_status: Literal["pending", "allowed", "blocked"] = "pending"
     safety_findings: list[str] = Field(default_factory=list)
+    semantic_review: OptimizationSemanticReview | None = None
 
     @field_validator("change_id", "module_id", "field_path")
     @classmethod
@@ -340,7 +352,7 @@ class ResumeOptimizationRunRead(BaseModel):
     resume_id: str
     status: ResumeOptimizationStatus
     optimizer_version: Literal[OPTIMIZER_VERSION] = OPTIMIZER_VERSION
-    policy_version: Literal[POLICY_VERSION] = POLICY_VERSION
+    policy_version: Literal["thin_safety_v1", POLICY_VERSION] = POLICY_VERSION
     prompt_version: Literal[PROMPT_VERSION] = PROMPT_VERSION
     source_resume_updated_at: datetime
     source_evaluation_signature: str
@@ -410,11 +422,41 @@ class _ResumeOptimizationTimestampRequest(BaseModel):
 
 
 class ResumeOptimizationFinalizeRequest(_ResumeOptimizationTimestampRequest):
-    pass
+    claim_id: str
+
+    @field_validator("claim_id")
+    @classmethod
+    def _validate_claim_id(cls, value: str) -> str:
+        try:
+            return str(uuid.UUID(value))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("claim_id must be a UUID") from exc
+
+
+class ResumeOptimizationRescoreClaimRequest(_ResumeOptimizationTimestampRequest):
+    claim_id: str
+
+    @field_validator("claim_id")
+    @classmethod
+    def _validate_claim_id(cls, value: str) -> str:
+        try:
+            return str(uuid.UUID(value))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("claim_id must be a UUID") from exc
 
 
 class ResumeOptimizationRevertRequest(_ResumeOptimizationTimestampRequest):
-    pass
+    claim_id: str | None = None
+
+    @field_validator("claim_id")
+    @classmethod
+    def _validate_optional_claim_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return str(uuid.UUID(value))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("claim_id must be a UUID") from exc
 
 
 class ResumeOptimizationFinalizeResponse(BaseModel):

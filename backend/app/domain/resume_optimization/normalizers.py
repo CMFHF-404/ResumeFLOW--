@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html as html_lib
 import json
 import re
 from dataclasses import dataclass
@@ -15,12 +16,67 @@ from .schemas import (
     OptimizationModuleType,
     OptimizationPlan,
     OptimizationQuestion,
+    RESUME_EVALUATION_DIMENSION_NAMES,
 )
 
 
 # Model output is never expected to need a single 20k-character scalar. Keep this
 # below the shared runtime ceiling while still honoring deployments with a tighter cap.
 MAX_MODEL_STRING_CHARS = 20_000
+
+_ACTION_HTML_ATTRIBUTE_CONTENT = r'''(?:[^"'<>]|"[^"]*"|'[^']*')*'''
+_ACTION_OPEN_BOUNDARY_TAG = (
+    rf"<(?:li|div|p|ul|ol|br)(?=[\s/>]){_ACTION_HTML_ATTRIBUTE_CONTENT}>"
+)
+_ACTION_BOUNDARY_PATTERN = (
+    rf"(?:{_ACTION_OPEN_BOUNDARY_TAG}|</(?:li|div|p|ul|ol)\s*>|\r?\n)"
+)
+_ACTION_BOUNDARY_TAG_RE = re.compile(
+    rf"^{_ACTION_OPEN_BOUNDARY_TAG}$|^</(?:li|div|p|ul|ol)\s*>$",
+    re.IGNORECASE,
+)
+_ACTION_TRAILING_CLOSE_TAGS_RE = re.compile(r"\s*(?:</[^>]+>\s*)+$", re.IGNORECASE)
+_ACTION_TRAILING_CLOSERS_RE = re.compile(r"[”’\"'」』]+$")
+_ACTION_TRAILING_CLOSER_ENTITY_RE = re.compile(
+    r"(?:&(?:CloseCurlyDoubleQuote|CloseCurlyQuote|rdquo|rdquor|rsquo|rsquor|quot|apos|#0*(?:8221|8217|34|39)|#(?:x|X)0*(?:201d|2019|22|27));)+$",
+)
+_ACTION_TRAILING_ENTITY_RE = re.compile(
+    r"&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);$",
+    re.IGNORECASE,
+)
+_ACTION_TRAILING_PUNCTUATION_RE = re.compile(r"[。！？!?；;，,、：:.…]+$")
+_ACTION_PUNCTUATION_ONLY_RE = re.compile(r"^[。！？!?；;，,、：:.…]+$")
+_ACTION_MARKDOWN_EMPHASIS_DELIMITERS = ("***", "**", "＊＊", "__", "*")
+_HTML_TAG_RE = re.compile(r'''<(?:[^"'<>]|"[^"]*"|'[^']*')*>''')
+_ACTION_MARKDOWN_HTML_SPLIT_RE = re.compile(r"<[^>]+>")
+_ACTION_MARKDOWN_RENDER_BOLD_RE = re.compile(
+    r"(?:\*\*|＊＊)([^*\r\n＊]+)(?:\*\*|＊＊)"
+)
+_ACTION_MARKDOWN_RENDER_UNDERLINE_RE = re.compile(r"__([^_\r\n]+)__")
+_ACTION_MARKDOWN_RENDER_ITALIC_RE = re.compile(
+    r"(^|[^*])\*([^\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029"
+    r"\u202f\u205f\u3000\ufeff*](?:[^*\r\n]*?[^\t\n\v\f\r \u00a0"
+    r"\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff*])?)"
+    r"\*(?!\*)"
+)
+_ACTION_MARKDOWN_SYNTHETIC_OPEN = "\ue000"
+_ACTION_MARKDOWN_SYNTHETIC_CLOSE = "\ue001"
+# Mirror ECMAScript ``\s`` and ``Default_Ignorable_Code_Point`` exactly for
+# the frontend/backend Action-tail contract. Python's ``isspace`` and the broad
+# ``Cf`` category include code points (for example U+0085 and U+0600) that the
+# browser does not treat as either class here.
+_ACTION_ECMASCRIPT_WHITESPACE_CODEPOINTS = frozenset((
+    0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020, 0x00A0, 0x1680,
+    0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF,
+))
+_DEFAULT_IGNORABLE_ACTION_RANGES = (
+    (0x00AD, 0x00AD), (0x034F, 0x034F), (0x061C, 0x061C),
+    (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F),
+    (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x206F),
+    (0x3164, 0x3164), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF),
+)
 
 _CHANGE_KEYS = {
     "changeId": "change_id",
@@ -51,6 +107,678 @@ _QUESTION_KEYS = {
     "affectsChangeIds": "affects_change_ids",
     "priority": "priority",
 }
+
+
+def _strip_trailing_action_punctuation(value: str) -> str:
+    while _ACTION_TRAILING_PUNCTUATION_RE.search(value):
+        if _ACTION_TRAILING_ENTITY_RE.search(value):
+            return value
+        value = value[:-1]
+    return value
+
+
+def _action_html_markup_end(value: str, start: int) -> int | None:
+    quote: str | None = None
+    cursor = start + 1
+    while cursor < len(value):
+        char = value[cursor]
+        if quote is not None:
+            if char == quote:
+                quote = None
+        elif char in {'"', "'"}:
+            quote = char
+        elif char == ">":
+            return cursor + 1
+        cursor += 1
+    return None
+
+
+def _action_boundary_parts(value: str) -> list[tuple[str, bool]]:
+    """Split only lexical boundaries that a browser can actually render."""
+
+    parts: list[tuple[str, bool]] = []
+    segment_start = 0
+    cursor = 0
+    while cursor < len(value):
+        entity = re.match(r"(?:&NewLine;|&#0*(?:10|13);|&#[xX]0*(?:[aAdD]);)", value[cursor:])
+        if entity is not None:
+            parts.append((value[segment_start:cursor], False))
+            parts.append((entity.group(), True))
+            cursor += entity.end()
+            segment_start = cursor
+            continue
+        if value[cursor] in "\r\n":
+            end = cursor + 2 if value.startswith("\r\n", cursor) else cursor + 1
+            parts.append((value[segment_start:cursor], False))
+            parts.append((value[cursor:end], True))
+            cursor = end
+            segment_start = cursor
+            continue
+        if value.startswith("<!--", cursor):
+            comment_end = value.find("-->", cursor + 4)
+            cursor = len(value) if comment_end < 0 else comment_end + 3
+            continue
+        if value[cursor] == "<":
+            end = _action_html_markup_end(value, cursor)
+            if end is not None and _ACTION_BOUNDARY_TAG_RE.fullmatch(value[cursor:end]):
+                parts.append((value[segment_start:cursor], False))
+                parts.append((value[cursor:end], True))
+                cursor = end
+                segment_start = cursor
+                continue
+            cursor = end if end is not None else cursor + 1
+            continue
+        cursor += 1
+    parts.append((value[segment_start:], False))
+    return parts
+
+
+def _is_default_ignorable_action_char(char: str) -> bool:
+    codepoint = ord(char)
+    return any(
+        start <= codepoint <= end
+        for start, end in _DEFAULT_IGNORABLE_ACTION_RANGES
+    )
+
+
+def _is_action_ecmascript_whitespace(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        codepoint in _ACTION_ECMASCRIPT_WHITESPACE_CODEPOINTS
+        or 0x2000 <= codepoint <= 0x200A
+    )
+
+
+def _strip_action_ecmascript_whitespace(value: str) -> str:
+    start = 0
+    end = len(value)
+    while start < end and _is_action_ecmascript_whitespace(value[start]):
+        start += 1
+    while end > start and _is_action_ecmascript_whitespace(value[end - 1]):
+        end -= 1
+    return value[start:end]
+
+
+def _has_visible_action_content(segment: str) -> bool:
+    without_comments = re.sub(r"<!--[\s\S]*?-->", "", segment)
+    raw_visible = _HTML_TAG_RE.sub("", without_comments)
+    visible = html_lib.unescape(raw_visible)
+    visible = "".join(
+        char for char in visible
+        if not _is_default_ignorable_action_char(char)
+    )
+    visible = _strip_action_ecmascript_whitespace(visible)
+    return bool(visible)
+
+
+def _split_trailing_action_suffix(value: str) -> tuple[str, str]:
+    """Peel render-inert tails and closing tags without changing their order.
+
+    The period belongs immediately after the final visible character, which can
+    be inside one or more wrappers.  Removing just a terminal closing-tag run
+    first fails when comments, whitespace, or default-ignorables follow it.
+    """
+
+    cursor = len(value)
+    suffix = ""
+    while cursor:
+        char = value[cursor - 1]
+        if value[:cursor].endswith("-->"):
+            comment_start = value.rfind("<!--", 0, cursor)
+            if comment_start >= 0:
+                suffix = f"{value[comment_start:cursor]}{suffix}"
+                cursor = comment_start
+                continue
+        entity_match = _ACTION_TRAILING_ENTITY_RE.search(value[:cursor])
+        if entity_match:
+            entity = entity_match.group()
+            decoded_entity = html_lib.unescape(entity)
+            if (
+                decoded_entity
+                and (
+                    all(_is_default_ignorable_action_char(item) for item in decoded_entity)
+                    or (
+                        "</" in value[:cursor]
+                        and all(_is_action_ecmascript_whitespace(item) for item in decoded_entity)
+                    )
+                    or all(item in "”’\"'」』" for item in decoded_entity)
+                )
+            ):
+                suffix = f"{entity}{suffix}"
+                cursor = entity_match.start()
+                continue
+        if _is_action_ecmascript_whitespace(char) or _is_default_ignorable_action_char(char):
+            cursor -= 1
+            suffix = f"{char}{suffix}"
+            continue
+        if char in "”’\"'」』":
+            cursor -= 1
+            suffix = f"{char}{suffix}"
+            continue
+        closing_start = value.rfind("<", 0, cursor)
+        closing_tag = value[closing_start:cursor] if closing_start >= 0 else ""
+        if closing_tag and re.fullmatch(r"</[^>]+>", closing_tag, re.IGNORECASE):
+            suffix = f"{closing_tag}{suffix}"
+            cursor = closing_start
+            continue
+        break
+    return value[:cursor], suffix
+
+
+def _is_escaped_markdown_character(value: str, position: int) -> bool:
+    backslashes = 0
+    cursor = position - 1
+    while cursor >= 0 and value[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 1
+
+
+def _matching_markdown_delimiter(
+    value: str,
+    start: int,
+    opening: str,
+    closing: str,
+) -> int | None:
+    depth = 1
+    quote: str | None = None
+    cursor = start + 1
+    while cursor < len(value):
+        char = value[cursor]
+        if char in "\r\n":
+            return None
+        if char == "\\":
+            cursor += 2
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            cursor += 1
+            continue
+        if (
+            opening == "("
+            and char in {'"', "'"}
+            and (
+                cursor == start + 1
+                or _is_action_ecmascript_whitespace(value[cursor - 1])
+            )
+        ):
+            quote = char
+            cursor += 1
+            continue
+        if char == opening:
+            depth += 1
+        elif char == closing:
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _markdown_link_target(destination: str) -> str | None:
+    title_quote: str | None = None
+    title_start = -1
+    title_end = -1
+    cursor = 0
+    while cursor < len(destination):
+        char = destination[cursor]
+        if char == "\\":
+            cursor += 2
+            continue
+        if title_quote is not None:
+            if char == title_quote:
+                title_quote = None
+                title_end = cursor
+            cursor += 1
+            continue
+        if (
+            char in {'"', "'"}
+            and (
+                cursor == 0
+                or _is_action_ecmascript_whitespace(destination[cursor - 1])
+            )
+        ):
+            title_quote = char
+            title_start = cursor
+        cursor += 1
+    if title_quote is not None or (
+        title_start >= 0
+        and _strip_action_ecmascript_whitespace(destination[title_end + 1:])
+    ):
+        return None
+    target = (
+        destination[:title_start] if title_start >= 0 else destination
+    )
+    target = _strip_action_ecmascript_whitespace(target)
+    return (
+        target
+        if target
+        and not any(_is_action_ecmascript_whitespace(char) for char in target)
+        else None
+    )
+
+
+def _markdown_link_at(
+    value: str,
+    label_start: int,
+) -> tuple[int, int, str] | None:
+    if _is_escaped_markdown_character(value, label_start):
+        return None
+    label_end = _matching_markdown_delimiter(value, label_start, "[", "]")
+    if (
+        label_end is None
+        or label_end == label_start + 1
+        or label_end + 1 >= len(value)
+        or value[label_end + 1] != "("
+    ):
+        return None
+    url_end = _matching_markdown_delimiter(value, label_end + 1, "(", ")")
+    if url_end is None:
+        return None
+    target = _markdown_link_target(value[label_end + 2:url_end])
+    return None if target is None else (label_end, url_end, target)
+
+
+def markdown_link_targets(value: str) -> tuple[str, ...]:
+    """Return rendered Markdown link hrefs using the legacy converter grammar."""
+
+    targets: list[str] = []
+    cursor = 0
+    while cursor < len(value):
+        label_start = value.find("[", cursor)
+        if label_start < 0:
+            break
+        link = _markdown_link_at(value, label_start)
+        if link is None:
+            cursor = label_start + 1
+            continue
+        _, url_end, target = link
+        targets.append(target)
+        cursor = url_end + 1
+    return tuple(targets)
+
+
+def markdown_link_spans(value: str) -> tuple[tuple[int, int, str, str], ...]:
+    """Return valid Markdown link spans as ``(start, end, label, target)``."""
+
+    spans: list[tuple[int, int, str, str]] = []
+    cursor = 0
+    while cursor < len(value):
+        label_start = value.find("[", cursor)
+        if label_start < 0:
+            break
+        link = _markdown_link_at(value, label_start)
+        if link is None:
+            cursor = label_start + 1
+            continue
+        label_end, url_end, target = link
+        spans.append(
+            (
+                label_start,
+                url_end + 1,
+                value[label_start + 1:label_end],
+                target,
+            )
+        )
+        cursor = url_end + 1
+    return tuple(spans)
+
+
+def markdown_links_to_plain_text(value: str) -> str:
+    """Mirror the frontend converter: only valid Markdown links become labels."""
+
+    output: list[str] = []
+    source_cursor = 0
+    search_cursor = 0
+    while search_cursor < len(value):
+        label_start = value.find("[", search_cursor)
+        if label_start < 0:
+            break
+        link = _markdown_link_at(value, label_start)
+        if link is None:
+            search_cursor = label_start + 1
+            continue
+        label_end, url_end, _ = link
+        output.append(value[source_cursor:label_start])
+        output.append(value[label_start + 1:label_end])
+        source_cursor = url_end + 1
+        search_cursor = source_cursor
+    output.append(value[source_cursor:])
+    return "".join(output)
+
+
+def _has_trailing_markdown_link(value: str) -> bool:
+    cursor = 0
+    while cursor < len(value):
+        label_start = value.find("[", cursor)
+        if label_start < 0:
+            return False
+        if _is_escaped_markdown_character(value, label_start):
+            cursor = label_start + 1
+            continue
+        link = _markdown_link_at(value, label_start)
+        if link is None:
+            cursor = label_start + 1
+            continue
+        _, url_end, _ = link
+        if url_end == len(value) - 1:
+            return True
+        cursor = url_end + 1
+    return False
+
+
+def _trailing_markdown_link_parts(value: str) -> tuple[str, str, str] | None:
+    cursor = 0
+    while cursor < len(value):
+        label_start = value.find("[", cursor)
+        if label_start < 0:
+            return None
+        if _is_escaped_markdown_character(value, label_start):
+            cursor = label_start + 1
+            continue
+        link = _markdown_link_at(value, label_start)
+        if link is None:
+            cursor = label_start + 1
+            continue
+        label_end, url_end, _ = link
+        if url_end == len(value) - 1:
+            return (
+                value[:label_start + 1],
+                value[label_start + 1:label_end],
+                value[label_end:],
+            )
+        cursor = url_end + 1
+    return None
+
+
+def _is_action_punctuation_entity(entity: str) -> bool:
+    decoded = html_lib.unescape(entity)
+    return bool(decoded and _ACTION_PUNCTUATION_ONLY_RE.fullmatch(decoded))
+
+
+def _apply_action_markdown_render_pass(
+    tokens: list[tuple[str, int | None]],
+    pattern: re.Pattern[str],
+    *,
+    content_group: int,
+    italic: bool = False,
+) -> set[int]:
+    """Consume one legacy Markdown pass while retaining source offsets."""
+
+    rendered = "".join(char for char, _ in tokens)
+    consumed: set[int] = set()
+    for match in reversed(list(pattern.finditer(rendered))):
+        content_start, content_end = match.span(content_group)
+        if italic:
+            opening_start = content_start - 1
+            closing_end = content_end + 1
+        else:
+            opening_start = match.start()
+            closing_end = match.end()
+        for _, source_index in (
+            tokens[opening_start:content_start]
+            + tokens[content_end:closing_end]
+        ):
+            if source_index is not None:
+                consumed.add(source_index)
+        tokens[opening_start:closing_end] = [
+            (_ACTION_MARKDOWN_SYNTHETIC_OPEN, None),
+            *tokens[content_start:content_end],
+            (_ACTION_MARKDOWN_SYNTHETIC_CLOSE, None),
+        ]
+    return consumed
+
+
+def _rendered_action_markdown_marker_indices(value: str) -> set[int] | None:
+    """Return marker offsets consumed by the editor's legacy Markdown renderer.
+
+    The editor applies bold, underline, then italic replacements.  Modeling
+    those passes catches nested forms such as ``*x;**y;***`` without treating
+    unmatched or cross-HTML markers as invisible closing syntax.
+    """
+
+    if _ACTION_MARKDOWN_HTML_SPLIT_RE.search(value):
+        return None
+    tokens = [
+        (
+            "\ue002"
+            if char in "*＊_" and _is_escaped_markdown_character(value, index)
+            else char,
+            index,
+        )
+        for index, char in enumerate(value)
+    ]
+    consumed: set[int] = set()
+    consumed.update(_apply_action_markdown_render_pass(
+        tokens,
+        _ACTION_MARKDOWN_RENDER_BOLD_RE,
+        content_group=1,
+    ))
+    consumed.update(_apply_action_markdown_render_pass(
+        tokens,
+        _ACTION_MARKDOWN_RENDER_UNDERLINE_RE,
+        content_group=1,
+    ))
+    consumed.update(_apply_action_markdown_render_pass(
+        tokens,
+        _ACTION_MARKDOWN_RENDER_ITALIC_RE,
+        content_group=2,
+        italic=True,
+    ))
+    for index, char in enumerate(value):
+        if (
+            char in "*＊_"
+            and not _is_escaped_markdown_character(value, index)
+            and index not in consumed
+        ):
+            return None
+    return consumed
+
+
+def action_markdown_rendered_marker_indices(value: str) -> frozenset[int] | None:
+    """Return source offsets hidden by legacy Action Markdown formatting.
+
+    ``value`` must be one renderer text segment (HTML/comments are boundaries).
+    An empty set means the segment contains no rendered emphasis markers;
+    ``None`` means it contains an HTML boundary or an unmatched, unescaped
+    marker and must be treated literally.  The offsets cover every delimiter
+    consumed by the editor's bold -> underline -> italic conversion, including
+    valid nested forms and combined ``***`` closing runs.
+    """
+
+    consumed = _rendered_action_markdown_marker_indices(value)
+    return None if consumed is None else frozenset(consumed)
+
+
+def _has_terminal_action_plain_punctuation(value: str) -> bool:
+    body, _ = _split_trailing_action_suffix(value)
+    body, _ = _split_trailing_action_closers(body)
+    closer_entity_match = _ACTION_TRAILING_CLOSER_ENTITY_RE.search(body)
+    if closer_entity_match:
+        body = body[:closer_entity_match.start()]
+    entity_match = _ACTION_TRAILING_ENTITY_RE.search(body)
+    if entity_match:
+        return _is_action_punctuation_entity(entity_match.group())
+    return _ACTION_TRAILING_PUNCTUATION_RE.search(body) is not None
+
+
+def _normalize_action_plain_tail(value: str) -> str:
+    """Normalize only the visible tail, leaving Markdown markers literal."""
+
+    body, suffix = _split_trailing_action_suffix(value)
+    body, closers = _split_trailing_action_closers(body)
+    closer_entity_match = _ACTION_TRAILING_CLOSER_ENTITY_RE.search(body)
+    if closer_entity_match:
+        body = body[:closer_entity_match.start()]
+        closers = f"{closer_entity_match.group()}{closers}"
+    body = _strip_trailing_action_punctuation(body)
+    entity_match = _ACTION_TRAILING_ENTITY_RE.search(body)
+    if entity_match:
+        body, entity = body[:entity_match.start()], entity_match.group()
+        if _is_action_punctuation_entity(entity):
+            entity = ""
+    else:
+        entity = ""
+    body = _strip_trailing_action_punctuation(body)
+    return f"{body}{entity}。{closers}{suffix}"
+
+
+def _normalize_rendered_action_markdown(value: str) -> str | None:
+    consumed = _rendered_action_markdown_marker_indices(value)
+    if consumed is None:
+        return None
+    closing_start = len(value)
+    while closing_start > 0 and closing_start - 1 in consumed:
+        closing_start -= 1
+    return (
+        f"{_normalize_action_plain_tail(value[:closing_start])}"
+        f"{value[closing_start:]}"
+    )
+
+
+def _normalize_rendered_action_markdown_label(value: str) -> str | None:
+    consumed = _rendered_action_markdown_marker_indices(value)
+    if consumed is None:
+        return None
+    closing_start = len(value)
+    while closing_start > 0 and closing_start - 1 in consumed:
+        closing_start -= 1
+    body = value[:closing_start]
+    if not _has_terminal_action_plain_punctuation(body):
+        return None
+    return f"{_normalize_action_plain_tail(body)}{value[closing_start:]}"
+
+
+def _split_trailing_markdown_emphasis(value: str) -> tuple[str, str] | None:
+    html_matches = list(_ACTION_MARKDOWN_HTML_SPLIT_RE.finditer(value))
+    text_start = html_matches[-1].end() if html_matches else 0
+    tail = value[text_start:]
+    consumed = _rendered_action_markdown_marker_indices(tail)
+    if consumed is None:
+        return None
+    for delimiter in _ACTION_MARKDOWN_EMPHASIS_DELIMITERS:
+        if not tail.endswith(delimiter):
+            continue
+        closing_start = len(tail) - len(delimiter)
+        opening_start = tail.rfind(delimiter, 0, closing_start)
+        if (
+            opening_start < 0
+            or opening_start + len(delimiter) >= closing_start
+            or any(
+                index not in consumed
+                for index in range(opening_start, opening_start + len(delimiter))
+            )
+            or any(
+                index not in consumed
+                for index in range(closing_start, closing_start + len(delimiter))
+            )
+        ):
+            continue
+        return value[:text_start + closing_start], delimiter
+    return None
+
+
+
+def _strip_trailing_action_markup(value: str) -> str:
+    body = value
+    while body:
+        close_tags = _ACTION_TRAILING_CLOSE_TAGS_RE.search(body)
+        if close_tags:
+            body = body[:close_tags.start()]
+            continue
+        emphasis = _split_trailing_markdown_emphasis(body)
+        if emphasis:
+            body = emphasis[0]
+            continue
+        break
+    return body
+
+
+def _has_terminal_action_punctuation(value: str) -> bool:
+    for delimiter in _ACTION_MARKDOWN_EMPHASIS_DELIMITERS:
+        if (
+            value.startswith(delimiter)
+            and value.endswith(delimiter)
+            and len(value) > len(delimiter) * 2
+            and not _is_escaped_markdown_character(value, 0)
+        ):
+            return _has_terminal_action_punctuation(value[len(delimiter):-len(delimiter)])
+    body, _ = _split_trailing_action_closers(value)
+    closer_entity_match = _ACTION_TRAILING_CLOSER_ENTITY_RE.search(body)
+    if closer_entity_match:
+        body = body[:closer_entity_match.start()]
+    body = _strip_trailing_action_markup(body)
+    entity_match = _ACTION_TRAILING_ENTITY_RE.search(body)
+    if entity_match:
+        return _is_action_punctuation_entity(entity_match.group())
+    return _ACTION_TRAILING_PUNCTUATION_RE.search(body) is not None
+
+
+def _normalize_action_markdown_label(value: str) -> str:
+    for delimiter in _ACTION_MARKDOWN_EMPHASIS_DELIMITERS:
+        if (
+            value.startswith(delimiter)
+            and value.endswith(delimiter)
+            and len(value) > len(delimiter) * 2
+            and not _is_escaped_markdown_character(value, 0)
+        ):
+            return f"{delimiter}{_normalize_action_paragraph_segment(value[len(delimiter):-len(delimiter)])}{delimiter}"
+    return _normalize_action_paragraph_segment(value)
+
+
+def _split_trailing_action_closers(value: str) -> tuple[str, str]:
+    match = _ACTION_TRAILING_CLOSERS_RE.search(value)
+    if not match:
+        return value, ""
+    body, closers = value[:match.start()], match.group()
+    for index, char in enumerate(closers):
+        if char == ")" and _has_trailing_markdown_link(body + closers[:index + 1]):
+            return body + closers[:index + 1], closers[index + 1:]
+    return body, closers
+
+
+def _normalize_action_paragraph_segment(segment: str) -> str:
+    if not _has_visible_action_content(segment):
+        return segment
+
+    body, suffix = _split_trailing_action_suffix(segment)
+    html_matches = list(_ACTION_MARKDOWN_HTML_SPLIT_RE.finditer(body))
+    text_start = html_matches[-1].end() if html_matches else 0
+    text_prefix, text_tail = body[:text_start], body[text_start:]
+    markdown_link = _trailing_markdown_link_parts(text_tail)
+    if markdown_link is not None:
+        prefix, label, link_suffix = markdown_link
+        normalized_label = _normalize_rendered_action_markdown_label(label)
+        if normalized_label is not None:
+            return (
+                f"{text_prefix}{prefix}{normalized_label}{link_suffix}{suffix}"
+            )
+        return f"{text_prefix}{_normalize_action_plain_tail(text_tail)}{suffix}"
+
+    # The editor converts Markdown separately in each HTML/comment-delimited
+    # text segment.  A bracket pair spanning such a boundary stays literal.
+    if html_matches and _trailing_markdown_link_parts(body) is not None:
+        return f"{_normalize_action_plain_tail(body)}{suffix}"
+
+    if any(char in text_tail for char in "*＊_"):
+        normalized_markdown = _normalize_rendered_action_markdown(text_tail)
+        if normalized_markdown is None:
+            normalized_markdown = _normalize_action_plain_tail(text_tail)
+        return f"{text_prefix}{normalized_markdown}{suffix}"
+
+    return f"{_normalize_action_plain_tail(body)}{suffix}"
+
+
+def normalize_action_paragraph_endings(value: str) -> str:
+    """Canonicalize each visible action paragraph terminator without touching markup."""
+
+    if not isinstance(value, str) or not value:
+        return value
+    return "".join(
+        part if is_boundary else _normalize_action_paragraph_segment(part)
+        for part, is_boundary in _action_boundary_parts(value)
+    )
 _CHOICE_KEYS = {"value": "value", "label": "label"}
 _EXPERIENCE_FIELDS = frozenset({"star.s", "star.t", "star.a", "star.r"})
 _EXPERIENCE_QUESTION_FIELDS = _EXPERIENCE_FIELDS | frozenset(
@@ -353,6 +1081,32 @@ def _normalize_change(
         current_section_order=current_section_order,
         source_context=source_context,
     )
+    if (
+        change.module_type == OptimizationModuleType.EXPERIENCE_STAR
+        and change.field_path == "star.a"
+    ):
+        updates = {
+            field: normalize_action_paragraph_endings(candidate)
+            for field, candidate in (
+                ("general_value", change.general_value),
+                ("targeted_value", change.targeted_value),
+            )
+            if isinstance(candidate, str)
+        }
+        if updates:
+            change = change.model_copy(update=updates)
+        if (
+            change.action_kind == OptimizationAction.REWRITE_NOW
+            and change.general_value == change.before_value
+            and change.targeted_value == change.before_value
+        ):
+            change = change.model_copy(
+                update={
+                    "action_kind": OptimizationAction.LEAVE_UNCHANGED,
+                    "expected_score_gain": 0,
+                    "default_selected": False,
+                }
+            )
     if raw_id is None:
         generated = _stable_id("CHG", value)
         change = change.model_copy(update={"change_id": generated})
@@ -427,31 +1181,65 @@ def _normalize_question(
 def _validate_issue_coverage(
     changes: Sequence[OptimizationChange],
     *,
-    known_issue_ids: set[str],
+    known_issue_dimensions: Mapping[str, str],
 ) -> None:
+    known_issue_ids = set(known_issue_dimensions)
+    for issue_id, dimension in known_issue_dimensions.items():
+        if not isinstance(issue_id, str) or not issue_id.strip():
+            _fail("known issue IDs must be non-empty strings")
+        if dimension not in RESUME_EVALUATION_DIMENSION_NAMES:
+            _fail("known issue primaryDimension must be one of the fixed six dimensions")
+
     covered: set[str] = set()
     for change in changes:
+        if change.dimension not in RESUME_EVALUATION_DIMENSION_NAMES:
+            _fail("change dimension must be one of the fixed six dimensions")
         if not change.issue_ids:
             _fail("every change must reference at least one issue ID")
         if len(set(change.issue_ids)) != len(change.issue_ids):
             _fail("a change must not repeat issue IDs")
+        issue_dimensions: set[str] = set()
         for issue_id in change.issue_ids:
             if issue_id not in known_issue_ids:
                 _fail("a change references an unknown issue ID")
             if issue_id in covered:
                 _fail("each issue ID must be routed exactly once")
             covered.add(issue_id)
+            issue_dimensions.add(known_issue_dimensions[issue_id])
+        if len(issue_dimensions) != 1 or change.dimension not in issue_dimensions:
+            _fail(
+                "change dimension must match every covered issue primaryDimension"
+            )
     if covered != known_issue_ids:
         _fail("the plan must route every known issue ID exactly once")
+
+
+def _canonical_mutable_target(change: OptimizationChange) -> tuple[str, str]:
+    """Return the persisted field occupied by a mutable plan change.
+
+    This deliberately mirrors apply-time config aliases without importing the
+    apply service, which would create a normalization/apply dependency cycle.
+    """
+
+    if change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
+        return (f"experience:{change.module_id}", change.field_path)
+    if change.module_type == OptimizationModuleType.PERSONAL_SUMMARY:
+        return ("config", "personalSummary")
+    if change.module_type == OptimizationModuleType.SKILLS_ORDER:
+        return ("config", "selection.skillIds")
+    if change.module_type == OptimizationModuleType.SECTION_ORDER:
+        return ("config", "layout.sectionOrder")
+    _fail("unsupported mutable optimization target")
 
 
 def normalize_optimization_plan(
     raw: Any,
     *,
-    known_issue_ids: set[str],
     selected_master_ids: set[str],
     selected_skill_ids: set[str],
     current_section_order: list[str],
+    known_issue_dimensions: Mapping[str, str] | None = None,
+    known_issue_ids: set[str] | None = None,
     _source_context: _SourceValidationContext | None = None,
 ) -> OptimizationPlan:
     """Normalize a model plan using whole-plan, fail-closed rejection.
@@ -462,6 +1250,10 @@ def normalize_optimization_plan(
 
     if not isinstance(raw, Mapping):
         _fail("optimization plan root must be an object")
+    if known_issue_dimensions is None:
+        _fail("known issue dimensions are required")
+    elif known_issue_ids is not None and set(known_issue_dimensions) != known_issue_ids:
+        _fail("known issue ID and dimension inputs disagree")
     _reject_oversized_strings(raw)
     allowed_root_keys = {
         "changes",
@@ -498,7 +1290,20 @@ def normalize_optimization_plan(
     change_ids = [change.change_id for change in changes]
     if len(set(change_ids)) != len(change_ids):
         _fail("change IDs must be unique, including server-generated IDs")
-    _validate_issue_coverage(changes, known_issue_ids=known_issue_ids)
+    mutable_targets = [
+        _canonical_mutable_target(change)
+        for change in changes
+        if change.action_kind in {
+            OptimizationAction.REWRITE_NOW,
+            OptimizationAction.ASK_USER,
+        }
+    ]
+    if len(set(mutable_targets)) != len(mutable_targets):
+        _fail("rewrite and ask_user changes must target distinct resume fields")
+    _validate_issue_coverage(
+        changes,
+        known_issue_dimensions=known_issue_dimensions,
+    )
 
     changes_by_id = {change.change_id: change for change in changes}
     questions = [
@@ -514,18 +1319,21 @@ def normalize_optimization_plan(
     if len(set(question_ids)) != len(question_ids):
         _fail("question IDs must be unique, including server-generated IDs")
 
-    affected_ask_change_ids = {
+    affected_ask_change_ids = [
         change_id
         for question in questions
         for change_id in question.affects_change_ids
-    }
+    ]
     required_ask_change_ids = {
         change.change_id
         for change in changes
         if change.action_kind == OptimizationAction.ASK_USER
     }
-    if affected_ask_change_ids != required_ask_change_ids:
-        _fail("every ask_user change must be covered by a question")
+    if (
+        len(affected_ask_change_ids) != len(set(affected_ask_change_ids))
+        or set(affected_ask_change_ids) != required_ask_change_ids
+    ):
+        _fail("every ask_user change must be covered by exactly one question")
 
     return OptimizationPlan(changes=changes, questions=questions)
 
@@ -541,16 +1349,24 @@ def normalize_answered_optimization_changes(
     answer_question_modules: Mapping[str, str],
     answer_states: Mapping[str, str],
     answer_change_ids: Mapping[str, frozenset[str]],
+    known_issue_dimensions: Mapping[str, str],
 ) -> list[OptimizationChange]:
     if not isinstance(raw, Mapping) or set(raw) != {"changes"}:
         _fail("answer rewrite must return only a changes object")
     expected_by_id = {change.change_id: change for change in expected_changes}
-    known_issue_ids = {
+    expected_issue_ids = {
         issue_id for change in expected_changes for issue_id in change.issue_ids
+    }
+    missing_issue_dimensions = expected_issue_ids - set(known_issue_dimensions)
+    if missing_issue_dimensions:
+        _fail("answer rewrite expected issue is absent from the frozen evaluation")
+    local_issue_dimensions = {
+        issue_id: known_issue_dimensions[issue_id]
+        for issue_id in expected_issue_ids
     }
     plan = normalize_optimization_plan(
         {"changes": raw["changes"], "questions": []},
-        known_issue_ids=known_issue_ids,
+        known_issue_dimensions=local_issue_dimensions,
         selected_master_ids=selected_master_ids,
         selected_skill_ids=selected_skill_ids,
         current_section_order=current_section_order,

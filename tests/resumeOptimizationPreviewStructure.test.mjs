@@ -65,7 +65,7 @@ const change = (overrides) => ({
   scope: 'general',
   beforeValue: '<b>原始行动</b>',
   generalValue: '不得展示的通用稿',
-  targetedValue: '<strong>定向行动</strong>',
+  targetedValue: '<b>定向行动</b>',
   sourceLabels: ['本轮补充信息', '已选经历原始版本'],
   introducedTerms: [],
   rationale: '保留可核验事实并提高可读性',
@@ -79,20 +79,33 @@ const change = (overrides) => ({
 test('diff and bank components expose safe responsive controls and documented labels', () => {
   const preview = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationPreview.tsx');
   const card = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationDiffCard.tsx');
+  const overview = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationOverview.tsx');
   const bank = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationBankSuggestions.tsx');
   const utility = read('views/ResumeEditor/components/ResumeOptimization/optimizationDisplayUtils.mjs');
 
-  assert.match(card, /修改前/);
-  assert.match(card, /修改后/);
+  assert.match(card, /原内容/);
+  assert.match(card, /优化后/);
   assert.match(card, /beforeValue/);
   assert.match(card, /targetedValue/);
   assert.doesNotMatch(card, /generalValue/);
   assert.match(card, /isResumeOptimizationChangeSelectable/);
-  assert.match(card, /type="checkbox"/);
+  assert.match(card, /role="radiogroup"/);
+  assert.ok((card.match(/role="radio"/g) ?? []).length >= 2);
   assert.match(card, /disabled=\{!selectable\}/);
   assert.match(card, /readOnly/);
   assert.match(card, /保留原文/);
+  assert.match(card, /buildResumeOptimizationSafetyFindingCopy/);
+  assert.match(card, /自动规则未发现风险/);
+  assert.doesNotMatch(card, /已通过事实检查/);
   assert.match(card, /grid-cols-1[\s\S]*md:grid-cols-2/);
+  assert.match(preview, /plan\.changes\.filter\(isResumeOptimizationChangeReviewable\)/);
+  assert.match(preview, /plan\.changes\.filter\(\(change\) => change\.safetyStatus === 'blocked'\)/);
+  assert.match(overview, /plan\.changes\.filter\(isResumeOptimizationChangeReviewable\)/);
+  assert.match(overview, /plan\.changes\.filter\(\(change\) => change\.safetyStatus === 'blocked'\)/);
+  assert.match(overview, /buildResumeOptimizationSafetyFindingCopy/);
+  assert.match(overview, /所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的六维复评为准。/);
+  assert.doesNotMatch(overview, /所有改写都受事实边界约束/);
+  assert.doesNotMatch(`${overview}\n${card}`, /预计提升|expectedScoreGain|sortResumeOptimizationChangesByExpectedGain/);
   assert.match(card, /bg-slate/);
   assert.match(card, /bg-emerald/);
   assert.match(card, /border-rose|bg-rose/);
@@ -184,7 +197,9 @@ test('preview SSR uses targeted values, human order labels, and no internal iden
     assert.match(html, /经历库可补强素材/);
     assert.match(html, /查看经历/);
     assert.match(html, /前往一键组装/);
-    assert.equal((html.match(/type="checkbox"/g) ?? []).length, plan.changes.length);
+    assert.equal((html.match(/role="radio"/g) ?? []).length, 8);
+    assert.equal((html.match(/disabled=""/g) ?? []).length, 2);
+    assert.doesNotMatch(html, /请核对/);
     assert.doesNotMatch(
       html,
       /private-module|private-master|private-suggestion|\/currentResume|selection\.skillIds|sectionOrder/,
@@ -201,12 +216,169 @@ test('preview SSR uses targeted values, human order labels, and no internal iden
       onViewExperience: () => undefined,
       onOpenAutoAssembly: () => undefined,
     }));
-    assert.equal((historyHtml.match(/type="checkbox"/g) ?? []).length, plan.changes.length);
-    assert.equal((historyHtml.match(/disabled=""/g) ?? []).length, plan.changes.length);
+    assert.equal((historyHtml.match(/role="radio"/g) ?? []).length, 8);
+    assert.equal((historyHtml.match(/disabled=""/g) ?? []).length, 8);
     assert.match(historyHtml, /已应用/);
   } finally {
     cleanup();
   }
+});
+
+test('blocked changes retain their original text while exposing a safe safety explanation', async () => {
+  const { ResumeOptimizationPreview, cleanup } = await loadPreview();
+  try {
+    const basePlan = {
+      questions: [],
+      bankSuggestions: [],
+      safetySummary: {
+        allowedChangeIds: [],
+        blockedChangeIds: ['change-blocked'],
+        pendingChangeIds: [],
+        findings: [],
+      },
+    };
+    const blockedChange = change({
+      changeId: 'change-blocked',
+      safetyStatus: 'blocked',
+      actionKind: 'leave_unchanged',
+      targetedValue: null,
+      safetyFindings: [
+        '改写会引入无法验证的业务结果',
+        '请核对 /currentResume/experiences/private-id/star/a',
+      ],
+    });
+    const renderBlocked = (safetyFindings) => renderToStaticMarkup(React.createElement(
+      ResumeOptimizationPreview,
+      {
+        plan: { ...basePlan, changes: [{ ...blockedChange, safetyFindings }] },
+        acceptedChangeIds: [],
+        readOnly: false,
+        skillNameById: {},
+        onToggleChange: () => {
+          throw new Error('blocked changes must not be selectable');
+        },
+        onViewExperience: () => undefined,
+        onOpenAutoAssembly: () => undefined,
+      },
+    ));
+
+    const html = renderBlocked(blockedChange.safetyFindings);
+    assert.match(html, /安全阻断说明/);
+    assert.match(html, /改写会引入无法验证的业务结果/);
+    assert.match(html, /保留原文/);
+    assert.match(html, /此项不可应用/);
+    assert.equal((html.match(/role="radio"/g) ?? []).length, 2);
+    assert.equal((html.match(/disabled=""/g) ?? []).length, 2);
+    assert.doesNotMatch(html, /private-id|\/currentResume|自动规则未发现风险/);
+
+    const fallbackHtml = renderBlocked(['{"issueId":"ISS_PRIVATE","evidenceId":"E_PRIVATE"}']);
+    assert.match(fallbackHtml, /该项未通过自动安全规则，已保留原文。/);
+    assert.doesNotMatch(fallbackHtml, /ISS_PRIVATE|E_PRIVATE/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('legacy duplicate targets remain fully reviewable instead of hiding a candidate', async () => {
+  const { ResumeOptimizationPreview, cleanup } = await loadPreview();
+  try {
+    const plan = {
+      changes: [
+        change({
+          changeId: 'duplicate-first',
+          moduleId: 'shared-experience',
+          fieldPath: 'star.a',
+          targetedValue: '<b>第一候选行动</b>',
+          rationale: '第一条问题说明',
+        }),
+        change({
+          changeId: 'duplicate-second',
+          moduleId: 'shared-experience',
+          fieldPath: 'star.a',
+          targetedValue: '<b>第二候选行动</b>',
+          rationale: '第二条问题说明',
+        }),
+      ],
+      questions: [],
+      bankSuggestions: [],
+      safetySummary: {
+        allowedChangeIds: ['duplicate-first', 'duplicate-second'],
+        blockedChangeIds: [],
+        pendingChangeIds: [],
+        findings: [],
+      },
+    };
+    const html = renderToStaticMarkup(React.createElement(ResumeOptimizationPreview, {
+      resumeId: 'resume-1',
+      runId: 'legacy-run',
+      plan,
+      acceptedChangeIds: ['duplicate-second'],
+      readOnly: false,
+      skillNameById: {},
+      onToggleChange: () => undefined,
+      onViewExperience: () => undefined,
+      onOpenAutoAssembly: () => undefined,
+    }));
+
+    assert.match(html, /第一候选行动/);
+    assert.match(html, /第二候选行动/);
+    assert.match(html, /第一条问题说明/);
+    assert.match(html, /第二条问题说明/);
+    assert.equal((html.match(/role="radiogroup"/g) ?? []).length, 2);
+    assert.equal((html.match(/role="radio"/g) ?? []).length, 4);
+  } finally {
+    cleanup();
+  }
+});
+
+test('all-unsafe legacy plans explain that regeneration is required', async () => {
+  const { ResumeOptimizationPreview, cleanup } = await loadPreview();
+  try {
+    const plan = {
+      changes: [change({
+        changeId: 'unsafe-rich-text',
+        beforeValue: '<strong>原内容</strong>',
+        targetedValue: '丢失格式的新内容',
+      })],
+      questions: [],
+      bankSuggestions: [],
+      safetySummary: {
+        allowedChangeIds: ['unsafe-rich-text'],
+        blockedChangeIds: [],
+        pendingChangeIds: [],
+        findings: [],
+      },
+    };
+    const html = renderToStaticMarkup(React.createElement(ResumeOptimizationPreview, {
+      resumeId: 'resume-1',
+      runId: 'legacy-run',
+      plan,
+      acceptedChangeIds: [],
+      readOnly: false,
+      skillNameById: {},
+      onToggleChange: () => undefined,
+      onViewExperience: () => undefined,
+      onOpenAutoAssembly: () => undefined,
+    }));
+
+    assert.match(html, /没有可安全应用的修改/);
+    assert.match(html, /重新生成优化方案/);
+    assert.doesNotMatch(html, /role="radiogroup"/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('inline A4 comparisons expose only the yellow and green content cards', () => {
+  const renderUtils = read('views/ResumeEditor/components/ResumePreview/previewRenderUtils.tsx');
+  const comparisonBlock = renderUtils.slice(
+    renderUtils.indexOf('export const renderOptimizationTextComparison'),
+    renderUtils.indexOf('export const renderStarBlocks'),
+  );
+
+  assert.match(comparisonBlock, /className="my-2 space-y-2"/);
+  assert.doesNotMatch(comparisonBlock, /rounded-xl border border-slate|selectionLabel|准备采用|保留原文|已应用/);
+  assert.equal((comparisonBlock.match(/rounded-lg border/g) ?? []).length, 2);
 });
 
 test('workspace and editor wire navigation through guarded close without invoking editor actions', () => {
@@ -221,7 +393,7 @@ test('workspace and editor wire navigation through guarded close without invokin
   assert.match(editor, /resumeOptimizationNavigationInFlightRef/);
   assert.match(editor, /resumeOptimizationSuppressReturnFocusRef/);
   assert.match(editor, /await resumeOptimizationFlow\.closeWorkspace\(\)/);
-  assert.match(editor, /if \(!didClose\) return false/);
+  assert.match(editor, /if \(!didClose\) \{/);
   assert.match(editor, /resumeOptimizationShouldRestoreReportRef\.current = false/);
   assert.match(editor, /resumeOptimizationReturnFocusRef\.current = null/);
   assert.match(editor, /onJumpToExperienceBank\?\.\(category, masterExperienceId\)/);

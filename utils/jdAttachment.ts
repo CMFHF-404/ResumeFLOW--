@@ -120,6 +120,7 @@ export type JDAttachmentSelectionController = {
     clearFile: () => void;
     invalidatePending: () => void;
     waitForPendingSelection: () => Promise<boolean>;
+    hasPendingSelection: () => boolean;
 };
 
 export const createJDAttachmentSelectionController = (
@@ -188,6 +189,9 @@ export const createJDAttachmentSelectionController = (
                 }
             }
             return true;
+        },
+        hasPendingSelection() {
+            return pendingSelection !== null;
         },
     };
 };

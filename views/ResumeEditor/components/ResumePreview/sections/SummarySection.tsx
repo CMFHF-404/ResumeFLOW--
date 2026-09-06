@@ -1,6 +1,10 @@
 import React from 'react';
 import { GripVertical } from 'lucide-react';
 import { RICH_TEXT_INLINE_STYLES_CLASS } from '../../../../../utils/richText';
+import {
+    renderOptimizationTextComparison,
+    type ResumeOptimizationTextComparison,
+} from '../previewRenderUtils';
 
 type SummarySectionProps = {
     summaryHtml: string;
@@ -20,6 +24,7 @@ type SummarySectionProps = {
     handleNativeDragEnd: (event: React.DragEvent<HTMLElement>) => void;
     handleSectionControlTouchStart: (event: React.TouchEvent<HTMLElement>, sectionId: string) => void;
     onSectionDrop: (event: React.DragEvent<HTMLElement>) => void;
+    summaryComparison?: ResumeOptimizationTextComparison | null;
 };
 
 const SummarySection: React.FC<SummarySectionProps> = ({
@@ -40,6 +45,7 @@ const SummarySection: React.FC<SummarySectionProps> = ({
     handleNativeDragEnd,
     handleSectionControlTouchStart,
     onSectionDrop,
+    summaryComparison,
 }) => (
     <div
         key="summary"
@@ -86,10 +92,12 @@ const SummarySection: React.FC<SummarySectionProps> = ({
         >
             {renderOverflowMarker('summary')}
             {renderSectionHeading('个人评价', 'summary')}
-            <div
-                className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
-                dangerouslySetInnerHTML={{ __html: summaryHtml }}
-            />
+            {summaryComparison ? renderOptimizationTextComparison(summaryComparison, '个人评价') : (
+                <div
+                    className={`text-xs leading-[var(--rf-line-height)] text-gray-800 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                    dangerouslySetInnerHTML={{ __html: summaryHtml }}
+                />
+            )}
         </div>
     </div>
 );

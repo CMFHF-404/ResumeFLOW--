@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from types import SimpleNamespace
@@ -17,6 +17,7 @@ from app.domain.resume_optimization import apply_service, router as router_modul
 from app.domain.resume_optimization.run_service import canonical_json, hash_canonical_json
 from app.domain.resume_optimization.schemas import (
     ResumeOptimizationFinalizeRequest,
+    ResumeOptimizationRescoreClaimRequest,
     ResumeOptimizationRevertRequest,
     ResumeOptimizationStatus,
 )
@@ -38,6 +39,8 @@ from test_resume_optimization_apply import (
 
 
 POST_SCORE_TIME = BASE_TIME + timedelta(minutes=10)
+RESCORE_CLAIM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+RESCORE_CLAIM_TIME = datetime.now(timezone.utc)
 
 
 def _frontend_source_snapshot(
@@ -131,7 +134,20 @@ def _frontend_source_snapshot(
 
 
 def _post_frontend_snapshot(run, resume) -> dict:
-    post = deepcopy(apply_service._source_frontend_evaluation_snapshot(run))
+    post = deepcopy(
+        apply_service._source_frontend_evaluation_snapshot(
+            run,
+            allow_legacy=(
+                run.status
+                in {
+                    ResumeOptimizationStatus.APPLIED.value,
+                    ResumeOptimizationStatus.RESCORING.value,
+                    ResumeOptimizationStatus.COMPLETED.value,
+                    ResumeOptimizationStatus.REVERTED.value,
+                }
+            ),
+        )
+    )
     post_resume = post["resume"]
     accepted = set(run.accepted_change_ids)
     changes = [
@@ -151,7 +167,7 @@ def _post_frontend_snapshot(run, resume) -> dict:
     for change in changes:
         if change["module_type"] == "experience_star":
             key = change["field_path"][-1]
-            target = apply_service._frontend_plain_text(change["targeted_value"])
+            target = apply_service._frontend_star_plain_text(change["targeted_value"])
             next(item for item in post_resume["experiences"] if item["id"] == change["module_id"])["star"][key] = target
             next(item for item in post["experience_atoms"] if item["id"] == change["module_id"])["star"][key] = change["targeted_value"]
         elif change["module_type"] == "personal_summary" and summary_visible:
@@ -171,6 +187,36 @@ def _post_frontend_snapshot(run, resume) -> dict:
         )
     post["fact_metadata"] = apply_service._rebuild_frontend_fact_metadata(post)
     return apply_service._validate_exact_frontend_evaluation_snapshot(post)
+
+
+def _frontend_evaluation_signature(
+    *,
+    jd_input_signature: str,
+    resume_snapshot: dict,
+    jd_result: dict | None,
+    jd_available: bool,
+) -> str:
+    if jd_available:
+        assert isinstance(jd_result, dict)
+        identity = deepcopy(jd_result)
+        identity.pop("resumeEvaluation", None)
+        match_percentage = jd_result.get("matchPercentage")
+    else:
+        identity = None
+        match_percentage = None
+    return canonical_json(
+        {
+            "jdInputSignature": jd_input_signature,
+            "resume": resume_snapshot,
+            "jdAvailable": jd_available,
+            "jdResultIdentity": canonical_json(identity),
+            "jdMatchPercentage": match_percentage,
+        }
+    )
+
+
+def _raw_evaluation_jd_available_for_test(evaluation) -> bool:
+    return isinstance(evaluation, dict) and evaluation.get("jdMatch") is not None
 
 
 def _evaluation(
@@ -256,8 +302,12 @@ def _source_evaluation(*, jd_match: int | None = 80) -> dict:
     )
 
 
-def _post_evaluation() -> dict:
-    return _evaluation([100, 100, 100, 76, 78, 80], issue_prefix="AFTER")
+def _post_evaluation(*, jd_match: int | None = 80) -> dict:
+    return _evaluation(
+        [100, 100, 100, 76, 78, 80],
+        issue_prefix="AFTER",
+        jd_match=jd_match,
+    )
 
 
 def _prepare_source_evaluation(
@@ -273,11 +323,18 @@ def _prepare_source_evaluation(
         summary_visible=layout.get("isSummaryVisible") is not False,
         section_order=layout.get("sectionOrder"),
     )
-    run.source_evaluation_signature = canonical_json(
-        {
-            "jdInputSignature": run.source_jd_signature,
-            "resume": frontend_snapshot,
-        }
+    analysis = resume_config["jdAnalysis"]
+    analysis_result = analysis["result"]
+    analysis_result["resumeEvaluation"] = _source_evaluation(jd_match=jd_match)
+    if jd_match is None:
+        analysis_result.pop("matchPercentage", None)
+    else:
+        analysis_result["matchPercentage"] = jd_match
+    run.source_evaluation_signature = _frontend_evaluation_signature(
+        jd_input_signature=run.source_jd_signature,
+        resume_snapshot=frontend_snapshot,
+        jd_result=analysis_result,
+        jd_available=jd_match is not None,
     )
     snapshot = deepcopy(run.before_snapshot)
     snapshot["current_resume"]["personal_summary"] = personal_summary
@@ -287,7 +344,7 @@ def _prepare_source_evaluation(
     snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["r"] = (
         "转化率提升 30%"
     )
-    snapshot["evaluation"] = _source_evaluation(jd_match=jd_match)
+    snapshot["evaluation"] = deepcopy(analysis_result["resumeEvaluation"])
     snapshot["evaluation_signature"] = run.source_evaluation_signature
     snapshot["fact_metadata"] = deepcopy(frontend_snapshot["fact_metadata"])
     run.before_snapshot = snapshot
@@ -326,6 +383,8 @@ async def _applied_fixture(
     link.overrides_json["star"]["r"] = "转化率提升 30%"
     if link_mutator is not None:
         link_mutator(link)
+    from semantic_review_test_support import review_run_fixture
+    review_run_fixture(run)
     session = _transaction_session(run, resume, link)
     result = await apply_service.apply_resume_optimization(
         session=session,
@@ -333,6 +392,12 @@ async def _applied_fixture(
         run_id=str(RUN_ID),
         payload=_apply_request(*accepted_ids),
     )
+    result.run.error_json = {
+        "_activeRescoreClaim": {
+            "claimId": RESCORE_CLAIM_ID,
+            "claimedAt": RESCORE_CLAIM_TIME.isoformat(),
+        }
+    }
     return result.run, result.resume, link
 
 
@@ -347,17 +412,17 @@ def _install_persisted_post_evaluation(
     analysis = resume.config["jdAnalysis"]
     analysis["evaluationIsOutdated"] = evaluation_is_outdated
     post_snapshot = _post_frontend_snapshot(run, resume)
-    analysis["evaluationSignature"] = signature or canonical_json(
-        {
-            "jdInputSignature": run.source_jd_signature,
-            "resume": post_snapshot,
-        }
-    )
     analysis["jdInputSignature"] = run.source_jd_signature
     if evaluation is None:
         analysis["result"].pop("resumeEvaluation", None)
     else:
         analysis["result"]["resumeEvaluation"] = deepcopy(evaluation)
+    analysis["evaluationSignature"] = signature or _frontend_evaluation_signature(
+        jd_input_signature=run.source_jd_signature,
+        resume_snapshot=post_snapshot,
+        jd_result=analysis["result"],
+        jd_available=_raw_evaluation_jd_available_for_test(evaluation),
+    )
     resume.updated_at = POST_SCORE_TIME
 
 
@@ -379,15 +444,652 @@ def _finalize_session(
     )
 
 
-def _finalize_request(expected=POST_SCORE_TIME) -> ResumeOptimizationFinalizeRequest:
-    return ResumeOptimizationFinalizeRequest(expected_resume_updated_at=expected)
+def _finalize_request(
+    expected=POST_SCORE_TIME,
+    *,
+    claim_id: str = RESCORE_CLAIM_ID,
+) -> ResumeOptimizationFinalizeRequest:
+    return ResumeOptimizationFinalizeRequest(
+        expected_resume_updated_at=expected,
+        claim_id=claim_id,
+    )
 
 
 def _revert_request(expected) -> ResumeOptimizationRevertRequest:
-    return ResumeOptimizationRevertRequest(expected_resume_updated_at=expected)
+    return ResumeOptimizationRevertRequest(
+        expected_resume_updated_at=expected,
+        claim_id=RESCORE_CLAIM_ID,
+    )
 
 
 class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_implicit_archived_selection_survives_post_apply_operations(self) -> None:
+        for selection_mode in ("missing_field", "missing_selection"):
+            for operation in ("resume", "claim", "finalize", "revert"):
+                with self.subTest(selection_mode=selection_mode, operation=operation):
+                    def omit_selection(config):
+                        if selection_mode == "missing_selection":
+                            config.pop("selection")
+                        else:
+                            config["selection"].pop("experienceIds")
+
+                    run, resume, link = await _applied_fixture(config_mutator=omit_selection)
+                    archived_link = deepcopy(link)
+                    archived_link.id = uuid.UUID("77777777-7777-4777-8777-777777777777")
+                    archived_link.experience_version_id = uuid.UUID("88888888-8888-4888-8888-888888888888")
+                    archived_overrides = deepcopy(archived_link.overrides_json)
+                    if operation == "finalize":
+                        _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
+                    session = _FakeSession(
+                        [[run], [resume], [link, archived_link], [archived_link.id]],
+                        run=run, resume=resume, links=[link, archived_link],
+                    )
+                    kwargs = dict(session=session, user_id=USER_ID, run_id=str(RUN_ID))
+                    if operation == "resume":
+                        self.assertTrue(await apply_service.is_applied_run_resumable(**kwargs))
+                    elif operation == "claim":
+                        await apply_service.claim_resume_optimization_rescore(
+                            **kwargs,
+                            payload=ResumeOptimizationRescoreClaimRequest(
+                                expected_resume_updated_at=resume.updated_at,
+                                claim_id=RESCORE_CLAIM_ID,
+                            ),
+                        )
+                    elif operation == "finalize":
+                        completed = await apply_service.finalize_run_from_persisted_evaluation(
+                            **kwargs, payload=_finalize_request(),
+                        )
+                        self.assertEqual(completed.status, ResumeOptimizationStatus.COMPLETED.value)
+                    else:
+                        reverted = await apply_service.revert_resume_optimization(
+                            **kwargs, payload=_revert_request(resume.updated_at),
+                        )
+                        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+                    if selection_mode == "missing_selection":
+                        self.assertNotIn("selection", resume.config)
+                    else:
+                        self.assertNotIn("experienceIds", resume.config["selection"])
+                    self.assertEqual(archived_link.overrides_json, archived_overrides)
+                    archived_query = session.statements[3]
+                    self.assertIn("master_experiences.is_archived IS true", str(archived_query))
+                    self.assertIn(USER_ID, archived_query.compile().params.values())
+                    self.assertIsNotNone(archived_query._for_update_arg)
+                    self.assertTrue(archived_query._for_update_arg.skip_locked)
+
+    async def test_implicit_extra_link_must_be_confirmed_archived_before_rescore(self) -> None:
+        run, resume, link = await _applied_fixture(
+            config_mutator=lambda config: config["selection"].pop("experienceIds"),
+        )
+        extra_link = deepcopy(link)
+        extra_link.id = uuid.UUID("77777777-7777-4777-8777-777777777777")
+        extra_link.experience_version_id = uuid.UUID("88888888-8888-4888-8888-888888888888")
+        # An active, restored, missing, or concurrently locked master yields no
+        # confirmed archived link. None of these cases may start paid rescore.
+        session = _FakeSession(
+            [[run], [resume], [link, extra_link], []],
+            run=run, resume=resume, links=[link, extra_link],
+        )
+        with self.assertRaises(apply_service.OptimizationContentConflictError):
+            await apply_service.claim_resume_optimization_rescore(
+                session=session, user_id=USER_ID, run_id=str(RUN_ID),
+                payload=ResumeOptimizationRescoreClaimRequest(
+                    expected_resume_updated_at=resume.updated_at,
+                    claim_id=RESCORE_CLAIM_ID,
+                ),
+            )
+        self.assertEqual(session.commits, 0)
+        self.assertEqual(session.flushes, 0)
+        self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+
+    async def test_archived_selection_survives_apply_and_post_apply_operations(self) -> None:
+        archived_id = uuid.UUID("77777777-7777-4777-8777-777777777777")
+        for operation in ("resume", "claim", "finalize", "revert"):
+            with self.subTest(operation=operation):
+                run, resume, link = await _applied_fixture(
+                    config_mutator=lambda config: config["selection"]["experienceIds"].append(str(archived_id)),
+                )
+                self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+                if operation == "finalize":
+                    _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
+                session = _FakeSession(
+                    [[run], [resume], [archived_id], [link]],
+                    run=run, resume=resume, links=[link],
+                )
+                kwargs = dict(session=session, user_id=USER_ID, run_id=str(RUN_ID))
+                if operation == "resume":
+                    self.assertTrue(await apply_service.is_applied_run_resumable(**kwargs))
+                elif operation == "claim":
+                    await apply_service.claim_resume_optimization_rescore(
+                        **kwargs,
+                        payload=ResumeOptimizationRescoreClaimRequest(
+                            expected_resume_updated_at=resume.updated_at,
+                            claim_id=RESCORE_CLAIM_ID,
+                        ),
+                    )
+                elif operation == "finalize":
+                    completed = await apply_service.finalize_run_from_persisted_evaluation(
+                        **kwargs, payload=_finalize_request(),
+                    )
+                    self.assertEqual(completed.status, ResumeOptimizationStatus.COMPLETED.value)
+                else:
+                    reverted = await apply_service.revert_resume_optimization(
+                        **kwargs, payload=_revert_request(resume.updated_at),
+                    )
+                    self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+                self.assertEqual(
+                    resume.config["selection"]["experienceIds"],
+                    [str(MASTER_ID), str(archived_id)],
+                )
+                archived_query = session.statements[2]
+                self.assertIn("master_experiences.is_archived IS true", str(archived_query))
+                self.assertIn(USER_ID, archived_query.compile().params.values())
+                self.assertIsNotNone(archived_query._for_update_arg)
+                self.assertTrue(archived_query._for_update_arg.skip_locked)
+
+    async def test_hidden_selection_must_be_confirmed_archived_before_resuming(self) -> None:
+        hidden_id = "77777777-7777-4777-8777-777777777777"
+        run, resume, link = await _applied_fixture(
+            config_mutator=lambda config: config["selection"]["experienceIds"].append(hidden_id),
+        )
+        session = _FakeSession([[run], [resume], []], run=run, resume=resume, links=[link])
+        self.assertFalse(await apply_service.is_applied_run_resumable(
+            session=session, user_id=USER_ID, run_id=str(RUN_ID),
+        ))
+        self.assertEqual(session.commits, 0)
+        self.assertEqual(session.flushes, 0)
+
+        # A row being restored by another transaction is skipped by the lock
+        # query just like an already restored row: no paid rescore may begin.
+        claim_session = _FakeSession([[run], [resume], []], run=run, resume=resume, links=[link])
+        with self.assertRaises(apply_service.OptimizationContentConflictError):
+            await apply_service.claim_resume_optimization_rescore(
+                session=claim_session, user_id=USER_ID, run_id=str(RUN_ID),
+                payload=ResumeOptimizationRescoreClaimRequest(
+                    expected_resume_updated_at=resume.updated_at,
+                    claim_id=RESCORE_CLAIM_ID,
+                ),
+            )
+        self.assertEqual(claim_session.commits, 0)
+        self.assertEqual(claim_session.flushes, 0)
+
+    async def test_resumability_recheck_returns_the_locked_terminal_run(self) -> None:
+        initially_applied, _, _ = await _applied_fixture()
+        finalized_while_rechecking = deepcopy(initially_applied)
+        finalized_while_rechecking.status = ResumeOptimizationStatus.COMPLETED.value
+
+        with patch.object(
+            apply_service,
+            "_lock_run",
+            AsyncMock(return_value=finalized_while_rechecking),
+        ) as lock_run:
+            recheck = await apply_service.is_applied_run_resumable(
+                session=SimpleNamespace(),
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+            )
+
+        self.assertFalse(recheck.is_resumable)
+        self.assertIs(recheck.run, finalized_while_rechecking)
+        self.assertIsNot(recheck.run, initially_applied)
+        lock_run.assert_awaited_once_with(
+            unittest.mock.ANY,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+        )
+
+    async def test_legacy_two_field_signature_is_only_accepted_for_unmarked_post_apply_runs(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        legacy_signature = canonical_json(
+            {
+                "jdInputSignature": "jd-signature",
+                "resume": snapshot,
+            }
+        )
+        with self.assertRaises(apply_service.OptimizationRunDataInvalidError):
+            apply_service._parse_frontend_evaluation_signature(
+                legacy_signature,
+                jd_input_signature="jd-signature",
+                field_name="new source signature",
+            )
+
+        run = _run([_change("CHG_LEGACY_SIGNATURE")])
+        run.source_evaluation_signature = legacy_signature
+        run.before_snapshot["evaluation_signature"] = legacy_signature
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        with self.assertRaises(apply_service.OptimizationRunDataInvalidError):
+            apply_service._source_frontend_evaluation_snapshot(
+                run,
+                allow_legacy=True,
+            )
+
+        run.before_snapshot.pop("evaluation_signature_schema")
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        run.status = ResumeOptimizationStatus.APPLIED.value
+        self.assertEqual(
+            apply_service._source_frontend_evaluation_snapshot(
+                run,
+                allow_legacy=True,
+            ),
+            snapshot,
+        )
+        run.before_snapshot["evaluation_signature_schema"] = "frontend_evaluation_v2"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        with self.assertRaises(apply_service.OptimizationRunDataInvalidError):
+            apply_service._source_frontend_evaluation_snapshot(
+                run,
+                allow_legacy=True,
+            )
+
+    async def test_unmarked_post_apply_source_uses_the_legacy_profile_fact_contract(self) -> None:
+        snapshot = _frontend_source_snapshot(
+            personal_summary="<b>字面摘要</b>",
+        )
+        legacy_snapshot = deepcopy(snapshot)
+        legacy_snapshot["fact_metadata"] = (
+            apply_service._rebuild_frontend_fact_metadata(
+                legacy_snapshot,
+                normalized_profile_summary=False,
+            )
+        )
+        self.assertNotEqual(
+            snapshot["fact_metadata"],
+            legacy_snapshot["fact_metadata"],
+        )
+        for signature_shape in ("legacy_two_field", "historical_five_field"):
+            with self.subTest(signature_shape=signature_shape):
+                run = _run(
+                    [_change("CHG_LEGACY_FACTS")],
+                    status=ResumeOptimizationStatus.APPLIED,
+                )
+                signature_payload = json.loads(run.source_evaluation_signature)
+                signature_payload["resume"] = legacy_snapshot
+                if signature_shape == "legacy_two_field":
+                    signature_payload = {
+                        "jdInputSignature": signature_payload["jdInputSignature"],
+                        "resume": legacy_snapshot,
+                    }
+                legacy_signature = canonical_json(signature_payload)
+                run.source_evaluation_signature = legacy_signature
+                run.before_snapshot["evaluation_signature"] = legacy_signature
+                run.before_snapshot.pop("evaluation_signature_schema")
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+                self.assertEqual(
+                    apply_service._source_frontend_evaluation_snapshot(
+                        run,
+                        allow_legacy=True,
+                    ),
+                    legacy_snapshot,
+                )
+
+    async def test_legacy_applied_completed_and_reverted_runs_remain_readable(self) -> None:
+        async def legacy_applied_fixture():
+            run, resume, link = await _applied_fixture()
+            source = json.loads(run.source_evaluation_signature)
+            legacy_signature = canonical_json(
+                {
+                    "jdInputSignature": source["jdInputSignature"],
+                    "resume": source["resume"],
+                }
+            )
+            run.source_evaluation_signature = legacy_signature
+            run.before_snapshot["evaluation_signature"] = legacy_signature
+            run.before_snapshot.pop("evaluation_signature_schema")
+            run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+            run.after_snapshot["rollback_before_signature"] = (
+                apply_service._rollback_before_signature(
+                    run_id=run.id,
+                    resume_id=run.resume_id,
+                    source_snapshot_hash=run.source_snapshot_hash,
+                    applied_change_ids=list(run.accepted_change_ids),
+                    before=run.after_snapshot["before"],
+                )
+            )
+            return run, resume, link
+
+        tampered_run, _tampered_resume, _tampered_link = await _applied_fixture()
+        tampered_source = json.loads(tampered_run.source_evaluation_signature)
+        tampered_run.source_evaluation_signature = canonical_json(
+            {
+                "jdInputSignature": tampered_source["jdInputSignature"],
+                "resume": tampered_source["resume"],
+            }
+        )
+        with self.assertRaises(router_module.OptimizationPersistedRunInvalidError):
+            router_module._run_to_read(tampered_run)
+
+        applied_run, _applied_resume, _applied_link = await legacy_applied_fixture()
+        self.assertEqual(
+            router_module._run_to_read(applied_run).status,
+            ResumeOptimizationStatus.APPLIED,
+        )
+
+        completed_run, completed_resume, completed_link = (
+            await legacy_applied_fixture()
+        )
+        _install_persisted_post_evaluation(
+            completed_run,
+            completed_resume,
+            evaluation=_post_evaluation(),
+        )
+        completed = await apply_service.finalize_run_from_persisted_evaluation(
+            session=_finalize_session(
+                completed_run,
+                completed_resume,
+                completed_link,
+            ),
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_finalize_request(),
+        )
+        self.assertEqual(
+            router_module._run_to_read(completed).status,
+            ResumeOptimizationStatus.COMPLETED,
+        )
+
+        reverted_run, reverted_resume, reverted_link = await legacy_applied_fixture()
+        reverted = await apply_service.revert_resume_optimization(
+            session=_finalize_session(
+                reverted_run,
+                reverted_resume,
+                reverted_link,
+            ),
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_revert_request(reverted_resume.updated_at),
+        )
+        self.assertEqual(
+            router_module._run_to_read(reverted.run).status,
+            ResumeOptimizationStatus.REVERTED,
+        )
+
+    async def test_current_five_field_frontend_signature_is_accepted(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        jd_result = {
+            "matchPercentage": 80,
+            "requirements": ["负责产品规划"],
+            "resumeEvaluation": _source_evaluation(),
+        }
+        signature = canonical_json(
+            {
+                "jdInputSignature": "jd-signature",
+                "resume": snapshot,
+                "jdAvailable": True,
+                "jdResultIdentity": canonical_json(
+                    {
+                        "matchPercentage": 80,
+                        "requirements": ["负责产品规划"],
+                    }
+                ),
+                "jdMatchPercentage": 80,
+            }
+        )
+
+        rebuilt = apply_service._parse_frontend_evaluation_signature(
+            signature,
+            jd_input_signature="jd-signature",
+            field_name="current frontend signature",
+        )
+
+        self.assertEqual(rebuilt, snapshot)
+
+    async def test_frontend_signature_rejects_numbers_outside_javascript_finite_range(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        huge = 10**400
+        base = {
+            "jdAvailable": True,
+            "jdInputSignature": "jd-signature",
+            "jdMatchPercentage": 80,
+            "jdResultIdentity": canonical_json({"matchPercentage": 80}),
+            "resume": snapshot,
+        }
+        cases = []
+        root = deepcopy(base)
+        root["jdMatchPercentage"] = huge
+        cases.append(root)
+        nested = deepcopy(base)
+        nested["jdResultIdentity"] = canonical_json(
+            {"matchPercentage": 80, "nested": {"huge": huge}}
+        )
+        cases.append(nested)
+        for signature in cases:
+            with self.subTest(signature=signature):
+                with self.assertRaises(apply_service.OptimizationRunDataInvalidError):
+                    apply_service._parse_frontend_evaluation_signature(
+                        canonical_json(signature),
+                        jd_input_signature="jd-signature",
+                        field_name="oversized numeric signature",
+                    )
+
+    async def test_huge_signature_numbers_fail_with_read_domain_and_finalize_pending_errors(self) -> None:
+        huge = 10**400
+        read_run, _read_resume, _read_link = await _applied_fixture()
+        read_signature = json.loads(read_run.source_evaluation_signature)
+        read_signature["jdMatchPercentage"] = huge
+        read_run.source_evaluation_signature = canonical_json(read_signature)
+        with self.assertRaises(router_module.OptimizationPersistedRunInvalidError):
+            router_module._run_to_read(read_run)
+
+        for location in ("root", "nested"):
+            with self.subTest(location=location):
+                run, resume, link = await _applied_fixture()
+                _install_persisted_post_evaluation(
+                    run,
+                    resume,
+                    evaluation=_post_evaluation(),
+                )
+                signature = json.loads(
+                    resume.config["jdAnalysis"]["evaluationSignature"]
+                )
+                if location == "root":
+                    signature["jdMatchPercentage"] = huge
+                else:
+                    identity = json.loads(signature["jdResultIdentity"])
+                    identity["nestedHuge"] = huge
+                    signature["jdResultIdentity"] = canonical_json(identity)
+                resume.config["jdAnalysis"]["evaluationSignature"] = canonical_json(
+                    signature
+                )
+                session = _finalize_session(run, resume, link)
+
+                with self.assertRaises(apply_service.OptimizationFinalizePendingError):
+                    await apply_service.finalize_run_from_persisted_evaluation(
+                        session=session,
+                        user_id=USER_ID,
+                        run_id=str(RUN_ID),
+                        payload=_finalize_request(),
+                    )
+
+                self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+                self.assertEqual(session.commits, 1)
+
+    async def test_frontend_signature_accepts_javascript_number_serialization(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        evaluation = _source_evaluation(jd_match=0.000001)
+        jd_result = {
+            "evidenceCompleteness": 0.000001,
+            "largeFixed": 10**20,
+            "largeScientific": 1e21,
+            "matchPercentage": 0.000001,
+            "negativeZero": -0.0,
+            "recommendedTitles": [{"confidence": 1e-7}],
+            "resumeEvaluation": evaluation,
+        }
+        # Exact JSON.stringify/canonicalStringify spellings.  Python's json
+        # encoder instead emits 1e-06, 1e-07 and -0.0 for three of these.
+        identity = (
+            '{"evidenceCompleteness":0.000001,'
+            '"largeFixed":100000000000000000000,'
+            '"largeScientific":1e+21,'
+            '"matchPercentage":0.000001,'
+            '"negativeZero":0,'
+            '"recommendedTitles":[{"confidence":1e-7}]}'
+        )
+        signature = canonical_json(
+            {
+                "jdAvailable": True,
+                "jdInputSignature": "jd-signature",
+                "jdMatchPercentage": 0.000001,
+                "jdResultIdentity": identity,
+                "resume": snapshot,
+            }
+        ).replace('"jdMatchPercentage":1e-06', '"jdMatchPercentage":0.000001')
+
+        rebuilt = apply_service._parse_frontend_evaluation_signature(
+            signature,
+            jd_input_signature="jd-signature",
+            field_name="JavaScript-number frontend signature",
+            expected_evaluation=evaluation,
+            expected_jd_result=jd_result,
+        )
+
+        self.assertEqual(rebuilt, snapshot)
+        self.assertIn('\\"largeFixed\\":100000000000000000000', signature)
+        self.assertIn('\\"largeScientific\\":1e+21', signature)
+        self.assertIn('\\"negativeZero\\":0', signature)
+        self.assertIn('\\"confidence\\":1e-7', signature)
+
+    async def test_frontend_signature_rejects_noncanonical_or_duplicate_json(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        jd_result = {
+            "matchPercentage": 80,
+            "requirements": ["负责产品规划"],
+            "resumeEvaluation": _source_evaluation(),
+        }
+        valid = _frontend_evaluation_signature(
+            jd_input_signature="jd-signature",
+            resume_snapshot=snapshot,
+            jd_result=jd_result,
+            jd_available=True,
+        )
+        payload = json.loads(valid)
+        unsorted = json.dumps(
+            {
+                "resume": payload["resume"],
+                "jdResultIdentity": payload["jdResultIdentity"],
+                "jdMatchPercentage": 80,
+                "jdInputSignature": "jd-signature",
+                "jdAvailable": True,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        duplicate_root = '{"jdAvailable":true,' + valid[1:]
+        identity_duplicate = deepcopy(payload)
+        identity_duplicate["jdResultIdentity"] = (
+            '{"matchPercentage":80,"matchPercentage":80,'
+            '"requirements":["负责产品规划"]}'
+        )
+        identity_whitespace = deepcopy(payload)
+        identity_whitespace["jdResultIdentity"] = (
+            '{"matchPercentage":80, "requirements":["负责产品规划"]}'
+        )
+        nonfinite = valid.replace(
+            '"jdMatchPercentage":80',
+            '"jdMatchPercentage":1e999',
+            1,
+        )
+        invalid_signatures = [
+            valid.replace("{", "{ ", 1),
+            unsorted,
+            duplicate_root,
+            canonical_json(identity_duplicate),
+            canonical_json(identity_whitespace),
+            nonfinite,
+        ]
+
+        for signature in invalid_signatures:
+            with self.subTest(signature=signature[:80]):
+                with self.assertRaises(
+                    apply_service.OptimizationRunDataInvalidError
+                ):
+                    apply_service._parse_frontend_evaluation_signature(
+                        signature,
+                        jd_input_signature="jd-signature",
+                        field_name="noncanonical frontend signature",
+                        expected_evaluation=jd_result["resumeEvaluation"],
+                        expected_jd_result=jd_result,
+                    )
+
+    async def test_frontend_signature_rejects_jd_identity_match_and_shape_tampering(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        evaluation = _source_evaluation()
+        jd_result = {
+            "matchPercentage": 80,
+            "requirements": ["负责产品规划"],
+            "resumeEvaluation": evaluation,
+        }
+        valid_payload = json.loads(
+            _frontend_evaluation_signature(
+                jd_input_signature="jd-signature",
+                resume_snapshot=snapshot,
+                jd_result=jd_result,
+                jd_available=True,
+            )
+        )
+        tampered_payloads = []
+        changed_identity = deepcopy(valid_payload)
+        changed_identity["jdResultIdentity"] = canonical_json(
+            {"matchPercentage": 80, "requirements": ["不同但同分的JD"]}
+        )
+        tampered_payloads.append(changed_identity)
+        changed_match = deepcopy(valid_payload)
+        changed_match["jdMatchPercentage"] = 81
+        tampered_payloads.append(changed_match)
+        unknown_root = deepcopy(valid_payload)
+        unknown_root["unknown"] = True
+        tampered_payloads.append(unknown_root)
+        tampered_payloads.append(
+            {
+                "jdInputSignature": "jd-signature",
+                "resume": snapshot,
+            }
+        )
+
+        for payload in tampered_payloads:
+            with self.subTest(keys=tuple(payload)):
+                with self.assertRaises(
+                    apply_service.OptimizationRunDataInvalidError
+                ):
+                    apply_service._parse_frontend_evaluation_signature(
+                        canonical_json(payload),
+                        jd_input_signature="jd-signature",
+                        field_name="tampered frontend signature",
+                        expected_evaluation=evaluation,
+                        expected_jd_result=jd_result,
+                    )
+
+    async def test_frontend_signature_enforces_no_jd_semantics(self) -> None:
+        snapshot = _frontend_source_snapshot()
+        evaluation = _source_evaluation(jd_match=None)
+        jd_result = {"resumeEvaluation": evaluation}
+        signature = _frontend_evaluation_signature(
+            jd_input_signature="jd-signature",
+            resume_snapshot=snapshot,
+            jd_result=jd_result,
+            jd_available=False,
+        )
+
+        rebuilt = apply_service._parse_frontend_evaluation_signature(
+            signature,
+            jd_input_signature="jd-signature",
+            field_name="no-JD frontend signature",
+            expected_evaluation=evaluation,
+            expected_jd_result=jd_result,
+        )
+        self.assertEqual(rebuilt, snapshot)
+
+        tampered = json.loads(signature)
+        tampered["jdResultIdentity"] = canonical_json({})
+        with self.assertRaises(apply_service.OptimizationRunDataInvalidError):
+            apply_service._parse_frontend_evaluation_signature(
+                canonical_json(tampered),
+                jd_input_signature="jd-signature",
+                field_name="tampered no-JD frontend signature",
+                expected_evaluation=evaluation,
+                expected_jd_result=jd_result,
+            )
+
     async def test_server_evaluation_signature_matches_frontend_canonical_shape(self) -> None:
         snapshot = {
             "evaluation_scope": "full_resume",
@@ -409,8 +1111,12 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             "fact_metadata": [],
         }
         snapshot["fact_metadata"] = apply_service._rebuild_frontend_fact_metadata(snapshot)
-        signature = canonical_json(
-            {"jdInputSignature": "jd-signature", "resume": snapshot}
+        jd_result = {"matchPercentage": 80, "requirements": ["产品规划"]}
+        signature = _frontend_evaluation_signature(
+            jd_input_signature="jd-signature",
+            resume_snapshot=snapshot,
+            jd_result=jd_result,
+            jd_available=True,
         )
 
         rebuilt = apply_service._parse_frontend_evaluation_signature(
@@ -420,9 +1126,9 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(rebuilt, snapshot)
-        self.assertEqual(
+        self.assertRegex(
             hashlib.sha256(signature.encode("utf-8")).hexdigest(),
-            "7dc244ef847c15c35bb6d332ff0c2126c8c8df0da862194e88e357e05a3d4df0",
+            r"^[0-9a-f]{64}$",
         )
         self.assertEqual(rebuilt["resume"]["experiences"][0]["start_date"], "")
         self.assertEqual(rebuilt["resume"]["skills"][0]["category"], "未分类")
@@ -438,8 +1144,11 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         null_dates["fact_metadata"] = apply_service._rebuild_frontend_fact_metadata(
             null_dates
         )
-        null_signature = canonical_json(
-            {"jdInputSignature": "jd-signature", "resume": null_dates}
+        null_signature = _frontend_evaluation_signature(
+            jd_input_signature="jd-signature",
+            resume_snapshot=null_dates,
+            jd_result=jd_result,
+            jd_available=True,
         )
         self.assertEqual(
             apply_service._parse_frontend_evaluation_signature(
@@ -474,6 +1183,107 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.commits, 1)
         self.assertIs(resume.config["jdAnalysis"]["isOutdated"], True)
 
+    async def test_no_jd_run_can_finalize_with_current_signature_shape(self) -> None:
+        run, resume, link = await _applied_fixture(source_jd_match=None)
+        _install_persisted_post_evaluation(
+            run,
+            resume,
+            evaluation=_post_evaluation(jd_match=None),
+        )
+
+        result = await apply_service.finalize_run_from_persisted_evaluation(
+            session=_finalize_session(run, resume, link),
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_finalize_request(),
+        )
+
+        self.assertEqual(result.status, ResumeOptimizationStatus.COMPLETED.value)
+
+    async def test_apply_rejects_persisted_jd_identity_or_match_drift(self) -> None:
+        for mutation in ("identity", "match"):
+            with self.subTest(mutation=mutation):
+                run = _run([_change("CHG_A")])
+                resume = _resume()
+                _prepare_source_evaluation(run, resume_config=resume.config)
+                resume.config["jdAnalysis"]["evaluationSignature"] = (
+                    run.source_evaluation_signature
+                )
+                if mutation == "identity":
+                    resume.config["jdAnalysis"]["result"]["requirements"] = [
+                        "同分但不同JD内容"
+                    ]
+                else:
+                    resume.config["jdAnalysis"]["result"]["matchPercentage"] = 81
+                link = _link()
+                link.overrides_json["star"]["r"] = "转化率提升 30%"
+                session = _transaction_session(run, resume, link)
+                before_config = deepcopy(resume.config)
+                before_overrides = deepcopy(link.overrides_json)
+
+                with self.assertRaises(
+                    apply_service.OptimizationApplyValidationError
+                ):
+                    await apply_service.apply_resume_optimization(
+                        session=session,
+                        user_id=USER_ID,
+                        run_id=str(RUN_ID),
+                        payload=_apply_request("CHG_A"),
+                    )
+
+                self.assertEqual(run.status, ResumeOptimizationStatus.PREVIEW_READY.value)
+                self.assertEqual(resume.config, before_config)
+                self.assertEqual(link.overrides_json, before_overrides)
+                self.assertEqual(session.commits, 0)
+
+    async def test_finalize_rejects_same_score_different_jd_result_identity(self) -> None:
+        run, resume, link = await _applied_fixture()
+        resume.config["jdAnalysis"]["result"]["requirements"] = ["不同JD内容"]
+        _install_persisted_post_evaluation(
+            run,
+            resume,
+            evaluation=_post_evaluation(),
+        )
+        session = _finalize_session(run, resume, link)
+
+        with self.assertRaises(apply_service.OptimizationFinalizePendingError):
+            await apply_service.finalize_run_from_persisted_evaluation(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_finalize_request(),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+
+    async def test_finalize_rejects_jd_match_percentage_drift(self) -> None:
+        run, resume, link = await _applied_fixture()
+        resume.config["jdAnalysis"]["result"]["matchPercentage"] = 81
+        post_snapshot = _post_frontend_snapshot(run, resume)
+        signature = _frontend_evaluation_signature(
+            jd_input_signature=run.source_jd_signature,
+            resume_snapshot=post_snapshot,
+            jd_result=resume.config["jdAnalysis"]["result"],
+            jd_available=True,
+        )
+        _install_persisted_post_evaluation(
+            run,
+            resume,
+            evaluation=_post_evaluation(),
+            signature=signature,
+        )
+        session = _finalize_session(run, resume, link)
+
+        with self.assertRaises(apply_service.OptimizationFinalizePendingError):
+            await apply_service.finalize_run_from_persisted_evaluation(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_finalize_request(),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+
     async def test_finalize_reads_only_persisted_server_evaluation(self) -> None:
         run, resume, link = await _applied_fixture()
         persisted = _post_evaluation()
@@ -481,7 +1291,10 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         session = _finalize_session(run, resume, link)
         request = _finalize_request()
 
-        self.assertEqual(request.model_dump(), {"expected_resume_updated_at": POST_SCORE_TIME})
+        self.assertEqual(request.model_dump(), {
+            "expected_resume_updated_at": POST_SCORE_TIME,
+            "claim_id": RESCORE_CLAIM_ID,
+        })
         result = await apply_service.finalize_run_from_persisted_evaluation(
             session=session,
             user_id=USER_ID,
@@ -493,6 +1306,27 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             result.post_evaluation_json["afterScore"],
             persisted["overallScore"],
         )
+
+    async def test_finalize_schema_requires_a_rescore_claim(self) -> None:
+        with self.assertRaises(ValidationError):
+            ResumeOptimizationFinalizeRequest(
+                expected_resume_updated_at=POST_SCORE_TIME,
+            )
+
+    async def test_finalize_rejects_an_expired_matching_rescore_claim(self) -> None:
+        run, resume, link = await _applied_fixture()
+        run.error_json["_activeRescoreClaim"]["claimedAt"] = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).isoformat()
+        _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
+
+        with self.assertRaises(apply_service.OptimizationRescoreClaimLostError):
+            await apply_service.finalize_run_from_persisted_evaluation(
+                session=_finalize_session(run, resume, link),
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_finalize_request(),
+            )
 
     async def test_finalize_normalizes_forged_score_and_rejects_incomplete_dimensions(self) -> None:
         run, resume, link = await _applied_fixture()
@@ -607,13 +1441,65 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(session.commits, 1)
                 self.assertNotIn("PRIVATE", raised.exception.public_message)
 
+    async def test_finalize_requires_the_active_rescore_claim_and_clears_it_on_success(self) -> None:
+        run, resume, link = await _applied_fixture()
+        claim_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        run.error_json = {
+            "_activeRescoreClaim": {
+                "claimId": claim_id,
+                "claimedAt": RESCORE_CLAIM_TIME.isoformat(),
+            }
+        }
+        _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
+
+        with self.assertRaises(apply_service.OptimizationRescoreClaimLostError):
+            await apply_service.finalize_run_from_persisted_evaluation(
+                session=_finalize_session(run, resume, link),
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_finalize_request(
+                    claim_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                ),
+            )
+
+        result = await apply_service.finalize_run_from_persisted_evaluation(
+            session=_finalize_session(run, resume, link),
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_finalize_request(claim_id=claim_id),
+        )
+        self.assertEqual(result.status, ResumeOptimizationStatus.COMPLETED.value)
+        self.assertEqual(result.error_json, {})
+
+    async def test_finalize_pending_clears_rescore_claim_for_immediate_retry(self) -> None:
+        run, resume, link = await _applied_fixture()
+        claim_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        run.error_json = {
+            "_activeRescoreClaim": {
+                "claimId": claim_id,
+                "claimedAt": RESCORE_CLAIM_TIME.isoformat(),
+            }
+        }
+        _install_persisted_post_evaluation(run, resume, evaluation=None)
+
+        with self.assertRaises(apply_service.OptimizationFinalizePendingError):
+            await apply_service.finalize_run_from_persisted_evaluation(
+                session=_finalize_session(run, resume, link),
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_finalize_request(claim_id=claim_id),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+        self.assertNotIn("_activeRescoreClaim", run.error_json)
+
     async def test_finalize_rejects_source_jd_signature_mismatch_for_retry(self) -> None:
         run, resume, link = await _applied_fixture()
         _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
         resume.config["jdAnalysis"]["jdInputSignature"] = "changed-jd-signature"
         session = _finalize_session(run, resume, link)
 
-        with self.assertRaises(apply_service.OptimizationFinalizePendingError):
+        with self.assertRaises(apply_service.OptimizationContentConflictError):
             await apply_service.finalize_run_from_persisted_evaluation(
                 session=session,
                 user_id=USER_ID,
@@ -622,7 +1508,8 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
-        self.assertEqual(session.commits, 1)
+        self.assertEqual(session.commits, 0)
+        self.assertEqual(session.rollbacks, 1)
 
     async def test_finalize_rejects_untouched_frontend_snapshot_drift(self) -> None:
         run, resume, link = await _applied_fixture()
@@ -631,8 +1518,11 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             {"id": "skill-private", "name": "PRIVATE", "category": "未分类"}
         )
         post["fact_metadata"] = apply_service._rebuild_frontend_fact_metadata(post)
-        signature = canonical_json(
-            {"jdInputSignature": run.source_jd_signature, "resume": post}
+        signature = _frontend_evaluation_signature(
+            jd_input_signature=run.source_jd_signature,
+            resume_snapshot=post,
+            jd_result=resume.config["jdAnalysis"]["result"],
+            jd_available=True,
         )
         _install_persisted_post_evaluation(
             run,
@@ -696,6 +1586,22 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             ("hidden", "原摘要", "定向摘要", False, "", False),
             ("empty_to_nonempty", "", "新增摘要", True, "新增摘要", True),
             ("nonempty_to_empty", "原摘要", "", True, "", False),
+            (
+                "encoded_markup_stays_literal",
+                "原摘要",
+                "&lt;b&gt;摘要&lt;/b&gt;",
+                True,
+                "<b>摘要</b>",
+                True,
+            ),
+            (
+                "double_encoded_markup_decodes_once",
+                "原摘要",
+                "&amp;lt;b&amp;gt;摘要&amp;lt;/b&amp;gt;",
+                True,
+                "&lt;b&gt;摘要&lt;/b&gt;",
+                True,
+            ),
         )
         for name, before, targeted, visible, expected_summary, has_section in cases:
             with self.subTest(name=name):
@@ -802,11 +1708,11 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         post_snapshot["fact_metadata"] = apply_service._rebuild_frontend_fact_metadata(
             post_snapshot
         )
-        signature = canonical_json(
-            {
-                "jdInputSignature": run.source_jd_signature,
-                "resume": post_snapshot,
-            }
+        signature = _frontend_evaluation_signature(
+            jd_input_signature=run.source_jd_signature,
+            resume_snapshot=post_snapshot,
+            jd_result=resume.config["jdAnalysis"]["result"],
+            jd_available=True,
         )
         _install_persisted_post_evaluation(
             run,
@@ -824,7 +1730,7 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.status, ResumeOptimizationStatus.COMPLETED.value)
 
-    async def test_encoded_star_targets_match_frontend_deep_entity_decoding(self) -> None:
+    async def test_encoded_star_targets_match_reload_then_frontend_deep_entity_decoding(self) -> None:
         for targeted in (
             "&lt;b&gt;foo&lt;/b&gt;",
             "&amp;lt;b&amp;gt;foo&amp;lt;/b&amp;gt;",
@@ -845,11 +1751,11 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                 post_snapshot["fact_metadata"] = (
                     apply_service._rebuild_frontend_fact_metadata(post_snapshot)
                 )
-                signature = canonical_json(
-                    {
-                        "jdInputSignature": run.source_jd_signature,
-                        "resume": post_snapshot,
-                    }
+                signature = _frontend_evaluation_signature(
+                    jd_input_signature=run.source_jd_signature,
+                    resume_snapshot=post_snapshot,
+                    jd_result=resume.config["jdAnalysis"]["result"],
+                    jd_available=True,
                 )
                 _install_persisted_post_evaluation(
                     run,
@@ -870,20 +1776,140 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                     ResumeOptimizationStatus.COMPLETED.value,
                 )
 
+    async def test_comment_seamed_star_markdown_matches_reload_then_rescore(self) -> None:
+        targeted = "**原<!--c-->情境**"
+        change = _change(
+            "CHG_COMMENT_SEAMED_STAR",
+            field_path="star.s",
+            before_value="原情境",
+            general_value=targeted,
+            targeted_value=targeted,
+        )
+        run, resume, link = await _applied_fixture(
+            changes=[change],
+            accepted_ids=("CHG_COMMENT_SEAMED_STAR",),
+        )
+        post_snapshot = _post_frontend_snapshot(run, resume)
+        self.assertEqual(
+            post_snapshot["resume"]["experiences"][0]["star"]["s"],
+            "原情境",
+        )
+        # The editor reloads the applied raw value through normalizeStarValue
+        # before building the candidate atom portion of the post snapshot.
+        post_snapshot["experience_atoms"][0]["star"]["s"] = "**原情境**"
+        post_snapshot["fact_metadata"] = (
+            apply_service._rebuild_frontend_fact_metadata(post_snapshot)
+        )
+        self.assertEqual(
+            post_snapshot["experience_atoms"][0]["star"]["s"],
+            "**原情境**",
+        )
+        signature = _frontend_evaluation_signature(
+            jd_input_signature=run.source_jd_signature,
+            resume_snapshot=post_snapshot,
+            jd_result=resume.config["jdAnalysis"]["result"],
+            jd_available=True,
+        )
+        _install_persisted_post_evaluation(
+            run,
+            resume,
+            evaluation=_post_evaluation(),
+            signature=signature,
+        )
+
+        result = await apply_service.finalize_run_from_persisted_evaluation(
+            session=_finalize_session(run, resume, link),
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_finalize_request(),
+        )
+
+        self.assertEqual(result.status, ResumeOptimizationStatus.COMPLETED.value)
+
+    async def test_literal_markup_forgery_cannot_bypass_trusted_post_content_paths(self) -> None:
+        cases = (
+            (
+                "summary",
+                _change(
+                    "CHG_SUMMARY_LITERAL_FORGERY",
+                    module_type="personal_summary",
+                    field_path="personalSummary",
+                    before_value="原摘要",
+                    general_value="真实摘要",
+                    targeted_value="真实摘要",
+                ),
+                "CHG_SUMMARY_LITERAL_FORGERY",
+            ),
+            (
+                "star",
+                _change(
+                    "CHG_STAR_LITERAL_FORGERY",
+                    general_value="真实行动",
+                    targeted_value="真实行动",
+                ),
+                "CHG_STAR_LITERAL_FORGERY",
+            ),
+        )
+        for name, change, change_id in cases:
+            with self.subTest(name=name):
+                run, resume, link = await _applied_fixture(
+                    changes=[change],
+                    accepted_ids=(change_id,),
+                )
+                post = _post_frontend_snapshot(run, resume)
+                if name == "summary":
+                    trusted = post["resume"]["personal_summary"]
+                    post["resume"]["personal_summary"] = f"<b>{trusted}</b>"
+                else:
+                    trusted = post["resume"]["experiences"][0]["star"]["a"]
+                    post["resume"]["experiences"][0]["star"]["a"] = (
+                        f"<b>{trusted}</b>"
+                    )
+                    post["experience_atoms"][0]["star"]["a"] = f"<b>{trusted}</b>"
+                post["fact_metadata"] = apply_service._rebuild_frontend_fact_metadata(
+                    post
+                )
+                forged_signature = _frontend_evaluation_signature(
+                    jd_input_signature=run.source_jd_signature,
+                    resume_snapshot=post,
+                    jd_result=resume.config["jdAnalysis"]["result"],
+                    jd_available=True,
+                )
+                _install_persisted_post_evaluation(
+                    run,
+                    resume,
+                    evaluation=_post_evaluation(),
+                    signature=forged_signature,
+                )
+                session = _finalize_session(run, resume, link)
+
+                with self.assertRaises(apply_service.OptimizationFinalizePendingError):
+                    await apply_service.finalize_run_from_persisted_evaluation(
+                        session=session,
+                        user_id=USER_ID,
+                        run_id=str(RUN_ID),
+                        payload=_finalize_request(),
+                    )
+
+                self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+                self.assertEqual(session.commits, 1)
+
     async def test_block_star_targets_match_frontend_block_line_breaks(self) -> None:
         for targeted, expected in (
             ("<div>one</div><div>two</div>", "one\ntwo"),
             ("<p>one</p><p>two</p>", "one\ntwo"),
-            ("one<br><br>two", "one\ntwo"),
-            ("<div>one</div><br><div>two</div>", "one\ntwo"),
-            ("<div>one</div><div><br></div><div>two</div>", "one\ntwo"),
+            ("one<br><br>two", "one\n\ntwo"),
+            ("<div>one</div><br><div>two</div>", "one\n\ntwo"),
+            ("<div>one</div><div><br></div><div>two</div>", "one\n\ntwo"),
             ("<b>one<br></b><br>two", "one\n\ntwo"),
             ("<ul><li>one<br></li><li>two</li></ul>", "one\n\ntwo"),
             ("<ul><li>one</li><li>two</li></ul>", "one\ntwo"),
             ("<div>one<div>two</div>three</div>", "onetwo\nthree"),
             ("one<br>", "one"),
             ("<div>one</div>", "one"),
-            ("one\n\ntwo", "one\ntwo"),
+            ("one\n\ntwo", "one\n\ntwo"),
+            ("one\r\rtwo", "one\n\ntwo"),
+            ("one\r\n\r\ntwo", "one\n\ntwo"),
         ):
             with self.subTest(targeted=targeted):
                 change = _change(
@@ -891,10 +1917,22 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                     targeted_value=targeted,
                     general_value=targeted,
                 )
-                run, resume, link = await _applied_fixture(
-                    changes=[change],
-                    accepted_ids=("CHG_BLOCKS",),
-                )
+                with (
+                    patch.object(
+                        apply_service,
+                        "project_plan_with_current_safety",
+                        side_effect=lambda _run, *, plan: plan,
+                    ),
+                    patch.object(
+                        apply_service,
+                        "preserves_rich_text_structure",
+                        return_value=True,
+                    ),
+                ):
+                    run, resume, link = await _applied_fixture(
+                        changes=[change],
+                        accepted_ids=("CHG_BLOCKS",),
+                    )
                 post_snapshot = _post_frontend_snapshot(run, resume)
                 # Keep this literal independent from the backend plain-text helper:
                 # the browser sanitizer deduplicates BRs per direct DOM parent.
@@ -903,11 +1941,11 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                 post_snapshot["fact_metadata"] = (
                     apply_service._rebuild_frontend_fact_metadata(post_snapshot)
                 )
-                signature = canonical_json(
-                    {
-                        "jdInputSignature": run.source_jd_signature,
-                        "resume": post_snapshot,
-                    }
+                signature = _frontend_evaluation_signature(
+                    jd_input_signature=run.source_jd_signature,
+                    resume_snapshot=post_snapshot,
+                    jd_result=resume.config["jdAnalysis"]["result"],
+                    jd_available=True,
                 )
                 _install_persisted_post_evaluation(
                     run,
@@ -1477,6 +2515,11 @@ class ResumeOptimizationFinalizeRouterTests(unittest.IsolatedAsyncioTestCase):
                     request_type.model_validate(
                         {
                             "expected_resume_updated_at": BASE_TIME.isoformat(),
+                            **(
+                                {"claim_id": RESCORE_CLAIM_ID}
+                                if request_type is ResumeOptimizationFinalizeRequest
+                                else {}
+                            ),
                             "evaluation": {"overallScore": 100},
                         }
                     )
@@ -1540,7 +2583,10 @@ class ResumeOptimizationFinalizeRouterTests(unittest.IsolatedAsyncioTestCase):
         apply_token = applied.model_dump(mode="json")["resume_updated_at"]
         revert_token = reverted.model_dump(mode="json")["resume_updated_at"]
         finalize_roundtrip = ResumeOptimizationFinalizeRequest.model_validate(
-            {"expected_resume_updated_at": apply_token}
+            {
+                "expected_resume_updated_at": apply_token,
+                "claim_id": RESCORE_CLAIM_ID,
+            }
         )
         revert_roundtrip = ResumeOptimizationRevertRequest.model_validate(
             {"expected_resume_updated_at": revert_token}

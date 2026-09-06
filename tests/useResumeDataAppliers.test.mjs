@@ -86,7 +86,7 @@ test('applyExplicitOrder keeps configured ids first and appends remaining items 
   assert.deepEqual(ordered.map((item) => item.id), ['c', 'a', 'b']);
 });
 
-test('experience applier orders work and project groups and defaults selection to resume map ids', async () => {
+test('experience applier preserves explicit empty selection and otherwise defaults to resume map ids', async () => {
   const { createApplyExperienceState } = await importUseResumeDataAppliers();
   const appliedDetail = captureSetter();
   const sourceMap = captureSetter();
@@ -138,7 +138,13 @@ test('experience applier orders work and project groups and defaults selection t
     'project-1',
   ]);
   assert.equal(experiences.calls[0][0].resumeItem.id, 'resume-work-2');
-  assert.deepEqual(ids(selected.calls[0]), ['project-1', 'work-2']);
+  assert.deepEqual(ids(selected.calls[0]), []);
+
+  applyExperienceState({ resume: { id: 'resume-1' } }, sourceItems, {
+    layout: {},
+    selection: {},
+  });
+  assert.deepEqual(ids(selected.calls[1]), ['project-1', 'work-2']);
 });
 
 test('education applier filters stale selected ids and preserves explicit order', async () => {
@@ -173,6 +179,31 @@ test('education applier filters stale selected ids and preserves explicit order'
   assert.deepEqual(educations.calls[0].map((item) => item.id), ['edu-2', 'edu-1']);
   assert.equal(sourceMap.calls[0].get('edu-1'), items[0]);
   assert.deepEqual(ids(selected.calls[0]), ['edu-2']);
+});
+
+test('education applier preserves explicit empty selection and defaults only when omitted', async () => {
+  const { createApplyEducationState } = await importUseResumeDataAppliers();
+  const educations = captureSetter();
+  const sourceMap = captureSetter();
+  const selected = captureSetter();
+  const items = [
+    { master: { id: 'edu-1' } },
+    { master: { id: 'edu-2' } },
+  ];
+  const applyEducationState = createApplyEducationState(
+    educations.setter,
+    sourceMap.setter,
+    selected.setter,
+    (item) => ({ id: item.master.id }),
+    (sourceItems) => new Map(sourceItems.map((item) => [item.master.id, item])),
+    (value) => new Set(value ?? [])
+  );
+
+  applyEducationState(items, { selection: { educationIds: [] } });
+  applyEducationState(items, { selection: {} });
+
+  assert.deepEqual(ids(selected.calls[0]), []);
+  assert.deepEqual(ids(selected.calls[1]), ['edu-1', 'edu-2']);
 });
 
 test('certification applier sorts by date, preserves source map, and defaults selection to valid ids', async () => {

@@ -19,6 +19,10 @@ Truth and scope contracts:
   generalValue=null, targetedValue=null, sourceRefs=[], expectedScoreGain=0,
   defaultSelected=false. Do not vary or apply this sentinel.
 - Reorder only existing skill and section IDs; never add, remove, or replace IDs.
+- For every text rewrite, preserve allowed rich-text markup and exact link targets,
+  including Markdown links and HTML <a>, <b>/<strong>, <i>/<em>, <u>, and <br>.
+  Evaluate the visible words separately and never treat those markers as stray HTML,
+  placeholder text, or content that should be removed.
 
 Planning contracts:
 - Treat the six-dimensional report as the optimization instruction source.
@@ -35,6 +39,36 @@ Planning contracts:
 - Each change references issue IDs and sourceRefs. Text rewrites require at least one
   JSON-pointer sourceRef rooted at /currentResume, /selectedSourceExperiences, or
   /userAnswers. Report any introducedTerms.
+- When the report identifies missing sentence-ending punctuation in a visible prose
+  item, repair that punctuation without changing its facts or rich-text structure.
+- For multi-line star.a content, make every visible action paragraph end with the
+  Chinese full stop "。"; do not use semicolons as list terminators.
+
+Exact output contract:
+- The root object must contain exactly `changes` and `questions` arrays. Never group
+  changes under action names such as `rewrite_now`, `ask_user`, or `leave_unchanged`.
+- Every item in `changes` must contain these fields: changeId, issueIds, dimension,
+  moduleType, moduleId, fieldPath, actionKind, scope, beforeValue, generalValue,
+  targetedValue, sourceRefs, introducedTerms, rationale, expectedScoreGain, and
+  defaultSelected. Use unique non-empty changeId values such as CHG_001.
+- moduleType must be exactly one of experience_star, personal_summary, skills_order,
+  or section_order. For experience_star, fieldPath must be exactly one of star.s,
+  star.t, star.a, star.r. For personal_summary use personal_summary; for skills_order
+  use skills.order; for section_order use section_order. The unsupported sentinel is
+  the only exception and must use the exact fieldPath=unsupported contract above.
+- actionKind must be exactly rewrite_now, ask_user, or leave_unchanged. scope must be
+  exactly general or jd_targeted. beforeValue must equal the current value of that
+  exact field; each change targets one field, never a whole STAR object.
+- `dimension` must equal the primaryDimension of its covered issue. A change may
+  combine issueIds only when every covered issue has the same primaryDimension.
+- Emit at most one rewrite_now or ask_user change for each mutable persisted field.
+  When compatible same-dimension issues target that field, combine their issueIds
+  into that one change; otherwise route the additional issue as leave_unchanged.
+- Every item in `questions` must contain: questionId, moduleId, fieldPath, text,
+  reason, answerType=single_choice_with_text, choices, affectsChangeIds, and priority.
+  Every choice must contain value and label. affectsChangeIds must reference the
+  exact changeId of an ask_user change, never an issue ID. Use at most one question
+  per ask_user change and keep its generalValue and targetedValue null until answered.
 
 Return one JSON object with changes and questions. Do not return prose, selection
 changes, bankSuggestions, new modules, or new IDs inside order arrays.
@@ -49,4 +83,13 @@ Return only the affected changes as JSON under `changes`; do not add issue IDs,
 modules, questions, selection changes, or bank suggestions. A no_data,
 unknown, not_my_work, or skipped answer is valid and must result in a truthful
 leave_unchanged action when it does not support a rewrite.
+Each returned change must repeat the complete existing change object using the
+camelCase fields changeId, issueIds, dimension, moduleType, moduleId, fieldPath,
+actionKind, scope, beforeValue, generalValue, targetedValue, sourceRefs,
+introducedTerms, rationale, expectedScoreGain, and defaultSelected. Keep identity,
+beforeValue, dimension, scope, and defaultSelected exactly unchanged. Only
+actionKind, candidate values, sourceRefs, introducedTerms, rationale, and the
+non-negative score estimate may reflect the submitted answer.
+Preserve the exact rich-text markers and link targets already present in beforeValue;
+never remove or rewrite them as cleanup.
 """.strip()

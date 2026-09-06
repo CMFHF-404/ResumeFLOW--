@@ -36,8 +36,13 @@ export const ResumeOptimizationStepRail: React.FC<ResumeOptimizationStepRailProp
 }) => {
     const steps = buildResumeOptimizationSteps(hasQuestions);
     return (
-        <nav aria-label="简历优化步骤" className={variant === 'mobile' ? 'overflow-x-auto' : 'w-full'}>
-            <ol className={variant === 'mobile' ? 'flex min-w-max gap-2 px-4 py-3' : 'space-y-2 p-4'}>
+        <nav aria-label="简历优化步骤" className="w-full overflow-hidden">
+            <ol
+                className={variant === 'mobile' ? 'grid w-full gap-1 px-3 py-2' : 'space-y-2 p-4'}
+                style={variant === 'mobile' ? {
+                    gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`,
+                } : undefined}
+            >
                 {steps.map((step) => {
                     const isActive = step.id === activeStep;
                     const isAvailable = availableSteps.includes(step.id);
@@ -68,7 +73,7 @@ export const ResumeOptimizationStepRail: React.FC<ResumeOptimizationStepRailProp
                                     onClick={() => onStepSelect(step.id)}
                                     className={[
                                         'flex min-h-[44px] w-full items-center gap-2 rounded-xl border text-left text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 motion-reduce:transition-none',
-                                        variant === 'mobile' ? 'whitespace-nowrap px-3 py-2' : 'px-3 py-2.5',
+                                        variant === 'mobile' ? 'justify-center gap-1 px-1 py-1.5 text-center text-[11px]' : 'px-3 py-2.5',
                                         isActive
                                             ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/70 dark:bg-emerald-950/35 dark:text-emerald-200'
                                             : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-900',
@@ -80,7 +85,7 @@ export const ResumeOptimizationStepRail: React.FC<ResumeOptimizationStepRailProp
                                 <div
                                     className={[
                                         'flex min-h-[44px] items-center gap-2 rounded-xl border border-transparent text-[12px] font-semibold text-slate-400 opacity-65 dark:text-slate-600',
-                                        variant === 'mobile' ? 'whitespace-nowrap px-3 py-2' : 'px-3 py-2.5',
+                                        variant === 'mobile' ? 'justify-center gap-1 px-1 py-1.5 text-center text-[11px]' : 'px-3 py-2.5',
                                     ].join(' ')}
                                 >
                                     {content}

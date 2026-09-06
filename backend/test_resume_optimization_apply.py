@@ -8,6 +8,7 @@ import os
 from types import SimpleNamespace
 import unittest
 import uuid
+from unittest.mock import patch
 
 import asyncpg
 from sqlalchemy import text
@@ -25,15 +26,22 @@ def _set_required_env_defaults() -> None:
 _set_required_env_defaults()
 
 from app.domain.resume.models import Resume, ResumeExperienceLink  # noqa: E402
-from app.domain.resume_optimization import apply_service  # noqa: E402
+from app.domain.resume_optimization import apply_service, run_service  # noqa: E402
 from app.domain.resume_optimization.models import ResumeOptimizationRun  # noqa: E402
-from app.domain.resume_optimization.run_service import hash_canonical_json  # noqa: E402
+from app.domain.resume_optimization.run_service import (  # noqa: E402
+    canonical_json,
+    hash_canonical_json,
+)
+from app.domain.resume_optimization.safety import verify_plan_changes  # noqa: E402
 from app.domain.resume_optimization.schemas import (  # noqa: E402
     OPTIMIZER_VERSION,
     POLICY_VERSION,
     PROMPT_VERSION,
     OptimizationPlan,
     ResumeOptimizationApplyRequest,
+    ResumeOptimizationRescoreClaimRequest,
+    ResumeOptimizationRevertRequest,
+    ResumeOptimizationStartRequest,
     ResumeOptimizationStatus,
 )
 from app.models import ExperienceCategory, ExperienceVersion, MasterExperience  # noqa: E402
@@ -48,6 +56,81 @@ NEW_VERSION_ID = uuid.UUID("55555555-5555-5555-5555-555555555555")
 LINK_ID = uuid.UUID("66666666-6666-6666-6666-666666666666")
 BASE_TIME = datetime(2026, 9, 1, 3, 0, tzinfo=timezone.utc)
 NEXT_TIME = BASE_TIME + timedelta(minutes=5)
+
+
+def _base_frontend_evaluation_signature() -> str:
+    frontend_snapshot = {
+        "evaluation_scope": "full_resume",
+        "target_role": "产品经理",
+        "resume": {
+            "section_order": [
+                "summary",
+                "work",
+                "skills",
+                "education",
+                "project",
+                "certifications",
+            ],
+            "profile": {
+                "name": "",
+                "email": "",
+                "phone": "",
+                "location": "",
+                "linkedin": "",
+            },
+            "personal_summary": "原摘要",
+            "experiences": [
+                {
+                    "id": str(MASTER_ID),
+                    "title": "产品实习生",
+                    "org": "原子科技",
+                    "star": {
+                        "s": "原情境",
+                        "t": "原任务",
+                        "a": "原行动",
+                        "r": "原结果",
+                    },
+                    "category": "work",
+                }
+            ],
+            "educations": [],
+            "certifications": [],
+            "skills": [
+                {"id": "skill-a", "name": "A", "category": "技能"},
+                {"id": "skill-b", "name": "B", "category": "技能"},
+            ],
+        },
+        "experience_atoms": [
+            {
+                "id": str(MASTER_ID),
+                "title": "产品实习生",
+                "org": "原子科技",
+                "star": {
+                    "s": "原情境",
+                    "t": "原任务",
+                    "a": "原行动",
+                    "r": "原结果",
+                },
+            }
+        ],
+        "match_candidates": {"certifications": [], "skills": []},
+        "fact_metadata": [],
+    }
+    frontend_snapshot["fact_metadata"] = (
+        apply_service._rebuild_frontend_fact_metadata(frontend_snapshot)
+    )
+    return json.dumps(
+        {
+            "jdAvailable": False,
+            "jdInputSignature": "jd-signature",
+            "jdMatchPercentage": None,
+            "jdResultIdentity": "null",
+            "resume": frontend_snapshot,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _base_config() -> dict:
@@ -66,7 +149,7 @@ def _base_config() -> dict:
         "jdAnalysis": {
             "isOutdated": False,
             "evaluationIsOutdated": False,
-            "evaluationSignature": "evaluation-signature",
+            "evaluationSignature": _base_frontend_evaluation_signature(),
             "jdInputSignature": "jd-signature",
             "result": {"resumeEvaluation": {"overallScore": 72}},
         },
@@ -84,6 +167,7 @@ def _change(
     general_value="优化行动",
     targeted_value="优化行动",
     safety_status: str = "allowed",
+    source_refs: list[str] | None = None,
 ) -> dict:
     resolved_module_id = module_id
     if resolved_module_id is None:
@@ -96,6 +180,17 @@ def _change(
                 "section_order": "sections",
             }.get(module_type, "current_resume")
         )
+    resolved_source_refs = source_refs
+    if resolved_source_refs is None:
+        if module_type == "experience_star":
+            resolved_source_refs = [
+                f"/currentResume/experiences/{resolved_module_id}/"
+                f"star/{field_path.rsplit('.', 1)[-1]}"
+            ]
+        elif module_type == "personal_summary":
+            resolved_source_refs = ["/currentResume/personal_summary"]
+        else:
+            resolved_source_refs = []
     return {
         "change_id": change_id,
         "issue_ids": [f"ISSUE_{change_id}"],
@@ -108,7 +203,7 @@ def _change(
         "before_value": deepcopy(before_value),
         "general_value": deepcopy(general_value),
         "targeted_value": deepcopy(targeted_value),
-        "source_refs": ["/currentResume/personal_summary"],
+        "source_refs": resolved_source_refs,
         "introduced_terms": [],
         "rationale": "仅使用已确认事实",
         "expected_score_gain": 3,
@@ -145,7 +240,8 @@ def _run(
     snapshot = {
         "resume_id": str(RESUME_ID),
         "resume_updated_at": BASE_TIME.isoformat(),
-        "evaluation_signature": "evaluation-signature",
+        "evaluation_signature": _base_frontend_evaluation_signature(),
+        "evaluation_signature_schema": "frontend_evaluation_v2",
         "jd_signature": "jd-signature",
         "target_role": "产品经理",
         "evaluation": {"overallScore": 72, "issues": []},
@@ -179,6 +275,13 @@ def _run(
         "bank_suggestion_candidates": [],
         "fact_metadata": [],
     }
+    from semantic_review_test_support import with_supported_review
+    documents = {"currentResume": snapshot["current_resume"],
+                 "selectedSourceExperiences": snapshot["selected_source_experiences"],
+                 "userAnswers": {}}
+    plan["changes"] = [with_supported_review(
+        OptimizationPlan.model_validate({"changes": [item]}).changes[0], documents,
+    ).model_dump(mode="json") for item in plan["changes"]]
     return ResumeOptimizationRun(
         id=RUN_ID,
         user_id=USER_ID,
@@ -188,7 +291,7 @@ def _run(
         policy_version=POLICY_VERSION,
         prompt_version=PROMPT_VERSION,
         source_resume_updated_at=BASE_TIME,
-        source_evaluation_signature="evaluation-signature",
+        source_evaluation_signature=_base_frontend_evaluation_signature(),
         source_jd_signature="jd-signature",
         source_snapshot_hash=hash_canonical_json(snapshot),
         request_hash="request-hash",
@@ -236,6 +339,43 @@ def _link(*, version_id: uuid.UUID = VERSION_ID) -> ResumeExperienceLink:
 def _request(*change_ids: str, expected: datetime = BASE_TIME):
     return ResumeOptimizationApplyRequest(
         accepted_change_ids=list(change_ids),
+        expected_resume_updated_at=expected,
+    )
+
+
+def _verified_unsupported_chinese_quantity_change():
+    raw_change = _change(
+        "CHG_ZH_QUANTITY",
+        before_value="参与用户运营",
+        general_value="覆盖一万用户",
+        targeted_value="覆盖一万用户",
+        safety_status="pending",
+    )
+    source_documents = {
+        "currentResume": {
+            "experiences": {
+                str(MASTER_ID): {"star": {"a": "参与用户运营"}}
+            }
+        },
+        "selectedSourceExperiences": {
+            str(MASTER_ID): {"star": {"a": "参与用户运营"}}
+        },
+        "userAnswers": {},
+    }
+    verified, _ = verify_plan_changes(
+        plan=OptimizationPlan(changes=[raw_change]),
+        source_documents=source_documents,
+    )
+    return verified[0]
+
+
+def _rescore_claim_request(
+    claim_id: str,
+    *,
+    expected: datetime,
+) -> ResumeOptimizationRescoreClaimRequest:
+    return ResumeOptimizationRescoreClaimRequest(
+        claim_id=claim_id,
         expected_resume_updated_at=expected,
     )
 
@@ -375,13 +515,177 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
             {
                 "s": "原情境",
                 "t": "原任务",
-                "a": "优化行动",
+                "a": "优化行动。",
                 "r": "原结果",
                 "custom": "保留扩展字段",
             },
         )
         self.assertEqual(current["summary"], "保留摘要 override")
         self.assertEqual(current["tags"], ["keep"])
+
+    def test_unverified_chinese_quantity_is_blocked_before_apply(self) -> None:
+        verified = _verified_unsupported_chinese_quantity_change()
+        self.assertEqual(verified.safety_status, "blocked")
+        self.assertFalse(verified.default_selected)
+        run = _run([verified.model_dump(mode="json")])
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_ZH_QUANTITY"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_multiplier_is_rechecked_before_first_apply(self) -> None:
+        change = _change(
+            "CHG_HISTORICAL_MULTIPLIER",
+            before_value="负责系统吞吐量优化",
+            general_value="实现吞吐量翻倍",
+            targeted_value="实现吞吐量翻倍",
+        )
+        change["source_refs"] = [
+            f"/currentResume/experiences/{MASTER_ID}/star/a"
+        ]
+        run = _run([change])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)][
+            "star"
+        ]["a"] = "负责系统吞吐量优化"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with self.assertRaisesRegex(
+            apply_service.OptimizationApplyValidationError,
+            "current safety",
+        ):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_HISTORICAL_MULTIPLIER"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_protected_term_and_bad_source_ref_are_rechecked(self) -> None:
+        protected = _change(
+            "CHG_HISTORICAL_PROTECTED",
+            before_value="参与系统优化",
+            general_value="主导系统优化",
+            targeted_value="主导系统优化",
+        )
+        protected["source_refs"] = [
+            f"/currentResume/experiences/{MASTER_ID}/star/a"
+        ]
+        bad_source = _change(
+            "CHG_HISTORICAL_BAD_SOURCE",
+            before_value="原行动",
+            general_value="优化行动",
+            targeted_value="优化行动",
+        )
+        bad_source["source_refs"] = ["/currentResume/personal_summary"]
+
+        for change in (protected, bad_source):
+            with self.subTest(change_id=change["change_id"]):
+                run = _run([change])
+                with self.assertRaisesRegex(
+                    apply_service.OptimizationApplyValidationError,
+                    "current safety",
+                ):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={change["change_id"]},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={
+                            str(LINK_ID): _link().overrides_json
+                        },
+                    )
+
+    def test_malformed_answers_and_frozen_source_documents_fail_closed(self) -> None:
+        malformed_answers = _run([_change("CHG_BAD_ANSWERS")])
+        malformed_answers.answers_json = {"answers": "not-an-array"}
+
+        malformed_sources = _run([_change("CHG_BAD_SOURCES")])
+        malformed_sources.before_snapshot["selected_source_experiences"] = []
+        malformed_sources.source_snapshot_hash = hash_canonical_json(
+            malformed_sources.before_snapshot
+        )
+
+        for run, change_id in (
+            (malformed_answers, "CHG_BAD_ANSWERS"),
+            (malformed_sources, "CHG_BAD_SOURCES"),
+        ):
+            with self.subTest(change_id=change_id):
+                with self.assertRaises(
+                    apply_service.OptimizationApplyValidationError
+                ):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={change_id},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={
+                            str(LINK_ID): _link().overrides_json
+                        },
+                    )
+
+    def test_empty_answers_compat_still_rejects_unknown_claim_and_mismatch(self) -> None:
+        invalid_payloads = (
+            {"answers": [], "unknown": "value"},
+            {
+                "answers": [],
+                "_activeAnswerClaim": {
+                    "claimId": "active",
+                    "claimedAt": BASE_TIME.isoformat(),
+                },
+            },
+            {
+                "answers": [
+                    {
+                        "question_id": "Q_NOT_IN_PLAN",
+                        "state": "answered",
+                        "value": "不应接受",
+                    }
+                ]
+            },
+        )
+        for answers_json in invalid_payloads:
+            with self.subTest(keys=tuple(answers_json)):
+                run = _run([_change("CHG_STRICT_ANSWERS")])
+                run.answers_json = answers_json
+                with self.assertRaises(
+                    apply_service.OptimizationApplyValidationError
+                ):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_STRICT_ANSWERS"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={
+                            str(LINK_ID): _link().overrides_json
+                        },
+                    )
+
+    def test_current_safety_recheck_does_not_reject_non_text_order_change(self) -> None:
+        run = _run(
+            [
+                _change(
+                    "CHG_ORDER_RECHECK",
+                    module_type="section_order",
+                    field_path="section_order",
+                    before_value=["summary", "work", "skills"],
+                    general_value=["summary", "work", "skills"],
+                    targeted_value=["work", "summary", "skills"],
+                )
+            ]
+        )
+
+        apply_patch = apply_service.build_apply_patch(
+            run=run,
+            accepted_change_ids={"CHG_ORDER_RECHECK"},
+            current_resume_config=_base_config(),
+            current_link_overrides={str(LINK_ID): _link().overrides_json},
+        )
+
+        self.assertEqual(
+            apply_patch.next_resume_config["layout"]["sectionOrder"],
+            ["work", "summary", "skills"],
+        )
 
     def test_unaccepted_changes_leave_values_untouched(self) -> None:
         run = _run(
@@ -405,7 +709,7 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            patch.experience_star_by_link_id[str(LINK_ID)]["a"], "优化行动"
+            patch.experience_star_by_link_id[str(LINK_ID)]["a"], "优化行动。"
         )
         self.assertEqual(
             patch.experience_star_by_link_id[str(LINK_ID)]["r"], "原结果"
@@ -419,6 +723,653 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
             apply_service.build_apply_patch(
                 run=run,
                 accepted_change_ids={"CHG_BLOCKED"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_legacy_action_change_is_canonicalized_when_applied(self) -> None:
+        run = _run([_change(
+            "CHG_A",
+            general_value="第一段；\n第二段",
+            targeted_value="第一段；\n第二段",
+        )])
+
+        patch = apply_service.build_apply_patch(
+            run=run,
+            accepted_change_ids={"CHG_A"},
+            current_resume_config=_base_config(),
+            current_link_overrides={str(LINK_ID): _link().overrides_json},
+        )
+
+        self.assertEqual(
+            patch.experience_star_by_link_id[str(LINK_ID)]["a"],
+            "第一段。\n第二段。",
+        )
+
+    def test_all_finally_effective_noop_changes_are_rejected(self) -> None:
+        run = _run([_change(
+            "CHG_NOOP",
+            before_value="原行动。",
+            general_value="原行动；",
+            targeted_value="原行动；",
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = "原行动。"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        link = _link()
+        link.overrides_json["star"]["a"] = "原行动。"
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_NOOP"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): link.overrides_json},
+            )
+
+    def test_legacy_action_markdown_link_keeps_its_url_when_canonicalized(self) -> None:
+        action = '[项目说明](https://example.com/path_(legacy)?from=optimizer&lang=zh)'
+        run = _run([_change(
+            "CHG_MARKDOWN_LINK",
+            before_value=action,
+            general_value=action,
+            targeted_value=action,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = action
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        apply_patch = apply_service.build_apply_patch(
+            run=run,
+            accepted_change_ids={"CHG_MARKDOWN_LINK"},
+            current_resume_config=_base_config(),
+            current_link_overrides={str(LINK_ID): _link().overrides_json},
+        )
+
+        self.assertEqual(
+            apply_patch.experience_star_by_link_id[str(LINK_ID)]["a"],
+            f"{action}。",
+        )
+
+    def test_frontend_plain_text_uses_the_strict_markdown_link_grammar(self) -> None:
+        cases = (
+            (
+                r'\[evil](https://evil.example) [safe](https://safe.example)',
+                r'\[evil](https://evil.example) safe',
+            ),
+            (
+                '[evil\nlabel](https://evil.example) [safe](https://safe.example)',
+                '[evil\nlabel](https://evil.example) safe',
+            ),
+            (
+                '[evil](https://evil.example "unfinished) [safe](https://safe.example)',
+                '[evil](https://evil.example "unfinished) safe',
+            ),
+            (
+                '[safe [nested]](https://safe.example/path_(v1) "title ) text")',
+                'safe [nested]',
+            ),
+            ('[a](https://x\u0085y)', 'a'),
+            ('[a](https://x\u001cy)', 'a'),
+            ('[a](https://x\u001fy)', 'a'),
+            ('[a](https://x\ufeffy)', '[a](https://x\ufeffy)'),
+            ('[a](https://x\u00a0y)', '[a](https://x y)'),
+            ('[a](https://x\u0085"title")', 'a'),
+            ('[a](https://x\ufeff"title")', 'a'),
+            ('[a](https://x\u00a0"title")', 'a'),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(apply_service._frontend_plain_text(source), expected)
+
+    def test_frontend_plain_text_preserves_explicit_br_but_dedupes_blocks(self) -> None:
+        self.assertEqual(
+            apply_service._frontend_plain_text("a<br><br>b"),
+            "a\n\nb",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("<div>a</div><div>b</div>"),
+            "a\nb",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("<div>a</div><br><div>b</div>"),
+            "a\n\nb",
+        )
+        self.assertEqual(apply_service._frontend_plain_text("a\n\nb"), "a\n\nb")
+        self.assertEqual(
+            apply_service._frontend_plain_text("a\r\n\r\nb"),
+            "a\n\nb",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("a<div></div><div></div>x"),
+            "a\n\nx",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("a<br><div><!--c--></div>x"),
+            "a\nx",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("a<br><div><?pi?></div>x"),
+            "a\nx",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("a<br><div><!doctype html></div>x"),
+            "a\n\nx",
+        )
+        self.assertEqual(apply_service._frontend_plain_text("a\rb"), "a\nb")
+        self.assertEqual(apply_service._frontend_plain_text("a\r\nb"), "a\nb")
+        self.assertEqual(apply_service._frontend_plain_text("a\nb"), "a\nb")
+        self.assertEqual(apply_service._frontend_plain_text("a\u0085"), "a\u0085")
+        self.assertEqual(apply_service._frontend_plain_text("a\u001c"), "a\u001c")
+        self.assertEqual(apply_service._frontend_plain_text("a\ufeff"), "a")
+
+    def test_frontend_plain_text_parses_entities_once_and_normalizes_dom_text_cr(self) -> None:
+        self.assertEqual(
+            apply_service._frontend_plain_text("&lt;b&gt;x&lt;/b&gt;"),
+            "<b>x</b>",
+        )
+        self.assertEqual(
+            apply_service._frontend_plain_text("&amp;lt;b&amp;gt;x&amp;lt;/b&amp;gt;"),
+            "&lt;b&gt;x&lt;/b&gt;",
+        )
+        self.assertEqual(apply_service._frontend_plain_text("a&#13;b"), "a\nb")
+        self.assertEqual(apply_service._frontend_plain_text("a&#xD;b"), "a\nb")
+
+    def test_frontend_plain_text_uses_the_exact_legacy_markdown_grammar(self) -> None:
+        cases = (
+            ("**valid**", "valid"),
+            ("__valid__", "valid"),
+            ("*valid*", "valid"),
+            ("***valid***", "valid"),
+            ("*x;**y;***", "x;y;"),
+            ("**a*b**", "**a*b**"),
+            ("__a_b__", "__a_b__"),
+            ("* a *", "* a *"),
+            ("*a *", "*a *"),
+            ("* a*", "* a*"),
+            ("＊＊a＊b＊＊", "＊＊a＊b＊＊"),
+            ("**a<!--c-->b**", "**ab**"),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(apply_service._frontend_plain_text(source), expected)
+
+    def test_frontend_star_plain_text_runs_the_conditional_reload_sanitize_pass(self) -> None:
+        cases = (
+            ("**a<!--c-->b**", "ab"),
+            ("*a<!--c-->b*", "ab"),
+            ("[a<!--c-->b](https://example.com)", "ab"),
+            ("&lt;b&gt;**a<!--c-->b**&lt;/b&gt;", "ab"),
+            ("<b>&lt;i&gt;x&lt;/i&gt;</b>", "x"),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(
+                    apply_service._frontend_star_plain_text(source),
+                    expected,
+                )
+
+    def test_frontend_plain_text_preserves_browser_numeric_control_and_noncharacter_refs(self) -> None:
+        for codepoint in (1, 8, 11, 14, 31, 127, 0xFFFE, 0xFFFF, 0x10FFFF):
+            references = (
+                f"&#{codepoint};",
+                f"&#x{codepoint:X};",
+                f"&#{codepoint}",
+                f"&#x{codepoint:X}",
+            )
+            for reference in references:
+                with self.subTest(codepoint=codepoint, reference=reference):
+                    self.assertEqual(
+                        apply_service._frontend_plain_text(f"a{reference}z"),
+                        f"a{chr(codepoint)}z",
+                    )
+        self.assertEqual(apply_service._frontend_plain_text("a&#0;z"), "a\ufffdz")
+        for source in (
+            "&lt;b&gt;a&#1;z&lt;/b&gt;",
+            "&amp;lt;b&amp;gt;a&amp;#1;z&amp;lt;/b&amp;gt;",
+        ):
+            with self.subTest(star_source=source):
+                self.assertEqual(
+                    apply_service._frontend_star_plain_text(source),
+                    "a\x01z",
+                )
+
+    def test_action_materialization_key_matches_current_normalizer_matrix(self) -> None:
+        prefixes = ("", "前缀 ", "A：", "v1.5 ", "[tag] ")
+        cores = (
+            "x;",
+            "**x;**",
+            "__x;__",
+            "**__x;__**",
+            "[x;](https://a.b/p;q)",
+            "[**x;**](https://a.b/p;q)",
+            "x;***",
+        )
+        boundaries = ("\n", "\r", "\r\n", "&NewLine;", "&#10;", "&#xA;", "&#13;")
+        suffixes = ("", "\u200b", "\u00ad", "”")
+        wrappers = (
+            lambda value: value,
+            lambda value: f"<strong>{value}</strong>",
+            lambda value: f"<em>{value}</em>",
+        )
+        checked = 0
+        for prefix in prefixes:
+            for core in cores:
+                for boundary in boundaries:
+                    for suffix in suffixes:
+                        for wrap in wrappers:
+                            value = (
+                                f"{prefix}{wrap(core)}{boundary}"
+                                f"{wrap('y;')}{suffix}"
+                            )
+                            self.assertEqual(
+                                apply_service._action_materialization_key(value),
+                                apply_service._action_materialization_key(
+                                    apply_service.normalize_action_paragraph_endings(
+                                        value
+                                    )
+                                ),
+                                value,
+                            )
+                            checked += 1
+        self.assertEqual(checked, 2940)
+
+    def test_action_materialization_key_matches_nested_renderer_markdown(self) -> None:
+        cases = (
+            '*x;**y;***',
+            '__x;**y;**__',
+            '**x;__y;__**',
+            '*x;__y;**z;**__*',
+            '[*x;**y;***](https://e.test/a_(b)?v=1)',
+            '<strong>*x;**y;***</strong>',
+            '<em>[*x;**y;***](https://e.test)</em><!--tail-->',
+        )
+        for value in cases:
+            with self.subTest(value=value):
+                normalized = apply_service.normalize_action_paragraph_endings(value)
+                self.assertEqual(
+                    apply_service._action_materialization_key(value),
+                    apply_service._action_materialization_key(normalized),
+                )
+                self.assertEqual(
+                    apply_service.normalize_action_paragraph_endings(normalized),
+                    normalized,
+                )
+
+    def test_legacy_action_normalizes_markdown_label_punctuation_in_place(self) -> None:
+        action = '[项目说明&#59;](https://example.com/path;a=1?note=&#59;)'
+        run = _run([_change(
+            "CHG_MARKDOWN_LABEL_PUNCTUATION",
+            before_value=action,
+            general_value=action,
+            targeted_value=action,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = action
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        apply_patch = apply_service.build_apply_patch(
+            run=run,
+            accepted_change_ids={"CHG_MARKDOWN_LABEL_PUNCTUATION"},
+            current_resume_config=_base_config(),
+            current_link_overrides={str(LINK_ID): _link().overrides_json},
+        )
+
+        self.assertEqual(
+            apply_patch.experience_star_by_link_id[str(LINK_ID)]["a"],
+            '[项目说明。](https://example.com/path;a=1?note=&#59;)',
+        )
+
+    def test_legacy_allowed_action_is_rechecked_after_normalization(self) -> None:
+        before = '<a href="https://example.com/project">项目链接</a>'
+        run = _run([_change(
+            "CHG_POST_NORMALIZE_RICH_TEXT",
+            before_value=before,
+            general_value=before,
+            targeted_value=before,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with patch.object(
+            apply_service,
+            "normalize_action_paragraph_endings",
+            return_value="项目链接。",
+        ):
+            with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                apply_service.build_apply_patch(
+                    run=run,
+                    accepted_change_ids={"CHG_POST_NORMALIZE_RICH_TEXT"},
+                    current_resume_config=_base_config(),
+                    current_link_overrides={str(LINK_ID): _link().overrides_json},
+                )
+
+    def test_legacy_allowed_action_rejects_nested_markdown_label_url_mutation(self) -> None:
+        before = '[查看 [项目]](https://e.test/a_(b)?v=1)'
+        targeted = '[查看 [项目]](https://e.test/a_(b)?v=2)'
+        run = _run([_change(
+            "CHG_NESTED_MARKDOWN_LINK",
+            before_value=before,
+            general_value=before,
+            targeted_value=targeted,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_NESTED_MARKDOWN_LINK"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_change_rejects_malformed_before_rich_text(self) -> None:
+        before = "<strong>原行动"
+        targeted = "<strong>新行动</strong>"
+        run = _run([_change(
+            "CHG_MALFORMED_BEFORE",
+            before_value=before,
+            general_value=targeted,
+            targeted_value=targeted,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_MALFORMED_BEFORE"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_change_rejects_valueless_anchor_href(self) -> None:
+        malformed = "<a href>原行动</a>"
+        run = _run([_change(
+            "CHG_VALUELESS_HREF",
+            before_value=malformed,
+            general_value=malformed,
+            targeted_value=malformed,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = malformed
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_VALUELESS_HREF"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_change_cannot_remove_rich_text_link(self) -> None:
+        before = '完成交付（<a href="https://example.com/project">项目链接</a>）'
+        run = _run([
+            _change(
+                "CHG_UNSAFE_RICH_TEXT",
+                before_value=before,
+                general_value="完成交付（项目链接）",
+                targeted_value="完成交付（项目链接）",
+            )
+        ])
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_UNSAFE_RICH_TEXT"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_change_rejects_non_rendered_anchor_decoys(self) -> None:
+        before = '<a href="/safe">old</a>'
+        targeted_values = (
+            'new<!-- <a href="/safe">comment decoy</a> -->',
+            'new<script>const template = \'<a href="/safe">script decoy</a>\';</script>',
+            'new<style>.x::after { content: \'<a href="/safe">style decoy</a>\'; }</style>',
+            'new<template><a href="/safe">template decoy</a></template>',
+            'new<script/><a href="/safe">slash script decoy</a></script>',
+            'new<textarea/><a href="/safe">slash textarea decoy</a></textarea>',
+            'new<resume-card data-template=\'<a href="/safe">attribute decoy</a>\'></resume-card>',
+        )
+        for targeted in targeted_values:
+            with self.subTest(targeted=targeted):
+                run = _run([_change(
+                    "CHG_ANCHOR_DECOY",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_ANCHOR_DECOY"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_non_rendered_markdown_decoys(self) -> None:
+        formats = (
+            ("[old](/safe)", "[decoy](/safe)"),
+            ("**old**", "**decoy**"),
+        )
+        contexts = (
+            "new<!-- {decoy} -->",
+            "new<script>{decoy}</script>",
+            "new<resume-card data-template='{decoy}'></resume-card>",
+            "<strong title='{decoy}'>new</strong>",
+            "<div data-note='{decoy}'>new</div>",
+            "<br title='{decoy}'>new",
+        )
+        for before, decoy in formats:
+            for context in contexts:
+                targeted = context.format(decoy=decoy)
+                with self.subTest(before=before, targeted=targeted):
+                    run = _run([_change(
+                        "CHG_MARKDOWN_DECOY",
+                        before_value=before,
+                        general_value=targeted,
+                        targeted_value=targeted,
+                    )])
+                    run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+                    run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+                    with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                        apply_service.build_apply_patch(
+                            run=run,
+                            accepted_change_ids={"CHG_MARKDOWN_DECOY"},
+                            current_resume_config=_base_config(),
+                            current_link_overrides={str(LINK_ID): _link().overrides_json},
+                        )
+
+    def test_historical_allowed_change_rejects_nested_or_unbalanced_anchor(self) -> None:
+        before = '<a href="https://safe.example">项目链接</a>'
+        for targeted in (
+            '<a href="https://safe.example"><a href="https://evil.example">项目链接</a></a>',
+            '<a href="https://safe.example">项目链接',
+        ):
+            with self.subTest(targeted=targeted):
+                run = _run([_change(
+                    "CHG_INVALID_ANCHOR",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_INVALID_ANCHOR"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_empty_visible_candidate(self) -> None:
+        before = "原行动"
+        for targeted in ("", "<br>", "<p></p>", "<strong>&nbsp;</strong>"):
+            with self.subTest(targeted=targeted):
+                run = _run([_change(
+                    "CHG_EMPTY_VISIBLE",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_EMPTY_VISIBLE"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_zero_width_only_candidate(self) -> None:
+        before = "原行动"
+        for targeted in (
+            "&#8203;",
+            "&#x200B;",
+            "&ZeroWidthSpace;",
+            "&#65039;",
+            "&#xFE0F;",
+            "\u200b",
+            "\ufe0f",
+            "\U000e0100",
+        ):
+            with self.subTest(targeted=targeted):
+                run = _run([_change(
+                    "CHG_ZERO_WIDTH",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_ZERO_WIDTH"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_default_ignorable_only_candidate(self) -> None:
+        before = "原行动"
+        for targeted in (
+            "&#x034F;",
+            "&#6155;",
+            "\u034f",
+            "\u180b\u180c\u180d\u180f",
+        ):
+            with self.subTest(targeted=ascii(targeted)):
+                run = _run([_change(
+                    "CHG_DEFAULT_IGNORABLE",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_DEFAULT_IGNORABLE"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_list_tree_or_content_model_change(self) -> None:
+        cases = (
+            (
+                "<ul><li>one</li><li>two</li></ul>",
+                "<ul><li>one</li></ul><ul><li>two</li></ul>",
+            ),
+            (
+                "<ul><li>one</li></ul>",
+                "<li><ul><li>one</li></ul></li>",
+            ),
+            (
+                "<ul><li>one</li></ul>",
+                "<ul><div><li>one</li></div></ul>",
+            ),
+        )
+        for before, targeted in cases:
+            with self.subTest(targeted=targeted):
+                run = _run([_change(
+                    "CHG_LIST_TREE",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_LIST_TREE"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_malformed_tag_like_text(self) -> None:
+        before = "原行动"
+        for targeted in (
+            "<strong-x>new</strong-x>",
+            '<strong class="a" class="b">new</strong>',
+            "<div",
+            "text <p class=",
+            "<script",
+            "<x-shell",
+        ):
+            with self.subTest(targeted=targeted):
+                run = _run([_change(
+                    "CHG_MALFORMED_TAG_LIKE",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )])
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_MALFORMED_TAG_LIKE"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={str(LINK_ID): _link().overrides_json},
+                    )
+
+    def test_historical_allowed_change_rejects_quoted_attribute_href_swap(self) -> None:
+        before = '<a title=">" href="https://safe.example">old</a>'
+        targeted = '<a title=">" href="https://evil.example">new</a>'
+        run = _run([_change(
+            "CHG_QUOTED_HREF",
+            before_value=before,
+            general_value=targeted,
+            targeted_value=targeted,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_QUOTED_HREF"},
+                current_resume_config=_base_config(),
+                current_link_overrides={str(LINK_ID): _link().overrides_json},
+            )
+
+    def test_historical_allowed_change_rejects_protected_tag_name_typo(self) -> None:
+        before = "<strong>项目</strong>"
+        targeted = "<strong_bar><strong>项目</strong></strong_bar>"
+        run = _run([_change(
+            "CHG_TAG_TYPO",
+            before_value=before,
+            general_value=targeted,
+            targeted_value=targeted,
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            apply_service.build_apply_patch(
+                run=run,
+                accepted_change_ids={"CHG_TAG_TYPO"},
                 current_resume_config=_base_config(),
                 current_link_overrides={str(LINK_ID): _link().overrides_json},
             )
@@ -446,6 +1397,52 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
 
         self.assertEqual(patch.next_resume_config["personalSummary"], "新摘要")
         self.assertEqual(patch.next_resume_config["unrelated"], {"keep": True})
+
+    def test_summary_change_can_explicitly_clear_personal_summary(self) -> None:
+        run = _run(
+            [
+                _change(
+                    "CHG_CLEAR_SUMMARY",
+                    module_type="personal_summary",
+                    field_path="personalSummary",
+                    before_value="原摘要",
+                    general_value="",
+                    targeted_value="",
+                )
+            ]
+        )
+
+        patch = apply_service.build_apply_patch(
+            run=run,
+            accepted_change_ids={"CHG_CLEAR_SUMMARY"},
+            current_resume_config=_base_config(),
+            current_link_overrides={},
+        )
+
+        self.assertEqual(patch.next_resume_config["personalSummary"], "")
+
+    def test_summary_change_rejects_markup_only_clear(self) -> None:
+        for targeted in ("<br>", "<p></p>", "<strong>&nbsp;</strong>", "\ufe0f"):
+            with self.subTest(targeted=targeted):
+                run = _run(
+                    [
+                        _change(
+                            "CHG_MARKUP_CLEAR_SUMMARY",
+                            module_type="personal_summary",
+                            field_path="personalSummary",
+                            before_value="原摘要",
+                            general_value=targeted,
+                            targeted_value=targeted,
+                        )
+                    ]
+                )
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service.build_apply_patch(
+                        run=run,
+                        accepted_change_ids={"CHG_MARKUP_CLEAR_SUMMARY"},
+                        current_resume_config=_base_config(),
+                        current_link_overrides={},
+                    )
 
     def test_skill_order_only_reorders_existing_selected_skill_ids(self) -> None:
         run = _run(
@@ -789,7 +1786,7 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
 
         self.assertEqual(
             patch.experience_star_by_link_id[str(LINK_ID)]["a"],
-            "当前简历定向内容",
+            "当前简历定向内容。",
         )
 
     def test_pending_and_read_only_sentinel_cannot_be_accepted(self) -> None:
@@ -832,13 +1829,38 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
         change = _change(
             "CHG_ANSWERED",
             before_value="原行动",
-            general_value="已有事实支持的通用表达",
-            targeted_value="已有事实支持的定向表达",
+            general_value="完成三轮迭代",
+            targeted_value="完成三轮迭代",
             safety_status="allowed",
+            source_refs=["/userAnswers/Q1/value"],
         )
         change["action_kind"] = "ask_user"
         run = _run([change])
+        run.result_json["questions"] = [
+            {
+                "question_id": "Q1",
+                "module_id": str(MASTER_ID),
+                "field_path": "star.a",
+                "text": "完成了几轮迭代？",
+                "reason": "确认量化事实",
+                "answer_type": "single_choice_with_text",
+                "choices": [],
+                "affects_change_ids": ["CHG_ANSWERED"],
+                "priority": 1,
+            }
+        ]
+        run.answers_json = {
+            "answers": [
+                {
+                    "question_id": "Q1",
+                    "state": "answered",
+                    "value": "完成三轮迭代",
+                }
+            ]
+        }
 
+        from semantic_review_test_support import review_run_fixture
+        review_run_fixture(run)
         patch = apply_service.build_apply_patch(
             run=run,
             accepted_change_ids={"CHG_ANSWERED"},
@@ -848,7 +1870,7 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
 
         self.assertEqual(
             patch.experience_star_by_link_id[str(LINK_ID)]["a"],
-            "已有事实支持的定向表达",
+            "完成三轮迭代。",
         )
 
     def test_path_aliases_share_one_conflict_target(self) -> None:
@@ -927,6 +1949,94 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         )
         return result, session
 
+    async def test_preview_ready_unmarked_five_field_signature_cannot_be_applied(self) -> None:
+        run = _run([_change("CHG_A")])
+        run.before_snapshot.pop("evaluation_signature_schema")
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        session = _transaction_session(run, resume, _link())
+
+        with self.assertRaises(apply_service.OptimizationApplyStaleError):
+            await apply_service.apply_resume_optimization(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_request("CHG_A"),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
+        self.assertEqual(session.stale_session.commits, 1)
+
+    async def test_preview_ready_legacy_signature_cannot_be_applied(self) -> None:
+        run = _run([_change("CHG_A")])
+        current = json.loads(run.source_evaluation_signature)
+        legacy = canonical_json(
+            {
+                "jdInputSignature": current["jdInputSignature"],
+                "resume": current["resume"],
+            }
+        )
+        run.source_evaluation_signature = legacy
+        run.before_snapshot["evaluation_signature"] = legacy
+        run.before_snapshot.pop("evaluation_signature_schema")
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        resume.config["jdAnalysis"]["evaluationSignature"] = legacy
+        session = _transaction_session(run, resume, _link())
+
+        with self.assertRaises(apply_service.OptimizationApplyStaleError):
+            await apply_service.apply_resume_optimization(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_request("CHG_A"),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
+        self.assertEqual(session.stale_session.commits, 1)
+
+    async def test_created_no_question_run_with_empty_answers_object_can_apply(self) -> None:
+        planned = _run([_change("CHG_A")])
+        lifecycle_session = _FakeSession([])
+        claim_id = "planning-claim"
+        claim = await run_service.create_or_claim_run(
+            session=lifecycle_session,
+            user_id=USER_ID,
+            payload=ResumeOptimizationStartRequest(
+                resume_id=str(RESUME_ID),
+                evaluation_signature=_base_frontend_evaluation_signature(),
+                expected_resume_updated_at=BASE_TIME,
+                include_bank_suggestions=False,
+            ),
+            idempotency_key=None,
+            source_snapshot_hash=planned.source_snapshot_hash,
+            source_jd_signature="jd-signature",
+            before_snapshot=planned.before_snapshot,
+            claim_id=claim_id,
+        )
+        created = lifecycle_session.added[0]
+        self.assertEqual(created.answers_json, {})
+
+        completion_session = _FakeSession([[created]], run=created)
+        completed = await run_service.complete_planning_run_claim(
+            completion_session,
+            USER_ID,
+            claim.run.id,
+            claim_id=claim_id,
+            plan_json=planned.plan_json,
+            result_json=planned.result_json,
+            target_status=ResumeOptimizationStatus.PREVIEW_READY,
+        )
+        self.assertEqual(completed.answers_json, {})
+
+        applied, _ = await self._apply(
+            completed,
+            _resume(),
+            _link(),
+        )
+
+        self.assertEqual(applied.run.status, ResumeOptimizationStatus.APPLIED.value)
+
     async def test_master_experience_and_version_rows_are_unchanged(self) -> None:
         run = _run([_change("CHG_A")])
         resume = _resume()
@@ -958,6 +2068,723 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(link.experience_version_id, original_version_id)
         self.assertFalse(
             any(isinstance(item, (MasterExperience, ExperienceVersion)) for item in session.added)
+        )
+
+    async def test_final_noop_is_rejected_before_resume_or_run_mutation(self) -> None:
+        run = _run([_change(
+            "CHG_NOOP",
+            before_value="原行动。",
+            general_value="原行动；",
+            targeted_value="原行动；",
+        )])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["a"] = "原行动。"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        link = _link()
+        link.overrides_json["star"]["a"] = "原行动。"
+        session = _transaction_session(run, resume, link)
+        before_config = deepcopy(resume.config)
+        before_overrides = deepcopy(link.overrides_json)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            await apply_service.apply_resume_optimization(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_request("CHG_NOOP"),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.PREVIEW_READY.value)
+        self.assertEqual(resume.updated_at, BASE_TIME)
+        self.assertEqual(resume.config, before_config)
+        self.assertEqual(link.overrides_json, before_overrides)
+        self.assertEqual(session.commits, 0)
+        self.assertEqual(session.rollbacks, 1)
+
+    async def test_blocked_chinese_quantity_cannot_reach_apply_mutation(self) -> None:
+        verified = _verified_unsupported_chinese_quantity_change()
+        run = _run([verified.model_dump(mode="json")])
+        resume = _resume()
+        link = _link()
+        session = _transaction_session(run, resume, link)
+        before_config = deepcopy(resume.config)
+        before_overrides = deepcopy(link.overrides_json)
+
+        with self.assertRaises(apply_service.OptimizationApplyValidationError):
+            await apply_service.apply_resume_optimization(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_request("CHG_ZH_QUANTITY"),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.PREVIEW_READY.value)
+        self.assertEqual(resume.updated_at, BASE_TIME)
+        self.assertEqual(resume.config, before_config)
+        self.assertEqual(link.overrides_json, before_overrides)
+        self.assertEqual(session.commits, 0)
+        self.assertEqual(session.rollbacks, 1)
+
+    async def test_historical_unsafe_ready_plan_is_rejected_before_any_mutation(self) -> None:
+        change = _change(
+            "CHG_HISTORICAL_UNSAFE",
+            before_value="负责系统吞吐量优化",
+            general_value="实现吞吐量翻倍",
+            targeted_value="实现吞吐量翻倍",
+        )
+        run = _run([change])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)][
+            "star"
+        ]["a"] = "负责系统吞吐量优化"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        link = _link()
+        link.overrides_json["star"]["a"] = "负责系统吞吐量优化"
+        session = _transaction_session(run, resume, link)
+        before_config = deepcopy(resume.config)
+        before_overrides = deepcopy(link.overrides_json)
+
+        with self.assertRaisesRegex(
+            apply_service.OptimizationApplyValidationError,
+            "current safety",
+        ):
+            await apply_service.apply_resume_optimization(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_request("CHG_HISTORICAL_UNSAFE"),
+            )
+
+        self.assertEqual(run.status, ResumeOptimizationStatus.PREVIEW_READY.value)
+        self.assertEqual(run.updated_at, BASE_TIME)
+        self.assertEqual(resume.updated_at, BASE_TIME)
+        self.assertEqual(resume.config, before_config)
+        self.assertEqual(link.overrides_json, before_overrides)
+        self.assertEqual(session.commits, 0)
+        self.assertEqual(session.rollbacks, 1)
+
+    async def test_historical_unsafe_applied_plan_can_still_revert(self) -> None:
+        change = _change(
+            "CHG_HISTORICAL_UNSAFE",
+            before_value="负责系统吞吐量优化",
+            general_value="实现吞吐量翻倍",
+            targeted_value="实现吞吐量翻倍",
+        )
+        run = _run([change])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)][
+            "star"
+        ]["a"] = "负责系统吞吐量优化"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        link = _link()
+        link.overrides_json["star"]["a"] = "负责系统吞吐量优化"
+        historical_plan = OptimizationPlan.model_validate(run.result_json)
+
+        with patch.object(
+            apply_service,
+            "verify_plan_changes",
+            return_value=(historical_plan.changes, historical_plan.safety_summary),
+        ):
+            applied, apply_session = await self._apply(
+                run,
+                resume,
+                link,
+                request=_request("CHG_HISTORICAL_UNSAFE"),
+            )
+
+        self.assertEqual(
+            apply_session.links[0].overrides_json["star"]["a"],
+            "实现吞吐量翻倍。",
+        )
+        revert_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        reverted = await apply_service.revert_resume_optimization(
+            session=revert_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=ResumeOptimizationRevertRequest(
+                expected_resume_updated_at=applied.resume_updated_at,
+            ),
+        )
+
+        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+        self.assertEqual(
+            revert_session.links[0].overrides_json["star"]["a"],
+            "负责系统吞吐量优化",
+        )
+
+    async def test_historical_rich_text_unsafe_applied_plan_can_still_revert(self) -> None:
+        before = "<strong>原行动</strong>"
+        change = _change(
+            "CHG_HISTORICAL_RICH_TEXT",
+            before_value=before,
+            general_value="原行动改写。",
+            targeted_value="原行动改写。",
+        )
+        run = _run([change])
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)][
+            "star"
+        ]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        link = _link()
+        link.overrides_json["star"]["a"] = before
+        historical_plan = OptimizationPlan.model_validate(run.result_json)
+
+        with (
+            patch.object(
+                apply_service,
+                "verify_plan_changes",
+                return_value=(
+                    historical_plan.changes,
+                    historical_plan.safety_summary,
+                ),
+            ),
+            patch.object(
+                apply_service,
+                "preserves_rich_text_structure",
+                return_value=True,
+            ),
+        ):
+            applied, apply_session = await self._apply(
+                run,
+                resume,
+                link,
+                request=_request("CHG_HISTORICAL_RICH_TEXT"),
+            )
+
+        revert_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        reverted = await apply_service.revert_resume_optimization(
+            session=revert_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=ResumeOptimizationRevertRequest(
+                expected_resume_updated_at=applied.resume_updated_at,
+            ),
+        )
+
+        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+        self.assertEqual(revert_session.links[0].overrides_json["star"]["a"], before)
+
+    async def test_historical_unpunctuated_applied_plan_can_still_revert(self) -> None:
+        run = _run([_change("CHG_HISTORICAL_UNPUNCTUATED")])
+        resume = _resume()
+        link = _link()
+        historical_plan = OptimizationPlan.model_validate(run.result_json)
+
+        with (
+            patch.object(
+                apply_service,
+                "verify_plan_changes",
+                return_value=(
+                    historical_plan.changes,
+                    historical_plan.safety_summary,
+                ),
+            ),
+            patch.object(
+                apply_service,
+                "normalize_action_paragraph_endings",
+                side_effect=lambda value: value,
+            ),
+        ):
+            applied, apply_session = await self._apply(
+                run,
+                resume,
+                link,
+                request=_request("CHG_HISTORICAL_UNPUNCTUATED"),
+            )
+
+        self.assertEqual(
+            apply_session.links[0].overrides_json["star"]["a"],
+            "优化行动",
+        )
+        revert_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        reverted = await apply_service.revert_resume_optimization(
+            session=revert_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=ResumeOptimizationRevertRequest(
+                expected_resume_updated_at=applied.resume_updated_at,
+            ),
+        )
+
+        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+        self.assertEqual(
+            revert_session.links[0].overrides_json["star"]["a"],
+            "原行动",
+        )
+
+    async def test_historical_buggy_markup_materialization_can_still_revert(self) -> None:
+        before = "<strong>原行动;</strong>\u200b"
+        targeted = "<strong>优化行动;</strong>\u200b"
+        historical_output = "<strong>优化行动;</strong>。\u200b"
+        run = _run(
+            [
+                _change(
+                    "CHG_HISTORICAL_BUGGY_MARKUP",
+                    before_value=before,
+                    general_value=targeted,
+                    targeted_value=targeted,
+                )
+            ]
+        )
+        run.before_snapshot["current_resume"]["experiences"][str(MASTER_ID)][
+            "star"
+        ]["a"] = before
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume = _resume()
+        link = _link()
+        link.overrides_json["star"]["a"] = before
+
+        with patch.object(
+            apply_service,
+            "normalize_action_paragraph_endings",
+            return_value=historical_output,
+        ):
+            from semantic_review_test_support import review_run_fixture
+            review_run_fixture(run)
+            applied, apply_session = await self._apply(
+                run,
+                resume,
+                link,
+                request=_request("CHG_HISTORICAL_BUGGY_MARKUP"),
+            )
+
+        self.assertEqual(
+            apply_session.links[0].overrides_json["star"]["a"],
+            historical_output,
+        )
+        revert_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        reverted = await apply_service.revert_resume_optimization(
+            session=revert_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=ResumeOptimizationRevertRequest(
+                expected_resume_updated_at=applied.resume_updated_at,
+            ),
+        )
+
+        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+        self.assertEqual(revert_session.links[0].overrides_json["star"]["a"], before)
+
+    async def test_coordinated_after_journal_and_signature_forgery_is_rejected(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        forged = "伪造后的行动。"
+        link_id = str(LINK_ID)
+        journal = applied.run.after_snapshot
+        touched = journal["touched_links"][link_id]
+        touched["after_overrides_json"]["star"]["a"] = forged
+        touched["after_star"]["value"]["a"] = forged
+        for root in ("after", "protected_content"):
+            journal[root]["selected_links"][link_id]["overrides_json"]["star"][
+                "a"
+            ] = forged
+        applied.run.applied_content_signature = hash_canonical_json(
+            journal["protected_content"]
+        )
+        apply_session.links[0].overrides_json["star"]["a"] = forged
+        revert_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        before_config = deepcopy(applied.resume.config)
+        before_overrides = deepcopy(apply_session.links[0].overrides_json)
+
+        with self.assertRaises(apply_service.OptimizationRunDataInvalidError):
+            await apply_service.revert_resume_optimization(
+                session=revert_session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=ResumeOptimizationRevertRequest(
+                    expected_resume_updated_at=applied.resume_updated_at,
+                ),
+            )
+
+        self.assertEqual(applied.resume.config, before_config)
+        self.assertEqual(apply_session.links[0].overrides_json, before_overrides)
+        self.assertEqual(revert_session.commits, 0)
+
+    async def test_action_journal_binding_rejects_decimal_internal_and_url_punctuation_tampering(self) -> None:
+        cases = (
+            (
+                "decimal",
+                "持续优化效率",
+                "将效率提升1.5倍",
+                "将效率提升15倍。",
+            ),
+            (
+                "internal punctuation",
+                "协调交付",
+                "协调产品、研发交付",
+                "协调产品研发交付。",
+            ),
+            (
+                "url attribute",
+                '<a href="https://a.b/path">原链接</a>',
+                '<a href="https://a.b/path">项目链接</a>',
+                '<a href="https://ab/path">项目链接。</a>',
+            ),
+            (
+                "markdown url",
+                "[原链接](https://a.b/path)",
+                "[项目链接](https://a.b/path)",
+                "[项目链接。](https://ab/path)",
+            ),
+            (
+                "non-url attribute",
+                '<strong data-version="1.5">原行动</strong>',
+                '<strong data-version="1.5">优化行动</strong>',
+                '<strong data-version="15">优化行动。</strong>',
+            ),
+            (
+                "unmatched markdown star",
+                "原行动",
+                "优化行动;*",
+                "优化行动*",
+            ),
+            (
+                "unmatched markdown underscore",
+                "原行动",
+                "优化行动;_",
+                "优化行动_",
+            ),
+            (
+                "unmatched markdown triple star",
+                "原行动",
+                "优化行动;***",
+                "优化行动***",
+            ),
+            (
+                "escaped markdown emphasis",
+                "原行动",
+                r"\**优化行动;**",
+                r"\**优化行动**",
+            ),
+        )
+        for label, before, targeted, forged in cases:
+            with self.subTest(label=label):
+                run = _run(
+                    [
+                        _change(
+                            "CHG_ACTION_BINDING",
+                            before_value=before,
+                            general_value=targeted,
+                            targeted_value=targeted,
+                        )
+                    ]
+                )
+                run.before_snapshot["current_resume"]["experiences"][
+                    str(MASTER_ID)
+                ]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+                resume = _resume()
+                link = _link()
+                link.overrides_json["star"]["a"] = before
+                historical_plan = OptimizationPlan.model_validate(run.result_json)
+                with patch.object(
+                    apply_service,
+                    "verify_plan_changes",
+                    return_value=(
+                        historical_plan.changes,
+                        historical_plan.safety_summary,
+                    ),
+                ):
+                    applied, apply_session = await self._apply(
+                        run,
+                        resume,
+                        link,
+                        request=_request("CHG_ACTION_BINDING"),
+                    )
+
+                link_id = str(LINK_ID)
+                journal = applied.run.after_snapshot
+                touched = journal["touched_links"][link_id]
+                touched["after_overrides_json"]["star"]["a"] = forged
+                touched["after_star"]["value"]["a"] = forged
+                for root in ("after", "protected_content"):
+                    journal[root]["selected_links"][link_id]["overrides_json"][
+                        "star"
+                    ]["a"] = forged
+                applied.run.applied_content_signature = hash_canonical_json(
+                    journal["protected_content"]
+                )
+                apply_session.links[0].overrides_json["star"]["a"] = forged
+                revert_session = _transaction_session(
+                    applied.run,
+                    applied.resume,
+                    apply_session.links[0],
+                )
+
+                with self.assertRaises(
+                    apply_service.OptimizationRunDataInvalidError
+                ):
+                    await apply_service.revert_resume_optimization(
+                        session=revert_session,
+                        user_id=USER_ID,
+                        run_id=str(RUN_ID),
+                        payload=ResumeOptimizationRevertRequest(
+                            expected_resume_updated_at=applied.resume_updated_at,
+                        ),
+                    )
+                self.assertEqual(revert_session.commits, 0)
+
+    async def test_unsafe_control_action_never_reaches_the_apply_journal(self) -> None:
+        for targeted in ("优化行动;\u0085", "优化行动;\u001c", "优化行动&#1;"):
+            with self.subTest(targeted=repr(targeted)):
+                run = _run(
+                    [
+                        _change(
+                            "CHG_UNSAFE_CONTROL",
+                            before_value="原行动",
+                            general_value=targeted,
+                            targeted_value=targeted,
+                        )
+                    ]
+                )
+                resume = _resume()
+                link = _link()
+                link.overrides_json["star"]["a"] = "原行动"
+
+                with self.assertRaises(
+                    apply_service.OptimizationApplyValidationError
+                ):
+                    await self._apply(
+                        run,
+                        resume,
+                        link,
+                        request=_request("CHG_UNSAFE_CONTROL"),
+                    )
+
+    async def test_current_default_ignorable_action_suffixes_can_revert(self) -> None:
+        for suffix in ("\u00ad", "\u200e", "\u2061"):
+            with self.subTest(suffix=ascii(suffix)):
+                before = f"原行动{suffix}"
+                targeted = f"优化行动;{suffix}"
+                run = _run(
+                    [
+                        _change(
+                            "CHG_ACTION_SUFFIX",
+                            before_value=before,
+                            general_value=targeted,
+                            targeted_value=targeted,
+                        )
+                    ]
+                )
+                run.before_snapshot["current_resume"]["experiences"][
+                    str(MASTER_ID)
+                ]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+                resume = _resume()
+                link = _link()
+                link.overrides_json["star"]["a"] = before
+                from semantic_review_test_support import review_run_fixture
+                review_run_fixture(run)
+                applied, apply_session = await self._apply(
+                    run,
+                    resume,
+                    link,
+                    request=_request("CHG_ACTION_SUFFIX"),
+                )
+
+                reverted = await apply_service.revert_resume_optimization(
+                    session=_transaction_session(
+                        applied.run,
+                        applied.resume,
+                        apply_session.links[0],
+                    ),
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=ResumeOptimizationRevertRequest(
+                        expected_resume_updated_at=applied.resume_updated_at,
+                    ),
+                )
+                self.assertEqual(
+                    reverted.run.status,
+                    ResumeOptimizationStatus.REVERTED.value,
+                )
+
+    async def test_current_action_boundaries_can_revert(self) -> None:
+        boundaries = (
+            "\n",
+            "\r",
+            "\r\n",
+            "&NewLine;",
+            "&#10;",
+            "&#xA;",
+            "&#13;",
+        )
+        for boundary in boundaries:
+            with self.subTest(boundary=ascii(boundary)):
+                before = f"原行动{boundary}原结果"
+                targeted = f"优化行动;{boundary}优化结果;"
+                run = _run(
+                    [
+                        _change(
+                            "CHG_ACTION_BOUNDARY",
+                            before_value=before,
+                            general_value=targeted,
+                            targeted_value=targeted,
+                        )
+                    ]
+                )
+                run.before_snapshot["current_resume"]["experiences"][
+                    str(MASTER_ID)
+                ]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+                resume = _resume()
+                link = _link()
+                link.overrides_json["star"]["a"] = before
+                from semantic_review_test_support import review_run_fixture
+                review_run_fixture(run)
+                applied, apply_session = await self._apply(
+                    run,
+                    resume,
+                    link,
+                    request=_request("CHG_ACTION_BOUNDARY"),
+                )
+
+                reverted = await apply_service.revert_resume_optimization(
+                    session=_transaction_session(
+                        applied.run,
+                        applied.resume,
+                        apply_session.links[0],
+                    ),
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=ResumeOptimizationRevertRequest(
+                        expected_resume_updated_at=applied.resume_updated_at,
+                    ),
+                )
+                self.assertEqual(
+                    reverted.run.status,
+                    ResumeOptimizationStatus.REVERTED.value,
+                )
+
+    async def test_current_paired_markdown_emphasis_can_revert(self) -> None:
+        for targeted in (
+            "**优化行动;**",
+            "__优化行动;__",
+            "***优化行动;***",
+            "＊＊优化行动;＊＊",
+            "**__优化行动;__**",
+            "*优化行动;**完成交付;***",
+            "[**优化行动;**](https://a.b/path)",
+            "[*优化行动;**完成交付;***](https://a.b/path)",
+            "[**优化行动;**](https://a.b/path)***",
+        ):
+            with self.subTest(targeted=targeted):
+                before = targeted.replace("优化", "原始")
+                run = _run(
+                    [
+                        _change(
+                            "CHG_ACTION_EMPHASIS",
+                            before_value=before,
+                            general_value=targeted,
+                            targeted_value=targeted,
+                        )
+                    ]
+                )
+                run.before_snapshot["current_resume"]["experiences"][
+                    str(MASTER_ID)
+                ]["star"]["a"] = before
+                run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+                resume = _resume()
+                link = _link()
+                link.overrides_json["star"]["a"] = before
+                from semantic_review_test_support import review_run_fixture
+                review_run_fixture(run)
+                applied, apply_session = await self._apply(
+                    run,
+                    resume,
+                    link,
+                    request=_request("CHG_ACTION_EMPHASIS"),
+                )
+
+                reverted = await apply_service.revert_resume_optimization(
+                    session=_transaction_session(
+                        applied.run,
+                        applied.resume,
+                        apply_session.links[0],
+                    ),
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=ResumeOptimizationRevertRequest(
+                        expected_resume_updated_at=applied.resume_updated_at,
+                    ),
+                )
+                self.assertEqual(
+                    reverted.run.status,
+                    ResumeOptimizationStatus.REVERTED.value,
+                )
+
+    async def test_historical_noop_applied_plan_can_still_revert(self) -> None:
+        change = _change(
+            "CHG_HISTORICAL_NOOP",
+            before_value="原行动",
+            general_value="原行动",
+            targeted_value="原行动",
+        )
+        run = _run([change])
+        resume = _resume()
+        link = _link()
+        noop_patch = apply_service.OptimizationApplyPatch(
+            experience_star_by_link_id={
+                str(LINK_ID): deepcopy(link.overrides_json["star"])
+            },
+            next_resume_config=deepcopy(resume.config),
+            applied_change_ids=["CHG_HISTORICAL_NOOP"],
+        )
+
+        with patch.object(
+            apply_service,
+            "build_apply_patch",
+            return_value=noop_patch,
+        ):
+            applied, apply_session = await self._apply(
+                run,
+                resume,
+                link,
+                request=_request("CHG_HISTORICAL_NOOP"),
+            )
+
+        revert_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        reverted = await apply_service.revert_resume_optimization(
+            session=revert_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=ResumeOptimizationRevertRequest(
+                expected_resume_updated_at=applied.resume_updated_at,
+            ),
+        )
+
+        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+        self.assertEqual(
+            revert_session.links[0].overrides_json["star"]["a"],
+            "原行动",
         )
 
     async def test_stale_expected_resume_timestamp_raises_conflict(self) -> None:
@@ -1295,6 +3122,265 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resume.config, before_config)
         self.assertEqual(session.commits, 0)
         self.assertEqual(session.rollbacks, 1)
+
+    async def test_rescore_claim_is_idempotent_and_blocks_a_peer_and_revert(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        claim_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        peer_claim_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+        applied_link = apply_session.links[0]
+        first_session = _transaction_session(applied.run, applied.resume, applied_link)
+        first = await apply_service.claim_resume_optimization_rescore(
+            session=first_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_rescore_claim_request(
+                claim_id,
+                expected=applied.resume_updated_at,
+            ),
+        )
+        self.assertEqual(first.status, ResumeOptimizationStatus.APPLIED.value)
+        self.assertEqual(
+            applied.run.error_json["_activeRescoreClaim"]["claimId"],
+            claim_id,
+        )
+
+        retry_session = _transaction_session(applied.run, applied.resume, applied_link)
+        retry = await apply_service.claim_resume_optimization_rescore(
+            session=retry_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_rescore_claim_request(
+                claim_id,
+                expected=applied.resume_updated_at,
+            ),
+        )
+        self.assertEqual(retry.status, ResumeOptimizationStatus.APPLIED.value)
+
+        peer_session = _transaction_session(applied.run, applied.resume, applied_link)
+        with self.assertRaises(apply_service.OptimizationRescoreInProgressError):
+            await apply_service.claim_resume_optimization_rescore(
+                session=peer_session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_rescore_claim_request(
+                    peer_claim_id,
+                    expected=applied.resume_updated_at,
+                ),
+            )
+
+        revert_session = _transaction_session(applied.run, applied.resume, applied_link)
+        with self.assertRaises(apply_service.OptimizationRescoreInProgressError):
+            await apply_service.revert_resume_optimization(
+                session=revert_session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=ResumeOptimizationRevertRequest(
+                    expected_resume_updated_at=applied.resume_updated_at,
+                ),
+            )
+
+        owner_session = _transaction_session(applied.run, applied.resume, applied_link)
+        reverted = await apply_service.revert_resume_optimization(
+            session=owner_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=ResumeOptimizationRevertRequest(
+                expected_resume_updated_at=applied.resume_updated_at,
+                claim_id=claim_id,
+            ),
+        )
+        self.assertEqual(reverted.run.status, ResumeOptimizationStatus.REVERTED.value)
+
+    async def test_expired_rescore_claim_is_recoverable_by_a_new_owner(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        applied.run.error_json = {
+            "_activeRescoreClaim": {
+                "claimId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "claimedAt": (BASE_TIME - timedelta(hours=1)).isoformat(),
+            }
+        }
+        peer_claim_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        session = _transaction_session(applied.run, applied.resume, apply_session.links[0])
+
+        claimed = await apply_service.claim_resume_optimization_rescore(
+            session=session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_rescore_claim_request(
+                peer_claim_id,
+                expected=applied.resume_updated_at,
+            ),
+            claim_ttl_seconds=60,
+        )
+
+        self.assertEqual(
+            claimed.error_json["_activeRescoreClaim"]["claimId"],
+            peer_claim_id,
+        )
+
+    async def test_expired_same_id_claim_is_renewed_before_a_peer_can_claim(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        claim_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        expired_at = BASE_TIME - timedelta(hours=1)
+        applied.run.error_json = {
+            "_activeRescoreClaim": {
+                "claimId": claim_id,
+                "claimedAt": expired_at.isoformat(),
+            }
+        }
+        renewed_at = BASE_TIME + timedelta(hours=1)
+        renew_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        with patch.object(apply_service, "utc_now_aware", return_value=renewed_at):
+            await apply_service.claim_resume_optimization_rescore(
+                session=renew_session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_rescore_claim_request(
+                    claim_id,
+                    expected=applied.resume_updated_at,
+                ),
+                claim_ttl_seconds=60,
+            )
+
+        self.assertEqual(
+            applied.run.error_json["_activeRescoreClaim"]["claimedAt"],
+            renewed_at.isoformat(),
+        )
+        peer_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        with patch.object(
+            apply_service,
+            "utc_now_aware",
+            return_value=renewed_at + timedelta(seconds=1),
+        ):
+            with self.assertRaises(apply_service.OptimizationRescoreInProgressError):
+                await apply_service.claim_resume_optimization_rescore(
+                    session=peer_session,
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=_rescore_claim_request(
+                        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                        expected=applied.resume_updated_at,
+                    ),
+                    claim_ttl_seconds=60,
+                )
+
+    async def test_active_same_id_claim_at_ttl_minus_one_is_atomically_renewed(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        claim_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        applied.run.error_json = {
+            "_activeRescoreClaim": {
+                "claimId": claim_id,
+                "claimedAt": BASE_TIME.isoformat(),
+            }
+        }
+        renewal_time = BASE_TIME + timedelta(seconds=59)
+        session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+
+        with patch.object(apply_service, "utc_now_aware", return_value=renewal_time):
+            await apply_service.claim_resume_optimization_rescore(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_rescore_claim_request(
+                    claim_id,
+                    expected=applied.resume_updated_at,
+                ),
+                claim_ttl_seconds=60,
+            )
+
+        self.assertEqual(
+            applied.run.error_json["_activeRescoreClaim"]["claimedAt"],
+            renewal_time.isoformat(),
+        )
+        self.assertEqual(session.flushes, 1)
+        self.assertEqual(session.commits, 1)
+
+    async def test_applied_resume_probe_ignores_evaluation_only_save_but_rejects_content_edit(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        applied.resume.updated_at = applied.resume_updated_at + timedelta(minutes=1)
+        applied.resume.config["jdAnalysis"]["evaluationSignature"] = "post-score"
+        current_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        self.assertTrue(await apply_service.is_applied_run_resumable(
+            session=current_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+        ))
+
+        apply_session.links[0].overrides_json["star"]["t"] = "外部修改 T3"
+        changed_session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+        self.assertFalse(await apply_service.is_applied_run_resumable(
+            session=changed_session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+        ))
+
+    async def test_rescore_claim_rejects_changed_jd_signature_before_generation(self) -> None:
+        applied, apply_session = await self._apply(
+            _run([_change("CHG_A")]),
+            _resume(),
+            _link(),
+        )
+        applied.resume.config["jdAnalysis"]["jdInputSignature"] = "changed-jd"
+        session = _transaction_session(
+            applied.run,
+            applied.resume,
+            apply_session.links[0],
+        )
+
+        with self.assertRaises(apply_service.OptimizationContentConflictError):
+            await apply_service.claim_resume_optimization_rescore(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_rescore_claim_request(
+                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    expected=applied.resume_updated_at,
+                ),
+            )
+
+        self.assertEqual(session.flushes, 0)
+        self.assertEqual(session.commits, 0)
 
     async def test_lock_order_is_run_then_resume_then_affected_links(self) -> None:
         _result, session = await self._apply(
@@ -1638,7 +3724,7 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored_run["status"], "applied")
         self.assertEqual(stored_run["accepted_change_ids"], ["CHG_A"])
         self.assertTrue(stored_resume["config"]["jdAnalysis"]["isOutdated"])
-        self.assertEqual(stored_link["overrides_json"]["star"]["a"], "优化行动")
+        self.assertEqual(stored_link["overrides_json"]["star"]["a"], "优化行动。")
         self.assertEqual(
             stored_link["overrides_json"]["summary"], "保留摘要 override"
         )
@@ -1766,6 +3852,45 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(stored_run["status"], "applied")
         self.assertEqual(stored_run["accepted_change_ids"], ["CHG_A"])
+
+    async def test_isolated_postgres_concurrent_rescore_claim_has_one_winner(self) -> None:
+        async with self.sessions() as session:
+            applied = await apply_service.apply_resume_optimization(
+                session=session,
+                user_id=USER_ID,
+                run_id=str(RUN_ID),
+                payload=_request("CHG_A"),
+                stale_session_factory=self.sessions,
+            )
+
+        async def attempt(claim_id: str):
+            async with self.sessions() as session:
+                return await apply_service.claim_resume_optimization_rescore(
+                    session=session,
+                    user_id=USER_ID,
+                    run_id=str(RUN_ID),
+                    payload=_rescore_claim_request(
+                        claim_id,
+                        expected=applied.resume_updated_at,
+                    ),
+                )
+
+        outcomes = await asyncio.gather(
+            attempt("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            attempt("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+            return_exceptions=True,
+        )
+        self.assertEqual(
+            sum(isinstance(item, ResumeOptimizationRun) for item in outcomes),
+            1,
+        )
+        self.assertEqual(
+            sum(
+                isinstance(item, apply_service.OptimizationRescoreInProgressError)
+                for item in outcomes
+            ),
+            1,
+        )
 
 
 if __name__ == "__main__":
