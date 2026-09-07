@@ -1,0 +1,454 @@
+{
+  "round": "final4",
+  "stages": {
+    "baseline": {
+      "attempts": 18,
+      "successes": 18,
+      "failures": {},
+      "latency_median_seconds": 96.975,
+      "latency_max_seconds": 122.41
+    },
+    "optimization": {
+      "attempts": 12,
+      "successes": 11,
+      "failures": {
+        "OptimizationPlanNormalizationError": 1
+      },
+      "latency_median_seconds": 23.43,
+      "latency_max_seconds": 46.97
+    },
+    "post": {
+      "attempts": 18,
+      "successes": 17,
+      "failures": {
+        "ConnectError": 1
+      },
+      "latency_median_seconds": 63.075,
+      "latency_max_seconds": 83.12
+    },
+    "blind": {
+      "attempts": 6,
+      "successes": 6,
+      "failures": {},
+      "latency_median_seconds": 3.775,
+      "latency_max_seconds": 4.4
+    },
+    "member": {
+      "attempts": 118,
+      "successes": 103,
+      "failures": {
+        "ResumeEvaluationIntegrityError": 14,
+        "ConnectError": 1
+      },
+      "latency_median_seconds": null,
+      "latency_max_seconds": null
+    }
+  },
+  "plans_with_actual_edits": 7,
+  "successful_no_op_plans": 4,
+  "rewrite_candidates": 16,
+  "allowed_rewrite_candidates": 14,
+  "blocked_rewrite_candidates": [
+    {
+      "field": "personal_summary",
+      "reasons": [
+        "针对性改写（targeted）中提及的“B2B”在所提供的参考来源中没有任何依据支持。"
+      ]
+    },
+    {
+      "field": "personal_summary",
+      "reasons": [
+        "来源中仅提及产品经理和企业客户相关信息，未提及“B2B”或“B2B SaaS产品经理”及流程优化等具体表述，缺乏依据。"
+      ]
+    }
+  ],
+  "scores": [
+    {
+      "id": "R7K2",
+      "tier": "低质量且事实不足",
+      "defects": [
+        "摘要绝对化夸大与空泛自评",
+        "行动重复且不具体",
+        "缺少情境和任务",
+        "结果缺失",
+        "无有效量化"
+      ],
+      "expected_answer_policy": "no_data for missing facts; supplied sources only",
+      "baseline": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          37,
+          32,
+          37
+        ],
+        "mean": 35.333333333333336,
+        "range": 5,
+        "sd": 2.3570226039551585,
+        "dimension_ranges": {
+          "逻辑清晰": 4,
+          "STAR应用": 0,
+          "内容可读": 2,
+          "内容完整": 0,
+          "专业表达": 25,
+          "成果量化": 0
+        }
+      },
+      "post": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          38,
+          43,
+          41
+        ],
+        "mean": 40.666666666666664,
+        "range": 5,
+        "sd": 2.0548046676563256,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 0,
+          "内容可读": 13,
+          "内容完整": 4,
+          "专业表达": 12,
+          "成果量化": 0
+        }
+      },
+      "mean_delta": 5.333333333333329
+    },
+    {
+      "id": "R2M9",
+      "tier": "中等质量且无量化资料",
+      "defects": [
+        "完整行动句缺少句号",
+        "已有定性结果但没有量化，不应误判无STAR结果"
+      ],
+      "expected_answer_policy": "no_data for missing facts; supplied sources only",
+      "baseline": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          68,
+          70,
+          68
+        ],
+        "mean": 68.66666666666667,
+        "range": 2,
+        "sd": 0.9428090415820634,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 5,
+          "内容可读": 8,
+          "内容完整": 5,
+          "专业表达": 3,
+          "成果量化": 0
+        }
+      },
+      "post": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          67,
+          68,
+          67
+        ],
+        "mean": 67.33333333333333,
+        "range": 1,
+        "sd": 0.4714045207910317,
+        "dimension_ranges": {
+          "逻辑清晰": 8,
+          "STAR应用": 0,
+          "内容可读": 5,
+          "内容完整": 3,
+          "专业表达": 1,
+          "成果量化": 0
+        }
+      },
+      "mean_delta": -1.3333333333333428
+    },
+    {
+      "id": "R8P4",
+      "tier": "高质量对照",
+      "defects": [],
+      "expected_answer_policy": "no_data for missing facts; supplied sources only",
+      "baseline": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          100,
+          100,
+          100
+        ],
+        "mean": 100,
+        "range": 0,
+        "sd": 0.0,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 0,
+          "内容可读": 0,
+          "内容完整": 0,
+          "专业表达": 0,
+          "成果量化": 0
+        }
+      },
+      "post": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          100,
+          100,
+          100
+        ],
+        "mean": 100,
+        "range": 0,
+        "sd": 0.0,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 0,
+          "内容可读": 0,
+          "内容完整": 0,
+          "专业表达": 0,
+          "成果量化": 0
+        }
+      },
+      "mean_delta": 0
+    },
+    {
+      "id": "R3V6",
+      "tier": "事实充足但表述退化",
+      "defects": [
+        "摘要重复空泛",
+        "行动重复空泛",
+        "行动末尾缺少句号",
+        "当前简历遗漏来源中明确的量化成果"
+      ],
+      "expected_answer_policy": "no_data for missing facts; supplied sources only",
+      "baseline": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          63,
+          62,
+          59
+        ],
+        "mean": 61.333333333333336,
+        "range": 4,
+        "sd": 1.699673171197595,
+        "dimension_ranges": {
+          "逻辑清晰": 8,
+          "STAR应用": 2,
+          "内容可读": 0,
+          "内容完整": 5,
+          "专业表达": 5,
+          "成果量化": 15
+        }
+      },
+      "post": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          93,
+          92,
+          94
+        ],
+        "mean": 93,
+        "range": 2,
+        "sd": 0.816496580927726,
+        "dimension_ranges": {
+          "逻辑清晰": 7,
+          "STAR应用": 0,
+          "内容可读": 10,
+          "内容完整": 3,
+          "专业表达": 0,
+          "成果量化": 17
+        }
+      },
+      "mean_delta": 31.666666666666664
+    },
+    {
+      "id": "H4Q1",
+      "tier": "未见过的高证据样本",
+      "defects": [],
+      "baseline": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          99,
+          99,
+          99
+        ],
+        "mean": 99,
+        "range": 0,
+        "sd": 0.0,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 0,
+          "内容可读": 0,
+          "内容完整": 0,
+          "专业表达": 0,
+          "成果量化": 0
+        }
+      },
+      "post": {
+        "attempts": 3,
+        "successes": 2,
+        "scores": [
+          99,
+          99
+        ],
+        "mean": 99,
+        "range": 0,
+        "sd": 0.0,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 0,
+          "内容可读": 0,
+          "内容完整": 0,
+          "专业表达": 0,
+          "成果量化": 0
+        }
+      },
+      "mean_delta": 0
+    },
+    {
+      "id": "H9S2",
+      "tier": "未见过的定性结果与过程计数样本",
+      "defects": [
+        "行动句缺少句号",
+        "只有过程计数，不能虚构业务结果或把定性结果判为缺失"
+      ],
+      "baseline": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          81,
+          81,
+          81
+        ],
+        "mean": 81,
+        "range": 0,
+        "sd": 0.0,
+        "dimension_ranges": {
+          "逻辑清晰": 0,
+          "STAR应用": 5,
+          "内容可读": 5,
+          "内容完整": 0,
+          "专业表达": 3,
+          "成果量化": 0
+        }
+      },
+      "post": {
+        "attempts": 3,
+        "successes": 3,
+        "scores": [
+          83,
+          86,
+          85
+        ],
+        "mean": 84.66666666666667,
+        "range": 3,
+        "sd": 1.247219128924647,
+        "dimension_ranges": {
+          "逻辑清晰": 5,
+          "STAR应用": 10,
+          "内容可读": 5,
+          "内容完整": 2,
+          "专业表达": 0,
+          "成果量化": 0
+        }
+      },
+      "mean_delta": 3.6666666666666714
+    }
+  ],
+  "blind_pairs": [
+    {
+      "id": "H4Q1",
+      "ok": true,
+      "preference": "tie",
+      "after": {
+        "id": "6ca2c111",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "结构完整清晰，STAR描述详实有量化支撑，且严格忠于来源数据，职责边界交代明确。"
+      }
+    },
+    {
+      "id": "H9S2",
+      "ok": true,
+      "preference": "after",
+      "after": {
+        "id": "167a0c83",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容真实严谨，完全忠实于来源，且在行动描述末尾补齐了句末标点，格式规范。"
+      }
+    },
+    {
+      "id": "R2M9",
+      "ok": true,
+      "preference": "after",
+      "after": {
+        "id": "c1d3e4d3",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容真实严谨，完全忠实于来源，且修复了行动描述中的句末标点缺失问题，语言表达规范。"
+      }
+    },
+    {
+      "id": "R3V6",
+      "ok": true,
+      "preference": "after",
+      "after": {
+        "id": "7f9a1578",
+        "clarity": 4,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [
+          "个人总结存在明显重复与口水话（'我有产品经验。我有产品经验。'）"
+        ],
+        "unsupportedClaims": [],
+        "reason": "工作经历与项目经历完整保留了源数据中的具体行动与严谨量化结果（包括归因说明），表述清晰详实，整体质量明显优于另一份。"
+      }
+    },
+    {
+      "id": "R7K2",
+      "ok": true,
+      "preference": "after",
+      "after": {
+        "id": "766ceb72",
+        "clarity": 3,
+        "specificity": 1,
+        "groundedness": 5,
+        "defects": [
+          "经历描述严重重复且缺乏实质细节（'参与产品工作，负责相关工作，参与相关工作'）",
+          "经历动作未以标点符号结尾"
+        ],
+        "unsupportedClaims": [],
+        "reason": "个人总结客观陈述了已有背景和技能，完全忠实于简历现有信息，去除了不实的夸大其词；但经历部分受限于原始信息仍较空泛。"
+      }
+    },
+    {
+      "id": "R8P4",
+      "ok": true,
+      "preference": "tie",
+      "after": {
+        "id": "66935b3d",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容结构完整清晰，STAR描述严谨真实，客观注明因果归因边界，与source完全一致。"
+      }
+    }
+  ]
+}

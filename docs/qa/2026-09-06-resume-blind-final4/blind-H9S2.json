@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "seconds": 3.79,
+  "value": {
+    "documents": [
+      {
+        "id": "167a0c83",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容真实严谨，完全忠实于来源，且在行动描述末尾补齐了句末标点，格式规范。"
+      },
+      {
+        "id": "62451518",
+        "clarity": 4,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [
+          "工作经历Action项句末缺失句号标点"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠实于来源，但经历中Action项结尾缺少句末标点。"
+      }
+    ],
+    "preferredId": "167a0c83"
+  }
+}

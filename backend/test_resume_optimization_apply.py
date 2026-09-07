@@ -244,7 +244,7 @@ def _run(
         "evaluation_signature_schema": "frontend_evaluation_v2",
         "jd_signature": "jd-signature",
         "target_role": "产品经理",
-        "evaluation": {"overallScore": 72, "issues": []},
+        "evaluation": {"overallScore": 72, "issues": [], "scoringVersion": "coverage_consensus_v2"},
         "current_resume": {
             "section_order": ["summary", "work", "skills"],
             "personal_summary": "原摘要",
@@ -1926,6 +1926,17 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
 
 
 class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_old_scoring_baseline_is_rejected_before_apply_writes(self):
+        run = _run([_change("CHG_A")])
+        run.before_snapshot["evaluation"].pop("scoringVersion")
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume, link = _resume(), _link()
+        before_config = deepcopy(resume.config)
+        with self.assertRaises(apply_service.OptimizationApplyStaleError):
+            await self._apply(run, resume, link)
+        self.assertEqual(resume.config, before_config)
+        self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
+
     async def _apply(
         self,
         run: ResumeOptimizationRun,

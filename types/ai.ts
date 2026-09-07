@@ -1,6 +1,7 @@
 import type { MatchScoreEntry, MatchTrend } from "./analysis";
 
 export const RESUME_EVALUATION_VERSION = "resume_flow_v1" as const;
+export const RESUME_SCORING_VERSION = "coverage_consensus_v2" as const;
 
 export const RESUME_EVALUATION_DIMENSIONS = [
   "逻辑清晰",
@@ -78,6 +79,7 @@ export type ResumeEvaluationTopPriority = {
 
 export type ResumeEvaluation = {
   evaluationVersion: typeof RESUME_EVALUATION_VERSION;
+  scoringVersion?: string;
   evaluationScope: "full_resume";
   targetRole: string;
   overallScore: number;

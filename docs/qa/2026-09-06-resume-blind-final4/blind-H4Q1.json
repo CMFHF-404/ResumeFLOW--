@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "seconds": 3.43,
+  "value": {
+    "documents": [
+      {
+        "id": "ba38a63b",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "结构完整清晰，STAR描述详实有量化支撑，且严格忠于来源数据，职责边界交代明确。"
+      },
+      {
+        "id": "6ca2c111",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "结构完整清晰，STAR描述详实有量化支撑，且严格忠于来源数据，职责边界交代明确。"
+      }
+    ],
+    "preferredId": "tie"
+  }
+}

@@ -91,6 +91,7 @@ def _context(
         target_role=f"Product Manager {marker}",
         evaluation={
             "evaluationVersion": "resume_flow_v1",
+            "scoringVersion": "coverage_consensus_v2",
             "overallScore": 72,
             "issues": [{"issueId": "I1"}, {"issueId": "I2"}, {"issueId": "I3"}],
         },

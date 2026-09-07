@@ -74,6 +74,18 @@ const makeHarness = () => ({
   versionRecords: [],
 });
 
+test('scoring version mismatch exposes a safe non-retryable recovery instruction', async () => {
+  const harness = makeHarness();
+  harness.streamEvents = [{ type: 'error', code: 'resume_optimization_scoring_version_changed',
+    message: 'private upstream details', statusCode: 409, retryable: false, requestId: 'scoring-revision' }];
+  const { resumeOptimizationService } = await importService(harness);
+  await assert.rejects(resumeOptimizationService.answer(RUN_ID,
+    { answers: [{ questionId: 'Q1', state: 'answered', value: '事实' }] },
+    { expectedAuthCacheKey: 'owner-a' }),
+  (error) => error.code === 'resume_optimization_scoring_version_changed'
+    && error.retryable === false && error.message.includes('撤销') && !error.message.includes('private'));
+});
+
 const importService = async (harness) => {
   globalThis.__resumeOptimizationServiceHarness = harness;
   const result = await build({

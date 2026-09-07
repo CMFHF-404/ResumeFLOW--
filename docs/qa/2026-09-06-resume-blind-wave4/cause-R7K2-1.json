@@ -1,0 +1,6 @@
+[
+  {
+    "type": "OptimizationPlanNormalizationError",
+    "message": "change dimension must match every covered issue primaryDimension"
+  }
+]

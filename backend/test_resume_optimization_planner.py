@@ -1021,6 +1021,52 @@ class OptimizationPlanNormalizerTests(unittest.TestCase):
 
 
 class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_pointer_typo_can_bind_identical_owned_text_but_not_foreign_facts(self):
+        snapshot=_context().snapshot_payload()
+        snapshot["current_resume"]["experiences"][SECOND_SELECTED_ID]={"star":{"a":"参与交付"}}
+        snapshot["selected_source_experiences"][SECOND_SELECTED_ID]={"star":{"a":"source A"}}
+        snapshot["selected_master_experience_ids"].append(SECOND_SELECTED_ID)
+        raw={"changes":[_change(sourceRefs=[f"/currentResume/experiences/{SECOND_SELECTED_ID}/star/a"])],"questions":[]}
+        with patch("app.domain.resume_optimization.planner_service._call_llm",AsyncMock(return_value=raw)):
+            result=await plan_resume_optimization(FrozenOptimizationContext(**snapshot))
+        self.assertEqual(result.changes[0].source_refs,[f"/currentResume/experiences/{SELECTED_ID}/star/a"])
+        snapshot["current_resume"]["experiences"][SECOND_SELECTED_ID]["star"]["a"]="另一段经历的独有事实"
+        with patch("app.domain.resume_optimization.planner_service._call_llm",AsyncMock(return_value=raw)):
+            with self.assertRaises(OptimizationPlanNormalizationError):
+                await plan_resume_optimization(FrozenOptimizationContext(**snapshot))
+
+    async def test_answer_patch_uses_server_identity_and_mirrors_missing_targeted_variant(self):
+        context=_context()
+        plan=_normalize({"changes":[_change(actionKind="ask_user",generalValue=None,targetedValue=None,sourceRefs=[])],"questions":[_question()]})
+        reply={"changes":[{"changeId":"CHANGE_001","actionKind":"rewrite","generalValue":"完成交付工作。","targetedValue":None,"sourceRefs":["/userAnswers/QUESTION_001/value"],"introducedTerms":[],"rationale":"使用补充事实","expectedScoreGain":3}]}
+        with patch("app.domain.resume_optimization.planner_service._call_llm",AsyncMock(return_value=reply)):
+            changes=await rewrite_answered_modules(context=context,existing_plan=plan,answers=[OptimizationAnswer(question_id="Q1",state="answered",value="完成交付工作。")])
+        self.assertEqual(changes[0].action_kind.value,"rewrite_now")
+        self.assertEqual(changes[0].general_value,changes[0].targeted_value)
+        for key in ("before_value","module_id","field_path","issue_ids","dimension","scope","default_selected"):
+            self.assertEqual(getattr(changes[0],key),getattr(plan.changes[0],key))
+        self.assertEqual(changes[0].source_refs,["/userAnswers/Q1/value"])
+
+    async def test_generated_answer_choices_cannot_offer_unverified_metrics(self):
+        raw={"changes":[_change(actionKind="ask_user",generalValue=None,targetedValue=None,sourceRefs=[])],"questions":[_question(choices=[{"value":"80%","label":"提升80%"}])]}
+        with patch("app.domain.resume_optimization.planner_service._call_llm",AsyncMock(return_value=raw)):
+            plan=await plan_resume_optimization(_context())
+        self.assertEqual([(c.value,c.label) for c in plan.questions[0].choices],[("no_data","暂无可确认的信息")])
+
+    def test_static_order_address_alias_does_not_allow_unselected_ids(self):
+        raw=_change(moduleType="skills_order",moduleId="current_resume",fieldPath="skills.order",beforeValue=["skill-a","skill-b"],generalValue=["skill-b","skill-a"],targetedValue=["skill-b","skill-a"],sourceRefs=[])
+        self.assertEqual(_normalize({"changes":[raw]}).changes[0].module_id,"skills")
+        for invalid in ({**raw,"moduleId":"another_resume"},{**raw,"moduleId":[]},{**raw,"generalValue":["unselected","skill-a"]}):
+            with self.assertRaises(OptimizationPlanNormalizationError):_normalize({"changes":[invalid]})
+
+    async def test_summary_can_cite_selected_skill_but_still_requires_semantic_review(self):
+        context=_context()
+        raw={"changes":[_change(moduleType="personal_summary",moduleId="current_resume",fieldPath="personal_summary",beforeValue="Current summary",generalValue="Discovery",targetedValue="Discovery",sourceRefs=["/currentResume/skills/0/name"])],"questions":[]}
+        with patch("app.domain.resume_optimization.planner_service._call_llm",AsyncMock(return_value=raw)):
+            plan=await plan_resume_optimization(context)
+        checked,_=verify_plan_changes(plan=plan,source_documents=context.source_documents)
+        self.assertEqual(checked[0].safety_status,"pending")
+
     async def test_plan_uses_bounded_json_transport_and_only_model_payload(self) -> None:
         context = _context()
         llm_result = {"changes": [_change()], "questions": []}
@@ -2106,7 +2152,7 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(renormalized.changes[0].general_value)
         self.assertIsNone(renormalized.changes[0].targeted_value)
 
-    async def test_plan_rejects_change_dimension_that_disagrees_with_evaluation_issue(self) -> None:
+    async def test_plan_binds_dimension_to_its_authoritative_evaluation_issue(self) -> None:
         snapshot = _context().snapshot_payload()
         snapshot["evaluation"]["issues"][0]["primaryDimension"] = "内容可读"
         context = FrozenOptimizationContext(**snapshot)
@@ -2115,8 +2161,8 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
             "app.domain.resume_optimization.planner_service._call_llm",
             AsyncMock(return_value={"changes": [_change()], "questions": []}),
         ):
-            with self.assertRaises(OptimizationPlanNormalizationError):
-                await plan_resume_optimization(context)
+            plan=await plan_resume_optimization(context)
+        self.assertEqual(plan.changes[0].dimension,"内容可读")
 
     async def test_answer_rewrite_sends_and_accepts_only_affected_changes(self) -> None:
         context = _context()
@@ -2135,6 +2181,7 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
             generalValue="完成三轮迭代",
             targetedValue="完成三轮迭代",
             sourceRefs=["/userAnswers/QUESTION_001/value"],
+            introducedTerms=["迭代"],
         )
         transport = AsyncMock(return_value={"changes": [rewritten]})
 
@@ -2164,6 +2211,15 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response_schema["type"], "object")
         self.assertEqual(response_schema["required"], ["changes"])
         change_schema = response_schema["properties"]["changes"]["items"]
+        properties = change_schema["properties"]
+        self.assertIn(
+            "/userAnswers/QUESTION_001/value",
+            properties["sourceRefs"]["items"]["enum"],
+        )
+        self.assertEqual(properties["introducedTerms"], {
+            "type": "array", "items": {"type": "string"},
+        })
+        self.assertEqual(changes[0].introduced_terms, ["迭代"])
         self.assertIn("changeId", change_schema["required"])
         self.assertIn("targetedValue", change_schema["required"])
         self.assertFalse(change_schema["additionalProperties"])
@@ -2601,7 +2657,7 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
                     answers=[
                         OptimizationAnswer(
                             question_id="Q1",
-                            state="no_data",
+                            state="answered", value="确认现有事实",
                         )
                     ],
                 )
@@ -2801,14 +2857,15 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
                     "app.domain.resume_optimization.planner_service._call_llm",
                     invalid_rewrite,
                 ):
-                    with self.assertRaises(OptimizationPlanNormalizationError):
-                        await rewrite_answered_modules(
-                            context=context,
-                            existing_plan=existing_plan,
-                            answers=[
-                                OptimizationAnswer(question_id="Q1", state=state)
-                            ],
-                        )
+                    unchanged = await rewrite_answered_modules(
+                        context=context, existing_plan=existing_plan,
+                        answers=[OptimizationAnswer(question_id="Q1", state=state)],
+                    )
+                invalid_rewrite.assert_not_awaited()
+                self.assertEqual(unchanged[0].action_kind.value, "leave_unchanged")
+                self.assertIsNone(unchanged[0].general_value)
+                self.assertEqual(unchanged[0].source_refs, [])
+                self.assertEqual(unchanged[0].default_selected, existing_plan.changes[0].default_selected)
 
             with self.subTest(state=state, result="leave_unchanged"):
                 safe_leave = AsyncMock(
@@ -2833,6 +2890,7 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
                         answers=[OptimizationAnswer(question_id="Q1", state=state)],
                     )
                 self.assertEqual(unchanged[0].action_kind.value, "leave_unchanged")
+                safe_leave.assert_not_awaited()
 
         invented_leave = AsyncMock(
             return_value={
@@ -2850,12 +2908,12 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
             "app.domain.resume_optimization.planner_service._call_llm",
             invented_leave,
         ):
-            with self.assertRaises(OptimizationPlanNormalizationError):
-                await rewrite_answered_modules(
-                    context=context,
-                    existing_plan=existing_plan,
-                    answers=[OptimizationAnswer(question_id="Q1", state="no_data")],
-                )
+            unchanged = await rewrite_answered_modules(
+                context=context, existing_plan=existing_plan,
+                answers=[OptimizationAnswer(question_id="Q1", state="no_data")],
+            )
+        invented_leave.assert_not_awaited()
+        self.assertIsNone(unchanged[0].general_value)
 
     async def test_mixed_answers_allow_only_linked_answered_sources(self) -> None:
         snapshot = _context().snapshot_payload()
@@ -2898,15 +2956,6 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
             return_value={
                 "changes": [
                     _change(sourceRefs=["/userAnswers/Q1/value"]),
-                    _change(
-                        "I2",
-                        changeId="CHG_I2",
-                        fieldPath="star.r",
-                        actionKind="leave_unchanged",
-                        generalValue=None,
-                        targetedValue=None,
-                        sourceRefs=[],
-                    ),
                 ]
             }
         )
@@ -2919,6 +2968,10 @@ class PlannerServiceTests(unittest.IsolatedAsyncioTestCase):
                 answers=answers,
             )
         self.assertEqual(changes[0].action_kind.value, "rewrite_now")
+        self.assertEqual(changes[1].action_kind.value, "leave_unchanged")
+        payload = json.loads(valid.call_args.args[0][1]["content"])
+        self.assertEqual(len(payload["affectedChangeIds"]), 1)
+        self.assertEqual(len(payload["submittedAnswers"]), 1)
 
         invalid = AsyncMock(
             return_value={

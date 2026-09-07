@@ -677,6 +677,9 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
     const evaluationScope = toText(
         getAliased(record, 'evaluationScope', 'evaluation_scope')
     );
+    const scoringVersion = getAliased(record, 'scoringVersion', 'scoring_version');
+    if ((Object.prototype.hasOwnProperty.call(record, 'scoringVersion') || Object.prototype.hasOwnProperty.call(record, 'scoring_version'))
+        && (typeof scoringVersion !== 'string' || !scoringVersion.trim())) return undefined;
     if (
         evaluationVersion !== RESUME_EVALUATION_VERSION
         || evaluationScope !== 'full_resume'
@@ -814,6 +817,7 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
     });
     const normalized: ResumeEvaluation = {
         evaluationVersion: RESUME_EVALUATION_VERSION,
+        ...(typeof scoringVersion === 'string' ? { scoringVersion: scoringVersion.trim() } : {}),
         evaluationScope: 'full_resume',
         targetRole,
         overallScore,

@@ -1,0 +1,94 @@
+{
+  "ok": false,
+  "seconds": 292.07,
+  "error_type": "RemoteProtocolError",
+  "message": "Service call failed; inspect local diagnostic log",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 143,
+      "function": "blind_judge"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2853,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1609,
+      "function": "_call_gemini_generate_content"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 214,
+      "function": "__aenter__"
+    },
+    {
+      "file": "_client.py",
+      "line": 1583,
+      "function": "stream"
+    },
+    {
+      "file": "_client.py",
+      "line": 1629,
+      "function": "send"
+    },
+    {
+      "file": "_client.py",
+      "line": 1657,
+      "function": "_send_handling_auth"
+    },
+    {
+      "file": "_client.py",
+      "line": 1694,
+      "function": "_send_handling_redirects"
+    },
+    {
+      "file": "_client.py",
+      "line": 1730,
+      "function": "_send_single_request"
+    },
+    {
+      "file": "default.py",
+      "line": 393,
+      "function": "handle_async_request"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 162,
+      "function": "__exit__"
+    },
+    {
+      "file": "default.py",
+      "line": 118,
+      "function": "map_httpcore_exceptions"
+    }
+  ],
+  "cause_type": "RemoteProtocolError"
+}

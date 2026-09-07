@@ -95,6 +95,7 @@ def _evaluation() -> dict:
         )
     return {
         "evaluationVersion": "resume_flow_v1",
+        "scoringVersion": "coverage_consensus_v2",
         "evaluationScope": "full_resume",
         "targetRole": "Product Manager",
         "overallScore": 83,
@@ -592,6 +593,18 @@ class _ContextFixture:
 
 
 class ResumeOptimizationContextTests(unittest.IsolatedAsyncioTestCase):
+    async def test_old_scoring_rules_are_readable_but_cannot_start_optimization(self):
+        for version in (None, "previous_rules", "coverage_consensus_v1"):
+            with self.subTest(version=version):
+                fixture = _ContextFixture(self)
+                evaluation = fixture.resume.config["jdAnalysis"]["result"]["resumeEvaluation"]
+                if version is None:
+                    evaluation.pop("scoringVersion", None)
+                else:
+                    evaluation["scoringVersion"] = version
+                with self.assertRaises(context_service.OptimizationContextStaleError):
+                    await fixture.build()
+
     async def test_rejects_non_five_field_signature_before_server_snapshot_build(self) -> None:
         for invalid_signature in (
             "legacy-evaluation-signature",

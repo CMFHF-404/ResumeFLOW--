@@ -1,0 +1,26 @@
+{
+  "fcd11d5e": {
+    "sample": "H4Q1",
+    "phase": "baseline"
+  },
+  "c3723177": {
+    "sample": "H4Q1",
+    "phase": "optimization-1"
+  },
+  "89ba3720": {
+    "sample": "H4Q1",
+    "phase": "optimization-2"
+  },
+  "88c996c6": {
+    "sample": "H9S2",
+    "phase": "baseline"
+  },
+  "64086131": {
+    "sample": "H9S2",
+    "phase": "optimization-1"
+  },
+  "87e6c710": {
+    "sample": "H9S2",
+    "phase": "optimization-2"
+  }
+}

@@ -25,6 +25,10 @@ from .resume_evaluation import (
     _DIMENSION_ALIASES,
     normalize_resume_evaluation,
 )
+from .resume_evaluation_calibration import calibrate_evaluation
+from .resume_evaluation import SCORING_VERSION
+from .resume_evaluation_consensus import select_central_evaluation
+from .runtime_budget import AiRuntimeTimeoutError
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +44,9 @@ _LEGACY_NON_FACT_KEYS = {
 }
 _REPAIR_TIMEOUT_SECONDS = 75.0
 _TOTAL_TIMEOUT_SECONDS = 150.0
+_CONSENSUS_SAMPLE_COUNT = 3
+_CONSENSUS_MAX_ATTEMPTS = 5
+_CONSENSUS_GENERATION_TIMEOUT_SECONDS = 40.0
 _CROSS_PRIMARY_ISSUE_ERROR_PREFIX = (
     "the same issue description cannot use multiple primary dimensions:"
 )
@@ -142,14 +149,16 @@ _RESUME_EVALUATION_RESPONSE_SCHEMA = _strict_object_schema(
                             "level": {"type": "string"},
                             "subscores": {
                                 "type": "array",
-                                "items": _strict_object_schema(
-                                    {
-                                        "name": {"type": "string", "enum": _ALL_SUBSCORE_NAMES},
-                                        "maxScore": {"type": "integer", "minimum": 0, "maximum": 100},
-                                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                                "items": {"anyOf": [
+                                    _strict_object_schema({
+                                        "name": {"type": "string", "enum": [name]},
+                                        "maxScore": {"type": "integer", "enum": [maximum]},
+                                        "score": {"type": "integer", "minimum": 0, "maximum": maximum},
                                         "evidenceIds": _string_array_schema(),
-                                    }
-                                ),
+                                    })
+                                    for _, specs in DIMENSION_SUBSCORES
+                                    for name, maximum in specs
+                                ]},
                             },
                             "strengths": _string_array_schema(),
                             "issues": _string_array_schema(),
@@ -431,6 +440,9 @@ def _normalize_response(
             "resume evaluation result is missing resumeEvaluation"
         )
     normalized_raw = dict(raw_evaluation)
+    # Scoring provenance is assigned by this service, never by a model reply.
+    normalized_raw.pop("scoringVersion", None)
+    normalized_raw.pop("scoring_version", None)
     if jd_available and canonical_jd_match is not None:
         normalized_raw["jdMatch"] = canonical_jd_match
         normalized_raw.pop("jd_match", None)
@@ -481,7 +493,7 @@ async def _repair_resume_evaluation(
                 json_mode=True,
                 request_label="resume_evaluation_repair",
                 lane=LANE_DEFAULT,
-                gemini_thinking_level="minimal",
+                gemini_thinking_level="low",
                 gemini_stream=True,
                 gemini_response_json_schema=_RESUME_EVALUATION_RESPONSE_SCHEMA,
             ),
@@ -741,7 +753,7 @@ async def _repair_resume_evaluation_evidence(
                 json_mode=True,
                 request_label="resume_evaluation_evidence_repair",
                 lane=LANE_DEFAULT,
-                gemini_thinking_level="minimal",
+                gemini_thinking_level="low",
                 gemini_stream=True,
                 gemini_response_json_schema=_EVIDENCE_REPAIR_RESPONSE_SCHEMA,
             ),
@@ -1162,7 +1174,7 @@ async def _repair_cross_primary_issues(
                 json_mode=True,
                 request_label="resume_evaluation_issue_repair",
                 lane=LANE_DEFAULT,
-                gemini_thinking_level="minimal",
+                gemini_thinking_level="low",
                 gemini_stream=True,
                 gemini_response_json_schema=_ISSUE_REPAIR_RESPONSE_SCHEMA,
             ),
@@ -1343,6 +1355,7 @@ async def _analyze_resume_evaluation_once(
     text: str,
     resume_text: Optional[str],
     jd_match_percentage: Optional[int] = None,
+    *, _repair: bool = True,
 ) -> Dict[str, Any]:
     evaluation_input = _build_full_resume_evaluation_input(
         text,
@@ -1359,12 +1372,60 @@ async def _analyze_resume_evaluation_once(
         gemini_stream=True,
         gemini_response_json_schema=_RESUME_EVALUATION_RESPONSE_SCHEMA,
     )
-    return await _finalize_with_one_repair(
-        result,
-        fact_metadata=fact_metadata,
-        jd_available=bool(text.strip()),
-        canonical_jd_match=jd_match_percentage,
-    )
+    if _repair:
+        validated = await _finalize_with_one_repair(
+            result, fact_metadata=fact_metadata, jd_available=bool(text.strip()),
+            canonical_jd_match=jd_match_percentage,
+        )
+    else:
+        try:
+            validated = _normalize_response(
+                result, fact_metadata=fact_metadata, jd_available=bool(text.strip()),
+                canonical_jd_match=jd_match_percentage,
+            )
+        except ValueError as exc:
+            raise ResumeEvaluationIntegrityError("Independent sample violates evaluation contract") from exc
+    calibrated = calibrate_evaluation(validated, evaluation_input)
+    calibrated["resumeEvaluation"]["scoringVersion"] = SCORING_VERSION
+    return calibrated
+
+
+async def _analyze_resume_evaluation_consensus(text, resume_text, jd_match_percentage=None):
+    if _CONSENSUS_SAMPLE_COUNT == 1:
+        return await _analyze_resume_evaluation_once(text,resume_text,jd_match_percentage)
+    samples=[]
+    failures=[]
+    deadline=asyncio.get_running_loop().time()+_TOTAL_TIMEOUT_SECONDS-1
+    for _ in range(_CONSENSUS_MAX_ATTEMPTS):
+        remaining=deadline-asyncio.get_running_loop().time()
+        if len(samples)>=_CONSENSUS_SAMPLE_COUNT or remaining<=0:
+            break
+        if len(samples)>=2 and remaining<_CONSENSUS_GENERATION_TIMEOUT_SECONDS:
+            break
+        try:
+            samples.append(await asyncio.wait_for(
+                _analyze_resume_evaluation_once(text,resume_text,jd_match_percentage,_repair=False),
+                timeout=min(remaining,_CONSENSUS_GENERATION_TIMEOUT_SECONDS),
+            ))
+        except (TimeoutError, AiRuntimeTimeoutError):
+            failures.append(HTTPException(status_code=504,detail="Independent evaluation sample timed out"))
+        except (AiProviderPayloadError, AiProviderUnavailableError, ResumeEvaluationIntegrityError) as exc:
+            status=getattr(getattr(exc.__cause__,"response",None),"status_code",None)
+            if status in {400,401,403,404}:
+                raise
+            failures.append(exc)
+            logger.warning("Evaluation consensus sample failed: %s",type(exc).__name__)
+        except HTTPException as exc:
+            if exc.status_code != HTTP_504_GATEWAY_TIMEOUT:
+                raise
+            # A bounded repair timeout invalidates one sample, not previously
+            # validated reports. The outer 150-second deadline still applies.
+            failures.append(exc)
+            logger.warning("Evaluation consensus sample repair timed out")
+    if len(samples)<2:
+        if failures:raise failures[0]
+        raise ResumeEvaluationIntegrityError("Insufficient validated evaluation samples")
+    return select_central_evaluation(samples)
 
 
 async def analyze_resume_evaluation(
@@ -1373,7 +1434,7 @@ async def analyze_resume_evaluation(
     jd_match_percentage: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _run_with_total_timeout(
-        _analyze_resume_evaluation_once(
+        _analyze_resume_evaluation_consensus(
             text,
             resume_text,
             jd_match_percentage,
@@ -1391,7 +1452,7 @@ async def _analyze_resume_evaluation_with_thoughts_once(
         thought_callback,
         {"type": "thought", "summary": "正在生成六维简历报告"},
     )
-    return await _analyze_resume_evaluation_once(
+    return await _analyze_resume_evaluation_consensus(
         text,
         resume_text,
         jd_match_percentage,

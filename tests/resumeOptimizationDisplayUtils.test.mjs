@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   areResumeOptimizationAnswersComplete,
@@ -30,6 +31,25 @@ const change = (changeId, actionKind, safetyStatus, expectedScoreGain) => ({
   expectedScoreGain,
   beforeValue: '原内容',
   targetedValue: '新内容',
+});
+
+test('complete sentence reflow remains selectable and visible in inline comparisons', () => {
+  const item = {
+    ...change('reflow', 'rewrite_now', 'allowed', 3),
+    moduleType: 'experience_star', moduleId: 'exp-a', fieldPath: 'star.a',
+    beforeValue: '完成调研。<br>完成交付。',
+    targetedValue: '完成调研并交付。',
+  };
+  assert.equal(hasPreservedResumeOptimizationRichText(item.beforeValue, item.targetedValue), true);
+  assert.equal(isResumeOptimizationChangeReviewable(item), true);
+  assert.equal(buildResumeOptimizationExperienceComparisonMap([item]).get('exp-a')[0].changeId, 'reflow');
+});
+
+test('reflow keeps fragments and protected markup under the strict structure gate', () => {
+  const cases = JSON.parse(readFileSync(new URL('./fixtures/resumeOptimizationReflow.json', import.meta.url), 'utf8'));
+  for (const { before, after, allowed } of cases) {
+    assert.equal(hasPreservedResumeOptimizationRichText(before, after), allowed, before);
+  }
 });
 
 test('overview metrics count only the documented plan categories', () => {

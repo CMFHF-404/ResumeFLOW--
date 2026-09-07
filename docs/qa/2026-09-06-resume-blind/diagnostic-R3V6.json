@@ -1,0 +1,242 @@
+{
+  "ok": false,
+  "causes": [
+    {
+      "type": "OptimizationPlanNormalizationError",
+      "message": "unsupported skills-order module or path"
+    }
+  ],
+  "seconds": 16.78,
+  "observed_responses": [
+    {
+      "request_label": "resume_optimization_plan",
+      "response": {
+        "changes": [
+          {
+            "changeId": "CHG_001",
+            "issueIds": [
+              "ISSUE_001"
+            ],
+            "dimension": "逻辑清晰",
+            "moduleType": "experience_star",
+            "moduleId": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+            "fieldPath": "star.a",
+            "actionKind": "rewrite_now",
+            "scope": "general",
+            "beforeValue": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+            "generalValue": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+            "targetedValue": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+            "sourceRefs": [
+              "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a"
+            ],
+            "introducedTerms": [
+              "试用企业",
+              "权限配置阻塞",
+              "验收清单",
+              "分步引导"
+            ],
+            "rationale": "基于已选原版经历内容，按清晰的执行逻辑与行动闭环重构行动描述，消除重复冗余短句并补全标点符号。",
+            "expectedScoreGain": 10,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_002",
+            "issueIds": [
+              "ISSUE_002"
+            ],
+            "dimension": "逻辑清晰",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "personal_summary",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+            "generalValue": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+            "targetedValue": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+            "sourceRefs": [
+              "/currentResume/personal_summary"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前来源数据中尚无足够事实依据重写个人总结，暂保持现状避免主观捏造经历细节。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_003",
+            "issueIds": [
+              "ISSUE_003"
+            ],
+            "dimension": "STAR应用",
+            "moduleType": "experience_star",
+            "moduleId": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+            "fieldPath": "star.r",
+            "actionKind": "rewrite_now",
+            "scope": "general",
+            "beforeValue": "产品上线了。",
+            "generalValue": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+            "targetedValue": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+            "sourceRefs": [
+              "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r"
+            ],
+            "introducedTerms": [
+              "跟踪200家新增试用企业",
+              "7日激活率由40%升至52%",
+              "归因"
+            ],
+            "rationale": "采用已选原版经历中的客观归因与对比数据，补全STAR结果要素。",
+            "expectedScoreGain": 16,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_004",
+            "issueIds": [
+              "ISSUE_004"
+            ],
+            "dimension": "内容可读",
+            "moduleType": "experience_star",
+            "moduleId": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+            "fieldPath": "star.a",
+            "actionKind": "rewrite_now",
+            "scope": "general",
+            "beforeValue": "用SQL和Excel做周报，做周报，整理相关东西",
+            "generalValue": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+            "targetedValue": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+            "sourceRefs": [
+              "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a"
+            ],
+            "introducedTerms": [
+              "指标字典",
+              "汇总查询",
+              "模板输出",
+              "计算口径"
+            ],
+            "rationale": "基于原版数据消除口语化与重复表达，提高语句信息密度与可读性。",
+            "expectedScoreGain": 12,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_005",
+            "issueIds": [
+              "ISSUE_005"
+            ],
+            "dimension": "内容可读",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "该字段已有同模块处理计划，此项按只读哨兵规则保持不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_006",
+            "issueIds": [
+              "ISSUE_006"
+            ],
+            "dimension": "内容完整",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "首发版本不对基础信息字段进行自动改写，通过哨兵规则保持不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_007",
+            "issueIds": [
+              "ISSUE_007"
+            ],
+            "dimension": "内容完整",
+            "moduleType": "skills_order",
+            "moduleId": "current_resume",
+            "fieldPath": "skills.order",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": [
+              "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+              "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+              "febb4316-e4d0-51a8-95db-e81230be7c27"
+            ],
+            "generalValue": [
+              "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+              "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+              "febb4316-e4d0-51a8-95db-e81230be7c27"
+            ],
+            "targetedValue": [
+              "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+              "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+              "febb4316-e4d0-51a8-95db-e81230be7c27"
+            ],
+            "sourceRefs": [
+              "/currentResume/skills"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前技能列表已具备基本项，暂不调整顺序。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_008",
+            "issueIds": [
+              "ISSUE_008"
+            ],
+            "dimension": "专业表达",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "专业表达相关问题已在对应经历的行动项重写中覆盖，本项保持不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_009",
+            "issueIds": [
+              "ISSUE_009"
+            ],
+            "dimension": "成果量化",
+            "moduleType": "experience_star",
+            "moduleId": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+            "fieldPath": "star.r",
+            "actionKind": "rewrite_now",
+            "scope": "general",
+            "beforeValue": "周报做好了。",
+            "generalValue": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+            "targetedValue": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+            "sourceRefs": [
+              "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r"
+            ],
+            "introducedTerms": [
+              "连续4周记录",
+              "耗时从4小时降至1.5小时",
+              "5名运营同事使用"
+            ],
+            "rationale": "使用已选原版经历中的耗时对比与使用人数等客观量化指标更新结果描述。",
+            "expectedScoreGain": 25,
+            "defaultSelected": true
+          }
+        ],
+        "questions": []
+      }
+    }
+  ]
+}

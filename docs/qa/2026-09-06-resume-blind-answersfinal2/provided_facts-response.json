@@ -1,0 +1,40 @@
+{
+  "changes": [
+    {
+      "changeId": "CHANGE_001",
+      "actionKind": "rewrite",
+      "generalValue": "访谈5名管理员，整理反馈，编写配置指引并配合完成验收。",
+      "targetedValue": null,
+      "sourceRefs": [
+        "/userAnswers/QUESTION_001/value"
+      ],
+      "introducedTerms": [],
+      "rationale": "根据用户回答补充了具体的行动细节，包括访谈管理员、整理反馈及编写配置指引并完成验收。",
+      "expectedScoreGain": 26
+    },
+    {
+      "changeId": "CHANGE_002",
+      "actionKind": "rewrite",
+      "generalValue": "配置指引已交付并通过验收。",
+      "targetedValue": null,
+      "sourceRefs": [
+        "/userAnswers/QUESTION_002/value"
+      ],
+      "introducedTerms": [],
+      "rationale": "根据用户回答补充了结果部分，体现配置指引已成功交付并通过验收。",
+      "expectedScoreGain": 25
+    },
+    {
+      "changeId": "CHANGE_003",
+      "actionKind": "rewrite",
+      "generalValue": "配置指引已交付并通过验收。",
+      "targetedValue": null,
+      "sourceRefs": [
+        "/userAnswers/QUESTION_003/value"
+      ],
+      "introducedTerms": [],
+      "rationale": "根据用户回答补充了项目结果，明确成果已交付并通过验收。",
+      "expectedScoreGain": 30
+    }
+  ]
+}

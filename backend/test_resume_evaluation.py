@@ -1056,6 +1056,11 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
 
 class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        # These tests isolate one generation/repair transaction. Ensemble behavior
+        # has dedicated tests with independently varying validated reports.
+        consensus_patch = patch.object(resume_evaluation_service, "_CONSENSUS_SAMPLE_COUNT", 1)
+        consensus_patch.start()
+        self.addCleanup(consensus_patch.stop)
         self.wrapper = json.dumps(
             {
                 "evaluation_scope": "full_resume",
@@ -2066,7 +2071,7 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(
             call_mock.await_args.kwargs["gemini_thinking_level"],
-            "minimal",
+            "low",
         )
         self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
         response_schema = call_mock.await_args.kwargs["gemini_response_json_schema"]
@@ -2445,7 +2450,7 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(
             call_mock.await_args.kwargs["gemini_thinking_level"],
-            "minimal",
+            "low",
         )
         self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
         response_schema = call_mock.await_args.kwargs["gemini_response_json_schema"]

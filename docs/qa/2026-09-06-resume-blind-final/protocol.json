@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-09-06T11:54:13.639640+00:00",
+  "baseline_repeats": 3,
+  "optimization_repeats": 2,
+  "post_repeats": 3,
+  "concurrency": 3,
+  "selection": "first successful numbered baseline and first successful numbered plan, never highest score",
+  "blinding": "labels and expected defects excluded; pairs shuffled without scores or phase names",
+  "scorer": "three independent validated reports; all six dimensions used to select one medoid",
+  "boundary": "production core services and billing, synthetic context; not HTTP apply/finalize",
+  "same_text_controls": "unchanged high-quality resumes are rescored to expose residual variance"
+}

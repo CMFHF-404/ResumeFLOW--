@@ -1,0 +1,58 @@
+[
+  {
+    "entrypoint": "resume_blind_diagnostic",
+    "request_label": "resume_optimization_answer",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 2,
+    "tokens": 4633
+  },
+  {
+    "entrypoint": "resume_blind_benchmark",
+    "request_label": "resume_optimization_plan",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 16,
+    "tokens": 178668
+  },
+  {
+    "entrypoint": "resume_blind_benchmark",
+    "request_label": "resume_evaluation",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 12,
+    "tokens": 124111
+  },
+  {
+    "entrypoint": "resume_blind_benchmark",
+    "request_label": "resume_optimization_semantic_review",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 1,
+    "tokens": 0
+  },
+  {
+    "entrypoint": "resume_blind_diagnostic",
+    "request_label": "resume_optimization_plan",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 4,
+    "tokens": 41467
+  },
+  {
+    "entrypoint": "resume_blind_benchmark",
+    "request_label": "resume_optimization_answer",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 5,
+    "tokens": 9282
+  },
+  {
+    "entrypoint": "resume_blind_benchmark",
+    "request_label": "resume_blind_judge",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 2,
+    "tokens": 11058
+  }
+]

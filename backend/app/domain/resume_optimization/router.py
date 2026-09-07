@@ -121,6 +121,7 @@ _SAFE_DOMAIN_MESSAGES = {
     "resume_optimization_apply_invalid": OptimizationApplyValidationError.public_message,
     "resume_optimization_apply_conflict": OptimizationApplyConflictError.public_message,
     "resume_optimization_evaluation_pending": OptimizationFinalizePendingError.public_message,
+    "resume_optimization_scoring_version_changed": "评分规则已更新，无法比较旧基线。请撤销本次优化，重新评分后生成新方案。",
     "resume_optimization_rescore_in_progress": OptimizationRescoreInProgressError.public_message,
     "resume_optimization_rescore_claim_lost": OptimizationRescoreClaimLostError.public_message,
     "resume_optimization_content_conflict": OptimizationContentConflictError.public_message,

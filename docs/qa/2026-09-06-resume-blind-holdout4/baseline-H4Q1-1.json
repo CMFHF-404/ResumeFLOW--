@@ -1,0 +1,49 @@
+{
+  "ok": false,
+  "seconds": 88.97,
+  "error_type": "HTTPException",
+  "message": "Resume evaluation repair exceeded its 75-second safety limit. Please retry the deep report.",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 102,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1397,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1339,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1381,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1367,
+      "function": "_analyze_resume_evaluation_once"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1301,
+      "function": "_finalize_with_one_repair"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 496,
+      "function": "_repair_resume_evaluation"
+    }
+  ],
+  "cause_type": "TimeoutError"
+}

@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "seconds": 5.64,
+  "value": {
+    "documents": [
+      {
+        "id": "e876a4b3",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "结构完整规范，完全忠实于原始事实来源，STAR要素详实清晰，量化指标严谨客观且如实呈现归因限制，个人总结精炼得当。"
+      },
+      {
+        "id": "2af0dddb",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [
+          "Action部分句末缺少句号"
+        ],
+        "reason": "内容完全忠实于其简化的事实来源，无虚构成分；但整体较为概括简略，细节丰富度较低，且部分条目存在标点缺失。"
+      },
+      {
+        "id": "3c94ffbe",
+        "clarity": 2,
+        "specificity": 2,
+        "groundedness": 4,
+        "unsupportedClaims": [],
+        "defects": [
+          "个人总结存在无意义重复和空泛表述",
+          "经历中的Action存在车轱辘话和重复口语化表述",
+          "Action部分句末缺少句号",
+          "相比原始来源，删除了大量关键量化结果与细节，改写后结果极其空泛"
+        ],
+        "reason": "虽然大体基于来源改写，但文本质量极差，存在明显的车轱辘话与低质重复，且丢弃了来源中宝贵的量化数据与关键动作细节。"
+      },
+      {
+        "id": "f202aa1a",
+        "clarity": 1,
+        "specificity": 1,
+        "groundedness": 3,
+        "unsupportedClaims": [
+          "精通一切产品工作",
+          "执行力极强",
+          "沟通能力极强",
+          "学习能力极强"
+        ],
+        "reason": "个人总结充斥主观夸大和空洞口号；STAR结构严重缺失（S、T、R完全为空），Action内容高度重复且毫无实际信息量。"
+      }
+    ],
+    "ranking": [
+      "e876a4b3",
+      "2af0dddb",
+      "3c94ffbe",
+      "f202aa1a"
+    ]
+  }
+}

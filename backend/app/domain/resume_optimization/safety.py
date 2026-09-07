@@ -1556,6 +1556,19 @@ def preserves_rich_text_structure(before: str, candidate: str) -> bool:
         or _has_unsafe_unicode_scalar_or_reference(candidate)
     ):
         return False
+    # Plain, already-delimited prose may be condensed/reflowed. Keep the strict
+    # structure rules whenever a link, emphasis marker, list or fragment is present.
+    def reflowable(value: str) -> str | None:
+        tags=list(_RICH_HTML_TAG_RE.finditer(value))
+        if any(m.group("tag").casefold()!="br" for m in tags) or _protected_bindings(value):
+            return None
+        parts=re.split(r"<br\b[^>]*>",value,flags=re.IGNORECASE)
+        if any(not _fact_visible_text(part).rstrip().endswith(("。","！","？","!","?",".",";","；")) for part in parts[:-1]):
+            return None
+        return re.sub(r"<br\b[^>]*>"," ",value,flags=re.IGNORECASE)
+    reflowed_before,reflowed_candidate=reflowable(before),reflowable(candidate)
+    if reflowed_before is not None and reflowed_candidate is not None:
+        before,candidate=reflowed_before,reflowed_candidate
     before_signature = _rich_text_signature(before)
     candidate_signature = _rich_text_signature(candidate)
     before_list_signature = _rich_text_list_signature(before)
@@ -3991,7 +4004,8 @@ def _source_scope_finding(
             and tokens[2] in selected_ids
             and tokens[2] in selected_source_ids
         )
-        if not (is_summary or is_selected_experience):
+        is_selected_skills = tokens[1:2] == ["skills"]
+        if not (is_summary or is_selected_experience or is_selected_skills):
             return "个人摘要变更只能引用当前个人摘要、已选经历或明确回答"
     return None
 

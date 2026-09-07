@@ -15,6 +15,7 @@ import {
   resumeOptimizationService,
 } from '../../../services/resumeOptimizationService';
 import type { ResumeEvaluation } from '../../../types/ai';
+import { RESUME_SCORING_VERSION } from '../../../types/ai';
 import type {
   ResumeOptimizationAnswer,
   ResumeOptimizationAnswerState,
@@ -480,6 +481,7 @@ export const isResumeOptimizationEvaluationPersistedAndTrusted = (
   isEvaluationOutdated: boolean,
 ) => Boolean(
   evaluation
+  && evaluation.scoringVersion === RESUME_SCORING_VERSION
   && !isEvaluationOutdated
   && doesResumeOptimizationEvaluationReceiptMatch(
     persistedEvaluationSignature,
@@ -498,6 +500,7 @@ export const resolveResumeOptimizationStartAvailability = (
   else if (!input.resumeId) disabledReason = '请先选择简历。';
   else if (input.isJDAnalysisOutdated) disabledReason = 'JD 匹配已过期，请重新进行 JD 匹配。';
   else if (!input.evaluation || !input.evaluationSignature.trim()) disabledReason = '请先生成最新六维报告。';
+  else if (input.evaluation.scoringVersion !== RESUME_SCORING_VERSION) disabledReason = '评分规则已更新，请重新生成六维报告后再优化。';
   else if (!isResumeOptimizationEvaluationPersistedAndTrusted(
     input.evaluation,
     input.persistedEvaluationSignature,

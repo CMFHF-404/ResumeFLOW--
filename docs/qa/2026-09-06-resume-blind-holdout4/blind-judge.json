@@ -1,0 +1,72 @@
+{
+  "ok": true,
+  "seconds": 6.87,
+  "value": {
+    "documents": [
+      {
+        "id": "88c996c6",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [
+          "经历中Action部分末尾缺少句号"
+        ],
+        "reason": "内容完全基于来源，表述较为概括，且Action末尾存在标点缺失。"
+      },
+      {
+        "id": "fcd11d5e",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完全忠实于数据源，STAR结构完整且细节具体，明确区分了个人职责与团队贡献，标点格式规范。"
+      },
+      {
+        "id": "87e6c710",
+        "clarity": 5,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完全忠实于来源，标点完整，但描述相对比较简略。"
+      },
+      {
+        "id": "c3723177",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完全忠于来源，STAR结构完整，量化指标翔实，职责边界明确。"
+      },
+      {
+        "id": "89ba3720",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完全忠于来源，STAR结构完整，数据详实，表达客观清晰。"
+      },
+      {
+        "id": "64086131",
+        "clarity": 5,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完全忠实于数据源，标点完整，但信息丰富度与细节略显概括。"
+      }
+    ],
+    "ranking": [
+      "fcd11d5e",
+      "c3723177",
+      "89ba3720",
+      "87e6c710",
+      "64086131",
+      "88c996c6"
+    ]
+  }
+}

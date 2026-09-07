@@ -1,0 +1,24 @@
+{
+  "database": "localhost/resumeflow",
+  "route_profile": "gemini_primary",
+  "gemini_model": "gemini-3.5-flash-lite",
+  "harness_sha256": "7d6f8343f4d9959cbd32a61d325822228d254564a9136415069cb6bc4ae8dcd1",
+  "fixtures_sha256": "9d27eac19ca2e5bc95f5cb588f08c40652e563bff9a107fdf5adc19d51ce73e1",
+  "service_files_sha256": {
+    "app\\domain\\resume_optimization\\apply_service.py": "5761d4525e2517b2cbfbb2a8accb84b8c54d598b47cd1c778ce28facaae9cf11",
+    "app\\domain\\resume_optimization\\bank_suggestion_service.py": "a63e0fbff6e4d5ae95fcafef330d6970ea1dbc6e5159c60d9f03bd949774eb0c",
+    "app\\domain\\resume_optimization\\context_service.py": "c84841f4bc0ceff29d72e3b21f0738a9d44cb94c8add9fe2e979605eb03951c9",
+    "app\\domain\\resume_optimization\\models.py": "b12bb427e720b3ead3a1146a680c8cd0fb5ac8369f701975b9e24de647c257fa",
+    "app\\domain\\resume_optimization\\normalizers.py": "71deaedc49af20b37886651d3c0473daf91fde3b2403a3c0fed84fd23cffdc96",
+    "app\\domain\\resume_optimization\\orchestrator.py": "9c482df2dadd1df5121eeb89b189b38444f07422edc9499aa4b779e5187b7398",
+    "app\\domain\\resume_optimization\\planner_service.py": "fd8c4125c8371a4826a829bbb480cbf02c29909ca93cba01c2aac80ceb3b19b8",
+    "app\\domain\\resume_optimization\\prompts.py": "f57010f82abeb9c6d28cd4b1e382bc473d6e559c3925fcb28c5a7c8bec92179b",
+    "app\\domain\\resume_optimization\\router.py": "3cd1f1468d6d198722f3d44b41fdcbfab595fedea41f64c25bcb5a13398bbb40",
+    "app\\domain\\resume_optimization\\run_service.py": "6d20dbdb5a7d202ef2051b63ce0f0fb0bb95f3f7c6c932297bc89c3b778e9a99",
+    "app\\domain\\resume_optimization\\safety.py": "27b63bbac9859e477ce1fb240a56f065bcf8669bd1dc741d6b6b0275b6860d49",
+    "app\\domain\\resume_optimization\\schemas.py": "cdc25e3bfb2d35828959c0d2aed738b29c3a9921a7a7e593076f2794585bb329",
+    "app\\domain\\resume_optimization\\semantic_review.py": "9a517c83467af04fbb9f5a6511f185a01535e3a1816194a245760efa56e24b28",
+    "app\\domain\\resume_optimization\\state_machine.py": "b8279666bacd8dee4c921527785644010d6b31911368e1454b59e49e20e6752d",
+    "app\\domain\\resume_optimization\\__init__.py": "07d54cea75254d5e34f3f77876173cf0b129ae65da347155f92d13190a3e7320"
+  }
+}
